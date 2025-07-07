@@ -99,7 +99,7 @@ impl Drop for ThreadState {
 //==================================================================================================
 
 #[derive(Debug)]
-pub struct RunningThread(ThreadState);
+pub struct RunningThread(Box<ThreadState>);
 
 impl RunningThread {
     pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
@@ -193,7 +193,7 @@ impl RunningThread {
 //==================================================================================================
 
 #[derive(Debug)]
-pub struct ReadyThread(ThreadState);
+pub struct ReadyThread(Box<ThreadState>);
 
 impl ReadyThread {
     pub fn new(
@@ -202,7 +202,7 @@ impl ReadyThread {
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> Self {
-        Self(ThreadState::new(id, kernel_stack, user_stack, context))
+        Self(Box::new(ThreadState::new(id, kernel_stack, user_stack, context)))
     }
 
     pub fn tid(&self) -> ThreadIdentifier {
@@ -232,7 +232,7 @@ impl ReadyThread {
 
 #[derive(Debug)]
 pub struct SleepingThread {
-    thread: ThreadState,
+    thread: Box<ThreadState>,
     alarm: Option<SystemTime>,
 }
 
@@ -275,7 +275,7 @@ pub enum InterruptReason {
 
 #[derive(Debug)]
 pub struct InterruptedThread {
-    thread: ThreadState,
+    thread: Box<ThreadState>,
     reason: InterruptReason,
 }
 
@@ -301,7 +301,7 @@ impl InterruptedThread {
 #[derive(Debug)]
 pub struct ZombieThread {
     status: ExitStatus,
-    state: ThreadState,
+    state: Box<ThreadState>,
 }
 
 impl ZombieThread {
@@ -347,7 +347,7 @@ impl ThreadManager {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);
 
-        ReadyThread(ThreadState::new(id, kernel_stack, user_stack, context))
+        ReadyThread(Box::new(ThreadState::new(id, kernel_stack, user_stack, context)))
     }
 }
 
