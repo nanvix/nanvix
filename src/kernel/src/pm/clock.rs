@@ -119,6 +119,19 @@ pub unsafe fn timer_handler(_intnum: InterruptNumber) {
 ///
 /// Returns the number of timer ticks since the system started.
 ///
+/// # Returns
+///
+/// The number of timer ticks since the system started.
+pub fn ticks() -> u64 {
+    let (major_ticks, minor_ticks): (u32, u32) = TIMER_TICKS.get();
+    ((major_ticks as u64) << 32) + (minor_ticks as u64)
+}
+
+///
+/// # Description
+///
+/// Returns the number of timer ticks since the system started.
+///
 pub fn now() -> SystemTime {
     #[cfg(feature = "pit")]
     let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
