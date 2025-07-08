@@ -11,9 +11,12 @@ use crate::{
         kstack::KernelStack,
         ustack::UserStack,
     },
-    pm::sync::{
-        condvar::Condvar,
-        mutex::MutexGuard,
+    pm::{
+        clock,
+        sync::{
+            condvar::Condvar,
+            mutex::MutexGuard,
+        },
     },
 };
 use ::alloc::{
@@ -118,7 +121,7 @@ impl RunningThread {
 
     pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.0.context_mut();
-        (ReadyThread(self.0), ctx)
+        (ReadyThread::from_state(self.0), ctx)
     }
 
     ///
@@ -196,7 +199,10 @@ impl RunningThread {
 //==================================================================================================
 
 #[derive(Debug)]
-pub struct ReadyThread(Box<ThreadState>);
+pub struct ReadyThread {
+    state: Box<ThreadState>,
+    admission_time: SystemTime,
+}
 
 impl ReadyThread {
     pub fn new(
@@ -205,28 +211,42 @@ impl ReadyThread {
         user_stack: Option<UserStack>,
         context: ContextInformation,
     ) -> Self {
-        Self(Box::new(ThreadState::new(id, kernel_stack, user_stack, context)))
+        Self {
+            state: Box::new(ThreadState::new(id, kernel_stack, user_stack, context)),
+            admission_time: clock::now(),
+        }
+    }
+
+    fn from_state(state: Box<ThreadState>) -> Self {
+        Self {
+            state,
+            admission_time: clock::now(),
+        }
     }
 
     pub fn tid(&self) -> ThreadIdentifier {
-        self.0.id
+        self.state.id
     }
 
     pub fn run(mut self) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.0.context_mut();
-        let interrupt_reason: Option<InterruptReason> = self.0.interrupt_reason.take();
-        (RunningThread(self.0), interrupt_reason, ctx)
+        let ctx: *mut ContextInformation = self.state.context_mut();
+        let interrupt_reason: Option<InterruptReason> = self.state.interrupt_reason.take();
+        (RunningThread(self.state), interrupt_reason, ctx)
     }
 
     pub fn terminate(self) -> ZombieThread {
         ZombieThread {
-            state: self.0,
+            state: self.state,
             status: ErrorCode::Interrupted.into(),
         }
     }
 
     pub fn join_cond(&self) -> Condvar {
-        self.0.join_cond.clone()
+        self.state.join_cond.clone()
+    }
+
+    pub fn admission_time(&self) -> SystemTime {
+        self.admission_time
     }
 }
 
@@ -242,7 +262,7 @@ pub struct SleepingThread {
 
 impl SleepingThread {
     pub fn wakeup(self) -> ReadyThread {
-        ReadyThread(self.thread)
+        ReadyThread::from_state(self.thread)
     }
 
     pub fn interrupt(self, reason: InterruptReason) -> InterruptedThread {
@@ -290,7 +310,7 @@ impl InterruptedThread {
 
     pub fn resume(mut self) -> ReadyThread {
         self.thread.interrupt_reason = Some(self.reason);
-        ReadyThread(self.thread)
+        ReadyThread::from_state(self.thread)
     }
 
     pub fn join_cond(&self) -> Condvar {
@@ -351,7 +371,7 @@ impl ThreadManager {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);
 
-        ReadyThread(Box::new(ThreadState::new(id, kernel_stack, user_stack, context)))
+        ReadyThread::new(id, kernel_stack, user_stack, context)
     }
 }
 
