@@ -7,3 +7,4 @@
 
 pub mod closedir;
 pub mod opendir;
+pub mod readdir;

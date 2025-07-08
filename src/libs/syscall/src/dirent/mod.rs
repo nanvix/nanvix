@@ -20,6 +20,7 @@ pub mod message;
 use ::alloc::collections::VecDeque;
 use ::sysapi::{
     dirent::{
+        dirent,
         dirent_file_type::{
             DT_BLK,
             DT_CHR,
@@ -130,6 +131,8 @@ pub struct DirectoryStream {
     fd: c_int,
     /// Next entries in the directory.
     next_entries: VecDeque<posix_dent>,
+    /// Last directory entry returned by `readdir()`.
+    last_entry: dirent,
 }
 
 impl DirectoryStream {
@@ -138,6 +141,7 @@ impl DirectoryStream {
         Self {
             fd,
             next_entries: VecDeque::new(),
+            last_entry: dirent::default(),
         }
     }
 
@@ -154,6 +158,11 @@ impl DirectoryStream {
     /// Pops the next entry from the directory stream.
     pub fn pop(&mut self) -> Option<posix_dent> {
         self.next_entries.pop_front()
+    }
+
+    /// Returns a reference to the last directory entry returned by `readdir()`.
+    pub fn last_dirent_as_mut(&mut self) -> &mut dirent {
+        &mut self.last_entry
     }
 }
 
