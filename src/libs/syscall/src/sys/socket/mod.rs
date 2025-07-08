@@ -136,8 +136,7 @@ impl TryFrom<i32> for SocketType {
             SOCK_DGRAM => Ok(SocketType::Datagram),
             SOCK_SEQPACKET => Ok(SocketType::SeqPacket),
             _unsupported_socket_type => {
-                let reason: &str = "unsupported socket type";
-                Err(Error::new(ErrorCode::OperationNotSupportedOnSocket, reason))
+                Err(Error::new(ErrorCode::BadProtocolType, "socket type not supported"))
             },
         }
     }
