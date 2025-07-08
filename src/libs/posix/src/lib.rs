@@ -23,9 +23,6 @@ extern crate alloc;
 // Address and routing parameter area.
 pub mod arpa;
 
-/// Format of directory entries
-pub mod dirent;
-
 /// Dynamic linking.
 pub mod dlfcn;
 
