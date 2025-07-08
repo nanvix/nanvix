@@ -98,6 +98,15 @@ impl fmt::Debug for dirent {
     }
 }
 
+impl Default for dirent {
+    fn default() -> Self {
+        Self {
+            d_ino: 0,
+            d_name: [0; NAME_MAX + 1],
+        }
+    }
+}
+
 ///
 /// # Description
 ///
