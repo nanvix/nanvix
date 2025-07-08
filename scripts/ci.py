@@ -84,7 +84,7 @@ def make(
     machine: str,
     arch: str,
     release: bool,
-    toolchain_dir: str = None,
+    toolchain_dir: str,
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
@@ -104,13 +104,16 @@ def make(
         timeout (int, optional): Timeout. Defaults to None.
     """
 
-    command = ["make", target, f"MACHINE={machine}", f"TARGET={arch}"]
+    command = [
+        "make",
+        target,
+        f"MACHINE={machine}",
+        f"TARGET={arch}",
+        f"TOOLCHAIN_DIR={toolchain_dir}",
+    ]
 
     if log_level:
         command.append(f"LOG_LEVEL={log_level}")
-
-    if toolchain_dir:
-        command.append(f"TOOLCHAIN_DIR={toolchain_dir}")
 
     if verbose:
         command.append("VERBOSE=yes")
@@ -151,7 +154,7 @@ def lint(
     """
 
     make("clippy", machine, arch, release, toolchain_dir, log_level, verbose)
-    make("python-lint", machine, arch, release, None, log_level, verbose)
+    make("python-lint", machine, arch, release, toolchain_dir, log_level, verbose)
 
 
 def build(
