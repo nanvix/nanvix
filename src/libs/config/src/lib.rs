@@ -46,6 +46,28 @@ pub mod system {
 }
 
 //==================================================================================================
+// System Communication
+//==================================================================================================
+
+pub mod syscomm {
+
+    ///
+    /// # Description
+    ///
+    /// Provides the maximum length of a message we receive from the gateway. We set a limit to
+    /// prevent a malformed payload to trigger unbounded allocations in linuxd.
+    ///
+    pub const MAX_GW_MESSAGE_LEN: usize = 128 * 1024 * 1024;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the length of the temporary bufer we use to read messages from the gateway.
+    ///
+    pub const GW_READ_BUFFER_LEN: usize = 4 * 1024;
+}
+
+//==================================================================================================
 // User Memory Layout
 //==================================================================================================
 
