@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use ::alloc::collections::{
-    vec_deque,
     VecDeque,
+    vec_deque,
 };
 
 //==================================================================================================
@@ -209,6 +209,17 @@ impl<T> NonEmptyVecDeque<T> {
             head: Some(&mut self.head),
             tail: self.tail.as_mut().map(|tail| tail.iter_mut()),
         }
+    }
+}
+
+impl<T> From<NonEmptyVecDeque<T>> for VecDeque<T> {
+    fn from(vec_deque: NonEmptyVecDeque<T>) -> Self {
+        let mut vec = VecDeque::new();
+        vec.push_front(vec_deque.head);
+        if let Some(tail) = vec_deque.tail {
+            vec.extend(tail);
+        }
+        vec
     }
 }
 
@@ -459,6 +470,15 @@ mod test {
         assert_eq!(vec_deque.head, 1);
         assert_eq!(vec_deque.tail, Some(VecDeque::from([2])));
     }
+
+    #[test]
+    fn test_into_vec_deque() {
+        let mut vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let converted: VecDeque<i32> = VecDeque::from(vec_deque);
+        assert_eq!(converted, VecDeque::from([0, 1, 2]));
+    }
 }
 
 //==================================================================================================
@@ -474,8 +494,8 @@ mod benchmarks {
 
     use super::*;
     use test::{
-        black_box,
         Bencher,
+        black_box,
     };
 
     #[bench]
