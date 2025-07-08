@@ -49,6 +49,11 @@ else
 export IMAGE ?= nanvix.iso
 endif
 
+# Make sure toolchain directory is set in the environment.
+ifndef TOOLCHAIN_DIR
+$(error Environment variable TOOLCHAIN_DIR is not set.)
+endif
+
 #===================================================================================================
 # Directories
 #===================================================================================================
@@ -61,7 +66,6 @@ export IMAGE_DIR     := $(BUILD_DIR)/iso
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
-export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
