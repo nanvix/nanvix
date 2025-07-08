@@ -104,10 +104,10 @@ impl TryFrom<i32> for AddressFamily {
             socket_address_family::AF_INET6 => Ok(AddressFamily::Inet6),
             socket_address_family::AF_UNIX => Ok(AddressFamily::Unix),
             socket_address_family::AF_UNSPEC => Ok(AddressFamily::Unspec),
-            _unsupported_family => {
-                let reason: &str = "unsupported socket address family";
-                Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
-            },
+            _unsupported_family => Err(Error::new(
+                ErrorCode::AddressFamilyNotSupported,
+                "socket address family not supported",
+            )),
         }
     }
 }
