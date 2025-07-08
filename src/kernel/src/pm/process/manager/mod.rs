@@ -82,7 +82,10 @@ use ::sys::{
         ErrorCode,
     },
     event::Event,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageReceiver,
+    },
     pm::{
         Capability,
         ConditionAddress,
@@ -94,7 +97,6 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
-use sys::ipc::MessageReceiver;
 
 //==================================================================================================
 // Sleep Error
@@ -561,7 +563,7 @@ impl ProcessManagerInner {
         }
 
         // Select next process to run.
-        let next_process: RunnableProcess = self.take_ready();
+        let next_process: RunnableProcess = self.take_earliest_ready();
 
         let (next_process, reason, next_context): (
             RunningProcess,
@@ -647,7 +649,7 @@ impl ProcessManagerInner {
         };
 
         // Schedule another thread to run.
-        let next_process: RunnableProcess = self.take_ready();
+        let next_process: RunnableProcess = self.take_earliest_ready();
 
         let (next_process, reason, next_context): (
             RunningProcess,
@@ -815,7 +817,7 @@ impl ProcessManagerInner {
         };
 
         // Schedule another thread to run.
-        let next_process: RunnableProcess = self.take_ready();
+        let next_process: RunnableProcess = self.take_earliest_ready();
 
         let (next_process, reason, next_context): (
             RunningProcess,
@@ -900,7 +902,7 @@ impl ProcessManagerInner {
             };
 
         // Schedule another thread to run.
-        let next_process: RunnableProcess = self.take_ready();
+        let next_process: RunnableProcess = self.take_earliest_ready();
 
         let (next_process, reason, next_context): (
             RunningProcess,
@@ -1169,14 +1171,26 @@ impl ProcessManagerInner {
         Ok(mutex_guard)
     }
 
-    fn take_ready(&mut self) -> RunnableProcess {
-        match self.ready.pop_front() {
-            Some(runnable_process) => runnable_process,
-            None => {
-                // SAFETY: The follow statement is unreachable because the kernel process is always runnable.
-                unreachable!("the kernel process must be runnable")
-            },
+    fn take_earliest_ready(&mut self) -> RunnableProcess {
+        // SAFETY: As the kernel process is always runnable, the following statement will never panic.
+        let mut selected: (usize, SystemTime) = (
+            0,
+            self.ready
+                .front()
+                .expect("there should always be a process ready to run")
+                .earliest_admission_time(),
+        );
+
+        // Select process with the earliest admission time.
+        for (i, process) in self.ready.iter().enumerate() {
+            let process_admission_time: SystemTime = process.earliest_admission_time();
+            if process_admission_time < selected.1 {
+                selected = (i, process_admission_time);
+            }
         }
+
+        // Remove the selected process from the list of ready processes.
+        self.ready.remove(selected.0)
     }
 
     fn take_running(&mut self) -> RunningProcess {
