@@ -283,20 +283,6 @@ pub unsafe extern "C" fn getsockopt(
     -1
 }
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
-    ::syslog::trace!("listen(): sockfd={:?}, backlog={:?}", sockfd, backlog);
-
-    match socket::syscall::listen(sockfd, backlog) {
-        Ok(_) => 0,
-        Err(e) => {
-            ::syslog::error!("listen(): failed to listen on socket {:?}", e);
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
