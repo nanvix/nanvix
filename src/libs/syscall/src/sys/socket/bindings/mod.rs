@@ -7,5 +7,6 @@
 
 pub mod bind;
 pub mod listen;
+pub mod setsockopt;
 pub mod socket;
 pub mod socketpair;
