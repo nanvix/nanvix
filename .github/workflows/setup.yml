@@ -58,6 +58,6 @@ jobs:
               git fetch origin
               git reset --hard origin/${TARGET_BRANCH}
               rm -rf Cargo.lock
-              make init
+              make init TOOLCHAIN_DIR=$HOME/toolchain
             fi
           fi
