@@ -19,6 +19,7 @@ pub mod fchdir;
 pub mod fchown;
 pub mod fchownat;
 pub mod fdatasync;
+pub mod fork;
 pub mod getentropy;
 pub mod lchown;
 pub mod read;
