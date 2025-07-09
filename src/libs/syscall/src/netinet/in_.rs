@@ -41,7 +41,7 @@ impl TryFrom<i32> for Protocol {
             IPPROTO_IP => Ok(Protocol::Ip),
             IPPROTO_TCP => Ok(Protocol::Tcp),
             IPPROTO_UDP => Ok(Protocol::Udp),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid protocol number")),
+            _ => Err(Error::new(ErrorCode::ProtocolNotSupported, "protocol not supported")),
         }
     }
 }
