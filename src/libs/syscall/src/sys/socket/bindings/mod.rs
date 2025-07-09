@@ -13,6 +13,7 @@ pub mod getsockname;
 pub mod getsockopt;
 pub mod listen;
 pub mod recv;
+pub mod recvfrom;
 pub mod setsockopt;
 pub mod socket;
 pub mod socketpair;

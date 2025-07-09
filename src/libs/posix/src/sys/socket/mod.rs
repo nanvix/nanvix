@@ -35,54 +35,6 @@ use sysapi::{
 ///
 /// # Description
 ///
-/// Receives data from a specific address.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `buf`: Pointer to the buffer where the received data will be stored.
-/// - `len`: Length of the buffer.
-/// - `flags`: Flags for receiving data.
-/// - `sockaddr`: Pointer to the socket address structure to store the source address.
-/// - `addrlen`: Pointer to the length of the socket address structure.
-///
-/// # Returns
-///
-/// The `recvfrom()` function returns the number of bytes received on success. On error, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - `sockaddr` points to a valid socket address structure (if not null).
-/// - `addrlen` points to a valid length (if not null).
-/// - `buf` points to a valid buffer of length `len`.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn recvfrom(
-    sockfd: c_int,
-    buf: *mut c_void,
-    len: c_size_t,
-    flags: c_int,
-    sockaddr: *mut sockaddr,
-    addrlen: *mut socklen_t,
-) -> c_ssize_t {
-    ::syslog::trace!(
-        "recvfrom(): sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?}, \
-         sockaddr={sockaddr:?}, addrlen={addrlen:?}"
-    );
-    // TODO: https://github.com/nanvix/nanvix/issues/590
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
-///
-/// # Description
-///
 /// Receives a message from a socket.
 ///
 /// # Parameters
