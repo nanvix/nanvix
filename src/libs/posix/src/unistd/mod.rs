@@ -73,7 +73,7 @@ use ::syscall::unistd::syscall;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    fchownat(AT_FDCWD, path, owner, group, 0)
+    ::syscall::unistd::bindings::fchownat::fchownat(AT_FDCWD, path, owner, group, 0)
 }
 
 #[allow(clippy::missing_safety_doc)]
@@ -281,86 +281,6 @@ pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int 
                 fd,
                 owner,
                 group,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
-/// Changes the owner and group of a file relative to a directory file descriptor.
-///
-/// # Parameters
-///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`:  Pathname of the file.
-/// - `owner`: Owner of the file.
-/// - `group`: Group of the file.
-/// - `flag`:  Flag.
-///
-/// # Returns
-///
-/// Upon successful completion, the `fchownat()` system call returns `0`. Otherwise, it returns
-/// `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fchownat(
-    dirfd: c_int,
-    path: *const c_char,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> c_int {
-    ::syslog::trace!(
-        "fchownat(): dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}",
-        dirfd,
-        path,
-        owner,
-        group,
-        flag
-    );
-
-    // Attempt to convert `pathname`.
-    let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(error) => {
-            ::syslog::error!(
-                "fchownat(): invalid pathname (dirfd={:?}, owner={:?}, group={:?}, flag={:?}, \
-                 error={:?})",
-                dirfd,
-                owner,
-                group,
-                flag,
-                error
-            );
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Change file ownership and check the result.
-    match ::syscall::unistd::fchownat(dirfd, pathname, owner, group, flag) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!(
-                "fchownat(): failed (dirfd={:?}, pathname={:?}, owner={:?}, group={:?}, \
-                 flag={:?}, error={:?})",
-                dirfd,
-                pathname,
-                owner,
-                group,
-                flag,
                 error
             );
             *__errno_location() = error.code.get();
@@ -827,7 +747,13 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
     ::syslog::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    fchownat(AT_FDCWD, path, owner, group, AT_SYMLINK_NOFOLLOW)
+    ::syscall::unistd::bindings::fchownat::fchownat(
+        AT_FDCWD,
+        path,
+        owner,
+        group,
+        AT_SYMLINK_NOFOLLOW,
+    )
 }
 
 ///
