@@ -40,7 +40,6 @@ use ::sysapi::{
         pid_t,
         uid_t,
     },
-    unistd::STDIN_FILENO,
 };
 use ::syscall::unistd::syscall;
 
@@ -1294,77 +1293,6 @@ pub unsafe extern "C" fn pwrite(
                 buffer,
                 count,
                 offset,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
-/// Reads data from a file descriptor.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-/// - `buffer`: Buffer to read into.
-/// - `count`: Number of bytes to read.
-///
-/// # Returns
-///
-/// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns
-/// `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because:
-/// - It may dereference pointers.
-/// - It may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `buffer` points to a buffer of `count` bytes.
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> c_ssize_t {
-    // Skip logging for stdin to avoid spamming the output.
-    if fd != STDIN_FILENO {
-        ::syslog::trace!("read(): fd={:?}, buffer={:?}, count={:?}", fd, buffer, count);
-    }
-
-    // Check if buffer is invalid.
-    if buffer.is_null() {
-        ::syslog::error!(
-            "read(): invalid buffer (fd={:?}, buffer={:?}, count={:?})",
-            fd,
-            buffer,
-            count
-        );
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if count is invalid.
-    if count == 0 {
-        return 0;
-    }
-
-    // Construct buffer from raw parts.
-    let buffer: &mut [u8] =
-        unsafe { ::core::slice::from_raw_parts_mut(buffer as *mut u8, count as usize) };
-
-    // Attempt to read from the file descriptor and check for errors.
-    match ::syscall::unistd::read(fd, buffer) {
-        Ok(bytes_read) => bytes_read as c_ssize_t,
-        Err(error) => {
-            ::syslog::error!(
-                "read(): failed (fd={}, buffer={:?}, count={:?}, error={:?})",
-                fd,
-                buffer,
-                count,
                 error
             );
             *__errno_location() = error.code.get();
