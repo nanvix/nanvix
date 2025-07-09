@@ -44,42 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Truncates a file to a specified length.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file.
-/// - `length`: New size of the file.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
-    ::syslog::trace!("ftruncate(): fd={}, length={}", fd, length);
-
-    // Attempt to truncate the file and check the result.
-    match ::syscall::unistd::ftruncate(fd, length) {
-        Ok(()) => 0,
-        Err(e) => {
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
-
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char {

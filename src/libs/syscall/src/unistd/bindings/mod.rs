@@ -21,6 +21,7 @@ pub mod fchownat;
 pub mod fdatasync;
 pub mod fork;
 pub mod fsync;
+pub mod ftruncate;
 pub mod getentropy;
 pub mod lchown;
 pub mod read;
