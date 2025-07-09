@@ -9,6 +9,7 @@ pub mod accept;
 pub mod bind;
 pub mod connect;
 pub mod getpeername;
+pub mod getsockname;
 pub mod listen;
 pub mod setsockopt;
 pub mod socket;
