@@ -14,10 +14,7 @@ use ::sysapi::ffi::{
 };
 use ::syscall::sys::{
     socket,
-    socket::{
-        Shutdown,
-        SocketAddr,
-    },
+    socket::Shutdown,
 };
 use sysapi::{
     sys_socket::{
@@ -34,62 +31,6 @@ use sysapi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the name of the socket.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `sockaddr`: Location to store the address of the socket.
-/// - `len`: Location to store the size of the address.
-///
-/// # Returns
-///
-/// Upon successful completion, the `getsockname()` function returns `0`. Otherwise, on failure, it
-/// returns `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may deference raw pointers.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getsockname(
-    sockfd: c_int,
-    sockaddr: *mut sockaddr,
-    len: *mut socklen_t,
-) -> c_int {
-    // Check if the address is valid.
-    if sockaddr.is_null() {
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if the length is valid.
-    if len.is_null() {
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
-
-    match socket::syscall::getsockname(sockfd, &mut sockaddr_) {
-        Ok(_) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = From::<&SocketAddr>::from(&sockaddr_);
-            unsafe {
-                *sockaddr = sockaddr_;
-                *len = len_;
-            }
-            0
-        },
-        Err(e) => {
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
 
 ///
 /// # Description
