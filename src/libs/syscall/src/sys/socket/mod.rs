@@ -70,8 +70,12 @@ use ::sysapi::{
 
 pub mod message;
 
-#[cfg(feature = "syscall")]
-pub mod syscall;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "syscall")] {
+        pub mod syscall;
+        pub mod bindings;
+    }
+}
 
 //==================================================================================================
 
@@ -104,10 +108,10 @@ impl TryFrom<i32> for AddressFamily {
             socket_address_family::AF_INET6 => Ok(AddressFamily::Inet6),
             socket_address_family::AF_UNIX => Ok(AddressFamily::Unix),
             socket_address_family::AF_UNSPEC => Ok(AddressFamily::Unspec),
-            _unsupported_family => {
-                let reason: &str = "unsupported socket address family";
-                Err(Error::new(ErrorCode::AddressFamilyNotSupported, reason))
-            },
+            _unsupported_family => Err(Error::new(
+                ErrorCode::AddressFamilyNotSupported,
+                "socket address family not supported",
+            )),
         }
     }
 }
@@ -136,8 +140,7 @@ impl TryFrom<i32> for SocketType {
             SOCK_DGRAM => Ok(SocketType::Datagram),
             SOCK_SEQPACKET => Ok(SocketType::SeqPacket),
             _unsupported_socket_type => {
-                let reason: &str = "unsupported socket type";
-                Err(Error::new(ErrorCode::OperationNotSupportedOnSocket, reason))
+                Err(Error::new(ErrorCode::BadProtocolType, "socket type not supported"))
             },
         }
     }
@@ -197,6 +200,12 @@ impl From<&sockaddr_in> for SocketAddrV4 {
     }
 }
 
+impl From<SocketAddrV4> for sockaddr {
+    fn from(sockaddr: SocketAddrV4) -> Self {
+        Self::from(&sockaddr)
+    }
+}
+
 impl From<&SocketAddrV4> for sockaddr {
     fn from(sockaddr: &SocketAddrV4) -> Self {
         let mut sa_data: [u8; 14] = [0u8; 14];
@@ -239,6 +248,13 @@ impl TryFrom<&SocketAddrUnix> for sockaddr_un {
         })
     }
 }
+
+impl From<SocketAddrUnix> for sockaddr {
+    fn from(sockaddr: SocketAddrUnix) -> Self {
+        Self::from(&sockaddr)
+    }
+}
+
 impl From<&SocketAddrUnix> for sockaddr {
     fn from(sockaddr: &SocketAddrUnix) -> Self {
         let mut sa_data: [u8; 14] = [0u8; 14];
@@ -314,12 +330,24 @@ impl TryFrom<&sockaddr> for SocketAddr {
     }
 }
 
+impl From<SocketAddr> for sockaddr {
+    fn from(addr: SocketAddr) -> Self {
+        (&addr).into()
+    }
+}
+
 impl From<&SocketAddr> for sockaddr {
     fn from(addr: &SocketAddr) -> Self {
         match addr {
-            SocketAddr::V4(addr) => From::<&SocketAddrV4>::from(addr),
-            SocketAddr::Unix(addr) => From::<&SocketAddrUnix>::from(addr),
+            SocketAddr::V4(addr) => sockaddr::from(addr),
+            SocketAddr::Unix(addr) => sockaddr::from(addr),
         }
+    }
+}
+
+impl From<SocketAddr> for (sockaddr, socklen_t) {
+    fn from(addr: SocketAddr) -> (sockaddr, socklen_t) {
+        (&addr).into()
     }
 }
 
