@@ -32,38 +32,6 @@ use sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Receives a message from a socket.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `msg`: Pointer to the msghdr structure describing the message buffer.
-/// - `flags`: Flags for receiving the message.
-///
-/// # Returns
-///
-/// The `recvmsg()` function returns the number of bytes received on success. On error, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - `msg` points to a valid `msghdr` structure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> c_ssize_t {
-    ::syslog::trace!("recvmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
-    // TODO: https://github.com/nanvix/nanvix/issues/600
-    ::syslog::error!("recvmsg(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn send(
