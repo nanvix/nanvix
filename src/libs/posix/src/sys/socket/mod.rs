@@ -32,65 +32,6 @@ use sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn recv(
-    sockfd: c_int,
-    buf: *mut c_void,
-    len: c_size_t,
-    flags: c_int,
-) -> c_ssize_t {
-    // Check if `buf` is valid.
-    if buf.is_null() {
-        ::syslog::error!("recv(): invalid buffer");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if `len` is valid.
-    if len == 0 {
-        ::syslog::error!("recv(): invalid buffer length");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if `flags` is valid.
-    if flags != 0 {
-        ::syslog::error!("recv(): unsupported flags (flags={:?})", flags);
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Attempt to convert `len` to `usize`.
-    let len: usize = match len.try_into() {
-        Ok(len) => len,
-        Err(_error) => {
-            ::syslog::error!("recv(): failed to convert length to usize");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Attempt to convert buffer.
-    let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
-
-    match socket::syscall::recv(sockfd, buf, flags) {
-        Ok(bytes_received) => match bytes_received.try_into() {
-            Ok(bytes_received) => bytes_received,
-            Err(_error) => {
-                ::syslog::error!("recv(): failed to convert bytes received");
-                *__errno_location() = ErrorCode::ValueOutOfRange.get();
-                -1
-            },
-        },
-        Err(e) => {
-            ::syslog::error!("recv(): failed to receive data through socket {:?}", e);
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
-
 ///
 /// # Description
 ///
