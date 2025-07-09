@@ -44,42 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Synchronizes the data of a file descriptor to disk.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-///
-/// # Returns
-///
-/// Upon successful completion, `fdatasync()` returns `0`. Otherwise, it returns `-1` and sets
-/// `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
-    ::syslog::trace!("fdatasync(): fd={}", fd);
-
-    // Attempt to synchronize the file and check the result.
-    match ::syscall::unistd::fdatasync(fd) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("fdatasync(): failed (fd={}, error={:?})", fd, error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
