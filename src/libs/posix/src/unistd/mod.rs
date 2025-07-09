@@ -44,16 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub extern "C" fn chroot(_path: *const c_char) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/517
-    ::syslog::error!("chroot(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
 
 ///
 /// # Description
