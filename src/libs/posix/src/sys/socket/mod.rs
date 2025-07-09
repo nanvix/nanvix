@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::core::slice;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::{
     c_int,
@@ -31,65 +30,6 @@ use sysapi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn send(
-    sockfd: c_int,
-    buf: *const c_void,
-    len: c_size_t,
-    flags: c_int,
-) -> c_ssize_t {
-    // Check if `buf` is valid.
-    if buf.is_null() {
-        ::syslog::error!("send(): invalid buffer");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if `len` is valid.
-    if len == 0 {
-        ::syslog::error!("send(): invalid buffer length");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if `flags` is valid.
-    if flags != 0 {
-        ::syslog::error!("send(): unsupported flags (flags={:?})", flags);
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Attempt to convert `len` to `usize`.
-    let len: usize = match len.try_into() {
-        Ok(len) => len,
-        Err(_error) => {
-            ::syslog::error!("send(): failed to convert length to usize");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Attempt to convert buffer.
-    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len) };
-
-    match socket::syscall::send(sockfd, buf, flags) {
-        Ok(bytes_sent) => match bytes_sent.try_into() {
-            Ok(bytes_sent) => bytes_sent,
-            Err(_error) => {
-                ::syslog::error!("send(): failed to convert bytes sent");
-                *__errno_location() = ErrorCode::ValueOutOfRange.get();
-                -1
-            },
-        },
-        Err(e) => {
-            ::syslog::error!("send(): failed to send data through socket {:?}", e);
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
 
 ///
 /// # Description
