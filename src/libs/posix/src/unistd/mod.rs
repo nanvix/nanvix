@@ -50,55 +50,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Changes the current working directory.
-///
-/// # Parameters
-///
-/// - `path`: Pathname of the new working directory.
-///
-/// # Returns
-///
-/// Upon successful completion, the `chdir()` system call returns `0`. Otherwise, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because:
-/// - It may dereference pointers.
-/// - It may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
-    ::syslog::error!("chdir(): path={:?}", path);
-
-    // Attempt to convert `path`.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("chdir(): invalid path");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Attempt to change the current working directory and check for errors.
-    match ::syscall::unistd::chdir(path) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("chdir(): failed (error={:?})", error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Changes the user and group ownership of a file.
 ///
 /// # Parameters
