@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+pub mod faccessat;
 pub mod getentropy;
 pub mod read;
 pub mod write;

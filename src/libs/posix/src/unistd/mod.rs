@@ -74,7 +74,7 @@ use ::syscall::unistd::syscall;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
     ::syslog::trace!("access(): path={:?}, mode={:?}", path, mode);
-    faccessat(AT_FDCWD, path, mode, 0)
+    ::syscall::unistd::bindings::faccessat::faccessat(AT_FDCWD, path, mode, 0)
 }
 
 ///
@@ -293,70 +293,6 @@ pub extern "C" fn _exit(status: c_int) -> ! {
         Err(error) => panic!("failed to terminate process (error={error:?})"),
     }
 }
-
-///
-/// # Description
-///
-/// Checks the accessibility of a file relative to a directory file descriptor.
-///
-/// # Parameters
-///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`:  Pathname of the file.
-/// - `mode`:  Accessibility check mode.
-/// - `flag`:  Flag.
-///
-/// # Returns
-///
-/// Upon successful completion, `faccessat()` returns `0`. Otherwise, it returns `-1` and sets
-/// `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because:
-/// - It may dereference pointers.
-/// - It may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn faccessat(
-    dirfd: c_int,
-    path: *const c_char,
-    mode: c_int,
-    flag: c_int,
-) -> c_int {
-    ::syslog::trace!(
-        "faccessat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
-        dirfd,
-        path,
-        mode,
-        flag
-    );
-
-    // Attempt to convert `path`.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("faccessat(): invalid path");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Attempt to check access permissions and check for errors.
-    match ::syscall::unistd::faccessat(dirfd, path, mode, flag) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("faccessat(): failed (error={:?})", error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
 ///
 /// # Description
 ///
