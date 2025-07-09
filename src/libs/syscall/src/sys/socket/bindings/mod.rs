@@ -19,5 +19,6 @@ pub mod send;
 pub mod sendmsg;
 pub mod sendto;
 pub mod setsockopt;
+pub mod shutdown;
 pub mod socket;
 pub mod socketpair;
