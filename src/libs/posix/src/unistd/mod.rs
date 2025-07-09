@@ -44,35 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Changes the user and group ownership of a file.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file.
-/// - `owner`: User ID of the new owner.
-/// - `group`: Group ID of the new owner.
-///
-/// # Returns
-///
-/// Upon successful completion, `chown()` returns `0`. Otherwise, it returns `-1` and sets `errno`
-/// to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    ::syslog::trace!("chown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    ::syscall::unistd::bindings::fchownat::fchownat(AT_FDCWD, path, owner, group, 0)
-}
-
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub extern "C" fn chroot(_path: *const c_char) -> c_int {
