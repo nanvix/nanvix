@@ -18,6 +18,7 @@ pub mod faccessat;
 pub mod fchdir;
 pub mod fchown;
 pub mod fchownat;
+pub mod fdatasync;
 pub mod getentropy;
 pub mod lchown;
 pub mod read;
