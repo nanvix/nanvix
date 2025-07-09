@@ -17,9 +17,6 @@ pub mod resource;
 /// Synchronous I/O multiplexing.
 pub mod select;
 
-/// Sockets.
-pub mod socket;
-
 /// File status.
 pub mod stat;
 
