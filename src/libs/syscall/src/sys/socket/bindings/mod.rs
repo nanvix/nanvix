@@ -16,6 +16,7 @@ pub mod recv;
 pub mod recvfrom;
 pub mod recvmsg;
 pub mod send;
+pub mod sendmsg;
 pub mod setsockopt;
 pub mod socket;
 pub mod socketpair;
