@@ -28,10 +28,20 @@ use crate::{
         ThreadManager,
     },
 };
+use ::core::sync::atomic::Ordering;
 use ::sys::{
     error::Error,
     pm::ProcessIdentifier,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+// Use relaxed ordering for all atomic operations to mitigate synchronization overhead. It is safe
+// to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
+// interrupts disabled.
+const ORDER: Ordering = Ordering::Relaxed;
 
 //==================================================================================================
 // Exports
@@ -74,27 +84,9 @@ pub fn copy_to_user<T>(
     pm.vmcopy_to_user(pid, dst, src, size)
 }
 
-///
-/// # Description
-///
-/// Checks the configuration of the processor manager.
-///
-/// # Notes
-///
-/// If the configuration is not correct, this function panics the kernel.
-///
-fn check_config() {
-    // Check if scheduler frequency is a power of two.
-    if !config::kernel::SCHEDULER_FREQ.is_power_of_two() {
-        panic!("scheduler frequency is not a power of two and it should");
-    }
-}
-
 /// Initializes the processor manager.
 pub fn init(hal: &mut Hal, root: Vmem) -> Result<ProcessManager, Error> {
     info!("initializing the processor manager...");
-
-    check_config();
 
     let interrupt_capable: bool = hal.intman.is_some();
 

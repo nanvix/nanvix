@@ -82,7 +82,10 @@ use ::sys::{
         ErrorCode,
     },
     event::Event,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageReceiver,
+    },
     pm::{
         Capability,
         ConditionAddress,
@@ -94,7 +97,6 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
-use sys::ipc::MessageReceiver;
 
 //==================================================================================================
 // Sleep Error
@@ -529,58 +531,55 @@ impl ProcessManagerInner {
         Ok(pid)
     }
 
-    /// Schedule a process to run.
+    ///
+    /// # Description
+    ///
+    /// Schedule a thread to run.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple containing:
+    /// - The process identifier of the next thread to run.
+    /// - The thread identifier of the next thread to run.
+    /// - A pointer to the context information of the previous thread.
+    /// - A pointer to the context information of the next thread.
+    ///
     fn schedule(
         &mut self,
-    ) -> Option<(ProcessIdentifier, *mut ContextInformation, *mut ContextInformation)> {
+    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
+    {
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
-
-        let previous_pid: ProcessIdentifier = previous_process.state().pid();
-        let previous_tid: ThreadIdentifier = previous_process.get_tid();
 
         let (previous_process, previous_context) = previous_process.schedule();
         self.ready.push_back(previous_process);
 
         self.check_alarm();
 
-        // Select next ready process to run.
-        if let Some(next_process) = self.interrupted.pop_front() {
-            let (next_process, reason, next_context): (
-                RunningProcess,
-                InterruptReason,
-                *mut ContextInformation,
-            ) = next_process.resume();
-
-            let next_pid: ProcessIdentifier = next_process.state().pid();
-            self.interrupt_reason = Some(reason);
-            self.running = Some(next_process);
-            Some((next_pid, previous_context, next_context))
-        } else {
-            let next_process: RunnableProcess = self.take_ready();
-            let (next_process, reason, next_context): (
-                RunningProcess,
-                Option<InterruptReason>,
-                *mut ContextInformation,
-            ) = next_process.run();
-
-            self.interrupt_reason = reason;
-            let next_pid: ProcessIdentifier = next_process.state().pid();
-            let next_tid: ThreadIdentifier = next_process.get_tid();
-            self.running = Some(next_process);
-
-            if previous_tid == next_tid && previous_pid == next_pid {
-                if previous_pid != ProcessIdentifier::KERNEL {
-                    panic!("schedule(): rescheduling non kernel thread (pid={previous_pid:?})");
-                }
-                return None;
-            }
-
-            Some((next_pid, previous_context, next_context))
+        // Process all interrupted processes.
+        while let Some(interrupted_process) = self.interrupted.pop_front() {
+            let ready_process: RunnableProcess = interrupted_process.resume();
+            self.ready.push_back(ready_process);
         }
+
+        // Select next process to run.
+        let next_process: RunnableProcess = self.take_earliest_ready();
+
+        let (next_process, reason, next_context): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = next_process.run();
+
+        let next_pid: ProcessIdentifier = next_process.state().pid();
+        let next_tid: ThreadIdentifier = next_process.get_tid();
+        self.interrupt_reason = reason;
+        self.running = Some(next_process);
+        (next_pid, next_tid, previous_context, next_context)
     }
 
-    // Traverses list of sleeping processes checking for alarms.
+    // Traverses the list of sleeping processes, checking for expired alarms and moving processes
+    // whose alarms have expired from the `suspended` to `interrupted` list.
     fn check_alarm(&mut self) {
         let now: SystemTime = clock::now();
 
@@ -609,7 +608,7 @@ impl ProcessManagerInner {
     ///
     /// # Description
     ///
-    /// Puts the calling thread to sleep.
+    /// Suspends the execution of the calling thread and schedules another thread to run.
     ///
     /// # Parameters
     ///
@@ -617,43 +616,52 @@ impl ProcessManagerInner {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    /// Returns a tuple containing:
+    /// - The process identifier of the next thread to run.
+    /// - The thread identifier of the next thread to run.
+    /// - A pointer to the context information of the previous thread.
+    /// - A pointer to the context information of the next thread.
     ///
     fn sleep(
         &mut self,
         alarm: Option<SystemTime>,
-    ) -> (*mut ContextInformation, *mut ContextInformation) {
+    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
+    {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
-            panic!("kernel process cannot sleep");
+            panic!("sleep(): kernel process cannot sleep");
         }
 
-        match running_process.sleep(alarm) {
+        // Suspend the execution of the calling thread.
+        let previous_context: *mut ContextInformation = match running_process.sleep(alarm) {
+            // The calling process still has runnable threads, put it in the list of ready processes.
             Ok((runnable_process, previous_context)) => {
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = runnable_process.run();
-                self.interrupt_reason = reason;
-                self.running = Some(next_process);
-                (previous_context, next_context)
+                self.ready.push_back(runnable_process);
+                previous_context
             },
+            // The calling process has only sleeping threads left, put it in the list of suspended processes.
             Err((suspended_process, previous_context)) => {
                 self.suspended.push_back(suspended_process);
-                let next_process: RunnableProcess = self.take_ready();
-                let (next_process, reason, next_context): (
-                    RunningProcess,
-                    Option<InterruptReason>,
-                    *mut ContextInformation,
-                ) = next_process.run();
-                self.interrupt_reason = reason;
-                self.running = Some(next_process);
-                (previous_context, next_context)
+                previous_context
             },
-        }
+        };
+
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_earliest_ready();
+
+        let (next_process, reason, next_context): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = next_process.run();
+
+        let next_pid: ProcessIdentifier = next_process.state().pid();
+        let next_tid: ThreadIdentifier = next_process.get_tid();
+        self.interrupt_reason = reason;
+        self.running = Some(next_process);
+        (next_pid, next_tid, previous_context, next_context)
     }
 
     ///
@@ -760,10 +768,28 @@ impl ProcessManagerInner {
         None
     }
 
-    pub fn exit(
+    ///
+    /// # Description
+    ///
+    /// Terminates the calling process.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple containing:
+    /// - The process identifier of the next thread to run.
+    /// - The thread identifier of the next thread to run.
+    /// - A pointer to the context information of the previous thread.
+    /// - A pointer to the context information of the next thread.
+    ///
+    fn exit(
         &mut self,
         status: ExitStatus,
-    ) -> (*mut ContextInformation, *mut ContextInformation) {
+    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
+    {
         let running_process: RunningProcess = self.take_running();
         trace!(
             "exit(): pid={:?}, tid={:?}, status={status:?}",
@@ -776,33 +802,40 @@ impl ProcessManagerInner {
             panic!("kernel process cannot exit");
         }
 
-        match running_process.exit(status) {
+        // Terminate the calling thread.
+        let previous_context: *mut ContextInformation = match running_process.exit(status) {
+            // The calling process still has runnable threads, put it in the list of ready processes.
             Ok((runnable_process, previous_context)) => {
-                let (running_process, reason, next_context) = runnable_process.run();
-                self.interrupt_reason = reason;
-                self.running = Some(running_process);
-                (previous_context, next_context)
+                self.ready.push_back(runnable_process);
+                previous_context
             },
+            // The calling process has only sleeping threads left, put it in the list of zombies processes.
             Err((zombie_process, previous_context)) => {
                 self.zombies.push_back(zombie_process);
-
-                match self.ready.pop_front() {
-                    Some(runnable_process) => {
-                        let (running_process, reason, next_context) = runnable_process.run();
-                        self.interrupt_reason = reason;
-                        self.running = Some(running_process);
-                        (previous_context, next_context)
-                    },
-                    None => unreachable!("the kernel process is always ready to run"),
-                }
+                previous_context
             },
-        }
+        };
+
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_earliest_ready();
+
+        let (next_process, reason, next_context): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = next_process.run();
+
+        let next_pid: ProcessIdentifier = next_process.state().pid();
+        let next_tid: ThreadIdentifier = next_process.get_tid();
+        self.interrupt_reason = reason;
+        self.running = Some(next_process);
+        (next_pid, next_tid, previous_context, next_context)
     }
 
     ///
     /// # Description
     ///
-    /// Exits the calling thread.
+    /// Terminates the calling thread.
     ///
     /// # Parameters
     ///
@@ -810,8 +843,11 @@ impl ProcessManagerInner {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, this function does not return. Otherwise, an error code is
-    /// returned instead.
+    /// Returns a tuple containing:
+    /// - The process identifier of the next thread to run.
+    /// - The thread identifier of the next thread to run.
+    /// - A pointer to the context information of the previous thread.
+    /// - A pointer to the context information of the next thread.
     ///
     /// # Safety
     ///
@@ -821,10 +857,16 @@ impl ProcessManagerInner {
     ///
     /// - The calling process is not the kernel process.
     ///
-    pub(super) unsafe fn exit_thread(
+    fn exit_thread(
         &mut self,
         status: ExitStatus,
-    ) -> (Condvar, *mut ContextInformation, *mut ContextInformation) {
+    ) -> (
+        ProcessIdentifier,
+        ThreadIdentifier,
+        Condvar,
+        *mut ContextInformation,
+        *mut ContextInformation,
+    ) {
         let running_process: RunningProcess = self.take_running();
 
         trace!(
@@ -836,43 +878,43 @@ impl ProcessManagerInner {
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
-            panic!("kernel process cannot exit");
+            panic!("exit_thread(): kernel process cannot exit (status={status:?})");
         }
 
-        match running_process.exit_thread(status) {
-            Ok((join_cond, runnable_process, previous_context)) => {
-                let (running_process, reason, next_context) = runnable_process.run();
-                self.interrupt_reason = reason;
-                self.running = Some(running_process);
-                (join_cond, previous_context, next_context)
-            },
-            Err(Ok((join_cond, sleeping_process, previous_context))) => {
-                self.suspended.push_back(sleeping_process);
+        // Terminate the calling thread and schedule another thread to run.
+        let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
+            match running_process.exit_thread(status) {
+                // The calling process still has runnable threads, put it in the list of ready processes.
+                Ok((join_cond, runnable_process, previous_context)) => {
+                    self.ready.push_back(runnable_process);
+                    (join_cond, previous_context)
+                },
+                // The calling process has only sleeping threads left, put it in the list of suspended processes.
+                Err(Ok((join_cond, sleeping_process, previous_context))) => {
+                    self.suspended.push_back(sleeping_process);
+                    (join_cond, previous_context)
+                },
+                // The calling process has only zombie threads left, put it in the list of zombies processes.
+                Err(Err((join_cond, zombie_process, previous_context))) => {
+                    self.zombies.push_back(zombie_process);
+                    (join_cond, previous_context)
+                },
+            };
 
-                match self.ready.pop_front() {
-                    Some(runnable_process) => {
-                        let (running_process, reason, next_context) = runnable_process.run();
-                        self.interrupt_reason = reason;
-                        self.running = Some(running_process);
-                        (join_cond, previous_context, next_context)
-                    },
-                    None => unreachable!("the kernel process is always ready to run"),
-                }
-            },
-            Err(Err((join_cond, zombie_process, previous_context))) => {
-                self.zombies.push_back(zombie_process);
+        // Schedule another thread to run.
+        let next_process: RunnableProcess = self.take_earliest_ready();
 
-                match self.ready.pop_front() {
-                    Some(runnable_process) => {
-                        let (running_process, reason, next_context) = runnable_process.run();
-                        self.interrupt_reason = reason;
-                        self.running = Some(running_process);
-                        (join_cond, previous_context, next_context)
-                    },
-                    None => unreachable!("the kernel process is always ready to run"),
-                }
-            },
-        }
+        let (next_process, reason, next_context): (
+            RunningProcess,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+        ) = next_process.run();
+
+        let next_pid: ProcessIdentifier = next_process.state().pid();
+        let next_tid: ThreadIdentifier = next_process.get_tid();
+        self.interrupt_reason = reason;
+        self.running = Some(next_process);
+        (next_pid, next_tid, join_cond, previous_context, next_context)
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
@@ -894,7 +936,8 @@ impl ProcessManagerInner {
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
             match process.terminate() {
-                Ok(runnable_process) => {
+                Ok(interrupted_process) => {
+                    let runnable_process: RunnableProcess = interrupted_process.resume();
                     self.ready.push_back(runnable_process);
                     return Ok(());
                 },
@@ -1128,11 +1171,26 @@ impl ProcessManagerInner {
         Ok(mutex_guard)
     }
 
-    fn take_ready(&mut self) -> RunnableProcess {
-        // NOTE: it is safe to call unwrap because there is always a process ready to run.
-        self.ready
-            .pop_front()
-            .expect("the kernel should be ready to run")
+    fn take_earliest_ready(&mut self) -> RunnableProcess {
+        // SAFETY: As the kernel process is always runnable, the following statement will never panic.
+        let mut selected: (usize, SystemTime) = (
+            0,
+            self.ready
+                .front()
+                .expect("there should always be a process ready to run")
+                .earliest_admission_time(),
+        );
+
+        // Select process with the earliest admission time.
+        for (i, process) in self.ready.iter().enumerate() {
+            let process_admission_time: SystemTime = process.earliest_admission_time();
+            if process_admission_time < selected.1 {
+                selected = (i, process_admission_time);
+            }
+        }
+
+        // Remove the selected process from the list of ready processes.
+        self.ready.remove(selected.0)
     }
 
     fn take_running(&mut self) -> RunningProcess {
