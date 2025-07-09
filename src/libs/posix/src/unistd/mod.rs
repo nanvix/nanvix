@@ -47,32 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Duplicates a file descriptor to a specified file descriptor.
-///
-/// # Parameters
-///
-/// - `oldfd`: File descriptor to duplicate.
-/// - `newfd`: File descriptor to duplicate to.
-///
-/// # Returns
-///
-/// Upon successful completion, `dup2()` returns the new file descriptor. Otherwise, it returns
-/// `-1` and sets `errno` to indicate the error.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn dup2(oldfd: c_int, newfd: c_int) -> c_int {
-    ::syslog::trace!("dup2(): oldfd={oldfd:?}, newfd={newfd:?}");
-    // TODO: https://github.com/nanvix/nanvix/issues/354
-    ::syslog::error!("dup2(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
-///
-/// # Description
-///
 /// Executes a program.
 ///
 /// # Parameters
