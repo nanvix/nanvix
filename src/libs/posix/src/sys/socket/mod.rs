@@ -32,52 +32,6 @@ use sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Gets options on sockets.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `level`: The protocol level at which the option resides.
-/// - `optname`: The name of the option.
-/// - `optval`: Pointer to the buffer where the option value will be stored.
-/// - `optlen`: Pointer to the length of the option value.
-///
-/// # Returns
-///
-/// The `getsockopt()` function returns `0` on success. On error, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - `optval` points to a valid buffer of length `*optlen` (if not null).
-/// - `optlen` points to a valid length (if not null).
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getsockopt(
-    sockfd: c_int,
-    level: c_int,
-    optname: c_int,
-    optval: *mut c_void,
-    optlen: *mut socklen_t,
-) -> c_int {
-    ::syslog::trace!(
-        "getsockopt(): sockfd={sockfd:?}, level={level:?}, optname={optname:?}, \
-         optval={optval:?}, optlen={optlen:?}"
-    );
-    // TODO: https://github.com/nanvix/nanvix/issues/591
-    ::syslog::error!("getsockopt(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn recv(
