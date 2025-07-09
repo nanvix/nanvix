@@ -179,7 +179,7 @@ pub fn kcall_handler(
         // No work to do, so yield the CPU.
         if !kcall_handled && !message_received && !harvested_process {
             // SAFETY: the kernel process does not hold any resources.
-            if let Err(error) = unsafe { ProcessManager::switch() } {
+            if let Err(error) = unsafe { ProcessManager::giveup() } {
                 error!("context switch failed (error={:?})", error);
             }
         }
