@@ -44,32 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-
-///
-/// # Description
-///
-/// Duplicates a file descriptor.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor to duplicate.
-///
-/// # Returns
-///
-/// Upon successful completion, `dup()` returns a new file descriptor that refers to the same open
-/// file description as `fd`. Otherwise, it returns `-1` and sets `errno` to indicate the error.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn dup(fd: c_int) -> c_int {
-    ::syslog::trace!("dup(): fd={fd:?}");
-    // TODO: https://github.com/nanvix/nanvix/issues/587
-    ::syslog::error!("dup(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
 ///
 /// # Description
 ///
