@@ -17,10 +17,7 @@ use ::core::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::{
-    fcntl::atflags::{
-        AT_FDCWD,
-        AT_SYMLINK_NOFOLLOW,
-    },
+    fcntl::atflags::AT_FDCWD,
     ffi::{
         c_char,
         c_int,
@@ -719,41 +716,6 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
             0
         },
     }
-}
-
-///
-/// # Description
-///
-/// Changes the user and group ownership of a symbolic link.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file.
-/// - `owner`: User ID of the new owner.
-/// - `group`: Group ID of the new owner.
-///
-/// # Returns
-///
-/// Upon successful completion, `lchown()` returns `0`. Otherwise, it returns `-1` and sets
-/// `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lchown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    ::syslog::trace!("lchown(): path={:?}, owner={:?}, group={:?}", path, owner, group);
-    ::syscall::unistd::bindings::fchownat::fchownat(
-        AT_FDCWD,
-        path,
-        owner,
-        group,
-        AT_SYMLINK_NOFOLLOW,
-    )
 }
 
 ///
