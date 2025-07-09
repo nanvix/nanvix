@@ -8,6 +8,7 @@
 pub mod access;
 pub mod chdir;
 pub mod chown;
+pub mod chroot;
 pub mod faccessat;
 pub mod fchownat;
 pub mod getentropy;
