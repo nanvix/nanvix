@@ -47,37 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Synchronizes changes to a file.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::fsync()`]
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn fsync(fd: c_int) -> c_int {
-    match ::syscall::unistd::fsync(fd) {
-        Ok(_) => 0,
-        Err(e) => {
-            unsafe {
-                *__errno_location() = e.code.get();
-            }
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Truncates a file to a specified length.
 ///
 /// # Parameters
