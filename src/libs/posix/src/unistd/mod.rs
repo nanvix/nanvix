@@ -50,36 +50,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Checks user's permissions for a file.
-///
-/// # Parameters
-///
-/// - `path`: Pathname of the file.
-/// - `mode`: Access mode to check.
-///
-/// # Returns
-///
-/// Upon successful completion, the `access()` system call returns `0`. Otherwise, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because:
-/// - It may dereference pointers.
-/// - It may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-/// - This function is not called from multiple threads at the same time.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
-    ::syslog::trace!("access(): path={:?}, mode={:?}", path, mode);
-    ::syscall::unistd::bindings::faccessat::faccessat(AT_FDCWD, path, mode, 0)
-}
-
-///
-/// # Description
-///
 /// Changes the current working directory.
 ///
 /// # Parameters
