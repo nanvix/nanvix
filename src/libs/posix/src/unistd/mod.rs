@@ -44,16 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-#[unsafe(no_mangle)]
-pub extern "C" fn fork() -> pid_t {
-    // TODO: https://github.com/nanvix/nanvix/issues/321
-    ::syslog::error!("fork(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
 ///
 /// # Description
 ///
