@@ -38,60 +38,6 @@ use sysapi::{
 ///
 /// # Description
 ///
-/// Gets the name of the peer socket.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `sockaddr`: Location to store the address of the peer socket.
-/// - `len`: Location to store the size of the address.
-///
-/// # Returns
-///
-/// Upon successful completion, the `getpeername()` function returns `0`. Otherwise, on failure, it
-/// returns `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may deference raw pointers.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getpeername(
-    sockfd: c_int,
-    sockaddr: *mut sockaddr,
-    len: *mut socklen_t,
-) -> c_int {
-    // Check if the address is valid.
-    if sockaddr.is_null() {
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if the length is valid.
-    if len.is_null() {
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    let mut sockaddr_: SocketAddr = SocketAddr::V4(Default::default());
-
-    match socket::syscall::getpeername(sockfd, &mut sockaddr_) {
-        Ok(()) => {
-            let (sockaddr_, len_): (sockaddr, socklen_t) = From::<&SocketAddr>::from(&sockaddr_);
-            *sockaddr = sockaddr_;
-            *len = len_;
-            0
-        },
-        Err(e) => {
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Gets the name of the socket.
 ///
 /// # Parameters
