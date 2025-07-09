@@ -47,50 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Changes the owner and group of a file descriptor.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-/// - `owner`: Owner of the file.
-/// - `group`: Group of the file.
-///
-/// # Returns
-///
-/// Upon successful completion, `fchown()` returns `0`. Otherwise, it returns `-1` and sets
-/// `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
-    ::syslog::trace!("fchown(): fd={}, owner={}, group={}", fd, owner, group);
-
-    // Attempt to change file ownership and check the result.
-    match ::syscall::unistd::fchown(fd, owner, group) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!(
-                "fchown(): failed (fd={}, owner={}, group={}, error={:?})",
-                fd,
-                owner,
-                group,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Synchronizes the data of a file descriptor to disk.
 ///
 /// # Parameters

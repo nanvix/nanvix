@@ -16,6 +16,7 @@ pub mod execv;
 pub mod execve;
 pub mod faccessat;
 pub mod fchdir;
+pub mod fchown;
 pub mod fchownat;
 pub mod getentropy;
 pub mod lchown;
