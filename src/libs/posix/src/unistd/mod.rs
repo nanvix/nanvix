@@ -47,37 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Changes the current working directory.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn fchdir(fd: c_int) -> c_int {
-    ::syslog::trace!("fchdir(): fd = {}", fd);
-
-    // Process system call and check for errors.
-    match ::syscall::unistd::fchdir(fd) {
-        Ok(()) => 0,
-        Err(e) => {
-            ::syslog::error!("fchdir(): failed ({:?})", e);
-            unsafe {
-                *__errno_location() = e.code.get();
-            }
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Changes the owner and group of a file descriptor.
 ///
 /// # Parameters
