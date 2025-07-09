@@ -53,31 +53,6 @@ use ::syscall::unistd::syscall;
 ///
 /// - `path`: Path to the executable file.
 /// - `argv`: Argument vector.
-///
-/// # Returns
-///
-/// Upon successful completion, `execv()` does not return. If it fails, it returns `-1` and sets
-/// `errno` to indicate the error.
-#[unsafe(no_mangle)]
-pub extern "C" fn execv(path: *const c_char, argv: *const *const c_char) -> c_int {
-    ::syslog::trace!("execv(): path={path:?}, argv={argv:?}");
-    // TODO:https://github.com/nanvix/nanvix/issues/588
-    ::syslog::error!("execv(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
-
-///
-/// # Description
-///
-/// Executes a program.
-///
-/// # Parameters
-///
-/// - `path`: Path to the executable file.
-/// - `argv`: Argument vector.
 /// - `envp`: Environment variables.
 ///
 /// # Returns
