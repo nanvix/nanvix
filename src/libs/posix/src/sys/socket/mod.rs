@@ -35,67 +35,6 @@ use sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-
-///
-/// # Description
-///
-/// Connects a socket.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `sockaddr`: Address of the socket.
-/// - `len`: Size of the address.
-///
-/// # Returns
-///
-/// The `connect()` function returns the file descriptor of the socket on success. On error, it
-/// returns `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may deference raw pointers.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn connect(
-    sockfd: c_int,
-    sockaddr: *const sockaddr,
-    len: socklen_t,
-) -> c_int {
-    // Check if `sockaddr` is valid.
-    if sockaddr.is_null() {
-        let reason: &str = "invalid socket address";
-        ::syslog::error!("connect(): {reason}");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Check if `len` is valid.
-    if len == 0 {
-        let reason: &str = "invalid socket address length";
-        ::syslog::error!("connect(): {reason}");
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    let sockaddr: SocketAddr = match TryFrom::<&sockaddr>::try_from(unsafe { &*sockaddr }) {
-        Ok(sockaddr) => sockaddr,
-        Err(error) => {
-            ::syslog::error!("connect(): failed to convert socket address ({error:?})");
-            *__errno_location() = error.code.get();
-            return -1;
-        },
-    };
-
-    match socket::syscall::connect(sockfd, &sockaddr) {
-        Ok(()) => 0,
-        Err(e) => {
-            *__errno_location() = e.code.get();
-            -1
-        },
-    }
-}
-
 ///
 /// # Description
 ///
@@ -251,7 +190,6 @@ pub unsafe extern "C" fn getsockopt(
     }
     -1
 }
-
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
