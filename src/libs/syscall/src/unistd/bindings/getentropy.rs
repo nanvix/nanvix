@@ -7,6 +7,10 @@
 
 use crate::errno::__errno_location;
 use ::core::slice;
+use ::spin::{
+    Mutex,
+    MutexGuard,
+};
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::{
@@ -19,6 +23,34 @@ use ::sysapi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+/// Seed value for the pseudo-random number generator.
+const SEED: i32 = 12345;
+static_assert::assert_eq!(SEED > 0);
+
+/// Next value for the pseudo-random number generator.
+static NEXT: Mutex<i32> = Mutex::new((SEED % 0x7ffffffe) + 1);
+
+/// Computes a pseudo-random number using a Park-Miller minimal standard generator.
+fn prng() -> i32 {
+    let mut state: MutexGuard<'_, i32> = NEXT.lock();
+
+    const A: i32 = 16807;
+    const M: i32 = 2147483647;
+    const Q: i32 = 127773; // m / a
+    const R: i32 = 2836; // m % a
+
+    let hi: i32 = *state / Q;
+    let lo: i32 = *state % Q;
+    let mut x: i32 = A.wrapping_mul(lo).wrapping_sub(R.wrapping_mul(hi));
+
+    if x <= 0 {
+        x = x.wrapping_add(M);
+    }
+    *state = x;
+
+    x
+}
 
 ///
 /// # Description
@@ -66,10 +98,10 @@ pub unsafe extern "C" fn getentropy(buffer: *mut c_void, length: size_t) -> c_in
 
     // TODO: https://github.com/nanvix/nanvix/issues/670
 
-    // Fill buffer with 1s.
+    // Fill the buffer.
     let buffer: &mut [u8] = slice::from_raw_parts_mut(buffer as *mut u8, length);
     for byte in buffer.iter_mut() {
-        *byte = 1;
+        *byte = prng() as u8;
     }
 
     0
