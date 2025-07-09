@@ -12,6 +12,7 @@ pub mod chroot;
 pub mod dup;
 pub mod dup2;
 pub mod execv;
+pub mod execve;
 pub mod faccessat;
 pub mod fchownat;
 pub mod getentropy;
