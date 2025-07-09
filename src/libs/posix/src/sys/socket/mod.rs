@@ -23,47 +23,12 @@ use sysapi::{
     sys_types::{
         c_size_t,
         c_ssize_t,
-        msghdr,
     },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Sends a message on a socket.
-///
-/// # Parameters
-///
-/// - `sockfd`: File descriptor of the socket.
-/// - `msg`: Pointer to the msghdr structure describing the message to send.
-/// - `flags`: Flags for sending the message.
-///
-/// # Returns
-///
-/// The `sendmsg()` function returns the number of bytes sent on success. On error, it returns `-1`
-/// and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-/// - `msg` points to a valid `msghdr` structure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
-    ::syslog::trace!("sendmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
-    // TODO: https://github.com/nanvix/nanvix/issues/599.
-    ::syslog::error!("sendmsg(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
 
 ///
 /// # Description
