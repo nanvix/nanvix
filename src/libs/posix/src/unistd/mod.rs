@@ -47,26 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Exits the calling process.
-///
-/// # Parameters
-///
-/// - `status`: Exit status.
-///
-/// # Return Values
-///
-/// This function does not return.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn _exit(status: c_int) -> ! {
-    match sys::kcall::pm::exit(status) {
-        Ok(_) => unreachable!("process termination should not successfully return"),
-        Err(error) => panic!("failed to terminate process (error={error:?})"),
-    }
-}
-///
-/// # Description
-///
 /// Changes the current working directory.
 ///
 /// # Parameters
