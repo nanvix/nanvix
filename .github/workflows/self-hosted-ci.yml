@@ -19,129 +19,43 @@ env:
   TARGET_BRANCH: ${{ github.ref_name }}
 
 jobs:
-  setup-debug:
-    name: Setup Debug
-    uses: ./.github/workflows/setup.yml
-    with:
-      release: 'debug'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
+  ci:
+    name: "Nanvix CI/CD (self-hosted)"
+    runs-on: self-hosted
+    timeout-minutes: 240
+    steps:
+    - uses: actions/checkout@v4
 
-  lint-debug:
-    name: Lint Debug
-    needs: setup-debug
-    uses: ./.github/workflows/lint.yml
-    with:
-      release: 'debug'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
+    # Debug
+    - name: "Lint (debug)"
+      uses: ./.github/actions/lint
+      with:
+        release: 'debug'
+        log-level: 'trace'
+    - name: "Build (debug)"
+      uses: ./.github/actions/build
+      with:
+        release: 'debug'
+        log-level: 'trace'
+    - name: "Test (debug)"
+      uses: ./.github/actions/test
+      with:
+        release: 'debug'
+        log-level: 'trace'
 
-  build-debug:
-    name: Build Debug
-    needs: lint-debug
-    uses: ./.github/workflows/build.yml
-    with:
-      release: 'debug'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  test-debug:
-    name: Test Debug
-    needs: build-debug
-    uses: ./.github/workflows/test.yml
-    with:
-      release: 'debug'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  cleanup-debug:
-    name: Cleanup Debug
-    needs: test-debug
-    if: always()
-    uses: ./.github/workflows/cleanup.yml
-    with:
-      release: 'debug'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  setup-release:
-    name: Setup Release
-    needs: cleanup-debug
-    uses: ./.github/workflows/setup.yml
-    with:
-      release: 'release'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  lint-release:
-    name: Lint Release
-    needs: setup-release
-    uses: ./.github/workflows/lint.yml
-    with:
-      release: 'release'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  build-release:
-    name: Build Release
-    needs: lint-release
-    uses: ./.github/workflows/build.yml
-    with:
-      release: 'release'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  test-release:
-    name: Test Release
-    needs: build-release
-    uses: ./.github/workflows/test.yml
-    with:
-      release: 'release'
-      log-level: 'trace'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
-
-  cleanup-release:
-    name: Cleanup Release
-    needs: test-release
-    if: always()
-    uses: ./.github/workflows/cleanup.yml
-    with:
-      release: 'release'
-    secrets:
-      hostname: ${{ secrets.hostname }}
-      username: ${{ secrets.username }}
-      sshkey: ${{ secrets.sshkey }}
-      portnum: ${{ secrets.portnum }}
+    # Release
+    - name: "Lint (release)"
+      uses: ./.github/actions/lint
+      with:
+        release: 'release'
+        log-level: 'trace'
+    - name: "Build (release)"
+      uses: ./.github/actions/build
+      with:
+        release: 'release'
+        log-level: 'trace'
+    - name: "Test (release)"
+      uses: ./.github/actions/test
+      with:
+        release: 'release'
+        log-level: 'trace'
