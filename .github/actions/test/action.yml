@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Test"
+description: "Run the integration tests for all machine types"
+
+inputs:
+  release:
+    description: "Release type"
+    required: true
+    default: "release"
+  log-level:
+    description: "Log level"
+    required: true
+    default: "trace"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Test (qemu-pc)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=qemu-pc --${{ inputs.release }} --test
+    shell: bash
+
+  - name: "Test (microvm)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --test
+    shell: bash
+
+  - name: "Test (hyperlight)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --test
+    shell: bash

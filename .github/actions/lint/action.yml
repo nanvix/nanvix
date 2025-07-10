@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Lint"
+description: "Run the lint target on the source code"
+
+inputs:
+  release:
+    description: "Release type"
+    required: true
+    default: "release"
+  log-level:
+    description: "Log level"
+    required: true
+    default: "trace"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Lint (qemu-pc)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=qemu-pc --${{ inputs.release }} --lint
+    shell: bash
+
+  - name: "Lint (microvm)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --lint
+    shell: bash
+
+  - name: "Lint (hyperlight)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --lint
+    shell: bash
