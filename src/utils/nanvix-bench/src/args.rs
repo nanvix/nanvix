@@ -5,10 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::benchmark::BenchmarkFlavour;
+use crate::{
+    benchmark::BenchmarkFlavour,
+    hwloc::HwLoc,
+};
 use anyhow::Result;
 use log::error;
 use std::{
+    fs::File,
+    io::BufReader,
     process,
     str::FromStr,
 };
@@ -19,6 +24,7 @@ use std::{
 
 pub struct Args {
     benchmark: BenchmarkFlavour,
+    hwloc: Option<HwLoc>,
 }
 
 //==================================================================================================
@@ -28,16 +34,20 @@ pub struct Args {
 impl Args {
     const OPT_HELP: &'static str = "-help";
     const OPT_BENCHMARK: &'static str = "-benchmark";
+    const OPT_HWLOC: &'static str = "-hwloc";
 
     fn usage() -> String {
         format!(
-            "usage: ./bin/nanvix-bench.elf {} [cold-start,warm-start,echo-breakdown]",
-            Self::OPT_BENCHMARK
+            "usage: ./bin/nanvix-bench.elf {} [cold-start,warm-start,echo-breakdown] [{} \
+             <path_to_hwloc.json>]",
+            Self::OPT_BENCHMARK,
+            Self::OPT_HWLOC,
         )
     }
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut benchmark_str: String = String::new();
+        let mut hwloc: Option<HwLoc> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -54,6 +64,18 @@ impl Args {
                     }
                     benchmark_str = args[i].clone();
                 },
+                Self::OPT_HWLOC => {
+                    i += 1;
+                    if i >= args.len() {
+                        error!("{}", Self::usage());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_HWLOC));
+                    }
+
+                    // Parse hwloc from JSON file.
+                    let hwloc_file = File::open(args[i].clone())?;
+                    let hwloc_reader = BufReader::new(hwloc_file);
+                    hwloc = Some(serde_json::from_reader(hwloc_reader)?);
+                },
                 _ => {
                     error!("{}", Self::usage());
                     return Err(anyhow::anyhow!("invalid argument"));
@@ -64,7 +86,7 @@ impl Args {
         }
 
         match BenchmarkFlavour::from_str(benchmark_str.as_str()) {
-            Ok(benchmark) => Ok(Self { benchmark }),
+            Ok(benchmark) => Ok(Self { benchmark, hwloc }),
             Err(_) => {
                 error!("{}", Self::usage());
                 Err(anyhow::anyhow!("invalid argument"))
@@ -74,5 +96,9 @@ impl Args {
 
     pub fn benchmark(&self) -> BenchmarkFlavour {
         self.benchmark.clone()
+    }
+
+    pub fn hwloc(&self) -> Option<HwLoc> {
+        self.hwloc.clone()
     }
 }
