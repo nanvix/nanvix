@@ -80,7 +80,7 @@ impl ::std::str::FromStr for SocketType {
 
 impl SocketListener {
     /// Accepts a connection on a socket.
-    pub fn accept(&self) -> Result<SocketStream> {
+    pub fn accept(&self) -> io::Result<SocketStream> {
         match self {
             SocketListener::Tcp(listener) => {
                 let (stream, _sockaddr): (TcpStream, std::net::SocketAddr) = listener.accept()?;
