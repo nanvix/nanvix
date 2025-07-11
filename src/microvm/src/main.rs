@@ -97,17 +97,11 @@ fn main() -> Result<ExitCode> {
         },
         None => None,
     };
-cfg_if::cfg_if! {
-    if #[cfg(feature = "hyperlight")] {
-        let mut vmm: Vmm =
-            Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
-        let mut run = ||vmm.run();
-    } else {
-        let run = ||Vmm::quick_fix(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway);
-    }
-}
+    let mut vmm: Vmm =
+        Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
+
     // Run virtual machine and check exit status code.
-    match run()? {
+    match vmm.run()? {
         exit_status if exit_status != 0 => {
             let exit_code: u8 = match exit_status.try_into() {
                 Ok(code) => code,

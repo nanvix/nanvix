@@ -66,6 +66,7 @@ use ::sys::ipc::{
 
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
+    _io_thread: Option<IoThread>,
     _memory_thread: JoinHandle<Result<()>>,
     microvm: Arc<Mutex<MicroVm>>,
 }
@@ -75,14 +76,14 @@ pub struct Vmm {
 //==================================================================================================
 
 impl Vmm {
-    pub fn quick_fix(
+    pub fn new(
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
         initrd_args: Option<String>,
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
-    ) -> Result<u16> {
+    ) -> Result<Self> {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
@@ -158,36 +159,15 @@ impl Vmm {
                     },
                 }
             });
-        let microvm_clone = microvm.clone();
-        let gateway_tx_clone = gateway_tx.clone();
-        let vcpu_thread_handle: JoinHandle<Result<u16>> = std::thread::spawn(move || {
-            Vmm {
-                _gateway_tx: gateway_tx_clone,
-                _memory_thread: memory_thread,
-                microvm: microvm_clone,
-            }.run()
-        });
-        
-        match gateway_conn {
-            Some(conn) => {
-                // Get the virtual processor handle to pass to the I/O thread.
-                let vcpu_handle: VirtualProcessorHandle = microvm
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                    .get_vcpu_handle(vcpu_thread_handle); 
 
-                // Spawn I/O thread.
-                let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
-                conn, gateway_rx, gateway_tx, microvm, vcpu_handle, paused_rx);
-                io_thread.join()
-                    .map_err(|e| anyhow::anyhow!("failed to join I/O thread {e:?}"))?;
-                Ok(0)
-            }
-            None => {
-                vcpu_thread_handle.join()
-                    .map_err(|e| anyhow::anyhow!("failed to join virtual processor thread {e:?}"))?
-            }
-        }
+        let io_thread: Option<IoThread> = gateway_conn.map(|conn| IoThread::new(conn, gateway_rx, gateway_tx.clone(), microvm.clone(), paused_rx));
+
+        Ok(Self {
+            _gateway_tx: gateway_tx,
+            _io_thread: io_thread,
+            _memory_thread: memory_thread,
+            microvm,
+        })
     }
 
     ///
@@ -205,10 +185,26 @@ impl Vmm {
     /// Otherwise, it returns an error.
     ///
     pub fn run(&mut self) -> Result<u16> {
-        self.microvm
+        // The vcpu_handle exists here. It must be put into the IoThread. Then, the IoThread must run.
+        if let Some(mut io_thread) = self._io_thread.take() {
+            let microvm = self.microvm.clone();
+            let vcpu_thread_handle: JoinHandle<Result<u16>> = std::thread::spawn(move || microvm
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                .run()
+            );
+            let vcpu_handle: VirtualProcessorHandle = self.microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                    .get_vcpu_handle(vcpu_thread_handle); 
+            io_thread.vcpu_handle = Some(vcpu_handle);
+            io_thread.run()
+        } else {
+            self.microvm
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .run()
+        }
     }
 
     ///

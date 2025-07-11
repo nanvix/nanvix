@@ -25,10 +25,6 @@ use ::std::{
         },
         Mutex
     },
-    thread::{
-        self,
-        JoinHandle,
-    },
 };
 use ::sys::ipc::Message;
 
@@ -59,7 +55,7 @@ pub struct IoThread {
     /// State in the snapshotting protocol.
     _state: OrchestratorState,
     /// Handles to issue pause / resume commands.
-    vcpu_handle: VirtualProcessorHandle,
+    pub vcpu_handle: Option<VirtualProcessorHandle>,
     /// Channel through which the MicroVM informs it has paused.
     _paused_rx: Receiver<Message>,
 }
@@ -82,37 +78,6 @@ impl IoThread {
     ///
     /// # Description
     ///
-    /// Spawns a new I/O thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `gateway`: Connection to gateway.
-    /// - `microvm_rx`: MicroVM receiver.
-    /// - `microvm_tx`: MicroVM sender.
-    ///
-    /// # Returns
-    ///
-    /// A handle to the I/O thread.
-    ///
-    pub fn spawn(
-        gateway: Gateway,
-        microvm_rx: Receiver<Message>,
-        microvm_tx: Sender<Message>,
-        microvm: Arc<Mutex<MicroVm>>,
-        vcpu_handle: VirtualProcessorHandle,
-        paused_rx: Receiver<Message>,
-    ) -> JoinHandle<Result<()>> {
-        thread::spawn(move || {
-            let mut io_thread: IoThread = IoThread::new(
-                gateway, microvm_rx, microvm_tx, microvm, vcpu_handle, paused_rx)?;
-            io_thread.run()?;
-            Ok(())
-        })
-    }
-
-    ///
-    /// # Description
-    ///
     /// Creates a new I/O thread.
     ///
     /// # Parameters
@@ -125,15 +90,14 @@ impl IoThread {
     ///
     /// Upon success, a new I/O thread is returned. Otherwise, an error is returned.
     ///
-    fn new(
+    pub fn new(
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
         microvm: Arc<Mutex<MicroVm>>,
-        vcpu_handle: VirtualProcessorHandle,
         paused_rx: Receiver<Message>,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             gateway,
             microvm_rx,
             microvm_tx,
@@ -141,9 +105,9 @@ impl IoThread {
             outgoing: VecDeque::new(),
             _microvm: microvm,
             _state: OrchestratorState::PreBoot,
-            vcpu_handle,
+            vcpu_handle: None,
             _paused_rx: paused_rx,
-        })
+        }
     }
 
     ///
@@ -155,16 +119,30 @@ impl IoThread {
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
-    fn run(&mut self) -> Result<()> {
-        if let Some(thread_handle) = self.vcpu_handle.vcpu_thread.take() {
-            while !thread_handle.is_finished() {
-                self.try_receive_from_microvm()?;
-                self.try_send_to_gateway()?;
-                self.try_receive_from_gateway()?;
-                self.try_send_to_microvm()?;
+    pub fn run(&mut self) -> Result<u16> {
+        if let Some(mut vcpu_handle) = self.vcpu_handle.take() {
+            if let Some(thread_handle) = vcpu_handle.vcpu_thread.take() {
+                while !thread_handle.is_finished() {
+                    self.try_receive_from_microvm()?;
+                    self.try_send_to_gateway()?;
+                    self.try_receive_from_gateway()?;
+                    self.try_send_to_microvm()?;
+                }
+                match thread_handle.join() {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let reason: String =
+                            format!("vcpu_thread error (error={e:?})");
+                        error!("run(): {reason}");
+                        anyhow::bail!(reason)
+                    }
+                }
+            } else {
+                Ok(0)
             }
+        } else {
+            Ok(0)
         }
-        Ok(())
     }
 
     ///
