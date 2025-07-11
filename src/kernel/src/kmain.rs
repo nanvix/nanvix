@@ -175,6 +175,12 @@ pub static PERF_SCHED_GIVEUP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0)
 /// Performance counter for the number of times `wakeup` was called.
 pub static PERF_SCHED_WAKEUP: AtomicUsize = AtomicUsize::new(0);
 
+/// Number of times that `vmbus_read` was called.
+pub static PERF_VMBUS_READ: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of times that `vmbus_write` was called.
+pub static PERF_VMBUS_WRITE: AtomicUsize = AtomicUsize::new(0);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -448,6 +454,8 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     );
     info!("- No. Wakeup Calls: {:?}", PERF_SCHED_WAKEUP.load(Ordering::Relaxed));
     info!("- Ticks: {:?}", pm::ticks());
+    info!("- No. Times VMBus Read Was Called: {:?}", PERF_VMBUS_READ.load(Ordering::Relaxed));
+    info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
 
     trace!("the system will shutdown now!");
     kernel_magic_string(status);
