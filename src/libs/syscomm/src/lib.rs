@@ -9,6 +9,14 @@ extern crate alloc;
 
 use ::anyhow::Result;
 use ::log::error;
+use ::mio::{
+    net::{
+        TcpListener,
+        TcpStream,
+        UnixListener,
+        UnixStream,
+    },
+};
 use ::std::{
     error::Error,
     fs,
@@ -18,14 +26,6 @@ use ::std::{
         ErrorKind,
         Read,
         Write,
-    },
-    net::{
-        TcpListener,
-        TcpStream,
-    },
-    os::unix::net::{
-        UnixListener,
-        UnixStream,
     },
 };
 
@@ -48,7 +48,7 @@ pub struct Socket;
 impl Socket {
     pub fn bind(typ: SocketType, addr: String) -> Result<SocketListener> {
         match typ {
-            SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr)?)),
+            SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr.parse()?)?)),
             SocketType::Unix => Ok(SocketListener::Unix { listener: UnixListener::bind(&addr)?, path: addr.clone() }),
         }
     }
@@ -122,34 +122,13 @@ impl SocketStream {
     pub fn connect(typ: SocketType, addr: String) -> Result<SocketStream> {
         match typ {
             SocketType::Tcp => {
-                let stream: TcpStream = TcpStream::connect(addr)?;
+                let stream: TcpStream = TcpStream::connect(addr.parse()?)?;
                 Ok(SocketStream::Tcp(stream))
             },
             SocketType::Unix => {
                 let stream: UnixStream = UnixStream::connect(addr)?;
                 Ok(SocketStream::Unix(stream))
             },
-        }
-    }
-
-    pub fn try_clone(&self) -> Result<SocketStream, ::std::io::Error> {
-        match self {
-            SocketStream::Tcp(stream) => {
-                let stream: TcpStream = stream.try_clone()?;
-                Ok(SocketStream::Tcp(stream))
-            }
-            SocketStream::Unix(stream) => {
-                let stream: UnixStream = stream.try_clone()?;
-                Ok(SocketStream::Unix(stream))
-            }
-        }
-    }
-
-    /// Sets a socket stream to non-blocking mode.
-    pub fn set_nonblocking(&self, nonblocking: bool) -> Result<(), ::std::io::Error> {
-        match self {
-            SocketStream::Tcp(stream) => stream.set_nonblocking(nonblocking),
-            SocketStream::Unix(stream) => stream.set_nonblocking(nonblocking),
         }
     }
 
