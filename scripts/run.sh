@@ -145,25 +145,27 @@ function run_qemu
 #===================================================================================================
 
 # Runs a binary in MicroVm.
-function run_microvm()
+function run_microvm
 {
 	local image=$1   # Image.
 	local timeout=$2 # Timeout for test mode.
 
-	# Base command.
-	local cmd="$MICROVM_PATH/microvm.elf"
+	local microvm="$NANVIX_HOME/bin/microvm.elf"
+	local kernel="$NANVIX_HOME/bin/kernel.elf"
+	local memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
 
-	cmd="$cmd -kernel $image -memory $MEMSIZE"
+	# Base command.
+	cmd="$microvm -kernel $kernel -initrd $image -memory ${memsize}M"
 
 	# Run.
 	if [ ! -z $timeout ];
 	then
-		cmd="timeout -s SIGINT --preserve-status --foreground $timeout sudo -E $cmd"
+		cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
 	fi
 
 	echo "Running: $cmd"
 
-	$cmd
+	eval "$cmd"
 }
 
 #===================================================================================================
