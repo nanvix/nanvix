@@ -13,6 +13,7 @@ use nix::libc::{
     cpu_set_t,
     sched_setaffinity,
 };
+use serde::Deserialize;
 use std::{
     mem,
     str::FromStr,
@@ -22,13 +23,25 @@ use std::{
 // Structures
 //==================================================================================================
 
-pub const CLIENT_CORE_STR: &str = "0-9";
-pub const NANVIX_LINUXD_CORE_STR: &str = "10-14";
-pub const NANVIX_NANOVM_CORE_STR: &str = "15-19";
-
+#[derive(Clone, Debug, Deserialize)]
 pub struct HwLoc {
-    pub linuxd_core_str: String,
-    pub nanovm_core_str: String,
+    client_core_str: String,
+    linuxd_core_str: String,
+    nanovm_core_str: String,
+}
+
+impl HwLoc {
+    pub fn get_client_core_str(&self) -> String {
+        self.client_core_str.clone()
+    }
+
+    pub fn get_linuxd_core_str(&self) -> String {
+        self.linuxd_core_str.clone()
+    }
+
+    pub fn get_nanovm_core_str(&self) -> String {
+        self.nanovm_core_str.clone()
+    }
 }
 
 /// Parses a CPU mask string (e.g., "0-3,5,7-8") into a Vec of CPU indices.
@@ -81,6 +94,6 @@ fn pin_current_thread_to_mask(mask: &str) -> Result<()> {
 }
 
 /// This method pins the client (running thread) to a pre-defined CPU core.
-pub fn pin_main_thread() -> Result<()> {
-    pin_current_thread_to_mask(CLIENT_CORE_STR)
+pub fn pin_main_thread(mask: String) -> Result<()> {
+    pin_current_thread_to_mask(&mask)
 }

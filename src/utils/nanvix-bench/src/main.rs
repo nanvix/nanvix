@@ -29,7 +29,6 @@ use crate::{
         Benchmark,
         BenchmarkFlavour,
     },
-    hwloc::HwLoc,
 };
 use ::sys::ipc::Message;
 use anyhow::Result;
@@ -133,10 +132,7 @@ impl Benchmark {
     }
 
     fn start_linuxd(&self) -> Result<Child> {
-        let linuxd_args: Vec<String> = vec![
-            "taskset".to_string(),
-            "-ac".to_string(),
-            self.hwloc.linuxd_core_str.to_string(),
+        let mut linuxd_args: Vec<String> = vec![
             format!("{}/bin/linuxd.elf", get_proj_root()),
             "-user-vm-bind-addr".to_string(),
             self.linuxd_address.clone(),
@@ -145,6 +141,14 @@ impl Benchmark {
             "-gateway-bind-socket-type".to_string(),
             "tcp".to_string(),
         ];
+        if let Some(hwloc) = &self.hwloc {
+            let taskset: Vec<String> = vec![
+                "taskset".to_string(),
+                "-ac".to_string(),
+                hwloc.get_linuxd_core_str(),
+            ];
+            linuxd_args.splice(0..0, taskset);
+        }
 
         debug!("Starting linuxd with command: {}", linuxd_args.join(" "));
         let linuxd_cmd = Command::new(&linuxd_args[0])
@@ -159,10 +163,7 @@ impl Benchmark {
     }
 
     fn start_nanovm(&self) -> Result<Child> {
-        let nanovm_args: Vec<String> = vec![
-            "taskset".to_string(),
-            "-ac".to_string(),
-            self.hwloc.nanovm_core_str.to_string(),
+        let mut nanovm_args: Vec<String> = vec![
             format!("{}/bin/microvm.elf", get_proj_root()),
             "-kernel".to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
@@ -181,6 +182,14 @@ impl Benchmark {
             "-gateway".to_string(),
             self.linuxd_address.clone(),
         ];
+        if self.hwloc.is_some() {
+            let taskset: Vec<String> = vec![
+                "taskset".to_string(),
+                "-ac".to_string(),
+                self.hwloc.clone().unwrap().get_nanovm_core_str(),
+            ];
+            nanovm_args.splice(0..0, taskset);
+        }
 
         debug!("Starting nano VM with command: {}", nanovm_args.join(" "));
         let nanovm_cmd = Command::new(&nanovm_args[0])
@@ -591,11 +600,10 @@ fn main() -> Result<()> {
     let args: Args = Args::parse(std::env::args().collect())?;
 
     // Initialize HwLoc and pin main thread.
-    let hwloc = HwLoc {
-        linuxd_core_str: hwloc::NANVIX_LINUXD_CORE_STR.to_string(),
-        nanovm_core_str: hwloc::NANVIX_NANOVM_CORE_STR.to_string(),
-    };
-    hwloc::pin_main_thread()?;
+    let hwloc = args.hwloc();
+    if hwloc.is_some() {
+        hwloc::pin_main_thread(hwloc.clone().unwrap().get_client_core_str())?;
+    }
 
     let mut benchmark = Benchmark {
         hwloc,
