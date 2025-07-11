@@ -68,6 +68,8 @@ then
     tar xvf "${WASI_SDK_FILE}"
 fi
 
+export WASI_SDK_PATH=$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
+
 # Clone repository.
 if [ ! -d "${REPOSITORY_NAME}" ];
 then
