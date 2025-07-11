@@ -84,10 +84,7 @@ fn main() -> Result<ExitCode> {
 
     let gateway: Option<Gateway> = match &gateway_addr {
         Some(addr) => match SocketStream::connect(gateway_socket_type, addr.clone()) {
-            Ok(stream) => {
-                stream.set_nonblocking(true)?;
-                Some(Gateway::new(stream))
-            },
+            Ok(stream) => Some(Gateway::new(stream)),
             Err(e) => {
                 let reason: String =
                     format!("failed to connect to gateway (gateway_addr={addr:?}, error={e:?})",);
