@@ -52,7 +52,7 @@ impl FromStr for BenchmarkFlavour {
 }
 
 pub struct Benchmark {
-    pub hwloc: HwLoc,
+    pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
     pub gateway_address: String,
     pub linuxd_address: String,
