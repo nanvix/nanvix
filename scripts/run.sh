@@ -13,10 +13,18 @@ TIMEOUT=$5  # Timeout
 # Global Variables
 export SCRIPT_NAME=$0
 export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
+export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 # Target configuration
-MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../build/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')B
+MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../build/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
 echo ">>> Memory Size: $MEMSIZE"
+
+# Check if MEMSIZE is invalid.
+if [[ -z "$MEMSIZE" || ! "$MEMSIZE" =~ ^[0-9]+$ ]];
+then
+	echo "Error: MEMSIZE is not set or is not a valid integer."
+	exit 1
+fi
 
 #===================================================================================================
 # usage()
@@ -113,7 +121,7 @@ function run_qemu
 			$smp
 			-display none
 			-cpu pentium2
-			-m $MEMSIZE
+			-m ${MEMSIZE}B
 			-mem-prealloc"
 
 	cmd="$qemu_cmd -cdrom $image"
@@ -137,25 +145,27 @@ function run_qemu
 #===================================================================================================
 
 # Runs a binary in MicroVm.
-function run_microvm()
+function run_microvm
 {
 	local image=$1   # Image.
 	local timeout=$2 # Timeout for test mode.
 
-	# Base command.
-	local cmd="$MICROVM_PATH/microvm.elf"
+	local microvm="$NANVIX_HOME/bin/microvm.elf"
+	local kernel="$NANVIX_HOME/bin/kernel.elf"
+	local memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
 
-	cmd="$cmd -kernel $image -memory $MEMSIZE"
+	# Base command.
+	cmd="$microvm -kernel $kernel -initrd $image -memory ${memsize}M"
 
 	# Run.
 	if [ ! -z $timeout ];
 	then
-		cmd="timeout -s SIGINT --preserve-status --foreground $timeout sudo -E $cmd"
+		cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
 	fi
 
 	echo "Running: $cmd"
 
-	$cmd
+	eval "$cmd"
 }
 
 #===================================================================================================
