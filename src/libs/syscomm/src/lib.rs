@@ -183,8 +183,9 @@ impl SocketStream {
     /// (u32 LE) and then the body with as many bytes as indicated in the header.
     pub fn read_message_from_gateway(&mut self) -> Result<Vec<u8>, ::std::io::Error> {
         let mut buffer = Vec::new();
-        let mut tmp = [0u8; ::config::kernel::IPC_MESSAGE_SIZE];
+        let mut tmp = [0u8; config::syscomm::GW_READ_BUFFER_LEN];
         let u32_size = mem::size_of::<u32>();
+        let mut message_len: Option<usize> = None;
 
         // Read available data.
         loop {
@@ -207,8 +208,8 @@ impl SocketStream {
                     buffer.extend_from_slice(&tmp[..n]);
 
                     // Check if we have enough to parse the length.
-                    if buffer.len() >= u32_size {
-                        if buffer.len() > u32_size + ::config::kernel::IPC_MESSAGE_SIZE {
+                    if message_len.is_none() && buffer.len() >= u32_size {
+                        if buffer.len() > u32_size + config::syscomm::MAX_GW_MESSAGE_LEN {
                             // Guard against the buffer length growing too much.
                             return Err(io::Error::new(
                                 io::ErrorKind::InvalidData,
@@ -218,10 +219,14 @@ impl SocketStream {
 
                         let len =
                             u32::from_le_bytes(buffer[..u32_size].try_into().unwrap()) as usize;
+                        message_len = Some(len);
+                    }
 
-                        if buffer.len() >= u32_size + len {
+                    // Check if we are done reading.
+                    if let Some(msg_len) = message_len {
+                        if buffer.len() >= u32_size + msg_len {
                             // Full message received.
-                            let message = buffer[u32_size..u32_size + len].to_vec();
+                            let message = buffer[u32_size..u32_size + msg_len].to_vec();
                             return Ok(message);
                         }
                     }
