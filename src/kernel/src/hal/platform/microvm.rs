@@ -150,7 +150,10 @@ pub unsafe fn putb(b: u8) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
+    use crate::PERF_VMBUS_WRITE;
     use core::hint;
+
+    PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
     #[allow(clippy::unit_arg)]
     hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
@@ -174,7 +177,10 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_read(addr: *mut u8) {
+    use crate::PERF_VMBUS_READ;
     use core::hint;
+
+    PERF_VMBUS_READ.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
     #[allow(clippy::unit_arg)]
     hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDIN_PORT, addr as u32))

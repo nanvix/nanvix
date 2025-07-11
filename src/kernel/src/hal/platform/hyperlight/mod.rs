@@ -162,6 +162,10 @@ pub unsafe fn puts(message: &str) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
+    use crate::PERF_VMBUS_WRITE;
+
+    PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+
     let data = core::slice::from_raw_parts(addr, config::kernel::IPC_MESSAGE_SIZE);
     let _ = ProcessEnvironmentBlock::vmbus_write(data);
 }
@@ -184,6 +188,10 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 ///
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_read(addr: *mut u8) {
+    use crate::PERF_VMBUS_READ;
+
+    PERF_VMBUS_READ.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+
     let data = core::slice::from_raw_parts_mut(addr, config::kernel::IPC_MESSAGE_SIZE);
     let bytes = ProcessEnvironmentBlock::vmbus_read();
     if let Ok(bytes) = bytes {
