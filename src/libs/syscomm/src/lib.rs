@@ -10,6 +10,9 @@ extern crate alloc;
 use ::anyhow::Result;
 use ::log::error;
 use ::mio::{
+    Interest,
+    Registry,
+    Token,
     net::{
         TcpListener,
         TcpStream,
@@ -104,6 +107,29 @@ impl Drop for SocketListener {
                     Err(e) => error!("error removing UNIX socket (path={path}, error={e:?})"),
                 }
             }
+        }
+    }
+}
+
+impl mio::event::Source for SocketListener {
+    fn register(&mut self, registry: &Registry, token: Token, interests: Interest) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.register(registry, token, interests),
+            SocketListener::Unix { listener, path: _ } => listener.register(registry, token, interests),
+        }
+    }
+
+    fn reregister(&mut self, registry: &Registry, token: Token, interests: Interest) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.reregister(registry, token, interests),
+            SocketListener::Unix { listener, path: _ } => listener.reregister(registry, token, interests),
+        }
+    }
+
+    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.deregister(registry),
+            SocketListener::Unix { listener, path: _ } => listener.deregister(registry),
         }
     }
 }
