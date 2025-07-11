@@ -13,10 +13,18 @@ TIMEOUT=$5  # Timeout
 # Global Variables
 export SCRIPT_NAME=$0
 export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
+export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
 
 # Target configuration
 MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../build/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
 echo ">>> Memory Size: $MEMSIZE"
+
+# Check if MEMSIZE is invalid.
+if [[ -z "$MEMSIZE" || ! "$MEMSIZE" =~ ^[0-9]+$ ]];
+then
+	echo "Error: MEMSIZE is not set or is not a valid integer."
+	exit 1
+fi
 
 #===================================================================================================
 # usage()
