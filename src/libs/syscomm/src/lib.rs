@@ -9,6 +9,19 @@ extern crate alloc;
 
 use ::anyhow::Result;
 use ::log::error;
+use ::mio::{
+    net::{
+        TcpListener,
+        TcpStream,
+        UnixListener,
+        UnixStream,
+    },
+    Events,
+    Interest,
+    Poll,
+    Registry,
+    Token,
+};
 use ::std::{
     error::Error,
     fmt,
@@ -19,15 +32,13 @@ use ::std::{
         Read,
         Write,
     },
-    net::{
-        TcpListener,
-        TcpStream,
-    },
-    os::unix::net::{
-        UnixListener,
-        UnixStream,
-    },
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const BLOCKING_THREAD_TOKEN: Token = Token(0);
 
 //==================================================================================================
 // Imports
@@ -48,7 +59,7 @@ pub struct Socket;
 impl Socket {
     pub fn bind(typ: SocketType, addr: String) -> Result<SocketListener> {
         match typ {
-            SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr)?)),
+            SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr.parse()?)?)),
             SocketType::Unix => Ok(SocketListener::Unix {
                 listener: UnixListener::bind(&addr)?,
                 path: addr.clone(),
@@ -85,12 +96,12 @@ impl SocketListener {
         match self {
             SocketListener::Tcp(listener) => {
                 let (stream, _sockaddr): (TcpStream, std::net::SocketAddr) = listener.accept()?;
-                Ok(SocketStream::Tcp(stream))
+                Ok(SocketStream::Tcp(stream, None))
             },
             SocketListener::Unix { listener, path: _ } => {
                 let (stream, _sockaddr): (UnixStream, std::os::unix::net::SocketAddr) =
                     listener.accept()?;
-                Ok(SocketStream::Unix(stream))
+                Ok(SocketStream::Unix(stream, None))
             },
         }
     }
@@ -109,13 +120,50 @@ impl Drop for SocketListener {
     }
 }
 
+impl mio::event::Source for SocketListener {
+    fn register(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.register(registry, token, interests),
+            SocketListener::Unix { listener, path: _ } => {
+                listener.register(registry, token, interests)
+            },
+        }
+    }
+
+    fn reregister(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.reregister(registry, token, interests),
+            SocketListener::Unix { listener, path: _ } => {
+                listener.reregister(registry, token, interests)
+            },
+        }
+    }
+
+    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
+        match self {
+            SocketListener::Tcp(listener) => listener.deregister(registry),
+            SocketListener::Unix { listener, path: _ } => listener.deregister(registry),
+        }
+    }
+}
+
 /// A struct representing a socket stream.
 #[derive(Debug)]
 pub enum SocketStream {
     /// TCP socket stream.
-    Tcp(TcpStream),
+    Tcp(TcpStream, Option<Poll>),
     /// Unix socket stream.
-    Unix(UnixStream),
+    Unix(UnixStream, Option<Poll>),
 }
 
 impl SocketStream {
@@ -123,42 +171,76 @@ impl SocketStream {
     pub fn connect(typ: SocketType, addr: String) -> Result<SocketStream> {
         match typ {
             SocketType::Tcp => {
-                let stream: TcpStream = TcpStream::connect(addr)?;
-                Ok(SocketStream::Tcp(stream))
+                let stream: TcpStream = TcpStream::connect(addr.parse()?)?;
+                Ok(SocketStream::Tcp(stream, None))
             },
             SocketType::Unix => {
                 let stream: UnixStream = UnixStream::connect(addr)?;
-                Ok(SocketStream::Unix(stream))
+                Ok(SocketStream::Unix(stream, None))
             },
         }
     }
 
-    pub fn try_clone(&self) -> Result<SocketStream, ::std::io::Error> {
+    ///
+    /// # Description
+    ///
+    /// Set the stream to blocking mode.
+    ///
+    /// We use non-blocking sockets, so to provide a blocking-like behaviour we extend each stream
+    /// with its own poll structure that can be used to wait on data.
+    ///
+    /// This approach is intended to be used when we are only monitoring one stream, potentially
+    /// across different worker threads. To monitor multiple streams, you should use a global poll.
+    ///
+    pub fn set_blocking(&mut self) -> io::Result<()> {
         match self {
-            SocketStream::Tcp(stream) => {
-                let stream: TcpStream = stream.try_clone()?;
-                Ok(SocketStream::Tcp(stream))
-            },
-            SocketStream::Unix(stream) => {
-                let stream: UnixStream = stream.try_clone()?;
-                Ok(SocketStream::Unix(stream))
-            },
-        }
-    }
+            SocketStream::Tcp(stream, ref mut poll) => {
+                // Initialize Poll structure if it's not already set
+                if poll.is_none() {
+                    let poll_instance = Poll::new()
+                        .map_err(|_| io::Error::other("failed to create Poll instance"))?;
 
-    /// Sets a socket stream to non-blocking mode.
-    pub fn set_nonblocking(&self, nonblocking: bool) -> Result<(), ::std::io::Error> {
-        match self {
-            SocketStream::Tcp(stream) => stream.set_nonblocking(nonblocking),
-            SocketStream::Unix(stream) => stream.set_nonblocking(nonblocking),
+                    poll_instance
+                        .registry()
+                        .register(
+                            stream,
+                            BLOCKING_THREAD_TOKEN,
+                            Interest::READABLE | Interest::WRITABLE,
+                        )
+                        .map_err(|_| io::Error::other("failed to register thread to poll"))?;
+
+                    *poll = Some(poll_instance);
+                }
+
+                Ok(())
+            },
+            SocketStream::Unix(stream, ref mut poll) => {
+                if poll.is_none() {
+                    let poll_instance = Poll::new()
+                        .map_err(|_| io::Error::other("failed to create Poll instance"))?;
+
+                    poll_instance
+                        .registry()
+                        .register(
+                            stream,
+                            BLOCKING_THREAD_TOKEN,
+                            Interest::READABLE | Interest::WRITABLE,
+                        )
+                        .map_err(|_| io::Error::other("failed to register thread to poll"))?;
+
+                    *poll = Some(poll_instance);
+                }
+
+                Ok(())
+            },
         }
     }
 
     /// Writes data to a socket stream.
     pub fn write_all(&mut self, buf: &[u8]) -> Result<(), SocketError> {
         let result = match self {
-            SocketStream::Tcp(stream) => stream.write_all(buf),
-            SocketStream::Unix(stream) => stream.write_all(buf),
+            SocketStream::Tcp(stream, _) => stream.write_all(buf),
+            SocketStream::Unix(stream, _) => stream.write_all(buf),
         };
 
         match result {
@@ -167,27 +249,144 @@ impl SocketStream {
         }
     }
 
-    /// Reads data from a socket stream.
-    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), ::std::io::Error> {
-        let result = match self {
-            SocketStream::Tcp(stream) => stream.read_exact(buf),
-            SocketStream::Unix(stream) => stream.read_exact(buf),
-        };
-
-        match result {
-            Ok(_) => Ok(()),
-            Err(error) => Err(error),
+    ///
+    /// # Description
+    ///
+    /// Blocking read implementation.
+    ///
+    /// # Parameters
+    ///
+    /// A mutable buffer.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read into the buffer.
+    ///
+    pub fn try_read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            SocketStream::Tcp(stream, _) => stream.read(buf),
+            SocketStream::Unix(stream, _) => stream.read(buf),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Blocking read implementation.
+    ///
+    /// # Parameters
+    ///
+    /// A mutable buffer.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read into the buffer.
+    ///
+    pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            SocketStream::Tcp(stream, poll) => {
+                if let Some(poll_instance) = poll {
+                    let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+                    poll_instance.poll(&mut events, None)?;
+                    stream.read(buf)
+                } else {
+                    let reason = "tried to perform blocking read on a non-blocking thread";
+                    error!("{reason}");
+                    Err(io::Error::new(io::ErrorKind::InvalidData, reason))
+                }
+            },
+            SocketStream::Unix(stream, poll) => {
+                if let Some(poll_instance) = poll {
+                    let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+                    poll_instance.poll(&mut events, None)?;
+                    stream.read(buf)
+                } else {
+                    let reason = "tried to perform blocking read on a non-blocking thread";
+                    error!("{reason}");
+                    Err(io::Error::new(io::ErrorKind::InvalidData, reason))
+                }
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Non-blocking read exact implementation.
+    ///
+    /// # Parameters
+    ///
+    /// A mutable buffer.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read into the buffer.
+    ///
+    pub fn try_read_exact(&mut self, buf: &mut [u8]) -> Result<(), SocketError> {
+        let mut total_read = 0;
+
+        while total_read < buf.len() {
+            match self.try_read(&mut buf[total_read..]) {
+                Ok(0) => {
+                    return Err(io::Error::new(ErrorKind::UnexpectedEof, "connection closed").into())
+                },
+                Ok(n) => total_read += n,
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    // Not ready yet — must wait for next Poll notification
+                    break;
+                },
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        // You may return partial reads if needed; or retry later
+        if total_read == buf.len() {
+            Ok(())
+        } else {
+            Err(io::Error::new(ErrorKind::WouldBlock, "need more data").into())
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Blocking read exact implementation.
+    ///
+    /// # Parameters
+    ///
+    /// A mutable buffer.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read into the buffer.
+    ///
+    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), SocketError> {
+        let mut num_read = 0;
+        while num_read < buf.len() {
+            match self.read(&mut buf[num_read..]) {
+                Ok(0) => {
+                    return Err(
+                        io::Error::new(io::ErrorKind::UnexpectedEof, "End of file reached").into()
+                    )
+                },
+                Ok(n) => num_read += n,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
     }
 
     /// Gets the peer address of a socket stream.
     pub fn peer_addr(&self) -> Result<SocketAddr, SocketError> {
         match self {
-            SocketStream::Tcp(stream) => match stream.peer_addr() {
+            SocketStream::Tcp(stream, _) => match stream.peer_addr() {
                 Ok(addr) => Ok(SocketAddr::Tcp(addr)),
                 Err(error) => Err(SocketError { error }),
             },
-            SocketStream::Unix(stream) => match stream.peer_addr() {
+            SocketStream::Unix(stream, _) => match stream.peer_addr() {
                 Ok(addr) => Ok(SocketAddr::Unix(addr)),
                 Err(error) => Err(SocketError { error }),
             },
@@ -195,12 +394,67 @@ impl SocketStream {
     }
 }
 
-/// Implement Read trait for SocketStream.
-impl Read for SocketStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+impl mio::event::Source for SocketStream {
+    fn register(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
         match self {
-            SocketStream::Tcp(stream) => stream.read(buf),
-            SocketStream::Unix(stream) => stream.read(buf),
+            SocketStream::Tcp(stream, poll) => {
+                if poll.is_some() {
+                    let reason = "trying to register a blocking thread to a poll";
+                    error!("{reason}");
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
+                }
+
+                stream.register(registry, token, interests)
+            },
+            SocketStream::Unix(stream, poll) => {
+                if poll.is_some() {
+                    let reason = "trying to register a blocking thread to a poll";
+                    error!("{reason}");
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
+                }
+
+                stream.register(registry, token, interests)
+            },
+        }
+    }
+
+    fn reregister(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
+        match self {
+            SocketStream::Tcp(stream, poll) => {
+                if poll.is_some() {
+                    let reason = "trying to register a blocking thread to a poll";
+                    error!("{reason}");
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
+                }
+
+                stream.reregister(registry, token, interests)
+            },
+            SocketStream::Unix(stream, poll) => {
+                if poll.is_some() {
+                    let reason = "trying to register a blocking thread to a poll";
+                    error!("{reason}");
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
+                }
+
+                stream.reregister(registry, token, interests)
+            },
+        }
+    }
+
+    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
+        match self {
+            SocketStream::Tcp(stream, _) => stream.deregister(registry),
+            SocketStream::Unix(stream, _) => stream.deregister(registry),
         }
     }
 }
