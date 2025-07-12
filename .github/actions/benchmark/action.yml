@@ -1,0 +1,132 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Benchmark"
+description: "Run all Nanvix micro-benchmarks for performance regression testing"
+
+runs:
+  using: "composite"
+  steps:
+  # MicroVM benchmarks
+  - name: Build (MicroVM)
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build
+    shell: bash
+  - name: Run micro-benchmarks (MicroVM)
+    run: |
+      ./bin/nanvix-bench.elf -benchmark cold-start | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm.txt
+    shell: bash
+
+  # Hyperlight benchmarks
+  - name: Build (Hyperlight)
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build
+    shell: bash
+  - name: Run micro-benchmarks (Hyperlight)
+    run: |
+      ./bin/nanvix-bench.elf -benchmark cold-start | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight.txt
+    shell: bash
+
+  # Post-process the results
+  - name: Format benchmark results
+    id: format
+    run: |
+      # First concatenate the latest `dev` results with the current PRs'.
+      paste -d '\t' \
+        $HOME/ubench-results-dev/bench_cold_start_microvm.txt bench_cold_start_microvm.txt \
+        > /tmp/bench_cold_start_microvm_combined.txt
+      paste -d '\t' \
+        $HOME/ubench-results-dev/bench_warm_start_microvm.txt bench_warm_start_microvm.txt \
+        > /tmp/bench_warm_start_microvm_combined.txt
+      paste -d '\t' \
+        $HOME/ubench-results-dev/bench_cold_start_hyperlight.txt bench_cold_start_hyperlight.txt \
+        > /tmp/bench_cold_start_hyperlight_combined.txt
+      paste -d '\t' \
+        $HOME/ubench-results-dev/bench_warm_start_hyperlight.txt bench_warm_start_hyperlight.txt \
+        > /tmp/bench_warm_start_hyperlight_combined.txt
+
+       # Prepare the text for the PR comment.
+      {
+        echo "### Cold-Starts"
+        echo '```'
+        echo "========== MicroVM ==========" | cat
+        echo -e "dev\t${TARGET_BRANCH}" | cat
+        cat /tmp/bench_cold_start_microvm_combined.txt
+        echo ""
+        echo "========== Hyperlight ==========" | cat
+        echo -e "dev\t${TARGET_BRANCH}" | cat
+        cat /tmp/bench_cold_start_hyperlight_combined.txt
+        echo '```'
+        echo ""
+        echo "### Warm-Starts"
+        echo '```'
+        echo "========== MicroVM ==========" | cat
+        echo -e "dev\t${TARGET_BRANCH}" | cat
+        cat /tmp/bench_warm_start_microvm_combined.txt
+        echo ""
+        echo "========== Hyperlight ==========" | cat
+        echo -e "dev\t${TARGET_BRANCH}" | cat
+        cat /tmp/bench_warm_start_hyperlight_combined.txt
+        echo '```'
+      } > /tmp/comment.txt
+
+      echo "BENCHMARK_RESULT<<EOF" >> $GITHUB_OUTPUT
+      cat /tmp/comment.txt >> $GITHUB_OUTPUT
+      echo "EOF" >> $GITHUB_OUTPUT
+    shell: bash
+  - name: Get PR number if this push relates to an open PR
+    id: pr
+    run: |
+      PR_NUM=$(gh pr list --state open --head "$GITHUB_REF_NAME" --json number --jq '.[0].number')
+      echo "PR_NUM=$PR_NUM" >> $GITHUB_ENV
+      echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+    shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+  # Check if we have already written a comment once, in order to update it.
+  - name: Find benchmark results comment if it exists
+    uses: peter-evans/find-comment@v3
+    if: env.PR_NUM != ''
+    id: fc
+    with:
+      issue-number: ${{ steps.pr.outputs.pr_number }}
+      comment-author: "github-actions[bot]"
+      body-includes: "Benchmark Results"
+  - name: Post comment to PR (Create comment)
+    if: ${{ env.PR_NUM != '' && steps.fc.outputs.comment-id == '' }}
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      issue-number: ${{ steps.pr.outputs.pr_number }}
+      body: |
+        ## 🔬 Benchmark Results
+        ${{ steps.format.outputs.BENCHMARK_RESULT }}
+  - name: Post comment to PR (Update comment)
+    if: steps.fc.outputs.comment-id != ''
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      comment-id: ${{ steps.fc.outputs.comment-id }}
+      edit-mode: replace
+      body: |
+        ## 🔬 Benchmark Results
+        ${{ steps.format.outputs.BENCHMARK_RESULT }}
+
+  # Persist the results if committing on `dev` branch (not a PR).
+  - name: Run only on dev branch
+    if: github.ref_name == 'dev'
+    run: |
+      mkdir -p $HOME/ubench-results-dev
+
+      # Copy cold-start results.
+      cp bench_cold_start_microvm.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_microvm.txt
+      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_microvm.txt $HOME/ubench-results-dev/bench_cold_start_microvm.txt
+      cp bench_cold_start_hyperlight.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_hyperlight.txt
+      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_hyperlight.txt $HOME/ubench-results-dev/bench_cold_start_hyperlight.txt
+
+      # Copy warm-start results.
+      cp bench_warm_start_microvm.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_microvm.txt
+      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_microvm.txt $HOME/ubench-results-dev/bench_warm_start_microvm.txt
+      cp bench_warm_start_hyperlight.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_hyperlight.txt
+      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_hyperlight.txt $HOME/ubench-results-dev/bench_warm_start_hyperlight.txt
+    shell: bash
