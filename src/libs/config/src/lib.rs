@@ -65,6 +65,13 @@ pub mod syscomm {
     /// Provides the length of the temporary bufer we use to read messages from the gateway.
     ///
     pub const GW_READ_BUFFER_LEN: usize = 4 * 1024;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the maximum number of poll events we can buffer.
+    ///
+    pub const MAX_NUM_POLL_EVENTS: usize = 128;
 }
 
 //==================================================================================================

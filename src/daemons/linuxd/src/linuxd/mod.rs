@@ -29,6 +29,8 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::mio::{Events, Interest, Poll, Token};
+use ::slab_external::Slab;
 use ::std::{
     io,
     io::{
@@ -137,15 +139,16 @@ use ::syscall::{
     LinuxDaemonMessageHeader,
     LINUXD,
 };
-use ::syscomm::SocketStream;
+use ::syscomm::{SocketListener, SocketStream};
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
 pub struct LinuxDaemon {
+    // The user VM listener socket should not be accessed by different worker threads.
+    user_vm_listener: SocketListener,
     assembler: Arc<Mutex<RequestAssembler>>,
-    uvm_stream: Arc<Mutex<SocketStream>>,
     gateway_conn: Arc<Mutex<Option<SocketStream>>>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
@@ -156,110 +159,197 @@ pub struct LinuxDaemon {
 
 impl LinuxDaemon {
     pub fn init(
-        uvm_stream: SocketStream,
+        user_vm_listener: SocketListener,
         gateway_conn: Option<SocketStream>,
     ) -> Result<Self, Error> {
-        if let Err(error) = uvm_stream.set_nonblocking(true) {
-            let reason: &str = "failed to set UVM stream to non-blocking mode";
-            error!("init(): {reason:?} (error={error:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
         Ok(Self {
+            user_vm_listener,
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
-            uvm_stream: Arc::new(Mutex::new(uvm_stream)),
             gateway_conn: Arc::new(Mutex::new(gateway_conn)),
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
 
-    pub fn run(&mut self) -> Result<(), Error> {
+    fn accept_connections(
+        &mut self,
+        user_vm_connections: &mut Slab<Arc<Mutex<SocketStream>>>,
+        poll: &Poll,
+        start_token: usize
+    ) ->Result<(), Error> {
+        // Accept new connection in a loop, as we have a non-blocking socket, and
+        // we may have more than one connection pending to be accepted.
         loop {
-            let uvm_stream: Arc<Mutex<SocketStream>> = self.uvm_stream.clone();
+            match self.user_vm_listener.accept() {
+                Ok(mut stream) => {
+                    let entry = user_vm_connections.vacant_entry();
+                    let token = Token(start_token + entry.key());
+
+                    poll.registry().register(&mut stream, token, Interest::READABLE | Interest::WRITABLE)
+                        .map_err(|_| Error::new(ErrorCode::IoErr, "failed to register new user VM to poll"))?;
+                    entry.insert(Arc::new(Mutex::new(stream)));
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(e) => {
+                    // This is a fatal error for the user VM, but we don't want to
+                    // kill linuxd.
+                    error!("Error accepting connection from user VM: {e:?}");
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Wrapper around the extraction of the connection from the slab, as we need a mutable
+    /// reference, and with the function call we ensure we return the borrow.
+    fn process_connection(
+        &mut self,
+        user_vm_connections: &mut Slab<Arc<Mutex<SocketStream>>>,
+        conn_id: usize
+    ) ->Result<Arc<Mutex<SocketStream>>, Error> {
+        match user_vm_connections.get_mut(conn_id) {
+            Some(user_vm_stream) => Ok(user_vm_stream.clone()),
+            None => Err(Error::new(ErrorCode::InvalidArgument, "Invalid connection ID")),
+        }
+    }
+
+    /// This is the main run loop for linuxd. It uses a listener socket to
+    /// accept connections from multiple user VMs, and it polls over all
+    /// active connections to serve requests.
+    pub fn run(&mut self) -> Result<(), Error> {
+        // We keep a slab of tokens to active connections from user VMs. We
+        // reserve the first token for the main listener socket, that should
+        // out-live user VMs.
+        //
+        // We use a slab because it is better suited to index a highly-dense
+        // collection with usize keys.
+        const LISTENER: Token = Token(0);
+        const START_TOKEN: usize = 1;
+        let mut user_vm_connections: Slab<Arc<Mutex<SocketStream>>> = Slab::new();
+
+        let mut poll = Poll::new().map_err(|_| Error::new(ErrorCode::IoErr, "failed to create Poll"))?;
+        let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+        poll
+            .registry()
+            .register(&mut self.user_vm_listener, LISTENER, Interest::READABLE)
+            .map_err(|_| Error::new(ErrorCode::IoErr, "failed to register user VM listener to poll"))?;
+
+        loop {
             let gateway_conn: Arc<Mutex<Option<SocketStream>>> = self.gateway_conn.clone();
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
             let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
 
-            // Receive a message from the user virtual machine.
-            let message: Message = match Self::recv(uvm_stream.clone()) {
-                Ok(message) => message,
+            poll.poll(&mut events, None)
+                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to poll user VM events"))?;
 
-                Err(error_kind) => match error_kind {
-                    ErrorKind::WouldBlock => continue,
-                    ErrorKind::UnexpectedEof => {
-                        info!("connection closed");
-                        break;
-                    },
-                    _ => {
-                        let reason: String =
-                            format!("failed to read message (error={error_kind:?})");
-                        unimplemented!("handle: {reason}");
-                    },
-                },
-            };
-
-            trace!(
-                "message.source={:?}, message.destination={:?}, message.type={:?}",
-                { message.source },
-                { message.destination },
-                message.message_type,
-            );
-
-            let source: ThreadIdentifier = match { message.source }.as_id() {
-                Err(tid) => tid,
-                Ok(pid) => {
-                    unimplemented!("received message from process {pid:?} instead of thread");
-                },
-            };
-
-            // Check if process is associated with a virtual environment.
-            let (channel_tx, channel_rx): (Sender<Message>, Option<Receiver<Message>>) = {
-                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-                let env = venv.get(source);
-                if let Some(env) = env {
-                    (env.get_channel_tx(), None)
-                } else {
-                    // Join a new virtual environment.
-                    match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
-                        Ok((_, channel_tx, channel_rx)) => (channel_tx, Some(channel_rx)),
-                        Err(error) => {
-                            warn!("failed to join new virtual environment (error={error:?})");
-                            let message: Message = crate::build_error(source, error.code);
-                            Self::send(uvm_stream.clone(), message).unwrap();
-                            continue;
-                        },
+            for event in events.iter() {
+                match event.token() {
+                    // First we see if we have received any messages on the main listener socket.
+                    // These indicate new user VMs connecting to linuxd.
+                    LISTENER => {
+                        self.accept_connections(&mut user_vm_connections, &poll, START_TOKEN)?;
                     }
-                }
-            };
 
-            // Spawn a new worker thread, if necessary.
-            if let Some(channel_rx) = channel_rx {
-                // Spawn a thread to handle the message.
-                let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
-                let _ = std::thread::spawn(move || {
-                    Self::handle_message(channel_rx, uvm_stream, gateway_conn, venv, assembler);
-                });
-            }
+                    // Now we process events from active connections.
+                    Token(t) => {
+                        let conn_id = t - START_TOKEN;
 
-            // Dispatch message to worker thread.
-            if let Err(error) = channel_tx.send(message) {
-                error!(
-                    "run(): failed to dispatch message to worker thread (tid={source:?}, \
-                     error={error:?})"
-                );
-                // Remove thread from the virtual environment.
-                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-                if let Err(error) = venv.leave(source) {
-                    warn!(
-                        "run(): failed to remove thread from virtual environment (tid={source:?}, \
-                         error={error:?})",
-                    );
+                        // Receive a message from the user virtual machine.
+                        let user_vm_stream = self.process_connection(&mut user_vm_connections, conn_id)?;
+                        let message: Message = match Self::recv(user_vm_stream.clone()) {
+                            Ok(message) => message,
+
+                            Err(error_kind) => match error_kind {
+                                ErrorKind::WouldBlock => continue,
+                                ErrorKind::UnexpectedEof => {
+                                    info!("connection closed");
+
+                                    let mut locked_user_vm_stream: MutexGuard<'_, SocketStream> =
+                                        user_vm_stream.lock().unwrap();
+                                    poll.registry().deregister(&mut *locked_user_vm_stream)
+                                        .map_err(|_| Error::new(ErrorCode::IoErr, "failed to de-register user VM from poll"))?;
+                                    user_vm_connections.remove(conn_id);
+                                    continue;
+                                },
+                                _ => {
+                                    let reason: String =
+                                        format!("failed to read message (error={error_kind:?})");
+                                    unimplemented!("handle: {reason}");
+                                },
+                            },
+                        };
+
+                        trace!(
+                            "message.source={:?}, message.destination={:?}, message.type={:?}",
+                            { message.source },
+                            { message.destination },
+                            message.message_type,
+                        );
+
+                        let source: ThreadIdentifier = match { message.source }.as_id() {
+                            Err(tid) => tid,
+                            Ok(pid) => {
+                                unimplemented!("received message from process {pid:?} instead of thread");
+                            },
+                        };
+
+                        // Check if process is associated with a virtual environment.
+                        let (channel_tx, channel_rx): (Sender<Message>, Option<Receiver<Message>>) = {
+                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+                            let env = venv.get(source);
+                            if let Some(env) = env {
+                                (env.get_channel_tx(), None)
+                            } else {
+                                // Join a new virtual environment.
+                                match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                                    Ok((_, channel_tx, channel_rx)) => (channel_tx, Some(channel_rx)),
+                                    Err(error) => {
+                                        warn!("failed to join new virtual environment (error={error:?})");
+                                        let message: Message = crate::build_error(source, error.code);
+                                        Self::send(user_vm_stream.clone(), message).unwrap();
+                                        continue;
+                                    },
+                                }
+                            }
+                        };
+
+                        // Spawn a new worker thread, if necessary.
+                        if let Some(channel_rx) = channel_rx {
+                            // Spawn a thread to handle the message.
+                            let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
+                            let gateway_conn = gateway_conn.clone();
+                            let assembler = assembler.clone();
+                            let _ = std::thread::spawn(move || {
+                                Self::handle_message(channel_rx, user_vm_stream.clone(), gateway_conn, venv, assembler);
+                            });
+                        }
+
+                        // Dispatch message to worker thread.
+                        if let Err(error) = channel_tx.send(message) {
+                            error!(
+                                "run(): failed to dispatch message to worker thread (tid={source:?}, \
+                                 error={error:?})"
+                            );
+                            // Remove thread from the virtual environment.
+                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+                            if let Err(error) = venv.leave(source) {
+                                warn!(
+                                    "run(): failed to remove thread from virtual environment (tid={source:?}, \
+                                     error={error:?})",
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
 
         // TODO: https://github.com/nanvix/nanvix/issues/639
-
+        #[allow(unreachable_code)]
         self.send_eof()
     }
 

@@ -113,7 +113,10 @@ pub fn main() -> Result<()> {
 
     let user_vm_listener: SocketListener =
         match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
-            Ok(listener) => listener,
+            Ok(listener) => {
+                info!("Listening to user VMs on: {user_vm_sockaddr:?}");
+                listener
+            }
             Err(e) => {
                 error!(
                     "failed to bind to user VM socket address (address={}, error={e:?})",
@@ -155,21 +158,7 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    info!("Listening to user VMs on: {user_vm_sockaddr:?}");
-    let user_vm_stream: SocketStream = loop {
-        match user_vm_listener.accept() {
-            Ok(stream) => {
-                info!("Connected to user VM in: {:?}", stream.peer_addr());
-                break stream;
-            },
-            Err(error) => {
-                error!("Failed to accept connection: {error:?}");
-                continue;
-            },
-        };
-    };
-
-    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, gateway_stream) {
+    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_listener, gateway_stream) {
         Ok(procd) => procd,
         Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
     };

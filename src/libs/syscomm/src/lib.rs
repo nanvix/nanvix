@@ -252,8 +252,9 @@ impl SocketStream {
                     // Otherwise, continue reading.
                 },
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // Non-blocking mode: no data yet, return error or retry.
-                    return Err(e);
+                    // WARNING: The worker thread will spin here waiting for the gateway to send
+                    // data.
+                    continue;
                 },
                 Err(e) => return Err(e),
             }
