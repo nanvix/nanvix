@@ -59,3 +59,7 @@ jobs:
       with:
         release: 'release'
         log-level: 'trace'
+
+    # Benchmark
+    - name: "Benchmark (release)"
+      uses: ./.github/actions/benchmark
