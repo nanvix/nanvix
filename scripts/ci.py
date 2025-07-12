@@ -88,7 +88,7 @@ def make(
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
-    build_opt=False,
+    build_opt: bool = False,
 ) -> None:
     """
     Runs make command.
@@ -158,9 +158,11 @@ def build(
     machine: str,
     arch: str,
     release: bool,
+    build_opt: bool,
     toolchain_dir: str = None,
     log_level: str = None,
     verbose: bool = False,
+    timeout: int = None,
 ) -> None:
     """
     Builds Nanvix for a target machine and architecture.
@@ -169,13 +171,23 @@ def build(
         machine (str): Target machine.
         arch (str): Target architecture.
         release (bool): Release build.
+        build_opt (bool): Build optional software.
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
+        timeout (int, optional): Timeout. Defaults to None.
     """
 
     make(
-        "all", machine, arch, release, toolchain_dir, log_level, verbose, build_opt=True
+        "all",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        timeout,
+        build_opt,
     )
 
 
@@ -338,6 +350,12 @@ def parse_args() -> argparse.Namespace:
         "--build", action="store_true", help="Build Nanvix", default=False
     )
     parser.add_argument(
+        "--without-opt",
+        action="store_true",
+        help="Disable optional software",
+        default=False,
+    )
+    parser.add_argument(
         "--test",
         action="store_true",
         help="Test Nanvix (implies --build)",
@@ -360,6 +378,7 @@ def main() -> None:
     print(f"  - Debug: {args.debug}")
     print(f"  - Lint: {args.lint}")
     print(f"  - Build: {args.build}")
+    print(f"  - Disable Optional Software: {args.without_opt}")
     print(f"  - Verbose: {args.verbose}")
     print(f"  - Timeout: {args.timeout}")
 
@@ -380,9 +399,11 @@ def main() -> None:
             args.target_machine,
             args.target_arch,
             args.release or not args.debug,
+            not args.without_opt,
             args.toolchain_dir,
             args.log_level,
             args.verbose,
+            args.timeout,
         )
 
     # Test Nanvix.
