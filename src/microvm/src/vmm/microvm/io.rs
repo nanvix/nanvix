@@ -49,7 +49,7 @@ pub struct IoThread {
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
     /// Connection to the snapshot interface.
-    //_snapshot_gateway: Gateway, // where snapshot commands come from
+    //_snapshot_gateway: Gateway, // where snapshot commands will come from
     /// MicroVM handle to issue snapshots.
     _microvm: Arc<Mutex<MicroVm>>,
     /// State in the snapshotting protocol.
@@ -63,6 +63,12 @@ pub struct IoThread {
 // Enums
 //==================================================================================================
 
+///
+/// # Description
+/// 
+/// States relating to snapshots functionality.
+/// Snapshots may be loaded at PreBoot, and created at Paused.
+/// 
 enum OrchestratorState {
     PreBoot,
     Running,
@@ -83,8 +89,10 @@ impl IoThread {
     /// # Parameters
     ///
     /// - `gateway`: Connection to gateway.
-    /// - `microvm_rx`: MicroVM receiver.
-    /// - `microvm_tx`: MicroVM sender.
+    /// - `microvm_rx`: MicroVM data receiver.
+    /// - `microvm_tx`: MicroVM data sender.
+    /// - `microvm`: MicroVM handle to issue snapshots.
+    /// - `paused_rx`: MicroVM control channel. Tells the IoThread all vPCUs have paused.
     ///
     /// # Returns
     ///
@@ -117,9 +125,10 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    /// Upon success, the vCPU exit code is returned. Otherwise, an error is returned instead.
     ///
     pub fn run(&mut self) -> Result<u16> {
+        // This function only gets called when both Options are Some.
         if let Some(mut vcpu_handle) = self.vcpu_handle.take() {
             if let Some(thread_handle) = vcpu_handle.vcpu_thread.take() {
                 while !thread_handle.is_finished() {
@@ -138,10 +147,14 @@ impl IoThread {
                     }
                 }
             } else {
-                Ok(0)
+                let reason  = "run(): vcpu_handle must have a vcpu_thread handle when running";
+                error!("{reason}");
+                anyhow::bail!(reason)
             }
         } else {
-            Ok(0)
+            let reason  = "run(): IoThread shouldn't run without a vcpu_handle";
+            error!("{reason}");
+            anyhow::bail!(reason)
         }
     }
 

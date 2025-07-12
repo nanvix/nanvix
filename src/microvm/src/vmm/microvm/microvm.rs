@@ -85,6 +85,7 @@ impl MicroVm {
     /// - `memory_size`: Size of the virtual memory of the virtual machine.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `paused_tx`: Channel used to tell all vCPUs have paused.
     ///
     /// # Returns
     ///

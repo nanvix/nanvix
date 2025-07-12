@@ -97,6 +97,7 @@ fn main() -> Result<ExitCode> {
         },
         None => None,
     };
+    
     let mut vmm: Vmm =
         Vmm::new(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?;
 

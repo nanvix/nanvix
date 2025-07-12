@@ -28,11 +28,11 @@ extern crate kvm_ioctls;
 use crate::{
     vmm::microvm::{
         io::IoThread,
-        microvm::MicroVm,
         kvm::{
             vcpu::VirtualProcessorHandle,
             vmem::VirtualMemory,
         },
+        microvm::MicroVm,
     },
     Gateway,
 };
@@ -160,7 +160,9 @@ impl Vmm {
                 }
             });
 
-        let io_thread: Option<IoThread> = gateway_conn.map(|conn| IoThread::new(conn, gateway_rx, gateway_tx.clone(), microvm.clone(), paused_rx));
+        // The IoThread is not spawned at this point. Only some of its state is saved.
+        let io_thread: Option<IoThread> =
+            gateway_conn.map(|conn| IoThread::new(conn, gateway_rx, gateway_tx.clone(), microvm.clone(), paused_rx));
 
         Ok(Self {
             _gateway_tx: gateway_tx,
@@ -185,7 +187,7 @@ impl Vmm {
     /// Otherwise, it returns an error.
     ///
     pub fn run(&mut self) -> Result<u16> {
-        // The vcpu_handle exists here. It must be put into the IoThread. Then, the IoThread must run.
+        // If a gateway connection exists, the IoThread must have a handle to all vCPU threads.
         if let Some(mut io_thread) = self._io_thread.take() {
             let microvm = self.microvm.clone();
             let vcpu_thread_handle: JoinHandle<Result<u16>> = std::thread::spawn(move || microvm
@@ -194,11 +196,13 @@ impl Vmm {
                 .run()
             );
             let vcpu_handle: VirtualProcessorHandle = self.microvm
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                    .get_vcpu_handle(vcpu_thread_handle); 
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                .get_vcpu_handle(vcpu_thread_handle); 
+            // The vcpu_handle exists here. It must be put into the IoThread. Then, the IoThread must run.
             io_thread.vcpu_handle = Some(vcpu_handle);
             io_thread.run()
+        // If there's no gateway connection, the main thread may run the vCPU thread directly.
         } else {
             self.microvm
             .lock()

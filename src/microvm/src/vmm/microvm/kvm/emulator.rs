@@ -58,8 +58,10 @@ impl Emulator {
     ///
     /// # Parameters
     ///
+    /// - `vmem`: The memory that's written in input and read from in output.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `paused_tx`: Channel through which the Emulator tells all vCPUs have paused.
     ///
     /// # Returns
     ///
