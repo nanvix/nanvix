@@ -40,8 +40,8 @@ impl Args {
 
     fn usage() -> String {
         format!(
-            "usage: ./bin/nanvix-bench.elf {} [cold-start,warm-start,echo-breakdown] [{} \
-             <path_to_hwloc.json> {} <iterations>]",
+            "usage: ./bin/nanvix-bench.elf {} [boot-time,cold-start,warm-start,echo-breakdown] \
+             [{} <path_to_hwloc.json> {} <iterations>]",
             Self::OPT_BENCHMARK,
             Self::OPT_HWLOC,
             Self::OPT_ITERATIONS,

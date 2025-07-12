@@ -86,6 +86,13 @@ use syscall::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Sleep duration (in ms) to wait for the system to clean up after a benchmark run.
+const CLEANUP_SLEEP_DURATION: u64 = 10;
+
+//==================================================================================================
 
 const NANVIX_LINUXD_UNIX_SOCKET: &str = "/tmp/nanvix_ubench.socket";
 const GATEWAY_ADDRESS: &str = "127.0.0.1:9999";
@@ -169,6 +176,9 @@ impl Benchmark {
             format!("{}/bin/kernel.elf", get_proj_root()),
             "-initrd".to_string(),
             match self.flavour {
+                BenchmarkFlavour::BootTime => {
+                    format!("{}/bin/noop-rust-nostd.elf", get_proj_root())
+                },
                 BenchmarkFlavour::ColdStart => {
                     format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
                 },
@@ -271,6 +281,53 @@ impl Benchmark {
         }
 
         // Gateway will be closed when dropped.
+    }
+
+    /// This function runs the boot-time experiment, where we measure the time to start a user VM
+    /// with a noop application and exit.
+    pub fn run_boot_time(&mut self) -> Result<()> {
+        // In the cold start experiment we cleanup and set-up at every iteration.
+        self.cleanup();
+
+        // Display a progress bar
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                .expect("error creating progress bar")
+                .progress_chars("#>-"),
+        );
+        pb.set_message("Benchmark progress:");
+
+        // We don't use the send_to/recv_from gateway methods to prevent the data initialization
+        // from being included in the cold-start time.
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        for iter in 0..self.iterations {
+            self.linuxd_address = format!("/tmp/nanvix_boottime_ubench_{iter}.socket");
+
+            // Start the clock
+            let start = Instant::now();
+            self.start();
+
+            // Wait for the user VM to finish and die.
+            self.nanovm.as_mut().unwrap().wait()?;
+
+            latencies.push(start.elapsed().as_micros());
+
+            self.nanovm = None;
+            pb.inc(1);
+
+            // Need to give some time to clean-up
+            thread::sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION));
+        }
+
+        pb.finish();
+        latencies.sort();
+        println!("p50: {} us", latencies[(self.iterations * 50) / 100]);
+        println!("p95: {} us", latencies[(self.iterations * 95) / 100]);
+        println!("p99: {} us", latencies[(self.iterations * 99) / 100]);
+
+        Ok(())
     }
 
     /// This function runs the cold-start experiment, where we measure the time to start linuxd,
@@ -619,6 +676,20 @@ fn main() -> Result<()> {
     println!("done!");
 
     let result = match benchmark.flavour {
+        BenchmarkFlavour::BootTime => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                error!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+                return Ok(());
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_boot_time()
+            }
+        },
         BenchmarkFlavour::EchoBreakdown => {
             #[cfg(not(feature = "timestamp-messages"))]
             {
