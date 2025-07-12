@@ -293,6 +293,29 @@ impl Read for SocketStream {
     }
 }
 
+impl mio::event::Source for SocketStream {
+    fn register(&mut self, registry: &Registry, token: Token, interests: Interest) -> io::Result<()> {
+        match self {
+            SocketStream::Tcp(stream) => stream.register(registry, token, interests),
+            SocketStream::Unix(stream) => stream.register(registry, token, interests),
+        }
+    }
+
+    fn reregister(&mut self, registry: &Registry, token: Token, interests: Interest) -> io::Result<()> {
+        match self {
+            SocketStream::Tcp(stream) => stream.reregister(registry, token, interests),
+            SocketStream::Unix(stream) => stream.reregister(registry, token, interests),
+        }
+    }
+
+    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
+        match self {
+            SocketStream::Tcp(stream) => stream.deregister(registry),
+            SocketStream::Unix(stream) => stream.deregister(registry),
+        }
+    }
+}
+
 /// A struct representing a socket address.
 #[derive(Debug)]
 pub enum SocketAddr {
