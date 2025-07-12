@@ -6,6 +6,7 @@
 //==================================================================================================
 
 mod assemble;
+mod gateway;
 
 //==================================================================================================
 // Imports
@@ -15,6 +16,11 @@ use crate::{
     build_error,
     dirent,
     fcntl,
+    linuxd::gateway::{
+        GatewayCommand,
+        GatewayHandle,
+        GatewayReactor,
+    },
     message::{
         RequestAssembler,
         RequestAssemblerTrait,
@@ -23,12 +29,11 @@ use crate::{
     socket,
     times,
     unistd,
-    venv::{
-        VirtualEnviromentDirectory,
-        VirtualEnvironment,
-    },
+    venv::VirtualEnviromentDirectory,
 };
 use ::anyhow::Result;
+use ::mio::{Events, Interest, Poll, Token};
+use ::slab_external::Slab;
 use ::std::{
     io::{
         ErrorKind,
@@ -38,16 +43,13 @@ use ::std::{
         mpsc::{
             Receiver,
             Sender,
-            RecvError,
         },
         Arc,
         Mutex,
         MutexGuard,
-        mpsc,
     },
     thread::{
         self,
-        JoinHandle,
         ThreadId,
     },
 };
@@ -137,16 +139,42 @@ use ::syscall::{
     LinuxDaemonMessageHeader,
     LINUXD,
 };
-use ::syscomm::SocketStream;
+use ::syscomm::{SocketListener, SocketStream};
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+/// State associated with a user VM connected to this linuxd instance.
+#[derive(Clone)]
+struct UserVmHandle {
+    user_vm_stream: Arc<Mutex<SocketStream>>,
+    gw_stream: Option<Arc<Mutex<SocketStream>>>,
+}
+
+impl UserVmHandle {
+    pub fn new(user_vm_stream: SocketStream, gw_stream: Option<SocketStream>) -> Result<Self> {
+        Ok(Self {
+            user_vm_stream: Arc::new(Mutex::new(user_vm_stream)),
+            gw_stream: gw_stream.map(|stream| Arc::new(Mutex::new(stream))),
+        })
+    }
+
+    pub fn get_user_vm_stream(&self) -> Arc<Mutex<SocketStream>> {
+        self.user_vm_stream.clone()
+    }
+
+    pub fn get_gw_vm_stream(&self) -> Option<Arc<Mutex<SocketStream>>> {
+        self.gw_stream.clone()
+    }
+}
+
 pub struct LinuxDaemon {
+    // The user VM or gateway listener sockets will not be accessed by different worker threads.
+    // Instead, each one will have a SocketStream for the corresponding accepted connection.
+    user_vm_listener: SocketListener,
+    gateway_listener: Option<SocketListener>,
     assembler: Arc<Mutex<RequestAssembler>>,
-    uvm_stream: Arc<Mutex<SocketStream>>,
-    gateway_stream: Option<SocketStream>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
 
@@ -156,22 +184,40 @@ pub struct LinuxDaemon {
 
 impl LinuxDaemon {
     pub fn init(
-        uvm_stream: SocketStream,
-        gateway_stream: Option<SocketStream>,
+        user_vm_listener: SocketListener,
+        gateway_listener: Option<SocketListener>,
     ) -> Result<Self, Error> {
         Ok(Self {
+            user_vm_listener,
+            gateway_listener,
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
-            uvm_stream: Arc::new(Mutex::new(uvm_stream)),
-            gateway_stream,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
 
-    pub fn run(&mut self) -> Result<(), Error> {
-        // Start the thread that will poll input from the gateway.
-        // TODO: when one linuxd instance manages more than one input stream we should encapsulate
-        // this logic.
-        let (gw_stdin_tx, gw_stdout_tx) = if let Some(gateway_stream) = &self.gateway_stream {
+    /*
+    pub fn init_gateway_streams(
+        &mut self,
+        conn_id: usize
+    ) -> Result<(GwStdinTx, GwStdoutTx), Error> {
+        // Start the threads that will poll input from the gateway.
+        // TODO: we could consider moving this to a design where a single polling thread manages
+        // gateway connections from all active user VMs.
+        let (gw_stdin_tx, gw_stdout_tx) = if let Some(gateway_listener) = &self.gateway_listener {
+            // Accept the new gateway connection.
+            let gateway_stream: SocketStream = loop {
+                match user_vm_listener.accept() {
+                    Ok(stream) => {
+                        info!("Connected to user VM in: {:?}", stream.peer_addr());
+                        break stream;
+                    },
+                    Err(error) => {
+                        error!("Failed to accept connection: {error:?}");
+                        continue;
+                    },
+                };
+            };
+
             // For the STDIN channel senders (TX) need to wait for a response from the IO thread,
             // hence they send, together with the ReadRequest, the send endpoint of a channel where
             // they will wait for the response. For STDOUT senders need not to wait, hence no need
@@ -186,7 +232,6 @@ impl LinuxDaemon {
                 .try_clone()
                 .map_err(|_| Error::new(ErrorCode::IoErr, "failed to clone stream"))?;
             gw_stdin_stream
-                .set_nonblocking(false)
                 .map_err(|_| Error::new(ErrorCode::IoErr, "failed to set non-blocing socket"))?;
 
             let _gw_stdin_thread: JoinHandle<Result<()>> = std::thread::spawn(move || {
@@ -243,106 +288,240 @@ impl LinuxDaemon {
             (Some(gw_stdin_tx), Some(gw_stdout_tx))
         } else {
             (None, None)
-        };
+        }
+    }
+*/
 
+    /// This helper method accepts connections into the main user VM listener socket, and, if
+    /// necessary, accepts incoming connections for the gateway into this user VM.
+    fn accept_connections(
+        &mut self,
+        user_vm_connections: &mut Slab<UserVmHandle>,
+        poll: &Poll,
+        start_token: usize,
+        gw_handle: &Option<GatewayHandle>
+    ) ->Result<(), Error> {
+        // Accept new connection in a loop, as we have a non-blocking socket, and
+        // we may have more than one connection pending to be accepted.
         loop {
-            let uvm_stream: Arc<Mutex<SocketStream>> = self.uvm_stream.clone();
-            let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
-            let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
+            match self.user_vm_listener.accept() {
+                Ok(mut user_vm_stream) => {
+                    let entry = user_vm_connections.vacant_entry();
+                    let token = Token(start_token + entry.key());
 
-            // Receive a message from the user virtual machine.
-            let message: Message = match Self::recv(uvm_stream.clone()) {
-                Ok(message) => message,
+                    poll.registry().register(&mut user_vm_stream, token, Interest::READABLE | Interest::WRITABLE)
+                        .map_err(|_| Error::new(ErrorCode::IoErr, "failed to register new user VM to poll"))?;
 
-                Err(error_kind) => match error_kind {
-                    ErrorKind::WouldBlock => continue,
-                    ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
-                        info!("connection closed");
-                        break;
-                    },
-                    _ => {
-                        let reason: String =
-                            format!("failed to read message (error={error_kind:?})");
-                        unimplemented!("handle: {reason}");
-                    },
-                },
-            };
+                    // Once we accept a connection from a user VM, trigger the gateway reactor to
+                    // accept a command from the gateway.
+                    // TODO: we should make this step more flexible to:
+                    // 1. Avoid race conditions when multiple user VMs connect at the same time.
+                    // 2. Support the situation where some user VMs may not have a gateway.
+                    // 3. Support the situation where user VMs use a gateway lazily.
+                    let gw_stream: Option<SocketStream> = if let Some(gw_handle) = gw_handle {
+                        gw_handle.gw_cmd_tx
+                            .send(GatewayCommand::AcceptConn)
+                            .map_err(|_| Error::new(ErrorCode::IoErr, "failed to send message to GW thread"))?;
+                        gw_handle.waker
+                            .wake()
+                            .map_err(|_| Error::new(ErrorCode::IoErr, "failed to wake GW thread"))?;
+                        Some(gw_handle.gw_conn_rx
+                            .recv()
+                            .map_err(|_| Error::new(ErrorCode::IoErr, "failed to read response from GW thread"))?)
+                    } else {
+                        None
+                    };
 
-            trace!(
-                "message.source={:?}, message.destination={:?}, message.type={:?}",
-                { message.source },
-                { message.destination },
-                message.message_type,
-            );
-
-            let source: ThreadIdentifier = match { message.source }.as_id() {
-                Err(tid) => tid,
-                Ok(pid) => {
-                    unimplemented!("received message from process {pid:?} instead of thread");
-                },
-            };
-
-            // Check if process is associated with a virtual environment.
-            let (channel_tx, channel_rx): (Sender<Message>, Option<Receiver<Message>>) = {
-                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-                let env = venv.get(source);
-                if let Some(env) = env {
-                    (env.get_channel_tx(), None)
-                } else {
-                    // Join a new virtual environment.
-                    match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
-                        Ok((_, channel_tx, channel_rx)) => (channel_tx, Some(channel_rx)),
-                        Err(error) => {
-                            warn!("failed to join new virtual environment (error={error:?})");
-                            let message: Message = crate::build_error(source, error.code);
-                            Self::send(uvm_stream.clone(), message).unwrap();
-                            continue;
-                        },
-                    }
+                    entry.insert(UserVmHandle::new(user_vm_stream, gw_stream)
+                        .map_err(|_| Error::new(ErrorCode::IoErr, "failed to insert user VM handle to slab"))?);
                 }
-            };
-
-            // Spawn a new worker thread, if necessary.
-            if let Some(channel_rx) = channel_rx {
-                // Spawn a thread to handle the message.
-                let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
-                let gw_stdin_tx = gw_stdin_tx.clone();
-                let gw_stdout_tx = gw_stdout_tx.clone();
-                let _ = std::thread::spawn(move || {
-                    Self::handle_message(channel_rx, uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler);
-                });
-            }
-
-            // Dispatch message to worker thread.
-            if let Err(error) = channel_tx.send(message) {
-                error!(
-                    "run(): failed to dispatch message to worker thread (tid={source:?}, \
-                     error={error:?})"
-                );
-                // Remove thread from the virtual environment.
-                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-                if let Err(error) = venv.leave(source) {
-                    warn!(
-                        "run(): failed to remove thread from virtual environment (tid={source:?}, \
-                         error={error:?})",
-                    );
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No connections to be accepted, break.
+                    break;
+                }
+                Err(e) => {
+                    // This is a fatal error for the user VM, but we don't want to
+                    // kill linuxd.
+                    error!("Error accepting connection from user VM: {e:?}");
+                    break;
                 }
             }
         }
 
+        Ok(())
+    }
+
+    /// Wrapper around the extraction of the connection from the slab, as we need a mutable
+    /// reference, and with the function call we ensure we return the borrow.
+    fn process_connection(
+        &mut self,
+        user_vm_connections: &mut Slab<UserVmHandle>,
+        conn_id: usize
+    ) ->Result<UserVmHandle, Error> {
+        match user_vm_connections.get_mut(conn_id) {
+            Some(user_vm_handle) => Ok(user_vm_handle.clone()),
+            None => Err(Error::new(ErrorCode::InvalidArgument, "Invalid connection ID")),
+        }
+    }
+
+    /// This is the main run loop for linuxd. It uses a listener socket to
+    /// accept connections from multiple user VMs, and it polls over all
+    /// active connections to serve requests.
+    pub fn run(&mut self) -> Result<(), Error> {
+        // We keep a slab of tokens to active connections from user VMs. We
+        // reserve the first token for the main listener socket, that should
+        // out-live user VMs, and a second token as a waker token for the
+        // gateway thread.
+        //
+        // We use a slab because it is better suited to index a highly-dense
+        // collection with usize keys.
+        const LISTENER_TOKEN: Token = Token(0);
+        const WAKER_TOKEN: Token = Token(1);
+        const START_TOKEN: usize = 2;
+        let mut user_vm_connections: Slab<UserVmHandle> = Slab::new();
+
+        let mut poll = Poll::new().map_err(|_| Error::new(ErrorCode::IoErr, "failed to create Poll"))?;
+        let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+        poll
+            .registry()
+            .register(&mut self.user_vm_listener, LISTENER_TOKEN, Interest::READABLE)
+            .map_err(|_| Error::new(ErrorCode::IoErr, "failed to register user VM listener to poll"))?;
+
+        // Start a gateway reactor thread that polls the gateway listener socket for incoming
+        // connections to user VMs.
+        let gw_thread_handle: Option<GatewayHandle> = if let Some(gateway_listener) = self.gateway_listener {
+            Some(GatewayReactor::spawn(gateway_listener, LISTENER_TOKEN, WAKER_TOKEN).map_err(|_| Error::new(ErrorCode::IoErr, "failed to spawn gateway reactor"))?)
+        } else {
+            None
+        };
+
+        loop {
+            let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
+            let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
+
+            poll.poll(&mut events, None)
+                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to poll user VM events"))?;
+
+            for event in events.iter() {
+                match event.token() {
+                    // First we see if we have received any messages on the main listener socket.
+                    // These indicate new user VMs connecting to linuxd.
+                    LISTENER_TOKEN => {
+                        self.accept_connections(&mut user_vm_connections, &poll, START_TOKEN, &gw_thread_handle)?;
+                    }
+
+                    // Now we process events from active connections.
+                    Token(t) => {
+                        let conn_id = t - START_TOKEN;
+
+                        // Receive a message from the user virtual machine.
+                        let uvm_handle = self.process_connection(&mut user_vm_connections, conn_id)?;
+                        let message: Message = match Self::recv(uvm_handle.get_user_vm_stream()) {
+                            Ok(message) => message,
+
+                            Err(error_kind) => match error_kind {
+                                ErrorKind::WouldBlock => continue,
+                                ErrorKind::UnexpectedEof => {
+                                    info!("connection closed");
+
+                                    let user_vm_stream = uvm_handle.get_user_vm_stream();
+                                    let mut user_vm_stream = user_vm_stream
+                                        .lock()
+                                        .unwrap();
+                                    poll.registry().deregister(&mut *user_vm_stream)
+                                        .map_err(|_| Error::new(ErrorCode::IoErr, "failed to de-register user VM from poll"))?;
+
+                                    user_vm_connections.remove(conn_id);
+                                    continue;
+                                },
+                                _ => {
+                                    let reason: String =
+                                        format!("failed to read message (error={error_kind:?})");
+                                    unimplemented!("handle: {reason}");
+                                },
+                            },
+                        };
+
+                        trace!(
+                            "message.source={:?}, message.destination={:?}, message.type={:?}",
+                            { message.source },
+                            { message.destination },
+                            message.message_type,
+                        );
+
+                        let source: ThreadIdentifier = match { message.source }.as_id() {
+                            Err(tid) => tid,
+                            Ok(pid) => {
+                                unimplemented!("received message from process {pid:?} instead of thread");
+                            },
+                        };
+
+                        // Check if process is associated with a virtual environment.
+                        let (channel_tx, channel_rx): (Sender<Message>, Option<Receiver<Message>>) = {
+                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+                            let env = venv.get(source);
+                            if let Some(env) = env {
+                                (env.get_channel_tx(), None)
+                            } else {
+                                // Join a new virtual environment.
+                                match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                                    Ok((_, channel_tx, channel_rx)) => (channel_tx, Some(channel_rx)),
+                                    Err(error) => {
+                                        warn!("failed to join new virtual environment (error={error:?})");
+                                        let message: Message = crate::build_error(source, error.code);
+                                        Self::send(uvm_handle.get_user_vm_stream(), message).unwrap();
+                                        continue;
+                                    },
+                                }
+                            }
+                        };
+
+                        // Spawn a new worker thread, if necessary.
+                        if let Some(channel_rx) = channel_rx {
+                            // Spawn a thread to handle the message.
+                            let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
+                            let assembler = assembler.clone();
+                            let _ = std::thread::spawn(move || {
+                                Self::handle_message(channel_rx, uvm_handle, venv, assembler);
+                            });
+                        }
+
+                        // Dispatch message to worker thread.
+                        if let Err(error) = channel_tx.send(message) {
+                            error!(
+                                "run(): failed to dispatch message to worker thread (tid={source:?}, \
+                                 error={error:?})"
+                            );
+                            // Remove thread from the virtual environment.
+                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+                            if let Err(error) = venv.leave(source) {
+                                warn!(
+                                    "run(): failed to remove thread from virtual environment (tid={source:?}, \
+                                     error={error:?})",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO: kill gateway thread
+
         // TODO: https://github.com/nanvix/nanvix/issues/639
+        #[allow(unreachable_code)]
         Ok(())
     }
 
     fn handle_message(
         channel_rx: Receiver<Message>,
-        uvm_stream: Arc<Mutex<SocketStream>>,
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
+        uvm_handle: UserVmHandle,
         venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
+        let uvm_stream = uvm_handle.get_user_vm_stream();
+        let gw_stream = uvm_handle.get_gw_vm_stream();
 
         loop {
             let message: Message = match channel_rx.recv() {
@@ -380,9 +559,7 @@ impl LinuxDaemon {
                                 | LinuxDaemonMessageHeader::ReadRequest
                                 | LinuxDaemonMessageHeader::WriteRequest => {
                                     Self::handle_special_messages(
-                                        gateway_stdin_tx.clone(),
-                                        gateway_stdout_tx.clone(),
-                                        venv.clone(),
+                                        gw_stream.clone(),
                                         source,
                                         message,
                                     )
@@ -476,9 +653,7 @@ impl LinuxDaemon {
     }
 
     fn handle_special_messages(
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Message {
@@ -489,11 +664,11 @@ impl LinuxDaemon {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(gateway_stdin_tx, venv, source, request)
+                Self::handle_read_request(gw_stream, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(gateway_stdout_tx, source, request)
+                Self::handle_write_request(gw_stream, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -809,15 +984,15 @@ impl LinuxDaemon {
     }
 
     fn handle_write_request(
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
-            let gateway_stdout_tx = if let Some(gateway_stdout_tx) = gateway_stdout_tx {
-                gateway_stdout_tx
+            let gw_stream = if let Some(gw_stream) = gw_stream {
+                gw_stream
             } else {
                 error!("handle_write_request(): trying to write to stdout without a gateway configured");
                 return build_error(source, ErrorCode::InvalidArgument);
@@ -831,10 +1006,19 @@ impl LinuxDaemon {
             } else {
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
+                /*
                 if let Err(error) = gateway_stdout_tx.send(request) {
                     debug!("failed to write buffer to the gateway (error={error:?})");
                     // TODO: Check error conversion.
                     return build_error(source, ErrorCode::ConnectionReset);
+                }
+                */
+                if let Err(_) = gw_stream
+                    .lock()
+                    .unwrap()
+                    .write_all(&request.buffer[..count]) {
+                    error!("failed to write to gateway socket");
+                    return build_error(source, ErrorCode::IoErr);
                 }
 
                 // We don't wait for the IO thread to confirm that the write was correct, as writes
@@ -849,34 +1033,50 @@ impl LinuxDaemon {
     }
 
     fn handle_read_request(
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         request: ReadRequest,
     ) -> Message {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            let gateway_stdin_tx = if let Some(gateway_stdin_tx) = gateway_stdin_tx {
-                gateway_stdin_tx
+            let gw_stream = if let Some(gw_stream) = gw_stream {
+                gw_stream
             } else {
                 error!("handle_read_request(): process tried to read from stdin but no gateway found");
                 return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
             };
 
-            // Check if the process is associated with a virtual environment.
-            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-            let env: &mut VirtualEnvironment = if let Some(env) = venv.get_mut(source) {
-                env
-            } else {
-                warn!(
-                    "handle_read_request(): process is not associated with a virtual \
-                     environment, returning EOF"
-                );
-                return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
-            };
+            // Read from the gateway thread.
+            {
+                let mut gw_stream = gw_stream.lock().unwrap();
+                loop {
+                    let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+                    let response = match gw_stream.read(&mut response_buf) {
+                        Ok(0) => {
+                            error!(
+                                "handle_read_request(): error receiving request response from gateway STDIN: EOF"
+                            );
+                            ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
+                        },
+                        Ok(n) => {
+                            ReadResponse::build(
+                                source,
+                                n as c_ssize_t,
+                                response_buf)
+                        },
+                        Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                        _ => {
+                            error!(
+                                "handle_read_request(): error receiving request response from gateway STDIN");
+                            ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
+                        }
+                    };
 
-            // Send ReadRequest to gateway IO thread.
+                    return response;
+                }
+            }
+            /*
             if let Err(error) = gateway_stdin_tx.send((request, env.get_stdin_response_tx())) {
                 error!(
                     "handle_read_request(): error sending request to gateway STDIN IO thread, returning EOF \
@@ -903,6 +1103,7 @@ impl LinuxDaemon {
                         ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
                     }
                 }
+            */
         } else {
             // Read from other file descriptor.
             unistd::do_read(source, request)
