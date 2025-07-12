@@ -19,6 +19,7 @@ use std::{
 
 #[derive(Clone)]
 pub enum BenchmarkFlavour {
+    BootTime,
     ColdStart,
     WarmStart,
     WarmStartVMM,
@@ -28,6 +29,7 @@ pub enum BenchmarkFlavour {
 impl fmt::Display for BenchmarkFlavour {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
@@ -42,6 +44,7 @@ impl FromStr for BenchmarkFlavour {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
