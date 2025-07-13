@@ -7,10 +7,6 @@
 
 use crate::errno::__errno_location;
 
-use ::alloc::{
-    ffi::CString,
-    string::String,
-};
 use ::core::{
     ffi,
     slice,
@@ -25,10 +21,7 @@ use ::sysapi::{
         c_uint,
         c_void,
     },
-    limits::{
-        HOST_NAME_MAX,
-        PATH_MAX,
-    },
+    limits::PATH_MAX,
     sys_types::{
         c_size_t,
         c_ssize_t,
@@ -43,94 +36,6 @@ use ::syscall::unistd::syscall;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Gets the name of the current host.
-///
-/// # Parameters
-///
-/// - `name`: Storage location for the host name.
-/// - `namelen:  The size of the array pointed to by `name`.
-///
-/// # Returns
-///
-/// Upon successful completion, `gethostname()` returns `0`. Otherwise, it returns `-1`.
-///
-/// # Safety
-///
-/// This function is unsafe becase it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `name` points to a valid null-terminated string.
-/// - `namelen` is a valid size.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_int {
-    ::syslog::trace!("gethostname(): name={:?}, namelen={}", name, namelen);
-
-    // Check if the buffer is valid.
-    if name.is_null() {
-        ::syslog::error!("gethostname(): invalid buffer (name={:?}, namelen={:?})", name, namelen);
-        return -1;
-    }
-
-    // Check if `namelen` is invalid.
-    if namelen == 0 {
-        ::syslog::error!(
-            "gethostname(): invalid buffer size (name={:?}, namelen={:?})",
-            name,
-            namelen
-        );
-        return -1;
-    }
-
-    // Get the host name.
-    let hostname: String = syscall::gethostname();
-
-    // Attempt to convert Rust string to C string and check for errors.
-    let c_string: CString = match CString::new(hostname) {
-        // Success.
-        Ok(s) => s,
-        // Failure.
-        Err(error) => {
-            ::syslog::error!(
-                "gethostname(): failed to convert string (name={:?}, namelen={:?}, error={:?})",
-                name,
-                namelen,
-                error
-            );
-            return -1;
-        },
-    };
-
-    // Check if the buffer is large enough.
-    if c_string.as_bytes_with_nul().len() > namelen as usize {
-        ::syslog::error!(
-            "gethostname(): buffer is too small (name={:?}, namelen={:?})",
-            name,
-            namelen
-        );
-        return -1;
-    }
-    // Truncate the host name to HOST_NAME_MAX if necessary.
-    let mut bytes: &[u8] = c_string.as_bytes_with_nul();
-    if bytes.len() > HOST_NAME_MAX {
-        ::syslog::warn!(
-            "gethostname(): hostname is too long, truncating (name={:?}, namelen={:?})",
-            name,
-            namelen
-        );
-        bytes = &bytes[..HOST_NAME_MAX];
-    }
-
-    // Copy the host name to the buffer.
-    let buf: &mut [u8] = slice::from_raw_parts_mut(name as *mut u8, namelen as usize);
-    buf[..bytes.len()].copy_from_slice(bytes);
-
-    0
-}
 
 ///
 /// # Description
