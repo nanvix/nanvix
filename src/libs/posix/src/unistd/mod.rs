@@ -44,19 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-#[unsafe(no_mangle)]
-pub extern "C" fn getpid() -> pid_t {
-    match ::syscall::unistd::getpid() {
-        Ok(pid) => pid.into(),
-        Err(e) => {
-            unsafe {
-                *__errno_location() = e.code.get();
-            }
-            -1
-        },
-    }
-}
-
 ///
 /// # Description
 ///
