@@ -36,5 +36,6 @@ pub mod link;
 pub mod linkat;
 pub mod lseek;
 pub mod pread;
+pub mod pwrite;
 pub mod read;
 pub mod write;
