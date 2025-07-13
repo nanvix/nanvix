@@ -44,40 +44,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Returns the real group ID of the calling process.
-///
-/// # Returns
-///
-/// Upon successful completion, `getgid()` returns the real group ID of the calling process.
-/// Otherwise, it returns `-1` casted to `gid_t` to indicate the error.
-///
-/// # Safety
-///
-/// This function does not panic but returns a fallback value on failure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getgid() -> gid_t {
-    ::syslog::trace!("getgid()");
-
-    // Get the real group ID of the calling process and check for errors.
-    match ::syscall::unistd::getgid() {
-        // Success.
-        Ok(gid) => gid,
-        // Failure.
-        Err(error) => {
-            // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::syslog::warn!("getgid(): failed (error={:?})", error);
-            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
-            // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
-            // valid group ID.
-            gid_t::MAX
-        },
-    }
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn getpid() -> pid_t {
     match ::syscall::unistd::getpid() {
