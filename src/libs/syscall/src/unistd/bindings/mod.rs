@@ -34,5 +34,6 @@ pub mod isatty;
 pub mod lchown;
 pub mod link;
 pub mod linkat;
+pub mod lseek;
 pub mod read;
 pub mod write;
