@@ -28,6 +28,7 @@ pub mod getentropy;
 pub mod geteuid;
 pub mod getgid;
 pub mod getpid;
+pub mod getuid;
 pub mod lchown;
 pub mod read;
 pub mod write;

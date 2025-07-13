@@ -47,40 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Returns the user ID of the calling process.
-///
-/// # Returns
-///
-/// Upon successful completion, `getuid()` returns the user ID of the calling process.
-/// Otherwise, it returns `-1` casted to `uid_t` to indicate the error.
-///
-/// # Safety
-///
-/// This function does not panic but returns a fallback value on failure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getuid() -> uid_t {
-    ::syslog::trace!("getuid()");
-
-    // Get the user ID of the calling process and check for errors.
-    match ::syscall::unistd::getuid() {
-        // Success.
-        Ok(uid) => uid,
-        // Failure.
-        Err(error) => {
-            // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::syslog::warn!("getuid(): failed (error={:?})", error);
-            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
-            // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
-            // valid user ID.
-            uid_t::MAX
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Gets the name of the current host.
 ///
 /// # Parameters
