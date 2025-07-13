@@ -50,7 +50,7 @@ NANVIXD_PID=$!
 NANVIXD_PORT_NUMBER=$(echo ${NANVIXD_SOCKADDR} | cut -d: -f2)
 
 # Wait for nanvixd to start by checking if the HTTP socket is listening.
-MAX_TRIALS=10
+MAX_TRIALS=100
 SLEEP_INTERVAL=0.1
 for i in $(seq 1 $MAX_TRIALS); do
     echo "Waiting for nanvixd to start ... ($(echo "$i * $SLEEP_INTERVAL" | bc) s elapsed)"
