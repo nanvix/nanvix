@@ -23,6 +23,7 @@ pub mod fork;
 pub mod fsync;
 pub mod ftruncate;
 pub mod getcwd;
+pub mod getegid;
 pub mod getentropy;
 pub mod lchown;
 pub mod read;
