@@ -38,4 +38,5 @@ pub mod lseek;
 pub mod pread;
 pub mod pwrite;
 pub mod read;
+pub mod readlinkat;
 pub mod write;
