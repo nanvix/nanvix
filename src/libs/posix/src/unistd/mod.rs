@@ -43,39 +43,6 @@ use ::syscall::unistd::syscall;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-///
-/// # Description
-///
-/// Returns the effective group ID of the calling process.
-///
-/// # Returns
-///
-/// Upon successful completion, `getegid()` returns the effective group ID of the calling process.
-/// Otherwise, it returns `-1` casted to `gid_t` to indicate the error.
-///
-/// # Safety
-///
-/// This function panics if it fails.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getegid() -> gid_t {
-    ::syslog::trace!("getegid()");
-
-    // Get the effective group ID of the calling process and check for errors.
-    match ::syscall::unistd::getegid() {
-        // Success.
-        Ok(egid) => egid,
-        // Failure.
-        Err(error) => {
-            // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::syslog::warn!("getegid(): failed (error={:?})", error);
-            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
-            // (aka `gid::MAX`) to indicate an error. Hopefully this value does not conflict with a
-            // valid group ID.
-            gid_t::MAX
-        },
-    }
-}
 
 ///
 /// # Description
