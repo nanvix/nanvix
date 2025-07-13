@@ -40,46 +40,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Checks if a file descriptor refers to a terminal.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-///
-/// # Returns
-///
-/// Upon successful completion, `isatty()` returns `1` if the file descriptor refers to a terminal.
-/// Otherwise, it returns `0` and may set `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may access global variables.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - This function is not called from multiple threads at the same time.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
-    ::syslog::trace!("isatty(): fd={}", fd);
-
-    match ::syscall::unistd::isatty(fd) {
-        Ok(true) => 1,
-        Ok(false) => {
-            ::syslog::warn!("isatty(): file descriptor is not a terminal (fd={})", fd);
-            *__errno_location() = ErrorCode::InvalidTerminalOperation.get();
-            0
-        },
-        Err(error) => {
-            ::syslog::error!("isatty(): failed (fd={}, error={:?})", fd, error);
-            *__errno_location() = error.code.get();
-            0
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Creates a new hard link to an existing file.
 ///
 /// # Parameters

@@ -30,6 +30,7 @@ pub mod getgid;
 pub mod gethostname;
 pub mod getpid;
 pub mod getuid;
+pub mod isatty;
 pub mod lchown;
 pub mod read;
 pub mod write;
