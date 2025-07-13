@@ -280,8 +280,7 @@ impl Benchmark {
         self.cleanup();
 
         // Display a progress bar
-        let num_iterations = 1e3 as usize;
-        let pb = ProgressBar::new(num_iterations.try_into().unwrap());
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
@@ -300,8 +299,8 @@ impl Benchmark {
 
         // We don't use the send_to/recv_from gateway methods to prevent the data initialization
         // from being included in the cold-start time.
-        let mut latencies: Vec<u128> = Vec::with_capacity(num_iterations);
-        for iter in 0..num_iterations {
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        for iter in 0..self.iterations {
             self.linuxd_address = format!("/tmp/nanvix_coldstart_ubench_{iter}.socket");
 
             // Start the clock
@@ -334,9 +333,9 @@ impl Benchmark {
         pb.finish();
         println!("First req: {} us", latencies[0]);
         latencies.sort();
-        println!("p50: {} us", latencies[(num_iterations as f32 * 0.5) as usize]);
-        println!("p95: {} us", latencies[(num_iterations as f32 * 0.95) as usize]);
-        println!("p99: {} us", latencies[(num_iterations as f32 * 0.99) as usize]);
+        println!("p50: {} us", latencies[(self.iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         Ok(())
     }
@@ -345,8 +344,7 @@ impl Benchmark {
     /// into the VM once it has started executing.
     pub fn run_warm_start(&mut self) -> Result<()> {
         // Display a progress bar
-        let num_iterations = 1e4 as usize;
-        let pb = ProgressBar::new(num_iterations.try_into().unwrap());
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
@@ -365,8 +363,8 @@ impl Benchmark {
 
         // We don't use the send_to/recv_from gateway methods to prevent the data initialization
         // from being included in the cold-start time.
-        let mut latencies: Vec<u128> = Vec::with_capacity(num_iterations);
-        for _ in 0..num_iterations {
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        for _ in 0..self.iterations {
             let start = Instant::now();
             self.gateway.as_mut().unwrap().write_all(&payload)?;
 
@@ -388,11 +386,11 @@ impl Benchmark {
         }
 
         pb.finish();
-        println!("First req (includes nano VM boot time): {} us", latencies[0]);
+        println!("First req: {} us", latencies[0]);
         latencies.sort();
-        println!("p50: {} us", latencies[(num_iterations as f32 * 0.5) as usize]);
-        println!("p95: {} us", latencies[(num_iterations as f32 * 0.95) as usize]);
-        println!("p99: {} us", latencies[(num_iterations as f32 * 0.99) as usize]);
+        println!("p50: {} us", latencies[(self.iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         Ok(())
     }
@@ -405,8 +403,7 @@ impl Benchmark {
         self.cleanup();
 
         // Display a progress bar.
-        let num_iterations = 1e4 as usize;
-        let pb = ProgressBar::new(num_iterations.try_into().unwrap());
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
@@ -425,8 +422,8 @@ impl Benchmark {
         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         response_buf[..payload.len()].copy_from_slice(&payload);
 
-        let mut latencies: Vec<u128> = Vec::with_capacity(num_iterations);
-        for _ in 0..num_iterations {
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        for _ in 0..self.iterations {
             // Clean-up the default set-up, and initialize a UNIX pair that is directly connected to the
             // VMM.
             let (mut input_stream, vmm_stream) = UnixStream::pair()?;
@@ -504,9 +501,9 @@ impl Benchmark {
 
         pb.finish();
         latencies.sort();
-        println!("p50: {} us", latencies[(num_iterations as f32 * 0.5) as usize]);
-        println!("p95: {} us", latencies[(num_iterations as f32 * 0.95) as usize]);
-        println!("p99: {} us", latencies[(num_iterations as f32 * 0.99) as usize]);
+        println!("p50: {} us", latencies[(self.iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         Ok(())
     }
@@ -606,6 +603,7 @@ fn main() -> Result<()> {
     }
 
     let mut benchmark = Benchmark {
+        iterations: args.iterations(),
         hwloc,
         flavour: args.benchmark(),
         gateway_address: GATEWAY_ADDRESS.to_string(),
