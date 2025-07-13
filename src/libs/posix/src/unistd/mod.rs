@@ -47,40 +47,6 @@ use ::syscall::unistd::syscall;
 ///
 /// # Description
 ///
-/// Returns the effective user ID of the calling process.
-///
-/// # Returns
-///
-/// Upon successful completion, `geteuid()` returns the effective user ID of the calling process.
-/// Otherwise, it returns `-1` casted to `uid_t` to indicate the error.
-///
-/// # Safety
-///
-/// This function does not panic but returns a fallback value on failure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn geteuid() -> uid_t {
-    ::syslog::trace!("geteuid()");
-
-    // Get the effective user ID of the calling process and check for errors.
-    match ::syscall::unistd::geteuid() {
-        // Success.
-        Ok(euid) => euid,
-        // Failure.
-        Err(error) => {
-            // POSIX does not allow us to modify `errno`. So we just emit a warning.
-            ::syslog::warn!("geteuid(): failed (error={:?})", error);
-            // POSIX does not reserve specific values for errors. We workaround it and return `-1`
-            // (aka `uid::MAX`) to indicate an error. Hopefully this value does not conflict with a
-            // valid user ID.
-            uid_t::MAX
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Returns the real group ID of the calling process.
 ///
 /// # Returns
