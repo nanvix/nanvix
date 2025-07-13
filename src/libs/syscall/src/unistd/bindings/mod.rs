@@ -32,5 +32,6 @@ pub mod getpid;
 pub mod getuid;
 pub mod isatty;
 pub mod lchown;
+pub mod linkat;
 pub mod read;
 pub mod write;
