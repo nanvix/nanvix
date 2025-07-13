@@ -78,7 +78,7 @@ pub enum ErrorCode {
     /// Too many open files.
     TooManyOpenFiles = EMFILE,
     /// Not a typewriter.
-    InvalidTerminalOperation = ENOTTY,
+    NotTerminal = ENOTTY,
     /// Text file busy.
     TextFileBusy = ETXTBSY,
     /// File too large.
@@ -316,7 +316,7 @@ impl TryFrom<i32> for ErrorCode {
             EINVAL => Ok(ErrorCode::InvalidArgument),
             ENFILE => Ok(ErrorCode::FileTableOVerflow),
             EMFILE => Ok(ErrorCode::TooManyOpenFiles),
-            ENOTTY => Ok(ErrorCode::InvalidTerminalOperation),
+            ENOTTY => Ok(ErrorCode::NotTerminal),
             ETXTBSY => Ok(ErrorCode::TextFileBusy),
             EFBIG => Ok(ErrorCode::FileTooLarge),
             ENOSPC => Ok(ErrorCode::NoSpaceOnDevice),
