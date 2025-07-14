@@ -39,4 +39,5 @@ pub mod pread;
 pub mod pwrite;
 pub mod read;
 pub mod readlinkat;
+pub mod rmdir;
 pub mod write;
