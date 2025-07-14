@@ -21,7 +21,7 @@ env:
 jobs:
   ci:
     name: "Nanvix CI/CD (self-hosted)"
-    runs-on: self-hosted
+    runs-on: [self-hosted]
     timeout-minutes: 240
     steps:
     - uses: actions/checkout@v4
