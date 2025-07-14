@@ -45,6 +45,7 @@ pub mod setegid;
 pub mod setgid;
 pub mod seteuid;
 pub mod setgroups;
+pub mod setuid;
 pub mod sleep;
 pub mod write;
 
