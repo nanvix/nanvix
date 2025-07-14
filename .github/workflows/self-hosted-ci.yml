@@ -3,10 +3,6 @@
 
 name: "Nanvix CI/CD (Self-Hosted)"
 
-concurrency:
-  group: self-hosted
-  cancel-in-progress: false
-
 on:
   push:
     branches:
@@ -21,7 +17,7 @@ env:
 jobs:
   ci:
     name: "Nanvix CI/CD (self-hosted)"
-    runs-on: self-hosted
+    runs-on: [self-hosted]
     timeout-minutes: 240
     steps:
     - uses: actions/checkout@v4
