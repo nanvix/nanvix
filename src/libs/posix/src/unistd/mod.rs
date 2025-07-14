@@ -13,7 +13,6 @@ use ::sysapi::{
     ffi::{
         c_char,
         c_int,
-        c_long,
     },
     sys_types::pid_t,
 };
@@ -21,13 +20,6 @@ use ::sysapi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-#[unsafe(no_mangle)]
-pub extern "C" fn sysconf(_name: c_int) -> c_long {
-    // TODO: https://github.com/nanvix/nanvix/issues/342
-    ::syslog::error!("sysconf(): not implemented");
-    0
-}
 
 ///
 /// # Description
