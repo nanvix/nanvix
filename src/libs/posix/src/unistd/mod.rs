@@ -7,61 +7,15 @@
 
 use crate::errno::__errno_location;
 
-use ::core::ffi;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
-    ffi::{
-        c_char,
-        c_int,
-    },
+    ffi::c_int,
     sys_types::pid_t,
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Deletes a name from the filesystem.
-///
-/// # Parameters
-///
-/// - `path`: Path to the file to be unlinked.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::unlink()`]
-///
-#[unsafe(no_mangle)]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
-    // Convert C string to Rust string.
-    let path: &str = match ffi::CStr::from_ptr(path).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("unlink(): invalid path");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Process system call and parse result.
-    match ::syscall::unistd::unlink(path) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("unlink(): failed (error={:?})", error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
 
 ///
 /// # Description
