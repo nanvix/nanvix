@@ -10,7 +10,6 @@ use crate::errno::__errno_location;
 use ::core::ffi;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
     ffi::{
         c_char,
         c_int,
@@ -19,7 +18,6 @@ use ::sysapi::{
     },
     sys_types::{
         c_size_t,
-        c_ssize_t,
         gid_t,
         pid_t,
         uid_t,
@@ -30,40 +28,6 @@ use ::syscall::unistd::syscall;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Reads the value of a symbolic link.
-///
-/// # Parameters
-///
-/// - `path`: Path to the symbolic link.
-/// - `buf`: Buffer to store the value of the symbolic link.
-/// - `bufsize`: Size of the buffer.
-///
-/// # Returns
-///
-/// Upon successful completion, `readlink()` returns the number of bytes read. Otherwise, it
-/// returns `-1` and sets `errno` to indicate the error.
-///
-/// # Safety
-///
-/// The function is unsafe because it may dereference pointers.
-///
-/// It is safe to use this function if the following conditions are met:
-/// - `path` points to a valid null-terminated string.
-/// - `buf` points to a valid memory location of `bufsize` bytes.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn readlink(
-    path: *const c_char,
-    buf: *mut c_char,
-    bufsize: c_size_t,
-) -> c_ssize_t {
-    ::syslog::trace!("readlink(): path={:?}, buf={:?}, bufsize={:?}", path, buf, bufsize);
-    ::syscall::unistd::bindings::readlinkat::readlinkat(AT_FDCWD, path, buf, bufsize)
-}
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
