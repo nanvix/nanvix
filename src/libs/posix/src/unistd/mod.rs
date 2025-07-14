@@ -14,7 +14,6 @@ use ::sysapi::{
         c_char,
         c_int,
         c_long,
-        c_uint,
     },
     sys_types::{
         gid_t,
@@ -27,16 +26,6 @@ use ::syscall::unistd::syscall;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-#[unsafe(no_mangle)]
-pub extern "C" fn sleep(_seconds: c_uint) -> c_uint {
-    // TODO: https://github.com/nanvix/nanvix/issues/453
-    ::syslog::error!("sleep(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    0
-}
 
 ///
 /// # Description
