@@ -31,15 +31,6 @@ use ::syscall::unistd::syscall;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rmdir(_path: *const c_char) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/348
-    ::syslog::error!("rmdir(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
 ///
 /// # Description
 ///
