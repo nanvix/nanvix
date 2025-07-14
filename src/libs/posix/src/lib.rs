@@ -47,9 +47,6 @@ pub mod pthread;
 /// Password structure.
 pub mod pwd;
 
-/// Standard symbolic constants and types.
-pub mod unistd;
-
 /// File last access and modification times.
 pub mod utime;
 
