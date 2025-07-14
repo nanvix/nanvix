@@ -51,6 +51,7 @@ pub mod symlink;
 pub mod symlinkat;
 pub mod sysconf;
 pub mod unlink;
+pub mod waitpid;
 pub mod write;
 
 #[cfg(all(feature = "syscall", feature = "sbrk"))]
