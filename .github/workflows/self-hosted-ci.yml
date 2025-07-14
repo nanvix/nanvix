@@ -3,10 +3,6 @@
 
 name: "Nanvix CI/CD (Self-Hosted)"
 
-concurrency:
-  group: self-hosted
-  cancel-in-progress: false
-
 on:
   push:
     branches:
