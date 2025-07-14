@@ -17,7 +17,6 @@ use ::sysapi::{
         c_uint,
     },
     sys_types::{
-        c_size_t,
         gid_t,
         pid_t,
         uid_t,
@@ -28,17 +27,6 @@ use ::syscall::unistd::syscall;
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
-
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub extern "C" fn setgroups(_size: c_size_t, _list: *const gid_t) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/523
-    ::syslog::error!("setgroups(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
-    -1
-}
 
 ///
 /// # Description
