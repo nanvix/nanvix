@@ -14,8 +14,8 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm.txt
+      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm.txt
     shell: bash
 
   # Hyperlight benchmarks
@@ -25,8 +25,8 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight.txt
+      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight.txt
     shell: bash
 
   # Post-process the results
