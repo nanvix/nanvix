@@ -42,6 +42,7 @@ pub mod readlink;
 pub mod readlinkat;
 pub mod rmdir;
 pub mod setgroups;
+pub mod sleep;
 pub mod write;
 
 #[cfg(all(feature = "syscall", feature = "sbrk"))]
