@@ -43,6 +43,7 @@ pub mod readlinkat;
 pub mod rmdir;
 pub mod setegid;
 pub mod setgid;
+pub mod seteuid;
 pub mod setgroups;
 pub mod sleep;
 pub mod write;
