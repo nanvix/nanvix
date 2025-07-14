@@ -25,57 +25,6 @@ use ::sysapi::{
 ///
 /// # Description
 ///
-/// Creates a symbolic link named `linkpath` which contains the string `target`.
-///
-/// # Parameters
-///
-/// - `target`: Path to the file to be linked.
-/// - `linkpath`: Path to the new file.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Otherwise, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # See Also
-///
-/// - [`crate::unistd::syscall::symlink()`]
-///
-#[unsafe(no_mangle)]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
-    // Convert C strings to Rust strings.
-    let target: &str = match ffi::CStr::from_ptr(target).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("symlink(): invalid target");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-    let linkpath: &str = match ffi::CStr::from_ptr(linkpath).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("symlink(): invalid linkpath");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    // Check if the system call failed.
-    match ::syscall::unistd::symlink(target, linkpath) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("symlink(): failed (error={:?})", error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
 /// Creates a symbolic link relative to a directory file descriptor.
 ///
 /// # Parameters
