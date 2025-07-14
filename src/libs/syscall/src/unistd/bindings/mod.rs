@@ -49,6 +49,7 @@ pub mod setuid;
 pub mod sleep;
 pub mod symlink;
 pub mod symlinkat;
+pub mod sysconf;
 pub mod write;
 
 #[cfg(all(feature = "syscall", feature = "sbrk"))]
