@@ -90,6 +90,11 @@ fn main() {
             constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {val};\n"));
         }
     }
+    if let Some(ikc_poll_batch_size) = config.get("ikc_poll_batch_size") {
+        if let Ok(val) = ikc_poll_batch_size.parse::<usize>() {
+            constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));
+        }
+    }
     constants.push_str("}\n");
 
     // Write the generated file
