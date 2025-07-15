@@ -41,3 +41,6 @@ mutex_open_max = 32
 # Notes:
 # - This number was arbitrarily chosen.
 cond_open_max = 32
+
+# Number of IKC messages to poll at a time.
+ikc_poll_batch_size = 1
