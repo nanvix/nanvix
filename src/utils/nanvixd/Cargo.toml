@@ -12,11 +12,17 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+base64 = { workspace = true }
 flexi_logger = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true, features = ["full"] }
 log = { workspace = true }
+nix = { workspace = true, features = ["process", "signal"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-hyper = { workspace = true, features = ["full"] }
+sys = { workspace = true }
+syscomm = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-http-body-util = { workspace = true }
-hyper-util = { workspace = true, features = ["full"] }
+uuid = { workspace = true }

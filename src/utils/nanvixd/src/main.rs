@@ -18,6 +18,7 @@ mod cache;
 mod config;
 mod http;
 mod logging;
+mod message;
 mod sandbox;
 
 //==================================================================================================
@@ -36,10 +37,7 @@ use crate::{
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
-use ::std::sync::{
-    atomic::AtomicUsize,
-    Arc,
-};
+use ::std::sync::Arc;
 use ::tokio::{
     net::{
         TcpListener,
@@ -50,6 +48,7 @@ use ::tokio::{
         Signal,
         SignalKind,
     },
+    sync::Mutex,
 };
 
 //==================================================================================================
@@ -62,8 +61,7 @@ pub async fn main() -> Result<()> {
 
     let mut signals: Signal = signal(SignalKind::interrupt())?;
     let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
-    let requestid: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    let sandbox_cache: SandboxCache = SandboxCache::new(args.keep_alive_timeout());
+    let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new();
 
     loop {
         tokio::select! {
@@ -71,20 +69,15 @@ pub async fn main() -> Result<()> {
                 match result {
                     Ok((stream, sockaddr)) => {
                         debug!("accepted connection from {sockaddr:?}");
-                        let linuxd_sockaddr: String = args.linuxd_sockaddr().to_string();
-                        let sandbox_sockaddr: String = args.sandbox_sockaddr().to_string();
                         let tmp_directory: String = args.tmp_directory().to_string();
-                        let console_file: String = args.nanvix_console().to_string();
-                        let requestid: Arc<AtomicUsize> = requestid.clone();
-                        let sandboxe_cache: SandboxCache = sandbox_cache.clone();
+                        let console_file: Option<String> = args.nanvix_console();
+                        let sandboxe_cache: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
                         tokio::spawn(async move {
-                            let requestid: usize = requestid
-                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             let client =
-                                HttpClient::new(sandboxe_cache, requestid, linuxd_sockaddr, sandbox_sockaddr, tmp_directory, console_file);
+                                HttpClient::new(sandboxe_cache, tmp_directory, console_file);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
-                                error!("failed to serve connection (requestid={requestid:?}, error={e:?})");
+                                error!("failed to serve connection (error={e:?})");
                             }
                         });
                     },
@@ -92,8 +85,6 @@ pub async fn main() -> Result<()> {
                         error!("failed to accept connection ({e:?})");
                     },
                 }
-            },
-            _ = sandbox_cache.try_cleanup() => {
             },
             _ = signals.recv() => {
                 info!("received exit signal, stopping...");
