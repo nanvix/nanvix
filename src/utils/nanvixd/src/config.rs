@@ -14,35 +14,23 @@ const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 #[cfg(not(debug_assertions))]
 const UNIX_SOCKET_SUFFIX: &str = ".socket";
 
-/// Default keep-alive timeout.
-pub const DEFAULT_KEEP_ALIVE_TIMEOUT: u64 = 60;
-
-/// Default Linux Daemon socket address.
-pub const DEFAULT_LINUXD_SOCKADDR: &str = "127.0.0.1:1234";
-
-/// Default sandbox socket address.
-pub const DEFAULT_SANDBOX_SOCKADDR: &str = "127.0.0.1:7070";
-
 /// Path to the temporary directory.
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
 
-/// Default console file.
-pub const DEFAULT_CONSOLE_FILE: &str = "/dev/null";
-
-/// Maximum payload size for requests.
-/// NOTE: This is a hard limitation for the current protocol.
-pub const MAX_PAYLOAD_SIZE: usize = 32;
+pub const HTTP_HEADER_MESSAGE_TYPE: &str = "X-NVX-Message-Type";
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn sandbox_sockaddr_builder(tmp_dir: &str, sandbox_sockaddr: &str, clientid: usize, requestid: usize) -> String {
-    format!("{tmp_dir}/{sandbox_sockaddr}:{clientid}:{requestid}{UNIX_SOCKET_SUFFIX}")
+pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> String {
+    format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}")
 }
 
-pub fn linuxd_sockaddr_builder(tmp_dir: &str, linuxd_sockaddr: &str, clientid: usize, requestid: usize) -> String {
-        format!(
-          "{tmp_dir}/{linuxd_sockaddr}:{clientid}:{requestid}{UNIX_SOCKET_SUFFIX}",
-      )
+pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, app_name: &str, sandbox_id: &str) -> String {
+    format!("{tmp_str}/{tenant_id}:{app_name}:{sandbox_id}:uvm{UNIX_SOCKET_SUFFIX}")
+}
+
+pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str, app_name: &str, sandbox_id: &str) -> String {
+    format!("{tmp_str}/{tenant_id}:{app_name}:{sandbox_id}:gw{UNIX_SOCKET_SUFFIX}")
 }
