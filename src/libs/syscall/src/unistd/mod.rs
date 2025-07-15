@@ -33,6 +33,7 @@ cfg_if::cfg_if! {
             getgid,
             getpid,
             getuid,
+            gethostname,
             link,
             linkat,
             lseek,
@@ -50,6 +51,7 @@ cfg_if::cfg_if! {
             fchdir,
             isatty,
         };
+       pub mod bindings;
     }
 }
 
