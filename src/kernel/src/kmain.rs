@@ -151,6 +151,36 @@ mod startup {
 /// Counts the number of cores online.
 static mut CORES_ONLINE: AtomicUsize = AtomicUsize::new(1);
 
+/// Performance counter for the number of times the kernel was idle.
+pub static PERF_SCHED_KERNEL_IDLE: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of soft context switches that occurred.
+pub static PERF_SCHED_SOFT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of involuntary context switches that occurred.
+pub static PERF_SCHED_HARD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of context switches that  were triggered by `exit`.
+pub static PERF_SCHED_EXIT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of context switches that were triggered by `exit_thread`.
+pub static PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of context switches that were triggered by `sleep`.
+pub static PERF_SCHED_SLEEP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of context switches that were triggered by `giveup`.
+pub static PERF_SCHED_GIVEUP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+
+/// Performance counter for the number of times `wakeup` was called.
+pub static PERF_SCHED_WAKEUP: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of times that `vmbus_read` was called.
+pub static PERF_VMBUS_READ: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of times that `vmbus_write` was called.
+pub static PERF_VMBUS_WRITE: AtomicUsize = AtomicUsize::new(0);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -394,6 +424,38 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     #[cfg(feature = "smp")]
     startup::wait().expect("failed to synchronize application cores");
+
+    // Dump system statistics.
+    info!("System Statistics:");
+    info!("- No. Times Kernel Was Idle: {:?}", PERF_SCHED_KERNEL_IDLE.load(Ordering::Relaxed));
+    info!(
+        "- No. Soft Context Switches: {:?}",
+        PERF_SCHED_SOFT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Hard Context Switches: {:?}",
+        PERF_SCHED_HARD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Exit Context Switches: {:?}",
+        PERF_SCHED_EXIT_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Exit Thread Context Switches: {:?}",
+        PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Sleep Context Switches: {:?}",
+        PERF_SCHED_SLEEP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Giveup Context Switches: {:?}",
+        PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.load(Ordering::Relaxed)
+    );
+    info!("- No. Wakeup Calls: {:?}", PERF_SCHED_WAKEUP.load(Ordering::Relaxed));
+    info!("- Ticks: {:?}", pm::ticks());
+    info!("- No. Times VMBus Read Was Called: {:?}", PERF_VMBUS_READ.load(Ordering::Relaxed));
+    info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
 
     trace!("the system will shutdown now!");
     kernel_magic_string(status);
