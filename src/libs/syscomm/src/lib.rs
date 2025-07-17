@@ -10,7 +10,9 @@ extern crate alloc;
 use ::anyhow::Result;
 use ::log::error;
 use ::std::{
+    error::Error,
     fs,
+    fmt,
     io::{
         self,
         ErrorKind,
@@ -301,3 +303,11 @@ impl SocketError {
         self.error.kind()
     }
 }
+
+impl fmt::Display for SocketError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SocketError: {}", self.error)
+    }
+}
+
+impl Error for SocketError {}
