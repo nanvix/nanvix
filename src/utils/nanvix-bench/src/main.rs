@@ -16,6 +16,7 @@
 //==================================================================================================
 
 mod args;
+mod env;
 mod benchmark;
 mod hwloc;
 
@@ -29,8 +30,8 @@ use crate::{
         Benchmark,
         BenchmarkFlavour,
     },
+    env::get_proj_root,
 };
-use ::sys::ipc::Message;
 use anyhow::Result;
 use flexi_logger::Logger;
 use indicatif::{
@@ -52,11 +53,10 @@ use nix::{
     },
     unistd::Pid,
 };
+use reqwest::header::{HeaderMap, CONTENT_TYPE};
+use ::sys::ipc::Message;
 use std::{
-    env,
-    fs,
     io::{
-        ErrorKind,
         Read,
         Write,
     },
@@ -84,6 +84,10 @@ use syscall::{
         WriteResponse,
     },
 };
+use syscomm::{
+    SocketStream,
+    SocketType,
+};
 
 //==================================================================================================
 // Constants
@@ -94,59 +98,34 @@ const CLEANUP_SLEEP_DURATION: u64 = 10;
 
 //==================================================================================================
 
-const NANVIX_LINUXD_UNIX_SOCKET: &str = "/tmp/nanvix_ubench.socket";
-const GATEWAY_ADDRESS: &str = "127.0.0.1:9999";
-
-fn get_proj_root() -> String {
-    format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
-}
+const NANVIXD_ADDRESS: &str = "127.0.0.1:9999";
 
 impl Benchmark {
-    fn start_gateway(&mut self) -> Result<TcpStream> {
-        debug!("Connecting gateway to {}...", &self.gateway_address);
-        let stream: TcpStream = loop {
-            match TcpStream::connect(&self.gateway_address) {
-                Ok(stream) => break stream,
-                Err(_) => {
-                    continue;
-                },
-            };
+    fn prepare_new_message(&self) -> Result<(HeaderMap, nanvixd::message::New)> {
+        let mut new_msg_headers = HeaderMap::new();
+        new_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
+        new_msg_headers.insert(
+            nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
+            format!("{}", nanvixd::message::MessageType::New).parse()?
+        );
+
+        let new_msg = nanvixd::message::New {
+            tenant_id: "foo".to_string(),
+            app_name: "bar".to_string(),
+            program: self.flavour.get_program(),
+            program_args: "".to_string(),
         };
-        debug!("Connected!");
 
-        Ok(stream)
+        Ok((new_msg_headers, new_msg))
     }
 
-    /// Send message to gateway by prepending the message size as a u32 LE.
-    fn send_to_gateway(&mut self, data: &[u8]) -> Result<()> {
-        let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
-        let data_len: u32 = data.len().try_into().unwrap();
-        payload.extend_from_slice(&data_len.to_le_bytes());
-        payload.extend_from_slice(data);
-
-        Ok(self.gateway.as_mut().unwrap().write_all(&payload)?)
-    }
-
-    /// Read message from gateway by first parsing the length as an u32 LE.
-    fn recv_from_gateway(&mut self, data_size: usize) -> Result<Vec<u8>> {
-        let mut response_payload: Vec<u8> = vec![0u8; mem::size_of::<u32>() + data_size];
-        self.gateway
-            .as_mut()
-            .unwrap()
-            .read_exact(&mut response_payload)?;
-
-        Ok(response_payload[mem::size_of::<u32>()..].to_vec())
-    }
-
-    fn start_linuxd(&self) -> Result<Child> {
-        let mut linuxd_args: Vec<String> = vec![
-            format!("{}/bin/linuxd.elf", get_proj_root()),
-            "-user-vm-bind-addr".to_string(),
-            self.linuxd_address.clone(),
-            "-gateway-bind-addr".to_string(),
-            self.gateway_address.to_string(),
-            "-gateway-bind-socket-type".to_string(),
-            "tcp".to_string(),
+    fn start_nanvixd(&self) -> Result<Child> {
+        let mut nanvixd_args: Vec<String> = vec![
+            format!("{}/bin/nanvixd.elf", get_proj_root()),
+            "-http-addr".to_string(),
+            NANVIXD_ADDRESS.to_string(),
+            "-tmp-dir".to_string(),
+            get_proj_root(),
         ];
         if let Some(hwloc) = &self.hwloc {
             let taskset: Vec<String> = vec![
@@ -154,141 +133,142 @@ impl Benchmark {
                 "-ac".to_string(),
                 hwloc.get_linuxd_core_str(),
             ];
-            linuxd_args.splice(0..0, taskset);
+            nanvixd_args.splice(0..0, taskset);
         }
 
-        debug!("Starting linuxd with command: {}", linuxd_args.join(" "));
-        let linuxd_cmd = Command::new(&linuxd_args[0])
-            .args(&linuxd_args[1..])
+        debug!("Starting nanvixd with command: {}", nanvixd_args.join(" "));
+        let nanvixd_cmd = Command::new(&nanvixd_args[0])
+            .args(&nanvixd_args[1..])
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
             .current_dir(get_proj_root())
             .spawn()?;
 
-        Ok(linuxd_cmd)
+        Ok(nanvixd_cmd)
     }
 
-    fn start_nanovm(&self) -> Result<Child> {
-        let mut nanovm_args: Vec<String> = vec![
+    /// Auxiliary method to start a user VM used by low-level benchmarks that want to bypass
+    /// nanvixd.
+    fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
+        let mut user_vm_args: Vec<String> = vec![
             format!("{}/bin/microvm.elf", get_proj_root()),
             "-kernel".to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
             "-initrd".to_string(),
-            match self.flavour {
-                BenchmarkFlavour::BootTime => {
-                    format!("{}/bin/noop-rust-nostd.elf", get_proj_root())
-                },
-                BenchmarkFlavour::ColdStart => {
-                    format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
-                },
-                BenchmarkFlavour::WarmStart => {
-                    format!("{}/bin/echo-rust-server-nostd.elf", get_proj_root())
-                },
-                BenchmarkFlavour::WarmStartVMM | BenchmarkFlavour::EchoBreakdown => {
-                    format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())
-                },
-            },
-            "-gateway".to_string(),
-            self.linuxd_address.clone(),
+            self.flavour.get_program(),
         ];
-        if self.hwloc.is_some() {
+        if let Some(gateway_addr) = gateway_addr {
+            user_vm_args.push("-gateway".to_string());
+            user_vm_args.push(gateway_addr);
+        }
+        if let Some(hwloc) = self.hwloc.clone() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
                 "-ac".to_string(),
-                self.hwloc.clone().unwrap().get_nanovm_core_str(),
+                hwloc.get_nanovm_core_str(),
             ];
-            nanovm_args.splice(0..0, taskset);
+            user_vm_args.splice(0..0, taskset);
         }
 
-        debug!("Starting nano VM with command: {}", nanovm_args.join(" "));
-        let nanovm_cmd = Command::new(&nanovm_args[0])
-            .args(&nanovm_args[1..])
+        debug!("Starting user VM with command: {}", user_vm_args.join(" "));
+        let user_vm_cmd = Command::new(&user_vm_args[0])
+            .args(&user_vm_args[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
             .current_dir(get_proj_root())
             .spawn()?;
 
-        Ok(nanovm_cmd)
+        Ok(user_vm_cmd)
     }
 
     /// Configures teh set-up by starting linuxd and the gateway server.
     pub fn setup(&mut self) {
-        match self.start_linuxd() {
-            Ok(linuxd) => self.linuxd = Some(linuxd),
+        match self.start_nanvixd() {
+            Ok(nanvixd) => self.nanvixd = Some(nanvixd),
             Err(_) => {
-                error!("error starting up linuxd");
+                error!("error starting up nanvixd");
                 self.cleanup();
                 process::exit(1);
             },
         }
-        match self.start_gateway() {
-            Ok(gateway) => self.gateway = Some(gateway),
-            Err(_) => {
-                error!("error starting up the gateway");
-                self.cleanup();
-                process::exit(1);
-            },
+
+        while TcpStream::connect_timeout(
+            &NANVIXD_ADDRESS.to_string().parse().unwrap(),
+            Duration::from_millis(10)).is_err() {
+            continue
         }
+
+        debug!("nanvixd is ready to serve requests");
     }
 
-    /// Starts the Nano VM.
-    pub fn start(&mut self) {
-        match self.start_nanovm() {
-            Ok(nanovm) => self.nanovm = Some(nanovm),
-            Err(_) => {
-                error!("error starting up nano vm");
-                self.cleanup();
-            },
+    /// Starts the Nano VM via POST request to nanvixd. Returns the user VM ID as well as an open
+    /// socket to interact with the VMs stdin/stdout.
+    pub async fn start(&mut self, payload: nanvixd::message::New, headers: HeaderMap) -> Result<(String, SocketStream)> {
+        let response: nanvixd::message::NewResponse = self.nanvixd_client
+            .post(format!("http://{}", NANVIXD_ADDRESS))
+            .headers(headers)
+            .json(&payload)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        debug!("got: user vm ID={}, gw socket={}", response.user_vm_id, response.gateway_sockaddr);
+
+        // TODO: we need to connect the SocketStream after creating the user VM (and thus adding to
+        // the cold-start time) because currently nanvixd determines the gateway address at
+        // deployment time.
+        let gateway_stream: SocketStream = loop {
+            match SocketStream::connect(SocketType::Unix, response.gateway_sockaddr.clone()) {
+                Ok(stream) => break stream,
+                Err(_) => continue,
+            };
+        };
+
+        Ok((response.user_vm_id, gateway_stream))
+    }
+
+    /// Kill the Nano VM via POST request to nanvixd.
+    pub async fn kill(&mut self, user_vm_id: String) -> Result<()> {
+        let mut kill_msg_headers = HeaderMap::new();
+        kill_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
+        kill_msg_headers.insert(
+            nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
+            format!("{}", nanvixd::message::MessageType::Kill).parse()?
+        );
+
+        let kill_msg = nanvixd::message::Kill { user_vm_id: user_vm_id.clone() };
+        let response: nanvixd::message::KillResponse = self.nanvixd_client
+            .post(format!("http://{}", NANVIXD_ADDRESS))
+            .headers(kill_msg_headers)
+            .json(&kill_msg)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if response.exit_code != 0 {
+            error!("error killing user VM (id={user_vm_id}, exit-code={})", response.exit_code);
         }
 
-        // Now we are ready to run experiments by pushing messages to the
-        // gateway stream.
+        Ok(())
     }
 
     /// Kill the different components in order.
     pub fn cleanup(&mut self) {
-        if self.nanovm.is_some() {
-            debug!("Sending SIGINT to nano VM");
-            match kill(Pid::from_raw(self.nanovm.as_mut().unwrap().id() as i32), Signal::SIGINT) {
+        if self.nanvixd.is_some() {
+            debug!("Sending SIGINT to nanvixd");
+            match kill(Pid::from_raw(self.nanvixd.as_mut().unwrap().id() as i32), Signal::SIGINT) {
                 Ok(_) => {},
                 Err(e) => error!("error sending SIGINT to nano VM: {e:?}"),
             }
         }
-
-        if self.linuxd.is_some() {
-            debug!("Sending SIGINT to linuxd");
-            match kill(Pid::from_raw(self.linuxd.as_mut().unwrap().id() as i32), Signal::SIGINT) {
-                Ok(_) => {},
-                Err(e) => error!("error sending linuxd to nano VM: {e:?}"),
-            }
-        }
-
-        // Remove the socket file
-        match fs::remove_file(&self.linuxd_address) {
-            Ok(_) => debug!("removed linuxd socket at: {}", &self.linuxd_address),
-            Err(ref e) if e.kind() == ErrorKind::NotFound => {
-                debug!("linuxd socket not found");
-            },
-            Err(e) => {
-                // Non-fatal error, we are cleaning-up.
-                error!(
-                    "failed to delete linuxd socket file (file: {} - error: {e:?})",
-                    &self.linuxd_address
-                );
-            },
-        }
-
-        // Gateway will be closed when dropped.
     }
 
     /// This function runs the boot-time experiment, where we measure the time to start a user VM
-    /// with a noop application and exit.
-    pub fn run_boot_time(&mut self) -> Result<()> {
-        // In the cold start experiment we cleanup and set-up at every iteration.
-        self.cleanup();
-
+    /// with a noop application and exit. To properly isolate just the time to start a user VM, we
+    /// do not make use of nanvixd here. Instead, we start the user VM manually.
+    pub async fn run_boot_time(&mut self) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -299,22 +279,18 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        // We don't use the send_to/recv_from gateway methods to prevent the data initialization
-        // from being included in the cold-start time.
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
-        for iter in 0..self.iterations {
-            self.linuxd_address = format!("/tmp/nanvix_boottime_ubench_{iter}.socket");
-
+        for _ in 0..self.iterations {
             // Start the clock
             let start = Instant::now();
-            self.start();
 
-            // Wait for the user VM to finish and die.
-            self.nanovm.as_mut().unwrap().wait()?;
+            // The user VM will run to completion, so after starting we just
+            // wait for the child process to die.
+            let mut user_vm = self.start_user_vm(None)?;
+            user_vm.wait()?;
 
             latencies.push(start.elapsed().as_micros());
 
-            self.nanovm = None;
             pb.inc(1);
 
             // Need to give some time to clean-up
@@ -332,10 +308,7 @@ impl Benchmark {
 
     /// This function runs the cold-start experiment, where we measure the time to start linuxd,
     /// start a VM, and send a request to the new VM.
-    pub fn run_cold_start(&mut self) -> Result<()> {
-        // In the cold start experiment we cleanup and set-up at every iteration.
-        self.cleanup();
-
+    pub async fn run_cold_start(&mut self) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -346,31 +319,29 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        const DATA_SIZE: u32 = 10;
-        let data = [7u8; DATA_SIZE as usize];
-
         // Payload we are sending over the wire
-        let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
-        payload.extend_from_slice(&DATA_SIZE.to_le_bytes());
-        payload.extend_from_slice(&data);
+        const DATA_SIZE: u32 = 10;
+        let payload = [7u8; DATA_SIZE as usize];
+        let mut response_payload = [0u8; DATA_SIZE as usize];
 
-        // We don't use the send_to/recv_from gateway methods to prevent the data initialization
-        // from being included in the cold-start time.
+        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
+
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
-        for iter in 0..self.iterations {
-            self.linuxd_address = format!("/tmp/nanvix_coldstart_ubench_{iter}.socket");
+        for _ in 0..self.iterations {
+            // Clone all messages we need before starting the clock.
+            let new_msg_headers = new_msg_headers.clone();
+            let new_msg = new_msg.clone();
 
-            // Start the clock
-            let start = Instant::now();
+            // We need to start nanvixd in each iteration of the loop, as otherwise re-using the
+            // same nanvixd instance but with different linuxd instances can exhaust resource
+            // limits (like open file descriptors).
             self.setup();
-            self.start();
-            self.gateway.as_mut().unwrap().write_all(&payload)?;
 
-            let mut response_payload: Vec<u8> = vec![0u8; mem::size_of::<u32>() + data.len()];
-            self.gateway
-                .as_mut()
-                .unwrap()
-                .read_exact(&mut response_payload)?;
+            // Start the clock.
+            let start = Instant::now();
+            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
+            gateway_stream.write_all(&payload)?;
+            gateway_stream.read_exact(&mut response_payload)?;
             latencies.push(start.elapsed().as_micros());
 
             // Sanity-check the message to make sure is the same we sent.
@@ -380,7 +351,12 @@ impl Benchmark {
                 error!(" - got: {response_payload:?}");
             }
 
+            // Kill the user VM.
+            self.kill(user_vm_id).await?;
+
+            // Stop nanvixd.
             self.cleanup();
+
             pb.inc(1);
 
             // Need to give some time to clean-up
@@ -394,12 +370,16 @@ impl Benchmark {
         println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
         println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
+        print!("Cleaning up...");
+        self.cleanup();
+        println!("done!");
+
         Ok(())
     }
 
     /// This function runs the warm start benchmark, where we measure the time to send a request
     /// into the VM once it has started executing.
-    pub fn run_warm_start(&mut self) -> Result<()> {
+    pub async fn run_warm_start(&mut self) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -410,26 +390,25 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        const DATA_SIZE: u32 = 10;
-        let data = [7u8; DATA_SIZE as usize];
-
         // Payload we are sending over the wire
-        let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
-        payload.extend_from_slice(&DATA_SIZE.to_le_bytes());
-        payload.extend_from_slice(&data);
+        const DATA_SIZE: u32 = 10;
+        let payload = [7u8; DATA_SIZE as usize];
 
-        // We don't use the send_to/recv_from gateway methods to prevent the data initialization
-        // from being included in the cold-start time.
+        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
+
+        // Start nanvixd.
+        self.setup();
+
+        // Start User VM.
+        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
+
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            let start = Instant::now();
-            self.gateway.as_mut().unwrap().write_all(&payload)?;
+            let mut response_payload = [0u8; DATA_SIZE as usize];
 
-            let mut response_payload: Vec<u8> = vec![0u8; mem::size_of::<u32>() + data.len()];
-            self.gateway
-                .as_mut()
-                .unwrap()
-                .read_exact(&mut response_payload)?;
+            let start = Instant::now();
+            gateway_stream.write_all(&payload)?;
+            gateway_stream.read_exact(&mut response_payload)?;
             latencies.push(start.elapsed().as_micros());
 
             // Sanity-check the message to make sure is the same we sent.
@@ -441,6 +420,12 @@ impl Benchmark {
 
             pb.inc(1);
         }
+
+        // Kill the user VM.
+        self.kill(user_vm_id).await?;
+
+        // Stop nanvixd.
+        self.cleanup();
 
         pb.finish();
         println!("First req: {} us", latencies[0]);
@@ -456,9 +441,6 @@ impl Benchmark {
     /// all the way from the VMM to the guest application and back. To achieve
     /// this, we connect the user VM to a gateway that emulates linuxd.
     pub fn run_warm_start_vmm(&mut self) -> Result<()> {
-        // Clean-up deafult set-up.
-        self.cleanup();
-
         // Display a progress bar.
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -469,10 +451,9 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
+        // Payload we are sending over the wire.
         const DATA_SIZE: u32 = 10;
         let data = [7u8; DATA_SIZE as usize];
-
-        // Payload we are sending over the wire.
         let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
         payload.extend_from_slice(&DATA_SIZE.to_le_bytes());
         payload.extend_from_slice(&data);
@@ -632,7 +613,8 @@ impl Benchmark {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     #[cfg(debug_assertions)]
     {
         error!(
@@ -660,17 +642,10 @@ fn main() -> Result<()> {
         iterations: args.iterations(),
         hwloc,
         flavour: args.benchmark(),
-        gateway_address: GATEWAY_ADDRESS.to_string(),
-        linuxd_address: NANVIX_LINUXD_UNIX_SOCKET.to_string(),
-        linuxd: None,
-        nanovm: None,
-        gateway: None,
+        nanvixd: None,
+        nanvixd_client: reqwest::Client::new(),
+        user_vm_id: None,
     };
-
-    print!("Setting up {} benchmark...", benchmark.flavour);
-    benchmark.setup();
-    benchmark.start();
-    println!("done!");
 
     let result = match benchmark.flavour {
         BenchmarkFlavour::BootTime => {
@@ -684,7 +659,7 @@ fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_boot_time()
+                benchmark.run_boot_time().await
             }
         },
         BenchmarkFlavour::EchoBreakdown => {
@@ -713,7 +688,7 @@ fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start()
+                benchmark.run_cold_start().await
             }
         },
         BenchmarkFlavour::WarmStart => {
@@ -727,7 +702,7 @@ fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_warm_start()
+                benchmark.run_warm_start().await
             }
         },
         BenchmarkFlavour::WarmStartVMM => {
@@ -750,9 +725,8 @@ fn main() -> Result<()> {
         Err(e) => error!("error running benchmark: {e:?}"),
     }
 
-    print!("Cleaning up...");
+    // Additional clean-up in case of errors in the benchmarks.
     benchmark.cleanup();
-    println!("done!");
 
     Ok(())
 }
