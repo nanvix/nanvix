@@ -25,11 +25,11 @@ use crate::vmm::microvm::kvm::{
 };
 
 use ::anyhow::Result;
+use ::arch::mem::PAGE_SIZE;
 use ::std::sync::{
     Arc,
     Mutex,
 };
-use ::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
 // Structures
@@ -205,7 +205,8 @@ impl MicroVm {
         if let Some((_, initrd_size)) = self.initrd {
             if initrd_size > max_initrd_size {
                 return Err(anyhow::anyhow!(
-                    "initrd is too large (initrd_size={initrd_size}, max_initrd_size={max_initrd_size:?})",
+                    "initrd is too large (initrd_size={initrd_size}, \
+                     max_initrd_size={max_initrd_size:?})",
                 ));
             }
         }
