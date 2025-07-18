@@ -816,6 +816,7 @@ all-microvm: init
 
 check-microvm:
 	$(HOST_CARGO_CHECK_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+	$(HOST_CARGO_FMT_CMD) -p microvm
 
 clean-microvm:
 	$(HOST_CARGO_CLEAN_CMD) -p microvm
