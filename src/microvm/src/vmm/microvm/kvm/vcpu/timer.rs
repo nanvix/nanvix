@@ -8,8 +8,8 @@
 use crate::vmm::microvm::kvm::partition::VirtualPartition;
 use ::anyhow::Result;
 use ::kvm_bindings::{
-    kvm_pit_config,
     KVM_PIT_SPEAKER_DUMMY,
+    kvm_pit_config,
 };
 use ::std::sync::{
     Arc,
