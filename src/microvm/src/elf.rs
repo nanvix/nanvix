@@ -239,13 +239,15 @@ pub unsafe fn load(
             if vaddr + memsz > max_offset {
                 let reason: String = "segment does not fit in memory".to_string();
                 error!(
-                    "load(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, max_offset={max_offset:#010x})",
+                    "load(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, \
+                     max_offset={max_offset:#010x})",
                 );
                 return Err(anyhow::anyhow!(reason));
             }
 
             trace!(
-                "loading segment: offset={offset:#010x} vaddr={vaddr:#010x} filesz={filesz:#010x} memsz={memsz:#010x}",
+                "loading segment: offset={offset:#010x} vaddr={vaddr:#010x} filesz={filesz:#010x} \
+                 memsz={memsz:#010x}",
             );
 
             // Copy segment to memory.
