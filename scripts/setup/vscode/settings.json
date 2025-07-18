@@ -1,5 +1,6 @@
 {
     "editor.formatOnType": false,
+    "editor.formatOnSave": true,
     "rust-analyzer.cargo.allTargets": false,
     "rust-analyzer.checkOnSave": true,
     // NOTE: Use 'make check' instead of 'cargo check', as this project requires custom build steps.
