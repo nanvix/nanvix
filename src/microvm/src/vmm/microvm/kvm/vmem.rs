@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
     mem,
@@ -24,7 +25,6 @@ use ::std::{
         Mutex,
     },
 };
-use ::arch::mem::PAGE_SIZE;
 
 //==================================================================================================
 // Structures
@@ -241,7 +241,8 @@ impl VirtualMemory {
             // Write length of command line arguments.
 
             trace!(
-                "write_args(): initrd_end={initrd_end:#010x}, args_bytes_len={:?}, args_bytes={args_bytes:?}",
+                "write_args(): initrd_end={initrd_end:#010x}, args_bytes_len={:?}, \
+                 args_bytes={args_bytes:?}",
                 args_bytes.len(),
             );
 

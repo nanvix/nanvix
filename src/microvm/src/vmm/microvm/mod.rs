@@ -25,12 +25,12 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use crate::{
+    Gateway,
     io::IoThread,
     vmm::microvm::{
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
     },
-    Gateway,
 };
 use ::anyhow::Result;
 use ::std::{
@@ -38,6 +38,9 @@ use ::std::{
     io::Write,
     mem,
     sync::{
+        Arc,
+        Mutex,
+        MutexGuard,
         mpsc,
         mpsc::{
             Receiver,
@@ -45,9 +48,6 @@ use ::std::{
             Sender,
             TryRecvError,
         },
-        Arc,
-        Mutex,
-        MutexGuard,
     },
     thread::JoinHandle,
 };
@@ -133,11 +133,15 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            std::thread::spawn(move || loop {
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
+            loop {
                 match memory_thread_rx.try_recv() {
                     Ok(mut msg) => {
-                        profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                        profiler::timestamp_message!(
+                            &mut msg.payload,
+                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                        );
                         if let Err(e) = memory_thread_tx.send(msg) {
                             let reason: String = format!("failed to send message: {e:?}");
                             error!("memory_thread(): {reason}");
@@ -157,7 +161,8 @@ impl Vmm {
                         // No message available.
                     },
                 }
-            });
+            }
+        });
         Ok(Self {
             _gateway_tx: gateway_tx,
             _io_thread,
@@ -232,12 +237,20 @@ impl Vmm {
 
             match input_queue.recv() {
                 Ok(mut msg) => {
-                    profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
                     msg.message_type = MessageType::Ikc;
                     let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem
                         .lock()
                         .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
-                    profiler::timestamp_message!(&mut msg.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                    profiler::timestamp_message!(
+                        &mut msg.payload,
+                        mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    );
                     locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                     locked_vm.consume_credit().unwrap();
                 },
@@ -297,7 +310,11 @@ impl Vmm {
                         anyhow::bail!(reason);
                     },
                 };
-                profiler::timestamp_message!(&mut message.payload, std::mem::offset_of!(syscall::LinuxDaemonMessage, payload) + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer));
+                profiler::timestamp_message!(
+                    &mut message.payload,
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                );
 
                 if let Err(e) = queue.send(message) {
                     let reason: String = format!("failed to send message: {e:?}");

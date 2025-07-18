@@ -118,8 +118,10 @@ impl Vmm {
                     // PEB, I/O buffers, host fxn defs, guard pages, etc.
                     let reserved_pages = 11 * 4096;
 
-                    let used_memory =
-                        kernel_size + initrd_size + (heap_size + stack_size) as usize + reserved_pages;
+                    let used_memory = kernel_size
+                        + initrd_size
+                        + (heap_size + stack_size) as usize
+                        + reserved_pages;
 
                     if memory_size <= used_memory {
                         return Err(anyhow::anyhow!(
@@ -132,7 +134,9 @@ impl Vmm {
                     let padding_size = memory_size - used_memory;
 
                     // Create a new vector with size header + original data + padding
-                    let mut padded_bytes = Vec::with_capacity(::config::hyperlight::INITRD_SIZE_BYTES + actual_size + padding_size);
+                    let mut padded_bytes = Vec::with_capacity(
+                        ::config::hyperlight::INITRD_SIZE_BYTES + actual_size + padding_size,
+                    );
 
                     // Write the actual size as first INITRD_SIZE_BYTES-bytes (little-endian)
                     padded_bytes.extend_from_slice(&(actual_size as u64).to_le_bytes());

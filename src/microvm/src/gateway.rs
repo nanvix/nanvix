@@ -95,7 +95,11 @@ impl Gateway {
                         return Err(SocketError::new(Error::new(ErrorKind::InvalidData, reason)));
                     },
                 };
-                profiler::timestamp_message!(&mut message.payload, mem::offset_of!(syscall::LinuxDaemonMessage, payload) + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+                profiler::timestamp_message!(
+                    &mut message.payload,
+                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
                 Ok(message)
             },
             Err(e) => {
