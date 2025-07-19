@@ -10,6 +10,7 @@ on:
       - 'feature-*'
       - 'bugfix-*'
       - 'dev'
+      - 'dependabot-*'
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
