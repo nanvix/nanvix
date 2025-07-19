@@ -66,7 +66,7 @@ use ::sys::ipc::{
 
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
-    _io_thread: Option<JoinHandle<Result<()>>>,
+    io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
     _microvm: Arc<Mutex<MicroVm>>,
@@ -110,7 +110,7 @@ impl Vmm {
         let (paused_tx, paused_rx) = mpsc::channel::<()>();
 
         // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
+        let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
             IoThread::spawn(conn, gateway_rx, gateway_tx.clone(), snapshot_tx, paused_rx)
         });
 
@@ -198,7 +198,7 @@ impl Vmm {
 
         let mut vmm: Vmm = Self {
             _gateway_tx: gateway_tx,
-            _io_thread,
+            io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,
             _microvm: microvm,
@@ -206,8 +206,10 @@ impl Vmm {
             _paused_tx: paused_tx,
         };
 
-        while !vmm.vcpu_thread.is_finished() {
-            vmm.handle_snapshot_command()?;
+        if vmm.io_thread.is_some() {
+            while !vmm.vcpu_thread.is_finished() {
+                vmm.handle_snapshot_command()?;
+            }
         }
 
         match vmm.vcpu_thread.join() {
