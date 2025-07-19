@@ -11,6 +11,7 @@ on:
       - 'bugfix-*'
       - 'dev'
       - 'dependabot-*'
+      - 'dependabot/*'
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
