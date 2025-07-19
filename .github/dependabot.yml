@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+    labels:
+      - "enhancement"
+    open-pull-requests-limit: 20
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+    labels:
+      - "enhancement"
+    open-pull-requests-limit: 20
