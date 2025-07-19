@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+mod io;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -12,7 +18,7 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    io::IoThread,
+    vmm::hyperlight::io::IoThread,
 };
 use ::anyhow::Result;
 use ::hyperlight_host::{
@@ -67,7 +73,19 @@ pub struct Vmm {
 //==================================================================================================
 
 impl Vmm {
-    pub fn new(
+    pub fn spawn(
+        memory_size: usize,
+        kernel_filename: &str,
+        initrd_filename: Option<String>,
+        _initrd_args: Option<String>,
+        stderr: Option<String>,
+        gateway_conn: Option<Gateway>,
+    ) -> Result<u16> {
+        Vmm::new(memory_size, kernel_filename, initrd_filename, _initrd_args, stderr, gateway_conn)?
+            .run()
+    }
+
+    fn new(
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
@@ -246,7 +264,7 @@ impl Vmm {
     /// Upon successful completion, this method returns the exit status of the virtual machine.
     /// Otherwise, it returns an error.
     ///
-    pub fn run(&mut self) -> Result<u16> {
+    fn run(&mut self) -> Result<u16> {
         crate::timer!("vmm_run");
         if let Some(sandbox) = self.sandbox.take() {
             let _ = sandbox.evolve(Noop::<UninitializedSandbox, MultiUseSandbox>::default())?;

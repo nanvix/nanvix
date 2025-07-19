@@ -488,17 +488,15 @@ impl Benchmark {
             // Spawn the VMM in a separate thread.
             let vmm_handle = std::thread::spawn(move || -> Result<()> {
                 vmm_stream.set_nonblocking(true)?;
-                let mut vmm: Vmm = Vmm::new(
+
+                match Vmm::spawn(
                     config::kernel::MEMORY_SIZE,
                     format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
                     Some(format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())),
                     None,
                     None,
                     Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
-                )?;
-                debug!("VMM: returned from new!");
-
-                match vmm.run()? {
+                )? {
                     e if e != 0 => {
                         error!("error running VMM, exited with status: {e}");
                         Err(anyhow::anyhow!("VMM error"))

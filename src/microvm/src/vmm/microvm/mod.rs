@@ -11,6 +11,7 @@
 // Modules
 //==================================================================================================
 
+mod io;
 mod kvm;
 mod microvm;
 mod pal;
@@ -26,8 +27,11 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    io::IoThread,
     vmm::microvm::{
+        io::{
+            IoThread,
+            SnapshotCommand,
+        },
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
     },
@@ -64,7 +68,10 @@ pub struct Vmm {
     _gateway_tx: Sender<Message>,
     _io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
-    microvm: Arc<Mutex<MicroVm>>,
+    vcpu_thread: JoinHandle<Result<u16>>,
+    _microvm: Arc<Mutex<MicroVm>>,
+    snapshot_rx: Receiver<SnapshotCommand>,
+    _paused_tx: Sender<()>,
 }
 
 //==================================================================================================
@@ -72,23 +79,40 @@ pub struct Vmm {
 //==================================================================================================
 
 impl Vmm {
-    pub fn new(
+    ///
+    /// # Description
+    ///
+    /// This function instantiates and runs the virtual machine monitor (VMM) with the given arguments.
+    ///
+    /// # Parameters
+    ///
+    /// * `args` - Arguments for the virtual machine monitor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns the exit status of the virtual machine.
+    /// Otherwise, it returns an error.
+    ///
+    pub fn spawn(
         memory_size: usize,
         kernel_filename: &str,
         initrd_filename: Option<String>,
         initrd_args: Option<String>,
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
-    ) -> Result<Self> {
+    ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
+        let (snapshot_tx, snapshot_rx) = mpsc::channel::<SnapshotCommand>();
+        let (paused_tx, paused_rx) = mpsc::channel::<()>();
 
         // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
+        let _io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
+            IoThread::spawn(conn, gateway_rx, gateway_tx.clone(), snapshot_tx, paused_rx)
+        });
 
         // Input function used for emulating I/O port reads.
         let input: Box<microvm::InputFn> = Self::build_input_fn(vm_rx);
@@ -163,33 +187,37 @@ impl Vmm {
                 }
             }
         });
-        Ok(Self {
+
+        let microvm_clone: Arc<Mutex<MicroVm>> = microvm.clone();
+        let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
+            microvm_clone
+                .lock()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                .run()
+        });
+
+        let mut vmm: Vmm = Self {
             _gateway_tx: gateway_tx,
             _io_thread,
             _memory_thread: memory_thread,
-            microvm,
-        })
-    }
+            vcpu_thread,
+            _microvm: microvm,
+            snapshot_rx,
+            _paused_tx: paused_tx,
+        };
 
-    ///
-    /// # Description
-    ///
-    /// This function runs the virtual machine monitor (VMM) with the given arguments.
-    ///
-    /// # Parameters
-    ///
-    /// * `args` - Arguments for the virtual machine monitor.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns the exit status of the virtual machine.
-    /// Otherwise, it returns an error.
-    ///
-    pub fn run(&mut self) -> Result<u16> {
-        self.microvm
-            .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-            .run()
+        while !vmm.vcpu_thread.is_finished() {
+            vmm.handle_snapshot_command()?;
+        }
+
+        match vmm.vcpu_thread.join() {
+            Ok(exit_code) => exit_code,
+            Err(e) => {
+                let reason: String = format!("failed to join vCPU thread (error={e:?})");
+                error!("run(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
     }
 
     ///
@@ -327,5 +355,17 @@ impl Vmm {
         };
 
         Box::new(output)
+    }
+
+    fn handle_snapshot_command(&mut self) -> Result<()> {
+        match self.snapshot_rx.try_recv() {
+            Ok(_command) => Ok(()), // TODO: handle commands.
+            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = format!("disconnected from the snapshot command channel");
+                error!("try_receive_from_snapshot_tx(): {reason}");
+                anyhow::bail!(reason);
+            },
+        }
     }
 }
