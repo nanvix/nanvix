@@ -8,6 +8,9 @@ updates:
     labels:
       - "enhancement"
     open-pull-requests-limit: 20
+    pull-request-branch-name:
+      separator: "-"
+      prefix: "enhancement-build-contrib"
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
@@ -16,3 +19,6 @@ updates:
     labels:
       - "enhancement"
     open-pull-requests-limit: 20
+    pull-request-branch-name:
+      separator: "-"
+      prefix: "enhancement-build-contrib"
