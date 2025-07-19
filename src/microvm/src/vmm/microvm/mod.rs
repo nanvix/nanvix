@@ -362,7 +362,7 @@ impl Vmm {
             Ok(_command) => Ok(()), // TODO: handle commands.
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
-                let reason: String = format!("disconnected from the snapshot command channel");
+                let reason: String = ("disconnected from the snapshot command channel").to_string();
                 error!("try_receive_from_snapshot_tx(): {reason}");
                 anyhow::bail!(reason);
             },
