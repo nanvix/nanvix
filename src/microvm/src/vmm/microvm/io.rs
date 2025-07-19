@@ -44,10 +44,10 @@ pub struct IoThread {
     outgoing: VecDeque<Message>,
     /// State in the snapshotting protocol.
     _state: OrchestratorState,
-    /// Snapshot command sender.
-    _snapshot_tx: Sender<SnapshotCommand>,
-    /// `MicroVM paused` receiver. Akin to "ready" in 2PC.
-    _paused_rx: Receiver<()>,
+    /// Command sender to the VMM.
+    _control_input_tx: Sender<ControlCommand>,
+    /// Response receiver from the VMM.
+    _control_output_rx: Receiver<ControlCommandResponse>,
     // TODO: channels to an outside issuer of snapshot commands and to linuxd.
 }
 
@@ -68,11 +68,20 @@ enum OrchestratorState {
 ///
 /// # Description
 ///
-/// Commands relating to snapshots.
+/// Control plane commands.
 /// TODO:
-/// `Start`, `LoadAndRun`, `Resume`, `Pause`, `PauseAndCreate`, `LinuxDaemonFlushed`, `CreateSnapshot`, `LoadSnapshot`.
+/// Add commands relating to snapshots: `StartMicroVM`, `LoadAndRun`, `ResumeMicroVM`, `PauseMicroVM`, `PauseAndCreateSnapshot`, `LinuxDaemonFlushed`, `CreateSnapshot`, `LoadSnapshot`.
 ///
-pub enum SnapshotCommand {}
+pub enum ControlCommand {}
+
+///
+/// # Description
+///
+/// Control plane command responses.
+/// TODO:
+/// Add `MicroVmPaused` response.
+///
+pub enum ControlCommandResponse {}
 
 //==================================================================================================
 // Implementations
@@ -89,8 +98,8 @@ impl IoThread {
     /// - `gateway`: Connection to gateway.
     /// - `microvm_rx`: MicroVM receiver.
     /// - `microvm_tx`: MicroVM sender.
-    /// - `snapshot_tx`: Snapshot command sender.
-    /// - `paused_rx`: `MicroVM paused` receiver.
+    /// - `control_input_tx`: Command sender.
+    /// - `control_output_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -100,12 +109,17 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
-        snapshot_tx: Sender<SnapshotCommand>,
-        paused_rx: Receiver<()>,
+        control_input_tx: Sender<ControlCommand>,
+        control_output_rx: Receiver<ControlCommandResponse>,
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
-            let mut io_thread: IoThread =
-                IoThread::new(gateway, microvm_rx, microvm_tx, snapshot_tx, paused_rx)?;
+            let mut io_thread: IoThread = IoThread::new(
+                gateway,
+                microvm_rx,
+                microvm_tx,
+                control_input_tx,
+                control_output_rx,
+            )?;
             io_thread.run()?;
             Ok(())
         })
@@ -121,7 +135,7 @@ impl IoThread {
     /// - `gateway`: Connection to gateway.
     /// - `microvm_rx`: MicroVM receiver.
     /// - `microvm_tx`: MicroVM sender.
-    /// - `snapshot_tx`: Snapshot command sender.
+    /// - `control_input_tx`: Command sender.
     /// - `paused_rx`: `MicroVM paused` receiver.
     ///
     /// # Returns
@@ -132,8 +146,8 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
-        snapshot_tx: Sender<SnapshotCommand>,
-        paused_rx: Receiver<()>,
+        control_input_tx: Sender<ControlCommand>,
+        control_output_rx: Receiver<ControlCommandResponse>,
     ) -> Result<Self> {
         Ok(Self {
             gateway,
@@ -142,8 +156,8 @@ impl IoThread {
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
             _state: OrchestratorState::PreBoot,
-            _snapshot_tx: snapshot_tx,
-            _paused_rx: paused_rx,
+            _control_input_tx: control_input_tx,
+            _control_output_rx: control_output_rx,
         })
     }
 

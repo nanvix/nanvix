@@ -29,8 +29,9 @@ use crate::{
     Gateway,
     vmm::microvm::{
         io::{
+            ControlCommand,
+            ControlCommandResponse,
             IoThread,
-            SnapshotCommand,
         },
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
@@ -70,8 +71,8 @@ pub struct Vmm {
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
     _microvm: Arc<Mutex<MicroVm>>,
-    snapshot_rx: Receiver<SnapshotCommand>,
-    _paused_tx: Sender<()>,
+    control_input_rx: Receiver<ControlCommand>,
+    _control_output_tx: Sender<ControlCommandResponse>,
 }
 
 //==================================================================================================
@@ -106,12 +107,18 @@ impl Vmm {
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
-        let (snapshot_tx, snapshot_rx) = mpsc::channel::<SnapshotCommand>();
-        let (paused_tx, paused_rx) = mpsc::channel::<()>();
+        let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
+        let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
 
         // Spawn I/O thread.
         let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
-            IoThread::spawn(conn, gateway_rx, gateway_tx.clone(), snapshot_tx, paused_rx)
+            IoThread::spawn(
+                conn,
+                gateway_rx,
+                gateway_tx.clone(),
+                control_input_tx,
+                control_output_rx,
+            )
         });
 
         // Input function used for emulating I/O port reads.
@@ -202,13 +209,13 @@ impl Vmm {
             _memory_thread: memory_thread,
             vcpu_thread,
             _microvm: microvm,
-            snapshot_rx,
-            _paused_tx: paused_tx,
+            control_input_rx,
+            _control_output_tx: control_output_tx,
         };
 
         if vmm.io_thread.is_some() {
             while !vmm.vcpu_thread.is_finished() {
-                vmm.handle_snapshot_command()?;
+                vmm.handle_command()?;
             }
         }
 
@@ -359,13 +366,14 @@ impl Vmm {
         Box::new(output)
     }
 
-    fn handle_snapshot_command(&mut self) -> Result<()> {
-        match self.snapshot_rx.try_recv() {
+    fn handle_command(&mut self) -> Result<()> {
+        match self.control_input_rx.try_recv() {
             Ok(_command) => Ok(()), // TODO: handle commands.
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
-                let reason: String = ("disconnected from the snapshot command channel").to_string();
-                error!("try_receive_from_snapshot_tx(): {reason}");
+                let reason: String =
+                    ("disconnected from the input control command channel").to_string();
+                error!("handle_command(): {reason}");
                 anyhow::bail!(reason);
             },
         }
