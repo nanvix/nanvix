@@ -43,11 +43,11 @@ pub struct IoThread {
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
     /// State in the snapshotting protocol.
-    _state: OrchestratorState,
+    state: OrchestratorState,
     /// Command sender to the VMM.
-    _control_input_tx: Sender<ControlCommand>,
+    control_input_tx: Sender<ControlCommand>,
     /// Response receiver from the VMM.
-    _control_output_rx: Receiver<ControlCommandResponse>,
+    control_output_rx: Receiver<ControlCommandResponse>,
     // TODO: channels to an outside issuer of snapshot commands and to linuxd.
 }
 
@@ -59,10 +59,14 @@ pub struct IoThread {
 /// # Description
 ///
 /// States relating to snapshots functionality. Snapshots may be loaded at PreBoot, and created at Paused.
-/// TODO: add `Running`, `Pausing`, `PausingAndOutputFlushed`, and `Paused` states.
 ///
+#[derive(PartialEq)]
 enum OrchestratorState {
     PreBoot,
+    Running,
+    Pausing,
+    PausingAndOutputFlushed,
+    Paused,
 }
 
 ///
@@ -70,18 +74,26 @@ enum OrchestratorState {
 ///
 /// Control plane commands.
 /// TODO:
-/// Add commands relating to snapshots: `StartMicroVM`, `LoadAndRun`, `ResumeMicroVM`, `PauseMicroVM`, `PauseAndCreateSnapshot`, `LinuxDaemonFlushed`, `CreateSnapshot`, `LoadSnapshot`.
+/// Add commands relating to snapshots: `StartMicroVM`, `LoadAndRun`, `PauseAndCreateSnapshot`, `LinuxDaemonFlushed`, `LoadSnapshot`.
 ///
-pub enum ControlCommand {}
+#[derive(PartialEq)]
+pub enum ControlCommand {
+    PauseMicroVm,
+    CreateSnapshot,
+    ResumeMicroVm,
+}
 
 ///
 /// # Description
 ///
 /// Control plane command responses.
-/// TODO:
-/// Add `MicroVmPaused` response.
 ///
-pub enum ControlCommandResponse {}
+#[derive(PartialEq)]
+pub enum ControlCommandResponse {
+    Empty, // NOTE: `Empty` is probably a bad implementation. There must be a better way.
+    MicroVmPaused,
+    SnapshotCreated,
+}
 
 //==================================================================================================
 // Implementations
@@ -136,7 +148,7 @@ impl IoThread {
     /// - `microvm_rx`: MicroVM receiver.
     /// - `microvm_tx`: MicroVM sender.
     /// - `control_input_tx`: Command sender.
-    /// - `paused_rx`: `MicroVM paused` receiver.
+    /// - `control_output_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -155,36 +167,85 @@ impl IoThread {
             microvm_tx,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            _state: OrchestratorState::PreBoot,
-            _control_input_tx: control_input_tx,
-            _control_output_rx: control_output_rx,
+            state: OrchestratorState::PreBoot,
+            control_input_tx,
+            control_output_rx,
         })
     }
 
     ///
     /// # Description
     ///
-    /// Runs the I/O thread.
+    /// Runs the I/O thread according to the state in the snapshotting protocol state machine.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn run(&mut self) -> Result<()> {
-        let mut round: usize = 0;
-
-        // Cycle through actions to avoid starvation.
         loop {
-            if round % 4 == 0 {
-                self.try_receive_from_microvm()?;
-            } else if round % 4 == 1 {
-                self.try_send_to_gateway()?;
-            } else if round % 4 == 2 {
-                self.try_receive_from_gateway()?;
-            } else {
-                self.try_send_to_microvm()?;
+            match self.state {
+                // In `PreBoot` state, figure out whether to load a snapshot or run a fresh run.
+                OrchestratorState::PreBoot => {
+                    self.try_receive_from_snapshot_client()?;
+                },
+                // In `Running` state, execute the application and check if it should pause.
+                OrchestratorState::Running => {
+                    self.try_receive_from_microvm()?;
+                    self.try_send_to_gateway()?;
+                    self.try_receive_from_gateway()?;
+                    self.try_send_to_microvm()?;
+                    self.try_receive_from_snapshot_client()?;
+                },
+                // In `Pausing` state, pause the MicroVM and flush all outstanding output.
+                // Flushing the output means it doesn't need to be saved in snapshots.
+                OrchestratorState::Pausing => {
+                    self.control_input_tx.send(ControlCommand::PauseMicroVm)?;
+                    while self.try_receive_from_control_output()?
+                        != ControlCommandResponse::MicroVmPaused
+                    {
+                        self.flush_microvm_output()?;
+                    }
+                    self.flush_microvm_output()?;
+                    // TODO:
+                    // `send` to linuxd `output flushed` so it can advance the snapshotting protocol.
+                    self.state = OrchestratorState::PausingAndOutputFlushed;
+                },
+                // In the `PausingAndOutputFlushed` state, wait for the response from the Linux Daemon,
+                // ensuring any outstanding messages are either buffered in `incoming`, or are in `linuxd`.
+                OrchestratorState::PausingAndOutputFlushed => {
+                    // TODO:
+                    // Try to receive `LinuxDaemonFlushed` from linuxd to advance the snapshotting protocol.
+                    // Also try to receive data from linuxd while the `LinuxDaemonFlushed` response doesn't arrive.
+                    // Should be something like the while-loop from the `Pausing` state.
+
+                    // Flush the incoming messages into the buffer.
+                    // NOTE: this match-statement is nearly identical to `try_receive_from_gateway()`.
+                    // It could be substituted if that method returned a Result<bool> instead.
+                    loop {
+                        match self.gateway.try_receive() {
+                            Ok(message) => self.incoming.push_back(message),
+                            Err(e) => {
+                                if e.kind() == ErrorKind::WouldBlock {
+                                    break;
+                                } else {
+                                    let reason: String = format!(
+                                        "failed to receive message from the gateway (error={e:?})"
+                                    );
+                                    error!("try_receive_from_gateway(): {reason}");
+                                    anyhow::bail!(reason)
+                                }
+                            },
+                        }
+                    }
+                    self.state = OrchestratorState::Paused;
+                },
+                // In the `Paused` state, wait for commands to create a snapshot, resume execution, or something else (migration, kill VM).
+                OrchestratorState::Paused => {
+                    // NOTE: make this a blocking call instead (another method without `try` in the name).
+                    self.try_receive_from_snapshot_client()?;
+                },
             }
-            round += 1;
         }
     }
 
@@ -306,6 +367,103 @@ impl IoThread {
                 Ok(())
             },
             None => Ok(()),
+        }
+    }
+
+    fn try_receive_from_snapshot_client(&mut self) -> Result<()> {
+        // Placeholder match-statement to simulate a client
+        match self.state {
+            // TODO:
+            // Receive from a client whether to load a snapshot or run a fresh binary.
+            // Loading transitions to `Paused`, running transitions to `Running`.
+            // A `load` command with a `run` flag transitions from `Paused` to `Running` automatically.
+            OrchestratorState::PreBoot => self.state = OrchestratorState::Running,
+            // TODO: transition to `Pausing` if a `Pause` command arrives.
+            // If the `Pause` command includes a `create snapshot` flag,
+            // then store a boolean to avoid receiving an extra command in the `Paused` state.
+            OrchestratorState::Running => self.state = OrchestratorState::Pausing,
+            OrchestratorState::Pausing => {
+                unreachable!("This method is not called while in `Pausing` state.")
+            },
+            OrchestratorState::PausingAndOutputFlushed => {
+                unreachable!("This method is not called while in `PausingAndOutputFlushed` state.")
+            },
+            // TODO:
+            // Create snapshot OR transition to `Running`. Currently does both to check the codepaths.
+            OrchestratorState::Paused => {
+                self.control_input_tx.send(ControlCommand::CreateSnapshot)?;
+                // NOTE: make this a blocking call with no loop to avoid polling.
+                loop {
+                    if self.try_receive_from_control_output()?
+                        == ControlCommandResponse::SnapshotCreated
+                    {
+                        break;
+                    }
+                }
+                self.control_input_tx.send(ControlCommand::ResumeMicroVm)?;
+                // NOTE: there's no need for a `Resumed` response.
+                self.state = OrchestratorState::Running;
+            },
+        }
+        Ok(())
+    }
+
+    /// # Description
+    ///
+    /// Attempts to load a snapshot of the MicroVM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn flush_microvm_output(&mut self) -> Result<()> {
+        loop {
+            // NOTE: this match-statement is nearly identical to `try_receive_from_microvm()`.
+            // It could be substituted if that method returned a Result<bool> instead.
+            match self.microvm_rx.try_recv() {
+                Ok(mut message) => {
+                    profiler::timestamp_message!(
+                        &mut message.payload,
+                        std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                    );
+                    self.outgoing.push_back(message)
+                },
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    let reason: String = "the microvm has disconnected".to_string();
+                    // When the guest finishes , the vCPU thread will disconnect from this thread. This
+                    // situation is normal and should not create an error log.
+                    debug!("try_receive_from_microvm(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+        }
+        while !self.outgoing.is_empty() {
+            self.try_send_to_gateway()?;
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to receive a response from the VMM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the received response is returned. Otherwise, an error is returned.
+    ///
+    fn try_receive_from_control_output(&mut self) -> Result<ControlCommandResponse> {
+        match self.control_output_rx.try_recv() {
+            Ok(response) => Ok(response),
+            Err(TryRecvError::Empty) => Ok(ControlCommandResponse::Empty),
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = "the vmm has disconnected".to_string();
+                // When the guest finishes , the vCPU thread will disconnect from this thread. This
+                // situation is normal and should not create an error log.
+                anyhow::bail!(reason)
+            },
         }
     }
 }

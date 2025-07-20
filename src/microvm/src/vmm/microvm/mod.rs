@@ -72,7 +72,7 @@ pub struct Vmm {
     vcpu_thread: JoinHandle<Result<u16>>,
     _microvm: Arc<Mutex<MicroVm>>,
     control_input_rx: Receiver<ControlCommand>,
-    _control_output_tx: Sender<ControlCommandResponse>,
+    control_output_tx: Sender<ControlCommandResponse>,
 }
 
 //==================================================================================================
@@ -210,7 +210,7 @@ impl Vmm {
             vcpu_thread,
             _microvm: microvm,
             control_input_rx,
-            _control_output_tx: control_output_tx,
+            control_output_tx,
         };
 
         if vmm.io_thread.is_some() {
@@ -368,7 +368,22 @@ impl Vmm {
 
     fn handle_command(&mut self) -> Result<()> {
         match self.control_input_rx.try_recv() {
-            Ok(_command) => Ok(()), // TODO: handle commands.
+            Ok(command) => {
+                // TODO: handle commands
+                match command {
+                    ControlCommand::PauseMicroVm => {
+                        self.control_output_tx
+                            .send(ControlCommandResponse::MicroVmPaused)?;
+                        Ok(())
+                    },
+                    ControlCommand::CreateSnapshot => {
+                        self.control_output_tx
+                            .send(ControlCommandResponse::SnapshotCreated)?;
+                        Ok(())
+                    },
+                    ControlCommand::ResumeMicroVm => Ok(()),
+                }
+            },
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {
                 let reason: String =
