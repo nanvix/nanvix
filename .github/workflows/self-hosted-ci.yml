@@ -4,14 +4,18 @@
 name: "Nanvix CI/CD (Self-Hosted)"
 
 on:
+  pull_request:
+    types:
+      - 'opened'
+      - 'synchronize'
+      - 'reopened'
+      - 'ready_for_review'
+    branches:
+      - 'dev'
+
   push:
     branches:
-      - 'enhancement-*'
-      - 'feature-*'
-      - 'bugfix-*'
       - 'dev'
-      - 'dependabot-*'
-      - 'dependabot/*'
 
 # Cancel previous running actions for the same PR
 concurrency:
@@ -26,6 +30,23 @@ jobs:
     name: "Nanvix CI/CD (self-hosted)"
     runs-on: [self-hosted]
     timeout-minutes: 240
+
+    # Only run the CI if it is a push to 'dev' (enforced above) or, if the
+    # event trigger is a PR, we must make sure that: (i) it is not draft,
+    # and (ii) the source branch matches one of the accepted source branches.
+    if: |
+      github.event_name != 'pull_request' ||
+      (
+        !github.event.pull_request.draft &&
+        (
+          startsWith(github.head_ref, 'enhancement-') ||
+          startsWith(github.head_ref, 'feature-') ||
+          startsWith(github.head_ref, 'bugfix-') ||
+          startsWith(github.head_ref, 'dependabot-') ||
+          startsWith(github.head_ref, 'dependabot/')
+        )
+      )
+
     steps:
     - uses: actions/checkout@v4
 
