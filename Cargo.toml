@@ -62,7 +62,7 @@ cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
-flexi_logger = "0.30.2"
+flexi_logger = "0.31.2"
 goblin = { version = "0.10.0", default-features = false }
 indicatif = "0.18.0"
 http-body-util = "0.1.3"
