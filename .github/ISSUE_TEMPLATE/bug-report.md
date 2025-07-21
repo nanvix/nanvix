@@ -2,7 +2,7 @@
 name: Bug Report
 about: Report a bug in this project.
 title: '[module_name] Title for the Bug'
-labels: bug
+type: bug
 assignees: ''
 
 ---
@@ -29,4 +29,4 @@ A clear and detailed description of what you expected to happen.
 
 ## Related Issues
 
-Link related issues here.
+If applicable, link related issues here.
