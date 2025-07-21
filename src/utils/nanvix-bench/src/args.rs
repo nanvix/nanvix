@@ -88,9 +88,9 @@ impl Args {
                     }
                     iterations = args[i].parse::<usize>()?;
                 },
-                _ => {
+                arg => {
                     error!("{}", Self::usage());
-                    return Err(anyhow::anyhow!("invalid argument"));
+                    return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
             }
 
