@@ -281,20 +281,27 @@ impl Benchmark {
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            // Start the clock
             let start = Instant::now();
 
-            // The user VM will run to completion, so after starting we just
-            // wait for the child process to die.
-            let mut user_vm = self.start_user_vm(None)?;
-            user_vm.wait()?;
+            match Vmm::spawn(
+                config::kernel::MEMORY_SIZE,
+                format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
+                Some(self.flavour.get_program()),
+                None,
+                None,
+                None,
+            )? {
+                e if e != 0 => {
+                    error!("error running VMM, exited with status: {e}");
+                    return Err(anyhow::anyhow!("VMM error"));
+                },
+                _ => {
+                    debug!("VMM: done running");
+                },
+            }
 
             latencies.push(start.elapsed().as_micros());
-
             pb.inc(1);
-
-            // Need to give some time to clean-up
-            thread::sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION));
         }
 
         pb.finish();
