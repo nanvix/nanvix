@@ -30,6 +30,9 @@ jobs:
     name: "Nanvix CI/CD (self-hosted)"
     runs-on: [self-hosted]
     timeout-minutes: 240
+    strategy:
+      matrix:
+        build-type: [debug, release]
 
     # Only run the CI if it is a push to 'dev' (enforced above) or, if the
     # event trigger is a PR, we must make sure that: (i) it is not draft,
@@ -50,40 +53,23 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Debug
-    - name: "Lint (debug)"
+    - name: "Lint"
       uses: ./.github/actions/lint
       with:
-        release: 'debug'
+        release: '${{ matrix.build-type }}'
         log-level: 'trace'
-    - name: "Build (debug)"
+    - name: "Build"
       uses: ./.github/actions/build
       with:
-        release: 'debug'
+        release: '${{ matrix.build-type }}'
         log-level: 'trace'
-    - name: "Test (debug)"
+    - name: "Test"
       uses: ./.github/actions/test
       with:
-        release: 'debug'
+        release: '${{ matrix.build-type }}'
         log-level: 'trace'
 
-    # Release
-    - name: "Lint (release)"
-      uses: ./.github/actions/lint
-      with:
-        release: 'release'
-        log-level: 'trace'
-    - name: "Build (release)"
-      uses: ./.github/actions/build
-      with:
-        release: 'release'
-        log-level: 'trace'
-    - name: "Test (release)"
-      uses: ./.github/actions/test
-      with:
-        release: 'release'
-        log-level: 'trace'
-
-    # Benchmark
-    - name: "Benchmark (release)"
+    # Benchmark (only for release builds)
+    - name: "Benchmark"
+      if: matrix.build-type == 'release'
       uses: ./.github/actions/benchmark
