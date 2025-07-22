@@ -195,17 +195,18 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `incoming` queue, and `true` is returned.
+    /// Otherwise, if it would block, `false` is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_gateway(&mut self) -> Result<()> {
+    fn try_receive_from_gateway(&mut self) -> Result<bool> {
         match self.gateway.try_receive() {
             Ok(message) => {
                 self.incoming.push_back(message);
-                Ok(())
+                Ok(true)
             },
             Err(e) => {
                 if e.kind() == ErrorKind::WouldBlock {
-                    Ok(())
+                    Ok(false)
                 } else {
                     let reason: String =
                         format!("failed to receive message from the gateway (error={e:?})");
@@ -223,9 +224,10 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `outgoing` queue, and `true`is returned.
+    /// Otherwise, if the channel is empty, `false` is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_microvm(&mut self) -> Result<()> {
+    fn try_receive_from_microvm(&mut self) -> Result<bool> {
         match self.microvm_rx.try_recv() {
             Ok(mut message) => {
                 profiler::timestamp_message!(
@@ -234,9 +236,9 @@ impl IoThread {
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
                 self.outgoing.push_back(message);
-                Ok(())
+                Ok(true)
             },
-            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Empty) => Ok(false),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
                 // When the guest finishes , the vCPU thread will disconnect from this thread. This
