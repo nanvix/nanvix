@@ -41,6 +41,7 @@ RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
         -linuxd-addr ${LINUXD_SOCKADDR} \
         -sandbox-addr ${SANDBOX_SOCKADDR} \
         -console-file ${CONSOLE_FILE_NAME} \
+        -tmp-dir ${NANVIX_HOME} \
         -keep-alive 0 \
         1> ${NANVIXD_STDOUT_FILE_NAME} \
         2> ${NANVIXD_STDERR_FILE_NAME} &

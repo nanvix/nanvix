@@ -73,6 +73,7 @@ pub async fn main() -> Result<()> {
                         debug!("accepted connection from {sockaddr:?}");
                         let linuxd_sockaddr: String = args.linuxd_sockaddr().to_string();
                         let sandbox_sockaddr: String = args.sandbox_sockaddr().to_string();
+                        let tmp_directory: String = args.tmp_directory().to_string();
                         let console_file: String = args.nanvix_console().to_string();
                         let requestid: Arc<AtomicUsize> = requestid.clone();
                         let sandboxe_cache: SandboxCache = sandbox_cache.clone();
@@ -80,7 +81,7 @@ pub async fn main() -> Result<()> {
                             let requestid: usize = requestid
                                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             let client =
-                                HttpClient::new(sandboxe_cache, requestid, linuxd_sockaddr, sandbox_sockaddr, console_file);
+                                HttpClient::new(sandboxe_cache, requestid, linuxd_sockaddr, sandbox_sockaddr, tmp_directory, console_file);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                 error!("failed to serve connection (requestid={requestid:?}, error={e:?})");
