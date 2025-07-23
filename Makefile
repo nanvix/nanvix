@@ -243,8 +243,6 @@ export GRUB_CMD := grub-mkrescue
 #===================================================================================================
 
 export NANVIXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:8181,127.0.0.1:8282)
-export LINUXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:7171,127.0.0.1:7272)
-export SANDBOX_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:6161,127.0.0.1:6262)
 
 #===================================================================================================
 # Top-Level Targets
@@ -254,7 +252,7 @@ ALL_GUEST_STATIC_LIBS := posix
 ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog sys
 
 ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd echo-rust-server-nostd echo-single-rust-nostd noop-rust-nostd
+ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := testd file-rust linux-app
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
@@ -355,28 +353,24 @@ run-unit-tests: all \
 
 run-nanvixd-tests: | \
 	init-repo \
+	test-dlfcn-c \
 	test-echo-c \
 	test-echo-cpp \
 	test-echo-rust-nostd \
 	test-echo-wasm-js \
 	test-echo-wasm-rust \
+	test-file-c \
+	test-file-rust \
+	test-hello-c \
+	test-hello-cpp \
 	test-hello-js \
-	test-hello-wasm
-
-# TODO: enable wasm tests, enable thread test.
-run-linuxd-tests: | \
-	init-repo \
-	test-linuxd-hello-c \
-	test-linuxd-hello-cpp \
-	test-linuxd-linux-app \
-	test-linuxd-dlfcn-c \
-	test-linuxd-file-rust \
-	test-linuxd-file-c \
-	test-linuxd-thread-c \
-	test-linuxd-memory-c \
-	test-linuxd-misc-c \
-	test-linuxd-network-c \
-	test-linuxd-python3
+	test-hello-wasm \
+	test-linux-app \
+	test-memory-c \
+	test-misc-c \
+	test-network-c \
+	test-python3 \
+	test-thread-c
 
 #===================================================================================================
 # Build Rules for Optional Software
@@ -829,37 +823,45 @@ clippy-microvm:
 # Rules for Running System Level Tests Using Nanvix Daemon
 #===================================================================================================
 
+# List of supported functions in hyperlight.
+HYPERLIGHT_WHITELIST := echo-c echo-cpp echo-rust-nostd hello-c hello-cpp
+
 comma:=,
 
 define TEST_RULE
-test-$(1): all
+test-$(2): all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@echo "Running test $(1)..."
+	@echo "Running test $(2)..."
 ifeq ($(MACHINE),hyperlight)
-	if [ `stat -c%s "bin/$(1).elf"` -gt 16777216 ]; then \
-		echo "\033[31mWarning: bin/$(1).elf exceeds 16 MB, skipping test.\033[0m"; \
+	@if echo "$(HYPERLIGHT_WHITELIST)" | grep -wq "$(2)"; then \
+		if [ `stat -c%s "$(1)/$(2)$(3)"` -gt 16777216 ]; then \
+			echo "\033[31mWarning: $(1)/$(2)$(3) exceeds 16 MB, skipping test.\033[0m"; \
+		else \
+			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT); \
+		fi; \
 	else \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3) $(TIMEOUT); \
+		echo "\033[31mWarning: Skipping $(2) on hyperlight (not supported).\033[0m"; \
 	fi
 else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/$(1).elf $(2) $(3) $(TIMEOUT)
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT)
 endif
 endif
 endef
 
-$(eval $(call TEST_RULE,echo-c,'["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,echo-cpp,'["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,echo-rust-nostd,'["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,hello-c,'[]','Hello$(comma) world from C!'))
-$(eval $(call TEST_RULE,hello-cpp,'[]','Hello$(comma) world from C++!'))
-$(eval $(call TEST_RULE,linux-app,'[]','ok'))
-$(eval $(call TEST_RULE,dlfcn-c,'[]','ok'))
-$(eval $(call TEST_RULE,file-c,'[]','ok'))
-$(eval $(call TEST_RULE,file-rust,'[]','ok'))
-$(eval $(call TEST_RULE,thread-c,'[]','ok'))
-$(eval $(call TEST_RULE,network-c,'[]','ok'))
-$(eval $(call TEST_RULE,misc-c,'[]','ok'))
-$(eval $(call TEST_RULE,memory-c,'[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'','["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'','["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','[]','Hello$(comma) world from C!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','[]','Hello$(comma) world from C++!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok'))
+$(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
 
 define WASM_TEST_RULE
 test-$(1): all
@@ -870,40 +872,16 @@ ifeq ($(MACHINE),hyperlight)
 	if [ `stat -c%s "bin/wasmd.elf"` -gt 16777216 ]; then \
 		echo "\033[31mWarning: bin/wasmd.elf exceeds 16 MB, skipping test!\033[0m"; \
 	else \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3) $(TIMEOUT); \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT); \
 	fi
 else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(LINUXD_SOCKADDR) $(SANDBOX_SOCKADDR) bin/wasmd.elf $(2) $(3) $(TIMEOUT)
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT)
 endif
 endif
 endif
 endef
 
-$(eval $(call WASM_TEST_RULE,echo-wasm-js,'["hello world!"]','hello world!'))
-$(eval $(call WASM_TEST_RULE,echo-wasm-rust,'["hello world!"]','hello world!'))
-$(eval $(call WASM_TEST_RULE,hello-js,'[]','Hello$(comma) world from JavaScript!'))
-$(eval $(call WASM_TEST_RULE,hello-wasm,'[]','Hello$(comma) world!'))
-
-#===================================================================================================
-# Rules for Running System Level Tests Using Linux Daemon
-#===================================================================================================
-
-define LINUXD_TEST_RULE
-test-linuxd-$(2): all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	@echo "Running Linuxd test $(2)..."
-	$(SCRIPTS_DIR)/test-linuxd.sh $(LINUXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(7) $(TIMEOUT)
-endif
-endef
-
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','','Hello$(comma) world from C!',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','','Hello$(comma) world from C++!,0'))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','','ok',4))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','','ok',0))
-$(eval $(call LINUXD_TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!',0))
+$(eval $(call WASM_TEST_RULE,echo-wasm-js,'','["hello world!"]','hello world!'))
+$(eval $(call WASM_TEST_RULE,echo-wasm-rust,'','["hello world!"]','hello world!'))
+$(eval $(call WASM_TEST_RULE,hello-js,'','[]','Hello$(comma) world from JavaScript!'))
+$(eval $(call WASM_TEST_RULE,hello-wasm,'','[]','Hello$(comma) world!'))
