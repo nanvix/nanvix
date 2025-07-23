@@ -22,23 +22,19 @@ static char buffer[MAX_REQUEST_SIZE];
 
 int main()
 {
-    size_t n = 0;
-
     while (true) {
-        std::cin.read(&buffer[n], MAX_REQUEST_SIZE - n);
+        std::cin.read(&buffer[0], MAX_REQUEST_SIZE);
         std::streamsize nread = std::cin.gcount();
         if (nread < 0) {
             break; // Error encountered.
         } else if (nread == 0) {
             break; // End of file reached.
-        } else {
-            n += nread; // Read some bytes.
         }
-    }
 
-    if (n > 0) {
-        std::cout.write(buffer, n);
-        std::cout.flush();
+        if (nread > 0) {
+            std::cout.write(buffer, nread);
+            std::cout.flush();
+        }
     }
 
     return 0;
