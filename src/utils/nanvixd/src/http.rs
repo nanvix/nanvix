@@ -63,6 +63,7 @@ pub struct HttpClient {
     requestid: usize,
     linuxd_sockaddr: String,
     sandbox_sockaddr: String,
+    tmp_directory: String,
     console_file: String,
 }
 
@@ -72,6 +73,7 @@ impl HttpClient {
         requestid: usize,
         linuxd_sockaddr: String,
         sandbox_sockaddr: String,
+        tmp_directory: String,
         console_file: String,
     ) -> Self {
         Self {
@@ -79,6 +81,7 @@ impl HttpClient {
             requestid,
             linuxd_sockaddr,
             sandbox_sockaddr,
+            tmp_directory,
             console_file,
         }
     }
@@ -119,13 +122,14 @@ impl HttpClient {
         request: MessageJson,
         requestid: usize,
         linuxd_sockaddr: String,
+        tmp_directory: String,
         console_file: String,
         sandbox_sockaddr: String,
     ) -> Result<Vec<u8>> {
         let linuxd_sockaddr: String =
-            config::linuxd_sockaddr_builder(&linuxd_sockaddr, request.clientid, requestid);
+            config::linuxd_sockaddr_builder(&tmp_directory, &linuxd_sockaddr, request.clientid, requestid);
         let sandbox_sockaddr: String =
-            config::sandbox_sockaddr_builder(&sandbox_sockaddr, request.clientid, requestid);
+            config::sandbox_sockaddr_builder(&tmp_directory, &sandbox_sockaddr, request.clientid, requestid);
 
         let tag: SandboxTag = SandboxTag::new(request.clientid, &request.program);
         let config: SandboxConfig =
@@ -223,6 +227,7 @@ impl Service<Request<Incoming>> for HttpClient {
         let requestid: usize = self.requestid;
         let sandbox_sockaddr: String = self.sandbox_sockaddr.clone();
         let linuxd_sockaddr: String = self.linuxd_sockaddr.clone();
+        let tmp_directory: String = self.tmp_directory.clone();
         let nanvix_console: String = self.console_file.clone();
         let sandboxes: SandboxCache = self.sandboxes.clone();
         let future = async move {
@@ -266,6 +271,7 @@ impl Service<Request<Incoming>> for HttpClient {
                 request,
                 requestid,
                 linuxd_sockaddr,
+                tmp_directory,
                 nanvix_console,
                 sandbox_sockaddr,
             )

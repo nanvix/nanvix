@@ -17,6 +17,7 @@ pub struct Args {
     http_sockaddr: String,
     linuxd_sockaddr: String,
     sandbox_sockaddr: String,
+    tmp_directory: String,
     console_file: String,
     keep_alive_timeout: Duration,
 }
@@ -30,6 +31,7 @@ impl Args {
     const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     const OPT_LINUXD_SOCKADDR: &'static str = "-linuxd-addr";
     const OPT_SANDBOX_SOCKADDR: &'static str = "-sandbox-addr";
+    const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     const OPT_CONSOLE_FILE: &'static str = "-console-file";
     const OPT_KEEP_ALIVE_TIMEOUT: &'static str = "-keep-alive";
 
@@ -37,6 +39,7 @@ impl Args {
         let mut http_sockaddr: String = String::new();
         let mut linuxd_sockaddr: String = config::DEFAULT_LINUXD_SOCKADDR.to_string();
         let mut sandbox_sockaddr: String = config::DEFAULT_SANDBOX_SOCKADDR.to_string();
+        let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
         let mut console_file: String = config::DEFAULT_CONSOLE_FILE.to_string();
         let mut keep_alive_timeout: Duration =
             Duration::from_secs(config::DEFAULT_KEEP_ALIVE_TIMEOUT);
@@ -60,6 +63,10 @@ impl Args {
                     i += 1;
                     sandbox_sockaddr = args[i].clone();
                 },
+                Self::OPT_TMP_DIRECTORY => {
+                    i += 1;
+                    tmp_directory = args[i].clone();
+                },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
                     console_file = args[i].clone();
@@ -80,6 +87,7 @@ impl Args {
             http_sockaddr,
             linuxd_sockaddr,
             sandbox_sockaddr,
+            tmp_directory,
             console_file,
             keep_alive_timeout,
         })
@@ -87,13 +95,15 @@ impl Args {
 
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <sockaddr> {} <sockaddr> {} <sockaddr> {} <file> {} <duration>",
+            "Usage: {} {} <sockaddr> {} <sockaddr> {} <sockaddr> {} <file> {} <duration> \
+            [{} <tmp_dir>]",
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_LINUXD_SOCKADDR,
             Self::OPT_SANDBOX_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
-            Self::OPT_KEEP_ALIVE_TIMEOUT
+            Self::OPT_KEEP_ALIVE_TIMEOUT,
+            Self::OPT_TMP_DIRECTORY
         );
     }
 
@@ -107,6 +117,10 @@ impl Args {
 
     pub fn sandbox_sockaddr(&self) -> &str {
         &self.sandbox_sockaddr
+    }
+
+    pub fn tmp_directory(&self) -> &str {
+        &self.tmp_directory
     }
 
     pub fn nanvix_console(&self) -> &str {
