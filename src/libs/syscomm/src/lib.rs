@@ -19,7 +19,6 @@ use ::std::{
         Read,
         Write,
     },
-    mem,
     net::{
         TcpListener,
         TcpStream,
@@ -192,91 +191,6 @@ impl SocketStream {
                 Err(error) => Err(SocketError { error }),
             },
         }
-    }
-
-    /// Read one message from the gateway comprising a header with a size
-    /// (u32 LE) and then the body with as many bytes as indicated in the header.
-    pub fn read_message_from_gateway(&mut self) -> Result<Vec<u8>, ::std::io::Error> {
-        let mut buffer = Vec::new();
-        let mut tmp = [0u8; config::syscomm::GW_READ_BUFFER_LEN];
-        let u32_size = mem::size_of::<u32>();
-        let mut message_len: Option<usize> = None;
-
-        // Read available data.
-        loop {
-            match self.read(&mut tmp) {
-                Ok(0) => {
-                    // Connection closed.
-                    if buffer.is_empty() {
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "Connection closed",
-                        ));
-                    } else {
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "Partial message",
-                        ));
-                    }
-                },
-                Ok(n) => {
-                    buffer.extend_from_slice(&tmp[..n]);
-
-                    // Check if we have enough to parse the length.
-                    if message_len.is_none() && buffer.len() >= u32_size {
-                        if buffer.len() > u32_size + config::syscomm::MAX_GW_MESSAGE_LEN {
-                            // Guard against the buffer length growing too much.
-                            return Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "Message too large",
-                            ));
-                        }
-
-                        let len =
-                            u32::from_le_bytes(buffer[..u32_size].try_into().unwrap()) as usize;
-                        message_len = Some(len);
-                    }
-
-                    // Check if we are done reading.
-                    if let Some(msg_len) = message_len {
-                        if buffer.len() >= u32_size + msg_len {
-                            // Full message received.
-                            let message = buffer[u32_size..u32_size + msg_len].to_vec();
-                            return Ok(message);
-                        }
-                    }
-
-                    // Otherwise, continue reading.
-                },
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // Non-blocking mode: no data yet, return error or retry.
-                    return Err(e);
-                },
-                Err(e) => return Err(e),
-            }
-        }
-    }
-
-    /// Send a message to the gateway by prepending the buffer size (u32 LE)
-    /// to the buffer body.
-    pub fn send_message_to_gateway(&mut self, buffer: &[u8]) -> Result<(), SocketError> {
-        let mut out_buffer = Vec::with_capacity(mem::size_of::<u32>() + buffer.len());
-        if buffer.len() > u32::MAX as usize {
-            return Err(SocketError::new(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Buffer size exceeds u32::MAX",
-            )));
-        }
-        let buffer_len: u32 = buffer
-            .len()
-            .try_into()
-            .expect("Buffer size already validated");
-
-        out_buffer.extend_from_slice(&buffer_len.to_le_bytes());
-        out_buffer.extend_from_slice(buffer);
-
-        self.write_all(&out_buffer)?;
-        Ok(())
     }
 }
 
