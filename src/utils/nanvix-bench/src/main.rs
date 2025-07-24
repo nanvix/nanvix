@@ -47,6 +47,7 @@ use microvm::{
     Gateway,
     Vmm,
 };
+use mio::net::UnixStream;
 use nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use reqwest::header::{
     CONTENT_TYPE,
@@ -61,7 +62,6 @@ use std::{
     },
     mem,
     net::TcpStream,
-    os::unix::net::UnixStream,
     process::{
         self,
         Child,
@@ -223,7 +223,15 @@ impl Benchmark {
         // deployment time.
         let gateway_stream: SocketStream = loop {
             match SocketStream::connect(SocketType::Unix, response.gateway_sockaddr.clone()) {
-                Ok(stream) => break stream,
+                Ok(mut stream) => {
+                    debug!(
+                        "connected gateway socket to linuxd (addr={})",
+                        response.gateway_sockaddr.clone()
+                    );
+                    stream.set_blocking()?;
+
+                    break stream;
+                },
                 Err(_) => continue,
             };
         };
@@ -488,14 +496,13 @@ impl Benchmark {
         // Spawn the VMM in a separate thread.
         let program = self.flavour.get_program();
         let vmm_handle = std::thread::spawn(move || -> Result<()> {
-            vmm_stream.set_nonblocking(true)?;
             match Vmm::spawn(
                 config::kernel::MEMORY_SIZE,
                 format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
                 Some(program),
                 None,
                 Some("/dev/null".to_string()),
-                Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
+                Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream, None))),
             )? {
                 e if e != 0 => {
                     error!("error running VMM, exited with status: {e}");
@@ -757,7 +764,10 @@ async fn main() -> Result<()> {
     };
     match result {
         Ok(_) => {},
-        Err(e) => error!("error running benchmark: {e:?}"),
+        Err(e) => {
+            error!("error running benchmark: {e:?}");
+            benchmark.cleanup()
+        },
     }
 
     Ok(())
