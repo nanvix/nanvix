@@ -159,12 +159,6 @@ impl LinuxDaemon {
         uvm_stream: SocketStream,
         gateway_stream: Option<SocketStream>,
     ) -> Result<Self, Error> {
-        if let Err(error) = uvm_stream.set_nonblocking(true) {
-            let reason: &str = "failed to set UVM stream to non-blocking mode";
-            error!("init(): {reason:?} (error={error:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
             uvm_stream: Arc::new(Mutex::new(uvm_stream)),
