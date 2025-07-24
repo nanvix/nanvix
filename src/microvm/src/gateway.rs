@@ -61,7 +61,7 @@ impl Gateway {
     pub fn try_send(&mut self, message: Message) -> Result<(), SocketError> {
         let bytes: [u8; mem::size_of::<Message>()] = message.to_bytes();
         match self.stream.write_all(&bytes) {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(e) => {
                 // Print error messages only if it is not a WouldBlock error to avoid spamming the logs.
                 if e.kind() != ErrorKind::WouldBlock {
@@ -85,7 +85,7 @@ impl Gateway {
     ///
     pub fn try_receive(&mut self) -> Result<Message, SocketError> {
         let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
-        match self.stream.read_exact(&mut bytes) {
+        match self.stream.try_read_exact(&mut bytes) {
             Ok(_) => {
                 let mut message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
@@ -109,7 +109,7 @@ impl Gateway {
                     error!("receive(): {reason}");
                 }
 
-                Err(SocketError::new(e))
+                Err(e)
             },
         }
     }
