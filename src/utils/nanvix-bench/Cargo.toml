@@ -17,6 +17,7 @@ flexi_logger = { workspace = true }
 indicatif = { workspace = true }
 log = { workspace = true }
 microvm = { workspace = true }
+mio = { workspace = true, features = ["net", "os-poll"] }
 nanvixd = { workspace = true }
 nix = { workspace = true }
 profiler = { workspace = true }

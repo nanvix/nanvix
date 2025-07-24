@@ -46,6 +46,7 @@ use microvm::{
     Gateway,
     Vmm,
 };
+use mio::net::UnixStream;
 use nix::{
     sys::signal::{
         Signal,
@@ -62,7 +63,6 @@ use std::{
     },
     mem,
     net::TcpStream,
-    os::unix::net::UnixStream,
     process::{
         self,
         Child,
@@ -466,7 +466,6 @@ impl Benchmark {
         // Spawn the VMM in a separate thread.
         let program = self.flavour.get_program();
         let vmm_handle = std::thread::spawn(move || -> Result<()> {
-            vmm_stream.set_nonblocking(true)?;
             match Vmm::spawn(
                 config::kernel::MEMORY_SIZE,
                 format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
