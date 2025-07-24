@@ -7,13 +7,10 @@
 
 use ::std::{
     collections::BTreeMap,
-    sync::{
-        mpsc,
-        mpsc::{
-            channel,
-            Receiver,
-            Sender,
-        },
+    sync::mpsc::{
+        channel,
+        Receiver,
+        Sender,
     },
 };
 use ::sys::{
@@ -49,10 +46,6 @@ pub enum VenvCommand {
 pub struct VirtualEnvironment {
     /// Identifier.
     id: VirtualEnvironmentIdentifier,
-    /// Channel to receive stdin from the IO thread. For stdout we write to the IO thread and do
-    /// not wait for a reply, so we don't need an auxiliary channel.
-    stdin_response_tx: Sender<Message>,
-    stdin_response_rx: Receiver<Message>,
     /// Input channel to this virtual environment.
     channel_tx: Sender<VenvCommand>,
 }
@@ -80,14 +73,7 @@ impl VirtualEnvironment {
     /// Creates a new virtual environment.
     ///
     fn new(id: VirtualEnvironmentIdentifier, channel_tx: Sender<VenvCommand>) -> Self {
-        let (stdin_response_tx, stdin_response_rx) = mpsc::channel::<Message>();
-
-        Self {
-            id,
-            stdin_response_tx,
-            stdin_response_rx,
-            channel_tx,
-        }
+        Self { id, channel_tx }
     }
 
     ///
@@ -97,26 +83,6 @@ impl VirtualEnvironment {
     ///
     fn id(&self) -> VirtualEnvironmentIdentifier {
         self.id
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Get the sender end of the stdin channel. It can be passed to the gateway IO thread to
-    /// receive stdin input through it.
-    ///
-    pub fn get_stdin_response_tx(&self) -> Sender<Message> {
-        self.stdin_response_tx.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Get the receiving end of the stdin channel. We need a mutable reference as there can only
-    /// ever be one receiver, which should be the thread in the virtual environment.
-    ///
-    pub fn get_stdin_response_rx(&mut self) -> &mut Receiver<Message> {
-        &mut self.stdin_response_rx
     }
 
     ///
@@ -246,23 +212,5 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn get(&self, tid: ThreadIdentifier) -> Option<&VirtualEnvironment> {
         self.processes.get(&tid)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets a mutable reference to the virtual environment of a process.
-    ///
-    /// # Parameters
-    ///
-    /// - `tid`: Thread identifier.
-    ///
-    /// # Returns
-    ///
-    /// If there is a virtual environment associated with the process, the function returns a
-    /// mutable reference to the virtual environment. Otherwise, it returns `None`.
-    ///
-    pub fn get_mut(&mut self, tid: ThreadIdentifier) -> Option<&mut VirtualEnvironment> {
-        self.processes.get_mut(&tid)
     }
 }

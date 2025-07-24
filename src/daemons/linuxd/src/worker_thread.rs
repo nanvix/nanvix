@@ -24,13 +24,17 @@ use crate::{
     socket,
     times,
     unistd,
-    venv::{
-        VenvCommand,
-        VirtualEnviromentDirectory,
-        VirtualEnvironment,
-    },
+    user_vm_handle::UserVmHandle,
+    venv::VenvCommand,
 };
-use ::anyhow::Result;
+use ::libc::{
+    c_int,
+    pthread_kill,
+    pthread_self,
+    sigaction,
+    sigemptyset,
+    SIGUSR1,
+};
 use ::std::{
     io::ErrorKind,
     mem,
@@ -46,7 +50,6 @@ use ::std::{
         },
         Arc,
         Mutex,
-        MutexGuard,
     },
     thread::{
         self,
@@ -67,10 +70,13 @@ use ::sys::{
     },
     pm::ThreadIdentifier,
 };
-use ::sysapi::unistd::{
-    STDERR_FILENO,
-    STDIN_FILENO,
-    STDOUT_FILENO,
+use ::sysapi::{
+    sys_types::c_ssize_t,
+    unistd::{
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
 };
 use ::syscall::{
     dirent::message::GetDirectoryEntriesRequest,
@@ -140,14 +146,6 @@ use ::syscomm::{
     SocketError,
     SocketStream,
 };
-use libc::{
-    c_int,
-    pthread_kill,
-    pthread_self,
-    sigaction,
-    sigemptyset,
-    SIGUSR1,
-};
 
 const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
@@ -199,10 +197,7 @@ impl WorkerThreadHandle {
         id: ThreadIdentifier,
         channel_rx: Receiver<VenvCommand>,
         channel_tx: Sender<VenvCommand>,
-        uvm_stream: Arc<Mutex<SocketStream>>,
-        gw_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        gw_stdout_tx: Option<Sender<WriteRequest>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) -> Result<Self, Error> {
         // We use an atomic to pass the id of the created thread back to the caller context. We
@@ -218,14 +213,7 @@ impl WorkerThreadHandle {
             let pthread_id = unsafe { pthread_self() };
             pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
 
-            Self::handle_message(
-                channel_rx,
-                uvm_stream,
-                gw_stdin_tx,
-                gw_stdout_tx,
-                venv,
-                assembler,
-            );
+            Self::handle_message(channel_rx, uvm_handle, assembler);
 
             trace!("thread shutting down after receiving interrupt (pthread_id={pthread_id})");
         });
@@ -258,13 +246,12 @@ impl WorkerThreadHandle {
 
     fn handle_message(
         channel_rx: Receiver<VenvCommand>,
-        uvm_stream: Arc<Mutex<SocketStream>>,
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
+        let uvm_stream = uvm_handle.get_user_vm_stream();
+        let gw_stream = uvm_handle.get_gw_vm_stream();
 
         loop {
             let message: Message = match channel_rx.recv() {
@@ -309,9 +296,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::ReadRequest
                                 | LinuxDaemonMessageHeader::WriteRequest => {
                                     match Self::handle_special_messages(
-                                        gateway_stdin_tx.clone(),
-                                        gateway_stdout_tx.clone(),
-                                        venv.clone(),
+                                        gw_stream.clone(),
                                         source,
                                         message,
                                     ) {
@@ -462,9 +447,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
@@ -475,11 +458,11 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(gateway_stdin_tx, venv, source, request)
+                Self::handle_read_request(gw_stream, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(gateway_stdout_tx, source, request)
+                Self::handle_write_request(gw_stream, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -782,15 +765,15 @@ impl WorkerThreadHandle {
     }
 
     fn handle_write_request(
-        gateway_stdout_tx: Option<Sender<WriteRequest>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
-            let gateway_stdout_tx = if let Some(gateway_stdout_tx) = gateway_stdout_tx {
-                gateway_stdout_tx
+            let gw_stream = if let Some(gw_stream) = gw_stream {
+                gw_stream
             } else {
                 error!(
                     "handle_write_request(): trying to write to stdout without a gateway \
@@ -807,14 +790,21 @@ impl WorkerThreadHandle {
             } else {
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
-                if let Err(error) = gateway_stdout_tx.send(request) {
-                    debug!("failed to write buffer to the gateway (error={error:?})");
-                    // TODO: Check error conversion.
-                    return Ok(build_error(source, ErrorCode::ConnectionReset));
+                match gw_stream
+                    .lock()
+                    .unwrap()
+                    .write_all(&request.buffer[..count])
+                {
+                    Ok(()) => {},
+                    Err(e) if e.kind() == ErrorKind::Interrupted => {
+                        return Err(WorkerThreadError::Interrupted)
+                    },
+                    Err(e) => {
+                        error!("failed to write to gateway socket (error={e:?})");
+                        return Ok(build_error(source, ErrorCode::IoErr));
+                    },
                 }
 
-                // We don't wait for the IO thread to confirm that the write was correct, as writes
-                // are fully non-blocking.
                 debug!("wrote {count} bytes to the gateway");
                 Ok(WriteResponse::build(source, count as i32))
             }
@@ -825,16 +815,15 @@ impl WorkerThreadHandle {
     }
 
     fn handle_read_request(
-        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
-        venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+        gw_stream: Option<Arc<Mutex<SocketStream>>>,
         source: ThreadIdentifier,
         request: ReadRequest,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            let gateway_stdin_tx = if let Some(gateway_stdin_tx) = gateway_stdin_tx {
-                gateway_stdin_tx
+            let gw_stream = if let Some(gw_stream) = gw_stream {
+                gw_stream
             } else {
                 error!(
                     "handle_read_request(): process tried to read from stdin but no gateway found"
@@ -842,42 +831,41 @@ impl WorkerThreadHandle {
                 return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
             };
 
-            // Check if the process is associated with a virtual environment.
-            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-            let env: &mut VirtualEnvironment = if let Some(env) = venv.get_mut(source) {
-                env
-            } else {
-                warn!(
-                    "handle_read_request(): process is not associated with a virtual environment, \
-                     returning EOF"
-                );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
-            };
+            // Read from the gateway thread.
+            {
+                let mut gw_stream = gw_stream.lock().unwrap();
+                loop {
+                    let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                        [0u8; ReadResponse::BUFFER_SIZE];
+                    // Blocking read from the gateway socket to make sure we can be interrupted if
+                    // necessary.
+                    let response = match gw_stream.read(&mut response_buf) {
+                        Ok(0) => {
+                            error!(
+                                "handle_read_request(): error receiving request response from \
+                                 gateway STDIN: EOF"
+                            );
+                            Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
+                        },
+                        Ok(n) => {
+                            debug!("read {n} bytes from gateway: {response_buf:?}");
+                            Ok(ReadResponse::build(source, n as c_ssize_t, response_buf))
+                        },
+                        Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                        Err(e) if e.kind() == ErrorKind::Interrupted => {
+                            return Err(WorkerThreadError::Interrupted)
+                        },
+                        Err(e) => {
+                            error!(
+                                "handle_read_request(): error reading data from gateway \
+                                 (error={e:?})"
+                            );
+                            Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
+                        },
+                    };
 
-            // Send ReadRequest to gateway IO thread.
-            if let Err(error) = gateway_stdin_tx.send((request, env.get_stdin_response_tx())) {
-                error!(
-                    "handle_read_request(): error sending request to gateway STDIN IO thread, \
-                     returning EOF (error={error:?})"
-                );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
-            }
-
-            // Wait for response from IO thread.
-            match env.get_stdin_response_rx().recv() {
-                Ok(mut read_response) => {
-                    // We don't have access to the source in the gateway IO thread, so we set
-                    // it here.
-                    read_response.destination = source.into();
-                    Ok(read_response)
-                },
-                Err(e) => {
-                    error!(
-                        "handle_read_request(): error receiving request response from gateway \
-                         STDIN IO thread, returning EOF (error={e:?})"
-                    );
-                    Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
-                },
+                    return response;
+                }
             }
         } else {
             // Read from other file descriptor.

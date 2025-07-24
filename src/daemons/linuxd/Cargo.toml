@@ -16,8 +16,11 @@ config = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+mio = { workspace = true }
+nanvixd = { workspace = true }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
+slab_external = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
