@@ -4,6 +4,12 @@
 name: "Benchmark"
 description: "Run all Nanvix micro-benchmarks for performance regression testing"
 
+inputs:
+  arch:
+    description: "Architecture"
+    required: true
+    default: "X64"
+
 runs:
   using: "composite"
   steps:
@@ -14,9 +20,10 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
-      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_microvm.txt
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm.txt
+      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_microvm_${{ inputs.arch }}.txt
     shell: bash
 
   # Hyperlight benchmarks
@@ -26,70 +33,24 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
-      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_hyperlight.txt
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight.txt
+      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_hyperlight_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight_${{ inputs.arch }}.txt
+      # FIXME: warm-start-vmm is stuck on hyperlight (#709)
+      # ./bin/nanvix-bench.elf -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_hyperlight_${{ inputs.arch }}.txt
     shell: bash
 
   # Post-process the results
   - name: Format benchmark results
     id: format
     run: |
-      # First concatenate the latest `dev` results with the current PRs'.
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_boot_time_microvm.txt bench_boot_time_microvm.txt \
-        > /tmp/bench_boot_time_microvm_combined.txt
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_cold_start_microvm.txt bench_cold_start_microvm.txt \
-        > /tmp/bench_cold_start_microvm_combined.txt
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_warm_start_microvm.txt bench_warm_start_microvm.txt \
-        > /tmp/bench_warm_start_microvm_combined.txt
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_boot_time_hyperlight.txt bench_boot_time_hyperlight.txt \
-        > /tmp/bench_boot_time_hyperlight_combined.txt
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_cold_start_hyperlight.txt bench_cold_start_hyperlight.txt \
-        > /tmp/bench_cold_start_hyperlight_combined.txt
-      paste -d '\t' \
-        $HOME/ubench-results-dev/bench_warm_start_hyperlight.txt bench_warm_start_hyperlight.txt \
-        > /tmp/bench_warm_start_hyperlight_combined.txt
-
-       # Prepare the text for the PR comment.
-      {
-        echo "### Boot-Time"
-        echo '```'
-        echo "========== MicroVM ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_boot_time_microvm_combined.txt
-        echo ""
-        echo "========== Hyperlight ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_boot_time_hyperlight_combined.txt
-        echo '```'
-        echo ""
-        echo "### Cold-Starts"
-        echo '```'
-        echo "========== MicroVM ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_cold_start_microvm_combined.txt
-        echo ""
-        echo "========== Hyperlight ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_cold_start_hyperlight_combined.txt
-        echo '```'
-        echo ""
-        echo "### Warm-Starts"
-        echo '```'
-        echo "========== MicroVM ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_warm_start_microvm_combined.txt
-        echo ""
-        echo "========== Hyperlight ==========" | cat
-        echo -e "dev\t${TARGET_BRANCH}" | cat
-        cat /tmp/bench_warm_start_hyperlight_combined.txt
-        echo '```'
-      } > /tmp/comment.txt
+      python3 ./scripts/ci_bench_summary.py \
+        --dev-dir $HOME/ubench-results-dev \
+        --target-dir $(pwd) \
+        --benchmarks boot-time,cold-start,warm-start,warm-start-vmm \
+        --machine-types microvm,hyperlight \
+        --archs X64 \
+        --output-file /tmp/comment.txt
 
       echo "BENCHMARK_RESULT<<EOF" >> $GITHUB_OUTPUT
       cat /tmp/comment.txt >> $GITHUB_OUTPUT
@@ -136,21 +97,14 @@ runs:
     if: github.ref_name == 'dev'
     run: |
       mkdir -p $HOME/ubench-results-dev
-      # Copy boot-time results.
-      cp bench_boot_time_microvm.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_boot_time_microvm.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_boot_time_microvm.txt $HOME/ubench-results-dev/bench_boot_time_microvm.txt
-      cp bench_boot_time_hyperlight.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_boot_time_hyperlight.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_boot_time_hyperlight.txt $HOME/ubench-results-dev/bench_boot_time_hyperlight.txt
 
-      # Copy cold-start results.
-      cp bench_cold_start_microvm.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_microvm.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_microvm.txt $HOME/ubench-results-dev/bench_cold_start_microvm.txt
-      cp bench_cold_start_hyperlight.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_hyperlight.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_cold_start_hyperlight.txt $HOME/ubench-results-dev/bench_cold_start_hyperlight.txt
-
-      # Copy warm-start results.
-      cp bench_warm_start_microvm.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_microvm.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_microvm.txt $HOME/ubench-results-dev/bench_warm_start_microvm.txt
-      cp bench_warm_start_hyperlight.txt $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_hyperlight.txt
-      cp $HOME/ubench-results-dev/${GITHUB_SHA}_bench_warm_start_hyperlight.txt $HOME/ubench-results-dev/bench_warm_start_hyperlight.txt
+      for machine in microvm hyperlight; do
+        for benchmark in boot_time cold_start warm_start warm_start_vmm; do
+          for arch in X64; do
+            file_name="bench_${benchmark}_${machine}_${arch}.txt"
+            # Do not fail if file does not exist, but still log an error.
+            cp ${file_name} $HOME/ubench-results-dev/${file_name} || true
+          done
+        done
+      done
     shell: bash
