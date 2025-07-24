@@ -460,34 +460,34 @@ impl Benchmark {
         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         response_buf[..payload.len()].copy_from_slice(&payload);
 
+        // Initialize a UNIX pair that is directly connected to the VMM.
+        let (mut input_stream, vmm_stream) = UnixStream::pair()?;
+
+        // Spawn the VMM in a separate thread.
+        let program = self.flavour.get_program();
+        let vmm_handle = std::thread::spawn(move || -> Result<()> {
+            vmm_stream.set_nonblocking(true)?;
+            match Vmm::spawn(
+                config::kernel::MEMORY_SIZE,
+                format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
+                Some(program),
+                None,
+                Some("/dev/null".to_string()),
+                Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
+            )? {
+                e if e != 0 => {
+                    error!("error running VMM, exited with status: {e}");
+                    Err(anyhow::anyhow!("VMM error"))
+                },
+                _ => {
+                    debug!("VMM: done running");
+                    Ok(())
+                },
+            }
+        });
+
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            // Clean-up the default set-up, and initialize a UNIX pair that is directly connected to the
-            // VMM.
-            let (mut input_stream, vmm_stream) = UnixStream::pair()?;
-
-            // Spawn the VMM in a separate thread.
-            let vmm_handle = std::thread::spawn(move || -> Result<()> {
-                vmm_stream.set_nonblocking(true)?;
-                match Vmm::spawn(
-                    config::kernel::MEMORY_SIZE,
-                    format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
-                    Some(format!("{}/bin/echo-single-rust-nostd.elf", get_proj_root())),
-                    None,
-                    None,
-                    Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
-                )? {
-                    e if e != 0 => {
-                        error!("error running VMM, exited with status: {e}");
-                        Err(anyhow::anyhow!("VMM error"))
-                    },
-                    _ => {
-                        debug!("VMM: done running");
-                        Ok(())
-                    },
-                }
-            });
-
             // Before starting the timer, we need to receive the ReadRequest from the user VM.
             let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
                 [0u8; config::kernel::IPC_MESSAGE_SIZE];
@@ -523,15 +523,19 @@ impl Benchmark {
             let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
             input_stream.write_all(&write_response.to_bytes())?;
 
-            // Wait for the VMM to exit.
-            match vmm_handle.join() {
-                Ok(_) => {},
-                Err(_) => return Err(anyhow::anyhow!("Error running VMM")),
-            }
-
             std::thread::sleep(std::time::Duration::from_millis(10));
 
             pb.inc(1);
+        }
+
+        // Drop the connection to send an EoF to the application code, which
+        // will then gracefully shut down.
+        drop(input_stream);
+
+        // Wait for the VMM to exit after we drop the connection.
+        match vmm_handle.join() {
+            Ok(_) => {},
+            Err(_) => return Err(anyhow::anyhow!("Error running VMM")),
         }
 
         pb.finish();
