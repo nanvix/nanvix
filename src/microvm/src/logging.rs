@@ -37,7 +37,7 @@ use ::std::sync::Once;
 pub fn initialize(log_to_file: bool) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        let logger = Logger::try_with_env().expect("malformed RUST_LOG environment variable");
+        let logger = Logger::try_with_env_or_str("error").expect("malformed RUST_LOG environment variable");
         if log_to_file {
             logger
                 .log_to_file(FileSpec::default())
