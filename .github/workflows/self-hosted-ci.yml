@@ -34,10 +34,14 @@ jobs:
       matrix:
         build-type: [debug, release]
 
-    # Only run the CI if it is a push to 'dev' (enforced above) or, if the
-    # event trigger is a PR, we must make sure that: (i) it is not draft,
-    # and (ii) the source branch matches one of the accepted source branches.
+    # Only run the CI for:
+    # - Pushes to 'dev' (handled by workflow triggers above)
+    # - Pull requests where:
+    #   - The source branch starts with 'copilot/' (for Copilot-authored PRs)
+    #   - OR the PR is not a draft AND the source branch starts with one of:
+    #     'enhancement-', 'feature-', 'bugfix-', 'dependabot-', or 'dependabot/'
     if: |
+      github.event_name == 'pull_request' && startsWith(github.head_ref, 'copilot/') ||
       github.event_name != 'pull_request' ||
       (
         !github.event.pull_request.draft &&
