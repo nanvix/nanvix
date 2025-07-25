@@ -25,7 +25,7 @@ use ::std::sync::Once;
 pub fn initialize() {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        Logger::try_with_env()
+        Logger::try_with_env_or_str("error")
             .expect("malformed RUST_LOG environment variable")
             .start()
             .expect("failed to initialize logger");
