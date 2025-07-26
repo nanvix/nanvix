@@ -15,23 +15,21 @@ int add(int a, int b)
 int fast_mul(int a, int b)
 {
     int result = 0;
-    __asm__ __volatile__ (
-        "movl %1, %%ecx;"
-        "movl $0, %0;"
-        "test %%ecx, %%ecx;"
-        "jz 1f;"
-        "0:;"
-        "pushl %2;"
-        "pushl %0;"
-        "call add;"          // R_386_PC32
-        "addl $8, %%esp;"
-        "movl %%eax, %0;"
-        "loop 0b;"
-        "1:;"
-        : "=r" (result)
-        : "r" (b), "r" (a)
-        : "ecx", "eax", "cc"
-    );
+    __asm__ __volatile__("movl %1, %%ecx;"
+                         "movl $0, %0;"
+                         "test %%ecx, %%ecx;"
+                         "jz 1f;"
+                         "0:;"
+                         "pushl %2;"
+                         "pushl %0;"
+                         "call add;" // R_386_PC32
+                         "addl $8, %%esp;"
+                         "movl %%eax, %0;"
+                         "loop 0b;"
+                         "1:;"
+                         : "=r"(result)
+                         : "r"(b), "r"(a)
+                         : "ecx", "eax", "cc");
     return result;
 }
 
@@ -54,6 +52,7 @@ int multiply(int a, int b)
     return (mul(a, b));
 }
 
-const char *get_version(void) {
+const char *get_version(void)
+{
     return (VERSION);
 }
