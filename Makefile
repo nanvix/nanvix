@@ -337,6 +337,14 @@ python-lint:
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PY_CHECK) $(shell git ls-files -- "*.py") $(PY_VERBOSE)
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
 
+# Check C/C++ formatting style.
+clang-format-check:
+	@clang-format --dry-run --Werror $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp")
+
+# Format C/C++ files.
+clang-format:
+	@clang-format -i $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp")
+
 check: \
 	check-kernel \
 	check-guest-binaries \
