@@ -133,6 +133,19 @@ impl SocketStream {
         }
     }
 
+    pub fn try_clone(&self) -> Result<SocketStream, ::std::io::Error> {
+        match self {
+            SocketStream::Tcp(stream) => {
+                let stream: TcpStream = stream.try_clone()?;
+                Ok(SocketStream::Tcp(stream))
+            }
+            SocketStream::Unix(stream) => {
+                let stream: UnixStream = stream.try_clone()?;
+                Ok(SocketStream::Unix(stream))
+            }
+        }
+    }
+
     /// Sets a socket stream to non-blocking mode.
     pub fn set_nonblocking(&self, nonblocking: bool) -> Result<(), ::std::io::Error> {
         match self {
