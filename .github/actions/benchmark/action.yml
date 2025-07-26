@@ -98,7 +98,7 @@ runs:
   - name: Get PR number if this push relates to an open PR
     id: pr
     run: |
-      PR_NUM=$(gh pr list --state open --head "$GITHUB_REF_NAME" --json number --jq '.[0].number')
+      PR_NUM=$(gh pr list --state open --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')
       echo "PR_NUM=$PR_NUM" >> $GITHUB_ENV
       echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
     shell: bash
