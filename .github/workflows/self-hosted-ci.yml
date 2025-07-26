@@ -36,12 +36,9 @@ jobs:
 
     # Only run the CI for:
     # - Pushes to 'dev' (handled by workflow triggers above)
-    # - Pull requests where:
-    #   - The source branch starts with 'copilot/' (for Copilot-authored PRs)
-    #   - OR the PR is not a draft AND the source branch starts with one of:
-    #     'enhancement-', 'feature-', 'bugfix-', 'dependabot-', or 'dependabot/'
+    # - Non-draft PRs where the source branch starts with one of:
+    #     'enhancement-', 'feature-', 'bugfix-', 'dependabot-', 'dependabot/', or 'copilot/'
     if: |
-      github.event_name == 'pull_request' && startsWith(github.head_ref, 'copilot/') ||
       github.event_name != 'pull_request' ||
       (
         !github.event.pull_request.draft &&
@@ -50,7 +47,8 @@ jobs:
           startsWith(github.head_ref, 'feature-') ||
           startsWith(github.head_ref, 'bugfix-') ||
           startsWith(github.head_ref, 'dependabot-') ||
-          startsWith(github.head_ref, 'dependabot/')
+          startsWith(github.head_ref, 'dependabot/') ||
+          startsWith(github.head_ref, 'copilot/')
         )
       )
 
