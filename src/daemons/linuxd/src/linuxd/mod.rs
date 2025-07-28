@@ -210,6 +210,8 @@ impl LinuxDaemon {
                                         return Err(anyhow::anyhow!(reason));
                                     }
                                 };
+                            // Label: linuxd::gw_stdin_thread::recv()
+                            profiler::timestamp_message!(&mut response_buf, 0);
                             response_tx.send(ReadResponse::build(
                                 0.into(),
                                 num_read as c_ssize_t,
@@ -230,7 +232,9 @@ impl LinuxDaemon {
                 loop {
                     // Block waiting the user VM to request writing to stdout.
                     match gw_stdout_rx.recv() {
-                        Ok(write_request) => {
+                        Ok(mut write_request) => {
+                            // Label: linuxd::gw_stdout_thread::send()
+                            profiler::timestamp_message!(&mut write_request.buffer, 0);
                             gw_stdout_stream
                                 .write_all(&write_request.buffer[..write_request.count as usize])?;
 
@@ -835,6 +839,7 @@ impl LinuxDaemon {
                 error!("handle_write_request(): trying to write zero bytes to STDOUT");
                 build_error(source, ErrorCode::InvalidArgument)
             } else {
+                // Label: linuxd::handle_write_request()
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
                 if let Err(error) = gateway_stdout_tx.send(request) {
@@ -899,6 +904,12 @@ impl LinuxDaemon {
                         // We don't have access to the source in the gateway IO thread, so we set
                         // it here.
                         read_response.destination = source.into();
+
+                        // Label: linuxd::handle_read_request()
+                        profiler::timestamp_message!(&mut read_response.payload,
+                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer));
+
                         read_response
                     },
                     Err(e) => {
