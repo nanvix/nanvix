@@ -246,19 +246,6 @@ def test(
             print("Test failed.")
             exit(1)
 
-    # Check if linuxd tests are supported.
-    if has_linuxd_tests(machine):
-        make(
-            "run-linuxd-tests",
-            machine,
-            arch,
-            release,
-            toolchain_dir,
-            log_level,
-            verbose,
-            timeout,
-        )
-
     # Check if nanvixd tests are supported.
     if has_nanvixd_tests(machine):
         make(
@@ -271,20 +258,6 @@ def test(
             verbose,
             timeout,
         )
-
-
-def has_linuxd_tests(machine: str) -> bool:
-    """
-    Checks if Machine supports tests with linuxd.
-
-    Args:
-        machine (str): Target machine.
-    """
-
-    if machine in ["microvm", "hyperlight"]:
-        return True
-    else:
-        return False
 
 
 def has_nanvixd_tests(machine: str) -> bool:

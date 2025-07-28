@@ -36,10 +36,9 @@ pub fn main() -> Result<(), Error> {
     let stdin: i32 = STDIN_FILENO;
     let stdout: i32 = STDOUT_FILENO;
     let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
-    let mut n: usize = 0;
 
     loop {
-        let nread: c_ssize_t = match unistd::read(stdin, &mut buffer[n..]) {
+        let nread: c_ssize_t = match unistd::read(stdin, &mut buffer) {
             // Error encountered.
             Err(_error) => break,
             // End of file reached.
@@ -47,11 +46,8 @@ pub fn main() -> Result<(), Error> {
             // Read some bytes.
             Ok(n) => n as c_ssize_t,
         };
-        n += nread as usize;
-    }
 
-    if n > 0 {
-        unistd::write(stdout, &buffer[..n])?;
+        unistd::write(stdout, &buffer[..nread as usize])?;
     }
 
     Ok(())

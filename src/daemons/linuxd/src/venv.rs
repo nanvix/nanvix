@@ -6,14 +6,14 @@
 //==================================================================================================
 
 use ::std::{
-    collections::{
-        BTreeMap,
-        VecDeque,
-    },
-    sync::mpsc::{
-        channel,
-        Receiver,
-        Sender,
+    collections::BTreeMap,
+    sync::{
+        mpsc::{
+            channel,
+            Receiver,
+            Sender,
+        },
+        mpsc,
     },
 };
 use ::sys::{
@@ -39,8 +39,10 @@ use ::syscall::venv::VirtualEnvironmentIdentifier;
 pub struct VirtualEnvironment {
     /// Identifier.
     id: VirtualEnvironmentIdentifier,
-    /// Standard input messages not yet consumed.
-    stdin_messages: VecDeque<Message>,
+    /// Channel to receive stdin from the IO thread. For stdout we write to the IO thread and do
+    /// not wait for a reply, so we don't need an auxiliary channel.
+    stdin_response_tx: Sender<Message>,
+    stdin_response_rx: Receiver<Message>,
     /// Input channel to this virtual environment.
     channel_tx: Sender<Message>,
 }
@@ -68,9 +70,12 @@ impl VirtualEnvironment {
     /// Creates a new virtual environment.
     ///
     fn new(id: VirtualEnvironmentIdentifier, channel_tx: Sender<Message>) -> Self {
+        let (stdin_response_tx, stdin_response_rx) = mpsc::channel::<Message>();
+
         Self {
             id,
-            stdin_messages: VecDeque::new(),
+            stdin_response_tx,
+            stdin_response_rx,
             channel_tx,
         }
     }
@@ -87,28 +92,21 @@ impl VirtualEnvironment {
     ///
     /// # Description
     ///
-    /// Pushes a message to the standard input of the virtual environment.
+    /// Get the sender end of the stdin channel. It can be passed to the gateway IO thread to
+    /// receive stdin input through it.
     ///
-    /// # Parameters
-    ///
-    /// - `message`: Message to push.
-    ///
-    pub fn push_stdin_message(&mut self, message: Message) {
-        self.stdin_messages.push_back(message);
+    pub fn get_stdin_response_tx(&self) -> Sender<Message> {
+        self.stdin_response_tx.clone()
     }
 
     ///
     /// # Description
     ///
-    /// Pops a message from the standard input of the virtual environment.
+    /// Get the receiving end of the stdin channel. We need a mutable reference as there can only
+    /// ever be one receiver, which should be the thread in the virtual environment.
     ///
-    /// # Returns
-    ///
-    /// If there are messages in the standard input, the function returns the next message.
-    /// Otherwise, it returns `None`.
-    ///
-    pub fn pop_stdin_message(&mut self) -> Option<Message> {
-        self.stdin_messages.pop_front()
+    pub fn get_stdin_response_rx(&mut self) -> &mut Receiver<Message> {
+        &mut self.stdin_response_rx
     }
 
     ///
