@@ -5,10 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::hwloc::HwLoc;
+use crate::{
+    env::get_proj_root,
+    hwloc::HwLoc,
+};
 use std::{
     fmt,
-    net::TcpStream,
     process::Child,
     str::FromStr,
 };
@@ -24,6 +26,18 @@ pub enum BenchmarkFlavour {
     WarmStart,
     WarmStartVMM,
     EchoBreakdown,
+}
+
+impl BenchmarkFlavour {
+    pub fn get_program(&self) -> String {
+        match self {
+            BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::WarmStartVMM => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::EchoBreakdown => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+        }
+    }
 }
 
 impl fmt::Display for BenchmarkFlavour {
@@ -58,9 +72,7 @@ pub struct Benchmark {
     pub iterations: usize,
     pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
-    pub gateway_address: String,
-    pub linuxd_address: String,
-    pub linuxd: Option<Child>,
-    pub nanovm: Option<Child>,
-    pub gateway: Option<TcpStream>,
+    pub nanvixd: Option<Child>,
+    pub nanvixd_client: reqwest::Client,
+    pub user_vm_id: Option<String>,
 }

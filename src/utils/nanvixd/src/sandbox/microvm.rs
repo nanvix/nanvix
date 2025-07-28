@@ -7,10 +7,14 @@
 
 use crate::config;
 use ::anyhow::Result;
-use ::std::process::{
-    ExitStatus,
-    Stdio,
+use ::nix::{
+    sys::signal::{
+        Signal,
+        kill,
+    },
+    unistd::Pid,
 };
+use ::std::process::Stdio;
 use ::tokio::process::{
     Child,
     Command,
@@ -27,58 +31,63 @@ pub struct Microvm(Option<Child>);
 //==================================================================================================
 
 impl Microvm {
-    pub fn spawn(program: &str, addr: &str, stderr: &str) -> Result<Self> {
-        let child = Command::new(format!("{}/microvm.elf", config::BINARY_DIRECTORY))
+    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>) -> Result<Self> {
+        let mut cmd = Command::new(format!("{}/microvm.elf", config::BINARY_DIRECTORY));
+
+        cmd
             .arg("-log-to-file")
             .arg("-kernel")
             .arg(format!("{}/kernel.elf", config::BINARY_DIRECTORY))
             .arg("-initrd")
             .arg(program)
-            .arg("-stderr")
-            .arg(stderr)
             .arg("-gateway")
-            .arg(addr)
+            .arg(addr);
+
+        if let Some(program_args) = program_args {
+            cmd.arg("-initrd_args").arg(program_args);
+        }
+
+        if let Some(stderr_file) = stderr {
+            cmd.arg("-stderr").arg(stderr_file);
+        }
+
+        let child = cmd
             .stdout(Stdio::piped())
             .spawn()?;
+
         debug!(
-            "spawning microvm child.pid={:?} program={:?} addr={:?} stderr={:?}",
+            "spawning microvm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?}",
             child.id(),
             program,
+            program_args,
             addr,
             stderr
         );
-        Ok(Self(Some(child)))
-    }
 
-    /// Peek Microvm to check if it is still running.
-    pub fn peek(&mut self) -> Result<Option<ExitStatus>> {
-        if let Some(child) = &mut self.0 {
-            match child.try_wait() {
-                Ok(Some(status)) => Ok(Some(status)),
-                Ok(None) => Ok(None),
-                Err(e) => {
-                    let reason: String = format!("failed to wait for microvm (error={e:?})");
-                    error!("peek(): {reason:?}");
-                    Err(anyhow::anyhow!(reason))
-                },
-            }
-        } else {
-            Ok(None)
-        }
+        Ok(Self(Some(child)))
     }
 }
 
 impl Drop for Microvm {
     fn drop(&mut self) {
         if let Some(mut child) = self.0.take() {
-            tokio::spawn(async move {
-                debug!("killing microvm (child={:?})", child.id());
-                if let Err(e) = child.kill().await {
-                    error!("failed to kill microvm (child={:?}, Arror={:?})", child.id(), e);
-                }
+            match child.id() {
+                Some(pid) => {
+                    let pid: ::sys::pm::ProcessIdentifier = match pid.try_into() {
+                        Ok(pid) => pid,
+                        Err(e) => return error!("error converting micro VMs PID (error={e:?})"),
+                    };
+                    if let Err(e) = kill(Pid::from_raw(pid.into()), Signal::SIGINT) {
+                        error!("error sending SIGINT to user VM (error={e:?})");
+                    }
+                },
+                None => error!("user VM process has no PID"),
+            }
 
+            // Wait for the child to finish in a separate thread to be able to `await` on it.
+            tokio::spawn(async move {
                 if let Err(e) = child.wait().await {
-                    error!("failed to wait for microvm (child{:?}, error={:?})", child.id(), e);
+                    error!("failed to wait for user VM to shut down (error={e:?})");
                 }
             });
         }

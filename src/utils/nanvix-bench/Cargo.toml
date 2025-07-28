@@ -17,13 +17,16 @@ flexi_logger = { workspace = true }
 indicatif = { workspace = true }
 log = { workspace = true }
 microvm = { workspace = true }
+nanvixd = { workspace = true }
 nix = { workspace = true }
 profiler = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = []

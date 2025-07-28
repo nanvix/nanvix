@@ -17,6 +17,10 @@ use ::anyhow::Result;
 /// This structure packs the command-line arguments that were passed to the program.
 ///
 pub struct Args {
+    /// Socket address linuxd listens to for messages from the control plane.
+    control_plane_sockaddr: String,
+    /// Control plane socket address type.
+    control_plane_sockaddr_type: Option<String>,
     /// Socket address linuxd listens to for messages from User VM.
     user_vm_bind_sockaddr: String,
     /// Server socket address type.
@@ -36,6 +40,10 @@ pub struct Args {
 impl Args {
     /// Command-line option for printing the help message.
     const OPT_HELP: &'static str = "-help";
+    /// Command-line option for setting the control-plane socket address.
+    const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
+    /// Command-line option for setting the socket address type of the bind socket.
+    const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
     /// Command-line option for setting bind socket address.
     const OPT_USER_VM_BIND_SOCKADDR: &'static str = "-user-vm-bind-addr";
     /// Command-line option for setting the socket address type of the bind socket.
@@ -62,6 +70,8 @@ impl Args {
     /// program. Upon failure, the function returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
+        let mut control_plane_sockaddr: String = String::new();
+        let mut control_plane_sockaddr_type: Option<String> = None;
         let mut user_vm_bind_sockaddr: String = String::new();
         let mut user_vm_bind_sockaddr_type: Option<String> = None;
         let mut gateway_bind_sockaddr: Option<String> = None;
@@ -74,6 +84,14 @@ impl Args {
                 Self::OPT_HELP => {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("help message"));
+                },
+                Self::OPT_CONTROL_PLANE_SOCKADDR => {
+                    i += 1;
+                    control_plane_sockaddr = args[i].clone();
+                },
+                Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
+                    i += 1;
+                    control_plane_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_USER_VM_BIND_SOCKADDR => {
                     i += 1;
@@ -103,11 +121,18 @@ impl Args {
         }
 
         // Check if server socket address was set.
+        if control_plane_sockaddr.is_empty() {
+            return Err(anyhow::anyhow!("control-plane socket address not set"));
+        }
+
+        // Check if server socket address was set.
         if user_vm_bind_sockaddr.is_empty() {
-            return Err(anyhow::anyhow!("server socket address not set"));
+            return Err(anyhow::anyhow!("user VM bind socket address not set"));
         }
 
         Ok(Self {
+            control_plane_sockaddr,
+            control_plane_sockaddr_type,
             user_vm_bind_sockaddr,
             user_vm_bind_sockaddr_type,
             gateway_bind_sockaddr,
@@ -127,14 +152,43 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} {} <user-vm-sockaddr> {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
+            "Usage: {} {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} <user-vm-sockaddr> \
+            {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
             program_name,
             Self::OPT_LOGFILE,
+            Self::OPT_CONTROL_PLANE_SOCKADDR,
+            Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             Self::OPT_USER_VM_BIND_SOCKADDR,
             Self::OPT_USER_VM_BIND_SOCKET_TYPE,
             Self::OPT_GATEWAY_BIND_SOCKADDR,
             Self::OPT_GATEWAY_BIND_SOCKET_TYPE
         );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address to connect to the control plane.
+    ///
+    /// # Returns
+    ///
+    /// The socket address of the bind socket.
+    ///
+    pub fn control_plane_sockaddr(&self) -> String {
+        self.control_plane_sockaddr.to_string()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address to connect to the control plane.
+    ///
+    /// # Returns
+    ///
+    /// The socket address of the bind socket.
+    ///
+    pub fn control_plane_socket_type(&self) -> Option<String> {
+        self.control_plane_sockaddr_type.clone()
     }
 
     ///

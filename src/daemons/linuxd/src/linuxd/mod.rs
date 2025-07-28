@@ -30,24 +30,24 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::std::{
-    io,
     io::{
         ErrorKind,
         Read,
-        Write,
     },
-    mem,
     sync::{
         mpsc::{
             Receiver,
             Sender,
+            RecvError,
         },
         Arc,
         Mutex,
         MutexGuard,
+        mpsc,
     },
     thread::{
         self,
+        JoinHandle,
         ThreadId,
     },
 };
@@ -146,7 +146,7 @@ use ::syscomm::SocketStream;
 pub struct LinuxDaemon {
     assembler: Arc<Mutex<RequestAssembler>>,
     uvm_stream: Arc<Mutex<SocketStream>>,
-    gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+    gateway_stream: Option<SocketStream>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
 
@@ -157,7 +157,7 @@ pub struct LinuxDaemon {
 impl LinuxDaemon {
     pub fn init(
         uvm_stream: SocketStream,
-        gateway_conn: Option<SocketStream>,
+        gateway_stream: Option<SocketStream>,
     ) -> Result<Self, Error> {
         if let Err(error) = uvm_stream.set_nonblocking(true) {
             let reason: &str = "failed to set UVM stream to non-blocking mode";
@@ -168,15 +168,91 @@ impl LinuxDaemon {
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
             uvm_stream: Arc::new(Mutex::new(uvm_stream)),
-            gateway_conn: Arc::new(Mutex::new(gateway_conn)),
+            gateway_stream,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
 
     pub fn run(&mut self) -> Result<(), Error> {
+        // Start the thread that will poll input from the gateway.
+        // TODO: when one linuxd instance manages more than one input stream we should encapsulate
+        // this logic.
+        let (gw_stdin_tx, gw_stdout_tx) = if let Some(gateway_stream) = &self.gateway_stream {
+            // For the STDIN channel senders (TX) need to wait for a response from the IO thread,
+            // hence they send, together with the ReadRequest, the send endpoint of a channel where
+            // they will wait for the response. For STDOUT senders need not to wait, hence no need
+            // to also send the channel endpoint.
+            let (gw_stdin_tx, gw_stdin_rx) = mpsc::channel::<(ReadRequest, Sender<Message>)>();
+            let (gw_stdout_tx, gw_stdout_rx) = mpsc::channel::<WriteRequest>();
+
+            // Make sure that the input stream from the gateway is set to blocking, as otherwise we
+            // would not be able to differentiate between an EOF and a race between the application
+            // code and the gateway.
+            let mut gw_stdin_stream = gateway_stream
+                .try_clone()
+                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to clone stream"))?;
+            gw_stdin_stream
+                .set_nonblocking(false)
+                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to set non-blocing socket"))?;
+
+            let _gw_stdin_thread: JoinHandle<Result<()>> = std::thread::spawn(move || {
+                loop {
+                    // Block waiting for the user VM to request reading from STDIN.
+                    match gw_stdin_rx.recv() {
+                        Ok((_read_request, response_tx)) => {
+                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+                            let num_read = match gw_stdin_stream
+                                .read(&mut response_buf) {
+                                    Ok(n) => n,
+                                    Err(e) => {
+                                        let reason: String = format!("failed to read STDIN from gateway: {e:?}");
+                                        error!("{}", reason);
+                                        return Err(anyhow::anyhow!(reason));
+                                    }
+                                };
+                            response_tx.send(ReadResponse::build(
+                                0.into(),
+                                num_read as c_ssize_t,
+                                response_buf))?;
+                        }
+                        Err(RecvError) => {
+                            info!("gateway STDIN channel disconnected");
+                            break Ok(());
+                        }
+                    }
+                }
+            });
+
+            let mut gw_stdout_stream = gateway_stream
+                .try_clone()
+                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to clone stream"))?;
+            let _gw_stdout_thread: JoinHandle<Result<()>> = std::thread::spawn(move || {
+                loop {
+                    // Block waiting the user VM to request writing to stdout.
+                    match gw_stdout_rx.recv() {
+                        Ok(write_request) => {
+                            gw_stdout_stream
+                                .write_all(&write_request.buffer[..write_request.count as usize])?;
+
+                            // We don't need to send anything in response of the write, as the
+                            // writting thread has already moved on.
+                        }
+                        Err(RecvError) => {
+                            let reason: String = "gateway STDOUT channel disconnected".to_string();
+                            error!("{}", reason);
+                            return Err(anyhow::anyhow!(reason));
+                        }
+                    }
+                }
+            });
+
+            (Some(gw_stdin_tx), Some(gw_stdout_tx))
+        } else {
+            (None, None)
+        };
+
         loop {
             let uvm_stream: Arc<Mutex<SocketStream>> = self.uvm_stream.clone();
-            let gateway_conn: Arc<Mutex<Option<SocketStream>>> = self.gateway_conn.clone();
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
             let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
 
@@ -186,7 +262,7 @@ impl LinuxDaemon {
 
                 Err(error_kind) => match error_kind {
                     ErrorKind::WouldBlock => continue,
-                    ErrorKind::UnexpectedEof => {
+                    ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
                         info!("connection closed");
                         break;
                     },
@@ -236,8 +312,10 @@ impl LinuxDaemon {
             if let Some(channel_rx) = channel_rx {
                 // Spawn a thread to handle the message.
                 let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
+                let gw_stdin_tx = gw_stdin_tx.clone();
+                let gw_stdout_tx = gw_stdout_tx.clone();
                 let _ = std::thread::spawn(move || {
-                    Self::handle_message(channel_rx, uvm_stream, gateway_conn, venv, assembler);
+                    Self::handle_message(channel_rx, uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler);
                 });
             }
 
@@ -259,14 +337,14 @@ impl LinuxDaemon {
         }
 
         // TODO: https://github.com/nanvix/nanvix/issues/639
-
-        self.send_eof()
+        Ok(())
     }
 
     fn handle_message(
         channel_rx: Receiver<Message>,
         uvm_stream: Arc<Mutex<SocketStream>>,
-        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
+        gateway_stdout_tx: Option<Sender<WriteRequest>>,
         venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
@@ -308,7 +386,8 @@ impl LinuxDaemon {
                                 | LinuxDaemonMessageHeader::ReadRequest
                                 | LinuxDaemonMessageHeader::WriteRequest => {
                                     Self::handle_special_messages(
-                                        gateway_conn.clone(),
+                                        gateway_stdin_tx.clone(),
+                                        gateway_stdout_tx.clone(),
                                         venv.clone(),
                                         source,
                                         message,
@@ -402,35 +481,9 @@ impl LinuxDaemon {
         }
     }
 
-    ///
-    /// # Description
-    ///
-    /// Sends an EOF message to the gateway, to indicate that the sandbox hung up the connection.
-    ///
-    /// # Returns
-    ///
-    /// The function returns `Ok(())` if the EOF message was sent successfully. Otherwise, it
-    /// returns an error.
-    ///
-    fn send_eof(&mut self) -> Result<(), Error> {
-        trace!("send_eof()");
-        let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
-            self.gateway_conn.lock().unwrap();
-        if let Some(conn) = &mut *gateway_conn {
-            let eof: u32 = 0;
-            let length_buffer: [u8; mem::size_of::<u32>()] = eof.to_le_bytes();
-            if let Err(e) = conn.write_all(&length_buffer) {
-                let reason: &str = "failed to write EOF to the gateway";
-                error!("send_eof(): {reason:?} (error={e:?}");
-                return Err(Error::new(ErrorCode::ConnectionReset, reason));
-            }
-        }
-
-        Ok(())
-    }
-
     fn handle_special_messages(
-        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
+        gateway_stdout_tx: Option<Sender<WriteRequest>>,
         venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -442,11 +495,11 @@ impl LinuxDaemon {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(gateway_conn, venv, source, request)
+                Self::handle_read_request(gateway_stdin_tx, venv, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(gateway_conn, source, request)
+                Self::handle_write_request(gateway_stdout_tx, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -762,50 +815,38 @@ impl LinuxDaemon {
     }
 
     fn handle_write_request(
-        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        gateway_stdout_tx: Option<Sender<WriteRequest>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Message {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
-            let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
-                gateway_conn.lock().unwrap();
-            if let Some(conn) = &mut *gateway_conn {
-                // Check if write size is invalid.
-                if request.count == 0 {
-                    // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
-                    error!("handle_write_request(): trying to write zero bytes to STDOUT");
-                    build_error(source, ErrorCode::InvalidArgument)
-                } else {
-                    profiler::timestamp_message!(&mut request.buffer, 0);
-                    // NOTE: we don't check if the write operation is too big, because its size is
-                    // already bound by the maximum payload size of the message.
-                    let count: usize = request.count as usize;
-                    match conn.send_message_to_gateway(&request.buffer[..count]) {
-                        Ok(_) => {
-                            debug!("wrote {count} bytes to the gateway");
-                            WriteResponse::build(source, count as i32)
-                        },
-                        Err(e) => {
-                            debug!("failed to write buffer to the gateway (error={e:?})");
-                            // TODO: Check error conversion.
-                            build_error(source, ErrorCode::ConnectionReset)
-                        },
-                    }
-                }
+            let gateway_stdout_tx = if let Some(gateway_stdout_tx) = gateway_stdout_tx {
+                gateway_stdout_tx
             } else {
-                // Not connected to the gateway, print to stdout.
+                error!("handle_write_request(): trying to write to stdout without a gateway configured");
+                return build_error(source, ErrorCode::InvalidArgument);
+            };
+
+            // Check if write size is invalid.
+            if request.count == 0 {
+                // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
+                error!("handle_write_request(): trying to write zero bytes to STDOUT");
+                build_error(source, ErrorCode::InvalidArgument)
+            } else {
+                profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
-                let buffer: &[u8] = &request.buffer[..count];
-                if request.fd == STDERR_FILENO {
-                    let _ = io::stderr().write_all(buffer);
-                    let _ = io::stderr().lock().flush();
-                } else {
-                    let _ = io::stdout().write_all(buffer);
-                    let _ = io::stdout().lock().flush();
+                if let Err(error) = gateway_stdout_tx.send(request) {
+                    debug!("failed to write buffer to the gateway (error={error:?})");
+                    // TODO: Check error conversion.
+                    return build_error(source, ErrorCode::ConnectionReset);
                 }
-                WriteResponse::build(source, count as c_ssize_t)
+
+                // We don't wait for the IO thread to confirm that the write was correct, as writes
+                // are fully non-blocking.
+                debug!("wrote {count} bytes to the gateway");
+                WriteResponse::build(source, count as i32)
             }
         } else {
             // Write to other file descriptor.
@@ -814,7 +855,7 @@ impl LinuxDaemon {
     }
 
     fn handle_read_request(
-        gateway_conn: Arc<Mutex<Option<SocketStream>>>,
+        gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
         venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         source: ThreadIdentifier,
         request: ReadRequest,
@@ -822,97 +863,52 @@ impl LinuxDaemon {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            let mut gateway_conn: MutexGuard<'_, Option<SocketStream>> =
-                gateway_conn.lock().unwrap();
-            if let Some(conn) = &mut *gateway_conn {
-                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
-                // Check if the process is associated with a virtual environment.
-                let env: &mut VirtualEnvironment = if let Some(env) = venv.get_mut(source) {
-                    env
-                } else {
-                    warn!(
-                        "handle_read_request(): process is not associated with a virtual \
-                         environment, returning EOF"
-                    );
-                    return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
-                };
-
-                // Check if there are any outstanding messages ready to be read.
-                if let Some(message) = env.pop_stdin_message() {
-                    trace!("handle_read_request(): reading outstanding message");
-                    return message;
-                }
-
-                match conn.read_message_from_gateway() {
-                    Ok(message) => {
-                        let count: usize = message.len();
-                        debug!("read {count} bytes from the gateway");
-
-                        // Truncate read request to fit in the response buffer.
-                        let read_count: usize = if count > request.count as usize {
-                            warn!(
-                                "handle_read_request(): truncating payload (requested={}, \
-                                 actual={count})",
-                                { request.count },
-                            );
-                            request.count as usize
-                        } else {
-                            count
-                        };
-
-                        let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                            [0u8; ReadResponse::BUFFER_SIZE];
-                        response_buf[..read_count].copy_from_slice(&message[..read_count]);
-                        profiler::timestamp_message!(&mut response_buf, 0);
-
-                        // Check if there are any outstanding bytes to be read.
-                        if count > read_count {
-                            // Break outstanding bytes into multiple read responses.
-                            for i in (read_count..count).step_by(ReadResponse::BUFFER_SIZE) {
-                                let end: usize = i + ReadResponse::BUFFER_SIZE;
-                                let end: usize = if end > count { count } else { end };
-                                let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                    [0u8; ReadResponse::BUFFER_SIZE];
-                                response_buf[..end - i].copy_from_slice(&message[i..end]);
-                                env.push_stdin_message(ReadResponse::build(
-                                    source,
-                                    (end - i) as c_ssize_t,
-                                    response_buf,
-                                ));
-                            }
-                        }
-                        // Push EoF message.
-                        // When timestamping messages as part of data-path profiling, we require
-                        // applications to not expect an EoF when reading from stdin. This is
-                        // because the profiling modifies the payload of all messages, including
-                        // EoFs.
-                        #[cfg(not(feature = "timestamp-messages"))]
-                        env.push_stdin_message(ReadResponse::build(
-                            source,
-                            0,
-                            [0u8; ReadResponse::BUFFER_SIZE],
-                        ));
-
-                        ReadResponse::build(source, read_count as c_ssize_t, response_buf)
-                    },
-                    Err(e) => {
-                        debug!("failed to read message from gateway (error={e:?})");
-                        // TODO: Check error conversion.
-                        build_error(source, ErrorCode::ConnectionReset)
-                    },
-                }
+            let gateway_stdin_tx = if let Some(gateway_stdin_tx) = gateway_stdin_tx {
+                gateway_stdin_tx
             } else {
-                // Not connected to the gateway, read from stdin.
-                let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-                let count: usize = match ::std::io::stdin().read(&mut buffer) {
-                    Ok(count) => count,
-                    Err(e) => {
-                        debug!("failed to read from stdin (error={e:?})");
-                        0
-                    },
-                };
-                ReadResponse::build(source, count as c_ssize_t, buffer)
+                error!("handle_read_request(): process tried to read from stdin but no gateway found");
+                return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
+            };
+
+            // Check if the process is associated with a virtual environment.
+            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
+            let env: &mut VirtualEnvironment = if let Some(env) = venv.get_mut(source) {
+                env
+            } else {
+                warn!(
+                    "handle_read_request(): process is not associated with a virtual \
+                     environment, returning EOF"
+                );
+                return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
+            };
+
+            // Send ReadRequest to gateway IO thread.
+            if let Err(error) = gateway_stdin_tx.send((request, env.get_stdin_response_tx())) {
+                error!(
+                    "handle_read_request(): error sending request to gateway STDIN IO thread, returning EOF \
+                    (error={error:?})"
+                );
+                return ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]);
             }
+
+            // Wait for response from IO thread.
+            match env
+                .get_stdin_response_rx()
+                .recv() {
+                    Ok(mut read_response) => {
+                        // We don't have access to the source in the gateway IO thread, so we set
+                        // it here.
+                        read_response.destination = source.into();
+                        read_response
+                    },
+                    Err(e) => {
+                        error!(
+                            "handle_read_request(): error receiving request response from gateway STDIN \
+                            IO thread, returning EOF (error={e:?})"
+                        );
+                        ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE])
+                    }
+                }
         } else {
             // Read from other file descriptor.
             unistd::do_read(source, request)

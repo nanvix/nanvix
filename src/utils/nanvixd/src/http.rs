@@ -6,15 +6,15 @@
 //==================================================================================================
 
 use crate::{
-    cache::{
-        LockedSandbox,
-        SandboxCache,
-        SandboxHandle,
-    },
+    cache::SandboxCache,
     config,
+    message::{
+        self,
+        MessageType,
+    },
     sandbox::{
-        SandboxConfig,
-        SandboxTag,
+        config::SandboxConfig,
+        tag::SandboxTag,
     },
 };
 use ::anyhow::Result;
@@ -32,55 +32,31 @@ use ::hyper::{
     Response,
     StatusCode,
 };
-use ::serde::Deserialize;
-use ::serde_json::Value;
 use ::std::{
     future::Future,
-    mem,
     pin::Pin,
+    sync::Arc,
 };
-use ::tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
-    },
-    net::UnixStream,
-};
+use ::tokio::sync::Mutex;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-#[derive(Deserialize)]
-struct MessageJson {
-    clientid: usize,
-    program: String,
-    args: Vec<String>,
-}
-
 pub struct HttpClient {
-    sandboxes: SandboxCache,
-    requestid: usize,
-    linuxd_sockaddr: String,
-    sandbox_sockaddr: String,
+    sandbox_cache: Arc<Mutex<SandboxCache>>,
     tmp_directory: String,
-    console_file: String,
+    console_file: Option<String>,
 }
 
 impl HttpClient {
     pub fn new(
-        sandboxes: SandboxCache,
-        requestid: usize,
-        linuxd_sockaddr: String,
-        sandbox_sockaddr: String,
+        sandbox_cache: Arc<Mutex<SandboxCache>>,
         tmp_directory: String,
-        console_file: String,
+        console_file: Option<String>,
     ) -> Self {
         Self {
-            sandboxes,
-            requestid,
-            linuxd_sockaddr,
-            sandbox_sockaddr,
+            sandbox_cache,
             tmp_directory,
             console_file,
         }
@@ -117,104 +93,57 @@ impl HttpClient {
         internal_server_error
     }
 
-    async fn serve(
-        sandbox_cache: &SandboxCache,
-        request: MessageJson,
-        requestid: usize,
-        linuxd_sockaddr: String,
+    async fn serve_new(
+        sandbox_cache: Arc<Mutex<SandboxCache>>,
+        message: &message::New,
         tmp_directory: String,
-        console_file: String,
-        sandbox_sockaddr: String,
-    ) -> Result<Vec<u8>> {
-        let linuxd_sockaddr: String =
-            config::linuxd_sockaddr_builder(&tmp_directory, &linuxd_sockaddr, request.clientid, requestid);
-        let sandbox_sockaddr: String =
-            config::sandbox_sockaddr_builder(&tmp_directory, &sandbox_sockaddr, request.clientid, requestid);
+        console_file: Option<String>,
+    ) -> Result<message::NewResponse> {
+        let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
 
-        let tag: SandboxTag = SandboxTag::new(request.clientid, &request.program);
-        let config: SandboxConfig =
-            SandboxConfig::new(&linuxd_sockaddr, &sandbox_sockaddr, &console_file);
-        let mut sandbox: SandboxHandle = sandbox_cache.get(&tag, &config).await?;
-
-        let mut locked_sandbox: LockedSandbox = sandbox.get_sandbox().await?;
-
-        let sandbox_socket: &mut UnixStream = locked_sandbox.socket()?;
-
-        let buf: Vec<u8> = request.args.join(" ").as_bytes().to_vec();
-        if buf.len() > config::MAX_PAYLOAD_SIZE {
-            let reason: String = format!(
-                "payload size exceeds maximum protocol limit (size={}, limit={})",
-                buf.len(),
-                config::MAX_PAYLOAD_SIZE
-            );
-            error!("serve(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Check if request is too large.
-        if buf.len() > config::MAX_PAYLOAD_SIZE {
-            let reason: String = format!(
-                "request is too large (size={}, limit={})",
-                buf.len(),
-                config::MAX_PAYLOAD_SIZE
-            );
-            error!("serve(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Forward request length to Sandbox.
-        let length: u32 = match buf.len().try_into() {
-            Ok(length) => length,
-            Err(_) => {
-                let reason: String = "failed to convert request length".to_string();
-                error!("serve(): {reason}");
-                anyhow::bail!(reason)
-            },
+        let control_plane_sockaddr: String =
+            config::control_plane_sockaddr_builder(&tmp_directory, tag.tenant_id());
+        let gateway_sockaddr: String =
+            config::gateway_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.app_name(), &tag.sandbox_id()[0..4]);
+        let user_vm_sockaddr: String =
+            config::user_vm_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.app_name(), &tag.sandbox_id()[0..4]);
+        let program_args = match message.program_args.len() {
+            0 => None,
+            _ => Some(message.program_args.clone()),
         };
-        if let Err(e) = sandbox_socket.write_all(&length.to_le_bytes()).await {
-            let reason: String = format!("failed to write length byte to sandbox (error={e:?})");
-            error!("serve(): {reason}");
-            anyhow::bail!(reason)
-        }
 
-        // Forward request to Sandbox.
-        if let Err(e) = sandbox_socket.write_all(&buf).await {
-            let reason: String = format!("failed to write bytes to sandbox (error={e:?})");
-            error!("serve(): {reason}");
-            anyhow::bail!(reason)
-        }
+        let config: SandboxConfig = SandboxConfig::new(
+            &control_plane_sockaddr,
+            &gateway_sockaddr,
+            &user_vm_sockaddr,
+            &message.program,
+            program_args.clone(),
+            console_file.clone()
+        );
 
-        let mut buf: Vec<u8> = Vec::new();
+        // This method will create a sandbox if it is not in the cache.
+        let mut locked_sandbox_cache = sandbox_cache.lock().await;
+        let _ = locked_sandbox_cache.get(&tag, Some(&config)).await?;
 
-        loop {
-            // Read the response length from Sandbox.
-            let mut length_buffer: [u8; mem::size_of::<u32>()] = [0u8; mem::size_of::<u32>()];
-            if let Err(e) = sandbox_socket.read_exact(&mut length_buffer).await {
-                let reason: String =
-                    format!("failed to read length byte from sandbox (error={e:?})");
-                error!("serve(): {reason}");
-                anyhow::bail!(reason)
-            }
+        Ok(message::NewResponse {
+            user_vm_id: tag.sandbox_id().to_string(),
+            gateway_sockaddr: gateway_sockaddr.clone(),
+        })
+    }
 
-            // Check if received EOF message.
-            let length: u32 = u32::from_le_bytes(length_buffer);
-            if length == 0 {
-                break;
-            }
+    async fn serve_kill(
+        sandbox_cache: Arc<Mutex<SandboxCache>>,
+        message: &message::Kill
+    ) -> Result<message::KillResponse> {
 
-            // Read the actual data bytes from Sandbox.
-            let data_length: usize = length as usize;
-            let mut bytes: Vec<u8> = vec![0u8; data_length];
-            if let Err(e) = sandbox_socket.read_exact(&mut bytes).await {
-                let reason: String =
-                    format!("failed to read data bytes from sandbox (error={e:?})");
-                error!("serve(): {reason}");
-                anyhow::bail!(reason)
-            }
-            buf.extend_from_slice(&bytes);
-        }
+        let mut locked_sandbox_cache = sandbox_cache.lock().await;
+        let exit_code = match locked_sandbox_cache.kill(message.user_vm_id.clone()).await {
+            Ok(_) => 0,
+            // TODO: more advanced error codes.
+            Err(_) => 1,
+        };
 
-        Ok(buf)
+        Ok(message::KillResponse { exit_code })
     }
 }
 
@@ -224,13 +153,23 @@ impl Service<Request<Incoming>> for HttpClient {
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
-        let requestid: usize = self.requestid;
-        let sandbox_sockaddr: String = self.sandbox_sockaddr.clone();
-        let linuxd_sockaddr: String = self.linuxd_sockaddr.clone();
+        // Clone all necessary values before moving them into the future
         let tmp_directory: String = self.tmp_directory.clone();
-        let nanvix_console: String = self.console_file.clone();
-        let sandboxes: SandboxCache = self.sandboxes.clone();
+        let console_file: Option<String> = self.console_file.clone();
+        let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
         let future = async move {
+            // Get the request headers before consuming the body.
+            let message_type: MessageType = match request.headers()
+                .get(config::HTTP_HEADER_MESSAGE_TYPE)
+                .and_then(|val| val.to_str().ok())
+                .and_then(|s| s.parse::<MessageType>().ok()) {
+                Some(message_type) => message_type,
+                None => {
+                    error!("{} is a mandatory header", config::HTTP_HEADER_MESSAGE_TYPE);
+                    return Ok(Self::bad_request());
+                }
+            };
+
             let body: Bytes = match request.collect().await {
                 Ok(body) => body.to_bytes(),
                 Err(_) => {
@@ -240,60 +179,67 @@ impl Service<Request<Incoming>> for HttpClient {
                 },
             };
 
-            // Deserialize the JSON directly into the struct
-            let request: MessageJson = match serde_json::from_slice(body.as_ref()) {
-                Ok(request) => request,
-                Err(_) => {
-                    let reason: String = "failed to deserialize JSON".to_string();
-                    error!("{reason}");
-                    return Ok(Self::bad_request());
+            // Deserialize the request body and route to the corresponding function.
+            let message_response: message::MessageResponse = match message_type {
+                MessageType::New => {
+                    debug!("deserializing NEW message with body: {body:?}");
+                    let msg: message::New = match serde_json::from_slice(&body) {
+                        Ok(msg) => msg,
+                        Err(_) => {
+                            error!("failed to deserialize NEW message: {body:?}");
+                            return Ok(Self::bad_request());
+                        },
+                    };
+
+                    debug!("serving NEW message:");
+                    debug!("- tenant id: {}", msg.tenant_id);
+                    debug!("- app name: {}", msg.app_name);
+                    debug!("- program file: {}", msg.program);
+                    debug!("- program args: {}", msg.program_args);
+
+                    match Self::serve_new(
+                        sandbox_cache,
+                        &msg,
+                        tmp_directory.clone(),
+                        console_file.clone(),
+                    ).await {
+                        Ok(response) => message::MessageResponse::New(response),
+                        Err(_) => {
+                            error!("error processing NEW request");
+                            return Ok(Self::internal_server_error());
+                        },
+                    }
                 },
+                MessageType::Kill => {
+                    let msg: message::Kill = match serde_json::from_slice(&body) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            error!("failed to deserialize KILL message (error={e:?}): {body:?}");
+                            return Ok(Self::bad_request());
+                        },
+                    };
+
+                    debug!("serving KILL message:");
+                    debug!("- user vm id: {}", msg.user_vm_id);
+
+                    match Self::serve_kill(
+                        sandbox_cache,
+                        &msg,
+                    ).await {
+                        Ok(response) => message::MessageResponse::Kill(response),
+                        Err(_) => {
+                            error!("error processing KILL request");
+                            return Ok(Self::internal_server_error());
+                        },
+                    }
+                }
             };
 
-            // Print out the deserialized struct
-            debug!("request id: {requestid}");
-            debug!("client id: {}", request.clientid);
-            debug!("program: {}", request.program);
-            debug!("args: {:?}", request.args);
-
-            // Check if client ID was not informed.
-            if request.clientid == 0 {
-                return Ok(Self::bad_request());
-            }
-
-            // Check if program name was not informed.
-            if request.program.is_empty() {
-                return Ok(Self::bad_request());
-            }
-
-            let bytes: Vec<u8> = match Self::serve(
-                &sandboxes,
-                request,
-                requestid,
-                linuxd_sockaddr,
-                tmp_directory,
-                nanvix_console,
-                sandbox_sockaddr,
-            )
-            .await
-            {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    warn!("failed to serve request ({e:?})");
-                    return Ok(Self::internal_server_error());
-                },
-            };
-
-            let json: Value = serde_json::json!({
-                "response": String::from_utf8_lossy(&bytes).to_string(),
-            });
-
-            // Convert JSON to bytes.
-            let bytes = match serde_json::to_vec(&json) {
-                Ok(bytes) => Bytes::from(bytes),
+            // Convert response JSON to string.
+            let response_string = match serde_json::to_string(&message_response) {
+                Ok(string) => Bytes::from(string),
                 Err(_) => {
-                    let reason: String = "failed to convert JSON to bytes".to_string();
-                    error!("{reason}");
+                    error!("failed to convert JSON response to string");
                     return Ok(Self::internal_server_error());
                 },
             };
@@ -301,8 +247,7 @@ impl Service<Request<Incoming>> for HttpClient {
             match Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .header("Content-Length", bytes.len())
-                .body(Full::new(bytes))
+                .body(Full::new(response_string))
             {
                 Ok(response) => Ok(response),
                 Err(_) => {
