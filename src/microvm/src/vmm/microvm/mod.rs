@@ -173,6 +173,7 @@ impl Vmm {
             loop {
                 match memory_thread_rx.try_recv() {
                     Ok(mut msg) => {
+                        // Label: microvm::mod::memory_thread_try_recv()
                         profiler::timestamp_message!(
                             &mut msg.payload,
                             mem::offset_of!(syscall::LinuxDaemonMessage, payload)
@@ -279,6 +280,7 @@ impl Vmm {
 
             match input_queue.recv() {
                 Ok(mut msg) => {
+                    // Label: microvm::mod::vm_input::vmexit()
                     profiler::timestamp_message!(
                         &mut msg.payload,
                         mem::offset_of!(syscall::LinuxDaemonMessage, payload)
@@ -288,6 +290,7 @@ impl Vmm {
                     let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem
                         .lock()
                         .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+                    // Label: microvm::mod::vm_input::vm_write_bytes()
                     profiler::timestamp_message!(
                         &mut msg.payload,
                         mem::offset_of!(syscall::LinuxDaemonMessage, payload)
@@ -352,6 +355,7 @@ impl Vmm {
                         anyhow::bail!(reason);
                     },
                 };
+                // Label: microvm::mod::vm_output::try_send()
                 profiler::timestamp_message!(
                     &mut message.payload,
                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)

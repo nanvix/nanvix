@@ -95,6 +95,7 @@ impl Gateway {
                         return Err(SocketError::new(Error::new(ErrorKind::InvalidData, reason)));
                     },
                 };
+                // Label: microvm::io::try_receive_from_gateway()
                 profiler::timestamp_message!(
                     &mut message.payload,
                     mem::offset_of!(syscall::LinuxDaemonMessage, payload)

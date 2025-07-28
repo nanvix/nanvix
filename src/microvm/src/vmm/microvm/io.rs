@@ -228,6 +228,7 @@ impl IoThread {
     fn try_receive_from_microvm(&mut self) -> Result<()> {
         match self.microvm_rx.try_recv() {
             Ok(mut message) => {
+                // Label: microvm::io::try_recv_from_microvm()
                 profiler::timestamp_message!(
                     &mut message.payload,
                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
@@ -260,6 +261,8 @@ impl IoThread {
         match self.outgoing.pop_front() {
             Some(message) => {
                 let mut message_clone: Message = message.clone();
+
+                // Label: microvm::io::try_send_to_gateway()
                 profiler::timestamp_message!(
                     &mut message_clone.payload,
                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
@@ -296,6 +299,7 @@ impl IoThread {
     fn try_send_to_microvm(&mut self) -> Result<()> {
         match self.incoming.pop_front() {
             Some(mut message) => {
+                // Label: microvm::io::try_send_to_microvm()
                 profiler::timestamp_message!(
                     &mut message.payload,
                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
