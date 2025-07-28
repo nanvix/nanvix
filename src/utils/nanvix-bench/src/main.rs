@@ -544,69 +544,134 @@ impl Benchmark {
     }
 
     #[cfg(feature = "timestamp-messages")]
-    pub fn run_echo_breakdown(&mut self) -> Result<()> {
+    pub async fn run_echo_breakdown(&mut self) -> Result<()> {
+        // First start nanvixd and the user VM.
+        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
+        self.setup();
+        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
+
+        // The labels in this array are also added as comments to the line of code where the
+        // timestamp is added.
         let steps: Vec<&str> = vec![
             // In-path
-            "gateway::recv()",                          // 0
-            "linuxd::handle_read_request()",            // 1
-            "microvm::io::try_receive_from_gateway()",  // 2
-            "microvm::io::try_send_to_microvm()",       // 3
-            "microvm::mod::memory_thread::try_recv()",  // 4
-            "microvm::mod::vm_input::vmexit()",         // 5
+            "nanvix-bench::write_all()",                // 0
+            "linuxd::gw_stdin_thread::recv()",          // 1
+            "linuxd::handle_read_request()",            // 2
+            "microvm::io::try_receive_from_gateway()",  // 3
+            "microvm::io::try_send_to_microvm()",       // 4
+            "microvm::mod::memory_thread::try_recv()",  // 5
+            "microvm::mod::vm_input::vmexit()",         // 6
             "microvm::mod::vm_input::vm_write_bytes()", // 7
             // Out-path
             "microvm::mod::vm_output::try_send()",  // 8
             "microvm::io::try_recv_from_microvm()", // 9
             "microvm::io::try_send_to_gateway()",   // 10
             "linuxd::handle_write_request()",       // 11
-            "gateway::recv()",                      // 12
+            "linuxd::gw_stdout_thread::send()",     // 12
+            "nanvix-bench::read_exact()",           // 13
         ];
 
         let header_size = 1;
         let data_size = header_size + profiler::MAX_NUMBER_MESSAGE_TIMESTAMPS * 2;
-        let mut data = vec![0u8; data_size];
 
-        // Before running this experiment, we need to wait for the nano VM to
-        // fully boot, as otherwise the boot time will tamper the hot-path
-        // measurements.
-        thread::sleep(Duration::from_millis(200));
+        // For each different step we measure, we record the delta for each iteration.
+        let mut latencies: Vec<Vec<u16>> = Vec::with_capacity(steps.len() + 1);
+        for _ in 0..(steps.len() + 1) {
+            latencies.push(vec![0u16; self.iterations]);
+        }
 
-        // Add initial timestamp
-        profiler::timestamp_message!(&mut data, 0);
+        // Display a progress bar.
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                .expect("error creating progress bar")
+                .progress_chars("#>-"),
+        );
+        pb.set_message("Benchmark progress:");
 
-        self.send_to_gateway(&data)?;
-        let mut response = self.recv_from_gateway(data.len())?;
+        for iter in 0..self.iterations {
+            let mut data = vec![0u8; data_size];
+            let mut response = vec![0u8; data_size];
 
-        // Add final timestamp
-        profiler::timestamp_message!(&mut response, 0);
+            // Before running this experiment, we need to wait for the nano VM to
+            // fully boot, as otherwise the boot time will tamper the hot-path
+            // measurements.
+            thread::sleep(Duration::from_millis(100));
+
+            // Add initial timestamp
+            // Label: nanvix-bench::write_all()
+            profiler::timestamp_message!(&mut data, 0);
+
+            gateway_stream.write_all(&data)?;
+            gateway_stream.read_exact(&mut response)?;
+
+            // Add final timestamp.
+            // Label: nanvix-bench::read_exact()
+            profiler::timestamp_message!(&mut response, 0);
+
+            // Process results.
+            let mut first_timestamp: Option<u16> = None;
+            let mut last_timestamp: Option<u16> = None;
+            let num_stamps = response[0] as usize;
+            if num_stamps != steps.len() {
+                return Err(anyhow::anyhow!("have not collected enough timestamps!"));
+            }
+            for (step_idx, chunk) in (0..num_stamps).zip(response[header_size..].chunks_exact(2)) {
+                let timestamp = u16::from_le_bytes([chunk[0], chunk[1]]);
+
+                if first_timestamp.is_none() {
+                    first_timestamp = Some(timestamp);
+                }
+
+                if let Some(last) = last_timestamp {
+                    let delta = timestamp.wrapping_sub(last);
+                    latencies[step_idx][iter] = delta;
+                }
+
+                last_timestamp = Some(timestamp);
+            }
+
+            if first_timestamp.is_some() && last_timestamp.is_some() {
+                latencies[steps.len()][iter] = last_timestamp.unwrap() - first_timestamp.unwrap()
+            } else {
+                return Err(anyhow::anyhow!("have not collected enough timestamps!"));
+            }
+
+            pb.inc(1);
+        }
+
+        pb.finish();
+
+        // Clean-up.
+        self.kill(user_vm_id).await?;
+        self.cleanup();
 
         // Print results
-        let mut first_timestamp: Option<u16> = None;
-        let mut last_timestamp: Option<u16> = None;
-        let num_stamps = response[0] as usize;
-        for (step_idx, chunk) in (0..num_stamps).zip(response[header_size..].chunks_exact(2)) {
-            let timestamp = u16::from_le_bytes([chunk[0], chunk[1]]);
-
-            if first_timestamp.is_none() {
-                first_timestamp = Some(timestamp);
-            }
-
-            print!("{step_idx:<2} | {:<40} | Timestamp {timestamp:5} us", steps[step_idx]);
-
-            if let Some(last) = last_timestamp {
-                let delta = timestamp.wrapping_sub(last); // Handles wraparound
-                println!(" | Delta {delta:5} us");
+        for step_idx in 0..(steps.len() + 1) {
+            if step_idx < steps.len() {
+                print!("{step_idx:<2} | {:<40}", steps[step_idx]);
             } else {
-                println!(" | First Step");
+                print!("{step_idx:<2} | {:<40}", "Total");
             }
 
-            last_timestamp = Some(timestamp);
-        }
-        if first_timestamp.is_some() && last_timestamp.is_some() {
-            println!(
-                "Total time elapsed: {} us",
-                last_timestamp.unwrap() - first_timestamp.unwrap()
+            if step_idx == 0 {
+                println!(" | First Step");
+                continue;
+            }
+
+            latencies[step_idx].sort();
+            print!(" | p50: {:5} | p95: {:5} | p99 {:5}",
+                latencies[step_idx][(self.iterations as f32 * 0.5) as usize],
+                latencies[step_idx][(self.iterations as f32 * 0.95) as usize],
+                latencies[step_idx][(self.iterations as f32 * 0.99) as usize],
             );
+
+            if step_idx < steps.len() && steps[step_idx] == "microvm::mod::vm_input::vmexit()" {
+                println!(" | Time for VM to react to IO being avail.");
+            } else {
+                println!("");
+            }
         }
 
         Ok(())
@@ -674,7 +739,7 @@ async fn main() -> Result<()> {
 
             #[cfg(feature = "timestamp-messages")]
             {
-                benchmark.run_echo_breakdown()
+                benchmark.run_echo_breakdown().await
             }
         },
         BenchmarkFlavour::ColdStart => {
