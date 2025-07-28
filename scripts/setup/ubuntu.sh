@@ -25,6 +25,7 @@ apt-get install -y        \
     git                   \
     graphviz              \
     grub2                 \
+    jq                    \
     kpartx                \
     libglib2.0-dev        \
     libgmp-dev            \
