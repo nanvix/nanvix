@@ -22,6 +22,7 @@ use ::http_body_util::{
     BodyExt,
     Full,
 };
+use ::hwloc::HwLoc;
 use ::hyper::{
     body::{
         Bytes,
@@ -47,6 +48,7 @@ pub struct HttpClient {
     sandbox_cache: Arc<Mutex<SandboxCache>>,
     tmp_directory: String,
     console_file: Option<String>,
+    hwloc: Option<HwLoc>,
 }
 
 impl HttpClient {
@@ -54,11 +56,13 @@ impl HttpClient {
         sandbox_cache: Arc<Mutex<SandboxCache>>,
         tmp_directory: String,
         console_file: Option<String>,
+        hwloc: Option<HwLoc>,
     ) -> Self {
         Self {
             sandbox_cache,
             tmp_directory,
             console_file,
+            hwloc,
         }
     }
 
@@ -98,6 +102,7 @@ impl HttpClient {
         message: &message::New,
         tmp_directory: String,
         console_file: Option<String>,
+        hwloc: Option<HwLoc>
     ) -> Result<message::NewResponse> {
         let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
 
@@ -118,7 +123,8 @@ impl HttpClient {
             &user_vm_sockaddr,
             &message.program,
             program_args.clone(),
-            console_file.clone()
+            console_file.clone(),
+            hwloc.clone()
         );
 
         // This method will create a sandbox if it is not in the cache.
@@ -156,6 +162,7 @@ impl Service<Request<Incoming>> for HttpClient {
         // Clone all necessary values before moving them into the future
         let tmp_directory: String = self.tmp_directory.clone();
         let console_file: Option<String> = self.console_file.clone();
+        let hwloc: Option<HwLoc> = self.hwloc.clone();
         let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
         let future = async move {
             // Get the request headers before consuming the body.
@@ -202,6 +209,7 @@ impl Service<Request<Incoming>> for HttpClient {
                         &msg,
                         tmp_directory.clone(),
                         console_file.clone(),
+                        hwloc.clone(),
                     ).await {
                         Ok(response) => message::MessageResponse::New(response),
                         Err(_) => {

@@ -7,6 +7,7 @@
 
 use crate::config;
 use ::anyhow::Result;
+use ::hwloc::HwLoc;
 use ::nix::{
     sys::signal::{
         Signal,
@@ -48,7 +49,7 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
-    pub fn spawn(control_plane_sockaddr: &str, user_vm_sockaddr: &str, gateway_sockaddr: &str) -> Result<Self> {
+    pub fn spawn(control_plane_sockaddr: &str, user_vm_sockaddr: &str, gateway_sockaddr: &str, hwloc: Option<HwLoc>) -> Result<Self> {
         // Start the control-plane socket in listening mode.
         let control_plane_listener = match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
             Ok(listener) => listener,
@@ -60,13 +61,26 @@ impl LinuxDaemon {
 
         debug!("spawning linux daemon (control-plane={control_plane_sockaddr}, user-vm={user_vm_sockaddr}, \
             gateway={gateway_sockaddr})");
-        let child = Command::new(format!("{}/linuxd.elf", config::BINARY_DIRECTORY))
-            .arg("-control-plane-addr")
-            .arg(control_plane_sockaddr)
-            .arg("-user-vm-bind-addr")
-            .arg(user_vm_sockaddr)
-            .arg("-gateway-bind-addr")
-            .arg(gateway_sockaddr)
+        let mut linuxd_args: Vec<String> = vec![
+            format!("{}/linuxd.elf", config::BINARY_DIRECTORY),
+            "-control-plane-addr".to_string(),
+            control_plane_sockaddr.to_string(),
+            "-user-vm-bind-addr".to_string(),
+            user_vm_sockaddr.to_string(),
+            "-gateway-bind-addr".to_string(),
+            gateway_sockaddr.to_string(),
+        ];
+        if let Some(hwloc) = hwloc {
+            let taskset: Vec<String> = vec![
+                "taskset".to_string(),
+                "-ac".to_string(),
+                hwloc.get_linuxd_core_str(),
+            ];
+            linuxd_args.splice(0..0, taskset);
+        }
+
+        let child = Command::new(&linuxd_args[0])
+            .args(&linuxd_args[1..])
             .stdout(Stdio::piped())
             .spawn()?;
 

@@ -18,10 +18,11 @@ http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
+hwloc = { workspace = true }
 log = { workspace = true }
 nix = { workspace = true, features = ["process", "signal"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["std"] }
 sys = { workspace = true }
 syscomm = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -7,6 +7,11 @@
 
 use crate::config;
 use ::anyhow::Result;
+use ::hwloc::HwLoc;
+use ::std::{
+    fs::File,
+    io::BufReader,
+};
 
 //==================================================================================================
 // Structures
@@ -16,6 +21,7 @@ pub struct Args {
     http_sockaddr: String,
     tmp_directory: String,
     console_file: Option<String>,
+    hwloc: Option<HwLoc>,
 }
 
 //==================================================================================================
@@ -27,11 +33,13 @@ impl Args {
     const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     const OPT_CONSOLE_FILE: &'static str = "-console-file";
+    const OPT_HWLOC: &'static str = "-hwloc";
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: String = String::new();
         let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
         let mut console_file: Option<String> = None;
+        let mut hwloc: Option<HwLoc> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -52,6 +60,18 @@ impl Args {
                     i += 1;
                     console_file = Some(args[i].clone());
                 },
+                Self::OPT_HWLOC => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_HWLOC));
+                    }
+
+                    // Parse hwloc from JSON file.
+                    let hwloc_file = File::open(args[i].clone())?;
+                    let hwloc_reader = BufReader::new(hwloc_file);
+                    hwloc = Some(serde_json::from_reader(hwloc_reader)?);
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -64,16 +84,18 @@ impl Args {
             http_sockaddr,
             tmp_directory,
             console_file,
+            hwloc,
         })
     }
 
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>]",
+            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <hwloc.json>]",
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
-            Self::OPT_TMP_DIRECTORY
+            Self::OPT_TMP_DIRECTORY,
+            Self::OPT_HWLOC
         );
     }
 
@@ -87,5 +109,9 @@ impl Args {
 
     pub fn nanvix_console(&self) -> Option<String> {
         self.console_file.clone()
+    }
+
+    pub fn hwloc(&self) -> Option<HwLoc> {
+        self.hwloc.clone()
     }
 }
