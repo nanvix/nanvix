@@ -281,6 +281,7 @@ impl Benchmark {
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
+            println!("warming up…");
             let start = Instant::now();
 
             match Vmm::spawn(
@@ -296,9 +297,12 @@ impl Benchmark {
                     return Err(anyhow::anyhow!("VMM error"));
                 },
                 _ => {
+                    error!("elapsed OUT 1 {} us", start.elapsed().as_micros());
                     debug!("VMM: done running");
                 },
             }
+            error!("elapsed OUT 2 {} us", start.elapsed().as_micros());
+
 
             latencies.push(start.elapsed().as_micros());
             pb.inc(1);
@@ -634,6 +638,15 @@ async fn main() -> Result<()> {
     // Initialize logger, and make sure we print error logs.
     Logger::try_with_env_or_str("error")
         .expect("malformed RUST_LOG environment variable")
+        .format(|writer: &mut dyn Write, now: &mut flexi_logger::DeferredNow, record: &flexi_logger::Record| {
+            write!(
+                writer,
+                "[{}] [{}] {}",
+                now.format("%Y-%m-%d %H:%M:%S%.9f"),
+                record.level(),
+                &record.args()
+            )
+        })
         .start()
         .expect("failed to initialize logger");
 

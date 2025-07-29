@@ -107,7 +107,9 @@ impl Vmm {
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
     ) -> Result<u16> {
+        let start = std::time::Instant::now();
         crate::timer!("vmm_creation");
+
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
@@ -155,6 +157,8 @@ impl Vmm {
         }
 
         microvm.reset(rip)?;
+
+        error!("elapsed 1 {} us", start.elapsed().as_micros());
 
         let microvm: Arc<Mutex<MicroVm>> = Arc::new(Mutex::new(microvm));
 
@@ -208,6 +212,8 @@ impl Vmm {
                 .run()
         });
 
+        error!("elapsed 2 {} us", start.elapsed().as_micros());
+
         let mut vmm: Vmm = Self {
             _gateway_tx: gateway_tx,
             io_thread,
@@ -224,8 +230,13 @@ impl Vmm {
             }
         }
 
+        error!("elapsed 3 {} us", start.elapsed().as_micros());
+
         match vmm.vcpu_thread.join() {
-            Ok(exit_code) => exit_code,
+            Ok(exit_code) => {
+                error!("elapsed 4 {} us", start.elapsed().as_micros());
+                exit_code
+            }
             Err(e) => {
                 let reason: String = format!("failed to join vCPU thread (error={e:?})");
                 error!("run(): {reason}");
