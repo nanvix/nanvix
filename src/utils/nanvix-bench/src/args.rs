@@ -40,7 +40,7 @@ impl Args {
 
     fn usage() -> String {
         format!(
-            "usage: ./bin/nanvix-bench.elf {} [boot-time,cold-start,warm-start,echo-breakdown] \
+            "usage: ./bin/nanvix-bench.elf {} [boot-time,cold-start,warm-start,warm-start-vmm,echo-breakdown] \
              [{} <path_to_hwloc.json> {} <iterations>]",
             Self::OPT_BENCHMARK,
             Self::OPT_HWLOC,
@@ -88,9 +88,9 @@ impl Args {
                     }
                     iterations = args[i].parse::<usize>()?;
                 },
-                _ => {
+                arg => {
                     error!("{}", Self::usage());
-                    return Err(anyhow::anyhow!("invalid argument"));
+                    return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
             }
 
