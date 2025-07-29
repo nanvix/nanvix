@@ -14,6 +14,7 @@ homepage.workspace = true
 anyhow = { workspace = true }
 config = { workspace = true }
 flexi_logger = { workspace = true }
+hwloc = { workspace = true }
 indicatif = { workspace = true }
 log = { workspace = true }
 microvm = { workspace = true }

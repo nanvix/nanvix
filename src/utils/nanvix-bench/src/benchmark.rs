@@ -5,10 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    env::get_proj_root,
-    hwloc::HwLoc,
-};
+use crate::env::get_proj_root;
+use hwloc::HwLoc;
 use std::{
     fmt,
     process::Child,
@@ -70,6 +68,7 @@ impl FromStr for BenchmarkFlavour {
 
 pub struct Benchmark {
     pub iterations: usize,
+    pub hwloc_file: Option<String>,
     pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
     pub nanvixd: Option<Child>,

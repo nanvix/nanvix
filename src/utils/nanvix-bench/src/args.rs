@@ -5,15 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    benchmark::BenchmarkFlavour,
-    hwloc::HwLoc,
-};
+use crate::benchmark::BenchmarkFlavour;
 use anyhow::Result;
 use log::error;
 use std::{
-    fs::File,
-    io::BufReader,
     process,
     str::FromStr,
 };
@@ -24,7 +19,7 @@ use std::{
 
 pub struct Args {
     benchmark: BenchmarkFlavour,
-    hwloc: Option<HwLoc>,
+    hwloc_file: Option<String>,
     iterations: usize,
 }
 
@@ -50,7 +45,7 @@ impl Args {
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut benchmark_str: String = String::new();
-        let mut hwloc: Option<HwLoc> = None;
+        let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
 
         let mut i: usize = 1;
@@ -75,10 +70,7 @@ impl Args {
                         return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_HWLOC));
                     }
 
-                    // Parse hwloc from JSON file.
-                    let hwloc_file = File::open(args[i].clone())?;
-                    let hwloc_reader = BufReader::new(hwloc_file);
-                    hwloc = Some(serde_json::from_reader(hwloc_reader)?);
+                    hwloc_file = Some(args[i].clone());
                 },
                 Self::OPT_ITERATIONS => {
                     i += 1;
@@ -100,7 +92,7 @@ impl Args {
         match BenchmarkFlavour::from_str(benchmark_str.as_str()) {
             Ok(benchmark) => Ok(Self {
                 benchmark,
-                hwloc,
+                hwloc_file,
                 iterations,
             }),
             Err(_) => {
@@ -114,8 +106,8 @@ impl Args {
         self.benchmark.clone()
     }
 
-    pub fn hwloc(&self) -> Option<HwLoc> {
-        self.hwloc.clone()
+    pub fn hwloc_file(&self) -> Option<String> {
+        self.hwloc_file.clone()
     }
 
     pub fn iterations(&self) -> usize {
