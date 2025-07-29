@@ -7,6 +7,7 @@
 
 use crate::config;
 use ::anyhow::Result;
+use ::hwloc::HwLoc;
 use ::nix::{
     sys::signal::{
         Signal,
@@ -31,27 +32,39 @@ pub struct Microvm(Option<Child>);
 //==================================================================================================
 
 impl Microvm {
-    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>) -> Result<Self> {
-        let mut cmd = Command::new(format!("{}/microvm.elf", config::BINARY_DIRECTORY));
-
-        cmd
-            .arg("-log-to-file")
-            .arg("-kernel")
-            .arg(format!("{}/kernel.elf", config::BINARY_DIRECTORY))
-            .arg("-initrd")
-            .arg(program)
-            .arg("-gateway")
-            .arg(addr);
+    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>, hwloc: Option<HwLoc>) -> Result<Self> {
+        let mut user_vm_args: Vec<String> = vec![
+            format!("{}/microvm.elf", config::BINARY_DIRECTORY),
+            "-log-to-file".to_string(),
+            "-kernel".to_string(),
+            format!("{}/kernel.elf", config::BINARY_DIRECTORY),
+            "-initrd".to_string(),
+            program.to_string(),
+            "-gateway".to_string(),
+            addr.to_string(),
+        ];
 
         if let Some(program_args) = program_args {
-            cmd.arg("-initrd_args").arg(program_args);
+            user_vm_args.push("-initrd_args".to_string());
+            user_vm_args.push(program_args.to_string());
         }
 
         if let Some(stderr_file) = stderr {
-            cmd.arg("-stderr").arg(stderr_file);
+            user_vm_args.push("-stderr".to_string());
+            user_vm_args.push(stderr_file.to_string());
         }
 
-        let child = cmd
+        if let Some(hwloc) = hwloc {
+            let taskset: Vec<String> = vec![
+                "taskset".to_string(),
+                "-ac".to_string(),
+                hwloc.get_nanovm_core_str(),
+            ];
+            user_vm_args.splice(0..0, taskset);
+        }
+
+        let child = Command::new(&user_vm_args[0])
+            .args(&user_vm_args[1..])
             .stdout(Stdio::piped())
             .spawn()?;
 
