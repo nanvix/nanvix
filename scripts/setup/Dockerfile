@@ -18,9 +18,9 @@ ARG NANVIX_VERSION=99ab1edc540866dc9aa955f9da4b9c353c4eceef
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    build-essential \
     bison \
     bridge-utils \
+    build-essential \
     clang-format \
     curl \
     dosfstools \
