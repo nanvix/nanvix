@@ -69,8 +69,7 @@ RUN if [ -z "$RUST_VERSION" ]; then echo "RUST_VERSION is not set"; exit 1; fi &
 
 # Build toolchain.
 RUN if [ -z "$NANVIX_VERSION" ]; then echo "NANVIX_VERSION is not set"; exit 1; fi && \
-    git clone https://github.com/nanvix/nanvix /opt/src/nanvix && \
-    cd /opt/src/nanvix && \
+    git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
+    cd /opt/nanvix/src/nanvix && \
     git checkout -f $NANVIX_VERSION && \
-    scripts/setup/toolchain.sh /opt && \
-    rm -rf /opt/nanvix/src || true
+    scripts/setup/toolchain.sh /opt/nanvix
