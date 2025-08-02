@@ -15,6 +15,11 @@ ARG RUST_VERSION
 # Nanvix version.
 ARG NANVIX_VERSION
 
+# Validate required build arguments.
+RUN if [ -z "$RUST_VERSION" ] || [ -z "$NANVIX_VERSION" ]; then \
+    echo "RUST_VERSION and NANVIX_VERSION must be set"; exit 1; \
+    fi
+
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -61,15 +66,15 @@ RUN apt-get update && \
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH=$HOME/.cargo/bin:$PATH
-RUN if [ -z "$RUST_VERSION" ]; then echo "RUST_VERSION is not set"; exit 1; fi && \
-    rustup toolchain install $RUST_VERSION && \
+
+# Install Rust toolchain and components.
+RUN rustup toolchain install $RUST_VERSION && \
     rustup default $RUST_VERSION && \
     rustup component add rust-src && \
     rustup target add wasm32-wasip1
 
-# Build toolchain.
-RUN if [ -z "$NANVIX_VERSION" ]; then echo "NANVIX_VERSION is not set"; exit 1; fi && \
-    git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
+# Clone Nanvix repository and build toolchain.
+RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
     cd /opt/nanvix/src/nanvix && \
     git checkout -f $NANVIX_VERSION && \
     scripts/setup/toolchain.sh /opt/nanvix
