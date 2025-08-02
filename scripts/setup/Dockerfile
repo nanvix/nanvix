@@ -10,10 +10,10 @@ ARG HOME=/root
 USER $USER
 
 # Rust version.
-ARG RUST_VERSION=nightly-2025-03-28
+ARG RUST_VERSION
 
 # Nanvix version.
-ARG NANVIX_VERSION=99ab1edc540866dc9aa955f9da4b9c353c4eceef
+ARG NANVIX_VERSION
 
 # Update the package list and install dependencies
 RUN apt-get update && \
