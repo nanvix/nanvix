@@ -18,6 +18,7 @@ ARG NANVIX_VERSION=99ab1edc540866dc9aa955f9da4b9c353c4eceef
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    bc \
     bison \
     bridge-utils \
     build-essential \
@@ -31,6 +32,8 @@ RUN apt-get update && \
     git \
     graphviz \
     grub2 \
+    iproute2 \
+    jq \
     kpartx \
     libglib2.0-dev \
     libgmp-dev \
@@ -43,13 +46,15 @@ RUN apt-get update && \
     libvirt-clients \
     libvirt-daemon-system \
     mtools \
+    netcat-openbsd \
     ninja-build \
     pkg-config \
     python3-venv \
     qemu-kvm \
     qemu-system-x86 \
     texinfo \
-    xorriso && \
+    xorriso \
+    wget && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
