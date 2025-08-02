@@ -61,13 +61,16 @@ RUN apt-get update && \
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH=$HOME/.cargo/bin:$PATH
-RUN rustup toolchain install $RUST_VERSION
-RUN rustup default $RUST_VERSION
-RUN rustup component add rust-src
-RUN rustup target add wasm32-wasip1
+RUN if [ -z "$RUST_VERSION" ]; then echo "RUST_VERSION is not set"; exit 1; fi && \
+    rustup toolchain install $RUST_VERSION && \
+    rustup default $RUST_VERSION && \
+    rustup component add rust-src && \
+    rustup target add wasm32-wasip1
 
 # Build toolchain.
-RUN git clone https://github.com/nanvix/nanvix /opt/src/nanvix
-RUN cd /opt/src/nanvix && git checkout -f $NANVIX_VERSION
-RUN cd /opt/src/nanvix && scripts/setup/toolchain.sh /opt
-RUN rm -rf /opt/nanvix/src
+RUN if [ -z "$NANVIX_VERSION" ]; then echo "NANVIX_VERSION is not set"; exit 1; fi && \
+    git clone https://github.com/nanvix/nanvix /opt/src/nanvix && \
+    cd /opt/src/nanvix && \
+    git checkout -f $NANVIX_VERSION && \
+    scripts/setup/toolchain.sh /opt && \
+    rm -rf /opt/nanvix/src || true
