@@ -1,0 +1,36 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Minor Release Automation"
+
+on:
+  push:
+    branches: [dev]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create-minor-release:
+    # Only run on pushes to dev, and skip if the commit author is GitHub Actions
+    # This prevents infinite loops when the workflow commits back to dev
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, 'Nanvix ')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          # Use a personal access token to allow pushing back to the repository
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: "Configure Git"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: "Create minor release"
+        run: |
+          ./scripts/create-minor-release.sh --push
