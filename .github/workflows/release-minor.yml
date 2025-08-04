@@ -22,15 +22,20 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@v4
         with:
-          # Use a personal access token to allow pushing back to the repository
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
           fetch-depth: 0
 
       - name: "Configure Git"
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin git@github.com:${{ github.repository }}.git
 
       - name: "Create minor release"
+        # This step runs the minor release script, which:
+        # - Increments the minor version, updates changelogs, and tags the release.
+        # - Requires the following secret to be available in the workflow:
+        #   - DEPLOY_PRIVATE_SSH_KEY: used in the checkout step for SSH-based operations.
+        # - The script must be executable and located at ./scripts/create-minor-release.sh.
         run: |
           ./scripts/create-minor-release.sh --push
