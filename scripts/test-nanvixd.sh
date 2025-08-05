@@ -9,7 +9,7 @@ PROGRAM_INPUT=$4
 PROGRAM_EXPECTED_OUTPUT=$5
 TIMEOUT=${6:-90}
 
-NANVIX_HOME=`git rev-parse --show-toplevel`
+NANVIX_HOME=$(git rev-parse --show-toplevel)
 LOGS_DIR=${NANVIX_HOME}/logs/nanvixd-$(basename "${PROGRAM_NAME}")
 
 # Parameters for the requests to nanvixd.
@@ -21,19 +21,19 @@ TMP_DIR_PATH="/tmp/nanvixd"
 TMP_DIR=$(mktemp -d ${TMP_DIR_PATH}-XXXXXX)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-mkdir -p ${LOGS_DIR}
+mkdir -p "${LOGS_DIR}"
 
 # Run nanvixd.
 CONSOLE_FILE_NAME="${LOGS_DIR}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
-RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
+RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground "${TIMEOUT}" \
     ./bin/nanvixd.elf \
-        -http-addr ${NANVIXD_SOCKADDR} \
-        -tmp-dir ${TMP_DIR} \
-        -console-file ${CONSOLE_FILE_NAME} &
+        -http-addr "${NANVIXD_SOCKADDR}" \
+        -tmp-dir "${TMP_DIR}" \
+        -console-file "${CONSOLE_FILE_NAME}" &
 NANVIXD_PID=$!
 
 # Extract port number from nanvixd.
-NANVIXD_PORT_NUMBER=$(echo ${NANVIXD_SOCKADDR} | cut -d: -f2)
+NANVIXD_PORT_NUMBER=$(echo "${NANVIXD_SOCKADDR}" | cut -d: -f2)
 
 # Wait for nanvixd to start by checking if the HTTP socket is listening.
 MAX_TRIALS=100
@@ -68,23 +68,26 @@ NEW_RESPONSE=$(curl \
     --header "X-NVX-Message-Type: NEW" \
     --request POST \
     --data "${NEW_JSON}" \
-    http://localhost:${NANVIXD_PORT_NUMBER})
-VM_ID=$(echo ${NEW_RESPONSE} | jq -r '.user_vm_id')
-GATEWAY_SOCKADDR=$(echo ${NEW_RESPONSE} | jq -r '.gateway_sockaddr')
+    http://localhost:"${NANVIXD_PORT_NUMBER}")
+VM_ID=$(echo "${NEW_RESPONSE}" | jq -r '.user_vm_id')
+GATEWAY_SOCKADDR=$(echo "${NEW_RESPONSE}" | jq -r '.gateway_sockaddr')
 
-# Get output by writting to the gateway socket address.
-PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 ${GATEWAY_SOCKADDR} | tr -d '\0')
+echo "VM ID: ${VM_ID}"
+echo "Gateway Socket Address: ${GATEWAY_SOCKADDR}"
+
+# Get output by writing to the gateway socket address.
+PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0')
 
 # Move all Rust logs to the logs directory.
 # FIXME: https://github.com/nanvix/nanvix/issues/543
-mv *.log ${LOGS_DIR}/ > /dev/null 2>&1 || true
+find . -maxdepth 1 -name '*.log' -exec mv {} "${LOGS_DIR}"/ \; 2>/dev/null || true
 
-kill -s SIGINT ${NANVIXD_PID} || true
+kill -s SIGINT "${NANVIXD_PID}" || true
 
 # Check if curl.log contains the expected output.
-echo ${PROGRAM_ACTUAL_OUTPUT} | grep -q "${PROGRAM_EXPECTED_OUTPUT}"
+echo "${PROGRAM_ACTUAL_OUTPUT}" | grep -q "${PROGRAM_EXPECTED_OUTPUT}"
 GREP_EXIT_CODE=$?
-if [ ${GREP_EXIT_CODE} -eq 0 ]; then
+if [ "${GREP_EXIT_CODE}" -eq 0 ]; then
     echo "Test passed."
     exit 0
 else
