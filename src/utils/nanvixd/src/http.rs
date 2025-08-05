@@ -102,16 +102,16 @@ impl HttpClient {
         message: &message::New,
         tmp_directory: String,
         console_file: Option<String>,
-        hwloc: Option<HwLoc>
+        hwloc: Option<HwLoc>,
     ) -> Result<message::NewResponse> {
         let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
 
         let control_plane_sockaddr: String =
-            config::control_plane_sockaddr_builder(&tmp_directory, tag.tenant_id());
+            config::control_plane_sockaddr_builder(&tmp_directory, tag.tenant_id())?;
         let gateway_sockaddr: String =
-            config::gateway_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.app_name(), &tag.sandbox_id()[0..4]);
+            config::gateway_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.sandbox_id())?;
         let user_vm_sockaddr: String =
-            config::user_vm_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.app_name(), &tag.sandbox_id()[0..4]);
+            config::user_vm_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.sandbox_id())?;
         let program_args = match message.program_args.len() {
             0 => None,
             _ => Some(message.program_args.clone()),
@@ -124,7 +124,7 @@ impl HttpClient {
             &message.program,
             program_args.clone(),
             console_file.clone(),
-            hwloc.clone()
+            hwloc.clone(),
         );
 
         // This method will create a sandbox if it is not in the cache.
@@ -139,9 +139,8 @@ impl HttpClient {
 
     async fn serve_kill(
         sandbox_cache: Arc<Mutex<SandboxCache>>,
-        message: &message::Kill
+        message: &message::Kill,
     ) -> Result<message::KillResponse> {
-
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
         let exit_code = match locked_sandbox_cache.kill(message.user_vm_id.clone()).await {
             Ok(_) => 0,
@@ -166,15 +165,17 @@ impl Service<Request<Incoming>> for HttpClient {
         let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
         let future = async move {
             // Get the request headers before consuming the body.
-            let message_type: MessageType = match request.headers()
+            let message_type: MessageType = match request
+                .headers()
                 .get(config::HTTP_HEADER_MESSAGE_TYPE)
                 .and_then(|val| val.to_str().ok())
-                .and_then(|s| s.parse::<MessageType>().ok()) {
+                .and_then(|s| s.parse::<MessageType>().ok())
+            {
                 Some(message_type) => message_type,
                 None => {
                     error!("{} is a mandatory header", config::HTTP_HEADER_MESSAGE_TYPE);
                     return Ok(Self::bad_request());
-                }
+                },
             };
 
             let body: Bytes = match request.collect().await {
@@ -210,7 +211,9 @@ impl Service<Request<Incoming>> for HttpClient {
                         tmp_directory.clone(),
                         console_file.clone(),
                         hwloc.clone(),
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(response) => message::MessageResponse::New(response),
                         Err(_) => {
                             error!("error processing NEW request");
@@ -230,17 +233,14 @@ impl Service<Request<Incoming>> for HttpClient {
                     debug!("serving KILL message:");
                     debug!("- user vm id: {}", msg.user_vm_id);
 
-                    match Self::serve_kill(
-                        sandbox_cache,
-                        &msg,
-                    ).await {
+                    match Self::serve_kill(sandbox_cache, &msg).await {
                         Ok(response) => message::MessageResponse::Kill(response),
                         Err(_) => {
                             error!("error processing KILL request");
                             return Ok(Self::internal_server_error());
                         },
                     }
-                }
+                },
             };
 
             // Convert response JSON to string.
