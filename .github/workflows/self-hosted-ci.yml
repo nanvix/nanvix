@@ -72,9 +72,12 @@ jobs:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
 
-    # Benchmark (only for release builds)
+    # Benchmark (only for release builds, skip for Dependabot PRs)
     - name: "Benchmark"
-      if: matrix.build-type == 'release'
+      if: |
+        matrix.build-type == 'release' &&
+        !startsWith(github.head_ref, 'dependabot/') &&
+        !startsWith(github.head_ref, 'dependabot-')
       uses: ./.github/actions/benchmark
       with:
         arch: '${{ matrix.arch }}'
