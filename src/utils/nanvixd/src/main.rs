@@ -35,6 +35,7 @@ use crate::{
     http::HttpClient,
 };
 use ::anyhow::Result;
+use ::hwloc::HwLoc;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
 use ::std::sync::Arc;
@@ -71,10 +72,11 @@ pub async fn main() -> Result<()> {
                         debug!("accepted connection from {sockaddr:?}");
                         let tmp_directory: String = args.tmp_directory().to_string();
                         let console_file: Option<String> = args.nanvix_console();
+                        let hwloc: Option<HwLoc> = args.hwloc();
                         let sandboxe_cache: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
                         tokio::spawn(async move {
                             let client =
-                                HttpClient::new(sandboxe_cache, tmp_directory, console_file);
+                                HttpClient::new(sandboxe_cache, tmp_directory, console_file, hwloc);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                 error!("failed to serve connection (error={e:?})");

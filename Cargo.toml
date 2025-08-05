@@ -19,6 +19,7 @@ members = [
         "src/libs/config",
         "src/libs/elf",
         "src/libs/error",
+        "src/libs/hwloc",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -73,6 +74,7 @@ hyperlight-host = { version = "0.7.0", default-features = false, features = [
 hyperlight-guest = { version = "0.7.0", default-features = false }
 hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.14", default-features = false }
+hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.13.0"
 kvm-ioctls = "0.23.0"
 libc = "0.2.172"

@@ -1,0 +1,17 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "hwloc"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Hardware Locality Library"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+nix = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
