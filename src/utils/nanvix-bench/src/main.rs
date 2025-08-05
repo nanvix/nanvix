@@ -16,8 +16,8 @@
 //==================================================================================================
 
 mod args;
-mod env;
 mod benchmark;
+mod env;
 
 //==================================================================================================
 // Imports
@@ -31,6 +31,7 @@ use crate::{
     },
     env::get_proj_root,
 };
+use ::sys::ipc::Message;
 use anyhow::Result;
 use flexi_logger::Logger;
 use hwloc::HwLoc;
@@ -46,6 +47,7 @@ use microvm::{
     Gateway,
     Vmm,
 };
+use nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use nix::{
     sys::signal::{
         Signal,
@@ -53,8 +55,10 @@ use nix::{
     },
     unistd::Pid,
 };
-use reqwest::header::{HeaderMap, CONTENT_TYPE};
-use ::sys::ipc::Message;
+use reqwest::header::{
+    CONTENT_TYPE,
+    HeaderMap,
+};
 use std::{
     fs::File,
     io::{
@@ -108,7 +112,7 @@ impl Benchmark {
         new_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
         new_msg_headers.insert(
             nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
-            format!("{}", nanvixd::message::MessageType::New).parse()?
+            format!("{}", nanvixd::message::MessageType::New).parse()?,
         );
 
         let new_msg = nanvixd::message::New {
@@ -127,7 +131,7 @@ impl Benchmark {
             "-http-addr".to_string(),
             NANVIXD_ADDRESS.to_string(),
             "-tmp-dir".to_string(),
-            get_proj_root(),
+            DEFAULT_TMP_DIRECTORY.to_string(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push("-hwloc".to_string());
@@ -192,8 +196,11 @@ impl Benchmark {
 
         while TcpStream::connect_timeout(
             &NANVIXD_ADDRESS.to_string().parse().unwrap(),
-            Duration::from_millis(10)).is_err() {
-            continue
+            Duration::from_millis(10),
+        )
+        .is_err()
+        {
+            continue;
         }
 
         debug!("nanvixd is ready to serve requests");
@@ -201,8 +208,13 @@ impl Benchmark {
 
     /// Starts the Nano VM via POST request to nanvixd. Returns the user VM ID as well as an open
     /// socket to interact with the VMs stdin/stdout.
-    pub async fn start(&mut self, payload: nanvixd::message::New, headers: HeaderMap) -> Result<(String, SocketStream)> {
-        let response: nanvixd::message::NewResponse = self.nanvixd_client
+    pub async fn start(
+        &mut self,
+        payload: nanvixd::message::New,
+        headers: HeaderMap,
+    ) -> Result<(String, SocketStream)> {
+        let response: nanvixd::message::NewResponse = self
+            .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(headers)
             .json(&payload)
@@ -232,11 +244,14 @@ impl Benchmark {
         kill_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
         kill_msg_headers.insert(
             nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
-            format!("{}", nanvixd::message::MessageType::Kill).parse()?
+            format!("{}", nanvixd::message::MessageType::Kill).parse()?,
         );
 
-        let kill_msg = nanvixd::message::Kill { user_vm_id: user_vm_id.clone() };
-        let response: nanvixd::message::KillResponse = self.nanvixd_client
+        let kill_msg = nanvixd::message::Kill {
+            user_vm_id: user_vm_id.clone(),
+        };
+        let response: nanvixd::message::KillResponse = self
+            .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(kill_msg_headers)
             .json(&kill_msg)
