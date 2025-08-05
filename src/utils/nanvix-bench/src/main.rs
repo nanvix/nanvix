@@ -46,6 +46,7 @@ use microvm::{
     Gateway,
     Vmm,
 };
+use nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use nix::{
     sys::signal::{
         Signal,
@@ -127,7 +128,7 @@ impl Benchmark {
             "-http-addr".to_string(),
             NANVIXD_ADDRESS.to_string(),
             "-tmp-dir".to_string(),
-            get_proj_root(),
+            DEFAULT_TMP_DIRECTORY.to_string(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push("-hwloc".to_string());
