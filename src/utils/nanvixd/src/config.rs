@@ -13,6 +13,7 @@ use ::log::error;
 //==================================================================================================
 
 /// Path to the binary directory.
+/// FIXME: Do not hardcode current directory here. (https://github.com/nanvix/nanvix/issues/736)
 pub const BINARY_DIRECTORY: &str = "./bin";
 
 /// Suffix for Unix sockets.
