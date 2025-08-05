@@ -108,16 +108,10 @@ impl HttpClient {
 
         let control_plane_sockaddr: String =
             config::control_plane_sockaddr_builder(&tmp_directory, tag.tenant_id())?;
-        let gateway_sockaddr: String = config::gateway_sockaddr_builder(
-            &tmp_directory,
-            tag.tenant_id(),
-            &tag.sandbox_id()[0..4],
-        )?;
-        let user_vm_sockaddr: String = config::user_vm_sockaddr_builder(
-            &tmp_directory,
-            tag.tenant_id(),
-            &tag.sandbox_id()[0..4],
-        )?;
+        let gateway_sockaddr: String =
+            config::gateway_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.sandbox_id())?;
+        let user_vm_sockaddr: String =
+            config::user_vm_sockaddr_builder(&tmp_directory, tag.tenant_id(), tag.sandbox_id())?;
         let program_args = match message.program_args.len() {
             0 => None,
             _ => Some(message.program_args.clone()),
