@@ -16,6 +16,7 @@ config = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+nix = { workspace = true, features = ["pthread", "signal"] }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
 sys = { workspace = true, features = ["std"] }

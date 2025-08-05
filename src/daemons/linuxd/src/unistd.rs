@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::fcntl::LibcAtFlags;
+use crate::{
+    error::WorkerThreadError,
+    fcntl::LibcAtFlags,
+};
 use ::alloc::ffi::CString;
 use ::core::{
     ffi,
@@ -110,15 +113,23 @@ pub fn do_chdir(tid: ThreadIdentifier, request: ChangeDirectoryRequest) -> Vec<M
 // do_close
 //==================================================================================================
 
-pub fn do_close(tid: ThreadIdentifier, request: CloseRequest) -> Message {
+pub fn do_close(tid: ThreadIdentifier, request: CloseRequest) -> Result<Message, WorkerThreadError> {
     trace!("close(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
 
     debug!("libc::close(): fd={fd:?}");
     match unsafe { libc::close(fd) } {
-        ret if ret == 0 => CloseResponse::build(tid, ret),
-        _ => crate::build_error(tid, ErrorCode::InvalidArgument),
+        ret if ret == 0 => Ok(CloseResponse::build(tid, ret)),
+        _ => {
+            // Check if the thread has been interrupted.
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
+            Ok(crate::build_error(tid, ErrorCode::InvalidArgument))
+        }
     }
 }
 
@@ -340,12 +351,12 @@ pub fn do_ftruncate(tid: ThreadIdentifier, request: FileTruncateRequest) -> Mess
 // do_write
 //==================================================================================================
 
-pub fn do_write(tid: ThreadIdentifier, request: WriteRequest) -> Message {
+pub fn do_write(tid: ThreadIdentifier, request: WriteRequest) -> Result<Message, WorkerThreadError> {
     trace!("write(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
     if request.count > WriteRequest::BUFFER_SIZE as c_size_t {
-        return crate::build_error(tid, ErrorCode::InvalidArgument);
+        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
     }
     let fd: i32 = request.fd;
     let count: usize = request.count as usize;
@@ -354,15 +365,21 @@ pub fn do_write(tid: ThreadIdentifier, request: WriteRequest) -> Message {
 
     debug!("libc::write(): fd={fd:?}, buffer={buffer:?}");
     match unsafe { libc::write(fd, buffer.as_ptr() as *const _, count) } {
-        ret if ret >= 0 => WriteResponse::build(tid, ret as i32),
+        ret if ret >= 0 => Ok(WriteResponse::build(tid, ret as i32)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::write(): errno={errno:?}");
-            crate::build_error(
+            Ok(crate::build_error(
                 tid,
                 ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
-            )
+            ))
         },
     }
 }
@@ -371,12 +388,12 @@ pub fn do_write(tid: ThreadIdentifier, request: WriteRequest) -> Message {
 // do_read
 //==================================================================================================
 
-pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Message {
+pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, WorkerThreadError> {
     trace!("read(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
     if request.count > ReadResponse::BUFFER_SIZE as c_size_t {
-        return crate::build_error(tid, ErrorCode::InvalidArgument);
+        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
     }
     let fd: i32 = request.fd;
     let count: usize = request.count as usize;
@@ -385,15 +402,21 @@ pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Message {
 
     debug!("libc::read(): fd={fd:?}, buffer={buffer:?}");
     match unsafe { libc::read(fd, buffer.as_mut_ptr() as *mut _, count) } {
-        ret if ret >= 0 => ReadResponse::build(tid, ret as i32, buffer),
+        ret if ret >= 0 => Ok(ReadResponse::build(tid, ret as i32, buffer)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::read(): errno={errno:?}");
-            crate::build_error(
+            Ok(crate::build_error(
                 tid,
                 ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
-            )
+            ))
         },
     }
 }
