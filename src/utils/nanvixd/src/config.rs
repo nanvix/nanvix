@@ -36,6 +36,20 @@ const UNIX_PATH_MAX: usize = 108;
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Builds the control plane Unix socket address for a given tenant ID.
+///
+/// # Arguments
+///
+/// - tmp_str: Temporary directory path.
+/// - tenant_id: Tenant ID.
+///
+/// # Returns
+///
+/// On success, returns the name of the control plane Unix socket. On failure, returns an error.
+///
 pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
     let unix_socket_name: String =
         format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
@@ -54,6 +68,22 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<
     Ok(unix_socket_name)
 }
 
+///
+/// # Description
+///
+/// Builds the user VM Unix socket address for a given tenant ID, application name, and sandbox ID.
+///
+/// # Arguments
+///
+/// - tmp_str: Temporary directory path.
+/// - tenant_id: Tenant ID.
+/// - app_name: Application name.
+/// - sandbox_id: Sandbox ID.
+///
+/// # Returns
+///
+/// On success, returns the name of the user VM Unix socket. On failure, returns an error.
+///
 pub fn user_vm_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
@@ -77,6 +107,22 @@ pub fn user_vm_sockaddr_builder(
     Ok(unix_socket_name)
 }
 
+///
+/// # Description
+///
+/// Builds the gateway Unix socket address for a given tenant ID, application name, and sandbox ID.
+///
+/// # Arguments
+///
+/// - tmp_str: Temporary directory path.
+/// - tenant_id: Tenant ID.
+/// - app_name: Application name.
+/// - sandbox_id: Sandbox ID.
+///
+/// # Returns
+///
+/// On success, returns the name of the gateway Unix socket. On failure, returns an error.
+///
 pub fn gateway_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
