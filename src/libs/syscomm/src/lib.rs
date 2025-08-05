@@ -226,6 +226,11 @@ impl SocketError {
     }
 
     /// Gets the kind of the socket error.
+    pub fn raw_os_error(&self) -> Option<i32> {
+        self.error.raw_os_error()
+    }
+
+    /// Gets the kind of the socket error.
     pub fn kind(&self) -> ::std::io::ErrorKind {
         self.error.kind()
     }
@@ -234,6 +239,12 @@ impl SocketError {
 impl fmt::Display for SocketError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SocketError: {}", self.error)
+    }
+}
+
+impl From<SocketError> for io::Error {
+    fn from(err: SocketError) -> Self {
+        err.error
     }
 }
 

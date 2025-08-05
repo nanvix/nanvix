@@ -14,6 +14,7 @@
 
 mod args;
 mod dirent;
+mod error;
 mod fcntl;
 mod linuxd;
 mod message;
@@ -23,6 +24,7 @@ mod time;
 mod times;
 mod unistd;
 mod venv;
+mod worker_thread;
 
 //==================================================================================================
 // Imports
