@@ -80,7 +80,6 @@ PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 ${GATEWAY_SOCKADDR}
 mv *.log ${LOGS_DIR}/ > /dev/null 2>&1 || true
 
 kill -s SIGINT ${NANVIXD_PID} || true
-rm -f /tmp/${NANVIXD_SOCKADDR}*.socket
 
 # Check if curl.log contains the expected output.
 echo ${PROGRAM_ACTUAL_OUTPUT} | grep -q "${PROGRAM_EXPECTED_OUTPUT}"
