@@ -107,41 +107,20 @@ impl LinuxDaemon {
 
     /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
     pub async fn shutdown(&mut self) -> Result<()> {
+        // Send shutdown command to linuxd.
         match control_plane::send_command(
             &mut self.control_plane_stream,
             control_plane::Command::Shutdown,
         ) {
             Ok(()) => {},
             Err(e) => {
-                // FIXME: this send_command is expected to fail until support is implemented in
-                // linuxd.
-                error!("failed to send shutdown command to linuxd (error={e:?})");
-            },
-        };
-
-        // FIXME: when linuxd reacts on shutdown commands, we will be able to get rid of this
-        // manual kill.
-        match self.child.id() {
-            Some(pid) => {
-                let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
-
-                if ret_code < 0 {
-                    let reason: String = format!(
-                        "error sending SIGINT to linuxd: {}",
-                        std::io::Error::last_os_error()
-                    );
-                    error!("{reason}");
-
-                    return Err(anyhow::anyhow!(reason));
-                }
-            },
-            None => {
-                let reason: String = "linuxd process has no PID".to_string();
+                let reason: String =
+                    format!("failed to send shutdown command to linuxd (error={e:?})");
                 error!("{reason}");
 
                 return Err(anyhow::anyhow!(reason));
             },
-        }
+        };
 
         // Wait for linuxd instance to finish.
         match self.child.wait().await {
@@ -151,9 +130,7 @@ impl LinuxDaemon {
                         "linuxd returned with non-zero exit status: {:?}",
                         exit_status.code()
                     );
-                    // FIXME: change this debug to error once linuxd dies gracefully after a
-                    // SIGINT.
-                    debug!("{reason}");
+                    error!("{reason}");
 
                     Err(anyhow::anyhow!(reason))
                 } else {

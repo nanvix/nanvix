@@ -71,25 +71,20 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<
 ///
 /// # Description
 ///
-/// Builds the user VM Unix socket address for a given tenant ID, application name, and sandbox ID.
+/// Builds the user VM Unix socket address for a given tenant ID. All applications for
+/// the same tenant will be multiplexed over this socket.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
-/// - sandbox_id: Sandbox ID.
 ///
 /// # Returns
 ///
 /// On success, returns the name of the user VM Unix socket. On failure, returns an error.
 ///
-pub fn user_vm_sockaddr_builder(
-    tmp_str: &str,
-    tenant_id: &str,
-    sandbox_id: &str,
-) -> Result<String> {
-    let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:{sandbox_id}:uvm{UNIX_SOCKET_SUFFIX}");
+pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
+    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
@@ -108,25 +103,20 @@ pub fn user_vm_sockaddr_builder(
 ///
 /// # Description
 ///
-/// Builds the gateway Unix socket address for a given tenant ID, application name, and sandbox ID.
+/// Builds the gateway Unix socket address for a given tenant ID. All applications of the
+/// same tenant are multiplexed over the same gateway socket.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
-/// - sandbox_id: Sandbox ID.
 ///
 /// # Returns
 ///
 /// On success, returns the name of the gateway Unix socket. On failure, returns an error.
 ///
-pub fn gateway_sockaddr_builder(
-    tmp_str: &str,
-    tenant_id: &str,
-    sandbox_id: &str,
-) -> Result<String> {
-    let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:{sandbox_id}:gw{UNIX_SOCKET_SUFFIX}");
+pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
+    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:gw{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
