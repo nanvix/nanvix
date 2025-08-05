@@ -78,7 +78,6 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
-/// - app_name: Application name.
 /// - sandbox_id: Sandbox ID.
 ///
 /// # Returns
@@ -88,11 +87,10 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<
 pub fn user_vm_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
-    app_name: &str,
     sandbox_id: &str,
 ) -> Result<String> {
     let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:{app_name}:{sandbox_id}:uvm{UNIX_SOCKET_SUFFIX}");
+        format!("{tmp_str}/{tenant_id}:{sandbox_id}:uvm{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
@@ -117,7 +115,6 @@ pub fn user_vm_sockaddr_builder(
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
-/// - app_name: Application name.
 /// - sandbox_id: Sandbox ID.
 ///
 /// # Returns
@@ -127,11 +124,10 @@ pub fn user_vm_sockaddr_builder(
 pub fn gateway_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
-    app_name: &str,
     sandbox_id: &str,
 ) -> Result<String> {
     let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:{app_name}:{sandbox_id}:gw{UNIX_SOCKET_SUFFIX}");
+        format!("{tmp_str}/{tenant_id}:{sandbox_id}:gw{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {

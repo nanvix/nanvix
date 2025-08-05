@@ -33,10 +33,6 @@ impl SandboxTag {
         &self.tenant_id
     }
 
-    pub fn app_name(&self) -> &str {
-        &self.app_name
-    }
-
     pub fn sandbox_id(&self) -> &str {
         &self.sandbox_id
     }

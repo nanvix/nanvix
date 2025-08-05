@@ -111,13 +111,11 @@ impl HttpClient {
         let gateway_sockaddr: String = config::gateway_sockaddr_builder(
             &tmp_directory,
             tag.tenant_id(),
-            tag.app_name(),
             &tag.sandbox_id()[0..4],
         )?;
         let user_vm_sockaddr: String = config::user_vm_sockaddr_builder(
             &tmp_directory,
             tag.tenant_id(),
-            tag.app_name(),
             &tag.sandbox_id()[0..4],
         )?;
         let program_args = match message.program_args.len() {
