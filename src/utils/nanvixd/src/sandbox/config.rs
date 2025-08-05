@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use hwloc::HwLoc;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -20,6 +22,8 @@ pub struct SandboxConfig {
     program_args: Option<String>,
     /// File for console output.
     console_file: Option<String>,
+    /// Hardware locality configuration.
+    hwloc: Option<HwLoc>,
 }
 
 //==================================================================================================
@@ -40,6 +44,7 @@ impl SandboxConfig {
     /// - `program`: Path to the binary to run in the User VM.
     /// - `program_args`: Argv for the program to run in the user VM.
     /// - `console_file`: File for console output.
+    /// - `hwloc`: Hardware locality configuration.
     ///
     /// # Returns
     ///
@@ -52,6 +57,7 @@ impl SandboxConfig {
         program: &str,
         program_args: Option<String>,
         console_file: Option<String>,
+        hwloc: Option<HwLoc>,
     ) -> Self {
         Self {
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
@@ -60,6 +66,7 @@ impl SandboxConfig {
             program: program.to_string(),
             program_args,
             console_file,
+            hwloc,
         }
     }
 
@@ -139,5 +146,18 @@ impl SandboxConfig {
     ///
     pub fn console_file(&self) -> Option<&str> {
         self.console_file.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the hardware locality configuration.
+    ///
+    /// # Returns
+    ///
+    /// The hardware locality configuration.
+    ///
+    pub fn hwloc(&self) -> Option<HwLoc> {
+        self.hwloc.clone()
     }
 }

@@ -18,7 +18,6 @@
 mod args;
 mod env;
 mod benchmark;
-mod hwloc;
 
 //==================================================================================================
 // Imports
@@ -34,6 +33,7 @@ use crate::{
 };
 use anyhow::Result;
 use flexi_logger::Logger;
+use hwloc::HwLoc;
 use indicatif::{
     ProgressBar,
     ProgressStyle,
@@ -56,7 +56,9 @@ use nix::{
 use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use ::sys::ipc::Message;
 use std::{
+    fs::File,
     io::{
+        BufReader,
         Read,
         Write,
     },
@@ -127,13 +129,9 @@ impl Benchmark {
             "-tmp-dir".to_string(),
             get_proj_root(),
         ];
-        if let Some(hwloc) = &self.hwloc {
-            let taskset: Vec<String> = vec![
-                "taskset".to_string(),
-                "-ac".to_string(),
-                hwloc.get_linuxd_core_str(),
-            ];
-            nanvixd_args.splice(0..0, taskset);
+        if let Some(hwloc_file) = &self.hwloc_file {
+            nanvixd_args.push("-hwloc".to_string());
+            nanvixd_args.push(hwloc_file.clone());
         }
 
         debug!("Starting nanvixd with command: {}", nanvixd_args.join(" "));
@@ -636,14 +634,23 @@ async fn main() -> Result<()> {
 
     let args: Args = Args::parse(std::env::args().collect())?;
 
+    // Parse hwloc from JSON file.
+    let hwloc: Option<HwLoc> = if let Some(hwloc_file_path) = args.hwloc_file() {
+        let hwloc_file: File = File::open(hwloc_file_path)?;
+        let hwloc_reader: BufReader<File> = BufReader::new(hwloc_file);
+        Some(serde_json::from_reader(hwloc_reader)?)
+    } else {
+        None
+    };
+
     // Initialize HwLoc and pin main thread.
-    let hwloc = args.hwloc();
-    if hwloc.is_some() {
-        hwloc::pin_main_thread(hwloc.clone().unwrap().get_client_core_str())?;
+    if let Some(hwloc) = hwloc.clone() {
+        hwloc::pin_main_thread(hwloc.get_client_core_str())?;
     }
 
     let mut benchmark = Benchmark {
         iterations: args.iterations(),
+        hwloc_file: args.hwloc_file(),
         hwloc,
         flavour: args.benchmark(),
         nanvixd: None,

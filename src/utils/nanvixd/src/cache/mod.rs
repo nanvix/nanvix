@@ -91,6 +91,7 @@ impl SandboxCache{
                             sandbox_config.control_plane_sockaddr(),
                             sandbox_config.user_vm_sockaddr(),
                             sandbox_config.gateway_sockaddr(),
+                            sandbox_config.hwloc(),
                         )?));
                 }
 
@@ -101,7 +102,8 @@ impl SandboxCache{
                         sandbox_config.program(),
                         sandbox_config.program_args(),
                         sandbox_config.user_vm_sockaddr(),
-                        sandbox_config.console_file()
+                        sandbox_config.console_file(),
+                        sandbox_config.hwloc(),
                     )?));
                 self.sandbox_index.insert(tag.sandbox_id().to_string(), tag.clone());
             } else {
