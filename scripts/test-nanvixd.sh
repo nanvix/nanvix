@@ -16,6 +16,11 @@ LOGS_DIR=${NANVIX_HOME}/logs/nanvixd-$(basename "${PROGRAM_NAME}")
 TENANT_ID="foo"
 APP_NAME="bar"
 
+# Temporary Directory
+TMP_DIR_PATH="/tmp/nanvixd"
+TMP_DIR=$(mktemp -d ${TMP_DIR_PATH}-XXXXXX)
+trap 'rm -rf "${TMP_DIR}"' EXIT
+
 mkdir -p ${LOGS_DIR}
 
 # Run nanvixd.
@@ -23,7 +28,7 @@ CONSOLE_FILE_NAME="${LOGS_DIR}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
 RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground ${TIMEOUT} \
     ./bin/nanvixd.elf \
         -http-addr ${NANVIXD_SOCKADDR} \
-        -tmp-dir ${NANVIX_HOME} \
+        -tmp-dir ${TMP_DIR} \
         -console-file ${CONSOLE_FILE_NAME} &
 NANVIXD_PID=$!
 
