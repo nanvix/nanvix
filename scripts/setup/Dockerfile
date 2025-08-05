@@ -10,17 +10,23 @@ ARG HOME=/root
 USER $USER
 
 # Rust version.
-ARG RUST_VERSION=nightly-2025-03-28
+ARG RUST_VERSION
 
 # Nanvix version.
-ARG NANVIX_VERSION=99ab1edc540866dc9aa955f9da4b9c353c4eceef
+ARG NANVIX_VERSION
+
+# Validate required build arguments.
+RUN if [ -z "$RUST_VERSION" ] || [ -z "$NANVIX_VERSION" ]; then \
+    echo "RUST_VERSION and NANVIX_VERSION must be set"; exit 1; \
+    fi
 
 # Update the package list and install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    build-essential \
+    bc \
     bison \
     bridge-utils \
+    build-essential \
     clang-format \
     curl \
     dosfstools \
@@ -31,6 +37,8 @@ RUN apt-get update && \
     git \
     graphviz \
     grub2 \
+    iproute2 \
+    jq \
     kpartx \
     libglib2.0-dev \
     libgmp-dev \
@@ -43,26 +51,30 @@ RUN apt-get update && \
     libvirt-clients \
     libvirt-daemon-system \
     mtools \
+    netcat-openbsd \
     ninja-build \
     pkg-config \
     python3-venv \
     qemu-kvm \
     qemu-system-x86 \
     texinfo \
-    xorriso && \
+    xorriso \
+    wget && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH=$HOME/.cargo/bin:$PATH
-RUN rustup toolchain install $RUST_VERSION
-RUN rustup default $RUST_VERSION
-RUN rustup component add rust-src
-RUN rustup target add wasm32-wasip1
 
-# Build toolchain.
-RUN git clone https://github.com/nanvix/nanvix /opt/src/nanvix
-RUN cd /opt/src/nanvix && git checkout -f $NANVIX_VERSION
-RUN cd /opt/src/nanvix && scripts/setup/toolchain.sh /opt
-RUN rm -rf /opt/nanvix/src
+# Install Rust toolchain and components.
+RUN rustup toolchain install $RUST_VERSION && \
+    rustup default $RUST_VERSION && \
+    rustup component add rust-src && \
+    rustup target add wasm32-wasip1
+
+# Clone Nanvix repository and build toolchain.
+RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
+    cd /opt/nanvix/src/nanvix && \
+    git checkout -f $NANVIX_VERSION && \
+    scripts/setup/toolchain.sh /opt/nanvix
