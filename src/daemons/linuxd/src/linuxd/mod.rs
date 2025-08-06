@@ -13,7 +13,10 @@ mod assemble;
 
 use crate::{
     message::RequestAssembler,
-    venv::VirtualEnviromentDirectory,
+    venv::{
+        VenvCommand,
+        VirtualEnviromentDirectory,
+    },
     worker_thread::WorkerThreadHandle,
 };
 use ::anyhow::Result;
@@ -132,7 +135,8 @@ impl LinuxDaemon {
                                 response_buf))?;
                         }
                         Err(RecvError) => {
-                            info!("gateway STDIN channel disconnected");
+                            // This may happen during shutdown.
+                            debug!("gateway STDIN channel disconnected");
                             break Ok(());
                         }
                     }
@@ -154,9 +158,10 @@ impl LinuxDaemon {
                             // writting thread has already moved on.
                         }
                         Err(RecvError) => {
+                            // This may happen during shutdown.
                             let reason: String = "gateway STDOUT channel disconnected".to_string();
-                            error!("{}", reason);
-                            return Err(anyhow::anyhow!(reason));
+                            debug!("{}", reason);
+                            break Ok(());
                         }
                     }
                 }
@@ -184,12 +189,21 @@ impl LinuxDaemon {
                     ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
                         info!("connection from user VM closed");
 
+                        // Each worker thread may be in one of three states:
+                        // 1. Running
+                        // 2. Blocked on a system call
+                        // 3. Blocked waiting for a new message from the channel
+                        //
+                        // To gracefully shutdown the thread, we enqueue a shutdown message to the
+                        // message channel. In case the thread is blocked on a system call, we also
+                        // send it an interrupt signal and handle EINTR accordingly.
                         for worker_thread in worker_threads.drain(..) {
                             trace!("sending interrupt to worker thread (thread_id={:?})", worker_thread.id);
+                            worker_thread.cmd_tx.send(VenvCommand::Shutdown)
+                                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to send VenvCommand to queue"))?;
                             worker_thread.stop()?;
                             worker_thread.handle.join()
                                 .map_err(|_| Error::new(ErrorCode::IoErr, "failed to join worker thread"))?;
-                            log::warn!("done!");
                         }
 
                         break;
@@ -217,7 +231,7 @@ impl LinuxDaemon {
             };
 
             // Check if process is associated with a virtual environment.
-            let (channel_tx, channel_rx): (Sender<Message>, Option<Receiver<Message>>) = {
+            let (channel_tx, channel_rx): (Sender<VenvCommand>, Option<Receiver<VenvCommand>>) = {
                 let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> = venv.lock().unwrap();
                 let env = venv.get(source);
                 if let Some(env) = env {
@@ -251,12 +265,12 @@ impl LinuxDaemon {
 
                 // Spawn an interruptible thread to handle the message.
                 let worker_thread_handle =
-                    WorkerThreadHandle::spawn(source, channel_rx, uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler)?;
+                    WorkerThreadHandle::spawn(source, channel_rx, channel_tx.clone(), uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler)?;
                 worker_threads.push_back(worker_thread_handle);
             }
 
             // Dispatch message to worker thread.
-            if let Err(error) = channel_tx.send(message) {
+            if let Err(error) = channel_tx.send(VenvCommand::Work(message)) {
                 error!(
                     "run(): failed to dispatch message to worker thread (tid={source:?}, \
                      error={error:?})"
