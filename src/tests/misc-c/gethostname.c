@@ -7,7 +7,7 @@
 // Configuration
 //==================================================================================================
 
-#define _POSIX_C_SOURCE 200112L// gethostname().
+#define _POSIX_C_SOURCE 200112L // gethostname().
 
 //==================================================================================================
 // Imports
@@ -17,8 +17,8 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 
 // TODO: Remove this constant when it exported by Newlib.
 #define HOSTNAME_MAX 255
