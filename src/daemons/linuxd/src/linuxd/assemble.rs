@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    error::WorkerThreadError,
     fcntl,
     message::{
         RequestAssemblerTrait,
@@ -63,10 +64,10 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::FileStatAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::FileStatAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -84,7 +85,7 @@ impl RequestAssemblerTrait for FileStatAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fstat_at(source, request)
     }
 }
@@ -100,10 +101,10 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::SymbolicLinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -121,7 +122,7 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_symlinkat(source, request)
     }
 }
@@ -137,10 +138,10 @@ impl RequestAssemblerTrait for LinkAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::LinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::LinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -158,7 +159,7 @@ impl RequestAssemblerTrait for LinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_linkat(source, request)
     }
 }
@@ -174,10 +175,10 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::ReadLinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::ReadLinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -195,7 +196,7 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_readlinkat(source, request)
     }
 }
@@ -211,10 +212,10 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -232,7 +233,7 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_mkdirat(source, request)
     }
 }
@@ -248,12 +249,12 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
-                assembler.add_part(part)
+                Ok(assembler.add_part(part)?)
             },
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -275,7 +276,7 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_utimensat(source, request)
     }
 }
@@ -291,10 +292,10 @@ impl RequestAssemblerTrait for FileChownAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::FileChownAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::FileChownAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -312,7 +313,7 @@ impl RequestAssemblerTrait for FileChownAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fchownat(source, request)
     }
 }
@@ -328,10 +329,10 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::FileChmodAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::FileChmodAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -349,7 +350,7 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fchmodat(source, request)
     }
 }
@@ -365,10 +366,10 @@ impl RequestAssemblerTrait for OpenAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::OpenAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::OpenAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -386,7 +387,7 @@ impl RequestAssemblerTrait for OpenAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_openat(source, request)
     }
 }
@@ -402,10 +403,10 @@ impl RequestAssemblerTrait for RenameAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::RenameAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::RenameAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -423,7 +424,7 @@ impl RequestAssemblerTrait for RenameAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_renameat(source, request)
     }
 }
@@ -439,10 +440,10 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::UnlinkAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::UnlinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -460,7 +461,7 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_unlinkat(source, request)
     }
 }
@@ -476,10 +477,10 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::ChangeDirectoryRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::ChangeDirectoryRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -497,7 +498,7 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_chdir(source, request)
     }
 }
@@ -513,10 +514,10 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::FileAccessAtRequest(assembler) => assembler.add_part(part),
-            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+            RequestAssemblerType::FileAccessAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
 
@@ -534,7 +535,7 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message> {
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_faccessat(source, request)
     }
 }

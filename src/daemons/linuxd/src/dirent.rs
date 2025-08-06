@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::error::WorkerThreadError;
 use ::alloc::vec::Vec;
 use ::core::{
     cmp,
@@ -102,16 +103,16 @@ impl linux_dirent {
 //==================================================================================================
 
 /// Handles a getdents() system call request.
-pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -> Vec<Message> {
+pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("do_getdents(): tid={tid:?}, request,count={:#x?}", { request.count });
 
     // Check if `request.count` is not valid.
     if request.count == 0 {
         error!("do_getdents(): invalid buffer count");
-        return vec![crate::build_error(tid, ErrorCode::InvalidArgument)];
+        return Ok(vec![crate::build_error(tid, ErrorCode::InvalidArgument)]);
     } else if request.count as usize > GetDirectoryEntriesRequest::MAX_ENTRIES {
         error!("do_getdents(): request is too large");
-        return vec![crate::build_error(tid, ErrorCode::TooBig)];
+        return Ok(vec![crate::build_error(tid, ErrorCode::TooBig)]);
     }
 
     let bufsize: usize =
@@ -127,10 +128,16 @@ pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -
         // Failed.
         -1 => {
             let errno = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::getdents(): errno={}", { errno });
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            return vec![crate::build_error(tid, error)];
+            return Ok(vec![crate::build_error(tid, error)]);
         },
         // Success.
         n => {
@@ -188,10 +195,10 @@ pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -
     // Build response and check for errors.
     let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(buf);
     match response.into_parts(tid) {
-        Ok(messages) => messages,
+        Ok(messages) => Ok(messages),
         Err(error) => {
             warn!("do_getdents(): failed to build response (error={error:?})");
-            vec![crate::build_error(tid, error.code)]
+            Ok(vec![crate::build_error(tid, error.code)])
         },
     }
 }

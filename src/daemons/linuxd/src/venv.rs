@@ -33,7 +33,7 @@ use ::syscall::venv::VirtualEnvironmentIdentifier;
 ///
 /// # Description
 ///
-/// Commands that we can send to a worker thread in a virtal environment.
+/// Commands that we can send to a worker thread in a virtual environment.
 ///
 pub enum VenvCommand {
     Work(Message),
