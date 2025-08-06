@@ -76,6 +76,8 @@ jobs:
     - name: "Benchmark"
       if: |
         matrix.build-type == 'release' &&
+        github.event_name == 'pull_request' &&
+        !github.event.pull_request.draft &&
         !startsWith(github.head_ref, 'dependabot/') &&
         !startsWith(github.head_ref, 'dependabot-')
       uses: ./.github/actions/benchmark
