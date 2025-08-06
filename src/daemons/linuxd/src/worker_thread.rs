@@ -26,6 +26,7 @@ use crate::{
     times,
     unistd,
     venv::{
+        VenvCommand,
         VirtualEnvironment,
         VirtualEnviromentDirectory,
     },
@@ -161,6 +162,8 @@ pub struct WorkerThreadHandle {
     // Underlying tid returned by pthread.
     pub pthread_id: Arc<AtomicUsize>,
     pub handle: JoinHandle<()>,
+    // Handle to send shutdown messages to message queue.
+    pub cmd_tx: Sender<VenvCommand>,
 }
 
 /// Our signal handler is a no-op that will just interrupt any blocking system calls, and make the
@@ -187,7 +190,8 @@ impl WorkerThreadHandle {
     /// Spawn an interruptible worker thread.
     pub fn spawn(
         id: ThreadIdentifier,
-        channel_rx: Receiver<Message>,
+        channel_rx: Receiver<VenvCommand>,
+        channel_tx: Sender<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStream>>,
         gw_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
         gw_stdout_tx: Option<Sender<WriteRequest>>,
@@ -217,6 +221,7 @@ impl WorkerThreadHandle {
             id,
             pthread_id: pthread_id_holder_clone,
             handle: join_handle,
+            cmd_tx: channel_tx,
         })
     }
 
@@ -236,8 +241,8 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
-        fn handle_message(
-        channel_rx: Receiver<Message>,
+    fn handle_message(
+        channel_rx: Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStream>>,
         gateway_stdin_tx: Option<Sender<(ReadRequest, Sender<Message>)>>,
         gateway_stdout_tx: Option<Sender<WriteRequest>>,
@@ -248,7 +253,11 @@ impl WorkerThreadHandle {
 
         loop {
             let message: Message = match channel_rx.recv() {
-                Ok(message) => message,
+                Ok(VenvCommand::Work(message)) => message,
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_message(): thread received shutdown message (worker_tid={worker_tid:?})");
+                    break
+                },
                 Err(error) => {
                     error!(
                         "handle_message(): failed to receive message from channel, stopping \
