@@ -159,8 +159,7 @@ impl LinuxDaemon {
                         }
                         Err(RecvError) => {
                             // This may happen during shutdown.
-                            let reason: String = "gateway STDOUT channel disconnected".to_string();
-                            debug!("{}", reason);
+                            debug!("gateway STDOUT channel disconnected");
                             break Ok(());
                         }
                     }
@@ -199,11 +198,30 @@ impl LinuxDaemon {
                         // send it an interrupt signal and handle EINTR accordingly.
                         for worker_thread in worker_threads.drain(..) {
                             trace!("sending interrupt to worker thread (thread_id={:?})", worker_thread.id);
-                            worker_thread.cmd_tx.send(VenvCommand::Shutdown)
-                                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to send VenvCommand to queue"))?;
-                            worker_thread.stop()?;
-                            worker_thread.handle.join()
-                                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to join worker thread"))?;
+
+                            // If any of the commands fail, continue trying to drain the remainnig
+                            // threads.
+                            match worker_thread.cmd_tx.send(VenvCommand::Shutdown) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    error!("error sending shutdown command to worker thread (thread_id={e:?})");
+                                    continue;
+                                }
+                            }
+                            match worker_thread.stop() {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    error!("error sending interrupt to worker thread (thread_id={e:?})");
+                                    continue;
+                                }
+                            }
+                            match worker_thread.handle.join() {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    error!("error joining worker thread (thread_id={e:?})");
+                                    continue;
+                                }
+                            }
                         }
 
                         break;
@@ -247,8 +265,11 @@ impl LinuxDaemon {
                                 .lock()
                                 .unwrap()
                                 .write_all(&message.to_bytes())
-                                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to write to user VM stream"))?;
-
+                                .map_err(|_| {
+                                    let reason = "failed to write to user VM stream";
+                                    error!("{reason}");
+                                    Error::new(ErrorCode::IoErr, reason)
+                                })?;
                             continue;
                         },
                     }
@@ -264,7 +285,7 @@ impl LinuxDaemon {
                 let assembler = assembler.clone();
 
                 // Spawn an interruptible thread to handle the message.
-                let worker_thread_handle =
+                let worker_thread_handle: WorkerThreadHandle =
                     WorkerThreadHandle::spawn(source, channel_rx, channel_tx.clone(), uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler)?;
                 worker_threads.push_back(worker_thread_handle);
             }

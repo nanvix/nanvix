@@ -31,25 +31,18 @@ use crate::{
         VirtualEnviromentDirectory,
     },
 };
-use ::nix::{
-    libc,
-    sys::{
-        pthread::{
-            pthread_self,
-            pthread_kill
-        },
-        signal::{
-            self,
-            Signal,
-            SigAction,
-            SigHandler,
-            SaFlags,
-            SigSet
-        }
-    },
+use libc::{
+    sigaction,
+    sigemptyset,
+    pthread_kill,
+    pthread_self,
+    SIGUSR1,
+    c_int,
 };
 use ::std::{
     io::ErrorKind,
+    mem,
+    ptr,
     sync::{
         atomic::{
             AtomicUsize,
@@ -153,7 +146,7 @@ use ::syscall::{
 };
 use ::syscomm::SocketStream;
 
-const INTERRUPT_SIGNAL: Signal = Signal::SIGUSR1;
+const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
 /// State associated with a worker thread in linuxd.
 pub struct WorkerThreadHandle {
@@ -172,22 +165,33 @@ extern "C" fn linuxd_worker_thread_signal_handler(_: i32) {}
 
 impl WorkerThreadHandle {
     fn install_signal_handler() {
-        let sig_action = SigAction::new(
-            SigHandler::Handler(linuxd_worker_thread_signal_handler),
-            // Empty flags to make sure the thread does not restart blocked system calls and exits
-            // with EINTR.
-            SaFlags::empty(),
-            // Do not block any other signals that may happen during signal handling.
-            SigSet::empty(),
-        );
-
         // SAFETY: we install a signal handler that is a no-op so this is safe.
-        unsafe {
-            signal::sigaction(INTERRUPT_SIGNAL, &sig_action).expect("sigaction failed");
+        let ret = unsafe {
+            let sig_action = sigaction {
+                sa_sigaction: linuxd_worker_thread_signal_handler as usize,
+                // Empty set to not block any other signals that may happen during signal handling.
+                sa_mask: {
+                    let mut set = mem::zeroed();
+                    sigemptyset(&mut set);
+                    set
+                },
+                // No SA_RESTART so that syscall will return EINTR.
+                sa_flags: 0,
+                sa_restorer: None,
+            };
+
+            sigaction(INTERRUPT_SIGNAL, &sig_action, ptr::null_mut())
+        };
+
+        if ret != 0 {
+            // Notify the error, but don't fail.
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("error installing signal handler (errno={errno:?})");
         }
     }
 
     /// Spawn an interruptible worker thread.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         id: ThreadIdentifier,
         channel_rx: Receiver<VenvCommand>,
@@ -208,7 +212,7 @@ impl WorkerThreadHandle {
         let join_handle = thread::spawn(move || {
             Self::install_signal_handler();
 
-            let pthread_id = pthread_self();
+            let pthread_id = unsafe { pthread_self() };
             pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
 
             Self::handle_message(channel_rx, uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler);
@@ -216,7 +220,6 @@ impl WorkerThreadHandle {
             trace!("thread shutting down after receiving interrupt (pthread_id={pthread_id})");
         });
 
-        // TODO: pthread_id_holder used after move?
         Ok(Self {
             id,
             pthread_id: pthread_id_holder_clone,
@@ -225,7 +228,7 @@ impl WorkerThreadHandle {
         })
     }
 
-    /// Stop a worker-thread by setting the shutdown flag and sending an interrupt.
+    /// Stop a worker-thread by sending an interrupt.
     pub fn stop(&self) -> Result<(), Error> {
         let raw_tid = self.pthread_id.load(Ordering::Relaxed);
 
@@ -235,8 +238,10 @@ impl WorkerThreadHandle {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
+        // SAFETY: we call pthread_kill on a non-zero TID after we have managed to send a message
+        // to its reception queue, so the thread is alive and safe.
         let pthread_id = raw_tid as libc::pthread_t;
-        pthread_kill(pthread_id, INTERRUPT_SIGNAL).expect("pthread_kill failed");
+        unsafe { pthread_kill(pthread_id, INTERRUPT_SIGNAL) };
 
         Ok(())
     }
@@ -339,7 +344,16 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::PipeRequest
                                 | LinuxDaemonMessageHeader::PollRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
-                                    Self::handle_short_request_messages(source, message)
+                                    match Self::handle_short_request_messages(source, message) {
+                                        Ok(message) => message,
+                                        Err(WorkerThreadError::Interrupted) => break,
+                                        Err(WorkerThreadError::Error(e)) => {
+                                            // WorkerThreadErrors other than Interrupted should be
+                                            // caught by downstream functions, and converted to
+                                            // Messages with the appropriate return code.
+                                            unreachable!("fatal error in working thread (error={e:?})");
+                                        }
+                                    }
                                 },
 
                                 // The following system calls have their request data fit in a
@@ -349,11 +363,20 @@ impl WorkerThreadHandle {
                                 LinuxDaemonMessageHeader::FileStatRequest
                                 | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest
                                 | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                                    Self::handle_long_response_messages(
+                                    match Self::handle_long_response_messages(
                                         uvm_stream.clone(),
                                         source,
                                         message,
-                                    );
+                                    ) {
+                                        Ok(message) => message,
+                                        Err(WorkerThreadError::Interrupted) => break,
+                                        Err(WorkerThreadError::Error(e)) => {
+                                            // WorkerThreadErrors other than Interrupted should be
+                                            // caught by downstream functions, and converted to
+                                            // Messages with the appropriate return code.
+                                            unreachable!("fatal error in working thread (error={e:?})");
+                                        }
+                                    }
                                     continue;
                                 },
 
@@ -373,12 +396,21 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::OpenAtRequestPart
                                 | LinuxDaemonMessageHeader::RenameAtRequestPart
                                 | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
-                                    Self::handle_long_request_messages(
+                                    match Self::handle_long_request_messages(
                                         uvm_stream.clone(),
                                         assembler.clone(),
                                         source,
                                         message,
-                                    );
+                                    ) {
+                                        Ok(message) => message,
+                                        Err(WorkerThreadError::Interrupted) => break,
+                                        Err(WorkerThreadError::Error(e)) => {
+                                            // WorkerThreadErrors other than Interrupted should be
+                                            // caught by downstream functions, and converted to
+                                            // Messages with the appropriate return code.
+                                            unreachable!("fatal error in working thread (error={e:?})");
+                                        }
+                                    }
                                     continue;
                                 },
 
@@ -426,7 +458,7 @@ impl WorkerThreadHandle {
     fn handle_short_request_messages(
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
-    ) -> Message {
+    ) -> Result<Message, WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::AcceptSocketRequest => {
                 let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(message.payload);
@@ -561,68 +593,68 @@ impl WorkerThreadHandle {
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
-    ) {
+    ) -> Result<(), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
                 Self::handle_long_request::<ChangeDirectoryRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
                 Self::handle_long_request::<FileAccessAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                 Self::handle_long_request::<FileStatAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
                 Self::handle_long_request::<SymbolicLinkAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::LinkAtRequestPart => {
-                Self::handle_long_request::<LinkAtRequest>(uvm_stream, assembler, source, &message);
+                Self::handle_long_request::<LinkAtRequest>(uvm_stream, assembler, source, &message)
             },
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
                 Self::handle_long_request::<ReadLinkAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
                 Self::handle_long_request::<MakeDirectoryAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
                 Self::handle_long_request::<UpdateFileAccessTimeAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::FileChownAtRequestPart => {
                 Self::handle_long_request::<FileChownAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
                 Self::handle_long_request::<FileChmodAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
-                Self::handle_long_request::<OpenAtRequest>(uvm_stream, assembler, source, &message);
+                Self::handle_long_request::<OpenAtRequest>(uvm_stream, assembler, source, &message)
             },
             LinuxDaemonMessageHeader::RenameAtRequestPart => {
                 Self::handle_long_request::<RenameAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
                 Self::handle_long_request::<UnlinkAtRequest>(
                     uvm_stream, assembler, source, &message,
-                );
+                )
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -636,16 +668,16 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStream>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
-    ) {
+    ) -> Result<(), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::FileStatRequest => {
-                Self::handle_fstat_request(uvm_stream, source, message);
+                Self::handle_fstat_request(uvm_stream, source, message)
             },
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
-                Self::handle_getcwd_request(uvm_stream, source);
+                Self::handle_getcwd_request(uvm_stream, source)
             },
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                Self::handle_getdents_request(uvm_stream, source, message);
+                Self::handle_getdents_request(uvm_stream, source, message)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -811,39 +843,45 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStream>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
-    ) {
+    ) -> Result<(), WorkerThreadError> {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
-        let messages: Vec<Message> = fcntl::do_fstat(source, request);
+        let messages: Vec<Message> = fcntl::do_fstat(source, request)?;
         for message in messages {
             if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
+
+        Ok(())
     }
 
-    fn handle_getcwd_request(uvm_stream: Arc<Mutex<SocketStream>>, source: ThreadIdentifier) {
-        let messages: Vec<Message> = unistd::do_getcwd(source);
+    fn handle_getcwd_request(uvm_stream: Arc<Mutex<SocketStream>>, source: ThreadIdentifier) -> Result<(), WorkerThreadError> {
+        let messages: Vec<Message> = unistd::do_getcwd(source)?;
         for message in messages {
             if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
+
+        Ok(())
     }
 
     fn handle_getdents_request(
         uvm_stream: Arc<Mutex<SocketStream>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
-    ) {
+    ) -> Result<(), WorkerThreadError> {
         let request: GetDirectoryEntriesRequest =
             GetDirectoryEntriesRequest::from_bytes(message.payload);
 
-        let messages: Vec<Message> = dirent::do_getdents(source, request);
+        let messages: Vec<Message> = dirent::do_getdents(source, request)?;
         for message in messages {
             if let Err(e) = Self::send(uvm_stream.clone(), message) {
                 error!("failed to send message (error={e:?})");
             }
         }
+
+        Ok(())
     }
 
     fn handle_long_request<T>(
@@ -851,14 +889,15 @@ impl WorkerThreadHandle {
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
-    ) where
+    ) -> Result<(), WorkerThreadError>
+        where
         T: RequestAssemblerTrait,
     {
         let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
 
         trace!("handle_long_request(): source={source:?}, part={part:?}");
 
-        let result: Result<Option<Vec<Message>>, Error> =
+        let result: Result<Option<Vec<Message>>, WorkerThreadError> =
             assembler.lock().unwrap().process_message::<T>(source, part);
 
         match result {
@@ -868,13 +907,19 @@ impl WorkerThreadHandle {
                         error!("failed to send message (error={e:?})");
                     }
                 }
+
+                Ok(())
             },
-            Ok(None) => {},
-            Err(e) => {
+            Ok(None) => Ok(()),
+            Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
+            Err(WorkerThreadError::Error(e)) => {
                 error!("failed to process request (error={e:?})");
-                if let Err(e) = Self::send(uvm_stream.clone(), Self::do_error(source, e.code)) {
+                // TODO: proper error code conversion.
+                if let Err(e) = Self::send(uvm_stream.clone(), Self::do_error(source, ErrorCode::IoErr)) {
                     error!("failed to send error message (error={e:?})");
                 }
+
+                Ok(())
             },
         }
     }
