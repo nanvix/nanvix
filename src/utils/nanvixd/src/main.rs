@@ -16,6 +16,7 @@
 mod args;
 mod cache;
 mod config;
+mod control_plane;
 mod http;
 mod logging;
 mod message;
@@ -90,6 +91,12 @@ pub async fn main() -> Result<()> {
             },
             _ = signals.recv() => {
                 info!("received exit signal, stopping...");
+                sandbox_cache
+                    .clone()
+                    .lock()
+                    .await
+                    .cleanup()
+                    .await;
                 break;
             },
         }

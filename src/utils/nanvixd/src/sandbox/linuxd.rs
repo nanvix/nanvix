@@ -5,14 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::config;
+use crate::{
+    config,
+    control_plane,
+};
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
-use ::std::{
-    fs,
-    io::ErrorKind,
-    process::Stdio,
-};
+use ::std::process::Stdio;
 use ::syscomm::{
     Socket,
     SocketStream,
@@ -29,12 +28,7 @@ use ::tokio::process::{
 
 pub struct LinuxDaemon {
     child: Child,
-    // TODO: we currently do not send any information via the control-plane stream.
-    _control_plane_stream: SocketStream,
-    // Linuxd currently does not properly clean-up on shutdown (there is no such thing as shutdown)
-    // so we need to make sure we clean-up the linuxd socket when we drop linuxd. We thus keep
-    // track of it here.
-    linuxd_sockaddr: String,
+    control_plane_stream: SocketStream,
 }
 
 //==================================================================================================
@@ -85,6 +79,7 @@ impl LinuxDaemon {
                     debug!("nanvixd received connection from linuxd's control-plane socket");
                     break stream;
                 }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
                 Err(error) => {
                     error!("nanvixd failed to accept connection from linuxd's control-plane (error={error:?})");
                     continue;
@@ -94,30 +89,62 @@ impl LinuxDaemon {
 
         Ok(Self {
             child,
-            _control_plane_stream: control_plane_stream,
-            linuxd_sockaddr: user_vm_sockaddr.to_string(),
+            control_plane_stream,
         })
     }
-}
 
-impl Drop for LinuxDaemon {
-    fn drop(&mut self) {
+    /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
+    pub async fn shutdown(&mut self) -> Result<()> {
+        match control_plane::send_command(&mut self.control_plane_stream, control_plane::Command::Shutdown) {
+            Ok(()) => {},
+            Err(e) => {
+                // FIXME: this send_command is expected to fail until support is implemented in
+                // linuxd.
+                error!("failed to send shutdown command to linuxd (error={e:?})");
+            }
+        };
+
+        // FIXME: when linuxd reacts on shutdown commands, we will be able to get rid of this
+        // manual kill.
         match self.child.id() {
             Some(pid) => {
                 let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
 
                 if ret_code < 0 {
-                    error!("error sending SIGINT to linuxd: {}", std::io::Error::last_os_error());
+                    let reason: String = format!("error sending SIGINT to linuxd: {}", std::io::Error::last_os_error());
+                    error!("{reason}");
+
+                    return Err(anyhow::anyhow!(reason));
                 }
             },
-            None => error!("linuxd process has no PID"),
+            None => {
+                let reason: String = "linuxd process has no PID".to_string();
+                error!("{reason}");
+
+                return Err(anyhow::anyhow!(reason));
+            }
         }
 
-        // Clean-up the socket files left behind by linuxd.
-        match fs::remove_file(self.linuxd_sockaddr.clone()) {
-            Ok(_) => {},
-            Err(ref e) if e.kind() == ErrorKind::NotFound => {},
-            Err(e) => error!("error removing UNIX socket (path={}, error={e:?})", self.linuxd_sockaddr.clone()),
+        // Wait for linuxd instance to finish.
+        match self.child.wait().await {
+            Ok(exit_status) => {
+                if !exit_status.success() {
+                    let reason: String = format!("linuxd returned with non-zero exit status: {:?}", exit_status.code());
+                    // FIXME: change this debug to error once linuxd dies gracefully after a
+                    // SIGINT.
+                    debug!("{reason}");
+
+                    Err(anyhow::anyhow!(reason))
+                } else {
+                    Ok(())
+                }
+            }
+            Err(e) => {
+                let reason: String = format!("error waiting for linuxd: {e:?}");
+                error!("{reason}");
+
+                Err(anyhow::anyhow!(reason))
+            }
         }
     }
 }
