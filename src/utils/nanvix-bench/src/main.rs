@@ -48,13 +48,6 @@ use microvm::{
     Vmm,
 };
 use nanvixd::config::DEFAULT_TMP_DIRECTORY;
-use nix::{
-    sys::signal::{
-        Signal,
-        kill,
-    },
-    unistd::Pid,
-};
 use reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -271,9 +264,10 @@ impl Benchmark {
     pub fn cleanup(&mut self) {
         if self.nanvixd.is_some() {
             debug!("Sending SIGINT to nanvixd");
-            match kill(Pid::from_raw(self.nanvixd.as_mut().unwrap().id() as i32), Signal::SIGINT) {
-                Ok(_) => {},
-                Err(e) => error!("error sending SIGINT to nano VM: {e:?}"),
+            let ret_code = unsafe { libc::kill(self.nanvixd.as_mut().unwrap().id() as libc::pid_t, libc::SIGINT) };
+
+            if ret_code < 0 {
+                error!("error sending SIGINT to nano VM: {}", std::io::Error::last_os_error());
             }
         }
     }
