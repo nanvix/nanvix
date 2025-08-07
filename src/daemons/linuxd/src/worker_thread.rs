@@ -144,7 +144,7 @@ use ::syscall::{
     LinuxDaemonMessageHeader,
     LINUXD,
 };
-use ::syscomm::SocketStream;
+use ::syscomm::{SocketError, SocketStream};
 
 const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
@@ -416,7 +416,17 @@ impl WorkerThreadHandle {
 
                                 _ => Self::do_error(source, ErrorCode::InvalidMessage),
                             };
-                            Self::send(uvm_stream.clone(), message).unwrap();
+                            match Self::send(uvm_stream.clone(), message) {
+                                Ok(()) => {},
+                                Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
+                                    debug!("user vm stream closed, worker thread exitting");
+                                    break;
+                                },
+                                Err(e) => {
+                                    // send only ever raises BrokenPipe errors.
+                                    unreachable!("handle_message: worker thread received unrecognized error (error={e:?})");
+                                }
+                            };
                         },
                         Err(e) => {
                             error!("failed to parse Linux daemon message (error={e:?})");
@@ -688,7 +698,7 @@ impl WorkerThreadHandle {
     }
 
     // Send a message to the TCP stream.
-    fn send(uvm_stream: Arc<Mutex<SocketStream>>, message: Message) -> Result<()> {
+    fn send(uvm_stream: Arc<Mutex<SocketStream>>, message: Message) -> Result<(), SocketError> {
         let bytes = message.to_bytes();
 
         loop {
@@ -701,6 +711,12 @@ impl WorkerThreadHandle {
                         ErrorKind::WouldBlock => {
                             // The stream is not ready to write, retry.
                             continue;
+                        },
+                        ErrorKind::BrokenPipe => {
+                            // Depending on where the worker thread is interrupted, we may get to a
+                            // point where we are trying to send a response, but the user VM has
+                            // already closed its stream.
+                            break Err(e);
                         },
                         error_kind => {
                             unimplemented!(
