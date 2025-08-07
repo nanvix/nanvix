@@ -6,54 +6,127 @@ This document provides instructions on how to run Nanvix.
 
 ## Table of Contents
 
-- [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
-- [Running Nanvix in the MicroVM (Hyperlight and MicroVM Machines Only)](#running-nanvix-in-the-microvm-hyperlight-and-microvm-machines-only)
+- [Running Nanvix with `nanvixd` (Preferred Method)](#running-nanvix-with-nanvixd-preferred-method)
+  - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
+  - [Step 2: Run an Application](#step-2-run-an-application)
+- [Running Nanvix Components Manually (Hyperlight and MicroVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-microvm-machines-only)
   - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
   - [Step 2: Run the MicroVM](#step-2-run-the-microvm)
   - [Enabling Logging (Optional)](#enabling-logging-optional)
   - [Redirecting Standard Error (Optional)](#redirecting-standard-error-optional)
-- [Running Nanvix with `nanvixd` (MicroVM and Hyperlight Machines Only)](#running-nanvix-with-nanvixd-microvm-and-hyperlight-machines-only)
-  - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
-  - [Step 2: Run an Application](#step-2-run-an-application)
+- [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
 
-## Running Nanvix Through the Build System
+## Running Nanvix with `nanvixd` (Preferred Method)
 
-> ℹ️ This runs Nanvix with the default build parameters. Check the [build.md](build.md) document for more information on how to change default build parameters.
+Nanvixd is a utility script that manages the deployment of User VMs in Nanvix, and their corresponding linuxd instances.
 
-To run Nanvix through the build system, simply execute:
+Nanvixd exposes a unified RESTful API to interact with your deployment. To follow this guide we assume you have `jq` and `curl` installed.
+
+### Step 1: Run `nanvixd`
+
+Open a terminal and run `nanvixd`:
 
 ```bash
-make run
+./bin/nanvixd.elf -http-addr 127.0.0.1:8080
 ```
 
-## Running Nanvix in the MicroVM (Hyperlight and MicroVM Machines Only)
+To enable logging, make sure to prepend the previous command with `RUST_LOG=debug` (or even `RUST_LOG=trace`).
+
+### Step 2: Run an Application
+
+You can now spawn and kill applications by sending `POST` requests to nanvixd's HTTP address.
+
+```bash
+NEW_JSON=$(jq -n \
+    --arg tenant_id "foo" \
+    --arg app_name "bar" \
+    --arg program "./bin/hello-c.elf" \
+    --arg program_args "" \
+    '{tenant_id: $tenant_id, app_name: $app_name, program: $program, program_args: $program_args}'
+)
+NEW_RESPONSE=$(curl \
+    --silent \
+    --header "Content-Type: application/json" \
+    --header "X-NVX-Message-Type: NEW" \
+    --request POST \
+    --data "${NEW_JSON}" \
+    http://${NANVIX_HTTP_ADDR})
+VM_ID=$(echo ${NEW_RESPONSE} | jq -r '.user_vm_id')
+GATEWAY_SOCKADDR=$(echo ${NEW_RESPONSE} | jq -r '.gateway_sockaddr')
+```
+
+Once the user VM is running, you can feed input to its STDIN (and read from its STDOUT) by opening a netcat session to the address returned by `curl`:
+
+```bash
+# Interactive session.
+nc -U ${GATEWAY_SOCKADDR}
+```
+
+```bash
+# One-off input.
+echo "Hello World!" | nc -U -q 0 ${GATEWAY_SOCKADDR}
+```
+
+Once you are done, you can kill the user VM by sending a `KILL` POST request:
+
+```bash
+KILL_JSON=$(jq -n \
+    --arg user_vm_id "${VM_ID}" \
+    '{user_vm_id: $user_vm_id}'
+)
+curl \
+    --silent \
+    --header "Content-Type: application/json" \
+    --header "X-NVX-Message-Type: KILL" \
+    --request POST \
+    --data "${KILL_JSON}" \
+    http://${NANVIX_HTTP_ADDR})
+```
+
+To gracefully shutdown nanvixd, you can just press `Ctrl-C` in its terminal.
+
+## Running Nanvix Components Manually (Hyperlight and MicroVM Machines Only)
+
+This instructions show you how to run each Nanvix component individually. They require faking some control-plane components that would otherwise be provided by nanvixd.
 
 ### Step 1: Run the Linux Daemon
 
-Open a terminal and run the Linux Daemon:
+First, open a terminal and start a netcat server to act as control-plane placeholder:
 
 ```bash
-./bin/linuxd.elf -user-vm-bind-addr 127.0.0.1:1234
+nc -lU /tmp/control-plane.socket
 ```
+
+in another terminal, start linuxd:
+
+```bash
+./bin/linuxd.elf -control-plane-addr /tmp/control-plane.socket -user-vm-bind-addr /tmp/user-vm-bind.socket -gateway-bind-addr /tmp/gw-bind.socket
+```
+
+all `-x-addr` flags have a corresponding `-x-socket-type` flag to switch between `tcp` or `unix` sockets. The default values are `unix`. The `-gateway-bind-addr` is optional, and should only be used if you want to connect to the VM's stdin/stdout.
+
+To enable logging, consider prepending the above command with `RUST_LOG=debug` or `RUST_LOG=trace`.
 
 ### Step 2: Run the MicroVM
 
-Open a second terminal and run the MicroVM. Use the `-initrd` option to specify which application to run:
+Open another terminal to run the MicroVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
 
 ```bash
-sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
+./bin/microvm.elf -gateway /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
 ```
 
-### Enabling Logging (Optional)
-
-To enable logging, set the `RUST_LOG` environment variable to `trace` when running the Linux Daemon and/or the MicroVM:
+If you passed a `-gateway-bind-addr` flag to `linuxd` in step 1, you will need to open a netcat session to connect to it:
 
 ```bash
-# Open a terminal and run the Linuxd Daemon.
-RUST_LOG=trace sudo -E ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -gateway 127.0.0.1:1234
+nc -U /tmp/gw-bind.socket
+```
 
-# Open a scond terminal and run the MicroVM.
-RUST_LOG=trace ./bin/linuxd.elf -user-vm-bind-addr 127.0.0.1:1234
+For example, the `./bin/echo-c.elf` binary uses the gateway. Inside the netcat terminal, once you have written your message press `Ctrl-D` so that it is flushed to linuxd.
+
+Alternatively to an interactive netcat session, you can use something like the following:
+
+```bash
+echo "Hello world!" | nc -U -q 0 "/tmp/gw-bind.socket" | tr -d '\0'
 ```
 
 ### Redirecting Standard Error (Optional)
@@ -71,26 +144,15 @@ Redirecting the standard error of the MicroVM to another terminal can be useful 
 
     ```bash
     # Assuming /dev/pts/5 is the tty of the new terminal.
-    sudo -E RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
+    RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
     ```
 
-## Running Nanvix with `nanvixd` (MicroVM and Hyperlight Machines Only)
+## Running Nanvix Through the Build System
 
-### Step 1: Run `nanvixd`
+> ℹ️ This runs Nanvix with the default build parameters. Check the [build.md](build.md) document for more information on how to change default build parameters.
 
-Open a terminal and run `nanvixd`:
-
-```bash
-sudo -E ./bin/nanvixd.elf -http-addr 127.0.0.1:8080 -linuxd-addr 127.0.0.1:7070 -sandbox-addr 127.0.0.1:1234 -keep-alive 0
-```
-
-### Step 2: Run an Application
-
-Open a second terminal and run an application using `curl`:
+To run Nanvix through the build system, simply execute:
 
 ```bash
-curl -w "\n" \
-  --header "Content-Type: application/json" \
-  --request POST \
-  --data '{"clientid":1, "program":"bin/hello-rust-nostd.elf", "args":[]}' http://localhost:8080
+make run
 ```
