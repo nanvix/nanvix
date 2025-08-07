@@ -1,0 +1,339 @@
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Utility for building Nanvix.
+#
+# Run './z help' for more information on how to use this utility.
+#
+
+#==================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#==================================================================================================
+# Global Constants
+#==================================================================================================
+
+# Root directory of the repository.
+REPO_ROOT_DIR=$(git rev-parse --show-toplevel)
+
+# Command names.
+CMD_NAME_BUILD="build"
+CMD_NAME_CLEANUP="cleanup"
+CMD_NAME_HELP="help"
+
+# Option names.
+OPT_NAME_SEPARATOR="--"
+OPT_NAME_WITH_DOCKER="--with-docker"
+
+# Name of the Docker image with the Nanvix toolchain.
+DOCKER_IMAGE_NAME="nanvix/toolchain"
+
+# Path to the toolchain inside the Docker image.
+DOCKER_IMAGE_TOOLCHAIN_PATH="/opt/nanvix"
+
+# Cache file to store the last build command and options.
+Z_CACHE_FILE=".z.cache"
+
+# Colors
+RED='\033[0;31m'    # Red
+GREEN='\033[0;32m'  # Green
+YELLOW='\033[0;33m' # Yellow
+NC='\033[0m'        # No Color
+
+#==================================================================================================
+# Global Variables
+#==================================================================================================
+
+# Options for the last build command.
+LAST_BUILD_WITH_DOCKER=false # Was the last build done with Docker?
+
+# Current options.
+BUILD_WITH_DOCKER=false # Build with Docker?
+
+#==================================================================================================
+# Functions
+#==================================================================================================
+
+#
+# Description
+#   Prints an error message on stderr.
+#
+# Arguments
+#   $1 - The error message to print.
+#
+# Usage Example
+#   print_error "Print an error message."
+#
+print_error() {
+    echo -e "${RED}[ERROR] ${1}${NC}" >&2
+}
+
+#
+# Description
+#   Prints a success message on stdout.
+#
+# Arguments
+#   $1 - The success message to print.
+#
+# Usage Example
+#   print_success "Print a success message."
+#
+print_success() {
+    echo -e "${GREEN}[SUCCESS] ${1}${NC}"
+}
+
+#
+# Description
+#   Prints a message on stdout.
+#
+# Arguments
+#   $1 - The message to print.
+#
+# Usage Example
+#   print_info "Print an informational message."
+#
+print_info() {
+    echo -e "[INFO] ${1}"
+}
+
+#
+# Description
+#   Prints a warning message on stderr.
+#
+# Arguments
+#   $1 - The warning message to print.
+#
+# Usage Example
+#   print_warning "Print a warning message."
+#
+print_warning() {
+    echo -e "${YELLOW}[WARN] ${1}${NC}" >&2
+}
+
+#
+# Description
+#   Prints help information on stdout.
+#
+# Usage Example
+#   print_help
+#
+print_help() {
+    cat << EOF
+Utility for building Nanvix.
+
+Usage:
+  ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] ["${OPT_NAME_SEPARATOR}" BUILD_PARAMETERS]
+  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
+  ./z ${CMD_NAME_HELP}
+
+Commands
+  build    Builds Nanvix.
+  cleanup  Cleans up build artifacts.
+  help     Prints the help information.
+
+Options
+  ${OPT_NAME_WITH_DOCKER}  Builds Nanvix using Docker instead of the native toolchain.
+EOF
+}
+
+#
+# Description
+#   Builds the Docker command to run the build process.
+#
+# Arguments
+#   $* - The build parameters to pass to the Docker command.
+#
+# Return
+#   A string containing the Docker command to run.
+#
+# Usage Example
+#   build_docker_command "all"
+#
+build_docker_command() {
+    local build_parameters="${*}"
+    local user_id
+    local group_id
+    user_id="$(id -u)"
+    group_id="$(id -g)"
+    echo "docker run -it --rm \
+        -v \"$(pwd):/mnt\" \
+        ${DOCKER_IMAGE_NAME} \
+        /bin/bash -l -c '\
+            cd /mnt ; \
+            git config --global --add safe.directory /mnt ; \
+            make TOOLCHAIN_DIR=${DOCKER_IMAGE_TOOLCHAIN_PATH} ${build_parameters} ; \
+            chown -R \"${user_id}:${group_id}\" .\
+        '"
+}
+
+#
+# Description
+#   Writes the last build command and options to the cache file.
+#   Each argument is written on a separate line.
+#
+# Arguments
+#   $@ - The full command line arguments.
+#
+# Usage Example
+#   write_cache "build" "--with-docker" "--" "all"
+#
+write_cache() {
+    printf '%s\n' "${@}" > "${Z_CACHE_FILE}"
+}
+
+#
+# Description
+#   Reads the last build command and options from the cache file.
+#   Sets LAST_BUILD_WITH_DOCKER based on whether the cache contains the Docker option.
+#
+# Usage Example
+#   read_cache
+#
+read_cache() {
+    if [[ -f "${Z_CACHE_FILE}" ]]; then
+        local cache_content
+        cache_content=$(cat "${Z_CACHE_FILE}")
+        if [[ "${cache_content}" == *"${OPT_NAME_WITH_DOCKER}"* ]]; then
+            LAST_BUILD_WITH_DOCKER=true
+        else
+            LAST_BUILD_WITH_DOCKER=false
+        fi
+    fi
+}
+
+#==================================================================================================
+# Main Script
+#==================================================================================================
+
+main() {
+    # Check if the script is running on a valid Git repository.
+    if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+        print_error "This script must be run inside a Git repository."
+        exit 1
+    fi
+
+    # Check if the script is being run from the root of the repository.
+    if [[ "$(pwd)/z" != "${REPO_ROOT_DIR}/z" ]]; then
+        print_error "This script must be run from the root of the repository."
+        exit 1
+    fi
+
+    # Check if no command was provided.
+    if [[ $# -eq 0 ]]; then
+        print_error "No command provided."
+        print_help
+        exit 1
+    fi
+
+    # Extract command from arguments.
+    local command
+    command="$1"
+    shift
+
+    # Read last build info from cache
+    read_cache
+
+    # Parse command options.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            "${OPT_NAME_WITH_DOCKER}")
+                BUILD_WITH_DOCKER=true
+                shift
+                ;;
+            "${OPT_NAME_SEPARATOR}")
+                shift
+                break
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    # Collect build parameters.
+    local build_parameters=()
+    while [[ $# -gt 0 ]]; do
+        build_parameters+=("$1")
+        shift
+    done
+
+    print_info "Command: ${command}"
+    print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
+    print_info "Build Parameters: ${build_parameters[*]}"
+
+    case "${command}" in
+        "${CMD_NAME_BUILD}")
+            if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
+                print_warning "Switching to Docker build."
+                print_warning "Consider first running './z ${CMD_NAME_CLEANUP} ${OPT_NAME_WITH_DOCKER}'."
+            elif ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
+                print_warning "Switching to native toolchain build."
+                print_warning "Consider first running './z ${CMD_NAME_CLEANUP}'."
+            fi
+
+
+            # Save current build command and options to cache
+            if ${BUILD_WITH_DOCKER}; then
+                write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
+            else
+                write_cache "${command}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
+            fi
+
+            # Build Nanvix.
+            if ${BUILD_WITH_DOCKER}; then
+                print_info "Building with Docker..."
+                if ! eval "$(build_docker_command "${build_parameters[@]}")"; then
+                    print_error "Build failed with Docker."
+                    exit 1
+                fi
+            else
+                print_info "Building with native toolchain..."
+                if ! make "${build_parameters[@]}"; then
+                    print_error "Build failed."
+                    exit 1
+                fi
+            fi
+            ;;
+
+        "${CMD_NAME_CLEANUP}")
+            # Cleanup build artifacts.
+            if ${BUILD_WITH_DOCKER}; then
+                print_info "Cleaning up with Docker..."
+                if ! eval "$(build_docker_command distclean)"; then
+                    print_error "Cleanup failed with Docker."
+                    exit 1
+                fi
+            else
+                print_info "Cleaning up with native toolchain..."
+                if ! make distclean; then
+                    print_error "Cleanup failed."
+                    exit 1
+                fi
+            fi
+
+            # Remove cache file.
+            if [[ -f "${Z_CACHE_FILE}" ]]; then
+                rm -f "${Z_CACHE_FILE}"
+                print_success "Cache file removed."
+            fi
+            ;;
+
+        "${CMD_NAME_HELP}")
+            print_help
+            ;;
+        *)
+            print_error "Unknown command: '${command}'"
+            print_help
+            exit 1
+            ;;
+    esac
+}
+
+main "${@}"
