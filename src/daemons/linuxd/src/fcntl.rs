@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::time::LibcTimeSpec;
+use crate::{
+    error::WorkerThreadError,
+    time::LibcTimeSpec,
+};
 use ::alloc::ffi::CString;
 use ::core::ffi;
 use ::sys::{
@@ -143,7 +146,7 @@ use sysapi::fcntl::file_descriptor_flags::{
 // do_openat
 //==================================================================================================
 
-pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> {
+pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("openat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -152,17 +155,17 @@ pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> 
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
     let flags: LibcFileOpenFlags = match LibcFileOpenFlags::try_from_nanvix_flags(flags) {
         Ok(flags) => flags,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
     let mode: LibcFileMode = match LibcFileMode::try_from(mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     debug!(
@@ -174,14 +177,20 @@ pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> 
     match unsafe { libc::openat(dirfd.inner(), pathname.as_ptr(), flags.inner(), mode.inner()) } {
         fd if fd >= 0 => {
             debug!("libc::openat(): fd={fd:?}");
-            vec![OpenAtResponse::build(tid, fd)]
+            Ok(vec![OpenAtResponse::build(tid, fd)])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::openat(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -190,7 +199,7 @@ pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> 
 // do_unlink_at
 //==================================================================================================
 
-pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
+pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("unlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -198,7 +207,7 @@ pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Messa
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
@@ -213,12 +222,17 @@ pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Messa
     {
         ret if ret == 0 => {
             debug!("libc::unlinkat(): success");
-            vec![UnlinkAtResponse::build(tid, ret)]
+            Ok(vec![UnlinkAtResponse::build(tid, ret)])
         },
         errno => {
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::unlinkat(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -227,7 +241,7 @@ pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Messa
 // do_rename_at
 //==================================================================================================
 
-pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Vec<Message> {
+pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("renameat(): tid={tid:?}, request={request:?}");
 
     let olddirfd: i32 = request.olddirfd;
@@ -235,12 +249,12 @@ pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Vec<Messa
 
     let oldpath: CString = match CString::new(request.oldpath.as_str()) {
         Ok(oldpath) => oldpath,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let newpath: CString = match CString::new(request.newpath.as_str()) {
         Ok(newpath) => newpath,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let olddirfd: LibcAtFlags = LibcAtFlags::from(olddirfd);
@@ -261,12 +275,18 @@ pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Vec<Messa
     } {
         ret if ret == 0 => {
             debug!("libc::renameat(): success");
-            vec![RenameAtResponse::build(tid, ret)]
+            Ok(vec![RenameAtResponse::build(tid, ret)])
         },
         errno => {
             debug!("libc::renameat(): errno={errno:?}");
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -275,7 +295,7 @@ pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Vec<Messa
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Message> {
+pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -287,7 +307,7 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
     };
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(c_string) => c_string,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
@@ -311,7 +331,7 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
                     tv_nsec: match st.st_atime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -320,7 +340,7 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
                     tv_nsec: match st.st_mtime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -329,7 +349,7 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
                     tv_nsec: match st.st_ctime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -342,16 +362,22 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
             let response = FileStatAtResponse::new(stat);
 
             match response.into_parts(tid) {
-                Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(tid, e.code)],
+                Ok(messages) => Ok(messages),
+                Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::fstatat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -360,7 +386,7 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Mes
 // do_posix_fallocate
 //==================================================================================================
 
-pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlRequest) -> Message {
+pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlRequest) -> Result<Message, WorkerThreadError> {
     trace!("posix_fallocate(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -371,13 +397,19 @@ pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlReques
     match unsafe { libc::posix_fallocate(fd, offset, len) } {
         0 => {
             debug!("libc::posix_fallocate(): success");
-            FileSpaceControlResponse::build(tid, 0)
+            Ok(FileSpaceControlResponse::build(tid, 0))
         },
         errno => {
-            debug!("libc::posix_fallocate(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(tid, error)
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
+            debug!("libc::posix_fallocate(): errno={errno:?}");
+            Ok(crate::build_error(tid, error))
         },
     }
 }
@@ -386,7 +418,7 @@ pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlReques
 // do_posix_fadvise
 //==================================================================================================
 
-pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationRequest) -> Message {
+pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationRequest) -> Result<Message, WorkerThreadError> {
     trace!("posix_fadvise(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -394,7 +426,7 @@ pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationR
     let len: off_t = request.len;
     let advice: LibcFileAdvice = match LibcFileAdvice::try_from(request.advice) {
         Ok(advice) => advice,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
 
     debug!(
@@ -404,13 +436,18 @@ pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationR
     match unsafe { libc::posix_fadvise(fd, offset, len, advice.inner()) } {
         0 => {
             debug!("libc::posix_fadvise(): success");
-            FileAdvisoryInformationResponse::build(tid, 0)
+            Ok(FileAdvisoryInformationResponse::build(tid, 0))
         },
         errno => {
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::posix_fadvise(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
     }
 }
@@ -419,7 +456,7 @@ pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationR
 // do_fstat()
 //==================================================================================================
 
-pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message> {
+pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -445,7 +482,7 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message>
                     tv_nsec: match st.st_atime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -454,7 +491,7 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message>
                     tv_nsec: match st.st_mtime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -463,7 +500,7 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message>
                     tv_nsec: match st.st_ctime_nsec.try_into() {
                         Ok(nsec) => nsec,
                         Err(_) => {
-                            return vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)];
+                            return Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)]);
                         },
                     },
                 },
@@ -476,16 +513,22 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message>
             let response = FileStatAtResponse::new(stat);
 
             match response.into_parts(tid) {
-                Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(tid, e.code)],
+                Ok(messages) => Ok(messages),
+                Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::fstatat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -494,12 +537,12 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Vec<Message>
 // do_symlinkat()
 //==================================================================================================
 
-pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Vec<Message> {
+pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("symlinkat(): tid={tid:?}, request={request:?}");
 
     let target: CString = match CString::new(request.target.as_str()) {
         Ok(target) => target,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let newdirfd: i32 = request.dirfd;
@@ -507,7 +550,7 @@ pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Ve
 
     let linkpath: CString = match CString::new(request.linkpath.as_str()) {
         Ok(linkpath) => linkpath,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     debug!(
@@ -517,14 +560,20 @@ pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Ve
     match unsafe { libc::symlinkat(target.as_ptr(), newdirfd.inner(), linkpath.as_ptr()) } {
         0 => {
             debug!("libc::symlinkat(): success");
-            vec![SymbolicLinkAtResponse::build(tid, 0)]
+            Ok(vec![SymbolicLinkAtResponse::build(tid, 0)])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::symlinkat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -533,7 +582,7 @@ pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Ve
 // do_readlinkat()
 //==================================================================================================
 
-pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Vec<Message> {
+pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("readlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -541,7 +590,7 @@ pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Vec<M
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     // TODO: Have a system-wide constant for this.
@@ -562,20 +611,26 @@ pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Vec<M
 
             let response: ReadLinkAtResponse = match ReadLinkAtResponse::new(buf) {
                 Ok(response) => response,
-                Err(e) => return vec![crate::build_error(tid, e.code)],
+                Err(e) => return Ok(vec![crate::build_error(tid, e.code)]),
             };
 
             match response.into_parts(tid) {
-                Ok(messages) => messages,
-                Err(e) => vec![crate::build_error(tid, e.code)],
+                Ok(messages) => Ok(messages),
+                Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::readlinkat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -584,7 +639,7 @@ pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Vec<M
 // do_mkdirat()
 //==================================================================================================
 
-pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Vec<Message> {
+pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("mkdirat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -592,12 +647,12 @@ pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Vec
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     debug!(
@@ -608,14 +663,20 @@ pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Vec
     match unsafe { libc::mkdirat(dirfd.inner(), pathname.as_ptr(), mode.inner()) } {
         0 => {
             debug!("libc::mkdirat(): success");
-            vec![MakeDirectoryAtResponse::build(tid, 0)]
+            Ok(vec![MakeDirectoryAtResponse::build(tid, 0)])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::mkdirat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -624,7 +685,7 @@ pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Vec
 // do_utimensat()
 //==================================================================================================
 
-pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtRequest) -> Vec<Message> {
+pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("utimensat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -632,7 +693,7 @@ pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtReques
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let times: [timespec; 2] = request.times;
@@ -661,14 +722,20 @@ pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtReques
     match unsafe { libc::utimensat(dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag) } {
         0 => {
             debug!("libc::utimensat(): success");
-            vec![UpdateFileAccessTimeAtResponse::build(tid, 0)]
+            Ok(vec![UpdateFileAccessTimeAtResponse::build(tid, 0)])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::utimensat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -677,7 +744,7 @@ pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtReques
 // do_futimens()
 //==================================================================================================
 
-pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) -> Message {
+pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) -> Result<Message, WorkerThreadError> {
     trace!("futimens(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -697,14 +764,20 @@ pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) 
     match unsafe { libc::futimens(fd, libc_times.as_ptr()) } {
         0 => {
             debug!("libc::futimens(): success");
-            UpdateFileAccessTimeResponse::build(tid, 0)
+            Ok(UpdateFileAccessTimeResponse::build(tid, 0))
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::futimens(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
     }
 }
@@ -713,13 +786,13 @@ pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) 
 // do_fcntl()
 //==================================================================================================
 
-pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
+pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Result<Message, WorkerThreadError> {
     trace!("fcntl(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
     let cmd: LibcFileControlCommand = match LibcFileControlCommand::try_from(request.cmd) {
         Ok(cmd) => cmd,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
 
     debug!("libc::fcntl(): fd={fd:?}, cmd={:?}, arg={:?}", cmd.inner(), { request.arg });
@@ -732,7 +805,7 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
             Ok(flags) => flags.inner(),
             Err(error) => {
                 error!("do_fcntl(): {error:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-                return crate::build_error(tid, error.code);
+                return Ok(crate::build_error(tid, error.code));
             },
         },
         libc::F_GETFL => 0,
@@ -743,7 +816,7 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
                 Ok(flags) => flags.inner(),
                 Err(error) => {
                     error!("do_fcntl(): {error:?} (cmd={cmd:#x?}), arg={:?})", { request.arg });
-                    return crate::build_error(tid, error.code);
+                    return Ok(crate::build_error(tid, error.code));
                 },
             }
         },
@@ -753,7 +826,7 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
             if arg < 0 {
                 if arg == -1 {
                     error!("do_fcntl(): invalid owner (cmd={cmd:#x?}, arg={arg:?})");
-                    return crate::build_error(tid, ErrorCode::InvalidArgument);
+                    return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
                 } else {
                     -arg
                 }
@@ -764,17 +837,17 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
         libc::F_GETLK => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(tid, ErrorCode::InvalidArgument);
+            return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
         },
         libc::F_SETLK => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(tid, ErrorCode::InvalidArgument);
+            return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
         },
         libc::F_SETLKW => {
             let reason: &str = "unsupported file lock command";
             error!("do_fcntl(): {reason:?} (cmd={cmd:#x?}, arg={:?})", { request.arg });
-            return crate::build_error(tid, ErrorCode::InvalidArgument);
+            return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
         },
         unsupported_cmd => {
             // The following statement is unreachable because any unsupported commands were already
@@ -793,13 +866,19 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
         libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
             if ret >= 0 {
                 debug!("libc::fcntl(): F_DUPFD | F_DUPFD_CLOEXEC success");
-                FileControlResponse::build(tid, ret)
+                Ok(FileControlResponse::build(tid, ret))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
+
+                // Check if the thread has been interrupted.
+                if errno == libc::EINTR {
+                    return Err(WorkerThreadError::Interrupted);
+                }
+
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(tid, error)
+                Ok(crate::build_error(tid, error))
             }
         },
         libc::F_GETFD => {
@@ -808,13 +887,19 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
                 let nanvix_file_descritor_flags: c_int = LibcFileDescriptorFlags(ret)
                     .try_into_nanvix_flags()
                     .unwrap_or_else(|_| panic!("unexpected file descriptor flags: {ret:?}"));
-                FileControlResponse::build(tid, nanvix_file_descritor_flags)
+                Ok(FileControlResponse::build(tid, nanvix_file_descritor_flags))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
+
+                // Check if the thread has been interrupted.
+                if errno == libc::EINTR {
+                    return Err(WorkerThreadError::Interrupted);
+                }
+
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(tid, error)
+                Ok(crate::build_error(tid, error))
             }
         },
         libc::F_GETFL => {
@@ -844,22 +929,28 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
                     "file status flags and file creation flags should not overlap"
                 );
 
-                FileControlResponse::build(
+                Ok(FileControlResponse::build(
                     tid,
                     nanvix_file_status_flags | nanvix_file_creation_flags,
-                )
+                ))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
+
+                // Check if the thread has been interrupted.
+                if errno == libc::EINTR {
+                    return Err(WorkerThreadError::Interrupted);
+                }
+
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(tid, error)
+                Ok(crate::build_error(tid, error))
             }
         },
         libc::F_GETOWN => {
             if ret != -1 {
                 debug!("libc::fcntl(): F_GETOWN success");
-                FileControlResponse::build(tid, ret)
+                Ok(FileControlResponse::build(tid, ret))
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should never
                 // return -1 for `F_GETOWN`.
@@ -872,13 +963,19 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
         libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN => {
             if ret == 0 {
                 debug!("libc::fcntl(): libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN success");
-                FileControlResponse::build(tid, ret)
+                Ok(FileControlResponse::build(tid, ret))
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
+
+                // Check if the thread has been interrupted.
+                if errno == libc::EINTR {
+                    return Err(WorkerThreadError::Interrupted);
+                }
+
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
                 let error: ErrorCode = ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("unknown error code {errno}"));
-                crate::build_error(tid, error)
+                Ok(crate::build_error(tid, error))
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should return
                 // either 0 on success or -1 on error for `F_SETFD`, `F_SETFL`, and `F_SETOWN`.
@@ -903,7 +1000,7 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Message {
 // do_fchownat()
 //==================================================================================================
 
-pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Vec<Message> {
+pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fchownat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -911,7 +1008,7 @@ pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Vec<Me
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let owner: u32 = request.owner;
@@ -926,14 +1023,20 @@ pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Vec<Me
     match unsafe { libc::fchownat(dirfd.inner(), path.as_ptr(), owner, group, flag.inner()) } {
         0 => {
             debug!("libc::fchownat(): success");
-            vec![FileChownAtResponse::build(tid)]
+            Ok(vec![FileChownAtResponse::build(tid)])
         },
         _ => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::fchownat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }
@@ -942,7 +1045,7 @@ pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Vec<Me
 // do_fchmod
 //==================================================================================================
 
-pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Message {
+pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Result<Message, WorkerThreadError> {
     trace!("fchmod(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -950,14 +1053,20 @@ pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Message {
 
     debug!("libc::fchmod(): fd={fd:?}, mode={mode:?}");
     match unsafe { libc::fchmod(fd, mode) } {
-        0 => FileChmodResponse::build(tid),
+        0 => Ok(FileChmodResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
-            crate::build_error(
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
+            Ok(crate::build_error(
                 tid,
                 ErrorCode::try_from(errno)
                     .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
-            )
+            ))
         },
         ret => unreachable!("libc::fchmod() returned an invalid value ({ret:?})"),
     }
@@ -967,7 +1076,7 @@ pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Message {
 // do_fchmodat()
 //==================================================================================================
 
-pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Vec<Message> {
+pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fchmodat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -975,12 +1084,12 @@ pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Vec<Me
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let mode: LibcFileMode = match LibcFileMode::try_from(request.mode) {
         Ok(mode) => mode,
-        Err(_) => return vec![crate::build_error(tid, ErrorCode::InvalidMessage)],
+        Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
     let flag: LibcAtFlags = LibcAtFlags::from(request.flag);
@@ -995,14 +1104,20 @@ pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Vec<Me
     match unsafe { libc::fchmodat(dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner()) } {
         0 => {
             debug!("libc::fchmodat(): success");
-            vec![FileChmodAtResponse::build(tid)]
+            Ok(vec![FileChmodAtResponse::build(tid)])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             debug!("libc::fchmodat(): errno={errno:?}");
             let error: ErrorCode =
                 ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-            vec![crate::build_error(tid, error)]
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }

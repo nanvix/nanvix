@@ -33,6 +33,16 @@ use ::syscall::venv::VirtualEnvironmentIdentifier;
 ///
 /// # Description
 ///
+/// Commands that we can send to a worker thread in a virtual environment.
+///
+pub enum VenvCommand {
+    Work(Message),
+    Shutdown,
+}
+
+///
+/// # Description
+///
 /// Virtual environment.
 ///
 #[derive(Debug)]
@@ -44,7 +54,7 @@ pub struct VirtualEnvironment {
     stdin_response_tx: Sender<Message>,
     stdin_response_rx: Receiver<Message>,
     /// Input channel to this virtual environment.
-    channel_tx: Sender<Message>,
+    channel_tx: Sender<VenvCommand>,
 }
 
 ///
@@ -69,7 +79,7 @@ impl VirtualEnvironment {
     ///
     /// Creates a new virtual environment.
     ///
-    fn new(id: VirtualEnvironmentIdentifier, channel_tx: Sender<Message>) -> Self {
+    fn new(id: VirtualEnvironmentIdentifier, channel_tx: Sender<VenvCommand>) -> Self {
         let (stdin_response_tx, stdin_response_rx) = mpsc::channel::<Message>();
 
         Self {
@@ -118,7 +128,7 @@ impl VirtualEnvironment {
     ///
     /// A transmitter channel for the virtual environment.
     ///
-    pub fn get_channel_tx(&self) -> Sender<Message> {
+    pub fn get_channel_tx(&self) -> Sender<VenvCommand> {
         self.channel_tx.clone()
     }
 }
@@ -158,7 +168,7 @@ impl VirtualEnviromentDirectory {
         &mut self,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
-    ) -> Result<(VirtualEnvironmentIdentifier, Sender<Message>, Receiver<Message>), Error> {
+    ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error> {
         trace!("join(): tid={tid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
@@ -175,7 +185,7 @@ impl VirtualEnviromentDirectory {
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
-        let (channel_tx, channel_rx): (Sender<Message>, Receiver<Message>) = channel::<Message>();
+        let (channel_tx, channel_rx): (Sender<VenvCommand>, Receiver<VenvCommand>) = channel::<VenvCommand>();
 
         // Thread requested to join a new environment.
         envid = self.next_env;

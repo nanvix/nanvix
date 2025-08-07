@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::error::WorkerThreadError;
 use ::alloc::collections::BTreeMap;
 use ::sys::{
     error::Error,
@@ -31,12 +32,13 @@ impl RequestAssembler {
         &mut self,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
-    ) -> Result<Option<Vec<Message>>, Error> {
+    ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
         match self.process_message_internal::<T>(source, part) {
             Ok(messages) => Ok(messages),
-            Err(e) => {
+            Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
+            Err(WorkerThreadError::Error(e)) => {
                 self.inflight.remove(&source);
-                Err(e)
+                Err(WorkerThreadError::Error(e))
             },
         }
     }
@@ -45,7 +47,7 @@ impl RequestAssembler {
         &mut self,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
-    ) -> Result<Option<Vec<Message>>, Error> {
+    ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
         let message_complete: bool = {
             match self.assemble_parts::<T>(source, part) {
                 Ok(message_complete) => message_complete,
@@ -69,19 +71,19 @@ impl RequestAssembler {
         &mut self,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, WorkerThreadError> {
         let assembler: &mut RequestAssemblerType = self
             .inflight
             .entry(source)
             .or_insert_with(|| T::new_assembler());
         T::add_part(assembler, part)?;
-        T::is_complete(assembler)
+        Ok(T::is_complete(assembler)?)
     }
 
     fn process_request<T: RequestAssemblerTrait>(
         &mut self,
         source: ThreadIdentifier,
-    ) -> Result<Vec<Message>, Error> {
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         let assembler: RequestAssemblerType = self
             .inflight
             .remove(&source)
@@ -89,7 +91,7 @@ impl RequestAssembler {
 
         let parts: Vec<LinuxDaemonMessagePart> = T::take_parts(assembler);
         let request: T = T::from_parts(&parts)?;
-        Ok(T::process_request(source, request))
+        T::process_request(source, request)
     }
 }
 
@@ -120,11 +122,11 @@ where
     fn add_part(
         assembler: &mut RequestAssemblerType,
         part: LinuxDaemonMessagePart,
-    ) -> Result<(), Error>;
+    ) -> Result<(), WorkerThreadError>;
 
     fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error>;
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Vec<Message>;
+    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError>;
 }

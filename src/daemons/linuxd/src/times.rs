@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::error::WorkerThreadError;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -20,7 +21,7 @@ use ::syscall::sys::times::message::{
 // do_times()
 //==================================================================================================
 
-pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Message {
+pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Result<Message, WorkerThreadError> {
     trace!("times(): tid={tid:?}");
 
     let mut libc_buffer: libc::tms = libc::tms {
@@ -35,9 +36,15 @@ pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Message {
     match unsafe { libc::times(&mut libc_buffer as *mut libc::tms) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::clock_getres(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         elapsed => {
             debug!(
@@ -57,7 +64,7 @@ pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Message {
                 tms_cstime: libc_buffer.tms_cstime,
             };
 
-            TimesResponse::build(tid, elapsed, nanvix_buffer)
+            Ok(TimesResponse::build(tid, elapsed, nanvix_buffer))
         },
     }
 }

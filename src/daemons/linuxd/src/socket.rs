@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::error::WorkerThreadError;
 use ::core::{
     cmp,
     mem,
@@ -72,12 +73,12 @@ use ::syscall::{
 // do_socket
 //==================================================================================================
 
-pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Message {
+pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("socket(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
         Ok(domain) => domain,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
 
     let typ: LibcSocketType = LibcSocketType::from(request.typ);
@@ -92,14 +93,20 @@ pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Message
     match unsafe { libc::socket(domain.inner() as i32, typ.inner(), protocol.inner()) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::socket(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         sockfd => {
             debug!("libc::socket(): fd={sockfd:?}");
-            CreateSocketResponse::build(tid, sockfd)
+            Ok(CreateSocketResponse::build(tid, sockfd))
         },
     }
 }
@@ -108,12 +115,12 @@ pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Message
 // do_socketpair
 //==================================================================================================
 
-pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) -> Message {
+pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) -> Result<Message, WorkerThreadError> {
     trace!("socketpair(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
         Ok(domain) => domain,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
 
     let typ: LibcSocketType = LibcSocketType::from(request.typ);
@@ -132,14 +139,20 @@ pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) ->
     } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::socketpair(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         _ => {
             debug!("libc::socketpair(): fds={sv:?}");
-            CreateSocketPairResponse::build(tid, sv[0], sv[1])
+            Ok(CreateSocketPairResponse::build(tid, sv[0], sv[1]))
         },
     }
 }
@@ -148,13 +161,13 @@ pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) ->
 // do_bind
 //==================================================================================================
 
-pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Message {
+pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("bind(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let sockaddr: LibcSocketAddress = match LibcSocketAddress::try_from(request.sockaddr) {
         Ok(sockaddr) => sockaddr,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
     let socklen: socklen_t = mem::size_of_val(&sockaddr) as socklen_t;
 
@@ -167,12 +180,18 @@ pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Message {
     match unsafe { libc::bind(sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::bind(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
-        _ => BindSocketResponse::build(tid),
+        _ => Ok(BindSocketResponse::build(tid)),
     }
 }
 
@@ -180,13 +199,13 @@ pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Message {
 // do_connect
 //==================================================================================================
 
-pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Message {
+pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("connect(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
     let sockaddr: LibcSocketAddress = match LibcSocketAddress::try_from(request.sockaddr) {
         Ok(sockaddr) => sockaddr,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
     let socklen: socklen_t = request.socklen;
 
@@ -206,12 +225,18 @@ pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Messa
     } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::connect(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
-        _ => ConnectSocketResponse::build(tid),
+        _ => Ok(ConnectSocketResponse::build(tid)),
     }
 }
 
@@ -219,7 +244,7 @@ pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Messa
 // do_listen
 //==================================================================================================
 
-pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Message {
+pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("listen(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -229,12 +254,18 @@ pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Message
     match unsafe { libc::listen(sockfd, backlog) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::listen(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
-        _ => ListenSocketResponse::build(tid),
+        _ => Ok(ListenSocketResponse::build(tid)),
     }
 }
 
@@ -242,7 +273,7 @@ pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Message
 // do_getpeername
 //==================================================================================================
 
-pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Message {
+pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Result<Message, WorkerThreadError> {
     trace!("getpeername(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
@@ -254,10 +285,16 @@ pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Mes
     match unsafe { libc::getpeername(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::getpeername(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
@@ -265,7 +302,7 @@ pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Mes
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            GetPeerNameResponse::build(tid, &sockaddr)
+            Ok(GetPeerNameResponse::build(tid, &sockaddr))
         },
     }
 }
@@ -274,7 +311,7 @@ pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Mes
 // do_getsockname
 //==================================================================================================
 
-pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Message {
+pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Result<Message, WorkerThreadError> {
     trace!("getsockname(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
@@ -286,11 +323,17 @@ pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Mes
     match unsafe { libc::getsockname(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::getsockname(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
             error!("libc::getsockname(): {error:?}");
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         _ => {
             let sockaddr: sockaddr = sockaddr {
@@ -298,7 +341,7 @@ pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Mes
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            GetSockNameResponse::build(tid, &sockaddr)
+            Ok(GetSockNameResponse::build(tid, &sockaddr))
         },
     }
 }
@@ -307,7 +350,7 @@ pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Mes
 // do_accept
 //==================================================================================================
 
-pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Message {
+pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("accept(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -319,10 +362,16 @@ pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Message
     match unsafe { libc::accept(sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::accept(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         sockfd => {
             let sockaddr: sockaddr = sockaddr {
@@ -330,7 +379,7 @@ pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Message
                 sa_family: address.sa_family as u8,
                 sa_data: unsafe { core::mem::transmute::<[i8; 14], [u8; 14]>(address.sa_data) },
             };
-            AcceptSocketResponse::build(tid, sockfd, &sockaddr)
+            Ok(AcceptSocketResponse::build(tid, sockfd, &sockaddr))
         },
     }
 }
@@ -339,13 +388,13 @@ pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Message
 // do_recv
 //==================================================================================================
 
-pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Message {
+pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("recv(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
         Ok(flags) => flags,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
 
     let recv_len: usize = cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
@@ -359,14 +408,20 @@ pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Message 
     } {
         count if count >= 0 => {
             debug!("libc::recv(): count={count:?}");
-            ReceiveSocketResponse::build(tid, count as c_size_t, buffer)
+            Ok(ReceiveSocketResponse::build(tid, count as c_size_t, buffer))
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::recv(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         _ => unreachable!("libc::recv() returned invalid value"),
     }
@@ -376,7 +431,7 @@ pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Message 
 // do_shutdown
 //==================================================================================================
 
-pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Message {
+pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("shutdown(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -384,13 +439,19 @@ pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Mes
 
     debug!("libc::shutdown(): sockfd={sockfd:?}, how={:?}", how.inner());
     match unsafe { libc::shutdown(sockfd, how.inner()) } {
-        0 => ShutdownSocketResponse::build(tid),
+        0 => Ok(ShutdownSocketResponse::build(tid)),
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::shutdown(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         ret => unreachable!("libc::shutdown() returned invalid value {ret:?}"),
     }
@@ -400,14 +461,14 @@ pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Mes
 // do_send
 //==================================================================================================
 
-pub fn do_send(tid: ThreadIdentifier, request: SendSocketRequest) -> Message {
+pub fn do_send(tid: ThreadIdentifier, request: SendSocketRequest) -> Result<Message, WorkerThreadError> {
     trace!("send(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
     let count: c_size_t = request.count;
     let flags: LibcMessageFlags = match LibcMessageFlags::try_from(request.flags) {
         Ok(flags) => flags,
-        Err(e) => return crate::build_error(tid, e.code),
+        Err(e) => return Ok(crate::build_error(tid, e.code)),
     };
     let buffer: [u8; SendSocketRequest::BUFFER_SIZE] = request.buffer;
 
@@ -420,14 +481,20 @@ pub fn do_send(tid: ThreadIdentifier, request: SendSocketRequest) -> Message {
     } {
         count if count >= 0 => {
             debug!("libc::send(): count={count:?}");
-            SendSocketResponse::build(tid, count as c_ssize_t)
+            Ok(SendSocketResponse::build(tid, count as c_ssize_t))
         },
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
+
+            // Check if the thread has been interrupted.
+            if errno == libc::EINTR {
+                return Err(WorkerThreadError::Interrupted);
+            }
+
             error!("libc::send(): failed with errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            crate::build_error(tid, error)
+            Ok(crate::build_error(tid, error))
         },
         _ => unreachable!("libc::send() returned invalid value"),
     }
