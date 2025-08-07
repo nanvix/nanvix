@@ -8,13 +8,6 @@
 use crate::config;
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
-use ::nix::{
-    sys::signal::{
-        Signal,
-        kill,
-    },
-    unistd::Pid,
-};
 use ::std::process::Stdio;
 use ::tokio::process::{
     Child,
@@ -86,12 +79,10 @@ impl Drop for Microvm {
         if let Some(mut child) = self.0.take() {
             match child.id() {
                 Some(pid) => {
-                    let pid: ::sys::pm::ProcessIdentifier = match pid.try_into() {
-                        Ok(pid) => pid,
-                        Err(e) => return error!("error converting micro VMs PID (error={e:?})"),
-                    };
-                    if let Err(e) = kill(Pid::from_raw(pid.into()), Signal::SIGINT) {
-                        error!("error sending SIGINT to user VM (error={e:?})");
+                    let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
+
+                    if ret_code < 0 {
+                        error!("error sending SIGINT to user VM: {}", std::io::Error::last_os_error());
                     }
                 },
                 None => error!("user VM process has no PID"),

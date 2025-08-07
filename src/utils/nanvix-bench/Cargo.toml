@@ -16,10 +16,10 @@ config = { workspace = true }
 flexi_logger = { workspace = true }
 hwloc = { workspace = true }
 indicatif = { workspace = true }
+libc = { workspace = true }
 log = { workspace = true }
 microvm = { workspace = true }
 nanvixd = { workspace = true }
-nix = { workspace = true }
 profiler = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }

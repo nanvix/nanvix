@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use log::error;
-use nix::libc::{
+use libc::{
     CPU_SET,
     CPU_ZERO,
     cpu_set_t,
