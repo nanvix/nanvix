@@ -269,6 +269,17 @@ impl Benchmark {
             if ret_code < 0 {
                 error!("error sending SIGINT to nano VM: {}", std::io::Error::last_os_error());
             }
+
+            if let Some(nanvixd) = self.nanvixd.as_mut() {
+                match nanvixd.wait() {
+                    Ok(exit_status) => {
+                        if !exit_status.success() {
+                            error!("nanvixd returned with non-zero exit status: {:?}", exit_status.code());
+                        }
+                    },
+                    Err(e) => error!("error waiting for nanvixd: {e:?}"),
+                }
+            }
         }
     }
 
@@ -378,7 +389,6 @@ impl Benchmark {
         println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         print!("Cleaning up...");
-        self.cleanup();
         println!("done!");
 
         Ok(())
@@ -744,9 +754,6 @@ async fn main() -> Result<()> {
         Ok(_) => {},
         Err(e) => error!("error running benchmark: {e:?}"),
     }
-
-    // Additional clean-up in case of errors in the benchmarks.
-    benchmark.cleanup();
 
     Ok(())
 }
