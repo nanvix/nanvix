@@ -78,6 +78,24 @@ echo "Gateway Socket Address: ${GATEWAY_SOCKADDR}"
 # Get output by writing to the gateway socket address.
 PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0')
 
+# Kill the user VM.
+KILL_JSON=$(jq -n \
+    --arg user_vm_id "${VM_ID}" \
+    '{user_vm_id: $user_vm_id}'
+)
+KILL_EXIT_CODE=$(curl \
+    --silent \
+    --header "Content-Type: application/json" \
+    --header "X-NVX-Message-Type: KILL" \
+    --request POST \
+    --data "${KILL_JSON}" \
+    http://localhost:"${NANVIXD_PORT_NUMBER}" | jq -r '.exit_code')
+
+if [ "${KILL_EXIT_CODE}" -ne 0 ]; then
+    echo "Test failed: error killing user VM (code=${KILL_EXIT_CODE})"
+    exit 1
+fi
+
 # Move all Rust logs to the logs directory.
 # FIXME: https://github.com/nanvix/nanvix/issues/543
 find . -maxdepth 1 -name '*.log' -exec mv {} "${LOGS_DIR}"/ \; 2>/dev/null || true
