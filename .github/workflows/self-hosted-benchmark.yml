@@ -1,7 +1,7 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-name: "Nanvix CI/CD (Self-Hosted)"
+name: "Nanvix Benchmark (Self-Hosted)"
 
 on:
   pull_request:
@@ -26,29 +26,29 @@ env:
   TARGET_BRANCH: ${{ github.ref_name }}
 
 jobs:
-  ci:
-    name: "Nanvix CI/CD (self-hosted)"
+  benchmark:
+    name: "Nanvix Benchmark (self-hosted)"
     timeout-minutes: 240
     strategy:
       matrix:
-        build-type: [debug, release]
+        build-type: [release]
         arch: [X64]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, baremetal]
 
-    # Only run the CI for:
+    # Only run the benchmark for:
     # - Pushes to 'dev' (handled by workflow triggers above)
     # - Non-draft PRs where the source branch starts with one of:
-    #     'enhancement-', 'feature-', 'bugfix-', 'dependabot-', 'dependabot/', or 'copilot/'
+    #     'enhancement-', 'feature-', 'bugfix-', or 'copilot/' (skip dependabot PRs)
     if: |
       github.event_name != 'pull_request' ||
       (
         !github.event.pull_request.draft &&
+        !startsWith(github.head_ref, 'dependabot/') &&
+        !startsWith(github.head_ref, 'dependabot-') &&
         (
           startsWith(github.head_ref, 'enhancement-') ||
           startsWith(github.head_ref, 'feature-') ||
           startsWith(github.head_ref, 'bugfix-') ||
-          startsWith(github.head_ref, 'dependabot-') ||
-          startsWith(github.head_ref, 'dependabot/') ||
           startsWith(github.head_ref, 'copilot/')
         )
       )
@@ -56,18 +56,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: "Lint"
-      uses: ./.github/actions/lint
+    - name: "Benchmark"
+      uses: ./.github/actions/benchmark
       with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
-    - name: "Build"
-      uses: ./.github/actions/build
-      with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
-    - name: "Test"
-      uses: ./.github/actions/test
-      with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
+        arch: '${{ matrix.arch }}'
