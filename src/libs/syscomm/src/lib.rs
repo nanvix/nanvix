@@ -78,7 +78,7 @@ impl ::std::str::FromStr for SocketType {
 
 impl SocketListener {
     /// Accepts a connection on a socket.
-    pub fn accept(&self) -> Result<SocketStream> {
+    pub fn accept(&self) -> Result<SocketStream, SocketError> {
         match self {
             SocketListener::Tcp(listener) => {
                 let (stream, _sockaddr): (TcpStream, std::net::SocketAddr) = listener.accept()?;
@@ -245,6 +245,12 @@ impl fmt::Display for SocketError {
 impl From<SocketError> for io::Error {
     fn from(err: SocketError) -> Self {
         err.error
+    }
+}
+
+impl From<std::io::Error> for SocketError {
+    fn from(error: std::io::Error) -> Self {
+        SocketError::new(error)
     }
 }
 

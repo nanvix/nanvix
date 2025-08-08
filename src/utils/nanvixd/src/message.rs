@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! This file contains the messages used in the HTTP API between end-clients and nanvixd.
+
 use serde::{
     Deserialize,
     Serialize,
