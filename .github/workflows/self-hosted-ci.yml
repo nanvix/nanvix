@@ -71,3 +71,16 @@ jobs:
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.arch }}
+        # Overwrite to limit the amount of storage we use.
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
