@@ -31,3 +31,4 @@ runs:
     run: |
       python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --build
     shell: bash
+
