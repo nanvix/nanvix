@@ -6,9 +6,9 @@
 //==================================================================================================
 
 use crate::sandbox::{
+    config::SandboxConfig,
     linuxd::LinuxDaemon,
     microvm::Microvm,
-    config::SandboxConfig,
     tag::SandboxTag,
 };
 use ::anyhow::Result;
@@ -180,5 +180,31 @@ impl SandboxCache{
         self.sandbox_index.remove(user_vm_id);
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Stop all instances in the cache.
+    ///
+    /// # Returns
+    ///
+    /// On success empty is returned. On failure an error is returned instead.
+    ///
+    pub async fn cleanup(&mut self) {
+        // TODO: for the time being only linuxd instances support being gracefully shutdown. User
+        // VMs are missing a control-plane socket.
+        for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
+            if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
+                if let Err(e) = linuxd_instance_mut.shutdown().await {
+                    // FIXME: convert to error once linuxd supports a graceful shutdown.
+                    debug!("error cleaning-up linuxd instance for tenant {tenant_id}: {e:?}");
+                } else {
+                    debug!("cleaned-up linuxd instance for tenant {tenant_id}");
+                }
+            } else {
+                error!("error cleaning-up linuxd instance for tenant {tenant_id}: instance not found");
+            }
+        }
     }
 }

@@ -21,6 +21,7 @@ hyper-util = { workspace = true, features = ["full"] }
 hwloc = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+num_enum = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 sys = { workspace = true }
