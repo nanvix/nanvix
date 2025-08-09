@@ -47,6 +47,7 @@ use ::tokio::sync::Mutex;
 pub struct HttpClient {
     sandbox_cache: Arc<Mutex<SandboxCache>>,
     tmp_directory: String,
+    binary_directory: String,
     console_file: Option<String>,
     hwloc: Option<HwLoc>,
 }
@@ -55,12 +56,14 @@ impl HttpClient {
     pub fn new(
         sandbox_cache: Arc<Mutex<SandboxCache>>,
         tmp_directory: String,
+        binary_directory: String,
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
     ) -> Self {
         Self {
             sandbox_cache,
             tmp_directory,
+            binary_directory,
             console_file,
             hwloc,
         }
@@ -101,6 +104,7 @@ impl HttpClient {
         sandbox_cache: Arc<Mutex<SandboxCache>>,
         message: &message::New,
         tmp_directory: String,
+        binary_directory: String,
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
     ) -> Result<message::NewResponse> {
@@ -125,6 +129,7 @@ impl HttpClient {
             program_args.clone(),
             console_file.clone(),
             hwloc.clone(),
+            &binary_directory,
         );
 
         // This method will create a sandbox if it is not in the cache.
@@ -160,6 +165,7 @@ impl Service<Request<Incoming>> for HttpClient {
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         // Clone all necessary values before moving them into the future
         let tmp_directory: String = self.tmp_directory.clone();
+        let binary_directory: String = self.binary_directory.clone();
         let console_file: Option<String> = self.console_file.clone();
         let hwloc: Option<HwLoc> = self.hwloc.clone();
         let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
@@ -209,6 +215,7 @@ impl Service<Request<Incoming>> for HttpClient {
                         sandbox_cache,
                         &msg,
                         tmp_directory.clone(),
+                        binary_directory.clone(),
                         console_file.clone(),
                         hwloc.clone(),
                     )

@@ -36,7 +36,7 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
-    pub fn spawn(control_plane_sockaddr: &str, user_vm_sockaddr: &str, gateway_sockaddr: &str, hwloc: Option<HwLoc>) -> Result<Self> {
+    pub fn spawn(control_plane_sockaddr: &str, user_vm_sockaddr: &str, gateway_sockaddr: &str, hwloc: Option<HwLoc>, binary_directory: &str) -> Result<Self> {
         // Start the control-plane socket in listening mode.
         let control_plane_listener = match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
             Ok(listener) => listener,
@@ -49,7 +49,7 @@ impl LinuxDaemon {
         debug!("spawning linux daemon (control-plane={control_plane_sockaddr}, user-vm={user_vm_sockaddr}, \
             gateway={gateway_sockaddr})");
         let mut linuxd_args: Vec<String> = vec![
-            format!("{}/linuxd.elf", config::BINARY_DIRECTORY),
+            format!("{}/linuxd.elf", binary_directory),
             "-control-plane-addr".to_string(),
             control_plane_sockaddr.to_string(),
             "-user-vm-bind-addr".to_string(),
