@@ -40,6 +40,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
+use ::sys::error::{Error, ErrorCode};
 use ::syscall::sys::socket::SocketAddr;
 use ::wasmi::{
     errors::ErrorKind,
@@ -151,7 +152,7 @@ impl WasiSocket {
 }
 
 impl WasmEngine {
-    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &Option<SocketAddr>) -> Self {
+    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &Option<SocketAddr>) -> Result<Self, Error> {
         let mut next_wasi_fd: Fd = 0;
         let mut config: Config = Config::default();
         config.compilation_mode(wasmi::CompilationMode::Eager);
@@ -192,7 +193,13 @@ impl WasmEngine {
         next_wasi_fd += 1;
 
         // Root directory.
-        let file: File = File::open(&Path::new(".")).unwrap();
+        let file: File = match File::open(&Path::new(".")) {
+            Ok(file) => file,
+            Err(err) => {
+                ::syslog::error!("failed to open root directory: {:?}", err);
+                return Err(Error::new(ErrorCode::IoErr, "failed to open root directory"));
+            },
+        };
         let root: WasiFile =
             WasiFile::new(next_wasi_fd, file, Rights::base_rights(), Rights::base_rights());
         next_wasi_fd += 1;
@@ -200,7 +207,13 @@ impl WasmEngine {
 
         // Populate pre-open sockets.
         if let Some(sockaddr) = sockaddr {
-            let os_socket: Socket = pal::setup_network(sockaddr).unwrap();
+            let os_socket: Socket = match pal::setup_network(sockaddr) {
+                Ok(socket) => socket,
+                Err(err) => {
+                    ::syslog::error!("failed to setup network: {:?}", err);
+                    return Err(Error::new(ErrorCode::NetworkDown, "failed to setup network"));
+                },
+            };
             let localhost: WasiSocket = WasiSocket::new(
                 next_wasi_fd,
                 os_socket,
@@ -272,7 +285,8 @@ impl WasmEngine {
         let module: Module = match Module::new(&engine, &wasm_binary.bytes) {
             Ok(module) => module,
             Err(err) => {
-                panic!("Error: {:?}", err);
+                ::syslog::error!("failed to create WASM module: {:?}", err);
+                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to create WASM module"));
             },
         };
 
@@ -280,26 +294,35 @@ impl WasmEngine {
             ::syslog::trace!("wasm_main");
         });
 
-        linker.define("env", "_start", wasm_main).unwrap();
+        if let Err(err) = linker.define("env", "_start", wasm_main) {
+            ::syslog::error!("failed to define _start function: {:?}", err);
+            return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to define _start function"));
+        }
 
         let instance: Instance = match linker.instantiate_and_start(&mut store, &module) {
             Ok(instance) => instance,
-            Err(error) => {
-                panic!("Error instantiating WASM module: {:?}", error);
+            Err(err) => {
+                ::syslog::error!("failed to instantiate and start WASM module: {:?}", err);
+                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to instantiate and start WASM module"));
             },
         };
 
-        let start_fn: TypedFunc<(), ()> =
-            instance.get_typed_func::<(), ()>(&store, "_start").unwrap();
+        let start_fn: TypedFunc<(), ()> = match instance.get_typed_func::<(), ()>(&store, "_start") {
+            Ok(func) => func,
+            Err(err) => {
+                ::syslog::error!("failed to get _start function: {:?}", err);
+                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to get _start function"));
+            },
+        };
 
-        Self {
+        Ok(Self {
             _ctx: ctx,
             _engine: engine,
             store,
             _linker: linker,
             _wasm_main: wasm_main,
             start_fn,
-        }
+        })
     }
 
     pub fn run(&mut self) {
