@@ -60,3 +60,17 @@ jobs:
       uses: ./.github/actions/benchmark
       with:
         arch: '${{ matrix.arch }}'
+
+    - name: "Upload logs in case of benchmark failures"
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.arch }}
+        # Overwrite to limit the amount of storage we use.
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+          bench_*.txt
