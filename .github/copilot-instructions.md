@@ -80,7 +80,7 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 #### Style & Formatting (Rust only)
 
-- Do not use `panic!`, `unwrap()`, or `expect()`, instead return  `Result<T, E>`.
+- Do not use `panic!`, `unwrap()`, or `expect()`, instead return `Result<T, E>`.
 - Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
 - Always log errors with `error!` before returning an error.
 - Use `warn!` log level for non-critical warnings that do not affect functionality.
@@ -90,5 +90,13 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 ### Documentation & Comments
 
-- Public modules, structures, classes enumerations, types, functions, variables, constants must have doc comments.
+- Public modules, structures, classes, enumerations, types, functions, variables, constants must have doc comments.
 - `TODO`/`FIXME` comments must link to GitHub issues (e.g., `TODO (#1234): rationale`).
+
+## Coding Review Guidelines
+
+- Ensure that coding standards are followed.
+- Ensure that changes are minimal and focused.
+- Ensure that new code is documented.
+- Ensure that doc comments are updated when behavior changes.
+- Ensure markdown files in the source tree and documentation in `doc/` are updated when behavior changes.
