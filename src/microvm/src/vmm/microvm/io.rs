@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::Gateway;
+use crate::{
+    Gateway,
+    vmm::ControlCommand,
+};
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
@@ -42,12 +45,10 @@ pub struct IoThread {
     incoming: VecDeque<Message>,
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
-    /// State in the snapshotting protocol.
-    _state: OrchestratorState,
     /// Command sender to the VMM.
-    _control_input_tx: Sender<ControlCommand>,
+    _vmm_control_tx: Sender<ControlCommand>,
     /// Response receiver from the VMM.
-    _control_output_rx: Receiver<ControlCommandResponse>,
+    vmm_control_rx: Receiver<ControlCommandResponse>,
     // TODO: channels to an outside issuer of snapshot commands and to linuxd.
 }
 
@@ -58,30 +59,15 @@ pub struct IoThread {
 ///
 /// # Description
 ///
-/// States relating to snapshots functionality. Snapshots may be loaded at PreBoot, and created at Paused.
-/// TODO: add `Running`, `Pausing`, `PausingAndOutputFlushed`, and `Paused` states.
-///
-enum OrchestratorState {
-    PreBoot,
-}
-
-///
-/// # Description
-///
-/// Control plane commands.
-/// TODO:
-/// Add commands relating to snapshots: `StartMicroVM`, `LoadAndRun`, `ResumeMicroVM`, `PauseMicroVM`, `PauseAndCreateSnapshot`, `LinuxDaemonFlushed`, `CreateSnapshot`, `LoadSnapshot`.
-///
-pub enum ControlCommand {}
-
-///
-/// # Description
-///
 /// Control plane command responses.
-/// TODO:
-/// Add `MicroVmPaused` response.
 ///
-pub enum ControlCommandResponse {}
+#[derive(PartialEq)]
+pub enum ControlCommandResponse {
+    MicroVmPaused,
+    SnapshotCreated,
+    FlushOutput,
+    FlushInput,
+}
 
 //==================================================================================================
 // Implementations
@@ -98,8 +84,8 @@ impl IoThread {
     /// - `gateway`: Connection to gateway.
     /// - `microvm_rx`: MicroVM receiver.
     /// - `microvm_tx`: MicroVM sender.
-    /// - `control_input_tx`: Command sender.
-    /// - `control_output_rx`: Response receiver.
+    /// - `vmm_control_tx`: Command sender.
+    /// - `vmm_control_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -109,17 +95,12 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
-        control_input_tx: Sender<ControlCommand>,
-        control_output_rx: Receiver<ControlCommandResponse>,
+        vmm_control_tx: Sender<ControlCommand>,
+        vmm_control_rx: Receiver<ControlCommandResponse>,
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
-            let mut io_thread: IoThread = IoThread::new(
-                gateway,
-                microvm_rx,
-                microvm_tx,
-                control_input_tx,
-                control_output_rx,
-            )?;
+            let mut io_thread: IoThread =
+                IoThread::new(gateway, microvm_rx, microvm_tx, vmm_control_tx, vmm_control_rx)?;
             io_thread.run()?;
             Ok(())
         })
@@ -135,8 +116,8 @@ impl IoThread {
     /// - `gateway`: Connection to gateway.
     /// - `microvm_rx`: MicroVM receiver.
     /// - `microvm_tx`: MicroVM sender.
-    /// - `control_input_tx`: Command sender.
-    /// - `control_output_rx`: Response receiver.
+    /// - `vmm_control_tx`: Command sender.
+    /// - `vmm_control_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -146,8 +127,8 @@ impl IoThread {
         gateway: Gateway,
         microvm_rx: Receiver<Message>,
         microvm_tx: Sender<Message>,
-        control_input_tx: Sender<ControlCommand>,
-        control_output_rx: Receiver<ControlCommandResponse>,
+        vmm_control_tx: Sender<ControlCommand>,
+        vmm_control_rx: Receiver<ControlCommandResponse>,
     ) -> Result<Self> {
         Ok(Self {
             gateway,
@@ -155,36 +136,27 @@ impl IoThread {
             microvm_tx,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            _state: OrchestratorState::PreBoot,
-            _control_input_tx: control_input_tx,
-            _control_output_rx: control_output_rx,
+            _vmm_control_tx: vmm_control_tx,
+            vmm_control_rx,
         })
     }
 
     ///
     /// # Description
     ///
-    /// Runs the I/O thread.
+    /// Runs the I/O thread according to the state in the snapshotting protocol state machine.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn run(&mut self) -> Result<()> {
-        let mut round: usize = 0;
-
-        // Cycle through actions to avoid starvation.
         loop {
-            if round % 4 == 0 {
-                self.try_receive_from_microvm()?;
-            } else if round % 4 == 1 {
-                self.try_send_to_gateway()?;
-            } else if round % 4 == 2 {
-                self.try_receive_from_gateway()?;
-            } else {
-                self.try_send_to_microvm()?;
-            }
-            round += 1;
+            self.try_receive_from_microvm()?;
+            self.try_send_to_gateway()?;
+            self.try_receive_from_gateway()?;
+            self.try_send_to_microvm()?;
+            self.try_receive_from_vmm_control()?;
         }
     }
 
@@ -195,17 +167,18 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `incoming` queue, and `true` is returned.
+    /// Otherwise, if it would block, `false` is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_gateway(&mut self) -> Result<()> {
+    fn try_receive_from_gateway(&mut self) -> Result<bool> {
         match self.gateway.try_receive() {
             Ok(message) => {
                 self.incoming.push_back(message);
-                Ok(())
+                Ok(true)
             },
             Err(e) => {
                 if e.kind() == ErrorKind::WouldBlock {
-                    Ok(())
+                    Ok(false)
                 } else {
                     let reason: String =
                         format!("failed to receive message from the gateway (error={e:?})");
@@ -223,9 +196,10 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `outgoing` queue, and `true`is returned.
+    /// Otherwise, if the channel is empty, `false` is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_microvm(&mut self) -> Result<()> {
+    fn try_receive_from_microvm(&mut self) -> Result<bool> {
         match self.microvm_rx.try_recv() {
             Ok(mut message) => {
                 profiler::timestamp_message!(
@@ -234,9 +208,9 @@ impl IoThread {
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
                 self.outgoing.push_back(message);
-                Ok(())
+                Ok(true)
             },
-            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Empty) => Ok(false),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
                 // When the guest finishes , the vCPU thread will disconnect from this thread. This
@@ -307,5 +281,64 @@ impl IoThread {
             },
             None => Ok(()),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to receive a response from the VMM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn try_receive_from_vmm_control(&mut self) -> Result<()> {
+        match self.vmm_control_rx.try_recv() {
+            Ok(response) => match response {
+                ControlCommandResponse::FlushOutput => self.flush_microvm_output(),
+                ControlCommandResponse::FlushInput => self.flush_linuxd_input(),
+                _ => Ok(()), // TODO: forward to whoever is interested. This requires having control channels.
+            },
+            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = "the vmm has disconnected".to_string();
+                // When the guest finishes , the vCPU thread will disconnect from this thread. This
+                // situation is normal and should not create an error log.
+                anyhow::bail!(reason)
+            },
+        }
+    }
+
+    /// # Description
+    ///
+    /// Attempts to flush all outstanding output from the MicroVM to the Linux daemon.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn flush_microvm_output(&mut self) -> Result<()> {
+        while self.try_receive_from_microvm()? {
+            // Keep looping until `microvm_rx` is empty, which breaks the loop.
+        }
+        while !self.outgoing.is_empty() {
+            self.try_send_to_gateway()?;
+        }
+        Ok(())
+    }
+
+    /// # Description
+    ///
+    /// Attempts to flush all outstanding input from the the Linux daemon to the MicroVM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    fn flush_linuxd_input(&mut self) -> Result<()> {
+        while self.try_receive_from_gateway()? {
+            // Keep looping until receiving from the gateway would block, which breaks the loop.
+        }
+        Ok(())
     }
 }
