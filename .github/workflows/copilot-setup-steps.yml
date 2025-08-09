@@ -47,9 +47,6 @@ jobs:
           # Remove PowerShell
           sudo rm -rf /usr/local/share/powershell
 
-          # Remove CodeQL and other toolcaches
-          sudo rm -rf /opt/hostedtoolcache
-
           docker system prune -af || true
           docker builder prune -af || true
 
@@ -57,11 +54,6 @@ jobs:
         run: df -h
 
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
 
       - name: Install Rust
         run: |
