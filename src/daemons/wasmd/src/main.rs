@@ -224,7 +224,13 @@ fn main() -> Result<(), Error> {
         None => None,
     };
 
-    let mut engine: WasmEngine = WasmEngine::new(&wasm_binary, 42, &sockaddr);
+    let mut engine: WasmEngine = match WasmEngine::new(&wasm_binary, 42, &sockaddr) {
+        Ok(engine) => engine,
+        Err(err) => {
+            ::syslog::error!("failed to initialize WASM engine: {:?}", err);
+            return Err(err);
+        },
+    };
 
     engine.run();
 
