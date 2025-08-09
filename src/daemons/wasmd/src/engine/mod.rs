@@ -47,6 +47,7 @@ use ::wasmi::{
     Config,
     Engine,
     Func,
+    Instance,
     Linker,
     Module,
     Store,
@@ -280,11 +281,13 @@ impl WasmEngine {
         });
 
         linker.define("env", "_start", wasm_main).unwrap();
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .unwrap()
-            .start(&mut store)
-            .unwrap();
+
+        let instance: Instance = match linker.instantiate_and_start(&mut store, &module) {
+            Ok(instance) => instance,
+            Err(error) => {
+                panic!("Error instantiating WASM module: {:?}", error);
+            },
+        };
 
         let start_fn: TypedFunc<(), ()> =
             instance.get_typed_func::<(), ()>(&store, "_start").unwrap();
