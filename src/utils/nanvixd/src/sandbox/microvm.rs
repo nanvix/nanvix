@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::config;
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
 use ::std::process::Stdio;
@@ -25,12 +24,12 @@ pub struct Microvm(Option<Child>);
 //==================================================================================================
 
 impl Microvm {
-    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>, hwloc: Option<HwLoc>) -> Result<Self> {
+    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>, hwloc: Option<HwLoc>, binary_directory: &str) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/microvm.elf", config::BINARY_DIRECTORY),
+            format!("{}/microvm.elf", binary_directory),
             "-log-to-file".to_string(),
             "-kernel".to_string(),
-            format!("{}/kernel.elf", config::BINARY_DIRECTORY),
+            format!("{}/kernel.elf", binary_directory),
             "-initrd".to_string(),
             program.to_string(),
             "-gateway".to_string(),

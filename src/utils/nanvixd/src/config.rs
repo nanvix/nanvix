@@ -12,9 +12,8 @@ use ::log::error;
 // Constants
 //==================================================================================================
 
-/// Path to the binary directory.
-/// FIXME: Do not hardcode current directory here. (https://github.com/nanvix/nanvix/issues/736)
-pub const BINARY_DIRECTORY: &str = "./bin";
+/// Default binary directory path.
+pub const DEFAULT_BIN_DIRECTORY: &str = "./bin";
 
 /// Suffix for Unix sockets.
 #[cfg(debug_assertions)]
