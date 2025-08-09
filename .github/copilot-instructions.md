@@ -68,3 +68,27 @@ types and supports various runtimes.
 ```bash
 scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world from C!'
 ```
+
+## Coding Standards
+
+### Style & Formatting
+
+- Always follow the existing code style.
+- Code must pass formatting and linting checks.
+- Constants must be defined at module/file scope; avoid magic numbers in code paths.
+- Map errors to OS error codes consistently; prefer typed errors over ad-hoc strings.
+
+#### Style & Formatting (Rust only)
+
+- Do not use `panic!`, `unwrap()`, or `expect()`, instead return  `Result<T, E>`.
+- Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
+- Always log errors with `error!` before returning an error.
+- Use `warn!` log level for non-critical warnings that do not affect functionality.
+- Use `info!` log level for informational messages that are not errors or warnings.
+- Use `debug!` log level for debugging information that is for development purposes.
+- Use `trace!` log level for tracing execution flow and detailed debugging information.
+
+### Documentation & Comments
+
+- Public modules, structures, classes enumerations, types, functions, variables, constants must have doc comments.
+- `TODO`/`FIXME` comments must link to GitHub issues (e.g., `TODO (#1234): rationale`).
