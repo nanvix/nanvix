@@ -20,6 +20,7 @@ use ::std::{
 pub struct Args {
     http_sockaddr: String,
     tmp_directory: String,
+    binary_directory: String,
     console_file: Option<String>,
     hwloc: Option<HwLoc>,
 }
@@ -32,12 +33,14 @@ impl Args {
     const OPT_HELP: &'static str = "-help";
     const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
+    const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
     const OPT_CONSOLE_FILE: &'static str = "-console-file";
     const OPT_HWLOC: &'static str = "-hwloc";
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: String = String::new();
         let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
+        let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut console_file: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
 
@@ -55,6 +58,10 @@ impl Args {
                 Self::OPT_TMP_DIRECTORY => {
                     i += 1;
                     tmp_directory = args[i].clone();
+                },
+                Self::OPT_BIN_DIRECTORY => {
+                    i += 1;
+                    binary_directory = args[i].clone();
                 },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
@@ -83,6 +90,7 @@ impl Args {
         Ok(Self {
             http_sockaddr,
             tmp_directory,
+            binary_directory,
             console_file,
             hwloc,
         })
@@ -90,11 +98,12 @@ impl Args {
 
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <hwloc.json>]",
+            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] [{} <hwloc.json>]",
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
             Self::OPT_TMP_DIRECTORY,
+            Self::OPT_BIN_DIRECTORY,
             Self::OPT_HWLOC
         );
     }
@@ -105,6 +114,10 @@ impl Args {
 
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
+    }
+
+    pub fn binary_directory(&self) -> &str {
+        &self.binary_directory
     }
 
     pub fn nanvix_console(&self) -> Option<String> {
