@@ -320,6 +320,26 @@ clippy: \
 	clippy-host-rlibs \
 	clippy-microvm
 
+# Fixes code formatting issues.
+format: \
+	clang-format \
+	python-format \
+	rust-format \
+
+# Checks for code formatting issues.
+format-check: \
+	clang-format-check \
+	python-format-check \
+	rust-format-check \
+
+# Formats Rust code.
+rust-format: \
+	format-microvm
+
+# Checks Rust code formatting.
+rust-format-check: \
+	format-check-microvm
+
 # Python lint variables
 PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
