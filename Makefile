@@ -321,20 +321,23 @@ clippy: \
 	clippy-microvm
 
 # Python lint variables
-PY_CHECK :=
-ifeq ($(check),true)
-PY_CHECK += --check
-endif
 PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
 PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/venv
 
-python-lint:
+python-init:
 	@if [ ! -d $(PYTHON_VENV_DIRECTORY) ]; then python3 -m venv $(PYTHON_VENV_DIRECTORY); fi
 	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PY_CHECK) $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-format: python-init
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-format-check: python-init
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black --check $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-lint: python-init
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
 
 # Check C/C++ formatting style.
