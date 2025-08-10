@@ -24,6 +24,8 @@ pub struct SandboxConfig {
     console_file: Option<String>,
     /// Hardware locality configuration.
     hwloc: Option<HwLoc>,
+    /// Path to the binary directory.
+    binary_directory: String,
 }
 
 //==================================================================================================
@@ -39,17 +41,19 @@ impl SandboxConfig {
     /// # Parameters
     ///
     /// - `control_plane_sockaddr`: Socket address for the control plane.
-    /// - `linuxd_sockaddr`: Socket address for the Linux daemon.
-    /// - `sandbox_sockaddr`: Socket address for the Sandbox.
-    /// - `program`: Path to the binary to run in the User VM.
-    /// - `program_args`: Argv for the program to run in the user VM.
+    /// - `gateway_sockaddr`: Socket address for the gateway.
+    /// - `user_vm_sockaddr`: Socket address for the user VM.
+    /// - `program`: Path to the program to run.
+    /// - `program_args`: Arguments for the program.
     /// - `console_file`: File for console output.
     /// - `hwloc`: Hardware locality configuration.
+    /// - `binary_directory`: Path to the binary directory.
     ///
     /// # Returns
     ///
     /// A new sandbox configuration.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         control_plane_sockaddr: &str,
         gateway_sockaddr: &str,
@@ -58,6 +62,7 @@ impl SandboxConfig {
         program_args: Option<String>,
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
+        binary_directory: &str,
     ) -> Self {
         Self {
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
@@ -67,6 +72,7 @@ impl SandboxConfig {
             program_args,
             console_file,
             hwloc,
+            binary_directory: binary_directory.to_string(),
         }
     }
 
@@ -159,5 +165,18 @@ impl SandboxConfig {
     ///
     pub fn hwloc(&self) -> Option<HwLoc> {
         self.hwloc.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the binary directory.
+    ///
+    /// # Returns
+    ///
+    /// The path to the binary directory.
+    ///
+    pub fn binary_directory(&self) -> &str {
+        &self.binary_directory
     }
 }
