@@ -53,6 +53,7 @@ impl SandboxConfig {
     ///
     /// A new sandbox configuration.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         control_plane_sockaddr: &str,
         gateway_sockaddr: &str,
