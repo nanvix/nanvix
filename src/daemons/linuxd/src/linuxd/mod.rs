@@ -71,12 +71,6 @@ impl LinuxDaemon {
         uvm_stream: SocketStream,
         gateway_stream: Option<SocketStream>,
     ) -> Result<Self, Error> {
-        if let Err(error) = uvm_stream.set_nonblocking(true) {
-            let reason: &str = "failed to set UVM stream to non-blocking mode";
-            error!("init(): {reason:?} (error={error:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
             uvm_stream,
@@ -249,7 +243,7 @@ impl LinuxDaemon {
 
         let mut locked_uvm_stream: MutexGuard<'_, SocketStream> = uvm_stream.lock().unwrap();
 
-        if let Err(e) = locked_uvm_stream.read_exact(&mut buf) {
+        if let Err(e) = locked_uvm_stream.try_read_exact(&mut buf) {
             return Err(e.kind());
         };
 
