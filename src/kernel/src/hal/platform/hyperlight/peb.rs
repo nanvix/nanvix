@@ -68,7 +68,7 @@ impl ProcessEnvironmentBlock {
             None => {
                 error!("peb not initialized");
                 Err(Error::new(ErrorCode::NoSuchDevice, "peb not initialized"))
-            }
+            },
         }
     }
 
