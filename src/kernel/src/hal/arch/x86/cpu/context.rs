@@ -121,10 +121,10 @@ impl core::fmt::Debug for ContextInformation {
 
         write!(
             f,
-            "esp0={esp0:#010x}, cr3={cr3:#010x}, gs={gs:#010x}, fs={fs:#010x}, es={es:#010x}, ds={ds:#010x}, \
-             edi={edi:#010x}, esi={esi:#010x}, ebp={ebp:#010x}, edx={edx:#010x}, ecx={ecx:#010x}, ebx={ebx:#010x}, \
-             eax={eax:#010x}, err={err:#010x}, eip={eip:#010x}, cs={cs:#010x}, eflags={eflags:#010x}, \
-             esp={esp:#010x}, ss={ss:#010x}",
+            "esp0={esp0:#010x}, cr3={cr3:#010x}, gs={gs:#010x}, fs={fs:#010x}, es={es:#010x}, \
+             ds={ds:#010x}, edi={edi:#010x}, esi={esi:#010x}, ebp={ebp:#010x}, edx={edx:#010x}, \
+             ecx={ecx:#010x}, ebx={ebx:#010x}, eax={eax:#010x}, err={err:#010x}, eip={eip:#010x}, \
+             cs={cs:#010x}, eflags={eflags:#010x}, esp={esp:#010x}, ss={ss:#010x}",
         )
     }
 }
