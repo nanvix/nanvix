@@ -10,7 +10,8 @@
 #[cfg(feature = "timestamp-messages")]
 macro_rules! timestamp_message {
     ($buffer_expr:expr, $buffer_offset:expr) => {{
-        log::trace!("timestamp injected at {}:{}",
+        log::trace!(
+            "timestamp injected at {}:{}",
             std::panic::Location::caller().file(),
             std::panic::Location::caller().line()
         );
@@ -26,7 +27,8 @@ macro_rules! timestamp_message {
             let offset = header_offset + header_size + (current_step as usize) * 2;
 
             let now = std::time::SystemTime::now();
-            let duration = now.duration_since(std::time::UNIX_EPOCH)
+            let duration = now
+                .duration_since(std::time::UNIX_EPOCH)
                 .expect("Time went backwards");
             let timestamp = (duration.as_micros() & 0xFFFF) as u16;
             let ts_bytes = timestamp.to_le_bytes();
