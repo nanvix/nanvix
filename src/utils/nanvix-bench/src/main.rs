@@ -264,7 +264,9 @@ impl Benchmark {
     pub fn cleanup(&mut self) {
         if self.nanvixd.is_some() {
             debug!("Sending SIGINT to nanvixd");
-            let ret_code = unsafe { libc::kill(self.nanvixd.as_mut().unwrap().id() as libc::pid_t, libc::SIGINT) };
+            let ret_code = unsafe {
+                libc::kill(self.nanvixd.as_mut().unwrap().id() as libc::pid_t, libc::SIGINT)
+            };
 
             if ret_code < 0 {
                 error!("error sending SIGINT to nano VM: {}", std::io::Error::last_os_error());
@@ -274,7 +276,10 @@ impl Benchmark {
                 match nanvixd.wait() {
                     Ok(exit_status) => {
                         if !exit_status.success() {
-                            error!("nanvixd returned with non-zero exit status: {:?}", exit_status.code());
+                            error!(
+                                "nanvixd returned with non-zero exit status: {:?}",
+                                exit_status.code()
+                            );
                         }
                     },
                     Err(e) => error!("error waiting for nanvixd: {e:?}"),

@@ -32,8 +32,12 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::WarmStartVMM => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::EchoBreakdown => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::WarmStartVMM => {
+                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+            },
+            BenchmarkFlavour::EchoBreakdown => {
+                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+            },
         }
     }
 }
