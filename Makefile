@@ -307,6 +307,7 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
+	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
 # Runs clippy.
 clippy: \
