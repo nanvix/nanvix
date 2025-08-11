@@ -47,6 +47,7 @@ use microvm::{
     Gateway,
     Vmm,
 };
+use mio::net::UnixStream;
 use nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use reqwest::header::{
     CONTENT_TYPE,
@@ -54,14 +55,9 @@ use reqwest::header::{
 };
 use std::{
     fs::File,
-    io::{
-        BufReader,
-        Read,
-        Write,
-    },
+    io::BufReader,
     mem,
     net::TcpStream,
-    os::unix::net::UnixStream,
     process::{
         self,
         Child,
@@ -84,6 +80,7 @@ use syscall::{
     },
 };
 use syscomm::{
+    BlockingSocketStream,
     SocketStream,
     SocketType,
 };
@@ -205,7 +202,7 @@ impl Benchmark {
         &mut self,
         payload: nanvixd::message::New,
         headers: HeaderMap,
-    ) -> Result<(String, SocketStream)> {
+    ) -> Result<(String, BlockingSocketStream)> {
         let response: nanvixd::message::NewResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
@@ -228,7 +225,9 @@ impl Benchmark {
             };
         };
 
-        Ok((response.user_vm_id, gateway_stream))
+        let blocking_gateway_stream: BlockingSocketStream = gateway_stream.set_blocking()?;
+
+        Ok((response.user_vm_id, blocking_gateway_stream))
     }
 
     /// Kill the Nano VM via POST request to nanvixd.
@@ -483,12 +482,12 @@ impl Benchmark {
         response_buf[..payload.len()].copy_from_slice(&payload);
 
         // Initialize a UNIX pair that is directly connected to the VMM.
-        let (mut input_stream, vmm_stream) = UnixStream::pair()?;
+        let (input_stream, vmm_stream) = UnixStream::pair()?;
+        let mut input_stream = syscomm::SocketStream::Unix(input_stream);
 
         // Spawn the VMM in a separate thread.
         let program = self.flavour.get_program();
         let vmm_handle = std::thread::spawn(move || -> Result<()> {
-            vmm_stream.set_nonblocking(true)?;
             match Vmm::spawn(
                 config::kernel::MEMORY_SIZE,
                 format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
@@ -513,7 +512,26 @@ impl Benchmark {
             // Before starting the timer, we need to receive the ReadRequest from the user VM.
             let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
                 [0u8; config::kernel::IPC_MESSAGE_SIZE];
-            input_stream.read_exact(&mut buf)?;
+
+            // Explicitly spin-loop when receiving to isolate the overheads of the VMM.
+            let mut num_read = 0;
+            loop {
+                match input_stream.try_read_exact(&mut buf[num_read..]) {
+                    Ok(n) => {
+                        num_read += n;
+                        if num_read == buf.len() {
+                            break;
+                        }
+                    },
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "error reading from input VMM stream (error={e:?})"
+                        ));
+                    },
+                }
+            }
+
             let ipc_read_message: Message = match Message::try_from_bytes(buf) {
                 Ok(message) => message,
                 Err(_) => return Err(anyhow::anyhow!("Error parsing buffer to IPC Read message")),
@@ -538,7 +556,26 @@ impl Benchmark {
             // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
             let start = Instant::now();
             input_stream.write_all(&read_response.to_bytes())?;
-            input_stream.read_exact(&mut buf)?;
+
+            // Explicitly spin-loop when receiving to isolate the overheads of the VMM.
+            let mut num_read = 0;
+            loop {
+                match input_stream.try_read_exact(&mut buf[num_read..]) {
+                    Ok(n) => {
+                        num_read += n;
+                        if num_read == buf.len() {
+                            break;
+                        }
+                    },
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                    Err(e) => {
+                        let reason: String =
+                            format!("error reading from input VMM stream (error={e:?})");
+                        return Err(anyhow::anyhow!(reason));
+                    },
+                }
+            }
+
             latencies.push(start.elapsed().as_micros());
 
             // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
@@ -757,7 +794,7 @@ async fn main() -> Result<()> {
     };
     match result {
         Ok(_) => {},
-        Err(e) => error!("error running benchmark: {e:?}"),
+        Err(e) => error!("error running benchmark {}: {e:?}", args.benchmark()),
     }
 
     Ok(())
