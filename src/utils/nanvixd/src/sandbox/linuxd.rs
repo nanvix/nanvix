@@ -10,6 +10,7 @@ use ::anyhow::Result;
 use ::hwloc::HwLoc;
 use ::std::process::Stdio;
 use ::syscomm::{
+    BlockingSocketStream,
     Socket,
     SocketStream,
     SocketType,
@@ -25,7 +26,7 @@ use ::tokio::process::{
 
 pub struct LinuxDaemon {
     child: Child,
-    control_plane_stream: SocketStream,
+    control_plane_stream: BlockingSocketStream,
 }
 
 //==================================================================================================
@@ -82,7 +83,7 @@ impl LinuxDaemon {
 
         // After linuxd has started, accept the incoming connection and return the stream for
         // further use.
-        let control_plane_stream = loop {
+        let control_plane_stream: SocketStream = loop {
             match control_plane_listener.accept() {
                 Ok(stream) => {
                     debug!("nanvixd received connection from linuxd's control-plane socket");
@@ -99,9 +100,12 @@ impl LinuxDaemon {
             }
         };
 
+        let blocking_control_plane_stream: BlockingSocketStream =
+            control_plane_stream.set_blocking()?;
+
         Ok(Self {
             child,
-            control_plane_stream,
+            control_plane_stream: blocking_control_plane_stream,
         })
     }
 
