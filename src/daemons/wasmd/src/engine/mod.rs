@@ -40,7 +40,10 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::sys::error::{Error, ErrorCode};
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 use ::syscall::sys::socket::SocketAddr;
 use ::wasmi::{
     errors::ErrorKind,
@@ -152,7 +155,11 @@ impl WasiSocket {
 }
 
 impl WasmEngine {
-    pub fn new(wasm_binary: &WasmBinary, data: HostState, sockaddr: &Option<SocketAddr>) -> Result<Self, Error> {
+    pub fn new(
+        wasm_binary: &WasmBinary,
+        data: HostState,
+        sockaddr: &Option<SocketAddr>,
+    ) -> Result<Self, Error> {
         let mut next_wasi_fd: Fd = 0;
         let mut config: Config = Config::default();
         config.compilation_mode(wasmi::CompilationMode::Eager);
@@ -286,7 +293,10 @@ impl WasmEngine {
             Ok(module) => module,
             Err(err) => {
                 ::syslog::error!("failed to create WASM module: {:?}", err);
-                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to create WASM module"));
+                return Err(Error::new(
+                    ErrorCode::InvalidExecutableFormat,
+                    "failed to create WASM module",
+                ));
             },
         };
 
@@ -296,22 +306,32 @@ impl WasmEngine {
 
         if let Err(err) = linker.define("env", "_start", wasm_main) {
             ::syslog::error!("failed to define _start function: {:?}", err);
-            return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to define _start function"));
+            return Err(Error::new(
+                ErrorCode::InvalidExecutableFormat,
+                "failed to define _start function",
+            ));
         }
 
         let instance: Instance = match linker.instantiate_and_start(&mut store, &module) {
             Ok(instance) => instance,
             Err(err) => {
                 ::syslog::error!("failed to instantiate and start WASM module: {:?}", err);
-                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to instantiate and start WASM module"));
+                return Err(Error::new(
+                    ErrorCode::InvalidExecutableFormat,
+                    "failed to instantiate and start WASM module",
+                ));
             },
         };
 
-        let start_fn: TypedFunc<(), ()> = match instance.get_typed_func::<(), ()>(&store, "_start") {
+        let start_fn: TypedFunc<(), ()> = match instance.get_typed_func::<(), ()>(&store, "_start")
+        {
             Ok(func) => func,
             Err(err) => {
                 ::syslog::error!("failed to get _start function: {:?}", err);
-                return Err(Error::new(ErrorCode::InvalidExecutableFormat, "failed to get _start function"));
+                return Err(Error::new(
+                    ErrorCode::InvalidExecutableFormat,
+                    "failed to get _start function",
+                ));
             },
         };
 
