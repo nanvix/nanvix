@@ -309,6 +309,9 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
+# Fixes code linting issues.
+lint: \
+	rust-lint
 
 # Checks for linting issues in the code.
 lint-check: \
@@ -326,6 +329,18 @@ rust-lint-check: \
 	rust-lint-check-host-binaries \
 	rust-lint-check-host-rlibs \
 	rust-lint-check-microvm
+
+# Fixes code linting issues.
+rust-lint: \
+	rust-lint-kernel \
+	rust-lint-guest-binaries \
+	rust-lint-guest-rlibs \
+	rust-lint-guest-staticlibs \
+	rust-lint-wasmd \
+	rust-lint-wasm-binaries \
+	rust-lint-host-binaries \
+	rust-lint-host-rlibs \
+	rust-lint-microvm
 
 # Fixes code formatting issues.
 format: \
@@ -638,6 +653,10 @@ clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
+rust-lint-guest-staticlib-$(1):
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL) --fix --allow-dirty
+#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
+
 rust-lint-check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
@@ -654,6 +673,8 @@ format-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-guest-
 format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-check-guest-staticlib-$(target))
 
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
+
+rust-lint-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-guest-staticlib-$(target))
 
 rust-lint-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-check-guest-staticlib-$(target))
 
@@ -672,6 +693,10 @@ format-guest-rlib-$(1):
 format-check-guest-rlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
 
+rust-lint-guest-rlib-$(1):
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
+
 rust-lint-check-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
@@ -684,6 +709,8 @@ check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(ta
 format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(target))
 
 format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
+
+rust-lint-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-guest-rlib-$(target))
 
 rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-check-guest-rlib-$(target))
 
@@ -723,6 +750,10 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
+rust-lint-guest-binaries-$(1):
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL) --fix --allow-dirty
+#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
+
 rust-lint-check-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
 endef
@@ -744,6 +775,8 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/benchmarks clean
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
+
+rust-lint-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-guest-binaries-$(target))
 
 rust-lint-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-check-guest-binaries-$(target))
 
@@ -774,6 +807,9 @@ clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
 
+rust-lint-wasmd:
+	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd --fix --allow-dirty
+
 rust-lint-check-wasmd:
 	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd
 
@@ -797,6 +833,9 @@ format-check-kernel:
 clean-kernel:
 	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
 	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
+
+rust-lint-kernel:
+	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel --fix --allow-dirty
 
 rust-lint-check-kernel:
 	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
@@ -823,6 +862,9 @@ clean-wasm-binaries-$(1):
 	$(WASM_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
 
+rust-lint-wasm-binaries-$(1):
+	$(WASM_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+
 rust-lint-check-wasm-binaries-$(1):
 	$(WASM_CARGO_CLIPPY_CMD) -p $(1)
 endef
@@ -838,6 +880,8 @@ format-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-wasm-binaries
 format-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-check-wasm-binaries-$(target))
 
 clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
+
+rust-lint-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),rust-lint-wasm-binaries-$(target))
 
 rust-lint-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),rust-lint-check-wasm-binaries-$(target))
 
@@ -855,6 +899,9 @@ format-host-rlib-$(1):
 format-check-host-rlib-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1) --check
 
+rust-lint-host-rlib-$(1):
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+
 rust-lint-check-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
 
@@ -869,6 +916,8 @@ check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(targe
 format-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-host-rlib-$(target))
 
 format-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-check-host-rlib-$(target))
+
+rust-lint-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-host-rlib-$(target))
 
 rust-lint-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-check-host-rlib-$(target))
 
@@ -904,6 +953,13 @@ clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
+rust-lint-host-binaries-$(1):
+ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
+	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1) --fix --allow-dirty
+else
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+endif
+
 rust-lint-check-host-binaries-$(1):
 ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
@@ -923,6 +979,8 @@ format-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-host-binaries
 format-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-check-host-binaries-$(target))
 
 clean-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clean-host-binaries-$(target))
+
+rust-lint-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-host-binaries-$(target))
 
 rust-lint-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-check-host-binaries-$(target))
 
@@ -946,6 +1004,9 @@ format-check-microvm:
 clean-microvm:
 	$(HOST_CARGO_CLEAN_CMD) -p microvm
 	$(RM_CMD) $(BINARIES_DIR)/microvm.elf
+
+rust-lint-microvm:
+	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm --fix --allow-dirty
 
 rust-lint-check-microvm:
 	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
