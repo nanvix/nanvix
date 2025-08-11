@@ -27,7 +27,7 @@ int main(void)
     ssize_t nread = 0;
 
     while (1) {
-        nread = fread(buffer, 1, MAX_REQUEST_SIZE, stdin);
+        nread = read(STDIN_FILENO, buffer, MAX_REQUEST_SIZE);
         if (nread < 0) {
             break; // Error encountered.
         } else if (nread == 0) {
@@ -35,8 +35,7 @@ int main(void)
         }
 
         if (nread > 0) {
-            fwrite(buffer, 1, nread, stdout);
-            fflush(stdout);
+            write(STDOUT_FILENO, buffer, nread);
         }
     }
 
