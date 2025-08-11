@@ -5,21 +5,17 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Yields the processor.
-///
-/// # Returns
-///
-/// Upon successful completion, empty is returned. Otherwise an error code is returned instead.
-///
-pub fn sched_yield() -> Result<(), Error> {
-    ::sys::kcall::sched::sched_yield()
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sched_yield() -> c_int {
+    match crate::sched::sched_yield() {
+        Ok(()) => 0,
+        Err(error) => error.code.get(),
+    }
 }
