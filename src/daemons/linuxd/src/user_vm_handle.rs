@@ -9,7 +9,10 @@ use ::std::sync::{
     Arc,
     Mutex,
 };
-use ::syscomm::SocketStream;
+use ::syscomm::{
+    BlockingSocketStream,
+    SocketStream,
+};
 
 //==================================================================================================
 // Structures
@@ -22,7 +25,7 @@ pub struct UserVmHandle {
     #[allow(dead_code)]
     conn_id: usize,
     user_vm_stream: Arc<Mutex<SocketStream>>,
-    gw_stream: Option<Arc<Mutex<SocketStream>>>,
+    gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
 }
 
 impl UserVmHandle {
@@ -31,10 +34,23 @@ impl UserVmHandle {
         user_vm_stream: SocketStream,
         gw_stream: Option<SocketStream>,
     ) -> Self {
+        let blocking_stream: Option<BlockingSocketStream> = if let Some(gw_stream) = gw_stream {
+            match gw_stream.set_blocking() {
+                Ok(stream) => Some(stream),
+                // We don't panic if we can not set the stream to blocking.
+                Err(e) => {
+                    error!("error setting gateway stream as blocking (error={e:?})");
+                    None
+                },
+            }
+        } else {
+            None
+        };
+
         Self {
             conn_id,
             user_vm_stream: Arc::new(Mutex::new(user_vm_stream)),
-            gw_stream: gw_stream.map(|stream| Arc::new(Mutex::new(stream))),
+            gw_stream: blocking_stream.map(|stream| Arc::new(Mutex::new(stream))),
         }
     }
 
@@ -48,7 +64,7 @@ impl UserVmHandle {
         self.user_vm_stream.clone()
     }
 
-    pub fn get_gw_vm_stream(&self) -> Option<Arc<Mutex<SocketStream>>> {
+    pub fn get_gw_vm_stream(&self) -> Option<Arc<Mutex<BlockingSocketStream>>> {
         self.gw_stream.clone()
     }
 }
