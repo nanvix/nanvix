@@ -287,7 +287,11 @@ impl WasmEngine {
         let fd_prestat_get: Func = Func::wrap(
             store,
             move |mut caller: Caller<'_, HostState>, fd: i32, prestat_offset: i32| -> i32 {
-                ::syslog::trace!("fd_prestat_get(): fd={:?}, prestat_offset={:?}", fd, prestat_offset);
+                ::syslog::trace!(
+                    "fd_prestat_get(): fd={:?}, prestat_offset={:?}",
+                    fd,
+                    prestat_offset
+                );
 
                 let memory: &mut [u8] = Self::get_memory_mut(&mut caller);
 
@@ -334,7 +338,9 @@ impl WasmEngine {
              offset: i64,
              nwritten_ptr: i32|
              -> i32 {
-                ::syslog::trace!("fd_pwrite: {fd}, {iovs_ptr}, {iovs_len}, {offset}, {nwritten_ptr}");
+                ::syslog::trace!(
+                    "fd_pwrite: {fd}, {iovs_ptr}, {iovs_len}, {offset}, {nwritten_ptr}"
+                );
                 Errno::Nosys.into()
             },
         );
