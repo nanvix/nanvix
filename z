@@ -282,12 +282,21 @@ main() {
 
     case "${command}" in
         "${CMD_NAME_BUILD}")
+            # Check if we are switching build modes.
             if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to Docker build."
-                print_warning "Consider first running './z ${CMD_NAME_CLEANUP} ${OPT_NAME_WITH_DOCKER}'."
+                print_warning "Switching to Docker build, forcing cleanup."
+                # Force a cleanup.
+                if ! eval "$(build_docker_command distclean)" ; then
+                    print_error "Cleanup failed with Docker."
+                    exit 1
+                fi
             elif ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to native toolchain build."
-                print_warning "Consider first running './z ${CMD_NAME_CLEANUP}'."
+                print_warning "Switching to native toolchain build, forcing cleanup."
+                # Force a cleanup.
+                if ! make distclean ; then
+                    print_error "Cleanup failed with native toolchain."
+                    exit 1
+                fi
             fi
 
 
