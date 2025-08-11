@@ -1,0 +1,150 @@
+#!/bin/bash
+
+# This script checks code formatting before a commit.
+
+#===================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#===================================================================================================
+# Global Variables
+#===================================================================================================
+
+# Directories.
+REPO_ROOT_DIR=$(git rev-parse --show-toplevel) # /
+
+# Cargo.toml file path.
+CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
+
+# Colors
+RED='\033[0;31m'    # Red
+GREEN='\033[0;32m'  # Green
+NC='\033[0m'        # No Color
+
+#===================================================================================================
+# Functions
+#===================================================================================================
+
+#
+# DESCRIPTION
+#   Prints an error message on stderr.
+#
+# ARGUMENTS
+#   $1 - The error message to print.
+#
+# USAGE EXAMPLE
+#   print_error "Print an error message."
+#
+print_error() {
+    echo -e "${RED}[ERROR] ${1}${NC}" >&2
+}
+
+#
+# DESCRIPTION
+#   Prints a success message on stdout.
+#
+# ARGUMENTS
+#   $1 - The success message to print.
+#
+# USAGE EXAMPLE
+#   print_success "Print a success message."
+#
+print_success() {
+    echo -e "${GREEN}[INFO] ${1}${NC}"
+}
+
+#
+# DESCRIPTION
+#   Prints a message on stdout.
+#
+# ARGUMENTS
+#   $1 - The message to print.
+#
+# USAGE EXAMPLE
+#   print "Print an uncolored message."
+#
+print_message() {
+    echo -e "[INFO] ${1}"
+}
+
+#
+# DESCRIPTION
+#   Extracts the current version from the Cargo.toml file.
+#
+# ARGUMENTS
+#   $1 - The path to the Cargo.toml file.
+#
+# RETURNS
+#   The current version as a string in the format MAJOR.MINOR.PATCH.
+#
+# USAGE EXAMPLE
+#   current_version=$(extract_current_version "path/to/Cargo.toml")
+#
+extract_current_version() {
+    local cargo_toml="$1"
+
+    # Check if the Cargo.toml file does not exist.
+    if [[ ! -f "$cargo_toml" ]]; then
+        print_error "Cargo.toml not found at $cargo_toml"
+        exit 1
+    fi
+
+    local current_version
+    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
+
+    # Check if version was not extracted successfully.
+    if [[ -z "$current_version" ]]; then
+        print_error "Could not extract version from Cargo.toml"
+        exit 1
+    fi
+
+    echo "$current_version"
+}
+
+#===================================================================================================
+# Main Script
+#===================================================================================================
+
+main() {
+    # By default, use Docker to run the code formatting check.
+    local format_check_cmd="./z build --with-docker --non-interactive -- format-check"
+
+    # Check if we are not running inside a Git repository.
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        print_error "(pre-commit) This script must be run inside a Git repository."
+        exit 1
+    fi
+
+    local current_version
+    current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+
+    # Build image tag version by replacing patch with "x".
+    local image_tag_version
+    image_tag_version="${current_version%.*}.x"
+
+    local image_name="nanvix/toolchain:v${image_tag_version}"
+
+    # Check if Docker is unavailable or the Docker image is missing.
+    if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
+        # Fallback to running the format using a native toolchain.
+        format_check_cmd="./z build -- format-check"
+    fi
+
+    # Create a temporary file to capture output.
+    tmpfile="$(mktemp)"
+    trap 'rm -f "$tmpfile"' EXIT
+
+    # Run code formatting check.
+    if ! eval "${format_check_cmd}" >"${tmpfile}" 2>&1; then
+        # Code formatting check failed, print the output.
+        cat "${tmpfile}"
+        print_error "(pre-commit) Format check failed. Please fix formatting before committing."
+        exit 1
+    fi
+
+    print_success "(pre-commit) Code formatting check passed successfully."
+}
+
+# Run the main function.
+main "$@"

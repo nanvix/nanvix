@@ -152,7 +152,29 @@ def lint(
 
     make("clippy", machine, arch, release, toolchain_dir, log_level, verbose)
     make("python-lint", machine, arch, release, None, log_level, verbose)
-    make("clang-format-check", machine, arch, release, None, log_level, verbose)
+
+
+def format_check(
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+) -> None:
+    """
+    Checks for code formatting issues.
+
+    Args:
+        machine (str): Target machine.
+        arch (str): Target architecture.
+        release (bool): Release build.
+        toolchain_dir (str, optional): Toolchain directory. Defaults to None.
+        log_level (str, optional): Log level. Defaults to None.
+        verbose (bool, optional): Verbose build. Defaults to False.
+    """
+
+    make("format-check", machine, arch, release, toolchain_dir, log_level, verbose)
 
 
 def build(
@@ -318,6 +340,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=int, help="Set test timeout", default=600)
     parser.add_argument(
+        "--format",
+        action="store_true",
+        help="Check for code formatting issues",
+        default=False,
+    )
+    parser.add_argument(
         "--lint", action="store_true", help="Lint Nanvix source code", default=False
     )
     parser.add_argument(
@@ -350,11 +378,23 @@ def main() -> None:
     print(f"  - Log level: {args.log_level}")
     print(f"  - Release: {args.release}")
     print(f"  - Debug: {args.debug}")
+    print(f"  - Format: {args.format}")
     print(f"  - Lint: {args.lint}")
     print(f"  - Build: {args.build}")
     print(f"  - Disable Optional Software: {args.without_opt}")
     print(f"  - Verbose: {args.verbose}")
     print(f"  - Timeout: {args.timeout}")
+
+    # Format source code.
+    if args.format:
+        format_check(
+            args.target_machine,
+            args.target_arch,
+            args.release or not args.debug,
+            args.toolchain_dir,
+            args.log_level,
+            args.verbose,
+        )
 
     # Lint source code.
     if args.lint:
