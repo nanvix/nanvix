@@ -47,8 +47,5 @@ pub mod pwd;
 /// File last access and modification times.
 pub mod utime;
 
-/// Signals
-pub mod signal;
-
 /// System-specific headers.
 pub mod sys;
