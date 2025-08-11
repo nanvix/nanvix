@@ -334,11 +334,27 @@ format-check: \
 
 # Formats Rust code.
 rust-format: \
-	format-microvm
+	format-guest-binaries \
+	format-guest-rlibs \
+	format-guest-staticlibs \
+	format-host-binaries \
+	format-host-rlibs \
+	format-kernel \
+	format-microvm \
+	format-wasmd \
+	format-wasm-binaries
 
 # Checks Rust code formatting.
 rust-format-check: \
-	format-check-microvm
+	format-check-guest-binaries \
+	format-check-guest-rlibs \
+	format-check-guest-staticlibs \
+	format-check-host-binaries \
+	format-check-host-rlibs \
+	format-check-kernel \
+	format-check-microvm \
+	format-check-wasmd \
+	format-check-wasm-binaries
 
 # Python lint variables
 PY_VERBOSE :=
@@ -605,6 +621,12 @@ check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 #	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
+format-guest-staticlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-staticlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
@@ -620,6 +642,10 @@ all-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),all-guest-static
 
 check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-staticlib-$(target))
 
+format-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-guest-staticlib-$(target))
+
+format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-check-guest-staticlib-$(target))
+
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
 clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
@@ -633,6 +659,12 @@ check-guest-rlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 #	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
+format-guest-rlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-rlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
@@ -641,6 +673,10 @@ endef
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
 
 check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
+
+format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(target))
+
+format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
 
 clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
 
@@ -670,6 +706,12 @@ all-guest-binaries-$(1): init all-guest-staticlibs
 check-guest-binaries-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
 
+format-guest-binaries-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-binaries-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
@@ -686,6 +728,10 @@ all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(
 	$(MAKE) -C $(SOURCES_DIR)/tests all
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
+
+format-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-guest-binaries-$(target))
+
+format-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-check-guest-binaries-$(target))
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/benchmarks clean
@@ -711,6 +757,12 @@ endif
 check-wasmd:
 	$(GUEST_CARGO_CHECK_CMD) -p wasmd
 
+format-wasmd:
+	$(GUEST_CARGO_FMT_CMD) -p wasmd
+
+format-check-wasmd:
+	$(GUEST_CARGO_FMT_CMD) -p wasmd --check
+
 clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
@@ -728,6 +780,12 @@ all-kernel: init
 
 check-kernel:
 	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+
+format-kernel:
+	$(KERNEL_CARGO_FMT_CMD) -p kernel
+
+format-check-kernel:
+	$(KERNEL_CARGO_FMT_CMD) -p kernel --check
 
 clean-kernel:
 	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
@@ -748,6 +806,12 @@ all-wasm-binaries-$(1): init
 check-wasm-binaries-$(1):
 	$(WASM_CARGO_CHECK_CMD) -p $(1)
 
+format-wasm-binaries-$(1):
+	$(WASM_CARGO_FMT_CMD) -p $(1)
+
+format-check-wasm-binaries-$(1):
+	$(WASM_CARGO_FMT_CMD) -p $(1) --check
+
 clean-wasm-binaries-$(1):
 	$(WASM_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
@@ -762,6 +826,10 @@ all-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),all-wasm-binaries-$(tar
 
 check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),check-wasm-binaries-$(target))
 
+format-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-wasm-binaries-$(target))
+
+format-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-check-wasm-binaries-$(target))
+
 clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
 
 clippy-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clippy-wasm-binaries-$(target))
@@ -774,6 +842,12 @@ define HOST_RLIB_RULES
 check-host-rlib-$(1):
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
 
+format-host-rlib-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1)
+
+format-check-host-rlib-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1) --check
+
 clippy-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
 
@@ -784,6 +858,10 @@ endef
 $(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target))))
 
 check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(target))
+
+format-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-host-rlib-$(target))
+
+format-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-check-host-rlib-$(target))
 
 clippy-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),clippy-host-rlib-$(target))
 
@@ -809,6 +887,12 @@ else
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
 endif
 
+format-host-binaries-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1)
+
+format-check-host-binaries-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
@@ -826,6 +910,10 @@ $(foreach target,$(ALL_HOST_BINARIES),$(eval $(call HOST_BINARY_RULES,$(target))
 all-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),all-host-binaries-$(target))
 
 check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),check-host-binaries-$(target))
+
+format-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-host-binaries-$(target))
+
+format-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-check-host-binaries-$(target))
 
 clean-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clean-host-binaries-$(target))
 
