@@ -312,20 +312,20 @@ distclean: clean distclean-opt
 
 # Checks for linting issues in the code.
 lint-check: \
-	clippy \
+	rust-lint-check \
 	python-lint
 
 # Runs clippy.
-clippy: \
-	clippy-kernel \
-	clippy-guest-binaries \
-	clippy-guest-rlibs \
-	clippy-guest-staticlibs \
-	clippy-wasmd \
-	clippy-wasm-binaries \
-	clippy-host-binaries \
-	clippy-host-rlibs \
-	clippy-microvm
+rust-lint-check: \
+	rust-lint-check-kernel \
+	rust-lint-check-guest-binaries \
+	rust-lint-check-guest-rlibs \
+	rust-lint-check-guest-staticlibs \
+	rust-lint-check-wasmd \
+	rust-lint-check-wasm-binaries \
+	rust-lint-check-host-binaries \
+	rust-lint-check-host-rlibs \
+	rust-lint-check-microvm
 
 # Fixes code formatting issues.
 format: \
@@ -638,7 +638,7 @@ clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
-clippy-guest-staticlib-$(1):
+rust-lint-check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
@@ -655,7 +655,7 @@ format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-
 
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
-clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
+rust-lint-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-check-guest-staticlib-$(target))
 
 #===================================================================================================
 # Build Rules for Guest Rust Libraries
@@ -672,7 +672,7 @@ format-guest-rlib-$(1):
 format-check-guest-rlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
 
-clippy-guest-rlib-$(1):
+rust-lint-check-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
@@ -685,7 +685,7 @@ format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(
 
 format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
 
-clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
+rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-check-guest-rlib-$(target))
 
 test-guest-rlibs:
 	$(HOST_CARGO_TEST_CMD) -p arch
@@ -723,7 +723,7 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
-clippy-guest-binaries-$(1):
+rust-lint-check-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
 endef
 
@@ -745,7 +745,7 @@ clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binarie
 	$(MAKE) -C $(SOURCES_DIR)/user clean
 	$(MAKE) -C $(SOURCES_DIR)/tests clean
 
-clippy-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clippy-guest-binaries-$(target))
+rust-lint-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-check-guest-binaries-$(target))
 
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
@@ -774,7 +774,7 @@ clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
 
-clippy-wasmd:
+rust-lint-check-wasmd:
 	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd
 
 #===================================================================================================
@@ -798,7 +798,7 @@ clean-kernel:
 	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
 	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
 
-clippy-kernel:
+rust-lint-check-kernel:
 	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
 
 #===================================================================================================
@@ -823,7 +823,7 @@ clean-wasm-binaries-$(1):
 	$(WASM_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
 
-clippy-wasm-binaries-$(1):
+rust-lint-check-wasm-binaries-$(1):
 	$(WASM_CARGO_CLIPPY_CMD) -p $(1)
 endef
 
@@ -839,7 +839,7 @@ format-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-check-w
 
 clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
 
-clippy-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clippy-wasm-binaries-$(target))
+rust-lint-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),rust-lint-check-wasm-binaries-$(target))
 
 #===================================================================================================
 # Build Rules for Host Rust Libraries
@@ -855,7 +855,7 @@ format-host-rlib-$(1):
 format-check-host-rlib-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1) --check
 
-clippy-host-rlib-$(1):
+rust-lint-check-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
 
 test-host-rlib-$(1):
@@ -870,7 +870,7 @@ format-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-host-rlib-$(tar
 
 format-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-check-host-rlib-$(target))
 
-clippy-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),clippy-host-rlib-$(target))
+rust-lint-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-check-host-rlib-$(target))
 
 test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target))
 
@@ -904,7 +904,7 @@ clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
-clippy-host-binaries-$(1):
+rust-lint-check-host-binaries-$(1):
 ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
 else
@@ -924,7 +924,7 @@ format-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-check-h
 
 clean-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clean-host-binaries-$(target))
 
-clippy-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clippy-host-binaries-$(target))
+rust-lint-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-check-host-binaries-$(target))
 
 #===================================================================================================
 # Build Rules for Microvm Binary
@@ -947,7 +947,7 @@ clean-microvm:
 	$(HOST_CARGO_CLEAN_CMD) -p microvm
 	$(RM_CMD) $(BINARIES_DIR)/microvm.elf
 
-clippy-microvm:
+rust-lint-check-microvm:
 	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
 
 #===================================================================================================
