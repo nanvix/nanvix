@@ -54,6 +54,9 @@ types and supports various runtimes.
 ```bash
 # Check for linting issues in the code.
 ./z build --with-docker -- lint-check
+
+# Fix code linting issues.
+./z build --with-docker -- lint
 ```
 
 ## Code Formatting Commands
