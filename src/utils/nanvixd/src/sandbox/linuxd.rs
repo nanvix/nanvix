@@ -36,18 +36,30 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
-    pub fn spawn(control_plane_sockaddr: &str, user_vm_sockaddr: &str, gateway_sockaddr: &str, hwloc: Option<HwLoc>, binary_directory: &str) -> Result<Self> {
+    pub fn spawn(
+        control_plane_sockaddr: &str,
+        user_vm_sockaddr: &str,
+        gateway_sockaddr: &str,
+        hwloc: Option<HwLoc>,
+        binary_directory: &str,
+    ) -> Result<Self> {
         // Start the control-plane socket in listening mode.
-        let control_plane_listener = match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
-            Ok(listener) => listener,
-            Err(e) => {
-                error!("failed to bind control-plane listening socket (address={control_plane_sockaddr}, error={e:?})");
-                return Err(anyhow::anyhow!("failed to bind control-plane listening socket"));
-            }
-        };
+        let control_plane_listener =
+            match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
+                Ok(listener) => listener,
+                Err(e) => {
+                    error!(
+                        "failed to bind control-plane listening socket \
+                         (address={control_plane_sockaddr}, error={e:?})"
+                    );
+                    return Err(anyhow::anyhow!("failed to bind control-plane listening socket"));
+                },
+            };
 
-        debug!("spawning linux daemon (control-plane={control_plane_sockaddr}, user-vm={user_vm_sockaddr}, \
-            gateway={gateway_sockaddr})");
+        debug!(
+            "spawning linux daemon (control-plane={control_plane_sockaddr}, \
+             user-vm={user_vm_sockaddr}, gateway={gateway_sockaddr})"
+        );
         let mut linuxd_args: Vec<String> = vec![
             format!("{}/linuxd.elf", binary_directory),
             "-control-plane-addr".to_string(),
@@ -78,12 +90,15 @@ impl LinuxDaemon {
                 Ok(stream) => {
                     debug!("nanvixd received connection from linuxd's control-plane socket");
                     break stream;
-                }
+                },
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
                 Err(error) => {
-                    error!("nanvixd failed to accept connection from linuxd's control-plane (error={error:?})");
+                    error!(
+                        "nanvixd failed to accept connection from linuxd's control-plane \
+                         (error={error:?})"
+                    );
                     continue;
-                }
+                },
             }
         };
 
@@ -95,13 +110,16 @@ impl LinuxDaemon {
 
     /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
     pub async fn shutdown(&mut self) -> Result<()> {
-        match control_plane::send_command(&mut self.control_plane_stream, control_plane::Command::Shutdown) {
+        match control_plane::send_command(
+            &mut self.control_plane_stream,
+            control_plane::Command::Shutdown,
+        ) {
             Ok(()) => {},
             Err(e) => {
                 // FIXME: this send_command is expected to fail until support is implemented in
                 // linuxd.
                 error!("failed to send shutdown command to linuxd (error={e:?})");
-            }
+            },
         };
 
         // FIXME: when linuxd reacts on shutdown commands, we will be able to get rid of this
@@ -111,7 +129,10 @@ impl LinuxDaemon {
                 let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
 
                 if ret_code < 0 {
-                    let reason: String = format!("error sending SIGINT to linuxd: {}", std::io::Error::last_os_error());
+                    let reason: String = format!(
+                        "error sending SIGINT to linuxd: {}",
+                        std::io::Error::last_os_error()
+                    );
                     error!("{reason}");
 
                     return Err(anyhow::anyhow!(reason));
@@ -122,14 +143,17 @@ impl LinuxDaemon {
                 error!("{reason}");
 
                 return Err(anyhow::anyhow!(reason));
-            }
+            },
         }
 
         // Wait for linuxd instance to finish.
         match self.child.wait().await {
             Ok(exit_status) => {
                 if !exit_status.success() {
-                    let reason: String = format!("linuxd returned with non-zero exit status: {:?}", exit_status.code());
+                    let reason: String = format!(
+                        "linuxd returned with non-zero exit status: {:?}",
+                        exit_status.code()
+                    );
                     // FIXME: change this debug to error once linuxd dies gracefully after a
                     // SIGINT.
                     debug!("{reason}");
@@ -138,13 +162,13 @@ impl LinuxDaemon {
                 } else {
                     Ok(())
                 }
-            }
+            },
             Err(e) => {
                 let reason: String = format!("error waiting for linuxd: {e:?}");
                 error!("{reason}");
 
                 Err(anyhow::anyhow!(reason))
-            }
+            },
         }
     }
 }

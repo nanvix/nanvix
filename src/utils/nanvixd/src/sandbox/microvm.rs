@@ -24,7 +24,14 @@ pub struct Microvm(Option<Child>);
 //==================================================================================================
 
 impl Microvm {
-    pub fn spawn(program: &str, program_args: Option<&str>, addr: &str, stderr: Option<&str>, hwloc: Option<HwLoc>, binary_directory: &str) -> Result<Self> {
+    pub fn spawn(
+        program: &str,
+        program_args: Option<&str>,
+        addr: &str,
+        stderr: Option<&str>,
+        hwloc: Option<HwLoc>,
+        binary_directory: &str,
+    ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", binary_directory),
             "-log-to-file".to_string(),
@@ -81,7 +88,10 @@ impl Drop for Microvm {
                     let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
 
                     if ret_code < 0 {
-                        error!("error sending SIGINT to user VM: {}", std::io::Error::last_os_error());
+                        error!(
+                            "error sending SIGINT to user VM: {}",
+                            std::io::Error::last_os_error()
+                        );
                     }
                 },
                 None => error!("user VM process has no PID"),
