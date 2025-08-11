@@ -309,6 +309,12 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
+
+# Checks for linting issues in the code.
+lint-check: \
+	clippy \
+	python-lint
+
 # Runs clippy.
 clippy: \
 	clippy-kernel \
