@@ -146,7 +146,10 @@ use sysapi::fcntl::file_descriptor_flags::{
 // do_openat
 //==================================================================================================
 
-pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_openat(
+    tid: ThreadIdentifier,
+    request: OpenAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("openat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -199,7 +202,10 @@ pub fn do_openat(tid: ThreadIdentifier, request: OpenAtRequest) -> Result<Vec<Me
 // do_unlink_at
 //==================================================================================================
 
-pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_unlinkat(
+    tid: ThreadIdentifier,
+    request: UnlinkAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("unlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -241,7 +247,10 @@ pub fn do_unlinkat(tid: ThreadIdentifier, request: UnlinkAtRequest) -> Result<Ve
 // do_rename_at
 //==================================================================================================
 
-pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_renameat(
+    tid: ThreadIdentifier,
+    request: RenameAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("renameat(): tid={tid:?}, request={request:?}");
 
     let olddirfd: i32 = request.olddirfd;
@@ -295,7 +304,10 @@ pub fn do_renameat(tid: ThreadIdentifier, request: RenameAtRequest) -> Result<Ve
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_fstat_at(
+    tid: ThreadIdentifier,
+    request: FileStatAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -386,7 +398,10 @@ pub fn do_fstat_at(tid: ThreadIdentifier, request: FileStatAtRequest) -> Result<
 // do_posix_fallocate
 //==================================================================================================
 
-pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_posix_fallocate(
+    tid: ThreadIdentifier,
+    request: FileSpaceControlRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("posix_fallocate(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -418,7 +433,10 @@ pub fn do_posix_fallocate(tid: ThreadIdentifier, request: FileSpaceControlReques
 // do_posix_fadvise
 //==================================================================================================
 
-pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_posix_fadvise(
+    tid: ThreadIdentifier,
+    request: FileAdvisoryInformationRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("posix_fadvise(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -456,7 +474,10 @@ pub fn do_posix_fadvise(tid: ThreadIdentifier, request: FileAdvisoryInformationR
 // do_fstat()
 //==================================================================================================
 
-pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_fstat(
+    tid: ThreadIdentifier,
+    request: FileStatRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -537,7 +558,10 @@ pub fn do_fstat(tid: ThreadIdentifier, request: FileStatRequest) -> Result<Vec<M
 // do_symlinkat()
 //==================================================================================================
 
-pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_symlinkat(
+    tid: ThreadIdentifier,
+    request: SymbolicLinkAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("symlinkat(): tid={tid:?}, request={request:?}");
 
     let target: CString = match CString::new(request.target.as_str()) {
@@ -582,7 +606,10 @@ pub fn do_symlinkat(tid: ThreadIdentifier, request: SymbolicLinkAtRequest) -> Re
 // do_readlinkat()
 //==================================================================================================
 
-pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_readlinkat(
+    tid: ThreadIdentifier,
+    request: ReadLinkAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("readlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -639,7 +666,10 @@ pub fn do_readlinkat(tid: ThreadIdentifier, request: ReadLinkAtRequest) -> Resul
 // do_mkdirat()
 //==================================================================================================
 
-pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_mkdirat(
+    tid: ThreadIdentifier,
+    request: MakeDirectoryAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("mkdirat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -685,7 +715,10 @@ pub fn do_mkdirat(tid: ThreadIdentifier, request: MakeDirectoryAtRequest) -> Res
 // do_utimensat()
 //==================================================================================================
 
-pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_utimensat(
+    tid: ThreadIdentifier,
+    request: UpdateFileAccessTimeAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("utimensat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -744,7 +777,10 @@ pub fn do_utimensat(tid: ThreadIdentifier, request: UpdateFileAccessTimeAtReques
 // do_futimens()
 //==================================================================================================
 
-pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_futimens(
+    tid: ThreadIdentifier,
+    request: UpdateFileAccessTimeRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("futimens(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -786,7 +822,10 @@ pub fn do_futimens(tid: ThreadIdentifier, request: UpdateFileAccessTimeRequest) 
 // do_fcntl()
 //==================================================================================================
 
-pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fcntl(
+    tid: ThreadIdentifier,
+    request: FileControlRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fcntl(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -1000,7 +1039,10 @@ pub fn do_fcntl(tid: ThreadIdentifier, request: FileControlRequest) -> Result<Me
 // do_fchownat()
 //==================================================================================================
 
-pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_fchownat(
+    tid: ThreadIdentifier,
+    request: FileChownAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fchownat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
@@ -1045,7 +1087,10 @@ pub fn do_fchownat(tid: ThreadIdentifier, request: FileChownAtRequest) -> Result
 // do_fchmod
 //==================================================================================================
 
-pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fchmod(
+    tid: ThreadIdentifier,
+    request: FileChmodRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fchmod(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -1076,7 +1121,10 @@ pub fn do_fchmod(tid: ThreadIdentifier, request: FileChmodRequest) -> Result<Mes
 // do_fchmodat()
 //==================================================================================================
 
-pub fn do_fchmodat(tid: ThreadIdentifier, request: FileChmodAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_fchmodat(
+    tid: ThreadIdentifier,
+    request: FileChmodAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("fchmodat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
