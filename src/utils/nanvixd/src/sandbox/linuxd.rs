@@ -5,10 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    config,
-    control_plane,
-};
+use crate::control_plane;
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
 use ::std::process::Stdio;
