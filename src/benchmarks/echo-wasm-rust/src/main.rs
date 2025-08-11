@@ -26,9 +26,9 @@ fn main() {
 
     loop {
         let nread: usize = match io::stdin().read(&mut buffer) {
-            Ok(0) => break,          // End of file reached.
+            Ok(0) => break,     // End of file reached.
             Ok(nread) => nread, // Read some bytes.
-            Err(_) => break,         // Error encountered.
+            Err(_) => break,    // Error encountered.
         };
 
         if nread > 0 {
