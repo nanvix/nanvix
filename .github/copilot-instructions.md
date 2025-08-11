@@ -49,10 +49,11 @@ types and supports various runtimes.
 ./z build --with-docker -- all
 ```
 
-## Linting Commands
+## Code Linting Commands
 
 ```bash
-./z build --with-docker -- clippy
+# Check for linting issues in the code.
+./z build --with-docker -- lint-check
 ```
 
 ## Code Formatting Commands
@@ -85,7 +86,7 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 - Always follow the existing code style.
 - Code must pass formatting checks with `./z build --with-docker -- format-check`.
-- Code must pass linting checks.
+- Code must pass linting checks with `./z build --with-docker -- lint-check`.
 - Constants must be defined at module/file scope; avoid magic numbers in code paths.
 - Map errors to OS error codes consistently; prefer typed errors over ad-hoc strings.
 
