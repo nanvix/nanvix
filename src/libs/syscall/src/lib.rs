@@ -67,6 +67,9 @@ pub mod unistd;
 /// Execution scheduling.
 pub mod sched;
 
+/// Signals.
+pub mod signal;
+
 /// Standard library definitions.
 pub mod stdlib;
 
