@@ -109,4 +109,9 @@ impl ReadResponse {
         );
         message
     }
+
+    /// Helper method to create an EOF response.
+    pub fn eof(tid: ThreadIdentifier) -> Message {
+        Self::build(tid, 0, [0u8; Self::BUFFER_SIZE])
+    }
 }

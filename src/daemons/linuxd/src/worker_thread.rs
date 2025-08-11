@@ -839,7 +839,7 @@ impl WorkerThreadHandle {
                 error!(
                     "handle_read_request(): process tried to read from stdin but no gateway found"
                 );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
+                return Ok(ReadResponse::eof(source));
             };
 
             // Check if the process is associated with a virtual environment.
@@ -851,7 +851,7 @@ impl WorkerThreadHandle {
                     "handle_read_request(): process is not associated with a virtual environment, \
                      returning EOF"
                 );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
+                return Ok(ReadResponse::eof(source));
             };
 
             // Send ReadRequest to gateway IO thread.
@@ -860,7 +860,7 @@ impl WorkerThreadHandle {
                     "handle_read_request(): error sending request to gateway STDIN IO thread, \
                      returning EOF (error={error:?})"
                 );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
+                return Ok(ReadResponse::eof(source));
             }
 
             // Wait for response from IO thread.
@@ -876,7 +876,7 @@ impl WorkerThreadHandle {
                         "handle_read_request(): error receiving request response from gateway \
                          STDIN IO thread, returning EOF (error={e:?})"
                     );
-                    Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
+                    Ok(ReadResponse::eof(source))
                 },
             }
         } else {
