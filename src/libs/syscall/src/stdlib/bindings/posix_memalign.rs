@@ -47,7 +47,7 @@ unsafe extern "C" {
 /// - `memptr` points to a valid memory location that can store a `*mut c_void`.
 ///
 #[unsafe(no_mangle)]
-pub unsafe fn posix_memalign(
+pub unsafe extern "C" fn posix_memalign(
     memptr: *mut *mut c_void,
     alignment: c_size_t,
     size: c_size_t,
