@@ -47,9 +47,6 @@ pub mod pwd;
 /// File last access and modification times.
 pub mod utime;
 
-/// Execution scheduling.
-pub mod sched;
-
 /// Signals
 pub mod signal;
 

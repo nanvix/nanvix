@@ -5,12 +5,4 @@
 // Modules
 //==================================================================================================
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscalls;
-        pub use self::syscalls::{
-            sched_yield::sched_yield,
-        };
-        pub mod bindings;
-    }
-}
+pub mod sched_yield;
