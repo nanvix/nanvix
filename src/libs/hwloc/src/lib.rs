@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use anyhow::Result;
-use log::error;
 use libc::{
-    CPU_SET,
-    CPU_ZERO,
     cpu_set_t,
     sched_setaffinity,
+    CPU_SET,
+    CPU_ZERO,
 };
+use log::error;
 use serde::Deserialize;
 use std::{
     mem,

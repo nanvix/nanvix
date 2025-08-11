@@ -73,7 +73,10 @@ use ::syscall::{
 // do_socket
 //==================================================================================================
 
-pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_socket(
+    tid: ThreadIdentifier,
+    request: CreateSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("socket(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
@@ -115,7 +118,10 @@ pub fn do_socket(tid: ThreadIdentifier, request: CreateSocketRequest) -> Result<
 // do_socketpair
 //==================================================================================================
 
-pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_socketpair(
+    tid: ThreadIdentifier,
+    request: CreateSocketPairRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("socketpair(): tid={tid:?}, request={request:?}");
 
     let domain: LibcSocketDomain = match LibcSocketDomain::try_from(request.domain) {
@@ -161,7 +167,10 @@ pub fn do_socketpair(tid: ThreadIdentifier, request: CreateSocketPairRequest) ->
 // do_bind
 //==================================================================================================
 
-pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_bind(
+    tid: ThreadIdentifier,
+    request: BindSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("bind(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -199,7 +208,10 @@ pub fn do_bind(tid: ThreadIdentifier, request: BindSocketRequest) -> Result<Mess
 // do_connect
 //==================================================================================================
 
-pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_connect(
+    tid: ThreadIdentifier,
+    request: ConnectSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("connect(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
@@ -244,7 +256,10 @@ pub fn do_connect(tid: ThreadIdentifier, request: ConnectSocketRequest) -> Resul
 // do_listen
 //==================================================================================================
 
-pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_listen(
+    tid: ThreadIdentifier,
+    request: ListenSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("listen(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -273,7 +288,10 @@ pub fn do_listen(tid: ThreadIdentifier, request: ListenSocketRequest) -> Result<
 // do_getpeername
 //==================================================================================================
 
-pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_getpeername(
+    tid: ThreadIdentifier,
+    request: GetPeerNameRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("getpeername(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
@@ -311,7 +329,10 @@ pub fn do_getpeername(tid: ThreadIdentifier, request: GetPeerNameRequest) -> Res
 // do_getsockname
 //==================================================================================================
 
-pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_getsockname(
+    tid: ThreadIdentifier,
+    request: GetSockNameRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("getsockname(): tid={tid:?}, request={request:?}");
 
     let sockfd: libc::c_int = request.sockfd;
@@ -350,7 +371,10 @@ pub fn do_getsockname(tid: ThreadIdentifier, request: GetSockNameRequest) -> Res
 // do_accept
 //==================================================================================================
 
-pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_accept(
+    tid: ThreadIdentifier,
+    request: AcceptSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("accept(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -388,7 +412,10 @@ pub fn do_accept(tid: ThreadIdentifier, request: AcceptSocketRequest) -> Result<
 // do_recv
 //==================================================================================================
 
-pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_recv(
+    tid: ThreadIdentifier,
+    request: ReceiveSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("recv(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -431,7 +458,10 @@ pub fn do_recv(tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Result<M
 // do_shutdown
 //==================================================================================================
 
-pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_shutdown(
+    tid: ThreadIdentifier,
+    request: ShutdownSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("shutdown(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;
@@ -461,7 +491,10 @@ pub fn do_shutdown(tid: ThreadIdentifier, request: ShutdownSocketRequest) -> Res
 // do_send
 //==================================================================================================
 
-pub fn do_send(tid: ThreadIdentifier, request: SendSocketRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_send(
+    tid: ThreadIdentifier,
+    request: SendSocketRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("send(): tid={tid:?}, request={request:?}");
 
     let sockfd: i32 = request.sockfd;

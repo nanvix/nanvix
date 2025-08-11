@@ -85,7 +85,10 @@ impl RequestAssemblerTrait for FileStatAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fstat_at(source, request)
     }
 }
@@ -122,7 +125,10 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_symlinkat(source, request)
     }
 }
@@ -159,7 +165,10 @@ impl RequestAssemblerTrait for LinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_linkat(source, request)
     }
 }
@@ -196,7 +205,10 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_readlinkat(source, request)
     }
 }
@@ -214,7 +226,9 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
         part: LinuxDaemonMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => Ok(assembler.add_part(part)?),
+            RequestAssemblerType::MakeDirectoryAtRequest(assembler) => {
+                Ok(assembler.add_part(part)?)
+            },
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
@@ -233,7 +247,10 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_mkdirat(source, request)
     }
 }
@@ -276,7 +293,10 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_utimensat(source, request)
     }
 }
@@ -313,7 +333,10 @@ impl RequestAssemblerTrait for FileChownAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fchownat(source, request)
     }
 }
@@ -350,7 +373,10 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_fchmodat(source, request)
     }
 }
@@ -387,7 +413,10 @@ impl RequestAssemblerTrait for OpenAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_openat(source, request)
     }
 }
@@ -424,7 +453,10 @@ impl RequestAssemblerTrait for RenameAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_renameat(source, request)
     }
 }
@@ -461,7 +493,10 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         fcntl::do_unlinkat(source, request)
     }
 }
@@ -479,7 +514,9 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
         part: LinuxDaemonMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
-            RequestAssemblerType::ChangeDirectoryRequest(assembler) => Ok(assembler.add_part(part)?),
+            RequestAssemblerType::ChangeDirectoryRequest(assembler) => {
+                Ok(assembler.add_part(part)?)
+            },
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
         }
     }
@@ -498,7 +535,10 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_chdir(source, request)
     }
 }
@@ -535,7 +575,10 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
         }
     }
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError> {
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
         unistd::do_faccessat(source, request)
     }
 }

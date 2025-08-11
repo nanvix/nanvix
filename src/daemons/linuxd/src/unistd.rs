@@ -80,7 +80,10 @@ use ::syscall::{
 // do_chdir
 //==================================================================================================
 
-pub fn do_chdir(tid: ThreadIdentifier, request: ChangeDirectoryRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_chdir(
+    tid: ThreadIdentifier,
+    request: ChangeDirectoryRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("do_chdir(): tid={tid:?}, request={request:?}");
 
     let path: CString = match CString::new(request.path.as_str()) {
@@ -119,7 +122,10 @@ pub fn do_chdir(tid: ThreadIdentifier, request: ChangeDirectoryRequest) -> Resul
 // do_close
 //==================================================================================================
 
-pub fn do_close(tid: ThreadIdentifier, request: CloseRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_close(
+    tid: ThreadIdentifier,
+    request: CloseRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("close(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -137,7 +143,7 @@ pub fn do_close(tid: ThreadIdentifier, request: CloseRequest) -> Result<Message,
 
             debug!("libc::close(): errno={errno:?}");
             Ok(crate::build_error(tid, ErrorCode::InvalidArgument))
-        }
+        },
     }
 }
 
@@ -145,7 +151,10 @@ pub fn do_close(tid: ThreadIdentifier, request: CloseRequest) -> Result<Message,
 // do_faccessat
 //==================================================================================================
 
-pub fn do_faccessat(tid: ThreadIdentifier, request: FileAccessAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_faccessat(
+    tid: ThreadIdentifier,
+    request: FileAccessAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("faccessat(): tid={request:?}, request={tid:?}");
 
     let dirfd: c_int = request.dirfd;
@@ -186,7 +195,10 @@ pub fn do_faccessat(tid: ThreadIdentifier, request: FileAccessAtRequest) -> Resu
 // do_fdatasync
 //==================================================================================================
 
-pub fn do_fdatasync(tid: ThreadIdentifier, request: FileDataSyncRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fdatasync(
+    tid: ThreadIdentifier,
+    request: FileDataSyncRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fdatasync(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -216,7 +228,10 @@ pub fn do_fdatasync(tid: ThreadIdentifier, request: FileDataSyncRequest) -> Resu
 // do_getids
 //==================================================================================================
 
-pub fn do_getids(tid: ThreadIdentifier, _request: GetIdsRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_getids(
+    tid: ThreadIdentifier,
+    _request: GetIdsRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("getids(): tid={tid:?}");
 
     // Get user ID.
@@ -299,7 +314,10 @@ pub fn do_getcwd(tid: ThreadIdentifier) -> Result<Vec<Message>, WorkerThreadErro
 // do_fsync
 //==================================================================================================
 
-pub fn do_fsync(tid: ThreadIdentifier, request: FileSyncRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fsync(
+    tid: ThreadIdentifier,
+    request: FileSyncRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fsync(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -364,7 +382,10 @@ pub fn do_lseek(tid: ThreadIdentifier, request: SeekRequest) -> Result<Message, 
 // do_ftruncate
 //==================================================================================================
 
-pub fn do_ftruncate(tid: ThreadIdentifier, request: FileTruncateRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_ftruncate(
+    tid: ThreadIdentifier,
+    request: FileTruncateRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("ftruncate(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -395,7 +416,10 @@ pub fn do_ftruncate(tid: ThreadIdentifier, request: FileTruncateRequest) -> Resu
 // do_write
 //==================================================================================================
 
-pub fn do_write(tid: ThreadIdentifier, request: WriteRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_write(
+    tid: ThreadIdentifier,
+    request: WriteRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("write(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
@@ -469,7 +493,10 @@ pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, W
 // do_pwrite
 //==================================================================================================
 
-pub fn do_pwrite(tid: ThreadIdentifier, request: PartialWriteRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_pwrite(
+    tid: ThreadIdentifier,
+    request: PartialWriteRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("pwrite(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
@@ -507,7 +534,10 @@ pub fn do_pwrite(tid: ThreadIdentifier, request: PartialWriteRequest) -> Result<
 // do_pread
 //==================================================================================================
 
-pub fn do_pread(tid: ThreadIdentifier, request: PartialReadRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_pread(
+    tid: ThreadIdentifier,
+    request: PartialReadRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("pread(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
@@ -545,7 +575,10 @@ pub fn do_pread(tid: ThreadIdentifier, request: PartialReadRequest) -> Result<Me
 // do_linkat
 //==================================================================================================
 
-pub fn do_linkat(tid: ThreadIdentifier, request: LinkAtRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_linkat(
+    tid: ThreadIdentifier,
+    request: LinkAtRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("linkat(): tid={tid:?}, request={request:?}");
 
     let olddirfd: i32 = request.olddirfd;
@@ -589,7 +622,10 @@ pub fn do_linkat(tid: ThreadIdentifier, request: LinkAtRequest) -> Result<Vec<Me
 //==================================================================================================
 
 /// Changes the current working directory.
-pub fn do_fchdir(tid: ThreadIdentifier, request: FileChdirRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fchdir(
+    tid: ThreadIdentifier,
+    request: FileChdirRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fchdir(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -619,7 +655,10 @@ pub fn do_fchdir(tid: ThreadIdentifier, request: FileChdirRequest) -> Result<Mes
 // do_fchown
 //==================================================================================================
 
-pub fn do_fchown(tid: ThreadIdentifier, request: FileChownRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_fchown(
+    tid: ThreadIdentifier,
+    request: FileChownRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("fchown(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;

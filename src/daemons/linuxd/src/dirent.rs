@@ -103,7 +103,10 @@ impl linux_dirent {
 //==================================================================================================
 
 /// Handles a getdents() system call request.
-pub fn do_getdents(tid: ThreadIdentifier, request: GetDirectoryEntriesRequest) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_getdents(
+    tid: ThreadIdentifier,
+    request: GetDirectoryEntriesRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("do_getdents(): tid={tid:?}, request,count={:#x?}", { request.count });
 
     // Check if `request.count` is not valid.

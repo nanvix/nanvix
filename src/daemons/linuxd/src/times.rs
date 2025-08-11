@@ -21,7 +21,10 @@ use ::syscall::sys::times::message::{
 // do_times()
 //==================================================================================================
 
-pub fn do_times(tid: ThreadIdentifier, _request: TimesRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_times(
+    tid: ThreadIdentifier,
+    _request: TimesRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("times(): tid={tid:?}");
 
     let mut libc_buffer: libc::tms = libc::tms {

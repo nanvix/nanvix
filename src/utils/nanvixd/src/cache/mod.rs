@@ -37,7 +37,7 @@ pub struct SandboxCache {
     sandbox_index: HashMap<String, SandboxTag>,
 }
 
-impl SandboxCache{
+impl SandboxCache {
     ///
     /// # Description
     ///
@@ -93,7 +93,8 @@ impl SandboxCache{
                             sandbox_config.gateway_sockaddr(),
                             sandbox_config.hwloc(),
                             sandbox_config.binary_directory(),
-                        )?));
+                        )?),
+                    );
                 }
 
                 // Spawn the user VM that will connect to the linuxd instance.
@@ -106,16 +107,20 @@ impl SandboxCache{
                         sandbox_config.console_file(),
                         sandbox_config.hwloc(),
                         sandbox_config.binary_directory(),
-                    )?));
-                self.sandbox_index.insert(tag.sandbox_id().to_string(), tag.clone());
+                    )?),
+                );
+                self.sandbox_index
+                    .insert(tag.sandbox_id().to_string(), tag.clone());
             } else {
-                let reason: String = format!("sandbox not cached, and no sandbox config provided (tag={tag:?})");
+                let reason: String =
+                    format!("sandbox not cached, and no sandbox config provided (tag={tag:?})");
                 error!("{reason}");
                 return Err(anyhow::anyhow!("{reason}"));
             }
         }
 
-        let user_vm = self.user_vm_instances
+        let user_vm = self
+            .user_vm_instances
             .get(tag)
             .ok_or_else(|| anyhow::anyhow!("user VM instance not found in cache"))?;
 
@@ -135,11 +140,9 @@ impl SandboxCache{
     ///
     /// A reference to the sandbox.
     ///
-    pub async fn kill(
-        &mut self,
-        user_vm_id: String,
-    ) -> Result<()> {
-        let tag = self.sandbox_index
+    pub async fn kill(&mut self, user_vm_id: String) -> Result<()> {
+        let tag = self
+            .sandbox_index
             .get(&user_vm_id)
             .ok_or_else(|| anyhow::anyhow!("user VM instance not found in cache"))?;
 
@@ -159,10 +162,7 @@ impl SandboxCache{
     ///
     /// A reference to the sandbox.
     ///
-    fn kill_internal(
-        &mut self,
-        tag: &SandboxTag,
-    ) -> Result<()> {
+    fn kill_internal(&mut self, tag: &SandboxTag) -> Result<()> {
         let user_vm_id = tag.sandbox_id();
 
         if !self.user_vm_instances.contains_key(tag) {
@@ -172,8 +172,10 @@ impl SandboxCache{
 
         if let Some(user_vm) = self.user_vm_instances.remove(tag) {
             if Arc::strong_count(&user_vm) != 1 {
-                warn!("trying to drop user VM, but there are dangling references to it\
-                this may introduce unexpected behaviour");
+                warn!(
+                    "trying to drop user VM, but there are dangling references to itthis may \
+                     introduce unexpected behaviour"
+                );
             }
 
             // User VM is dropped.
@@ -205,7 +207,9 @@ impl SandboxCache{
                     debug!("cleaned-up linuxd instance for tenant {tenant_id}");
                 }
             } else {
-                error!("error cleaning-up linuxd instance for tenant {tenant_id}: instance not found");
+                error!(
+                    "error cleaning-up linuxd instance for tenant {tenant_id}: instance not found"
+                );
             }
         }
     }
