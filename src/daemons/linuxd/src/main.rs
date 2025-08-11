@@ -134,15 +134,15 @@ pub fn main() -> Result<()> {
             Ok(socket) => {
                 info!("Connected to control plane on: {:?}", control_plane_sockaddr);
                 socket
-            }
+            },
             Err(e) => {
                 error!(
                     "failed to connect to control-plane socket address (address={}, error={e:?})",
                     control_plane_sockaddr.clone()
                 );
                 anyhow::bail!("failed to connect to control-plane socket address");
-            }
-         };
+            },
+        };
 
     // Start listening for incoming connections from user VMs associated to this linuxd instance.
     // TODO: this logic will be moved to inside the main linuxd loop once we support running
@@ -237,7 +237,8 @@ pub fn main() -> Result<()> {
 pub fn initialize(logfile: bool) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        let logger = Logger::try_with_env_or_str("error").expect("malformed RUST_LOG environment variable");
+        let logger =
+            Logger::try_with_env_or_str("error").expect("malformed RUST_LOG environment variable");
         if logfile {
             logger
                 .log_to_file(FileSpec::default())

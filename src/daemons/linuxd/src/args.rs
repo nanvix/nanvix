@@ -152,8 +152,8 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} <user-vm-sockaddr> \
-            {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
+            "Usage: {} {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} \
+             <user-vm-sockaddr> {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
             program_name,
             Self::OPT_LOGFILE,
             Self::OPT_CONTROL_PLANE_SOCKADDR,

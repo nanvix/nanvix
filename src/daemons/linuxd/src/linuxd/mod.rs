@@ -27,15 +27,15 @@ use ::std::{
         Read,
     },
     sync::{
+        mpsc,
         mpsc::{
             Receiver,
-            Sender,
             RecvError,
+            Sender,
         },
         Arc,
         Mutex,
         MutexGuard,
-        mpsc,
     },
     thread::JoinHandle,
 };
@@ -119,26 +119,28 @@ impl LinuxDaemon {
                     // Block waiting for the user VM to request reading from STDIN.
                     match gw_stdin_rx.recv() {
                         Ok((_read_request, response_tx)) => {
-                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-                            let num_read = match gw_stdin_stream
-                                .read(&mut response_buf) {
-                                    Ok(n) => n,
-                                    Err(e) => {
-                                        let reason: String = format!("failed to read STDIN from gateway: {e:?}");
-                                        error!("{}", reason);
-                                        return Err(anyhow::anyhow!(reason));
-                                    }
-                                };
+                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                                [0u8; ReadResponse::BUFFER_SIZE];
+                            let num_read = match gw_stdin_stream.read(&mut response_buf) {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    let reason: String =
+                                        format!("failed to read STDIN from gateway: {e:?}");
+                                    error!("{}", reason);
+                                    return Err(anyhow::anyhow!(reason));
+                                },
+                            };
                             response_tx.send(ReadResponse::build(
                                 0.into(),
                                 num_read as c_ssize_t,
-                                response_buf))?;
-                        }
+                                response_buf,
+                            ))?;
+                        },
                         Err(RecvError) => {
                             // This may happen during shutdown.
                             debug!("gateway STDIN channel disconnected");
                             break Ok(());
-                        }
+                        },
                     }
                 }
             });
@@ -156,12 +158,12 @@ impl LinuxDaemon {
 
                             // We don't need to send anything in response of the write, as the
                             // writting thread has already moved on.
-                        }
+                        },
                         Err(RecvError) => {
                             // This may happen during shutdown.
                             debug!("gateway STDOUT channel disconnected");
                             break Ok(());
-                        }
+                        },
                     }
                 }
             });
@@ -197,30 +199,39 @@ impl LinuxDaemon {
                         // message channel. In case the thread is blocked on a system call, we also
                         // send it an interrupt signal and handle EINTR accordingly.
                         for worker_thread in worker_threads.drain(..) {
-                            trace!("sending interrupt to worker thread (thread_id={:?})", worker_thread.id);
+                            trace!(
+                                "sending interrupt to worker thread (thread_id={:?})",
+                                worker_thread.id
+                            );
 
                             // If any of the commands fail, continue trying to drain the remainnig
                             // threads.
                             match worker_thread.cmd_tx.send(VenvCommand::Shutdown) {
                                 Ok(_) => {},
                                 Err(e) => {
-                                    error!("error sending shutdown command to worker thread (thread_id={e:?})");
+                                    error!(
+                                        "error sending shutdown command to worker thread \
+                                         (thread_id={e:?})"
+                                    );
                                     continue;
-                                }
+                                },
                             }
                             match worker_thread.stop() {
                                 Ok(_) => {},
                                 Err(e) => {
-                                    error!("error sending interrupt to worker thread (thread_id={e:?})");
+                                    error!(
+                                        "error sending interrupt to worker thread \
+                                         (thread_id={e:?})"
+                                    );
                                     continue;
-                                }
+                                },
                             }
                             match worker_thread.handle.join() {
                                 Ok(_) => {},
                                 Err(e) => {
                                     error!("error joining worker thread (thread_id={e:?})");
                                     continue;
-                                }
+                                },
                             }
                         }
 
@@ -285,8 +296,16 @@ impl LinuxDaemon {
                 let assembler = assembler.clone();
 
                 // Spawn an interruptible thread to handle the message.
-                let worker_thread_handle: WorkerThreadHandle =
-                    WorkerThreadHandle::spawn(source, channel_rx, channel_tx.clone(), uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler)?;
+                let worker_thread_handle: WorkerThreadHandle = WorkerThreadHandle::spawn(
+                    source,
+                    channel_rx,
+                    channel_tx.clone(),
+                    uvm_stream,
+                    gw_stdin_tx,
+                    gw_stdout_tx,
+                    venv,
+                    assembler,
+                )?;
                 worker_threads.push_back(worker_thread_handle);
             }
 

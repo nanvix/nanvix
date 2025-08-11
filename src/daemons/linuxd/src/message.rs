@@ -128,5 +128,8 @@ where
 
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
 
-    fn process_request(source: ThreadIdentifier, request: Self) -> Result<Vec<Message>, WorkerThreadError>;
+    fn process_request(
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError>;
 }
