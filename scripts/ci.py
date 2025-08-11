@@ -130,7 +130,7 @@ def make(
         exit(1)
 
 
-def lint(
+def lint_check(
     machine: str,
     arch: str,
     release: bool,
@@ -150,8 +150,7 @@ def lint(
         verbose (bool, optional): Verbose build. Defaults to False.
     """
 
-    make("clippy", machine, arch, release, toolchain_dir, log_level, verbose)
-    make("python-lint", machine, arch, release, None, log_level, verbose)
+    make("lint-check", machine, arch, release, toolchain_dir, log_level, verbose)
 
 
 def format_check(
@@ -398,7 +397,7 @@ def main() -> None:
 
     # Lint source code.
     if args.lint:
-        lint(
+        lint_check(
             args.target_machine,
             args.target_arch,
             args.release or not args.debug,

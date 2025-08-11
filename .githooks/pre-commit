@@ -108,7 +108,7 @@ extract_current_version() {
 
 main() {
     # By default, use Docker to run the code formatting check.
-    local format_check_cmd="./z build --with-docker --non-interactive -- format-check"
+    local build_command="./z build --with-docker --non-interactive --"
 
     # Check if we are not running inside a Git repository.
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -128,7 +128,7 @@ main() {
     # Check if Docker is unavailable or the Docker image is missing.
     if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
         # Fallback to running the format using a native toolchain.
-        format_check_cmd="./z build -- format-check"
+        build_command="./z build"
     fi
 
     # Create a temporary file to capture output.
@@ -136,7 +136,7 @@ main() {
     trap 'rm -f "$tmpfile"' EXIT
 
     # Run code formatting check.
-    if ! eval "${format_check_cmd}" >"${tmpfile}" 2>&1; then
+    if ! eval "${build_command} format-check" >${tmpfile} 2>&1 ; then
         # Code formatting check failed, print the output.
         cat "${tmpfile}"
         print_error "(pre-commit) Format check failed. Please fix formatting before committing."
@@ -144,6 +144,16 @@ main() {
     fi
 
     print_success "(pre-commit) Code formatting check passed successfully."
+
+    # Run code linting check.
+    if ! eval "${build_command} lint-check" >${tmpfile} 2>&1 ; then
+        # Code linting check failed, print the output.
+        cat "${tmpfile}"
+        print_error "(pre-commit) Lint check failed. Please fix linting issues before committing."
+        exit 1
+    fi
+
+    print_success "(pre-commit) Code linting check passed successfully."
 }
 
 # Run the main function.
