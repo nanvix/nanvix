@@ -56,6 +56,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: "Check Code Format"
+      uses: ./.github/actions/format
+      with:
+        release: '${{ matrix.build-type }}'
+        log-level: 'trace'
+
     - name: "Lint"
       uses: ./.github/actions/lint
       with:

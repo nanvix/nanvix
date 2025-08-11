@@ -29,6 +29,7 @@ CMD_NAME_HELP="help"
 # Option names.
 OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
+OPT_NAME_NON_INTERACTIVE="--non-interactive"
 
 # Name of the Docker image with the Nanvix toolchain.
 DOCKER_IMAGE_NAME="nanvix/toolchain"
@@ -54,6 +55,7 @@ LAST_BUILD_WITH_DOCKER=false # Was the last build done with Docker?
 
 # Current options.
 BUILD_WITH_DOCKER=false # Build with Docker?
+NON_INTERACTIVE=false   # Run Docker in non-interactive mode?
 
 #==================================================================================================
 # Functions
@@ -128,8 +130,8 @@ Utility for building Nanvix.
 
 Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
-  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] ["${OPT_NAME_SEPARATOR}" BUILD_PARAMETERS]
-  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}] ["${OPT_NAME_SEPARATOR}" BUILD_PARAMETERS]
+  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}]
   ./z ${CMD_NAME_HELP}
 
 Commands
@@ -139,6 +141,7 @@ Commands
 
 Options
   ${OPT_NAME_WITH_DOCKER}  Builds Nanvix using Docker instead of the native toolchain.
+  ${OPT_NAME_NON_INTERACTIVE}       Runs Docker in non-interactive mode.
 EOF
 }
 
@@ -161,7 +164,11 @@ build_docker_command() {
     local group_id
     user_id="$(id -u)"
     group_id="$(id -g)"
-    echo "docker run -it --rm \
+    local non_interactive_flag="-it"
+    if ${NON_INTERACTIVE}; then
+        non_interactive_flag=""
+    fi
+    echo "docker run ${non_interactive_flag} --rm \
         -v \"$(pwd):/mnt\" \
         ${DOCKER_IMAGE_NAME} \
         /bin/bash -l -c '\
@@ -246,6 +253,10 @@ main() {
                 BUILD_WITH_DOCKER=true
                 shift
                 ;;
+            "${OPT_NAME_NON_INTERACTIVE}")
+                NON_INTERACTIVE=true
+                shift
+                ;;
             "${OPT_NAME_SEPARATOR}")
                 shift
                 break
@@ -266,6 +277,7 @@ main() {
 
     print_info "Command: ${command}"
     print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
+    print_info "Non Interactive: ${NON_INTERACTIVE}"
     print_info "Build Parameters: ${build_parameters[*]}"
 
     case "${command}" in
@@ -281,7 +293,11 @@ main() {
 
             # Save current build command and options to cache
             if ${BUILD_WITH_DOCKER}; then
-                write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
+                if ${NON_INTERACTIVE}; then
+                    write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_NON_INTERACTIVE}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
+                else
+                    write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
+                fi
             else
                 write_cache "${command}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
             fi

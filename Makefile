@@ -208,20 +208,20 @@ export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x
 export GUEST_CARGO_CLEAN_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 clean $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
 export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 check $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) --message-format=json
 export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
-export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET) --check
+export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
 export KERNEL_CARGO_BUILD_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 build $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) $(CARGO_PROFILE)
 export KERNEL_CARGO_CLEAN_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_CHECK_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 check $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) --message-format=json
 export KERNEL_CARGO_CLIPPY_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) --check
+export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
 # Cargo commands for wasm target.
 export WASM_CARGO_BUILD_CMD := $(CARGO) +nanvix-x86 build $(WASM_CARGO_PROFILE) --target wasm32-wasip1
 export WASM_CARGO_CLEAN_CMD := $(CARGO) +nanvix-x86 clean --target wasm32-wasip1
 export WASM_CARGO_CHECK_CMD := $(CARGO) +nanvix-x86 check --target wasm32-wasip1 --message-format=json
 export WASM_CARGO_CLIPPY_CMD := $(CARGO) +nanvix-x86 clippy --target wasm32-wasip1
-export WASM_CARGO_FMT_CMD := $(CARGO) +nanvix-x86 fmt --target wasm32-wasip1 --check
+export WASM_CARGO_FMT_CMD := $(CARGO) +nanvix-x86 fmt
 
 # Cargo commands for host target.
 export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 build $(CARGO_PROFILE)
@@ -229,7 +229,7 @@ export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86
 export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 check --message-format=json
 export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy
 export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 test --no-default-features --features=std
-export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt --check
+export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
 # Utility Commands
 export RM_CMD := rm -f
@@ -320,21 +320,60 @@ clippy: \
 	clippy-host-rlibs \
 	clippy-microvm
 
+# Fixes code formatting issues.
+format: \
+	clang-format \
+	python-format \
+	rust-format \
+
+# Checks for code formatting issues.
+format-check: \
+	clang-format-check \
+	python-format-check \
+	rust-format-check \
+
+# Formats Rust code.
+rust-format: \
+	format-guest-binaries \
+	format-guest-rlibs \
+	format-guest-staticlibs \
+	format-host-binaries \
+	format-host-rlibs \
+	format-kernel \
+	format-microvm \
+	format-wasmd \
+	format-wasm-binaries
+
+# Checks Rust code formatting.
+rust-format-check: \
+	format-check-guest-binaries \
+	format-check-guest-rlibs \
+	format-check-guest-staticlibs \
+	format-check-host-binaries \
+	format-check-host-rlibs \
+	format-check-kernel \
+	format-check-microvm \
+	format-check-wasmd \
+	format-check-wasm-binaries
+
 # Python lint variables
-PY_CHECK :=
-ifeq ($(check),true)
-PY_CHECK += --check
-endif
 PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
 PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/venv
 
-python-lint:
+python-init:
 	@if [ ! -d $(PYTHON_VENV_DIRECTORY) ]; then python3 -m venv $(PYTHON_VENV_DIRECTORY); fi
 	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PY_CHECK) $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-format: python-init
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-format-check: python-init
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black --check $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+python-lint: python-init
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
 
 # Check C/C++ formatting style.
@@ -582,6 +621,12 @@ check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
 #	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
+format-guest-staticlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-staticlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
@@ -597,6 +642,10 @@ all-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),all-guest-static
 
 check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-staticlib-$(target))
 
+format-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-guest-staticlib-$(target))
+
+format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-check-guest-staticlib-$(target))
+
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
 clippy-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clippy-guest-staticlib-$(target))
@@ -610,6 +659,12 @@ check-guest-rlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 #	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
+format-guest-rlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-rlib-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clippy-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
 #	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
@@ -618,6 +673,10 @@ endef
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
 
 check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
+
+format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(target))
+
+format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
 
 clippy-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),clippy-guest-rlib-$(target))
 
@@ -647,6 +706,12 @@ all-guest-binaries-$(1): init all-guest-staticlibs
 check-guest-binaries-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
 
+format-guest-binaries-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1)
+
+format-check-guest-binaries-$(1):
+	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
@@ -663,6 +728,10 @@ all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(
 	$(MAKE) -C $(SOURCES_DIR)/tests all
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
+
+format-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-guest-binaries-$(target))
+
+format-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-check-guest-binaries-$(target))
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 	$(MAKE) -C $(SOURCES_DIR)/benchmarks clean
@@ -688,6 +757,12 @@ endif
 check-wasmd:
 	$(GUEST_CARGO_CHECK_CMD) -p wasmd
 
+format-wasmd:
+	$(GUEST_CARGO_FMT_CMD) -p wasmd
+
+format-check-wasmd:
+	$(GUEST_CARGO_FMT_CMD) -p wasmd --check
+
 clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
@@ -705,6 +780,12 @@ all-kernel: init
 
 check-kernel:
 	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+
+format-kernel:
+	$(KERNEL_CARGO_FMT_CMD) -p kernel
+
+format-check-kernel:
+	$(KERNEL_CARGO_FMT_CMD) -p kernel --check
 
 clean-kernel:
 	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
@@ -725,6 +806,12 @@ all-wasm-binaries-$(1): init
 check-wasm-binaries-$(1):
 	$(WASM_CARGO_CHECK_CMD) -p $(1)
 
+format-wasm-binaries-$(1):
+	$(WASM_CARGO_FMT_CMD) -p $(1)
+
+format-check-wasm-binaries-$(1):
+	$(WASM_CARGO_FMT_CMD) -p $(1) --check
+
 clean-wasm-binaries-$(1):
 	$(WASM_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
@@ -739,6 +826,10 @@ all-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),all-wasm-binaries-$(tar
 
 check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),check-wasm-binaries-$(target))
 
+format-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-wasm-binaries-$(target))
+
+format-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-check-wasm-binaries-$(target))
+
 clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
 
 clippy-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clippy-wasm-binaries-$(target))
@@ -751,6 +842,12 @@ define HOST_RLIB_RULES
 check-host-rlib-$(1):
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
 
+format-host-rlib-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1)
+
+format-check-host-rlib-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1) --check
+
 clippy-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
 
@@ -761,6 +858,10 @@ endef
 $(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target))))
 
 check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(target))
+
+format-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-host-rlib-$(target))
+
+format-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-check-host-rlib-$(target))
 
 clippy-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),clippy-host-rlib-$(target))
 
@@ -786,6 +887,12 @@ else
 	$(HOST_CARGO_CHECK_CMD) -p $(1)
 endif
 
+format-host-binaries-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1)
+
+format-check-host-binaries-$(1):
+	$(HOST_CARGO_FMT_CMD) -p $(1) --check
+
 clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
@@ -804,6 +911,10 @@ all-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),all-host-binaries-$(tar
 
 check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),check-host-binaries-$(target))
 
+format-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-host-binaries-$(target))
+
+format-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-check-host-binaries-$(target))
+
 clean-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clean-host-binaries-$(target))
 
 clippy-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clippy-host-binaries-$(target))
@@ -818,7 +929,12 @@ all-microvm: init
 
 check-microvm:
 	$(HOST_CARGO_CHECK_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+
+format-microvm:
 	$(HOST_CARGO_FMT_CMD) -p microvm
+
+format-check-microvm:
+	$(HOST_CARGO_FMT_CMD) -p microvm --check
 
 clean-microvm:
 	$(HOST_CARGO_CLEAN_CMD) -p microvm
