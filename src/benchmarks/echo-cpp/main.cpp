@@ -1,8 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#include <iostream>
-#include <vector>
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 //==================================================================================================
 // Constants
@@ -22,9 +23,10 @@ static char buffer[MAX_REQUEST_SIZE];
 
 int main()
 {
+    ssize_t nread = 0;
+
     while (true) {
-        std::cin.read(&buffer[0], MAX_REQUEST_SIZE);
-        std::streamsize nread = std::cin.gcount();
+        nread = read(STDIN_FILENO, buffer, MAX_REQUEST_SIZE);
         if (nread < 0) {
             break; // Error encountered.
         } else if (nread == 0) {
@@ -32,8 +34,7 @@ int main()
         }
 
         if (nread > 0) {
-            std::cout.write(buffer, nread);
-            std::cout.flush();
+            write(STDOUT_FILENO, buffer, nread);
         }
     }
 
