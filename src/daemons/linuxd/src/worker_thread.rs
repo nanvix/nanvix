@@ -11,7 +11,6 @@
 // Imports
 //==================================================================================================
 
-use ::anyhow::Result;
 use crate::{
     build_error,
     dirent,
@@ -27,18 +26,11 @@ use crate::{
     unistd,
     venv::{
         VenvCommand,
-        VirtualEnvironment,
         VirtualEnviromentDirectory,
+        VirtualEnvironment,
     },
 };
-use libc::{
-    sigaction,
-    sigemptyset,
-    pthread_kill,
-    pthread_self,
-    SIGUSR1,
-    c_int,
-};
+use ::anyhow::Result;
 use ::std::{
     io::ErrorKind,
     mem,
@@ -46,7 +38,7 @@ use ::std::{
     sync::{
         atomic::{
             AtomicUsize,
-            Ordering
+            Ordering,
         },
         mpsc::{
             Receiver,
@@ -60,7 +52,7 @@ use ::std::{
         self,
         JoinHandle,
         ThreadId,
-    }
+    },
 };
 use ::sys::{
     error::{
@@ -144,7 +136,18 @@ use ::syscall::{
     LinuxDaemonMessageHeader,
     LINUXD,
 };
-use ::syscomm::{SocketError, SocketStream};
+use ::syscomm::{
+    SocketError,
+    SocketStream,
+};
+use libc::{
+    c_int,
+    pthread_kill,
+    pthread_self,
+    sigaction,
+    sigemptyset,
+    SIGUSR1,
+};
 
 const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
@@ -201,7 +204,7 @@ impl WorkerThreadHandle {
         gw_stdout_tx: Option<Sender<WriteRequest>>,
         venv: Arc<Mutex<VirtualEnviromentDirectory>>,
         assembler: Arc<Mutex<RequestAssembler>>,
-    ) ->Result<Self, Error> {
+    ) -> Result<Self, Error> {
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid.
         let pthread_id_holder = Arc::new(AtomicUsize::new(0));
@@ -215,7 +218,14 @@ impl WorkerThreadHandle {
             let pthread_id = unsafe { pthread_self() };
             pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
 
-            Self::handle_message(channel_rx, uvm_stream, gw_stdin_tx, gw_stdout_tx, venv, assembler);
+            Self::handle_message(
+                channel_rx,
+                uvm_stream,
+                gw_stdin_tx,
+                gw_stdout_tx,
+                venv,
+                assembler,
+            );
 
             trace!("thread shutting down after receiving interrupt (pthread_id={pthread_id})");
         });
@@ -260,8 +270,11 @@ impl WorkerThreadHandle {
             let message: Message = match channel_rx.recv() {
                 Ok(VenvCommand::Work(message)) => message,
                 Ok(VenvCommand::Shutdown) => {
-                    debug!("handle_message(): thread received shutdown message (worker_tid={worker_tid:?})");
-                    break
+                    debug!(
+                        "handle_message(): thread received shutdown message \
+                         (worker_tid={worker_tid:?})"
+                    );
+                    break;
                 },
                 Err(error) => {
                     error!(
@@ -308,8 +321,10 @@ impl WorkerThreadHandle {
                                             // WorkerThreadErrors other than Interrupted should be
                                             // caught by downstream functions, and converted to
                                             // Messages with the appropriate return code.
-                                            unreachable!("fatal error in working thread (error={e:?})");
-                                        }
+                                            unreachable!(
+                                                "fatal error in working thread (error={e:?})"
+                                            );
+                                        },
                                     }
                                 },
 
@@ -351,8 +366,10 @@ impl WorkerThreadHandle {
                                             // WorkerThreadErrors other than Interrupted should be
                                             // caught by downstream functions, and converted to
                                             // Messages with the appropriate return code.
-                                            unreachable!("fatal error in working thread (error={e:?})");
-                                        }
+                                            unreachable!(
+                                                "fatal error in working thread (error={e:?})"
+                                            );
+                                        },
                                     }
                                 },
 
@@ -374,8 +391,10 @@ impl WorkerThreadHandle {
                                             // WorkerThreadErrors other than Interrupted should be
                                             // caught by downstream functions, and converted to
                                             // Messages with the appropriate return code.
-                                            unreachable!("fatal error in working thread (error={e:?})");
-                                        }
+                                            unreachable!(
+                                                "fatal error in working thread (error={e:?})"
+                                            );
+                                        },
                                     }
                                     continue;
                                 },
@@ -408,8 +427,10 @@ impl WorkerThreadHandle {
                                             // WorkerThreadErrors other than Interrupted should be
                                             // caught by downstream functions, and converted to
                                             // Messages with the appropriate return code.
-                                            unreachable!("fatal error in working thread (error={e:?})");
-                                        }
+                                            unreachable!(
+                                                "fatal error in working thread (error={e:?})"
+                                            );
+                                        },
                                     }
                                     continue;
                                 },
@@ -424,8 +445,11 @@ impl WorkerThreadHandle {
                                 },
                                 Err(e) => {
                                     // send only ever raises BrokenPipe errors.
-                                    unreachable!("handle_message: worker thread received unrecognized error (error={e:?})");
-                                }
+                                    unreachable!(
+                                        "handle_message: worker thread received unrecognized \
+                                         error (error={e:?})"
+                                    );
+                                },
                             };
                         },
                         Err(e) => {
@@ -739,7 +763,10 @@ impl WorkerThreadHandle {
         )
     }
 
-    fn handle_close_request(source: ThreadIdentifier, request: CloseRequest) -> Result<Message, WorkerThreadError> {
+    fn handle_close_request(
+        source: ThreadIdentifier,
+        request: CloseRequest,
+    ) -> Result<Message, WorkerThreadError> {
         // Inspect file descriptor that is being closed, as we need to
         // handle standard file descriptors specially.
         match request.fd {
@@ -765,7 +792,10 @@ impl WorkerThreadHandle {
             let gateway_stdout_tx = if let Some(gateway_stdout_tx) = gateway_stdout_tx {
                 gateway_stdout_tx
             } else {
-                error!("handle_write_request(): trying to write to stdout without a gateway configured");
+                error!(
+                    "handle_write_request(): trying to write to stdout without a gateway \
+                     configured"
+                );
                 return Ok(build_error(source, ErrorCode::InvalidArgument));
             };
 
@@ -806,7 +836,9 @@ impl WorkerThreadHandle {
             let gateway_stdin_tx = if let Some(gateway_stdin_tx) = gateway_stdin_tx {
                 gateway_stdin_tx
             } else {
-                error!("handle_read_request(): process tried to read from stdin but no gateway found");
+                error!(
+                    "handle_read_request(): process tried to read from stdin but no gateway found"
+                );
                 return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
             };
 
@@ -816,8 +848,8 @@ impl WorkerThreadHandle {
                 env
             } else {
                 warn!(
-                    "handle_read_request(): process is not associated with a virtual \
-                     environment, returning EOF"
+                    "handle_read_request(): process is not associated with a virtual environment, \
+                     returning EOF"
                 );
                 return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
             };
@@ -825,30 +857,28 @@ impl WorkerThreadHandle {
             // Send ReadRequest to gateway IO thread.
             if let Err(error) = gateway_stdin_tx.send((request, env.get_stdin_response_tx())) {
                 error!(
-                    "handle_read_request(): error sending request to gateway STDIN IO thread, returning EOF \
-                    (error={error:?})"
+                    "handle_read_request(): error sending request to gateway STDIN IO thread, \
+                     returning EOF (error={error:?})"
                 );
                 return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
             }
 
             // Wait for response from IO thread.
-            match env
-                .get_stdin_response_rx()
-                .recv() {
-                    Ok(mut read_response) => {
-                        // We don't have access to the source in the gateway IO thread, so we set
-                        // it here.
-                        read_response.destination = source.into();
-                        Ok(read_response)
-                    },
-                    Err(e) => {
-                        error!(
-                            "handle_read_request(): error receiving request response from gateway STDIN \
-                            IO thread, returning EOF (error={e:?})"
-                        );
-                        Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
-                    }
-                }
+            match env.get_stdin_response_rx().recv() {
+                Ok(mut read_response) => {
+                    // We don't have access to the source in the gateway IO thread, so we set
+                    // it here.
+                    read_response.destination = source.into();
+                    Ok(read_response)
+                },
+                Err(e) => {
+                    error!(
+                        "handle_read_request(): error receiving request response from gateway \
+                         STDIN IO thread, returning EOF (error={e:?})"
+                    );
+                    Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]))
+                },
+            }
         } else {
             // Read from other file descriptor.
             unistd::do_read(source, request)
@@ -871,7 +901,10 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
-    fn handle_getcwd_request(uvm_stream: Arc<Mutex<SocketStream>>, source: ThreadIdentifier) -> Result<(), WorkerThreadError> {
+    fn handle_getcwd_request(
+        uvm_stream: Arc<Mutex<SocketStream>>,
+        source: ThreadIdentifier,
+    ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(source)?;
         for message in messages {
             if let Err(e) = Self::send(uvm_stream.clone(), message) {
@@ -906,7 +939,7 @@ impl WorkerThreadHandle {
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError>
-        where
+    where
         T: RequestAssemblerTrait,
     {
         let part: LinuxDaemonMessagePart = LinuxDaemonMessagePart::from_bytes(message.payload);
@@ -931,7 +964,9 @@ impl WorkerThreadHandle {
             Err(WorkerThreadError::Error(e)) => {
                 error!("failed to process request (error={e:?})");
                 // TODO: proper error code conversion.
-                if let Err(e) = Self::send(uvm_stream.clone(), Self::do_error(source, ErrorCode::IoErr)) {
+                if let Err(e) =
+                    Self::send(uvm_stream.clone(), Self::do_error(source, ErrorCode::IoErr))
+                {
                     error!("failed to send error message (error={e:?})");
                 }
 

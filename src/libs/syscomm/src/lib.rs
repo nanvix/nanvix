@@ -11,8 +11,8 @@ use ::anyhow::Result;
 use ::log::error;
 use ::std::{
     error::Error,
-    fs,
     fmt,
+    fs,
     io::{
         self,
         ErrorKind,
@@ -49,7 +49,10 @@ impl Socket {
     pub fn bind(typ: SocketType, addr: String) -> Result<SocketListener> {
         match typ {
             SocketType::Tcp => Ok(SocketListener::Tcp(TcpListener::bind(addr)?)),
-            SocketType::Unix => Ok(SocketListener::Unix { listener: UnixListener::bind(&addr)?, path: addr.clone() }),
+            SocketType::Unix => Ok(SocketListener::Unix {
+                listener: UnixListener::bind(&addr)?,
+                path: addr.clone(),
+            }),
         }
     }
 }
@@ -97,13 +100,11 @@ impl Drop for SocketListener {
     fn drop(&mut self) {
         match self {
             SocketListener::Tcp(_) => {},
-            SocketListener::Unix { listener: _, path } => {
-                match fs::remove_file(path.clone()) {
-                    Ok(_) => {},
-                    Err(ref e) if e.kind() == ErrorKind::NotFound => {},
-                    Err(e) => error!("error removing UNIX socket (path={path}, error={e:?})"),
-                }
-            }
+            SocketListener::Unix { listener: _, path } => match fs::remove_file(path.clone()) {
+                Ok(_) => {},
+                Err(ref e) if e.kind() == ErrorKind::NotFound => {},
+                Err(e) => error!("error removing UNIX socket (path={path}, error={e:?})"),
+            },
         }
     }
 }
@@ -137,11 +138,11 @@ impl SocketStream {
             SocketStream::Tcp(stream) => {
                 let stream: TcpStream = stream.try_clone()?;
                 Ok(SocketStream::Tcp(stream))
-            }
+            },
             SocketStream::Unix(stream) => {
                 let stream: UnixStream = stream.try_clone()?;
                 Ok(SocketStream::Unix(stream))
-            }
+            },
         }
     }
 

@@ -8,12 +8,12 @@
 use ::std::{
     collections::BTreeMap,
     sync::{
+        mpsc,
         mpsc::{
             channel,
             Receiver,
             Sender,
         },
-        mpsc,
     },
 };
 use ::sys::{
@@ -168,7 +168,8 @@ impl VirtualEnviromentDirectory {
         &mut self,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
-    ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error> {
+    ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error>
+    {
         trace!("join(): tid={tid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
@@ -185,7 +186,8 @@ impl VirtualEnviromentDirectory {
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
-        let (channel_tx, channel_rx): (Sender<VenvCommand>, Receiver<VenvCommand>) = channel::<VenvCommand>();
+        let (channel_tx, channel_rx): (Sender<VenvCommand>, Receiver<VenvCommand>) =
+            channel::<VenvCommand>();
 
         // Thread requested to join a new environment.
         envid = self.next_env;
