@@ -97,6 +97,8 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 - Do not use `panic!`, `unwrap()`, or `expect()`, instead return `Result<T, E>`.
 - Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
+- Always add type annotations when defining variables and constants, even if type can be inferred (ie: `let x: u32 = 42;`).
+- Prefix all import statements with `::` (ie: use `::std:fs` instead of `std::fs`).
 - Always log errors with `error!` before returning an error.
 - Use `warn!` log level for non-critical warnings that do not affect functionality.
 - Use `info!` log level for informational messages that are not errors or warnings.
@@ -107,6 +109,7 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 - Public modules, structures, classes, enumerations, types, functions, variables, constants must have doc comments.
 - `TODO`/`FIXME` comments must link to GitHub issues (e.g., `TODO (#1234): rationale`).
+- Terminate all comments with a period.
 
 ## Coding Review Guidelines
 
@@ -115,3 +118,13 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 - Ensure that new code is documented.
 - Ensure that doc comments are updated when behavior changes.
 - Ensure markdown files in the source tree and documentation in `doc/` are updated when behavior changes.
+- Check for typos in comments and documentation.
+- Check for arithmetic overflows.
+- Check for potential resource leaks (e.g., file handles, memory).
+- Check for potential deadlocks.
+
+### Coding Review Guidelines (Rust only)
+
+- Ensure `c_size_t` is used instead of `usize` for C interoperability.
+- Ensure `c_ssize_t` is used instead of `isize` for C interoperability.
+- Ensure `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_short`, and `c_ushort` are used instead of their Rust counterparts for C interoperability.
