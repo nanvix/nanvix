@@ -358,17 +358,12 @@ main() {
                 fi
             fi
 
-
-            # Save current build command and options to cache
-            if ${BUILD_WITH_DOCKER}; then
-                if ${NON_INTERACTIVE}; then
-                    write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_NON_INTERACTIVE}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
-                else
-                    write_cache "${command}" "${OPT_NAME_WITH_DOCKER}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
-                fi
-            else
-                write_cache "${command}" "${OPT_NAME_SEPARATOR}" "${build_parameters[@]}"
-            fi
+            # Save current build command and options to cache.
+            cache_args=("${command}")
+            ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
+            ${NON_INTERACTIVE} && cache_args+=("${OPT_NAME_NON_INTERACTIVE}")
+            cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
+            write_cache "${cache_args[@]}"
 
             # Build Nanvix.
             if ${BUILD_WITH_DOCKER}; then
