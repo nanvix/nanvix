@@ -23,6 +23,7 @@ mod socket;
 mod time;
 mod times;
 mod unistd;
+mod user_vm_handle;
 mod venv;
 mod worker_thread;
 
@@ -209,7 +210,7 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    let mut procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, gateway_stream) {
+    let procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, gateway_stream) {
         Ok(procd) => procd,
         Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
     };

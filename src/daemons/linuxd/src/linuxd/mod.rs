@@ -13,6 +13,7 @@ mod assemble;
 
 use crate::{
     message::RequestAssembler,
+    user_vm_handle::UserVmHandle,
     venv::{
         VenvCommand,
         VirtualEnviromentDirectory,
@@ -22,22 +23,16 @@ use crate::{
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
-    io::{
-        ErrorKind,
-        Read,
-    },
+    io::ErrorKind,
     sync::{
-        mpsc,
         mpsc::{
             Receiver,
-            RecvError,
             Sender,
         },
         Arc,
         Mutex,
         MutexGuard,
     },
-    thread::JoinHandle,
 };
 use ::sys::{
     error::{
@@ -47,16 +42,14 @@ use ::sys::{
     ipc::Message,
     pm::ThreadIdentifier,
 };
-use ::sysapi::sys_types::c_ssize_t;
-use ::syscall::{
-    unistd::message::{
-        ReadRequest,
-        ReadResponse,
-        WriteRequest,
-    },
-    venv::VirtualEnvironmentIdentifier,
-};
+use ::syscall::venv::VirtualEnvironmentIdentifier;
 use ::syscomm::SocketStream;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const DEFAULT_CONNECTION_ID: usize = 0;
 
 //==================================================================================================
 // Structures
@@ -64,7 +57,7 @@ use ::syscomm::SocketStream;
 
 pub struct LinuxDaemon {
     assembler: Arc<Mutex<RequestAssembler>>,
-    uvm_stream: Arc<Mutex<SocketStream>>,
+    uvm_stream: SocketStream,
     gateway_stream: Option<SocketStream>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
@@ -86,103 +79,27 @@ impl LinuxDaemon {
 
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
-            uvm_stream: Arc::new(Mutex::new(uvm_stream)),
+            uvm_stream,
             gateway_stream,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
 
-    pub fn run(&mut self) -> Result<(), Error> {
-        // Start the thread that will poll input from the gateway.
-        // TODO: when one linuxd instance manages more than one input stream we should encapsulate
-        // this logic.
-        let (gw_stdin_tx, gw_stdout_tx) = if let Some(gateway_stream) = &self.gateway_stream {
-            // For the STDIN channel senders (TX) need to wait for a response from the IO thread,
-            // hence they send, together with the ReadRequest, the send endpoint of a channel where
-            // they will wait for the response. For STDOUT senders need not to wait, hence no need
-            // to also send the channel endpoint.
-            let (gw_stdin_tx, gw_stdin_rx) = mpsc::channel::<(ReadRequest, Sender<Message>)>();
-            let (gw_stdout_tx, gw_stdout_rx) = mpsc::channel::<WriteRequest>();
-
-            // Make sure that the input stream from the gateway is set to blocking, as otherwise we
-            // would not be able to differentiate between an EOF and a race between the application
-            // code and the gateway.
-            let mut gw_stdin_stream = gateway_stream
-                .try_clone()
-                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to clone stream"))?;
-            gw_stdin_stream
-                .set_nonblocking(false)
-                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to set non-blocing socket"))?;
-
-            let _gw_stdin_thread: JoinHandle<Result<()>> = std::thread::spawn(move || {
-                loop {
-                    // Block waiting for the user VM to request reading from STDIN.
-                    match gw_stdin_rx.recv() {
-                        Ok((_read_request, response_tx)) => {
-                            let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                [0u8; ReadResponse::BUFFER_SIZE];
-                            let num_read = match gw_stdin_stream.read(&mut response_buf) {
-                                Ok(n) => n,
-                                Err(e) => {
-                                    let reason: String =
-                                        format!("failed to read STDIN from gateway: {e:?}");
-                                    error!("{}", reason);
-                                    return Err(anyhow::anyhow!(reason));
-                                },
-                            };
-                            response_tx.send(ReadResponse::build(
-                                0.into(),
-                                num_read as c_ssize_t,
-                                response_buf,
-                            ))?;
-                        },
-                        Err(RecvError) => {
-                            // This may happen during shutdown.
-                            debug!("gateway STDIN channel disconnected");
-                            break Ok(());
-                        },
-                    }
-                }
-            });
-
-            let mut gw_stdout_stream = gateway_stream
-                .try_clone()
-                .map_err(|_| Error::new(ErrorCode::IoErr, "failed to clone stream"))?;
-            let _gw_stdout_thread: JoinHandle<Result<()>> = std::thread::spawn(move || {
-                loop {
-                    // Block waiting the user VM to request writing to stdout.
-                    match gw_stdout_rx.recv() {
-                        Ok(write_request) => {
-                            gw_stdout_stream
-                                .write_all(&write_request.buffer[..write_request.count as usize])?;
-
-                            // We don't need to send anything in response of the write, as the
-                            // writting thread has already moved on.
-                        },
-                        Err(RecvError) => {
-                            // This may happen during shutdown.
-                            debug!("gateway STDOUT channel disconnected");
-                            break Ok(());
-                        },
-                    }
-                }
-            });
-
-            (Some(gw_stdin_tx), Some(gw_stdout_tx))
-        } else {
-            (None, None)
-        };
-
+    pub fn run(self) -> Result<(), Error> {
         // Map keeping track of the worker threads associated the user VM.
         let mut worker_threads: VecDeque<WorkerThreadHandle> = VecDeque::new();
 
+        // Handle around the user VM.
+        let uvm_handle: UserVmHandle =
+            UserVmHandle::new(DEFAULT_CONNECTION_ID, self.uvm_stream, self.gateway_stream);
+
         loop {
-            let uvm_stream: Arc<Mutex<SocketStream>> = self.uvm_stream.clone();
+            let uvm_handle: UserVmHandle = uvm_handle.clone();
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
             let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
 
             // Receive a message from the user virtual machine.
-            let message: Message = match Self::recv(uvm_stream.clone()) {
+            let message: Message = match Self::recv(uvm_handle.get_user_vm_stream()) {
                 Ok(message) => message,
 
                 Err(error_kind) => match error_kind {
@@ -272,7 +189,8 @@ impl LinuxDaemon {
                         Err(error) => {
                             warn!("failed to join new virtual environment (error={error:?})");
                             let message: Message = crate::build_error(source, error.code);
-                            uvm_stream
+                            uvm_handle
+                                .get_user_vm_stream()
                                 .lock()
                                 .unwrap()
                                 .write_all(&message.to_bytes())
@@ -290,9 +208,6 @@ impl LinuxDaemon {
             // Spawn a new worker thread, if necessary.
             if let Some(channel_rx) = channel_rx {
                 // Spawn a thread to handle the message.
-                let venv: Arc<Mutex<VirtualEnviromentDirectory>> = venv.clone();
-                let gw_stdin_tx = gw_stdin_tx.clone();
-                let gw_stdout_tx = gw_stdout_tx.clone();
                 let assembler = assembler.clone();
 
                 // Spawn an interruptible thread to handle the message.
@@ -300,10 +215,7 @@ impl LinuxDaemon {
                     source,
                     channel_rx,
                     channel_tx.clone(),
-                    uvm_stream,
-                    gw_stdin_tx,
-                    gw_stdout_tx,
-                    venv,
+                    uvm_handle,
                     assembler,
                 )?;
                 worker_threads.push_back(worker_thread_handle);
