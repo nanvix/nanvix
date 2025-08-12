@@ -8,9 +8,6 @@
 /// I/O operations.
 pub mod ioctl;
 
-/// Memory management declarations.
-pub mod mman;
-
 /// Definitions for resource operations.
 pub mod resource;
 
