@@ -32,7 +32,6 @@ CMD_NAME_HELP="help"
 # Option names.
 OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
-OPT_NAME_NON_INTERACTIVE="--non-interactive"
 OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
 
 # Name of the Docker image with the Nanvix toolchain.
@@ -56,11 +55,9 @@ NC='\033[0m'        # No Color
 
 # Options from cache.
 LAST_BUILD_WITH_DOCKER=false  # Was the last build done with Docker?
-LAST_NON_INTERACTIVE=false    # Was the last build done in non-interactive mode?
 
 # Current options.
 BUILD_WITH_DOCKER=false    # Build with Docker?
-NON_INTERACTIVE=false      # Run Docker in non-interactive mode?
 WITH_CACHED_OPTIONS=false  # Use cached options (if any)?
 
 #==================================================================================================
@@ -170,8 +167,8 @@ Utility for building Nanvix.
 
 Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
-  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
-  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
+  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
   ./z ${CMD_NAME_HELP}
 
 Commands
@@ -181,7 +178,6 @@ Commands
 
 Options
   ${OPT_NAME_WITH_DOCKER}         Build Nanvix using Docker instead of the native toolchain.
-  ${OPT_NAME_NON_INTERACTIVE}     Run Docker in non-interactive mode.
   ${OPT_NAME_WITH_CACHED_OPTIONS} Use cached options from the last build.
 EOF
 }
@@ -205,10 +201,6 @@ build_docker_command() {
     local group_id
     user_id="$(id -u)"
     group_id="$(id -g)"
-    local non_interactive_flag="-it"
-    if ${NON_INTERACTIVE}; then
-        non_interactive_flag=""
-    fi
 
     # Check if the Docker is not installed.
     if ! command -v docker >/dev/null 2>&1; then
@@ -231,7 +223,7 @@ build_docker_command() {
         exit 1
     fi
 
-    echo "docker run ${non_interactive_flag} --rm \
+    echo "docker run --rm \
         -v \"$(pwd):/mnt\" \
         ${image_name} \
         /bin/bash -l -c '\
@@ -262,7 +254,6 @@ write_cache() {
 #   Reads the last build command and options from the cache file.
 #   Sets the following global variables based on whether the cache contains the Docker option:
 #   - LAST_BUILD_WITH_DOCKER: true if the last build was done with Docker, false otherwise.
-#   - LAST_NON_INTERACTIVE: true if the last build was done in non-interactive
 #
 # Usage Example
 #   read_cache
@@ -279,8 +270,6 @@ read_cache() {
         for arg in "${cache_lines[@]}"; do
             if [[ "$arg" == "${OPT_NAME_WITH_DOCKER}" ]]; then
                 LAST_BUILD_WITH_DOCKER=true
-            elif [[ "$arg" == "${OPT_NAME_NON_INTERACTIVE}" ]]; then
-                LAST_NON_INTERACTIVE=true
             elif [[ "$arg" == "${OPT_NAME_SEPARATOR}" ]]; then
                 break
             fi
@@ -327,10 +316,6 @@ main() {
                 BUILD_WITH_DOCKER=true
                 shift
                 ;;
-            "${OPT_NAME_NON_INTERACTIVE}")
-                NON_INTERACTIVE=true
-                shift
-                ;;
             "${OPT_NAME_WITH_CACHED_OPTIONS}")
                 WITH_CACHED_OPTIONS=true
                 shift
@@ -360,14 +345,10 @@ main() {
         if ! ${BUILD_WITH_DOCKER}; then
             BUILD_WITH_DOCKER=${LAST_BUILD_WITH_DOCKER}
         fi
-        if ! ${NON_INTERACTIVE}; then
-            NON_INTERACTIVE=${LAST_NON_INTERACTIVE}
-        fi
     fi
 
     print_info "Command: ${command}"
     print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
-    print_info "Non Interactive: ${NON_INTERACTIVE}"
     print_info "Build Parameters: ${build_parameters[*]}"
 
     case "${command}" in
@@ -408,7 +389,6 @@ main() {
             # Save current build command and options to cache.
             cache_args=("${command}")
             ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
-            ${NON_INTERACTIVE} && cache_args+=("${OPT_NAME_NON_INTERACTIVE}")
             cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
             write_cache "${cache_args[@]}"
             ;;
