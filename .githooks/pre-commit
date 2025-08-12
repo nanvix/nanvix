@@ -71,7 +71,7 @@ main() {
     trap 'rm -f "$tmpfile"' EXIT
 
     # Run code formatting check.
-    if ! eval "${build_command} format-check" >${tmpfile} 2>&1 ; then
+    if ! eval "${build_command} format-check" > "${tmpfile}" 2>&1 ; then
         # Code formatting check failed, print the output.
         cat "${tmpfile}"
         print_error "(pre-commit) Format check failed. Please fix formatting before committing."
@@ -81,7 +81,7 @@ main() {
     print_success "(pre-commit) Code formatting check passed successfully."
 
     # Run code linting check.
-    if ! eval "${build_command} lint-check" >${tmpfile} 2>&1 ; then
+    if ! eval "${build_command} lint-check" > "${tmpfile}" 2>&1 ; then
         # Code linting check failed, print the output.
         cat "${tmpfile}"
         print_error "(pre-commit) Lint check failed. Please fix linting issues before committing."
