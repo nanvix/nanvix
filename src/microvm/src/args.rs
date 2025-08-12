@@ -38,10 +38,10 @@ pub struct Args {
     memory_size: usize,
     /// Standard error.
     vm_stderr: Option<String>,
-    /// Gateway address.
-    gateway_addr: Option<String>,
-    /// Gateway socket type.
-    gateway_socket_type: Option<String>,
+    /// System VM address.
+    system_vm_addr: Option<String>,
+    /// System VM socket type.
+    system_vm_socket_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -61,10 +61,10 @@ impl Args {
     const OPT_MEMORY_SIZE: &'static str = "-memory";
     /// Command-line option for the standard error.
     const OPT_STDERR: &'static str = "-stderr";
-    /// Command-line option for gateway address.
-    const OPT_GATEWAY: &'static str = "-gateway";
-    /// Command-line option for the gateway socket type.
-    const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
+    /// Command-line option for system VM address.
+    const OPT_SYSTEM_VM_SOCKADDR: &'static str = "-system-vm-addr";
+    /// Command-line option for the system VM socket type.
+    const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
@@ -86,8 +86,8 @@ impl Args {
         let mut initrd_args: Option<String> = None;
         let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
-        let mut gateway_addr: Option<String> = None;
-        let mut gateway_socket_type: Option<String> = None;
+        let mut system_vm_addr: Option<String> = None;
+        let mut system_vm_socket_type: Option<String> = None;
         let mut log_to_file: bool = false;
 
         // Parse command-line arguments.
@@ -148,14 +148,14 @@ impl Args {
                     vm_stderr = Some(args[i + 1].clone());
                     i += 1;
                 },
-                // Set gateway address.
-                Self::OPT_GATEWAY if i + 1 < args.len() => {
-                    gateway_addr = Some(args[i + 1].clone());
+                // Set system VM address.
+                Self::OPT_SYSTEM_VM_SOCKADDR if i + 1 < args.len() => {
+                    system_vm_addr = Some(args[i + 1].clone());
                     i += 1;
                 },
-                // Set gateway socket type.
-                Self::OPT_GATEWAY_SOCKET_TYPE if i + 1 < args.len() => {
-                    gateway_socket_type = Some(args[i + 1].clone());
+                // Set system VM socket type.
+                Self::OPT_SYSTEM_VM_SOCKET_TYPE if i + 1 < args.len() => {
+                    system_vm_socket_type = Some(args[i + 1].clone());
                     i += 1;
                 },
                 // Set log to file flag.
@@ -190,8 +190,8 @@ impl Args {
             initrd_args,
             memory_size,
             vm_stderr,
-            gateway_addr,
-            gateway_socket_type,
+            system_vm_addr,
+            system_vm_socket_type,
             log_to_file,
         })
     }
@@ -210,7 +210,7 @@ impl Args {
             Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,
             Self::OPT_STDERR,
-            Self::OPT_GATEWAY,
+            Self::OPT_SYSTEM_VM_SOCKADDR,
             Self::OPT_LOGFILE,
             Self::OPT_INITRD_ARGS,
         );
@@ -288,29 +288,29 @@ impl Args {
     ///
     /// # Description
     ///
-    /// Returns the gateway address that was passed as a command-line argument to the program.
+    /// Returns the address of the system VM that was passed as a command-line argument to the program.
     ///
     /// # Returns
     ///
-    /// The gateway address that was passed as a command-line argument to the program.
+    /// The system VM address that was passed as a command-line argument to the program.
     ///
-    pub fn gateway_addr(&mut self) -> Option<String> {
-        self.gateway_addr.take()
+    pub fn system_vm_addr(&mut self) -> Option<String> {
+        self.system_vm_addr.take()
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket address type of the gateway socket that was passed as a command-line
+    /// Returns the socket address type of the system VM socket that was passed as a command-line
     /// argument to the program.
     ///
     /// # Returns
     ///
-    /// The socket address type of the gateway socket that was passed as a command-line argument to
+    /// The socket address type of the system VM socket that was passed as a command-line argument to
     /// the program.
     ///
-    pub fn gateway_socket_type(&mut self) -> Option<String> {
-        self.gateway_socket_type.take()
+    pub fn system_vm_socket_type(&mut self) -> Option<String> {
+        self.system_vm_socket_type.take()
     }
 
     ///
