@@ -1,0 +1,34 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::sysapi::{
+    errno::__errno_location,
+    sys_stat,
+};
+use sysapi::ffi::c_int;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Safety
+///
+/// This function has undefined behavior if buf points to an invalid memory location.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
+    ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
+    match crate::sys::stat::fstat(fd, &mut *buf) {
+        Ok(_) => 0,
+        Err(error) => {
+            ::syslog::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            *__errno_location() = error.code.get();
+            -1
+        },
+    }
+}
