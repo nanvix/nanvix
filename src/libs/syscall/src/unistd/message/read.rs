@@ -109,4 +109,9 @@ impl ReadResponse {
         );
         message
     }
+
+    /// Creates an EOF (end-of-file) ReadResponse with count=0 and an empty buffer.
+    pub fn eof(tid: ThreadIdentifier) -> Message {
+        Self::build(tid, 0, [0u8; Self::BUFFER_SIZE])
+    }
 }
