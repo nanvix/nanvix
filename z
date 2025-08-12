@@ -358,12 +358,6 @@ main() {
                 fi
             fi
 
-            # Save current build command and options to cache.
-            cache_args=("${command}")
-            ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
-            ${NON_INTERACTIVE} && cache_args+=("${OPT_NAME_NON_INTERACTIVE}")
-            cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
-            write_cache "${cache_args[@]}"
 
             # Build Nanvix.
             if ${BUILD_WITH_DOCKER}; then
@@ -379,6 +373,13 @@ main() {
                     exit 1
                 fi
             fi
+
+            # Save current build command and options to cache.
+            cache_args=("${command}")
+            ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
+            ${NON_INTERACTIVE} && cache_args+=("${OPT_NAME_NON_INTERACTIVE}")
+            cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
+            write_cache "${cache_args[@]}"
             ;;
 
         "${CMD_NAME_CLEANUP}")
