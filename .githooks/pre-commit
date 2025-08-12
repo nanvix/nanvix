@@ -128,7 +128,7 @@ main() {
     # Check if Docker is unavailable or the Docker image is missing.
     if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
         # Fallback to running the format using a native toolchain.
-        build_command="./z build"
+        build_command="./z build --"
     fi
 
     # Create a temporary file to capture output.
