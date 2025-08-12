@@ -21,6 +21,9 @@ set -euo pipefail
 # Root directory of the repository.
 REPO_ROOT_DIR=$(git rev-parse --show-toplevel)
 
+# Cargo.toml file path.
+CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
+
 # Command names.
 CMD_NAME_BUILD="build"
 CMD_NAME_CLEANUP="cleanup"
@@ -32,7 +35,7 @@ OPT_NAME_WITH_DOCKER="--with-docker"
 OPT_NAME_NON_INTERACTIVE="--non-interactive"
 
 # Name of the Docker image with the Nanvix toolchain.
-DOCKER_IMAGE_NAME="nanvix/toolchain"
+DOCKER_IMAGE_BASE_NAME="nanvix/toolchain"
 
 # Path to the toolchain inside the Docker image.
 DOCKER_IMAGE_TOOLCHAIN_PATH="/opt/nanvix"
@@ -118,6 +121,40 @@ print_warning() {
 }
 
 #
+# DESCRIPTION
+#   Extracts the current version from the Cargo.toml file.
+#
+# ARGUMENTS
+#   $1 - The path to the Cargo.toml file.
+#
+# RETURNS
+#   The current version as a string in the format MAJOR.MINOR.PATCH.
+#
+# USAGE EXAMPLE
+#   current_version=$(extract_current_version "path/to/Cargo.toml")
+#
+extract_current_version() {
+    local cargo_toml="$1"
+
+    # Check if the Cargo.toml file does not exist.
+    if [[ ! -f "$cargo_toml" ]]; then
+        print_error "Cargo.toml not found at $cargo_toml"
+        exit 1
+    fi
+
+    local current_version
+    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
+
+    # Check if version was not extracted successfully.
+    if [[ -z "$current_version" ]]; then
+        print_error "Could not extract version from Cargo.toml"
+        exit 1
+    fi
+
+    echo "$current_version"
+}
+
+#
 # Description
 #   Prints help information on stdout.
 #
@@ -168,9 +205,31 @@ build_docker_command() {
     if ${NON_INTERACTIVE}; then
         non_interactive_flag=""
     fi
+
+    # Check if the Docker is not installed.
+    if ! command -v docker >/dev/null 2>&1; then
+        print_error "Docker is not installed. Please install Docker to build with Docker."
+        exit 1
+    fi
+
+    local current_version
+    current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+
+    # Build image tag version by replacing patch with "x".
+    local image_tag_version
+    image_tag_version="${current_version%.*}.x"
+
+    local image_name="${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
+
+    # Check if Docker is unavailable or the Docker image is missing.
+    if ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
+        print_error "Docker image '${image_name}' not found. Please pull it first."
+        exit 1
+    fi
+
     echo "docker run ${non_interactive_flag} --rm \
         -v \"$(pwd):/mnt\" \
-        ${DOCKER_IMAGE_NAME} \
+        ${image_name} \
         /bin/bash -l -c '\
             cd /mnt ; \
             git config --global --add safe.directory /mnt ; \
