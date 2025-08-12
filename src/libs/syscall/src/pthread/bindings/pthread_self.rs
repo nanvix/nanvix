@@ -5,21 +5,22 @@
 // Imports
 //==================================================================================================
 
-use ::sysapi::{
-    ffi::c_int,
-    sys_types::pthread_key_t,
-};
-use ::syscall::pthread;
+use ::sysapi::sys_types::pthread_t;
 
 //==================================================================================================
-// pthread_key_delete()
+// Standalone Functions
 //==================================================================================================
 
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Returns the thread identifier of the calling thread.
+///
+/// # Returns
+///
+/// The thread identifier of the calling thread.
+///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    match pthread::pthread_key_delete(key) {
-        Ok(()) => 0,
-        Err(error) => error.code.get(),
-    }
+pub extern "C" fn pthread_self() -> pthread_t {
+    crate::pthread::pthread_self()
 }

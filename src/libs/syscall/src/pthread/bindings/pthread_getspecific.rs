@@ -6,20 +6,19 @@
 //==================================================================================================
 
 use ::sysapi::{
-    ffi::c_int,
+    ffi::c_void,
     sys_types::pthread_key_t,
 };
-use ::syscall::pthread;
 
 //==================================================================================================
-// pthread_key_delete()
+// Standalone Functions
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    match pthread::pthread_key_delete(key) {
-        Ok(()) => 0,
-        Err(error) => error.code.get(),
+pub unsafe extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
+    match crate::pthread::pthread_getspecific(key) {
+        Ok(value) => value.into(),
+        Err(_error) => core::ptr::null_mut(),
     }
 }

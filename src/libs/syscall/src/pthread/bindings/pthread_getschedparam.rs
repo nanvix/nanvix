@@ -7,19 +7,22 @@
 
 use ::sysapi::{
     ffi::c_int,
-    sys_types::pthread_key_t,
+    sched::sched_param,
+    sys_types::pthread_t,
 };
-use ::syscall::pthread;
 
 //==================================================================================================
-// pthread_key_delete()
+// Standalone Functions
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    match pthread::pthread_key_delete(key) {
-        Ok(()) => 0,
-        Err(error) => error.code.get(),
-    }
+pub unsafe extern "C" fn pthread_getschedparam(
+    _thread: pthread_t,
+    _policy: *mut c_int,
+    _param: *mut sched_param,
+) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/725
+    ::syslog::warn!("pthread_getschedparam(): not implemented");
+    0
 }
