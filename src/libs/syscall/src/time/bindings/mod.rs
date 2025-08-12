@@ -2,17 +2,11 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Standalone Functions
+// Modules
 //==================================================================================================
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "syscall")] {
-        mod syscall;
-        pub use self::syscall::{
-            clock_getres,
-            clock_gettime,
-            nanosleep,
-        };
-        pub mod bindings;
-    }
-}
+pub mod clock_getres;
+pub mod clock_gettime;
+pub mod gettimeofday;
+pub mod nanosleep;
+pub mod usleep;
