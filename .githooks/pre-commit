@@ -11,12 +11,6 @@ set -euo pipefail
 # Global Variables
 #===================================================================================================
 
-# Directories.
-REPO_ROOT_DIR=$(git rev-parse --show-toplevel) # /
-
-# Cargo.toml file path.
-CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
-
 # Colors
 RED='\033[0;31m'    # Red
 GREEN='\033[0;32m'  # Green
@@ -54,61 +48,13 @@ print_success() {
     echo -e "${GREEN}[INFO] ${1}${NC}"
 }
 
-#
-# DESCRIPTION
-#   Prints a message on stdout.
-#
-# ARGUMENTS
-#   $1 - The message to print.
-#
-# USAGE EXAMPLE
-#   print "Print an uncolored message."
-#
-print_message() {
-    echo -e "[INFO] ${1}"
-}
-
-#
-# DESCRIPTION
-#   Extracts the current version from the Cargo.toml file.
-#
-# ARGUMENTS
-#   $1 - The path to the Cargo.toml file.
-#
-# RETURNS
-#   The current version as a string in the format MAJOR.MINOR.PATCH.
-#
-# USAGE EXAMPLE
-#   current_version=$(extract_current_version "path/to/Cargo.toml")
-#
-extract_current_version() {
-    local cargo_toml="$1"
-
-    # Check if the Cargo.toml file does not exist.
-    if [[ ! -f "$cargo_toml" ]]; then
-        print_error "Cargo.toml not found at $cargo_toml"
-        exit 1
-    fi
-
-    local current_version
-    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
-
-    # Check if version was not extracted successfully.
-    if [[ -z "$current_version" ]]; then
-        print_error "Could not extract version from Cargo.toml"
-        exit 1
-    fi
-
-    echo "$current_version"
-}
-
 #===================================================================================================
 # Main Script
 #===================================================================================================
 
 main() {
     # By default, use Docker to run the code formatting check.
-    local build_command="./z build --with-docker --"
+    local build_command="./z build --with-cached-options --"
 
     # Check if we are not running inside a Git repository.
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -116,20 +62,9 @@ main() {
         exit 1
     fi
 
-    local current_version
-    current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
-
-    # Build image tag version by replacing patch with "x".
-    local image_tag_version
-    image_tag_version="${current_version%.*}.x"
-
-    local image_name="nanvix/toolchain:v${image_tag_version}"
-
-    # Check if Docker is unavailable or the Docker image is missing.
-    if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
-        # Fallback to running the format using a native toolchain.
-        build_command="./z build --"
-    fi
+    # No need to check for Docker installation or the correct Docker image here. This script uses
+    # cached build options, and all necessary environment checks were already performed when the
+    # build cache was created.
 
     # Create a temporary file to capture output.
     tmpfile="$(mktemp)"
