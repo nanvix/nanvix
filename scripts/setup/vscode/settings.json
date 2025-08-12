@@ -12,5 +12,7 @@
         "check"
     ],
     // NOTE: Assuming that you have a symbolic link to the toolchain in your workspace folder.
-    "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc"
+    "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc",
+    // Format settings for Vim.
+    "vim.textwidth": 100
 }
