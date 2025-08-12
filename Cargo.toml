@@ -106,7 +106,7 @@ type-safe = { path = "src/libs/type-safe", default-features = false }
 uuid = { version = "1.17.0", features = ["v4"] }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
-wasmi = { version = "0.49.0", default-features = false }
+wasmi = { version = "0.50.0", default-features = false }
 
 [profile.dev]
 opt-level = 0
