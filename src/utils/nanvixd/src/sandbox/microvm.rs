@@ -39,7 +39,7 @@ impl Microvm {
             format!("{}/kernel.elf", binary_directory),
             "-initrd".to_string(),
             program.to_string(),
-            "-gateway".to_string(),
+            "-system-vm-addr".to_string(),
             addr.to_string(),
         ];
 
