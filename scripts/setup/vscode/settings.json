@@ -3,9 +3,12 @@
     "editor.formatOnSave": true,
     "rust-analyzer.cargo.allTargets": false,
     "rust-analyzer.checkOnSave": true,
-    // NOTE: Use 'make check' instead of 'cargo check', as this project requires custom build steps.
+    // NOTE: Use './z --with-cached-options -- check' to ensure compatibility with the preferred build workflow during development.
     "rust-analyzer.check.overrideCommand": [
-        "make",
+        "./z",
+        "build",
+        "--with-cached-options",
+        "--",
         "check"
     ],
     // NOTE: Assuming that you have a symbolic link to the toolchain in your workspace folder.
