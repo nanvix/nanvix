@@ -169,24 +169,6 @@ pub unsafe extern "C" fn fchmodat(
 }
 
 ///
-/// # Safety
-///
-/// This function has undefined behavior if buf points to an invalid memory location.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
-    ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
-    match stat::fstat(fd, &mut *buf) {
-        Ok(_) => 0,
-        Err(error) => {
-            ::syslog::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
 /// # Description
 ///
 /// Sets the access and modification times of a file descriptor.
@@ -316,58 +298,6 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::
         Err(error) => {
             ::syslog::error!(
                 "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
-                pathname,
-                statbuf,
-                error
-            );
-            *__errno_location() = error.code.get();
-            -1
-        },
-    }
-}
-
-///
-/// # Description
-///
-/// Obtains information about the file named `pathname`.
-///
-/// # Parameters
-///
-/// - `pathname`: Path to the file.
-/// - `statbuf`: Buffer to store file information.
-///
-/// # Returns
-///
-/// Upon successful completion, `0` is returned. Upon failure, it returns -1 and sets `errno` to
-/// indicate the error.
-///
-/// # See Also
-///
-/// - [`crate::sys::stat::stat`]
-///
-/// # Safety
-///
-/// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int {
-    // Convert C string to Rust string.
-    let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
-        Ok(pathname) => pathname,
-        Err(_) => {
-            ::syslog::error!("stat(): invalid pathname");
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        },
-    };
-
-    let statbuf: &mut sys_stat::stat = &mut *statbuf;
-
-    match stat::stat(pathname, statbuf) {
-        Ok(_) => 0,
-        Err(error) => {
-            ::syslog::error!(
-                "stat(): failed (pathname={}, statbuf={:p}, error={:?})",
                 pathname,
                 statbuf,
                 error
