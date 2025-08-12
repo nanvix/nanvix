@@ -131,7 +131,7 @@ pub fn main() -> Result<()> {
     };
 
     // Connect the control-plane socket.
-    let _control_plane_socket: SocketStream =
+    let control_plane_stream: SocketStream =
         match SocketStream::connect(control_plane_socket_type, control_plane_sockaddr.clone()) {
             Ok(socket) => {
                 info!("Connected to control plane on: {:?}", control_plane_sockaddr);
@@ -213,10 +213,11 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    let procd: LinuxDaemon = match LinuxDaemon::init(user_vm_stream, gateway_stream) {
-        Ok(procd) => procd,
-        Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
-    };
+    let procd: LinuxDaemon =
+        match LinuxDaemon::init(control_plane_stream, user_vm_stream, gateway_stream) {
+            Ok(procd) => procd,
+            Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
+        };
 
     // Run main procd loop.
     let procd_ret = procd.run();
