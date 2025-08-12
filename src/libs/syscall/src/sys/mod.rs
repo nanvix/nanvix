@@ -5,6 +5,9 @@
 // Modules
 //==================================================================================================
 
+/// Memory management operations.
+pub mod mman;
+
 /// Sockets.
 pub mod socket;
 
