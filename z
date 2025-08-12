@@ -33,6 +33,7 @@ CMD_NAME_HELP="help"
 OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
 OPT_NAME_NON_INTERACTIVE="--non-interactive"
+OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
 
 # Name of the Docker image with the Nanvix toolchain.
 DOCKER_IMAGE_BASE_NAME="nanvix/toolchain"
@@ -53,12 +54,14 @@ NC='\033[0m'        # No Color
 # Global Variables
 #==================================================================================================
 
-# Options for the last build command.
-LAST_BUILD_WITH_DOCKER=false # Was the last build done with Docker?
+# Options from cache.
+LAST_BUILD_WITH_DOCKER=false  # Was the last build done with Docker?
+LAST_NON_INTERACTIVE=false    # Was the last build done in non-interactive mode?
 
 # Current options.
-BUILD_WITH_DOCKER=false # Build with Docker?
-NON_INTERACTIVE=false   # Run Docker in non-interactive mode?
+BUILD_WITH_DOCKER=false    # Build with Docker?
+NON_INTERACTIVE=false      # Run Docker in non-interactive mode?
+WITH_CACHED_OPTIONS=false  # Use cached options (if any)?
 
 #==================================================================================================
 # Functions
@@ -167,7 +170,7 @@ Utility for building Nanvix.
 
 Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
-  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
   ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_NON_INTERACTIVE}]
   ./z ${CMD_NAME_HELP}
 
@@ -177,8 +180,9 @@ Commands
   help     Prints the help information.
 
 Options
-  ${OPT_NAME_WITH_DOCKER}  Builds Nanvix using Docker instead of the native toolchain.
-  ${OPT_NAME_NON_INTERACTIVE}       Runs Docker in non-interactive mode.
+  ${OPT_NAME_WITH_DOCKER}         Build Nanvix using Docker instead of the native toolchain.
+  ${OPT_NAME_NON_INTERACTIVE}     Run Docker in non-interactive mode.
+  ${OPT_NAME_WITH_CACHED_OPTIONS} Use cached options from the last build.
 EOF
 }
 
@@ -256,20 +260,31 @@ write_cache() {
 #
 # Description
 #   Reads the last build command and options from the cache file.
-#   Sets LAST_BUILD_WITH_DOCKER based on whether the cache contains the Docker option.
+#   Sets the following global variables based on whether the cache contains the Docker option:
+#   - LAST_BUILD_WITH_DOCKER: true if the last build was done with Docker, false otherwise.
+#   - LAST_NON_INTERACTIVE: true if the last build was done in non-interactive
 #
 # Usage Example
 #   read_cache
 #
 read_cache() {
     if [[ -f "${Z_CACHE_FILE}" ]]; then
-        local cache_content
-        cache_content=$(cat "${Z_CACHE_FILE}")
-        if [[ "${cache_content}" == *"${OPT_NAME_WITH_DOCKER}"* ]]; then
-            LAST_BUILD_WITH_DOCKER=true
-        else
-            LAST_BUILD_WITH_DOCKER=false
+        local cache_lines
+        mapfile -t cache_lines < "${Z_CACHE_FILE}"
+        # Check if the cache file is empty.
+        if [[ ${#cache_lines[@]} -eq 0 ]]; then
+            return
         fi
+        # Process the cache lines to determine the last build options.
+        for arg in "${cache_lines[@]}"; do
+            if [[ "$arg" == "${OPT_NAME_WITH_DOCKER}" ]]; then
+                LAST_BUILD_WITH_DOCKER=true
+            elif [[ "$arg" == "${OPT_NAME_NON_INTERACTIVE}" ]]; then
+                LAST_NON_INTERACTIVE=true
+            elif [[ "$arg" == "${OPT_NAME_SEPARATOR}" ]]; then
+                break
+            fi
+        done
     fi
 }
 
@@ -316,6 +331,10 @@ main() {
                 NON_INTERACTIVE=true
                 shift
                 ;;
+            "${OPT_NAME_WITH_CACHED_OPTIONS}")
+                WITH_CACHED_OPTIONS=true
+                shift
+                ;;
             "${OPT_NAME_SEPARATOR}")
                 shift
                 break
@@ -333,6 +352,18 @@ main() {
         build_parameters+=("$1")
         shift
     done
+
+    # If using cache, restore variables from cache if not set by command line
+    if ${WITH_CACHED_OPTIONS}; then
+        print_info "Using cached build options."
+        # Only override if not set by command line
+        if ! ${BUILD_WITH_DOCKER}; then
+            BUILD_WITH_DOCKER=${LAST_BUILD_WITH_DOCKER}
+        fi
+        if ! ${NON_INTERACTIVE}; then
+            NON_INTERACTIVE=${LAST_NON_INTERACTIVE}
+        fi
+    fi
 
     print_info "Command: ${command}"
     print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
