@@ -29,9 +29,6 @@ pub mod dlfcn;
 /// System error numbers.
 pub mod errno;
 
-/// Time types.
-pub mod time;
-
 /// Virtual environments.
 pub mod venv;
 
