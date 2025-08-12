@@ -837,7 +837,7 @@ impl WorkerThreadHandle {
                 error!(
                     "handle_read_request(): process tried to read from stdin but no gateway found"
                 );
-                return Ok(ReadResponse::build(source, 0, [0u8; ReadResponse::BUFFER_SIZE]));
+                return Ok(ReadResponse::eof(source));
             };
 
             let response: Result<Message, WorkerThreadError> = {
@@ -846,11 +846,7 @@ impl WorkerThreadHandle {
                     Ok(g) => g,
                     Err(e) => {
                         error!("gateway stream mutex poisoned (error={e:?})");
-                        return Ok(ReadResponse::build(
-                            source,
-                            0,
-                            [0u8; ReadResponse::BUFFER_SIZE],
-                        ));
+                        return Ok(ReadResponse::eof(source));
                     },
                 };
 
@@ -866,11 +862,7 @@ impl WorkerThreadHandle {
                                 "handle_read_request(): error receiving request response from \
                                  gateway STDIN: EOF"
                             );
-                            break Ok(ReadResponse::build(
-                                source,
-                                0,
-                                [0u8; ReadResponse::BUFFER_SIZE],
-                            ));
+                            break Ok(ReadResponse::eof(source));
                         },
                         Ok(n) => {
                             debug!("read {n} bytes from gateway: {response_buf:?}");
@@ -885,11 +877,7 @@ impl WorkerThreadHandle {
                                 "handle_read_request(): error reading data from gateway \
                                  (error={e:?})"
                             );
-                            break Ok(ReadResponse::build(
-                                source,
-                                0,
-                                [0u8; ReadResponse::BUFFER_SIZE],
-                            ));
+                            break Ok(ReadResponse::eof(source));
                         },
                     };
                 }
