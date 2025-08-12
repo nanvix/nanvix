@@ -66,9 +66,9 @@ fn main() -> Result<ExitCode> {
     let initrd_args: Option<String> = args.initrd_args();
     let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
-    let gateway_addr: Option<String> = args.gateway_addr();
+    let system_vm_addr: Option<String> = args.system_vm_addr();
 
-    let gateway_socket_type: SocketType = match args.gateway_socket_type() {
+    let system_vm_socket_type: SocketType = match args.system_vm_socket_type() {
         Some(typ) => match SocketType::from_str(typ.as_str()) {
             Ok(typ) => typ,
             Err(error) => {
@@ -82,8 +82,8 @@ fn main() -> Result<ExitCode> {
     // Initialize logger. If this fails, the program will panic.
     logging::initialize(args.log_to_file());
 
-    let gateway: Option<Gateway> = match &gateway_addr {
-        Some(addr) => match SocketStream::connect(gateway_socket_type, addr.clone()) {
+    let gateway: Option<Gateway> = match &system_vm_addr {
+        Some(addr) => match SocketStream::connect(system_vm_socket_type, addr.clone()) {
             Ok(stream) => Some(Gateway::new(stream)),
             Err(e) => {
                 let reason: String =
