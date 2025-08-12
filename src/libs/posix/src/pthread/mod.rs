@@ -33,51 +33,8 @@ use ::syscall::pthread::{
 /// Mutexes.
 pub mod mutex;
 
-/// Condition variables.
-pub mod cond;
-
 /// Thread-specific data area.
 pub mod tda;
-
-//==================================================================================================
-// pthread_attr_destroy()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Destroys a thread attributes object.
-///
-/// # Parameters
-///
-/// - `attr`: Thread attributes object.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-///
-/// - `attr` points to a valid `pthread_attr_t` structure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_int {
-    ::syslog::trace!("pthread_attr_destroy(): attr={:?}", attr);
-
-    // Check if `attr` is not valid.
-    if attr.is_null() {
-        ::syslog::error!("pthread_attr_destroy(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.get();
-    }
-
-    (*attr).is_initialized = 0;
-
-    0
-}
 
 //==================================================================================================
 // pthread_attr_getdetachstate()
@@ -411,116 +368,6 @@ pub unsafe extern "C" fn pthread_attr_getstack(
 }
 
 //==================================================================================================
-// pthread_attr_init()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Initializes a thread attributes object with default values.
-///
-/// # Parameters
-///
-/// - `attr`: Thread attributes object.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-///
-/// - `attr` points to a valid `pthread_attr_t` structure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
-    ::syslog::trace!("pthread_attr_init(): attr={:?}", attr);
-
-    // Check if `attr` is not valid.
-    if attr.is_null() {
-        ::syslog::error!("pthread_attr_init(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.get();
-    }
-
-    *attr = pthread_attr_t::default();
-
-    0
-}
-
-//==================================================================================================
-// pthread_create()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Creates a new thread.
-///
-/// # Parameters
-///
-/// - `thread`: Thread identifier.
-/// - `attr`: Thread attributes.
-/// - `start_routine`: Thread function.
-/// - `arg`: Argument passed to the thread function.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it dereferences raw pointers.
-///
-/// It is call to safe this function if the following conditions are met:
-///
-/// - `thread` points to a valid `pthread_t` structure.
-/// - If `attr` is not null, it points to a valid `pthread_attr_t` structure.
-/// - `start_routine` is a valid function pointer.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_create(
-    thread: *mut pthread_t,
-    attr: *const pthread_attr_t,
-    start_routine: extern "C" fn(usize) -> usize,
-    arg: usize,
-) -> c_int {
-    ::syslog::trace!(
-        "pthread_create(): thread={:?}, attr={:?}, start_routine={:#x?}, arg={:#x?}",
-        thread,
-        attr,
-        start_routine as usize,
-        arg
-    );
-
-    // Check if `thread` is not valid.
-    if thread.is_null() {
-        ::syslog::error!("pthread_create(): invalid thread pointer");
-        return ErrorCode::InvalidArgument.get();
-    }
-
-    // Cast `thread` to a mutable reference.
-    let thread: &mut pthread_t = &mut *thread;
-
-    // Check if we should use default attributes.
-    if attr.is_null() {
-        // TODO: use default attributes.
-    } else {
-        ::syslog::warn!("pthread_create(): attributes are not supported, ignoring");
-    }
-
-    match pthread::pthread_create(start_routine, arg) {
-        Ok(tid) => {
-            *thread = tid;
-            0
-        },
-        Err(error) => error.code.get(),
-    }
-}
-
-//==================================================================================================
 // pthread_detach()
 //==================================================================================================
 
@@ -582,53 +429,6 @@ pub extern "C" fn pthread_equal(thread1: pthread_t, thread2: pthread_t) -> c_int
 }
 
 //==================================================================================================
-// pthread_join()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Waits for a thread to terminate.
-///
-/// # Parameters
-///
-/// - `thread`: Thread identifier.
-/// - `retval_ptr`: Pointer to the location where the return value of the thread will be stored.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is call to safe this function if the following conditions are met:
-///
-/// - If `retval_ptr` is not null, it points to a valid pointer.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c_void) -> c_int {
-    ::syslog::trace!(
-        "pthread_join(): _thread={:?}, retval_ptr={:?}, *retval={:?}",
-        thread,
-        retval_ptr,
-        *retval_ptr
-    );
-
-    match pthread::pthread_join(thread) {
-        Ok(retval) => {
-            ::syslog::trace!("pthread_join(): retval={:#x?}", retval);
-            if !retval_ptr.is_null() {
-                *retval_ptr = retval as *mut c_void;
-            }
-            0
-        },
-        Err(error) => error.code.get(),
-    }
-}
-
-//==================================================================================================
 // pthread_once()
 //==================================================================================================
 
@@ -666,24 +466,6 @@ pub unsafe extern "C" fn pthread_once(
     // TODO: https://github.com/nanvix/nanvix/issues/513
     ::syslog::error!("pthread_once(): not implemented");
     0
-}
-
-//==================================================================================================
-// pthread_self()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Returns the thread identifier of the calling thread.
-///
-/// # Returns
-///
-/// The thread identifier of the calling thread.
-///
-#[unsafe(no_mangle)]
-pub extern "C" fn pthread_self() -> pthread_t {
-    pthread::pthread_self()
 }
 
 //==================================================================================================
@@ -922,89 +704,6 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
     // TODO: implement this function.
     ::syslog::warn!("pthread_attr_setstackaddr(): not supported, failing");
     ErrorCode::OperationNotSupported.get()
-}
-
-//==================================================================================================
-// pthread_attr_setstacksize()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Sets the stack size attribute in a thread attributes object.
-///
-/// # Parameters
-///
-/// - `attr`: Thread attributes object.
-/// - `stacksize`: New stack size.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-///
-/// - `attr` points to a valid `pthread_attr_t` structure.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_attr_setstacksize(
-    attr: *mut pthread_attr_t,
-    stacksize: c_size_t,
-) -> c_int {
-    ::syslog::trace!("pthread_attr_setstacksize(): attr={:?}, stacksize={:?}", attr, stacksize);
-
-    // Check if `attr` is not valid.
-    if attr.is_null() {
-        ::syslog::error!("pthread_attr_setstacksize(): invalid attribute pointer");
-        return ErrorCode::InvalidArgument.get();
-    }
-
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setstacksize(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
-}
-
-//==================================================================================================
-// pthread_setcancelstate()
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Sets the cancelability state of the calling thread.
-///
-/// # Parameters
-///
-/// - `state`: New cancelability state.
-/// - `oldstate`: Old cancelability state.
-///
-/// # Returns
-///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
-///
-/// # Safety
-///
-/// This function is unsafe because it may dereference raw pointers.
-///
-/// It is safe to call this function if the following conditions are met:
-///
-/// - `oldstate` points to a valid `c_int` variable.
-///
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_int) -> c_int {
-    // Check if `oldstate` is not valid.
-    if oldstate.is_null() {
-        ::syslog::error!("pthread_setcancelstate(): invalid old state pointer");
-        return ErrorCode::InvalidArgument.get();
-    }
-
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_setcancelstate(): not supported, ignoring");
-    0
 }
 
 //==================================================================================================

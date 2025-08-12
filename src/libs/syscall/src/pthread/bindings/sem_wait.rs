@@ -5,21 +5,17 @@
 // Imports
 //==================================================================================================
 
-use ::sysapi::{
-    ffi::c_int,
-    sys_types::pthread_key_t,
-};
-use ::syscall::pthread;
+use ::sysapi::ffi::c_int;
+use sysapi::ffi::c_void;
 
 //==================================================================================================
-// pthread_key_delete()
+// Standalone Functions
 //==================================================================================================
 
+// TODO: add description
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    match pthread::pthread_key_delete(key) {
-        Ok(()) => 0,
-        Err(error) => error.code.get(),
-    }
+pub unsafe extern "C" fn sem_wait(_sem: *mut c_void) -> c_int {
+    // TODO: https://github.com/nanvix/nanvix/issues/724
+    unimplemented!()
 }
