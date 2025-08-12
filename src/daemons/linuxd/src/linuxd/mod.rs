@@ -183,10 +183,23 @@ impl LinuxDaemon {
                         Err(error) => {
                             warn!("failed to join new virtual environment (error={error:?})");
                             let message: Message = crate::build_error(source, error.code);
-                            uvm_handle
-                                .get_user_vm_stream()
-                                .lock()
-                                .unwrap()
+
+                            let uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>> =
+                                uvm_handle.get_user_vm_stream();
+                            let mut guard: MutexGuard<'_, (SocketStream, VecDeque<u8>)> =
+                                match uvm_stream.lock() {
+                                    Ok(guard) => guard,
+                                    Err(e) => {
+                                        error!(
+                                            "error acquiring lock on user VM stream (error={e:?})"
+                                        );
+                                        continue;
+                                    },
+                                };
+                            let (locked_uvm_stream, _): &mut (SocketStream, VecDeque<u8>) =
+                                &mut guard;
+
+                            locked_uvm_stream
                                 .write_all(&message.to_bytes())
                                 .map_err(|_| {
                                     let reason = "failed to write to user VM stream";
@@ -236,16 +249,52 @@ impl LinuxDaemon {
         Ok(())
     }
 
-    // Read a message from the user VM stream.
-    fn recv(uvm_stream: Arc<Mutex<SocketStream>>) -> Result<Message, ErrorKind> {
+    /// Read a message from the user VM stream. We need to handle the situation where we can only
+    /// do a partial read, so we keep a buffer alongside our socket. It is safe to have this buffer
+    /// dynamically sized, as it will always be smaller than one message size.
+    fn recv(uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>) -> Result<Message, ErrorKind> {
+        let mut guard: MutexGuard<'_, (SocketStream, VecDeque<u8>)> = match uvm_stream.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("error acquiring lock on user VM stream (error={e:?})");
+                return Err(ErrorKind::InvalidData);
+            },
+        };
+        let (locked_uvm_stream, partial_read_buffer): &mut (SocketStream, VecDeque<u8>) =
+            &mut guard;
+
         let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
             [0u8; config::kernel::IPC_MESSAGE_SIZE];
 
-        let mut locked_uvm_stream: MutexGuard<'_, SocketStream> = uvm_stream.lock().unwrap();
+        let mut num_filled = 0;
+        if !partial_read_buffer.is_empty() {
+            // Prepare data in buffer for partial read.
+            partial_read_buffer.make_contiguous();
+            let partial_bytes = partial_read_buffer.as_slices().0;
 
-        if let Err(e) = locked_uvm_stream.try_read_exact(&mut buf) {
-            return Err(e.kind());
-        };
+            // We take the minimum at the end just in case, but the partial read should always be
+            // strictly smaller than the message size.
+            let num_partial_read = partial_bytes.len().min(buf.len());
+
+            buf[..num_partial_read].copy_from_slice(&partial_bytes[..num_partial_read]);
+
+            // Clear partial read buffer.
+            partial_read_buffer.clear();
+            num_filled += num_partial_read;
+        }
+        // Post-condition: partial_read_buffer is empty.
+
+        match locked_uvm_stream.try_read_exact(&mut buf[num_filled..]) {
+            Ok(n) => {
+                // Handle partial reads by copying all we have read to the partial read buffer and
+                // returning a WouldBlock indicating that we need more data.
+                if n + num_filled < buf.len() {
+                    partial_read_buffer.extend(&buf[..(n + num_filled)]);
+                    return Err(ErrorKind::WouldBlock);
+                }
+            },
+            Err(e) => return Err(e.kind()),
+        }
 
         let message: Message = match Message::try_from_bytes(buf) {
             Ok(message) => message,
