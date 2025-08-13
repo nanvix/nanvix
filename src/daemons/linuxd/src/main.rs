@@ -48,6 +48,7 @@ use ::flexi_logger::{
 };
 use ::std::{
     env,
+    io::ErrorKind,
     str::FromStr,
     sync::Once,
 };
@@ -167,6 +168,7 @@ pub fn main() -> Result<()> {
                 info!("Connected to user VM in: {:?}", stream.peer_addr());
                 break stream;
             },
+            Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
             Err(error) => {
                 error!("Failed to accept connection: {error:?}");
                 continue;
@@ -200,6 +202,7 @@ pub fn main() -> Result<()> {
                         info!("Connected to gateway in: {:?}", stream.peer_addr());
                         break Some(stream);
                     },
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                     Err(error) => {
                         error!("Failed to accept connection: {error:?}");
                         continue;
