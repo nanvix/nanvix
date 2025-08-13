@@ -7,7 +7,15 @@
 
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
-use ::std::process::Stdio;
+use ::mio::Poll;
+use ::std::{
+    process::Stdio,
+    time::Duration,
+};
+use ::syscomm::{
+    SocketListener,
+    SocketStream,
+};
 use ::tokio::process::{
     Child,
     Command,
@@ -20,6 +28,9 @@ use ::tokio::process::{
 pub struct Microvm {
     child: Option<Child>,
     addr: String,
+    #[allow(dead_code)]
+    // FIXME: the micro VM still does not support processing messages from the control-plane.
+    control_plane_stream: SocketStream,
 }
 
 //==================================================================================================
@@ -27,13 +38,17 @@ pub struct Microvm {
 //==================================================================================================
 
 impl Microvm {
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         program: &str,
         program_args: Option<&str>,
         addr: &str,
+        control_plane_addr: &str,
         stderr: Option<&str>,
         hwloc: Option<HwLoc>,
         binary_directory: &str,
+        control_plane_listener: &mut SocketListener,
+        control_plane_poll: &mut Poll,
     ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", binary_directory),
@@ -44,6 +59,8 @@ impl Microvm {
             program.to_string(),
             "-system-vm-addr".to_string(),
             addr.to_string(),
+            "-control-plane-addr".to_string(),
+            control_plane_addr.to_string(),
         ];
 
         if let Some(program_args) = program_args {
@@ -79,9 +96,37 @@ impl Microvm {
             stderr
         );
 
+        // After the user VM has started, accept the incoming connection for the control-plane.
+        // Post-condition: once the connection has been accepted, the user VM has been able to
+        // connect to the system VM (if an address is provided).
+        let control_plane_stream: SocketStream = match control_plane_listener.accept_timeout(
+            control_plane_poll,
+            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+        ) {
+            Ok(stream) => stream,
+            Err(e) => {
+                // If the user VM has not accepted the control-plane connection, it means that
+                // something went wrong during start-up. We kill the process ignoring errors,
+                // and return an error.
+                let reason: String =
+                    format!("error connecting control-plane to user VM (error={e:?})");
+                error!("{reason}");
+
+                // Use a SIGKILL because the process is already faulty.
+                if let Some(pid) = child.id() {
+                    debug!("killing user VM instance (pid={pid:?})");
+                    let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+                }
+
+                return Err(anyhow::anyhow!("{reason}"));
+            },
+        };
+        debug!("nanvixd received connection from the user VM's control-plane socket");
+
         Ok(Self {
             child: Some(child),
             addr: addr.to_string(),
+            control_plane_stream,
         })
     }
 }

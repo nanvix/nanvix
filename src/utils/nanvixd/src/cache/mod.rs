@@ -12,18 +12,35 @@ use crate::sandbox::{
     tag::SandboxTag,
 };
 use ::anyhow::Result;
+use ::mio::{
+    Interest,
+    Poll,
+    Token,
+};
 use ::std::{
     collections::HashMap,
     sync::Arc,
 };
+use ::syscomm::{
+    Socket,
+    SocketListener,
+    SocketType,
+};
 use ::tokio::sync::Mutex;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// This is the token we use to register the control-plane listener socket in the poll structure.
+/// Right now, we only keep this socket in the poll.
+const CONTROL_PLANE_LISTENER_TOKEN: Token = Token(0);
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
 /// A cache of sandboxes.
-#[derive(Clone)]
 pub struct SandboxCache {
     // Members holding the state of the cache.
     /// Main table of sandboxes managed by this nanvixd instance.
@@ -31,10 +48,16 @@ pub struct SandboxCache {
     /// Table containing linuxd instances. The key is the tenant id as, for the moment, we deploy
     /// only one linuxd instance per tenant.
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
-
     // Auxiliary index structures.
     /// Reverse index mapping a sandbox ID to a sandbox tag.
     sandbox_index: HashMap<String, SandboxTag>,
+
+    // Control-plane members.
+    /// Listener socket on the control-plane address. Right now each different linuxd and user VM
+    /// instances have their own control-plane socket.
+    control_plane_listener: Option<SocketListener>,
+    /// Poll structure to support accepting connections into the control-plane with a timeout.
+    control_plane_poll: Option<Poll>,
 }
 
 impl SandboxCache {
@@ -56,6 +79,8 @@ impl SandboxCache {
             user_vm_instances: HashMap::new(),
             linuxd_instances: HashMap::new(),
             sandbox_index: HashMap::new(),
+            control_plane_listener: None,
+            control_plane_poll: None,
         }))
     }
 
@@ -81,6 +106,59 @@ impl SandboxCache {
         if !self.user_vm_instances.contains_key(tag) {
             // Cache miss.
             if let Some(sandbox_config) = config {
+                // Start control-plane listener socket lazily.
+                // FIXME(#764): make SocketType configurable.
+                if self.control_plane_listener.is_none() {
+                    let control_plane_sockaddr = sandbox_config.control_plane_sockaddr();
+                    let mut control_plane_listener =
+                        match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
+                            Ok(listener) => listener,
+                            Err(e) => {
+                                error!(
+                                    "failed to bind control-plane listening socket \
+                                     (address={control_plane_sockaddr}, error={e:?})"
+                                );
+                                return Err(anyhow::anyhow!(
+                                    "failed to bind control-plane listening socket"
+                                ));
+                            },
+                        };
+
+                    // Add control-plane socket to a poll structure so that we can accept
+                    // connections with a timeout.
+                    let poll: Poll = Poll::new().map_err(|e| {
+                        let reason: String =
+                            format!("failed to create control-plane poll (error={e:?})");
+                        error!("{reason}");
+                        anyhow::anyhow!("{reason}")
+                    })?;
+                    poll.registry()
+                        .register(
+                            &mut control_plane_listener,
+                            CONTROL_PLANE_LISTENER_TOKEN,
+                            Interest::READABLE,
+                        )
+                        .map_err(|e| {
+                            let reason: String =
+                                format!("failed to create control-plane poll (error={e:?})");
+                            error!("{reason}");
+                            anyhow::anyhow!("{reason}")
+                        })?;
+
+                    self.control_plane_listener = Some(control_plane_listener);
+                    self.control_plane_poll = Some(poll);
+                }
+
+                let control_plane_listener = self
+                    .control_plane_listener
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("control-plane listener is none"))?;
+
+                let control_plane_poll = self
+                    .control_plane_poll
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("control-plane poll is none"))?;
+
                 debug!("creating sandbox {tag:?}");
                 if !self.linuxd_instances.contains_key(tag.tenant_id()) {
                     // If this is the first user VM we deploy for this tenant, we first need to
@@ -93,6 +171,8 @@ impl SandboxCache {
                             sandbox_config.gateway_sockaddr(),
                             sandbox_config.hwloc(),
                             sandbox_config.binary_directory(),
+                            control_plane_listener,
+                            control_plane_poll,
                         )?),
                     );
                 }
@@ -104,9 +184,12 @@ impl SandboxCache {
                         sandbox_config.program(),
                         sandbox_config.program_args(),
                         sandbox_config.user_vm_sockaddr(),
+                        sandbox_config.control_plane_sockaddr(),
                         sandbox_config.console_file(),
                         sandbox_config.hwloc(),
                         sandbox_config.binary_directory(),
+                        control_plane_listener,
+                        control_plane_poll,
                     )?),
                 );
                 self.sandbox_index
