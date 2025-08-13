@@ -169,10 +169,12 @@ pub enum SocketStream {
 
 impl SocketStream {
     /// Creates a new socket stream.
-    pub fn connect(typ: SocketType, addr: String) -> Result<SocketStream> {
+    pub fn connect(typ: SocketType, addr: String) -> Result<SocketStream, io::Error> {
         match typ {
             SocketType::Tcp => {
-                let stream: TcpStream = TcpStream::connect(addr.parse()?)?;
+                let stream: TcpStream = TcpStream::connect(addr.parse().map_err(|_| {
+                    io::Error::new(ErrorKind::InvalidData, format!("invalid TCP address: {addr}"))
+                })?)?;
                 Ok(SocketStream::Tcp(stream))
             },
             SocketType::Unix => {
