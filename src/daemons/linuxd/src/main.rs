@@ -177,8 +177,6 @@ pub fn main() -> Result<()> {
     };
 
     // Start listening for requests for requests to feed input to the user VM.
-    // TODO: this logic will be moved to inside the main linuxd loop once we support running
-    // multiple user VM instances per linuxd.
     let gateway_listener: Option<SocketListener> = match gateway_sockaddr {
         Some(ref sockaddr) => match Socket::bind(gateway_bind_socket_type, sockaddr.clone()) {
             Ok(stream) => {
@@ -193,28 +191,8 @@ pub fn main() -> Result<()> {
         None => None,
     };
 
-    let gateway_stream: Option<SocketStream> = match gateway_listener {
-        Some(gateway_listener) => {
-            info!("Listening to gateway on: {:?}", gateway_sockaddr);
-            loop {
-                match gateway_listener.accept() {
-                    Ok(stream) => {
-                        info!("Connected to gateway in: {:?}", stream.peer_addr());
-                        break Some(stream);
-                    },
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
-                    Err(error) => {
-                        error!("Failed to accept connection: {error:?}");
-                        continue;
-                    },
-                }
-            }
-        },
-        None => None,
-    };
-
     let procd: LinuxDaemon =
-        match LinuxDaemon::init(control_plane_stream, user_vm_stream, gateway_stream) {
+        match LinuxDaemon::init(control_plane_stream, user_vm_stream, gateway_listener) {
             Ok(procd) => procd,
             Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),
         };
