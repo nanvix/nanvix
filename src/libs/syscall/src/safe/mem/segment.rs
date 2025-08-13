@@ -103,6 +103,58 @@ impl MemorySegment {
     ///
     /// # Description
     ///
+    /// Returns the base address of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the memory segment.
+    ///
+    pub fn base(&self) -> VirtualAddress {
+        self.base
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the capacity of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The capacity of the memory segment in bytes.
+    ///
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the memory segment.
+    ///
+    pub fn base(&self) -> VirtualAddress {
+        self.base
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the capacity of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The capacity of the memory segment in bytes.
+    ///
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    ///
+    /// # Description
+    ///
     /// Loads data into the target memory segment.
     ///
     /// # Parameters
