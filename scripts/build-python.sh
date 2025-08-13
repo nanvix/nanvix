@@ -4,6 +4,11 @@
 # Licensed under the MIT License.
 
 #===================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#===================================================================================================
 # Script Arguments
 #===================================================================================================
 
@@ -20,7 +25,7 @@ export CPYTHON_HOME=${CONTRIB_DIR}/cpython
 export CPYTHON_REPOSITORY=https://github.com/nanvix/cpython
 export CPYTHON_COMMIT=8efd04f0457041f3d56a6a634e8fca73eddad2d0
 
-export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
+export NANVIX_HOME=${NANVIX_HOME:-$(git rev-parse --show-toplevel)}
 
 #===================================================================================================
 # Configure
@@ -41,15 +46,15 @@ configure() {
         --disable-shared \
         --build=x86_64-pc-linux-gnux32 \
         --host=i686-nanvix \
-        --with-build-python=${TOOLCHAIN_DIR}/bin/python3 \
+        --with-build-python="${TOOLCHAIN_DIR}"/bin/python3 \
         --disable-test-modules \
-        --with-libc=$TOOLCHAIN_DIR/i686-nanvix/lib/libc.a \
-        --with-libm=$TOOLCHAIN_DIR/i686-nanvix/lib/libm.a \
-        --prefix=$SYSROOT_DIR \
-        --exec-prefix=$SYSROOT_DIR \
+        --with-libc="${TOOLCHAIN_DIR}"/i686-nanvix/lib/libc.a \
+        --with-libm="${TOOLCHAIN_DIR}"/i686-nanvix/lib/libm.a \
+        --prefix="${SYSROOT_DIR}" \
+        --exec-prefix="${SYSROOT_DIR}" \
         --with-ensurepip=no \
         --with-pkg-config=no \
-        --with-openssl=$SYSROOT_DIR \
+        --with-openssl="${SYSROOT_DIR}" \
         --disable-ipv6 \
         ac_cv_file__dev_ptmx=no \
         ac_cv_file__dev_ptc=no \
@@ -90,7 +95,7 @@ distclean() {
 
 make_all() {
     cd "${CPYTHON_HOME}"
-    make -j `nproc` all
+    make -j "$(nproc)" all
 }
 
 #===================================================================================================
@@ -127,10 +132,10 @@ build() {
 #===================================================================================================
 
 init() {
-mkdir -p ${CONTRIB_DIR}
+mkdir -p "${CONTRIB_DIR}"
     if [ ! -d "${CPYTHON_HOME}/.git" ];
     then
-        git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
+        git clone "${CPYTHON_REPOSITORY}" "${CPYTHON_HOME}"
         cd "${CPYTHON_HOME}"
     else
         cd "${CPYTHON_HOME}"
@@ -143,32 +148,18 @@ mkdir -p ${CONTRIB_DIR}
 #===================================================================================================
 
 # Save current environment variables.
-OLD_AR=$AR
-OLD_AS=$AS
 OLD_CC=$CC
 OLD_CXX=$CXX
-OLD_CPP=$CPP
-OLD_LD=$LD
 OLD_CFLAGS=$CFLAGS
 OLD_CXXFLAGS=$CXXFLAGS
 OLD_LD_FLAGS=$LDFLAGS
-OLD_LIBC=$LIBC
-OLD_LIBM=$LIBM
-OLD_LIBS=$LIBS
 
 # Unset variables that might interfere with the build process.
-unset AR
-unset AS
 unset CC
 unset CXX
-unset CPP
-unset LD
 unset CFLAGS
 unset CXXFLAGS
 unset LDFLAGS
-unset LIBC
-unset LIBM
-unset LIBS
 
 case $RULE in
     build)
@@ -186,15 +177,8 @@ case $RULE in
 esac
 
 # Restore original environment variables.
-export AR=$OLD_AR
-export AS=$OLD_AS
 export CC=$OLD_CC
 export CXX=$OLD_CXX
-export CPP=$OLD_CPP
-export LD=$OLD_LD
 export CFLAGS=$OLD_CFLAGS
 export CXXFLAGS=$OLD_CXXFLAGS
 export LDFLAGS=$OLD_LD_FLAGS
-export LIBC=$OLD_LIBC
-export LIBM=$OLD_LIBM
-export LIBS=$OLD_LIBS
