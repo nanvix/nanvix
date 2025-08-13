@@ -50,7 +50,21 @@ pub struct MemorySegment {
 }
 
 impl MemorySegment {
+    ///
+    /// # Description
+    ///
     /// Creates a new memory segment.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: Base address of the segment.
+    /// - `capacity`: Capacity of the segment in bytes.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns a `MemorySegment` with the specified base address and capacity.
+    /// On failure, it returns an `Error` indicating the reason for the failure.
+    ///
     pub fn new(base: VirtualAddress, capacity: usize) -> Result<Self, Error> {
         ::syslog::trace!("new(): base={:#x?}, capacity={:?}", base.into_raw_value(), capacity);
 
@@ -86,7 +100,21 @@ impl MemorySegment {
         })
     }
 
+    ///
+    /// # Description
+    ///
     /// Loads data into the target memory segment.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: Offset in the segment where the data should be loaded.
+    /// - `bytes`: Slice of bytes to be loaded into the segment.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns empty. On failure, it returns an `Error` indicating the
+    /// reason for the failure.
+    ///
     pub fn load(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
         ::syslog::trace!(
             "load(): base={:#x?}, offset={:#x?}, bytes.len={:?}",
