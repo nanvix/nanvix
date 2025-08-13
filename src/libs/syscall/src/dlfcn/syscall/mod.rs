@@ -17,7 +17,6 @@ mod dlclose;
 mod dlopen;
 mod dlsym;
 mod dynlib;
-mod segment;
 
 //==================================================================================================
 // Imports

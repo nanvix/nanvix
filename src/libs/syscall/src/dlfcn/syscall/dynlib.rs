@@ -5,17 +5,15 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    dlfcn::syscall::segment::MemorySegment,
-    safe::{
-        FileSystem,
-        FileSystemAttributes,
-        FileSystemPath,
-        FileType,
-        RegularFile,
-        RegularFileOffset,
-        RegularFileOpenFlags,
-    },
+use crate::safe::{
+    mem::segment::MemorySegment,
+    FileSystem,
+    FileSystemAttributes,
+    FileSystemPath,
+    FileType,
+    RegularFile,
+    RegularFileOffset,
+    RegularFileOpenFlags,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
