@@ -29,10 +29,8 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::std::{
-    io::{
-        ErrorKind,
-        Read,
-    },
+    collections::VecDeque,
+    io::ErrorKind,
     mem,
     ptr,
     sync::{
@@ -140,6 +138,7 @@ use ::syscall::{
     LINUXD,
 };
 use ::syscomm::{
+    BlockingSocketStream,
     SocketError,
     SocketStream,
 };
@@ -255,8 +254,8 @@ impl WorkerThreadHandle {
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
-        let uvm_stream: Arc<Mutex<SocketStream>> = uvm_handle.get_user_vm_stream();
-        let gw_stream: Option<Arc<Mutex<SocketStream>>> = uvm_handle.get_gw_vm_stream();
+        let uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>> = uvm_handle.get_user_vm_stream();
+        let gw_stream: Option<Arc<Mutex<BlockingSocketStream>>> = uvm_handle.get_gw_vm_stream();
 
         loop {
             let message: Message = match channel_rx.recv() {
@@ -452,7 +451,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
-        gw_stream: Option<Arc<Mutex<SocketStream>>>,
+        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
@@ -611,7 +610,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_request_messages(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -687,7 +686,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_response_messages(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -710,14 +709,24 @@ impl WorkerThreadHandle {
     }
 
     // Send a message to the TCP stream.
-    fn send(uvm_stream: Arc<Mutex<SocketStream>>, message: Message) -> Result<(), SocketError> {
+    fn send(
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        message: Message,
+    ) -> Result<(), SocketError> {
         let bytes = message.to_bytes();
 
         loop {
-            let mut locked_uvm_stream = uvm_stream.lock().unwrap();
+            let mut guard: MutexGuard<'_, (SocketStream, VecDeque<u8>)> = match uvm_stream.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    error!("error acquiring lock on user VM stream (error={e:?})");
+                    return Err(std::io::Error::other("error acquiring lock").into());
+                },
+            };
+            let (locked_uvm_stream, _): &mut (SocketStream, VecDeque<u8>) = &mut guard;
 
             match locked_uvm_stream.write_all(&bytes) {
-                Ok(_) => break Ok(()),
+                Ok(()) => break Ok(()),
                 Err(e) => {
                     match e.kind() {
                         ErrorKind::WouldBlock => {
@@ -770,7 +779,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_write_request(
-        gw_stream: Option<Arc<Mutex<SocketStream>>>,
+        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Result<Message, WorkerThreadError> {
@@ -824,7 +833,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_read_request(
-        gw_stream: Option<Arc<Mutex<SocketStream>>>,
+        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
         source: ThreadIdentifier,
         request: ReadRequest,
     ) -> Result<Message, WorkerThreadError> {
@@ -842,44 +851,41 @@ impl WorkerThreadHandle {
 
             let response: Result<Message, WorkerThreadError> = {
                 // Take the lock (handle poison however you prefer)
-                let mut locked_gw_stream: MutexGuard<'_, SocketStream> = match gw_stream.lock() {
-                    Ok(g) => g,
-                    Err(e) => {
-                        error!("gateway stream mutex poisoned (error={e:?})");
-                        return Ok(ReadResponse::eof(source));
-                    },
-                };
-
-                // Read from the gateway thread.
-                loop {
-                    let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                        [0u8; ReadResponse::BUFFER_SIZE];
-                    // Blocking read from the gateway socket to make sure we can be interrupted if
-                    // necessary.
-                    match locked_gw_stream.read(&mut response_buf) {
-                        Ok(0) => {
-                            error!(
-                                "handle_read_request(): error receiving request response from \
-                                 gateway STDIN: EOF"
-                            );
-                            break Ok(ReadResponse::eof(source));
-                        },
-                        Ok(n) => {
-                            debug!("read {n} bytes from gateway: {response_buf:?}");
-                            break Ok(ReadResponse::build(source, n as c_ssize_t, response_buf));
-                        },
-                        Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
-                        Err(e) if e.kind() == ErrorKind::Interrupted => {
-                            return Err(WorkerThreadError::Interrupted)
-                        },
+                let mut locked_gw_stream: MutexGuard<'_, BlockingSocketStream> =
+                    match gw_stream.lock() {
+                        Ok(g) => g,
                         Err(e) => {
-                            error!(
-                                "handle_read_request(): error reading data from gateway \
-                                 (error={e:?})"
-                            );
-                            break Ok(ReadResponse::eof(source));
+                            error!("gateway stream mutex poisoned (error={e:?})");
+                            return Ok(ReadResponse::eof(source));
                         },
                     };
+
+                // Read from the gateway thread.
+                let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                    [0u8; ReadResponse::BUFFER_SIZE];
+                // Blocking read from the gateway socket to make sure we can be interrupted if
+                // necessary.
+                match locked_gw_stream.read(&mut response_buf) {
+                    Ok(0) => {
+                        error!(
+                            "handle_read_request(): error receiving request response from gateway \
+                             STDIN: EOF"
+                        );
+                        Ok(ReadResponse::eof(source))
+                    },
+                    Ok(n) => {
+                        debug!("read {n} bytes from gateway: {response_buf:?}");
+                        Ok(ReadResponse::build(source, n as c_ssize_t, response_buf))
+                    },
+                    Err(e) if e.kind() == ErrorKind::Interrupted => {
+                        return Err(WorkerThreadError::Interrupted)
+                    },
+                    Err(e) => {
+                        error!(
+                            "handle_read_request(): error reading data from gateway (error={e:?})"
+                        );
+                        Ok(ReadResponse::eof(source))
+                    },
                 }
             };
 
@@ -891,7 +897,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_fstat_request(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -907,7 +913,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getcwd_request(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(source)?;
@@ -921,7 +927,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getdents_request(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -939,7 +945,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_request<T>(
-        uvm_stream: Arc<Mutex<SocketStream>>,
+        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
