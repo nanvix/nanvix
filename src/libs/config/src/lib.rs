@@ -74,6 +74,15 @@ pub mod syscomm {
     /// the same time.
     ///
     pub const MAX_NUM_POLL_EVENTS: usize = 128;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the timeout we should use when accepting a connection. This timeout is used when
+    /// manually accepting connections, and it is needed to account for races between both ends.
+    /// These races should be in the order of milliseconds.
+    ///
+    pub const ACCEPT_TIMEOUT_SECS: u64 = 1;
 }
 
 //==================================================================================================
