@@ -5,17 +5,15 @@
 // Imports
 //===================================================================================================
 
-use crate::{
-    dlfcn::syscall::segment::MemorySegment,
-    safe::{
-        FileSystem,
-        FileSystemAttributes,
-        FileSystemPath,
-        FileType,
-        RegularFile,
-        RegularFileOffset,
-        RegularFileOpenFlags,
-    },
+use crate::safe::{
+    mem::segment::MemorySegment,
+    FileSystem,
+    FileSystemAttributes,
+    FileSystemPath,
+    FileType,
+    RegularFile,
+    RegularFileOffset,
+    RegularFileOpenFlags,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -56,6 +54,7 @@ use ::sys::{
     },
     mm::{
         self,
+        AccessPermission,
         Address,
         VirtualAddress,
     },
@@ -217,7 +216,8 @@ impl DynamicLibrary {
                         };
 
                         // Create memory segment.
-                        let mut segment: MemorySegment = MemorySegment::new(base, capacity)?;
+                        let mut segment: MemorySegment =
+                            MemorySegment::new(base, capacity, AccessPermission::RDWR)?;
                         segment.load(
                             offset,
                             &bytes
