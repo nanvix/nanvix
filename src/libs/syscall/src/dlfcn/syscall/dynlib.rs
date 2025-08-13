@@ -54,6 +54,7 @@ use ::sys::{
     },
     mm::{
         self,
+        AccessPermission,
         Address,
         VirtualAddress,
     },
@@ -215,7 +216,8 @@ impl DynamicLibrary {
                         };
 
                         // Create memory segment.
-                        let mut segment: MemorySegment = MemorySegment::new(base, capacity)?;
+                        let mut segment: MemorySegment =
+                            MemorySegment::new(base, capacity, AccessPermission::RDWR)?;
                         segment.load(
                             offset,
                             &bytes
