@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
+    errno::__errno_location,
     ffi::c_int,
     sys_types::pid_t,
 };
@@ -17,8 +17,9 @@ use ::sysapi::{
 //==================================================================================================
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kill(_pid: pid_t, _signal: c_int) -> c_int {
-    ::syslog::trace!("kill(): pid = {}, signal = {}", _pid, _signal);
+pub extern "C" fn kill(pid: pid_t, signal: c_int) -> c_int {
+    ::syslog::trace!("kill(): pid ={pid}, signal={signal}");
+
     // TODO: Implement this system call.
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
