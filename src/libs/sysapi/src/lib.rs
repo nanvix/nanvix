@@ -55,6 +55,9 @@ pub mod sched;
 /// Standard type definitions.
 pub mod stddef;
 
+/// Memory management operations.
+pub mod sys_mman;
+
 /// Definitions for resource operations.
 pub mod sys_resource;
 
