@@ -16,7 +16,9 @@ use ::anyhow::Result;
 use ::std::{
     env,
     process,
+    str::FromStr,
 };
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Public Structures
@@ -42,6 +44,10 @@ pub struct Args {
     system_vm_addr: Option<String>,
     /// System VM socket type.
     system_vm_socket_type: Option<String>,
+    /// Control-plane address.
+    control_plane_addr: Option<String>,
+    /// Control-plane socket type.
+    control_plane_socket_type: Option<SocketType>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -65,6 +71,10 @@ impl Args {
     const OPT_SYSTEM_VM_SOCKADDR: &'static str = "-system-vm-addr";
     /// Command-line option for the system VM socket type.
     const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
+    /// Command-line option for control-plane address.
+    const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
+    /// Command-line option for the control-plane socket type.
+    const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
@@ -88,6 +98,8 @@ impl Args {
         let mut vm_stderr: Option<String> = None;
         let mut system_vm_addr: Option<String> = None;
         let mut system_vm_socket_type: Option<String> = None;
+        let mut control_plane_addr: Option<String> = None;
+        let mut control_plane_socket_type: Option<SocketType> = None;
         let mut log_to_file: bool = false;
 
         // Parse command-line arguments.
@@ -158,6 +170,24 @@ impl Args {
                     system_vm_socket_type = Some(args[i + 1].clone());
                     i += 1;
                 },
+                // Set control-plane address.
+                Self::OPT_CONTROL_PLANE_SOCKADDR if i + 1 < args.len() => {
+                    control_plane_addr = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set control-plane socket type.
+                Self::OPT_CONTROL_PLANE_SOCKET_TYPE if i + 1 < args.len() => {
+                    match SocketType::from_str(&args[i + 1]) {
+                        Ok(typ) => control_plane_socket_type = Some(typ),
+                        Err(_) => {
+                            let reason: String =
+                                format!("unrecognised socket type: {}", args[i + 1].clone());
+                            error!("{reason}");
+                            return Err(anyhow::anyhow!("{reason}"));
+                        },
+                    }
+                    i += 1;
+                },
                 // Set log to file flag.
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
@@ -192,6 +222,8 @@ impl Args {
             vm_stderr,
             system_vm_addr,
             system_vm_socket_type,
+            control_plane_addr,
+            control_plane_socket_type,
             log_to_file,
         })
     }
@@ -311,6 +343,34 @@ impl Args {
     ///
     pub fn system_vm_socket_type(&mut self) -> Option<String> {
         self.system_vm_socket_type.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the address of the control-plane that was passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The control-plane address that was passed as a command-line argument to the program.
+    ///
+    pub fn control_plane_addr(&mut self) -> Option<String> {
+        self.control_plane_addr.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address type of the control-plane socket that was passed as a command-line
+    /// argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The socket address type of the control-plane socket that was passed as a command-line argument to
+    /// the program.
+    ///
+    pub fn control_plane_socket_type(&mut self) -> Option<SocketType> {
+        self.control_plane_socket_type.take()
     }
 
     ///
