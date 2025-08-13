@@ -112,7 +112,7 @@ To enable logging, consider prepending the above command with `RUST_LOG=debug` o
 Open another terminal to run the MicroVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
 
 ```bash
-./bin/microvm.elf -gateway /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
+./bin/microvm.elf -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
 ```
 
 If you passed a `-gateway-bind-addr` flag to `linuxd` in step 1, you will need to open a netcat session to connect to it:
