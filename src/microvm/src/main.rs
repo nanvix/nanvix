@@ -39,8 +39,10 @@ use ::microvm::{
 use ::std::{
     convert::TryInto,
     env,
+    io::ErrorKind,
     process::ExitCode,
     str::FromStr,
+    time::Duration,
 };
 use ::syscomm::{
     SocketStream,
@@ -51,6 +53,9 @@ use ::syscomm::{
 // Constants
 //==================================================================================================
 
+/// Time-out to back-off when linuxd is not ready to accept our connection. This situation is rare
+/// so we can tolerate a sleep, but the sleep needs to be short as it will affect boot time.
+const CONNECT_TIMEOUT_SLEEP_MS: u64 = 1;
 /// Default socket bind type.
 const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
 
@@ -83,14 +88,28 @@ fn main() -> Result<ExitCode> {
     logging::initialize(args.log_to_file());
 
     let gateway: Option<Gateway> = match &system_vm_addr {
-        Some(addr) => match SocketStream::connect(system_vm_socket_type, addr.clone()) {
-            Ok(stream) => Some(Gateway::new(stream)),
-            Err(e) => {
-                let reason: String =
-                    format!("failed to connect to gateway (gateway_addr={addr:?}, error={e:?})",);
-                error!("main(): {reason}");
-                anyhow::bail!(reason)
-            },
+        Some(addr) => loop {
+            match SocketStream::connect(system_vm_socket_type, addr.clone()) {
+                Ok(stream) => break Some(Gateway::new(stream)),
+                // The micro VM is trying to connect before the system VM's listener socket is
+                // responsive.
+                Err(ref e) if e.kind() == ErrorKind::NotFound => {
+                    std::thread::sleep(Duration::from_millis(CONNECT_TIMEOUT_SLEEP_MS));
+                    continue;
+                },
+                // The micro VM is trying to connect to a socket that is not yet bound.
+                Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
+                    std::thread::sleep(Duration::from_millis(CONNECT_TIMEOUT_SLEEP_MS));
+                    continue;
+                },
+                Err(e) => {
+                    let reason: String = format!(
+                        "failed to connect to system VM (system_vm_addr={addr:?}, error={e:?})",
+                    );
+                    error!("main(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
         },
         None => None,
     };
