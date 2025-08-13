@@ -17,7 +17,10 @@ use ::tokio::process::{
 // Structures
 //==================================================================================================
 
-pub struct Microvm(Option<Child>);
+pub struct Microvm {
+    child: Option<Child>,
+    addr: String,
+}
 
 //==================================================================================================
 // Implementations
@@ -76,13 +79,16 @@ impl Microvm {
             stderr
         );
 
-        Ok(Self(Some(child)))
+        Ok(Self {
+            child: Some(child),
+            addr: addr.to_string(),
+        })
     }
 }
 
 impl Drop for Microvm {
     fn drop(&mut self) {
-        if let Some(mut child) = self.0.take() {
+        if let Some(mut child) = self.child.take() {
             match child.id() {
                 Some(pid) => {
                     let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
@@ -103,6 +109,17 @@ impl Drop for Microvm {
                     error!("failed to wait for user VM to shut down (error={e:?})");
                 }
             });
+
+            // Clean-up the per-micro VM socket file.
+            // FIXME: this won't be necessary once all micro VMs share a socket in one linuxd
+            // instance.
+            match std::fs::remove_file(self.addr.clone()) {
+                Ok(_) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => {
+                    error!("error removing micro VM socket (addr={}, error={e:?})", self.addr)
+                },
+            }
         }
     }
 }
