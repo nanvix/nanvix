@@ -13,6 +13,7 @@
 // Imports
 //==================================================================================================
 
+#include "common.h"
 #include <assert.h>
 #include <unistd.h>
 
@@ -54,34 +55,6 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests if `sbrk()` works.
-static void test_sbrk(void)
-{
-    // Check that `sbrk()` returns a pointer to the end of the heap.
-    void *ptr = sbrk(0);
-    assert(ptr != (void *)-1);
-
-    // Check that `sbrk()` can allocate memory.
-    void *new_ptr = sbrk(4096);
-    assert(new_ptr != (void *)-1);
-    assert(ptr == new_ptr);
-
-    // Check that program break is where we expect it to be.
-    void *new_ptr2 = sbrk(0);
-    assert(new_ptr2 != (void *)-1);
-    assert(new_ptr2 == (void *)((char *)ptr + 4096));
-
-    // Check that `sbrk()` can free memory.
-    void *free_ptr = sbrk(-4096);
-    assert(free_ptr != (void *)-1);
-    assert(free_ptr == (void *)((char *)ptr + 4096));
-
-    // Check that program break is where we expect it to be.
-    void *new_ptr3 = sbrk(0);
-    assert(new_ptr3 != (void *)-1);
-    assert(new_ptr3 == ptr);
-}
-
 /**
  * @brief Tests pthreads system calls.
  *
@@ -95,8 +68,8 @@ int main(int argc, const char *argv[])
     (void)argc;
     (void)argv;
 
-    // Test `sbrk()`.
     test_sbrk();
+    test_mmap_munmap();
 
     // Write magic string to signal that the test passed.
     {
