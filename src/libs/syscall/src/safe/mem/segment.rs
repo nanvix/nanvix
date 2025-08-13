@@ -50,9 +50,33 @@ pub struct MemorySegment {
 }
 
 impl MemorySegment {
+    ///
+    /// # Description
+    ///
     /// Creates a new memory segment.
-    pub fn new(base: VirtualAddress, capacity: usize) -> Result<Self, Error> {
-        ::syslog::trace!("new(): base={:#x?}, capacity={:?}", base.into_raw_value(), capacity);
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: Base address of the segment.
+    /// - `capacity`: Capacity of the segment in bytes.
+    /// - `access`: Access permissions for the segment.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns a `MemorySegment` with the specified base address and capacity.
+    /// On failure, it returns an `Error` indicating the reason for the failure.
+    ///
+    pub fn new(
+        base: VirtualAddress,
+        capacity: usize,
+        access: AccessPermission,
+    ) -> Result<Self, Error> {
+        ::syslog::trace!(
+            "new(): base={:#x?}, capacity={:?}, access={:?}",
+            base.into_raw_value(),
+            capacity,
+            access
+        );
 
         // Check if base address is not page-aligned.
         if !base.is_aligned(PAGE_ALIGNMENT) {
@@ -77,7 +101,12 @@ impl MemorySegment {
 
         let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
-        map_range(pid, base, VirtualAddress::from_raw_value(base.into_raw_value() + capacity))?;
+        map_range(
+            pid,
+            base,
+            VirtualAddress::from_raw_value(base.into_raw_value() + capacity),
+            access,
+        )?;
 
         Ok(MemorySegment {
             pid,
@@ -86,7 +115,47 @@ impl MemorySegment {
         })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The base address of the memory segment.
+    ///
+    pub fn base(&self) -> VirtualAddress {
+        self.base
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the capacity of the memory segment.
+    ///
+    /// # Returns
+    ///
+    /// The capacity of the memory segment in bytes.
+    ///
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    ///
+    /// # Description
+    ///
     /// Loads data into the target memory segment.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: Offset in the segment where the data should be loaded.
+    /// - `bytes`: Slice of bytes to be loaded into the segment.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns empty. On failure, it returns an `Error` indicating the
+    /// reason for the failure.
+    ///
     pub fn load(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
         ::syslog::trace!(
             "load(): base={:#x?}, offset={:#x?}, bytes.len={:?}",
@@ -140,8 +209,9 @@ fn map_range(
     pid: ProcessIdentifier,
     start: VirtualAddress,
     end: VirtualAddress,
+    access: AccessPermission,
 ) -> Result<(), Error> {
-    ::syslog::trace!("map_range(): start={:X?}, end={:X?}", start, end);
+    ::syslog::trace!("map_range(): start={start:X?}, end={end:X?}, access={access:?}");
 
     debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
@@ -155,7 +225,7 @@ fn map_range(
 
         // Attempt to map page.
         let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = mmap(pid, vaddr, AccessPermission::RDWR) {
+        if let Err(error) = mmap(pid, vaddr, access) {
             // Failed to map page, attempt to rollback.
 
             ::syslog::error!(

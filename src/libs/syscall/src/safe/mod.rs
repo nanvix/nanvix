@@ -4,6 +4,7 @@
 pub mod dir;
 pub mod file;
 pub mod fs;
+pub mod mem;
 pub mod time;
 
 pub use file::*;

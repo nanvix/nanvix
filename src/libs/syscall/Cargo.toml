@@ -14,7 +14,7 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
-arch = { workspace = true, optional = true }
+arch = { workspace = true }
 sys = { workspace = true }
 config = { workspace = true }
 cfg-if = { workspace = true }
@@ -43,7 +43,7 @@ default = ["syscall", "dlfcn", "sbrk"]
 staticlib = []
 syscall = ["dep:syslog", "sys/kcall"]
 std = []
-dlfcn = ["dep:sysalloc", "dep:arch", "dep:elf", "dep:goblin"]
+dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
     "core",
     "alloc",
