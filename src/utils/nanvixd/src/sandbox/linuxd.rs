@@ -10,7 +10,6 @@ use ::anyhow::Result;
 use ::hwloc::HwLoc;
 use ::std::process::Stdio;
 use ::syscomm::{
-    BlockingSocketStream,
     Socket,
     SocketStream,
     SocketType,
@@ -26,7 +25,7 @@ use ::tokio::process::{
 
 pub struct LinuxDaemon {
     child: Child,
-    control_plane_stream: BlockingSocketStream,
+    control_plane_stream: SocketStream,
 }
 
 //==================================================================================================
@@ -100,12 +99,9 @@ impl LinuxDaemon {
             }
         };
 
-        let blocking_control_plane_stream: BlockingSocketStream =
-            control_plane_stream.set_blocking()?;
-
         Ok(Self {
             child,
-            control_plane_stream: blocking_control_plane_stream,
+            control_plane_stream,
         })
     }
 
@@ -117,35 +113,9 @@ impl LinuxDaemon {
         ) {
             Ok(()) => {},
             Err(e) => {
-                // FIXME: this send_command is expected to fail until support is implemented in
-                // linuxd.
                 error!("failed to send shutdown command to linuxd (error={e:?})");
             },
         };
-
-        // FIXME: when linuxd reacts on shutdown commands, we will be able to get rid of this
-        // manual kill.
-        match self.child.id() {
-            Some(pid) => {
-                let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
-
-                if ret_code < 0 {
-                    let reason: String = format!(
-                        "error sending SIGINT to linuxd: {}",
-                        std::io::Error::last_os_error()
-                    );
-                    error!("{reason}");
-
-                    return Err(anyhow::anyhow!(reason));
-                }
-            },
-            None => {
-                let reason: String = "linuxd process has no PID".to_string();
-                error!("{reason}");
-
-                return Err(anyhow::anyhow!(reason));
-            },
-        }
 
         // Wait for linuxd instance to finish.
         match self.child.wait().await {
@@ -155,9 +125,7 @@ impl LinuxDaemon {
                         "linuxd returned with non-zero exit status: {:?}",
                         exit_status.code()
                     );
-                    // FIXME: change this debug to error once linuxd dies gracefully after a
-                    // SIGINT.
-                    debug!("{reason}");
+                    error!("{reason}");
 
                     Err(anyhow::anyhow!(reason))
                 } else {
