@@ -26,7 +26,16 @@
 // Modules
 //==================================================================================================
 
-pub mod bindings;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "syscall")] {
+        mod syscalls;
+        pub use self::syscalls::{
+            mmap::mmap,
+            munmap::munmap,
+        };
+        pub mod bindings;
+    }
+}
 
 //==================================================================================================
 // Imports
