@@ -57,10 +57,11 @@ runs:
       echo "EOF" >> $GITHUB_OUTPUT
     shell: bash
   - name: Get PR number if this push relates to an open PR
+    # Only attempt to resolve a PR number when running for a pull_request event
+    if: ${{ github.event_name == 'pull_request' }}
     id: pr
     run: |
-      PR_NUM=$(gh pr list --state open --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')
-      echo "PR_NUM=$PR_NUM" >> $GITHUB_ENV
+      PR_NUM="${{ github.event.pull_request.number }}"
       echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
     shell: bash
     env:
@@ -68,14 +69,15 @@ runs:
   # Check if we have already written a comment once, in order to update it.
   - name: Find benchmark results comment if it exists
     uses: peter-evans/find-comment@v3
-    if: env.PR_NUM != ''
+    # Only on PR workflows, and only if we have a PR number
+    if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' }}
     id: fc
     with:
       issue-number: ${{ steps.pr.outputs.pr_number }}
       comment-author: "github-actions[bot]"
       body-includes: "Benchmark Results"
   - name: Post comment to PR (Create comment)
-    if: ${{ env.PR_NUM != '' && steps.fc.outputs.comment-id == '' }}
+    if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       issue-number: ${{ steps.pr.outputs.pr_number }}
@@ -83,7 +85,7 @@ runs:
         ## 🔬 Benchmark Results
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
   - name: Post comment to PR (Update comment)
-    if: steps.fc.outputs.comment-id != ''
+    if: ${{ github.event_name == 'pull_request' && steps.fc.outputs.comment-id != '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       comment-id: ${{ steps.fc.outputs.comment-id }}
