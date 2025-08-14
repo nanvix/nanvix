@@ -32,6 +32,10 @@ use ::std::{
         Read,
         Write,
     },
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==================================================================================================
@@ -104,6 +108,52 @@ impl SocketListener {
                     listener.accept()?;
                 Ok(SocketStream::Unix(stream))
             },
+        }
+    }
+
+    /// Accepts a connection on a socket with a timeout.
+    ///
+    /// Our SocketStream abstraction is backed by mio sockets, so it is non-blocking. This method
+    /// offers a wrapper to accept a connection with a timeout by requiring the caller to provide
+    /// a poll structure.
+    ///
+    /// This is different from the BlockingSocketStream structure, that uses an internal poll to
+    /// receive in a blocking fashion.
+    pub fn accept_timeout(
+        &self,
+        poll: &mut Poll,
+        timeout: Duration,
+    ) -> Result<SocketStream, SocketError> {
+        let deadline: Instant = Instant::now() + timeout;
+        let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+        // Accept in a loop to account for spurious wake-ups in the poll.
+        loop {
+            // Try to accept first without blocking.
+            match self.accept() {
+                Ok(conn) => return Ok(conn),
+                // If it blocks, proceed to sleeping in a poll.
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {},
+                // If we were inerrupted, retry immediately.
+                Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+                // If there was a transient error in the connection, retry immediately.
+                Err(ref e) if e.kind() == ErrorKind::ConnectionAborted => continue,
+                Err(e) => {
+                    error!("error accepting connection (error={e:?})");
+                    return Err(e);
+                },
+            }
+
+            let now: Instant = Instant::now();
+            if now >= deadline {
+                let reason: String = "accept timed-out waiting for connection".to_string();
+                error!("{reason}");
+                return Err(io::Error::new(ErrorKind::TimedOut, reason).into());
+            }
+
+            // Wait until the listener becomes readable or timeout expires
+            events.clear();
+            poll.poll(&mut events, Some(deadline - now))?;
         }
     }
 }

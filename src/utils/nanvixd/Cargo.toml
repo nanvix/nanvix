@@ -13,6 +13,7 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
+config = { workspace = true }
 flexi_logger = { workspace = true }
 http = { workspace = true }
 http-body-util = { workspace = true }
@@ -21,6 +22,7 @@ hyper-util = { workspace = true, features = ["full"] }
 hwloc = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+mio = { workspace = true, features = ["net", "os-poll"] }
 num_enum = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
