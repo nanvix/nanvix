@@ -309,6 +309,51 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
+# Shows available make targets and build parameters.
+help:
+	@echo ""
+	@echo "Main Build Targets"
+	@echo "  all          Build everything (default target)"
+	@echo "  clean        Remove build artifacts and intermediate files"
+	@echo "  distclean    Cleans everything"
+	@echo "  help         Show this help message"
+	@echo ""
+	@echo "Development Targets"
+	@echo "  check           Run all validation checks (syntax, compilation)"
+	@echo "  format          Fix code formatting issues automatically"
+	@echo "  format-check    Check code formatting without fixing"
+	@echo "  lint            Fix code linting issues automatically"
+	@echo "  lint-check      Check for linting issues without fixing"
+	@echo ""
+	@echo "Testing Targets"
+	@echo "  run-unit-tests       Run unit tests for libraries and components"
+	@echo "  run-nanvixd-tests    Run system integration tests"
+	@echo ""
+	@echo "Execution Targets"
+	@echo "  debug    Run system in debug mode"
+	@echo "  image    Build system image for deployment"
+	@echo "  run      Run system in release mode"
+	@echo ""
+	@echo "Build Parameters (override with VAR=value, see Parameter Values section below)"
+	@echo "  TARGET           Target architecture (default: $(TARGET))"
+	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
+	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
+	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
+	@echo "  BUILD_OPT        Build optional software (default: $(BUILD_OPT)) [impacts build time]"
+	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
+	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
+	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
+	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
+	@echo ""
+	@echo "Parameter Values"
+	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
+	@echo "  TARGET       x86"
+	@echo "  RELEASE      yes, no"
+	@echo "  LOG_LEVEL    trace, debug, info, warn, error"
+	@echo "  PROFILER     yes, no"
+	@echo "  BUILD_OPT    yes, no"
+	@echo "  JAVY         path to javy executable"
+
 # Fixes code linting issues.
 lint: \
 	rust-lint
