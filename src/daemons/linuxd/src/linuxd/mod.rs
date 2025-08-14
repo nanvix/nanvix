@@ -40,6 +40,7 @@ use ::std::{
         Mutex,
         MutexGuard,
     },
+    time::Duration,
 };
 use ::sys::{
     error::{
@@ -50,7 +51,10 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
-use ::syscomm::SocketStream;
+use ::syscomm::{
+    SocketListener,
+    SocketStream,
+};
 
 //==================================================================================================
 // Constants
@@ -60,6 +64,9 @@ use ::syscomm::SocketStream;
 const CONTROL_PLANE_CONNECTION_ID: usize = 0;
 /// We use ID 1 for the user VM connection in the main poll structure.
 const DEFAULT_CONNECTION_ID: usize = 1;
+/// We use ID 0 for the gateway listener socket in the gateway poll structure. Given that this
+/// socket is monitored in a different poll, we can re-use the connection ID 0.
+const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
 
 //==================================================================================================
 // Structures
@@ -69,7 +76,7 @@ pub struct LinuxDaemon {
     assembler: Arc<Mutex<RequestAssembler>>,
     control_plane_stream: SocketStream,
     uvm_stream: SocketStream,
-    gateway_stream: Option<SocketStream>,
+    gateway_listener: Option<SocketListener>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
 
@@ -81,13 +88,13 @@ impl LinuxDaemon {
     pub fn init(
         control_plane_stream: SocketStream,
         uvm_stream: SocketStream,
-        gateway_stream: Option<SocketStream>,
+        gateway_listener: Option<SocketListener>,
     ) -> Result<Self, Error> {
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
             control_plane_stream,
             uvm_stream,
-            gateway_stream,
+            gateway_listener,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
     }
@@ -164,33 +171,84 @@ impl LinuxDaemon {
     pub fn run(mut self) -> Result<(), Error> {
         const CONTROL_PLANE_TOKEN: Token = Token(CONTROL_PLANE_CONNECTION_ID);
         const USER_VM_TOKEN: Token = Token(DEFAULT_CONNECTION_ID);
+        const GATEWAY_LISTENER_TOKEN: Token = Token(GATEWAY_LISTENER_CONNECTION_ID);
 
         let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
-        let mut poll: Poll = Poll::new()
+
+        // Poll structure monitoring the user VM and control-plane connections.
+        let mut user_vm_poll: Poll = Poll::new()
             .map_err(|_| Self::log_and_error(ErrorCode::IoErr, "failed to create Poll"))?;
-        poll.registry()
+        user_vm_poll
+            .registry()
             .register(&mut self.control_plane_stream, CONTROL_PLANE_TOKEN, Interest::READABLE)
             .map_err(|_| {
-                Self::log_and_error(ErrorCode::IoErr, "failed to register cotnrol-plane to poll")
+                Self::log_and_error(ErrorCode::IoErr, "failed to register control-plane to poll")
             })?;
-        poll.registry()
+        user_vm_poll
+            .registry()
             .register(&mut self.uvm_stream, USER_VM_TOKEN, Interest::READABLE)
             .map_err(|_| {
                 Self::log_and_error(ErrorCode::IoErr, "failed to register user VM listener to poll")
             })?;
+
+        // Poll structure used to accept connections from the gateway in a blocking fashion. For
+        // the gateway we want to give each worker thread the mutex-protected socket stream
+        // connected to the gateway.
+        let gateway_poll: Option<Poll> =
+            if let Some(gateway_listener) = self.gateway_listener.as_mut() {
+                let gateway_poll: Poll = Poll::new()
+                    .map_err(|_| Self::log_and_error(ErrorCode::IoErr, "failed to create Poll"))?;
+                gateway_poll
+                    .registry()
+                    .register(gateway_listener, GATEWAY_LISTENER_TOKEN, Interest::READABLE)
+                    .map_err(|_| {
+                        Self::log_and_error(
+                            ErrorCode::IoErr,
+                            "failed to register gateway listener to poll",
+                        )
+                    })?;
+
+                Some(gateway_poll)
+            } else {
+                None
+            };
+
+        // Accept one incoming connection from the gateway.
+        let gateway_stream: Option<SocketStream> = if let Some(mut gateway_poll) = gateway_poll {
+            if let Some(gateway_listener) = self.gateway_listener.as_mut() {
+                Some(
+                    gateway_listener
+                        .accept_timeout(
+                            &mut gateway_poll,
+                            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+                        )
+                        .map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "error accepting connection from gateway",
+                            )
+                        })?,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // Map keeping track of the worker threads associated the user VM.
         let mut worker_threads: VecDeque<WorkerThreadHandle> = VecDeque::new();
 
         // Handle around the user VM.
         let uvm_handle: UserVmHandle =
-            UserVmHandle::new(DEFAULT_CONNECTION_ID, self.uvm_stream, self.gateway_stream);
+            UserVmHandle::new(DEFAULT_CONNECTION_ID, self.uvm_stream, gateway_stream);
 
         'main_loop: loop {
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
             let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
 
-            poll.poll(&mut events, None)
+            user_vm_poll
+                .poll(&mut events, None)
                 .map_err(|_| Error::new(ErrorCode::IoErr, "failed to poll user VM events"))?;
 
             for event in events.iter() {
@@ -219,7 +277,11 @@ impl LinuxDaemon {
                                 let uvm_handle: UserVmHandle = uvm_handle.clone();
                                 info!("shutting down user VM");
 
-                                Self::close_connection(uvm_handle, &poll, Some(worker_threads));
+                                Self::close_connection(
+                                    uvm_handle,
+                                    &user_vm_poll,
+                                    Some(worker_threads),
+                                );
 
                                 break 'main_loop;
                             },
@@ -237,7 +299,11 @@ impl LinuxDaemon {
                                 ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
                                     info!("connection from user VM closed");
 
-                                    Self::close_connection(uvm_handle, &poll, Some(worker_threads));
+                                    Self::close_connection(
+                                        uvm_handle,
+                                        &user_vm_poll,
+                                        Some(worker_threads),
+                                    );
 
                                     break 'main_loop;
                                 },
