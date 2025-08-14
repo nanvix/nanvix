@@ -28,8 +28,15 @@ use ::mio::{
     Token,
 };
 use ::nanvixd::control_plane;
+use ::slab_external::{
+    Slab,
+    VacantEntry,
+};
 use ::std::{
-    collections::VecDeque,
+    collections::{
+        HashMap,
+        VecDeque,
+    },
     io::ErrorKind,
     sync::{
         mpsc::{
@@ -62,8 +69,10 @@ use ::syscomm::{
 
 /// We use ID 0 for the control-plane socket in the main poll structure.
 const CONTROL_PLANE_CONNECTION_ID: usize = 0;
-/// We use ID 1 for the user VM connection in the main poll structure.
-const DEFAULT_CONNECTION_ID: usize = 1;
+/// We use ID 1 for the listener socket accepting user VM connections.
+const USER_VM_LISTENER_CONNECTION_ID: usize = 1;
+/// We use IDs 2 and onwards for all user VMs that connect to this instance.
+const FIRST_USER_VM_CONNECTION_ID: usize = 2;
 /// We use ID 0 for the gateway listener socket in the gateway poll structure. Given that this
 /// socket is monitored in a different poll, we can re-use the connection ID 0.
 const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
@@ -75,7 +84,7 @@ const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
 pub struct LinuxDaemon {
     assembler: Arc<Mutex<RequestAssembler>>,
     control_plane_stream: SocketStream,
-    uvm_stream: SocketStream,
+    user_vm_listener: SocketListener,
     gateway_listener: Option<SocketListener>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
 }
@@ -87,16 +96,100 @@ pub struct LinuxDaemon {
 impl LinuxDaemon {
     pub fn init(
         control_plane_stream: SocketStream,
-        uvm_stream: SocketStream,
+        user_vm_listener: SocketListener,
         gateway_listener: Option<SocketListener>,
     ) -> Result<Self, Error> {
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
             control_plane_stream,
-            uvm_stream,
+            user_vm_listener,
             gateway_listener,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
         })
+    }
+
+    /// This helper method accepts connections into the main user VM listener socket, and, if
+    /// necessary, accepts incoming connections for the gateway into this user VM.
+    fn accept_connections(
+        &mut self,
+        user_vm_connections: &mut Slab<UserVmHandle>,
+        user_vm_poll: &Poll,
+        gateway_poll: &mut Option<Poll>,
+        start_token: usize,
+    ) -> Result<(), Error> {
+        // Accept new connection in a loop, as we have a non-blocking socket, and
+        // we may have more than one connection pending to be accepted.
+        loop {
+            match self.user_vm_listener.accept() {
+                Ok(mut user_vm_stream) => {
+                    let entry: VacantEntry<UserVmHandle> = user_vm_connections.vacant_entry();
+                    let entry_key: usize = entry.key();
+                    let token: Token = Token(start_token + entry_key);
+
+                    user_vm_poll
+                        .registry()
+                        .register(&mut user_vm_stream, token, Interest::READABLE)
+                        .map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "failed to register new user VM to poll",
+                            )
+                        })?;
+
+                    // After accepting a connection from the user VM, accept a connection from the
+                    // gateway if necessary.
+                    let gateway_stream: Option<SocketStream> = if let Some(gateway_poll) =
+                        gateway_poll.as_mut()
+                    {
+                        if let Some(gateway_listener) = self.gateway_listener.as_mut() {
+                            Some(
+                                gateway_listener
+                                    .accept_timeout(
+                                        gateway_poll,
+                                        Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+                                    )
+                                    .map_err(|_| {
+                                        Self::log_and_error(
+                                            ErrorCode::IoErr,
+                                            "error accepting connection from gateway",
+                                        )
+                                    })?,
+                            )
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    entry.insert(UserVmHandle::new(entry_key, user_vm_stream, gateway_stream));
+                },
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No connections to be accepted, break.
+                    break;
+                },
+                Err(e) => {
+                    // This is a fatal error for the user VM, but we don't want to
+                    // kill linuxd.
+                    error!("Error accepting connection from user VM: {e:?}");
+                    break;
+                },
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Wrapper around the extraction of the connection from the slab, as we need a mutable
+    /// reference, and with the function call we ensure we return the borrow.
+    fn process_connection(
+        user_vm_connections: &mut Slab<UserVmHandle>,
+        conn_id: usize,
+    ) -> Result<UserVmHandle, Error> {
+        match user_vm_connections.get_mut(conn_id) {
+            Some(user_vm_handle) => Ok(user_vm_handle.clone()),
+            None => Err(Error::new(ErrorCode::InvalidArgument, "Invalid connection ID")),
+        }
     }
 
     /// Helper method to close a connection to a user VM identified by the connection id. Closing
@@ -170,7 +263,8 @@ impl LinuxDaemon {
 
     pub fn run(mut self) -> Result<(), Error> {
         const CONTROL_PLANE_TOKEN: Token = Token(CONTROL_PLANE_CONNECTION_ID);
-        const USER_VM_TOKEN: Token = Token(DEFAULT_CONNECTION_ID);
+        const USER_VM_LISTENER_TOKEN: Token = Token(USER_VM_LISTENER_CONNECTION_ID);
+        const FIRST_USER_VM_TOKEN: Token = Token(FIRST_USER_VM_CONNECTION_ID);
         const GATEWAY_LISTENER_TOKEN: Token = Token(GATEWAY_LISTENER_CONNECTION_ID);
 
         let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
@@ -186,7 +280,7 @@ impl LinuxDaemon {
             })?;
         user_vm_poll
             .registry()
-            .register(&mut self.uvm_stream, USER_VM_TOKEN, Interest::READABLE)
+            .register(&mut self.user_vm_listener, USER_VM_LISTENER_TOKEN, Interest::READABLE)
             .map_err(|_| {
                 Self::log_and_error(ErrorCode::IoErr, "failed to register user VM listener to poll")
             })?;
@@ -194,7 +288,7 @@ impl LinuxDaemon {
         // Poll structure used to accept connections from the gateway in a blocking fashion. For
         // the gateway we want to give each worker thread the mutex-protected socket stream
         // connected to the gateway.
-        let gateway_poll: Option<Poll> =
+        let mut gateway_poll: Option<Poll> =
             if let Some(gateway_listener) = self.gateway_listener.as_mut() {
                 let gateway_poll: Poll = Poll::new()
                     .map_err(|_| Self::log_and_error(ErrorCode::IoErr, "failed to create Poll"))?;
@@ -213,35 +307,14 @@ impl LinuxDaemon {
                 None
             };
 
-        // Accept one incoming connection from the gateway.
-        let gateway_stream: Option<SocketStream> = if let Some(mut gateway_poll) = gateway_poll {
-            if let Some(gateway_listener) = self.gateway_listener.as_mut() {
-                Some(
-                    gateway_listener
-                        .accept_timeout(
-                            &mut gateway_poll,
-                            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-                        )
-                        .map_err(|_| {
-                            Self::log_and_error(
-                                ErrorCode::IoErr,
-                                "error accepting connection from gateway",
-                            )
-                        })?,
-                )
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // Structure keeping track of the active user VM connections, indexed by their connection
+        // ID. We use a slab to easily get the smallest available entry.
+        let mut user_vm_connections: Slab<UserVmHandle> = Slab::new();
 
-        // Map keeping track of the worker threads associated the user VM.
-        let mut worker_threads: VecDeque<WorkerThreadHandle> = VecDeque::new();
-
-        // Handle around the user VM.
-        let uvm_handle: UserVmHandle =
-            UserVmHandle::new(DEFAULT_CONNECTION_ID, self.uvm_stream, gateway_stream);
+        // Map keeping track of the worker threads associated to each user VM identified by
+        // connection ID. We use a HashMap and not a Slab because we need to support insert/removal
+        // by key.
+        let mut worker_threads: HashMap<usize, VecDeque<WorkerThreadHandle>> = HashMap::new();
 
         'main_loop: loop {
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
@@ -273,39 +346,63 @@ impl LinuxDaemon {
                             control_plane::Command::Shutdown => {
                                 info!("linuxd received shutdown message from control-plane");
 
-                                // Close connection to user VM.
-                                let uvm_handle: UserVmHandle = uvm_handle.clone();
-                                info!("shutting down user VM");
+                                // Close all existing connections to user VMs.
+                                while let Some(uvm_handle) = user_vm_connections.drain().next() {
+                                    let conn_id: usize = uvm_handle.get_conn_id();
+                                    info!("shutting down user VM (conn_id={conn_id})");
 
-                                Self::close_connection(
-                                    uvm_handle,
-                                    &user_vm_poll,
-                                    Some(worker_threads),
-                                );
+                                    Self::close_connection(
+                                        uvm_handle,
+                                        &user_vm_poll,
+                                        worker_threads.remove(&conn_id),
+                                    );
+                                }
+
+                                // Draining the user VM connections should also drain the worker
+                                // threads. Print an error if not.
+                                if !worker_threads.is_empty() {
+                                    error!("finished shutdown with orphaned worker threads");
+                                }
 
                                 break 'main_loop;
                             },
                         }
                     },
 
-                    USER_VM_TOKEN => {
+                    // Check if we have received any messages on the main listener socket.
+                    // These indicate new user VMs connecting to linuxd.
+                    USER_VM_LISTENER_TOKEN => {
+                        self.accept_connections(
+                            &mut user_vm_connections,
+                            &user_vm_poll,
+                            &mut gateway_poll,
+                            FIRST_USER_VM_TOKEN.into(),
+                        )?;
+                    },
+
+                    // Now we process events from active connections.
+                    Token(t) => {
+                        let conn_id: usize = t - FIRST_USER_VM_CONNECTION_ID;
+
                         // Receive a message from the user virtual machine.
-                        let uvm_handle: UserVmHandle = uvm_handle.clone();
+                        let uvm_handle: UserVmHandle =
+                            Self::process_connection(&mut user_vm_connections, conn_id)?;
                         let message: Message = match Self::recv(uvm_handle.get_user_vm_stream()) {
                             Ok(message) => message,
 
                             Err(error_kind) => match error_kind {
                                 ErrorKind::WouldBlock => continue,
                                 ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
-                                    info!("connection from user VM closed");
+                                    info!("connection from user VM closed (conn_id={conn_id})");
 
                                     Self::close_connection(
                                         uvm_handle,
                                         &user_vm_poll,
-                                        Some(worker_threads),
+                                        worker_threads.remove(&conn_id),
                                     );
+                                    user_vm_connections.remove(conn_id);
 
-                                    break 'main_loop;
+                                    continue;
                                 },
                                 _ => {
                                     let reason: String =
@@ -402,7 +499,10 @@ impl LinuxDaemon {
                                     uvm_handle,
                                     assembler,
                                 )?;
-                            worker_threads.push_back(worker_thread_handle);
+                            worker_threads
+                                .entry(conn_id)
+                                .or_default()
+                                .push_back(worker_thread_handle);
                         }
 
                         // Dispatch message to worker thread.
@@ -422,18 +522,11 @@ impl LinuxDaemon {
                             }
                         }
                     },
-
-                    Token(t) => {
-                        // This should never happen, but if it does we should ignore the spurious
-                        // wake up and continue processing connections.
-                        error!("poll received notification from unrecognised token {t:?}");
-                        continue;
-                    },
                 }
             }
         }
 
-        // TODO: https://github.com/nanvix/nanvix/issues/639
+        info!("linuxd disconnected");
         Ok(())
     }
 
