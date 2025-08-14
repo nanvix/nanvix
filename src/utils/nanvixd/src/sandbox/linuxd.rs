@@ -8,11 +8,14 @@
 use crate::control_plane;
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
-use ::std::process::Stdio;
+use ::mio::Poll;
+use ::std::{
+    process::Stdio,
+    time::Duration,
+};
 use ::syscomm::{
-    Socket,
+    SocketListener,
     SocketStream,
-    SocketType,
 };
 use ::tokio::process::{
     Child,
@@ -39,20 +42,9 @@ impl LinuxDaemon {
         gateway_sockaddr: &str,
         hwloc: Option<HwLoc>,
         binary_directory: &str,
+        control_plane_listener: &mut SocketListener,
+        control_plane_poll: &mut Poll,
     ) -> Result<Self> {
-        // Start the control-plane socket in listening mode.
-        let control_plane_listener =
-            match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
-                Ok(listener) => listener,
-                Err(e) => {
-                    error!(
-                        "failed to bind control-plane listening socket \
-                         (address={control_plane_sockaddr}, error={e:?})"
-                    );
-                    return Err(anyhow::anyhow!("failed to bind control-plane listening socket"));
-                },
-            };
-
         debug!(
             "spawning linux daemon (control-plane={control_plane_sockaddr}, \
              user-vm={user_vm_sockaddr}, gateway={gateway_sockaddr})"
@@ -82,22 +74,29 @@ impl LinuxDaemon {
 
         // After linuxd has started, accept the incoming connection and return the stream for
         // further use.
-        let control_plane_stream: SocketStream = loop {
-            match control_plane_listener.accept() {
-                Ok(stream) => {
-                    debug!("nanvixd received connection from linuxd's control-plane socket");
-                    break stream;
-                },
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                Err(error) => {
-                    error!(
-                        "nanvixd failed to accept connection from linuxd's control-plane \
-                         (error={error:?})"
-                    );
-                    continue;
-                },
-            }
+        let control_plane_stream: SocketStream = match control_plane_listener.accept_timeout(
+            control_plane_poll,
+            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+        ) {
+            Ok(stream) => stream,
+            Err(e) => {
+                // If linuxd has not accepted the control-plane connection, it means that
+                // something went wrong during start-up. We kill the process ignoring errors,
+                // and return an error.
+                let reason: String =
+                    format!("error connecting control-plane to linuxd (error={e:?})");
+                error!("{reason}");
+
+                // Use a SIGKILL because the process is already faulty.
+                if let Some(pid) = child.id() {
+                    debug!("killing linuxd instance (pid={pid:?})");
+                    let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+                }
+
+                return Err(anyhow::anyhow!("{reason}"));
+            },
         };
+        debug!("nanvixd received connection from linuxd's control-plane socket");
 
         Ok(Self {
             child,

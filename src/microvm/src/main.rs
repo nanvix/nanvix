@@ -57,7 +57,8 @@ use ::syscomm::{
 /// so we can tolerate a sleep, but the sleep needs to be short as it will affect boot time.
 const CONNECT_TIMEOUT_SLEEP_MS: u64 = 1;
 /// Default socket bind type.
-const DEFAULT_BIND_SOCKET_TYPE: SocketType = SocketType::Unix;
+const DEFAULT_SYSTEM_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
+const DEFAULT_CONTROL_PLANE_SOCKET_TYPE: SocketType = SocketType::Unix;
 
 //==================================================================================================
 // Standalone Functions
@@ -81,7 +82,7 @@ fn main() -> Result<ExitCode> {
                 anyhow::bail!("failed to parse socket address type");
             },
         },
-        None => DEFAULT_BIND_SOCKET_TYPE,
+        None => DEFAULT_SYSTEM_VM_SOCKET_TYPE,
     };
 
     // Initialize logger. If this fails, the program will panic.
@@ -108,6 +109,27 @@ fn main() -> Result<ExitCode> {
                     );
                     error!("main(): {reason}");
                     anyhow::bail!(reason)
+                },
+            }
+        },
+        None => None,
+    };
+
+    let _control_plane_socket: Option<SocketStream> = match args.control_plane_addr() {
+        Some(addr) => {
+            let control_plane_socket_type: SocketType = match args.control_plane_socket_type() {
+                Some(socket_type) => socket_type,
+                None => DEFAULT_CONTROL_PLANE_SOCKET_TYPE,
+            };
+            match SocketStream::connect(control_plane_socket_type, addr.clone()) {
+                Ok(stream) => Some(stream),
+                Err(e) => {
+                    let reason: String = format!(
+                        "failed to connect to control-plane (control_plane_addr={addr:?}, \
+                         error={e:?})",
+                    );
+                    error!("main(): {reason}");
+                    return Err(anyhow::anyhow!("{reason}"));
                 },
             }
         },
