@@ -59,8 +59,6 @@ impl UserVmHandle {
         }
     }
 
-    // FIXME: this field is relevant once we start managing more than one user VMs.
-    #[allow(dead_code)]
     pub fn get_conn_id(&self) -> usize {
         self.conn_id
     }
