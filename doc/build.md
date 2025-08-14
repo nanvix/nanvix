@@ -16,9 +16,6 @@ simplified build process or do it manually.
 - [Building Nanvix Manually](#building-nanvix-manually)
   - [Manually Building Nanvix with Docker](#manually-building-nanvix-with-docker)
   - [Manually Building Nanvix with a Native Toolchain](#manually-building-nanvix-with-a-native-toolchain)
-- [Build Parameters](#build-parameters)
-  - [Default Build Parameters](#default-build-parameters)
-  - [Optional Build Parameters](#optional-build-parameters)
 
 ## Building Nanvix with `z` (Preferred Method)
 
@@ -35,25 +32,19 @@ For more information on how to use the `z` utility, you can run:
 
 ### Using `z` to Build Nanvix with Docker
 
-To build Nanvix using the latest Docker image and default build parameters, simply run:
+To build Nanvix using the latest Docker image and default build parameters, run:
 
 ```bash
 ./z build --with-docker -- all
 ```
 
-> ℹ️  Refer to the [Build Parameters](#build-parameters) section for more information on how to
-customize the build process.
-
 ### Using `z` to Build Nanvix with a Native Toolchain
 
-To build Nanvix using your native toolchain and default build parameters, simply run:
+To build Nanvix using your native toolchain and default build parameters, run:
 
 ```bash
 ./z build -- all
 ```
-
-> ℹ️  Refer to the [Build Parameters](#build-parameters) section for more information on how to
-customize the build process.
 
 ## Building Nanvix Manually
 
@@ -61,7 +52,7 @@ Instead of using the `z` utility, you can build Nanvix manually.
 
 ### Manually Building Nanvix with Docker
 
-To build Nanvix using the latest Docker image and default build parameters, simply run:
+To build Nanvix using the latest Docker image and default build parameters, run:
 
 ```bash
 docker run \
@@ -74,24 +65,10 @@ docker run \
     chown -R $(id -u):$(id -g) . "
 ```
 
-> ℹ️  Refer to the [Build Parameters](#build-parameters) section for more information on how to
-customize the build process.
-
 ### Manually Building Nanvix with a Native Toolchain
 
-To build Nanvix using your native toolchain and default build parameters, simply run:
+To build Nanvix using your native toolchain and default build parameters, run:
 
 ```bash
 make all
 ```
-
-> ℹ️  Refer to the [Build Parameters](#build-parameters) section for more information on how to
-customize the build process.
-
-## Build Parameters
-
-The following parameters can be used to customize the build process.
-
-> ℹ️ For build parameters and options, run `make help`.
-
-
