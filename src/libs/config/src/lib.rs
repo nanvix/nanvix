@@ -166,13 +166,34 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Base address for memory-mapped objects.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_MMAP_BASE_RAW: usize = 0x6000_0000;
+
+    /// # Description
+    ///
+    /// End address for memory-mapped objects.
+    ///
+    /// # Notes
+    ///
+    /// - This should be aligned to page and page table boundaries.
+    ///
+    pub const USER_MMAPPED_END_RAW: usize = 0xa000_0000;
+
+    ///
+    /// # Description
+    ///
     /// Base address for shared libraries.
     ///
     /// # Notes
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_LIBS_BASE_RAW: usize = 0xa0000000;
+    pub const USER_LIBS_BASE_RAW: usize = USER_MMAPPED_END_RAW;
 
     ///
     /// # Description
