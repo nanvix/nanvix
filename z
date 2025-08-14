@@ -347,12 +347,12 @@ main() {
         fi
     fi
 
-    print_info "Command: ${command}"
-    print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
-    print_info "Build Parameters: ${build_parameters[*]}"
-
     case "${command}" in
         "${CMD_NAME_BUILD}")
+            print_info "Command: ${command}"
+            print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
+            print_info "Build Parameters: ${build_parameters[*]}"
+
             # Check if we are switching build modes.
             if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
                 print_warning "Switching to Docker build, forcing cleanup."
