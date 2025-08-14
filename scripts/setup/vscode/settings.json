@@ -1,9 +1,41 @@
+// Visual Studio Code Settings for Nanvix Development
+//
+// How to use:
+// 1. Create a folder named '.vscode' in the root of your Nanvix workspace.
+// 2. Copy this file into the '.vscode' folder as 'settings.json'.
+// 3. Ensure the "C_Cpp.default.compilerPath" setting below points to the GCC binary of your Nanvix
+//    toolchain.
 {
+    //==============================================================================================
+    // Editor Settings
+    //==============================================================================================
+    "editor.colorDecorators": false,
     "editor.formatOnType": false,
     "editor.formatOnSave": true,
+    "editor.rulers": [
+        100
+    ],
+    "vim.textwidth": 100,
+    "files.watcherExclude": {
+        "**/__pycache__/**": true,
+        "**/.git/**": true,
+        "**/.hg/**": true,
+        "sysroot-*/**": true,
+        "target/**": true
+    },
+    "files.exclude": {
+        "**/__pycache__/**": true,
+        "target/**": true,
+        "**/*.d": true,
+        "**/*.elf": true,
+        "**/*.o": true,
+        "**/*.out": true
+    },
+    //==============================================================================================
+    // Rust Analyzer Settings
+    //==============================================================================================
     "rust-analyzer.cargo.allTargets": false,
     "rust-analyzer.checkOnSave": true,
-    // NOTE: Use './z --with-cached-options -- check' to ensure compatibility with the preferred build workflow during development.
     "rust-analyzer.check.overrideCommand": [
         "./z",
         "build",
@@ -11,8 +43,11 @@
         "--",
         "check"
     ],
-    // NOTE: Assuming that you have a symbolic link to the toolchain in your workspace folder.
+    //==============================================================================================
+    // C/C++ Settings
+    //==============================================================================================
     "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc",
-    // Format settings for Vim.
-    "vim.textwidth": 100
+    "C_Cpp.files.exclude": {
+        "sysroot-*/**": true
+    }
 }
