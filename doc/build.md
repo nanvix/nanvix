@@ -92,23 +92,6 @@ customize the build process.
 
 The following parameters can be used to customize the build process.
 
-### Default Build Parameters
+> ℹ️ For build parameters and options, run `make help`.
 
-- `TOOLCHAIN_DIR=$PWD/toolchain`: Set the toolchain directory to the current working directory.
-- `MACHINE=microvm`: Set the target machine to `microvm`.
-- `TARGET=x86`: Set the target CPU architecture to `x86`.
-- `LOG_LEVEL=warn`: Set the output log level to `warn`.
-- `RELEASE=no`: Disable release build (implies debug build).
-- `PROFILER=no`: Disable profiler for MicroVM.
-- `IMAGE=bin/hello-rust-nostd.elf`: Set the system image to `bin/hello-rust-nostd.elf`.
 
-### Optional Build Parameters
-
-- `TOOLCHAIN_DIR=</path/to/toolchain>`: Set the toolchain directory.
-- `LOG_LEVEL=<trace|info|warn|error>`: Set the output log level.
-- `MACHINE=<hyperlight|microvm|qemu-pc>`: Set the target machine.
-- `PROFILER=<yes|no>`: Enable/Disable profiler for MicroVM.
-- `RELEASE=<yes|no>`: Enable/Disable release build.
-- `TARGET=<architecture>`: Set the target CPU architecture.
-- `TIMEOUT=<seconds>`: Set the execution timeout.
-- `IMAGE=<image>`: Set system image.
