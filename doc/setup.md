@@ -1,24 +1,17 @@
 # Setting Up Your Development Environment
 
-> ℹ️ **Note:** Some instructions in this document assume that you have superuser privileges on your system.
-
-> ℹ️ **Note:** Ensure that your system supports KVM (Kernel-based Virtual Machine), and that it is enabled.
-
-This guide will help you set up your development environment to build and run Nanvix. Here's a quick overview of the steps:
-
-1. Clone the Nanvix repository.
-2. Install dependencies for development tools.
-3. Set up development tools.
+This guide will help you set up your development environment to build and run Nanvix.
 
 ## Table of Contents
 
-- [Before You Start](#before-you-start)
-  - [Clone the Repository](#clone-the-repository)
-  - [Setup KVM](#setup-kvm)
-- [Installing Dependencies for Development Tools](#installing-dependencies-for-development-tools)
-  - [For Ubuntu 24.04](#for-ubuntu-2404)
+- [Setting Up Your System](#setting-up-your-system)
+  - [1. Check Your System and Permissions](#1-check-your-system-and-permissions)
+  - [2. Clone This Repository](#2-clone-this-repository)
+  - [3. Install Dependencies for Development Tools](#3-install-dependencies-for-development-tools)
+  - [4. Setup KVM](#4-setup-kvm)
+  - [5. Setup Docker (Optional)](#5-setup-docker-optional)
 - [Setting Up Development Tools](#setting-up-development-tools)
-  - [Option 1: Build Development Tools Locally (Recommended)](#option-1-build-development-tools-locally-recommended)
+  - [Option 1: Build Development Tools Locally (Preferred Method)](#option-1-build-development-tools-locally-preferred-method)
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
@@ -26,11 +19,14 @@ This guide will help you set up your development environment to build and run Na
 
 ---
 
-## Before You Start
+## Setting Up Your System
 
-### Clone the Repository
+### 1. Check Your System and Permissions
 
-Start by cloning the Nanvix repository:
+- Ensure you are running Ubuntu 24.04
+- Make sure you have sudo privileges
+
+### 2. Clone This Repository
 
 ```bash
 export WORKDIR=$HOME/nanvix                     # Set the directory for the source tree.
@@ -39,28 +35,7 @@ git clone https://github.com/nanvix/nanvix.git  # Clone the repository.
 cd nanvix                                       # Navigate to the Nanvix source tree.
 ```
 
-### Setup KVM
-
-```bash
-# Check if KVM is enabled.
-sudo kvm-ok
-sudo lsmod | grep kvm
-
-# Add user to KVM group
-sudo usermod -aG kvm $USER
-
-# Re-login and check if groups changed
-newgrp kvm
-groups
-```
-
----
-
-## Installing Dependencies for Development Tools
-
-### For Ubuntu 24.04
-
-To install dependencies on Ubuntu 24.04:
+### 3. Install Dependencies for Development Tools
 
 ```bash
 # Ensure you are in the project's root directory.
@@ -68,41 +43,68 @@ cat ./scripts/setup/ubuntu.sh      # Review the installation script.
 sudo -E ./scripts/setup/ubuntu.sh  # Run the script to install dependencies.
 ```
 
+### 4. Setup KVM
+
+```bash
+# Check if KVM is enabled.
+sudo kvm-ok
+sudo lsmod | grep kvm
+
+# Add user to KVM group.
+sudo usermod -aG kvm $USER
+
+# Re-login and check if groups changed.
+newgrp kvm
+groups
+```
+
+### 5. Setup Docker (Optional)
+
+```bash
+# Install Docker.
+curl -fsSL https://get.docker.com | sh
+
+# Add user to Docker group.
+sudo usermod -aG docker $USER
+
+# Re-login and check if groups changed.
+newgrp docker
+groups
+```
+
 ---
 
 ## Setting Up Development Tools
 
+> ⚠️ **Note:** This process may take some time to complete.
+
 Choose one of the following methods to set up the development tools for Nanvix.
 
-### Option 1: Build Development Tools Locally (Recommended)
+### Option 1: Build Development Tools Locally (Preferred Method)
 
-If you prefer to build the tools directly on your system, follow these steps:
+To build the tools directly on your system, follow these steps.
 
 #### Step 1: Install the Rust Toolchain
 
 ```bash
+# Install Rust.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-exec $SHELL # Restart the shell to update the PATH.
-rustup component add rust-src
-rustup target add wasm32-wasip1
+
+# Restart the shell to update the PATH.
+exec $SHELL
 ```
 
-#### Step 2: Build a C/C++ Cross Compiler Toolchain
-
-> ⚠️ **Note:** This process may take some time to complete.
+#### Step 2: Build Cross Compiler Toolchain
 
 ```bash
 # Ensure you are in the project's root directory.
-export TOOLCHAIN_DIR=$HOME/toolchain         # Set the directory for the toolchain (must be outside the source tree).
-./scripts/setup/toolchain.sh $TOOLCHAIN_DIR  # Build GCC, Binutils, and GDB.
-ln -s $TOOLCHAIN_DIR toolchain               # Create symbolic link for toolchain for convenience.
+./z setup --toolchain-dir $HOME/toolchain    # Build the cross compiler toolchain and place it in $HOME/toolchain.
+ln -s $HOME/toolchain toolchain              # Create symbolic link for toolchain for convenience.
 ```
 
 #### Step 3: Build the JavaScript to WebAssembly Toolchain (Optional)
 
-> ⚠️ **Note:** This step  may take some time to complete.
-
-If you need the JavaScript to WebAssembly (Javy) toolchain:
+To build JavaScript applications for Nanvix, build the JavaScript to WebAssembly (Javy) toolchain:
 
 ```bash
 # Run these commands in a separate directory.
@@ -115,9 +117,7 @@ cargo install --path crates/cli
 
 #### Step 4: Build QEMU (Optional)
 
-> ⚠️ **Note:** This step may take some time to complete.
-
-If you need a version of QEMU known to work with Nanvix:
+To run Nanvix on QEMU, you need to build it:
 
 ```bash
 # Ensure you are in the project's root directory.
@@ -130,12 +130,11 @@ export TARGET=x86                # Set the target architecture (e.g., x86).
 This is the easiest and fastest way to get started:
 
 ```bash
-docker pull nanvix/toolchain
+# Ensure you are in the project's root directory.
+./z setup --with-docker
 ```
 
 ### Option 3: Build a Docker Image
-
-> ⚠️ **Note:** This process may take some time to complete.
 
 To build a Docker image with the required tools:
 
