@@ -1,17 +1,17 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-# ======================================================================================================================
+# ======================================================================
 # Imports
-# ======================================================================================================================
+# ======================================================================
 
 import os
 import itertools
 import argparse
 
-# ======================================================================================================================
+# ======================================================================
 # Standalone Functions
-# ======================================================================================================================
+# ======================================================================
 
 
 def read_metrics(file_path):
@@ -23,8 +23,8 @@ def read_metrics(file_path):
         return ["NA", "NA", "NA"]
 
 
-def make_header(machine, arch, table_width):
-    title = f"{machine} ({arch})"
+def make_header(benchmark, table_width):
+    title = f"{benchmark} (us)"
     total_width = table_width
     padding = (
         total_width - len(title) - 2
@@ -36,64 +36,99 @@ def make_header(machine, arch, table_width):
 
 def generate_tables(dev_dir, target_dir, benchmarks, machines, archs):
     output = "```"
-    first_col_width = 6
-    col_width = 9
-    num_cols_per_bench = 3
-    table_width = (
-        first_col_width + (col_width * num_cols_per_bench * len(benchmarks)) + 1
-    )
 
-    for machine, arch in itertools.product(machines, archs):
-        header = make_header(machine, arch, table_width)
-        table = [
-            [f"{'|':<{first_col_width}}"]
-            + [
-                f"{b:^{num_cols_per_bench*col_width}}"
-                for b in [f"{bench} (us)" for bench in benchmarks]
-            ],
-            [f"{'|':<{first_col_width}}"]
-            + [
-                f"{'dev':^{col_width}}",
-                f"{'target':^{col_width}}",
-                f"{'Δ':^{col_width}}",
-            ]
-            * len(benchmarks),
-            [f"{'| p50':<{first_col_width}}"]
-            + [] * len(benchmarks) * num_cols_per_bench,
-            [f"{'| p95':<{first_col_width}}"]
-            + [] * len(benchmarks) * num_cols_per_bench,
-            [f"{'| p99':<{first_col_width}}"]
-            + [] * len(benchmarks) * num_cols_per_bench,
-        ]
+    for benchmark in benchmarks:
+        # Calculate table dimensions
+        first_col_width = 7  # "| p50 "
+        sub_col_width = 12  # Width for each sub-column (dev, target, delta)
+        machine_col_width = sub_col_width * 3  # 3 sub-columns per machine
 
-        for benchmark in benchmarks:
-            bench_name = benchmark.replace("-", "_")
-            filename = f"bench_{bench_name}_{machine}_{arch}.txt"
-            dev_path = os.path.join(dev_dir, filename)
-            tgt_path = os.path.join(target_dir, filename)
+        # Number of column groups is cartesian product of machines and archs
+        groups = list(itertools.product(machines, archs))
+        groups_count = len(groups)
 
-            dev_vals = read_metrics(dev_path)
-            tgt_vals = read_metrics(tgt_path)
+        # Calculate total table width correctly
+        # 2 for leading and trailing '|', plus first column width, plus for each group
+        # 3 sub-columns (machine_col_width) and 3 internal separators between them.
+        # This yields the exact length of any data/sub-header row.
+        table_width = 2 + first_col_width + (groups_count * (machine_col_width + 3))
 
-            for i, val in enumerate(dev_vals):
-                table[i + 2].append(f"{val:^{col_width}}")
-            for i, val in enumerate(tgt_vals):
-                table[i + 2].append(f"{val:^{col_width}}")
-            for i, (dev_val, tgt_val) in enumerate(zip(dev_vals, tgt_vals)):
+        # Create header for this benchmark
+        header = make_header(benchmark, table_width)
+
+        # Create table structure
+        table_lines = []
+
+        # Header row with machine names
+        machine_header_parts = [f" {'':^{first_col_width-2}} "]
+        for machine, arch in groups:
+            machine_name = f"{machine} ({arch})"
+            # Each machine spans 3 sub-columns of 12 chars + 2 separators = 38 chars
+            machine_span = sub_col_width * 3 + 2
+            machine_header_parts.append(f"{machine_name:^{machine_span}}")
+        machine_header_line = "|" + "|".join(machine_header_parts) + "|"
+        table_lines.append(machine_header_line)
+
+        # Sub-header row with dev/target/Δ columns
+        sub_header_parts = [f" {'':^{first_col_width-2}} "]
+        for _ in groups:
+            sub_header_parts.extend(
+                [
+                    f"{'dev':^{sub_col_width}}",
+                    f"{'target':^{sub_col_width}}",
+                    f"{'Δ':^{sub_col_width}}",
+                ]
+            )
+        sub_header_line = "|" + "|".join(sub_header_parts) + "|"
+        table_lines.append(sub_header_line)
+
+        # Data rows (p50, p95, p99)
+        percentiles = ["p50", "p95", "p99"]
+
+        for p_idx, percentile in enumerate(percentiles):
+            row_parts = [f" {percentile:^{first_col_width-2}} "]
+
+            for machine, arch in groups:
+                bench_name = benchmark.replace("-", "_")
+                filename = f"bench_{bench_name}_{machine}_{arch}.txt"
+                dev_path = os.path.join(dev_dir, filename)
+                tgt_path = os.path.join(target_dir, filename)
+
+                dev_vals = read_metrics(dev_path)
+                tgt_vals = read_metrics(tgt_path)
+
+                dev_val = dev_vals[p_idx] if p_idx < len(dev_vals) else "NA"
+                tgt_val = tgt_vals[p_idx] if p_idx < len(tgt_vals) else "NA"
+
+                # Calculate delta
                 if tgt_val == "NA" or dev_val == "NA":
-                    table[i + 2].append(f"{'NA':^{col_width}}")
-                    continue
-
-                pct = float((int(tgt_val) / int(dev_val)) * 100)
-                if pct > 100:
-                    txt = "+{:.1f}%".format(pct - 100.0)
+                    delta_str = "NA"
                 else:
-                    txt = "-{:.1f}%".format(100.0 - pct)
-                table[i + 2].append(f"{txt:^{col_width}}")
+                    pct = float((int(tgt_val) / int(dev_val)) * 100)
+                    if pct > 100:
+                        delta_str = "+{:.1f}%".format(pct - 100.0)
+                    else:
+                        delta_str = "-{:.1f}%".format(100.0 - pct)
 
-        table_str = "\n".join("".join(row) + "|" for row in table)
-        footer_str = "\n" + "=" * table_width
-        output += header + table_str + footer_str + "\n"
+                # Add each sub-column separately
+                row_parts.extend(
+                    [
+                        f"{dev_val:^{sub_col_width}}",
+                        f"{tgt_val:^{sub_col_width}}",
+                        f"{delta_str:^{sub_col_width}}",
+                    ]
+                )
+
+            # Join the row parts with | separators
+            row_line = "|" + "|".join(row_parts) + "|"
+            table_lines.append(row_line)
+
+        # Add footer
+        footer_str = "=" * table_width
+
+        # Combine everything for this benchmark
+        table_str = "\n".join(table_lines)
+        output += header + table_str + "\n" + footer_str + "\n"
 
     output += "```" + "\n"
     return output
