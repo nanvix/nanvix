@@ -384,141 +384,151 @@ impl LinuxDaemon {
                     Token(t) => {
                         let conn_id: usize = t - FIRST_USER_VM_CONNECTION_ID;
 
-                        // Receive a message from the user virtual machine.
                         let uvm_handle: UserVmHandle =
                             Self::process_connection(&mut user_vm_connections, conn_id)?;
-                        let message: Message = match Self::recv(uvm_handle.get_user_vm_stream()) {
-                            Ok(message) => message,
 
-                            Err(error_kind) => match error_kind {
-                                ErrorKind::WouldBlock => continue,
-                                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
-                                    info!("connection from user VM closed (conn_id={conn_id})");
+                        // Drain the user VM stream until we cannot read any more messages (i.e.
+                        // WouldBlock). This is because messages may be buffered in the poll.
+                        'drain_loop: loop {
+                            let uvm_handle: UserVmHandle = uvm_handle.clone();
+                            let message: Message = match Self::recv(uvm_handle.get_user_vm_stream())
+                            {
+                                Ok(message) => message,
 
-                                    Self::close_connection(
-                                        uvm_handle,
-                                        &user_vm_poll,
-                                        worker_threads.remove(&conn_id),
-                                    );
-                                    user_vm_connections.remove(conn_id);
+                                Err(error_kind) => match error_kind {
+                                    // No more messages to read.
+                                    ErrorKind::WouldBlock => break 'drain_loop,
+                                    ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
+                                        info!("connection from user VM closed (conn_id={conn_id})");
 
-                                    continue;
-                                },
-                                _ => {
-                                    let reason: String =
-                                        format!("failed to read message (error={error_kind:?})");
-                                    unimplemented!("handle: {reason}");
-                                },
-                            },
-                        };
-
-                        trace!(
-                            "message.source={:?}, message.destination={:?}, message.type={:?}",
-                            { message.source },
-                            { message.destination },
-                            message.message_type,
-                        );
-
-                        let source: ThreadIdentifier = match { message.source }.as_id() {
-                            Err(tid) => tid,
-                            Ok(pid) => {
-                                unimplemented!(
-                                    "received message from process {pid:?} instead of thread"
-                                );
-                            },
-                        };
-
-                        // Check if process is associated with a virtual environment.
-                        let (channel_tx, channel_rx): (
-                            Sender<VenvCommand>,
-                            Option<Receiver<VenvCommand>>,
-                        ) = {
-                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
-                                venv.lock().unwrap();
-                            let env = venv.get(source);
-                            if let Some(env) = env {
-                                (env.get_channel_tx(), None)
-                            } else {
-                                // Join a new virtual environment.
-                                match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
-                                    Ok((_, channel_tx, channel_rx)) => {
-                                        (channel_tx, Some(channel_rx))
-                                    },
-                                    Err(error) => {
-                                        warn!(
-                                            "failed to join new virtual environment \
-                                             (error={error:?})"
+                                        Self::close_connection(
+                                            uvm_handle,
+                                            &user_vm_poll,
+                                            worker_threads.remove(&conn_id),
                                         );
-                                        let message: Message =
-                                            crate::build_error(source, error.code);
+                                        user_vm_connections.remove(conn_id);
 
-                                        let uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>> =
-                                            uvm_handle.get_user_vm_stream();
-                                        let mut guard: MutexGuard<
-                                            '_,
-                                            (SocketStream, VecDeque<u8>),
-                                        > = match uvm_stream.lock() {
-                                            Ok(guard) => guard,
-                                            Err(e) => {
-                                                error!(
-                                                    "error acquiring lock on user VM stream \
-                                                     (error={e:?})"
-                                                );
-                                                continue;
-                                            },
-                                        };
-                                        let (locked_uvm_stream, _): &mut (
-                                            SocketStream,
-                                            VecDeque<u8>,
-                                        ) = &mut guard;
-
-                                        locked_uvm_stream.write_all(&message.to_bytes()).map_err(
-                                            |_| {
-                                                let reason = "failed to write to user VM stream";
-                                                error!("{reason}");
-                                                Error::new(ErrorCode::IoErr, reason)
-                                            },
-                                        )?;
-                                        continue;
+                                        break 'drain_loop;
                                     },
-                                }
-                            }
-                        };
+                                    _ => {
+                                        let reason: String = format!(
+                                            "failed to read message (error={error_kind:?})"
+                                        );
+                                        unimplemented!("handle: {reason}");
+                                    },
+                                },
+                            };
 
-                        // Spawn a new worker thread, if necessary.
-                        if let Some(channel_rx) = channel_rx {
-                            // Spawn a thread to handle the message.
-                            let assembler = assembler.clone();
-
-                            // Spawn an interruptible thread to handle the message.
-                            let worker_thread_handle: WorkerThreadHandle =
-                                WorkerThreadHandle::spawn(
-                                    source,
-                                    channel_rx,
-                                    channel_tx.clone(),
-                                    uvm_handle,
-                                    assembler,
-                                )?;
-                            worker_threads
-                                .entry(conn_id)
-                                .or_default()
-                                .push_back(worker_thread_handle);
-                        }
-
-                        // Dispatch message to worker thread.
-                        if let Err(error) = channel_tx.send(VenvCommand::Work(message)) {
-                            error!(
-                                "run(): failed to dispatch message to worker thread \
-                                 (tid={source:?}, error={error:?})"
+                            trace!(
+                                "message.source={:?}, message.destination={:?}, message.type={:?}",
+                                { message.source },
+                                { message.destination },
+                                message.message_type,
                             );
-                            // Remove thread from the virtual environment.
-                            let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
-                                venv.lock().unwrap();
-                            if let Err(error) = venv.leave(source) {
-                                warn!(
-                                    "run(): failed to remove thread from virtual environment \
-                                     (tid={source:?}, error={error:?})",
+
+                            let source: ThreadIdentifier = match { message.source }.as_id() {
+                                Err(tid) => tid,
+                                Ok(pid) => {
+                                    unimplemented!(
+                                        "received message from process {pid:?} instead of thread"
+                                    );
+                                },
+                            };
+
+                            // Check if process is associated with a virtual environment.
+                            let (channel_tx, channel_rx): (
+                                Sender<VenvCommand>,
+                                Option<Receiver<VenvCommand>>,
+                            ) = {
+                                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
+                                    venv.lock().unwrap();
+                                let env = venv.get(source);
+                                if let Some(env) = env {
+                                    (env.get_channel_tx(), None)
+                                } else {
+                                    // Join a new virtual environment.
+                                    match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                                        Ok((_, channel_tx, channel_rx)) => {
+                                            (channel_tx, Some(channel_rx))
+                                        },
+                                        Err(error) => {
+                                            warn!(
+                                                "failed to join new virtual environment \
+                                                 (error={error:?})"
+                                            );
+                                            let message: Message =
+                                                crate::build_error(source, error.code);
+
+                                            let uvm_stream: Arc<
+                                                Mutex<(SocketStream, VecDeque<u8>)>,
+                                            > = uvm_handle.get_user_vm_stream();
+                                            let mut guard: MutexGuard<
+                                                '_,
+                                                (SocketStream, VecDeque<u8>),
+                                            > = match uvm_stream.lock() {
+                                                Ok(guard) => guard,
+                                                Err(e) => {
+                                                    error!(
+                                                        "error acquiring lock on user VM stream \
+                                                         (error={e:?})"
+                                                    );
+                                                    break 'drain_loop;
+                                                },
+                                            };
+                                            let (locked_uvm_stream, _): &mut (
+                                                SocketStream,
+                                                VecDeque<u8>,
+                                            ) = &mut guard;
+
+                                            locked_uvm_stream
+                                                .write_all(&message.to_bytes())
+                                                .map_err(|_| {
+                                                    let reason =
+                                                        "failed to write to user VM stream";
+                                                    error!("{reason}");
+                                                    Error::new(ErrorCode::IoErr, reason)
+                                                })?;
+                                            break 'drain_loop;
+                                        },
+                                    }
+                                }
+                            };
+
+                            // Spawn a new worker thread, if necessary.
+                            if let Some(channel_rx) = channel_rx {
+                                // Spawn a thread to handle the message.
+                                let assembler = assembler.clone();
+
+                                // Spawn an interruptible thread to handle the message.
+                                let worker_thread_handle: WorkerThreadHandle =
+                                    WorkerThreadHandle::spawn(
+                                        source,
+                                        channel_rx,
+                                        channel_tx.clone(),
+                                        uvm_handle,
+                                        assembler,
+                                    )?;
+                                worker_threads
+                                    .entry(conn_id)
+                                    .or_default()
+                                    .push_back(worker_thread_handle);
+                            }
+
+                            // Dispatch message to worker thread.
+                            if let Err(error) = channel_tx.send(VenvCommand::Work(message)) {
+                                error!(
+                                    "run(): failed to dispatch message to worker thread \
+                                     (tid={source:?}, error={error:?})"
                                 );
+                                // Remove thread from the virtual environment.
+                                let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
+                                    venv.lock().unwrap();
+                                if let Err(error) = venv.leave(source) {
+                                    warn!(
+                                        "run(): failed to remove thread from virtual environment \
+                                         (tid={source:?}, error={error:?})",
+                                    );
+                                }
                             }
                         }
                     },
