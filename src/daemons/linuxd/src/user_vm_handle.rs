@@ -24,8 +24,6 @@ use ::syscomm::{
 /// State associated with a user VM connected to this linuxd instance.
 #[derive(Clone)]
 pub struct UserVmHandle {
-    // FIXME: this field is relevant once we start managing more than one user VMs.
-    #[allow(dead_code)]
     conn_id: usize,
     // We keep track of a buffer to handle partial reads from the user VM socket. This buffer will
     // never exceed the IPC message size.
