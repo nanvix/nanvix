@@ -184,6 +184,58 @@ EOF
 
 #
 # Description
+#
+#   Checks if Docker is installed and aborts if it is not.
+#
+# Usage Example
+#   check_docker_installed
+#
+check_docker_installed() {
+    if ! command -v docker >/dev/null 2>&1; then
+        print_error "Docker is not installed. Please install Docker to build with Docker."
+        exit 1
+    fi
+}
+
+#
+# Description
+#
+#   Checks if the Docker image is available locally and aborts if it is not.
+#
+# Arguments
+#   $1 - The name of the Docker image to check.
+#
+# Usage Example
+#   check_docker_image_available "nanvix/toolchain:v1.0.x"
+#
+check_docker_image_available() {
+    local image_name="$1"
+    if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
+        print_error "Docker image '${image_name}' not found. Please pull it first."
+        exit 1
+    fi
+}
+
+#
+# Description
+#
+#   Returns the name of the Docker image to use for building Nanvix.
+#
+# Arguments
+#  $1 - The version of the Docker image to use.
+#
+# Usage Example
+#   get_docker_image_name "v1.0.0"
+#
+get_docker_image_name() {
+    # Build image tag version by replacing patch with "x".
+    local image_tag_version
+    image_tag_version="${current_version%.*}.x"
+    echo "${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
+}
+
+#
+# Description
 #   Builds the Docker command to run the build process.
 #
 # Arguments
@@ -202,26 +254,18 @@ build_docker_command() {
     user_id="$(id -u)"
     group_id="$(id -g)"
 
-    # Check if the Docker is not installed.
-    if ! command -v docker >/dev/null 2>&1; then
-        print_error "Docker is not installed. Please install Docker to build with Docker."
-        exit 1
-    fi
+    # Check if Docker is installed.
+    check_docker_installed
 
     local current_version
     current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
 
-    # Build image tag version by replacing patch with "x".
-    local image_tag_version
-    image_tag_version="${current_version%.*}.x"
+    # Get the Docker image name.
+    local image_name
+    image_name=$(get_docker_image_name "${current_version}")
 
-    local image_name="${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
-
-    # Check if Docker is unavailable or the Docker image is missing.
-    if ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
-        print_error "Docker image '${image_name}' not found. Please pull it first."
-        exit 1
-    fi
+    # Check if the Docker image is available.
+    check_docker_image_available "${image_name}"
 
     echo "docker run --rm \
         -v \"$(pwd):/mnt\" \
