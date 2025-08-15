@@ -48,6 +48,7 @@ rustc-dep-of-std = [
     "core",
     "alloc",
     "sigaction",
+    "sbrk",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "nvx/rustc-dep-of-std",
