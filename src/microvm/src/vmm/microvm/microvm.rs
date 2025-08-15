@@ -26,10 +26,18 @@ use crate::vmm::microvm::kvm::{
 
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
+use ::libc::{
+    SIGUSR1,
+    c_int,
+    sigaction,
+    sigemptyset,
+};
 use ::std::sync::{
     Arc,
     Mutex,
 };
+
+pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
 //==================================================================================================
 // Structures
@@ -67,6 +75,9 @@ pub type OutputFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+/// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
+extern "C" fn vcpu_thread_signal_handler(_: i32) {}
 
 impl MicroVm {
     ///
@@ -230,6 +241,33 @@ impl MicroVm {
         self.vcpu.reset(rip, rax, rbx)
     }
 
+    /// Install a signal handler on the vCPU thread.
+    fn install_signal_handler() {
+        // SAFETY: we install a signal handler that is a no-op so this is safe.
+        let ret: c_int = unsafe {
+            let sig_action: sigaction = sigaction {
+                sa_sigaction: vcpu_thread_signal_handler as usize,
+                // Empty set to not block any other signals that may happen during signal handling.
+                sa_mask: {
+                    let mut set: libc::sigset_t = std::mem::zeroed();
+                    sigemptyset(&mut set);
+                    set
+                },
+                // No SA_RESTART so that we will trigger a -EINTR.
+                sa_flags: 0,
+                sa_restorer: None,
+            };
+
+            sigaction(INTERRUPT_SIGNAL, &sig_action, std::ptr::null_mut())
+        };
+
+        if ret != 0 {
+            // Notify the error, but don't fail.
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("error installing signal handler (errno={errno:?})");
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -243,6 +281,9 @@ impl MicroVm {
     pub fn run(&mut self) -> Result<u16> {
         trace!("run()");
         crate::timer!("vm_run");
+
+        // Install a signal handler in the virtual processor's thread.
+        Self::install_signal_handler();
 
         // Run the virtual processor until it goes offline.
         while self.vcpu.is_online() {
@@ -260,6 +301,11 @@ impl MicroVm {
 
                 // The guest requested to halt the virtual processor.
                 VirtualProcessorExitReason::Halt => {
+                    self.vcpu.poweroff(0);
+                },
+
+                // The guest was interrupted, this means we need to power-off.
+                VirtualProcessorExitReason::Interrupted => {
                     self.vcpu.poweroff(0);
                 },
 
