@@ -410,7 +410,7 @@ impl WorkerThreadHandle {
                                         source,
                                         message,
                                     ) {
-                                        Ok(message) => message,
+                                        Ok(()) => {},
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
                                             // WorkerThreadErrors other than Interrupted should be
