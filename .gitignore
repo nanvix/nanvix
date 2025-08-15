@@ -29,6 +29,11 @@ Cargo.lock
 linuxd.stdout
 linuxd.stderr
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
 # IDEs
 *.swo
 *.swp
