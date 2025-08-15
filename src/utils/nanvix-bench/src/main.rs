@@ -48,7 +48,6 @@ use microvm::{
     Vmm,
 };
 use mio::net::UnixStream;
-use nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -121,7 +120,7 @@ impl Benchmark {
             "-http-addr".to_string(),
             NANVIXD_ADDRESS.to_string(),
             "-tmp-dir".to_string(),
-            DEFAULT_TMP_DIRECTORY.to_string(),
+            self.nanvixd_tmp_dir.clone(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push("-hwloc".to_string());
@@ -716,6 +715,7 @@ async fn main() -> Result<()> {
         flavour: args.benchmark(),
         nanvixd: None,
         nanvixd_client: reqwest::Client::new(),
+        nanvixd_tmp_dir: args.tmp_dir(),
         user_vm_id: None,
     };
 

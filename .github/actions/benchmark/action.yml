@@ -14,30 +14,48 @@ runs:
   using: "composite"
   steps:
   # MicroVM benchmarks
+  - name: Create temp dir
+    run: |
+      TMPDIR_MICROVM=$(mktemp -d /tmp/nanvix-bench-microvm-XXXXX)
+      echo "TMPDIR_MICROVM=$TMPDIR_MICROVM" >> "$GITHUB_ENV"
+    shell: bash
   - name: Build (MicroVM)
     run: |
       python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
-      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_microvm_${{ inputs.arch }}.txt
+    shell: bash
+  - name: Clean-up temporary directory
+    if: always()
+    run: rm -rf ${TMPDIR_MICROVM}
     shell: bash
 
   # Hyperlight benchmarks
+  - name: Create temp dir
+    run: |
+      TMPDIR_HL=$(mktemp -d /tmp/nanvix-bench-hl-XXXXX)
+      echo "TMPDIR_HL=$TMPDIR_HL" >> "$GITHUB_ENV"
+    shell: bash
   - name: Build (Hyperlight)
     run: |
       python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
-      ./bin/nanvix-bench.elf -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_hyperlight_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_hyperlight_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight_${{ inputs.arch }}.txt
+      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight_${{ inputs.arch }}.txt
       # FIXME: warm-start-vmm is stuck on hyperlight (#709)
-      # ./bin/nanvix-bench.elf -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_hyperlight_${{ inputs.arch }}.txt
+      # ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_hyperlight_${{ inputs.arch }}.txt
+    shell: bash
+  - name: Clean-up temporary directory
+    if: always()
+    run: rm -rf ${TMPDIR_HL}
     shell: bash
 
   # Post-process the results
