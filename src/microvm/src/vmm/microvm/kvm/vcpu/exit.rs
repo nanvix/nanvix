@@ -15,6 +15,8 @@ pub enum VirtualProcessorExitReason {
     PmioAccess,
     /// Halt virtual processor.
     Halt,
+    /// Interrupted.
+    Interrupted,
     /// Unknown.
     Unknown,
 }
@@ -31,6 +33,8 @@ pub enum VirtualProcessorExitContext<'a> {
     PmioOut(u16, u32, usize),
     /// Halt virtual processor.
     Halt,
+    /// Interrupt virtual processor.
+    Interrupted,
     /// Unknown.
     Unknown,
 }
@@ -58,6 +62,8 @@ impl VirtualProcessorExitContext<'_> {
             },
             // Halt virtual processor..
             VirtualProcessorExitContext::Halt => &VirtualProcessorExitReason::Halt,
+            // Interrupt virtual processor.
+            VirtualProcessorExitContext::Interrupted => &VirtualProcessorExitReason::Interrupted,
             // Unknown.
             VirtualProcessorExitContext::Unknown => &VirtualProcessorExitReason::Unknown,
         }
