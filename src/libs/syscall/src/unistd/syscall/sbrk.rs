@@ -25,7 +25,7 @@ use ::sysalloc::{
 
 //==================================================================================================
 // Standalone Functions
-//==================================================================================================///
+//==================================================================================================
 
 ///
 /// # Description
@@ -46,7 +46,7 @@ use ::sysalloc::{
 /// allocated memory. Otherwise, it returns an error code.
 ///
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
-    ::syslog::trace!("sbrk(): size = {}", size);
+    ::syslog::trace!("sbrk(): size={size:?}");
     static mut END: *mut u8 = sysalloc::BREAK_BASE_RAW as *mut u8;
 
     // Check if querying the current program break.
@@ -67,7 +67,11 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
 
             // Check if we would exceed the heap size.
             if new_end >= (sysalloc::BREAK_BASE_RAW + sysalloc::C_HEAP_SIZE) as *mut u8 {
-                return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
+                let reason: &'static str = "out of memory";
+                ::syslog::error!(
+                    "sbrk(): {reason} (size={size:?}), old_end={old_end:x?}, new_end={new_end:x?}"
+                );
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
             }
 
             let pid: ProcessIdentifier = pm::getpid()?;
@@ -83,7 +87,11 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
 
             // Check if we would free memory below the heap base address.
             if new_end < sysalloc::BREAK_BASE_RAW as *mut u8 {
-                return Err(Error::new(ErrorCode::InvalidArgument, "invalid size"));
+                let reason: &'static str = "invalid allocation size";
+                ::syslog::error!(
+                    "sbrk(): {reason} (size={size:?}), old_end={old_end:x?}, new_end={new_end:x?}"
+                );
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
 
             let pid: ProcessIdentifier = pm::getpid()?;
