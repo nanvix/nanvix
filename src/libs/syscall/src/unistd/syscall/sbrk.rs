@@ -2,10 +2,36 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![forbid(clippy::unwrap_used)]
+#![forbid(clippy::expect_used)]
+#![forbid(clippy::cast_possible_truncation)]
+#![forbid(clippy::cast_possible_wrap)]
+#![forbid(clippy::cast_precision_loss)]
+#![forbid(clippy::cast_sign_loss)]
+#![forbid(clippy::char_lit_as_u8)]
+#![forbid(clippy::fn_to_numeric_cast)]
+#![forbid(clippy::fn_to_numeric_cast_with_truncation)]
+#![forbid(clippy::ptr_as_ptr)]
+#![forbid(clippy::unnecessary_cast)]
+#![forbid(invalid_reference_casting)]
+#![forbid(clippy::panic)]
+#![forbid(clippy::unimplemented)]
+#![forbid(clippy::todo)]
+#![forbid(clippy::unreachable)]
+#![forbid(unsafe_code)]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::arch::mem::PAGE_ALIGNMENT;
+use ::spin::mutex::{
+    SpinMutex,
+    SpinMutexGuard,
+};
 use ::sys::{
     error::{
         Error,
@@ -21,7 +47,15 @@ use ::sys::{
 use ::sysalloc::{
     map_range,
     unmap_range,
+    BREAK_BASE_RAW,
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Program break base address.
+static BREAK_BASE: SpinMutex<usize> = SpinMutex::new(BREAK_BASE_RAW);
 
 //==================================================================================================
 // Standalone Functions
@@ -47,16 +81,25 @@ use ::sysalloc::{
 ///
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
     ::syslog::trace!("sbrk(): size={size:?}");
-    static mut END: *mut u8 = sysalloc::BREAK_BASE_RAW as *mut u8;
+
+    let mut locked_base: SpinMutexGuard<'_, usize> = BREAK_BASE.lock();
 
     // Check if querying the current program break.
     if size == 0 {
-        return Ok(unsafe { END });
+        return Ok(*locked_base as *mut u8);
     }
 
-    let old_end: *mut u8 = unsafe {
-        let old_end: *mut u8 = END;
-        let new_end: *mut u8 = END.offset(size);
+    let old_end: *mut u8 = {
+        let old_end: *mut u8 = *locked_base as *mut u8;
+        // Compute the new end of the program break.
+        let new_end: *mut u8 = match locked_base.checked_add_signed(size) {
+            Some(new_end) => new_end as *mut u8,
+            None => {
+                let reason: &'static str = "not enough memory";
+                ::syslog::error!("sbrk(): {reason} (size={size:?}), old_end={old_end:x?}");
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            },
+        };
 
         // Align the new end.
         let new_end: *mut u8 = align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
@@ -104,7 +147,7 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
             )?;
         }
 
-        END = new_end;
+        *locked_base = new_end as usize;
         old_end
     };
 
