@@ -180,6 +180,10 @@ Options
   ${OPT_NAME_WITH_DOCKER}         Build Nanvix using Docker instead of the native toolchain.
   ${OPT_NAME_WITH_CACHED_OPTIONS} Use cached options from the last build.
 EOF
+    if ! make help; then
+        print_error "Failed to get help on build targets and parameters."
+        exit 1
+    fi
 }
 
 #
@@ -462,10 +466,6 @@ main() {
 
         "${CMD_NAME_HELP}")
             print_help
-            if ! make help; then
-                print_error "Failed to get help on build targets and parameters."
-                exit 1
-            fi
             ;;
         *)
             print_error "Unknown command: '${command}'"
