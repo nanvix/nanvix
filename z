@@ -27,12 +27,14 @@ CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
 # Command names.
 CMD_NAME_BUILD="build"
 CMD_NAME_CLEANUP="cleanup"
+CMD_NAME_SETUP="setup"
 CMD_NAME_HELP="help"
 
 # Option names.
 OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
 OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
+OPT_NAME_TOOLCHAIN_DIR="--toolchain-dir"
 
 # Name of the Docker image with the Nanvix toolchain.
 DOCKER_IMAGE_BASE_NAME="nanvix/toolchain"
@@ -42,6 +44,9 @@ DOCKER_IMAGE_TOOLCHAIN_PATH="/opt/nanvix"
 
 # Cache file to store the last build command and options.
 Z_CACHE_FILE=".z.cache"
+
+# Default toolchain directory for setup.
+DEFAULT_LOCAL_TOOLCHAIN_DIR="${HOME}/toolchain"
 
 # Colors
 RED='\033[0;31m'    # Red
@@ -57,8 +62,9 @@ NC='\033[0m'        # No Color
 LAST_BUILD_WITH_DOCKER=false  # Was the last build done with Docker?
 
 # Current options.
-BUILD_WITH_DOCKER=false    # Build with Docker?
-WITH_CACHED_OPTIONS=false  # Use cached options (if any)?
+BUILD_WITH_DOCKER=false                         # Build with Docker?
+WITH_CACHED_OPTIONS=false                       # Use cached options (if any)?
+TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 
 #==================================================================================================
 # Functions
@@ -169,17 +175,76 @@ Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
   ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
   ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
+  ./z ${CMD_NAME_SETUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_TOOLCHAIN_DIR} <path>]
   ./z ${CMD_NAME_HELP}
 
 Commands
   build    Builds Nanvix.
   cleanup  Cleans up build artifacts.
+  setup    Sets up the Nanvix development environment.
   help     Prints the help information.
 
 Options
-  ${OPT_NAME_WITH_DOCKER}         Build Nanvix using Docker instead of the native toolchain.
-  ${OPT_NAME_WITH_CACHED_OPTIONS} Use cached options from the last build.
+  ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the native toolchain.
+  ${OPT_NAME_WITH_CACHED_OPTIONS}   Use cached options from the last build.
+  ${OPT_NAME_TOOLCHAIN_DIR} <path>  Specify the toolchain directory for setup (default: ${DEFAULT_LOCAL_TOOLCHAIN_DIR}).
 EOF
+    if ! make help; then
+        print_error "Failed to get help on build targets and parameters."
+        exit 1
+    fi
+}
+
+#
+# Description
+#
+#   Checks if Docker is installed and aborts if it is not.
+#
+# Usage Example
+#   check_docker_installed
+#
+check_docker_installed() {
+    if ! command -v docker >/dev/null 2>&1; then
+        print_error "Docker is not installed. Please install Docker to build with Docker."
+        exit 1
+    fi
+}
+
+#
+# Description
+#
+#   Checks if the Docker image is available locally and aborts if it is not.
+#
+# Arguments
+#   $1 - The name of the Docker image to check.
+#
+# Usage Example
+#   check_docker_image_available "nanvix/toolchain:v1.0.x"
+#
+check_docker_image_available() {
+    local image_name="$1"
+    if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
+        print_error "Docker image '${image_name}' not found. Please pull it first."
+        exit 1
+    fi
+}
+
+#
+# Description
+#
+#   Returns the name of the Docker image to use for building Nanvix.
+#
+# Arguments
+#  $1 - The version of the Docker image to use.
+#
+# Usage Example
+#   get_docker_image_name "v1.0.0"
+#
+get_docker_image_name() {
+    # Build image tag version by replacing patch with "x".
+    local image_tag_version
+    image_tag_version="${1%.*}.x"
+    echo "${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
 }
 
 #
@@ -202,26 +267,18 @@ build_docker_command() {
     user_id="$(id -u)"
     group_id="$(id -g)"
 
-    # Check if the Docker is not installed.
-    if ! command -v docker >/dev/null 2>&1; then
-        print_error "Docker is not installed. Please install Docker to build with Docker."
-        exit 1
-    fi
+    # Check if Docker is installed.
+    check_docker_installed
 
     local current_version
     current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
 
-    # Build image tag version by replacing patch with "x".
-    local image_tag_version
-    image_tag_version="${current_version%.*}.x"
+    # Get the Docker image name.
+    local image_name
+    image_name=$(get_docker_image_name "${current_version}")
 
-    local image_name="${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
-
-    # Check if Docker is unavailable or the Docker image is missing.
-    if ! docker image inspect "${image_name}" >/dev/null 2>&1 ; then
-        print_error "Docker image '${image_name}' not found. Please pull it first."
-        exit 1
-    fi
+    # Check if the Docker image is available.
+    check_docker_image_available "${image_name}"
 
     echo "docker run --rm \
         -v \"$(pwd):/mnt\" \
@@ -320,6 +377,14 @@ main() {
                 WITH_CACHED_OPTIONS=true
                 shift
                 ;;
+            "${OPT_NAME_TOOLCHAIN_DIR}")
+                if [[ $# -lt 2 ]] || [[ "$2" == "--"* ]]; then
+                    print_error "Missing path for ${OPT_NAME_TOOLCHAIN_DIR}"
+                    exit 1
+                fi
+                TOOLCHAIN_DIR="$2"
+                shift 2
+                ;;
             "${OPT_NAME_SEPARATOR}")
                 shift
                 break
@@ -416,12 +481,78 @@ main() {
             fi
             ;;
 
+        "${CMD_NAME_SETUP}")
+            # Setup the Nanvix development environment.
+            print_info "Setting up Nanvix development environment..."
+
+            # If Docker is requested, download the Docker image.
+            if ${BUILD_WITH_DOCKER}; then
+                print_info "Docker setup requested, downloading Docker image..."
+
+                # Check if Docker is installed.
+                check_docker_installed
+
+                # Get the Docker image name using the same logic as build_docker_command
+                local current_version
+                current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+
+                # Get the Docker image name.
+                local image_name
+                image_name=$(get_docker_image_name "${current_version}")
+
+                # Pull the Docker image.
+                print_info "Pulling Docker image: ${image_name}"
+                if ! docker pull "${image_name}"; then
+                    print_error "Failed to pull Docker image '${image_name}'."
+                    exit 1
+                fi
+
+                print_success "Docker image '${image_name}' downloaded successfully."
+            else
+                print_info "Toolchain directory: ${TOOLCHAIN_DIR}"
+
+                # Ensure the toolchain directory exists; create it if it does not.
+                if [[ ! -d "${TOOLCHAIN_DIR}" ]]; then
+                    print_info "Toolchain directory '${TOOLCHAIN_DIR}' does not exist. Creating it..."
+                    if ! mkdir -p "${TOOLCHAIN_DIR}"; then
+                        print_error "Failed to create toolchain directory '${TOOLCHAIN_DIR}'. Please check your permissions or specify another directory."
+                        exit 1
+                    fi
+                fi
+
+                # Check if user has write permissions to the toolchain directory.
+                if [[ ! -w "${TOOLCHAIN_DIR}" ]]; then
+                    print_error "No write permissions to: ${TOOLCHAIN_DIR}. Run with appropriate permissions or specify another directory."
+                    exit 1
+                fi
+
+                # Warn if toolchain directory is not empty.
+                if [ "$(ls -A "${TOOLCHAIN_DIR}" 2>/dev/null)" ]; then
+                    print_warning "Toolchain directory is not empty: ${TOOLCHAIN_DIR}. Existing files may be overwritten."
+                fi
+
+                # Path to the main setup script
+                local setup_script="${REPO_ROOT_DIR}/scripts/setup/toolchain.sh"
+
+                # Check if setup script exists
+                if [[ ! -f "${setup_script}" ]]; then
+                    print_error "Setup script not found: ${setup_script}"
+                    exit 1
+                fi
+
+                # Run the setup script
+                print_info "Running setup script: ${setup_script}"
+                if ! "${setup_script}" "${TOOLCHAIN_DIR}"; then
+                    print_error "Setup failed."
+                    exit 1
+                fi
+            fi
+
+            print_success "Nanvix development environment setup completed successfully."
+            ;;
+
         "${CMD_NAME_HELP}")
             print_help
-            if ! make help; then
-                print_error "Failed to get help on build targets and parameters."
-                exit 1
-            fi
             ;;
         *)
             print_error "Unknown command: '${command}'"
