@@ -101,6 +101,42 @@ impl VirtualAddress {
     pub fn is_aligned(&self, align: Alignment) -> bool {
         mm::is_aligned(self.0, align)
     }
+
+    ///
+    /// # Description
+    ///
+    /// Performs a checked addition of a [`VirtualAddress`] and a `usize`.
+    ///
+    /// # Parameters
+    ///
+    /// - `rhs`: The value to add.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the new [`VirtualAddress`] is returned. Upon failure (overflow), `None` is
+    /// returned instead.
+    ///
+    pub fn checked_add(&self, rhs: usize) -> Option<Self> {
+        self.0.checked_add(rhs).map(VirtualAddress::from_raw_value)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Performs a checked subtraction of a [`VirtualAddress`] and a `usize`.
+    ///
+    /// # Parameters
+    ///
+    /// - `rhs`: The value to subtract.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the new [`VirtualAddress`] is returned. Upon failure (underflow), `None` is
+    /// returned instead.
+    ///
+    pub fn checked_sub(&self, rhs: usize) -> Option<Self> {
+        self.0.checked_sub(rhs).map(VirtualAddress::from_raw_value)
+    }
 }
 
 impl Address for VirtualAddress {
