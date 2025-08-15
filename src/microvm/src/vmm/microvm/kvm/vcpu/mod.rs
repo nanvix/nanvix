@@ -268,6 +268,11 @@ impl VirtualProcessor {
                 warn!("run(): internal error");
                 Ok(VirtualProcessorExitContext::Unknown)
             },
+            // Virtual processor was interrupted.
+            VcpuExit::Intr => {
+                warn!("run(): interrupted");
+                Ok(VirtualProcessorExitContext::Interrupted)
+            },
             // Unsupported exit reason.
             VcpuExit::Unsupported(reason) => {
                 // TODO: handle unsupported exit reason.
