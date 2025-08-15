@@ -166,8 +166,8 @@ print_help() {
 Utility for building Nanvix.
 
 Usage:
-  ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
-  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_PARAMETERS]
+  ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
   ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
   ./z ${CMD_NAME_HELP}
 
@@ -347,12 +347,12 @@ main() {
         fi
     fi
 
-    print_info "Command: ${command}"
-    print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
-    print_info "Build Parameters: ${build_parameters[*]}"
-
     case "${command}" in
         "${CMD_NAME_BUILD}")
+            print_info "Command: ${command}"
+            print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
+            print_info "Build Parameters: ${build_parameters[*]}"
+
             # Check if we are switching build modes.
             if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
                 print_warning "Switching to Docker build, forcing cleanup."
@@ -418,6 +418,10 @@ main() {
 
         "${CMD_NAME_HELP}")
             print_help
+            if ! make help; then
+                print_error "Failed to get help on build targets and parameters."
+                exit 1
+            fi
             ;;
         *)
             print_error "Unknown command: '${command}'"
