@@ -14,51 +14,93 @@ use crate::{
         VirtMemoryManager,
         Vmem,
     },
-    pm::ProcessManager,
+    pm::{
+        self,
+        ProcessManager,
+    },
 };
+use ::core::mem::size_of;
 use ::sys::{
-    error::Error,
-    mm::VirtualAddress,
-    pm::ThreadIdentifier,
-};
-use sys::{
     error::ErrorCode,
-    pm::ProcessIdentifier,
+    mm::{
+        Address,
+        VirtualAddress,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadCreateArgs,
+    },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-fn do_create_thread(
-    pm: &mut ProcessManager,
-    mm: &mut VirtMemoryManager,
-    pid: ProcessIdentifier,
-    user_wrapper_fn: VirtualAddress,
-    user_fn: VirtualAddress,
-    user_fn_arg: usize,
-) -> Result<ThreadIdentifier, Error> {
-    pm.create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
-}
-
+///
+/// # Description
+///
+/// Creates a new thread in the calling process.
+///
+/// # Parameters
+///
+/// - `pm`: Handler to the process manager.
+/// - `mm`: Handler to the virtual memory manager.
+/// - `args`: Kernel call arguments containing the thread creation parameters.
+///
+/// # Returns
+///
+/// If successful, this function returns the thread identifier of the newly created thread.
+/// Otherwise, it returns an error code.
+///
 pub fn create_thread(
     pm: &mut ProcessManager,
     mm: &mut VirtMemoryManager,
     args: &KcallArgs,
 ) -> KcallResult {
     // Unpack kernel call arguments.
-    let user_wrapper_fn: VirtualAddress = VirtualAddress::from_raw_value(args.arg0 as usize);
-    let user_fn: VirtualAddress = VirtualAddress::from_raw_value(args.arg1 as usize);
-    let user_fn_arg: usize = args.arg2 as usize;
+    let pid: ProcessIdentifier = args.pid;
+    let unsafe_thread_create_args: VirtualAddress =
+        VirtualAddress::from_raw_value(args.arg0 as usize);
 
-    // Ensure that user function lies within the user address space.
-    if !Vmem::is_user_addr(user_fn) {
-        let reason: &str = "user function is not within the user address space";
-        error!("create_thread(): {} (user_func={:?})", reason, user_fn);
+    // Check if thread_create_args does not lie in user space.
+    if !Vmem::is_user_region(unsafe_thread_create_args, size_of::<ThreadCreateArgs>()) {
+        let reason: &str = "thread_create_args does not lie in user space";
+        error!("create_thread(): {reason} (thread_create_args={unsafe_thread_create_args:?})");
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
-    match do_create_thread(pm, mm, args.pid, user_wrapper_fn, user_fn, user_fn_arg) {
+    // Copy thread_create_args from user space to kernel space.
+    let mut thread_create_args: ThreadCreateArgs = ThreadCreateArgs::default();
+    if let Err(error) = pm::copy_from_user(
+        pm,
+        args.pid,
+        &mut thread_create_args,
+        unsafe_thread_create_args.into_raw_value() as *const ThreadCreateArgs,
+    ) {
+        let reason: &str = "failed to copy thread_create_args from user space";
+        error!("create_thread(): {reason:?} (error={:?})", error);
+        return KcallResult::Error(error.code.into());
+    }
+
+    // Check if the user wrapper function does not lie within the user address space.
+    if !Vmem::is_user_addr(thread_create_args.user_wrapper_fn) {
+        let reason: &str = "user wrapper function does not lie within the user address space";
+        error!(
+            "create_thread(): {reason} (user_wrapper_fn={:?})",
+            thread_create_args.user_wrapper_fn
+        );
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
+
+    // Check if the user function does not lie within the user address space.
+    if !Vmem::is_user_addr(thread_create_args.user_fn) {
+        let reason: &str = "user function does not lie within the user address space";
+        error!("create_thread(): {reason} (user_fn={:?})", thread_create_args.user_fn);
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
+
+    // Handle thread creation.
+    match pm.create_thread(mm, pid, &thread_create_args) {
         Ok(tid) => {
             debug!("create_thread(): thread {tid:?} created");
             KcallResult::Success(<i32>::from(tid).into())

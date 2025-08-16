@@ -91,6 +91,7 @@ use ::sys::{
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        ThreadCreateArgs,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -267,28 +268,30 @@ impl ProcessManagerInner {
     ///
     /// - `mm`: Memory manager to use.
     /// - `pid`: Process identifier.
-    /// - `user_func`: User function to execute.
+    /// - `thread_create_args`: Arguments for the thread creation.
     ///
     /// # Returns
     ///
     /// Upon successful completion, the thread identifier of the new thread is returned.
     /// Otherwise, an error is returned instead.
     ///
+    /// # Safety Notes
+    ///
+    /// - `thread_create_args` must have valid fields, specifically:
+    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
+    ///   - `user_fn` must point to a user memory region that is executable.
+    ///
     fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_wrapper_fn: VirtualAddress,
-        user_fn: VirtualAddress,
-        user_fn_arg: usize,
+        thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
-        trace!(
-            "create_thread(): pid={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, user_fn_arg={:#x?}",
-            pid,
-            user_wrapper_fn,
-            user_fn,
-            user_fn_arg
-        );
+        trace!("create_thread(): pid={pid:?}, thread_create_args={thread_create_args:?}");
+
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
@@ -319,7 +322,8 @@ impl ProcessManagerInner {
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
 
-            // Allocate a new user stack.
+            // Allocate a new user stack. If we fail beyond this point, `user_stack` gets dropped as
+            // soon as we exit this scope and underlying pages are released.
             let user_stack: UserStack = match process.state_mut().get_user_stack_allocator_mut() {
                 Some(user_stack_allocator) => user_stack_allocator.alloc()?,
                 None => {
@@ -337,9 +341,9 @@ impl ProcessManagerInner {
                     mm,
                     process.state_mut().vmem_mut(),
                     &user_stack,
-                    user_wrapper_fn,
-                    user_fn.into_raw_value(),
-                    user_fn_arg,
+                    thread_create_args.user_wrapper_fn,
+                    thread_create_args.user_fn.into_raw_value(),
+                    thread_create_args.user_fn_arg,
                     enable_interrupts,
                 )?;
 
@@ -1344,17 +1348,40 @@ impl ProcessManager {
         self.try_borrow_mut()?.create_process(mm, elf, args, env)
     }
 
-    /// Creates a new thread.
+    ///
+    /// # Description
+    ///
+    /// Creates a new thread in the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Process identifier.
+    /// - `thread_create_args`: Arguments for the thread creation.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the thread identifier of the new thread is returned.
+    /// Otherwise, an error is returned instead.
+    ///
+    /// # Safety Notes
+    ///
+    /// - `thread_create_args` must have valid fields, specifically:
+    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
+    ///   - `user_fn` must point to a user memory region that is executable.
+    ///
     pub fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_wrapper_fn: VirtualAddress,
-        user_fn: VirtualAddress,
-        user_fn_arg: usize,
+        thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
+
         self.try_borrow_mut()?
-            .create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
+            .create_thread(mm, pid, thread_create_args)
     }
 
     pub fn has_capability(

@@ -15,12 +15,14 @@ use crate::{
     kcall2,
     kcall3,
     kcall4,
+    mm::VirtualAddress,
     number::KcallNumber,
     pm::{
         Capability,
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        ThreadCreateArgs,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -150,11 +152,15 @@ pub fn create_thread(
         fn _do_start_thread() -> !;
     }
 
-    let result: i64 = kcall3!(
+    let thread_create_args: ThreadCreateArgs = ThreadCreateArgs {
+        user_wrapper_fn: VirtualAddress::from_raw_value(_do_start_thread as usize),
+        user_fn: VirtualAddress::from_raw_value(user_fn as usize),
+        user_fn_arg: arg,
+    };
+
+    let result: i64 = kcall1!(
         KcallNumber::CreateThread.into(),
-        _do_start_thread as usize as u32,
-        user_fn as usize as u32,
-        arg as u32
+        &thread_create_args as *const ThreadCreateArgs as usize as u32
     );
 
     ThreadIdentifier::try_from(result)
