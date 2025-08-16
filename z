@@ -185,7 +185,7 @@ Commands
   help     Prints the help information.
 
 Options
-  ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the native toolchain.
+  ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the local toolchain.
   ${OPT_NAME_WITH_CACHED_OPTIONS}   Use cached options from the last build.
   ${OPT_NAME_TOOLCHAIN_DIR} <path>  Specify the toolchain directory for setup (default: ${DEFAULT_LOCAL_TOOLCHAIN_DIR}).
 EOF
@@ -427,10 +427,10 @@ main() {
                     exit 1
                 fi
             elif ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to native toolchain build, forcing cleanup."
+                print_warning "Switching to local toolchain build, forcing cleanup."
                 # Force a cleanup.
                 if ! make distclean ; then
-                    print_error "Cleanup failed with native toolchain."
+                    print_error "Cleanup failed with local toolchain."
                     exit 1
                 fi
             fi
@@ -444,7 +444,7 @@ main() {
                     exit 1
                 fi
             else
-                print_info "Building with native toolchain..."
+                print_info "Building with local toolchain..."
                 if ! make "${build_parameters[@]}"; then
                     print_error "Build failed."
                     exit 1
@@ -467,7 +467,7 @@ main() {
                     exit 1
                 fi
             else
-                print_info "Cleaning up with native toolchain..."
+                print_info "Cleaning up with local toolchain..."
                 if ! make distclean; then
                     print_error "Cleanup failed."
                     exit 1
