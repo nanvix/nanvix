@@ -71,7 +71,7 @@ hyperlight-common = { version = "0.7.0", default-features = false }
 hyperlight-host = { version = "0.7.0", default-features = false, features = [
         "kvm",
 ] }
-hyperlight-guest = { version = "0.7.0", default-features = false }
+hyperlight-guest = { version = "0.8.0", default-features = false }
 hyper = { version = "1.6.0", default-features = false }
 hyper-util = { version = "0.1.14", default-features = false }
 hwloc = { path = "src/libs/hwloc", default-features = false }
