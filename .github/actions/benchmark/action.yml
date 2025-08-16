@@ -21,7 +21,7 @@ runs:
     shell: bash
   - name: Build (MicroVM)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build --sccache=${SCCACHE}
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
@@ -43,7 +43,7 @@ runs:
     shell: bash
   - name: Build (Hyperlight)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build --sccache=${SCCACHE}
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |

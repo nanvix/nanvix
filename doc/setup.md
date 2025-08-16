@@ -10,6 +10,7 @@ This guide will help you set up your development environment to build and run Na
   - [3. Install Dependencies for Development Tools](#3-install-dependencies-for-development-tools)
   - [4. Setup KVM](#4-setup-kvm)
   - [5. Setup Docker (Optional)](#5-setup-docker-optional)
+  - [6. Setup SCCACHE (Optional)](#6-setup-sccache-optional)
 - [Setting Up Development Tools](#setting-up-development-tools)
   - [Option 1: Build Development Tools Locally (Preferred Method)](#option-1-build-development-tools-locally-preferred-method)
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
@@ -70,6 +71,32 @@ sudo usermod -aG docker $USER
 # Re-login and check if groups changed.
 newgrp docker
 groups
+```
+
+### 6. Setup SCCACHE (Optional)
+
+Install `sccache` to enable caching of compilation artifacts and can significantly speed up builds.
+
+```bash
+# Set the sccache version and filename.
+SCCACHE_VERSION="v0.10.0"
+SCCACHE_FILENAME="sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl"
+SCCACHE_TAR="${SCCACHE_FILENAME}.tar.gz"
+SCCACHE_INSTALL_PATH="/usr/local/bin/sccache"
+
+# Get pre-compiled binaries for sccache.
+wget "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_TAR}"
+
+# Extract and install sccache.
+tar -xzf "${SCCACHE_TAR}"
+sudo mv "${SCCACHE_FILENAME}/sccache" ${SCCACHE_INSTALL_PATH}
+
+# Clean up the downloaded files.
+rm -rf "${SCCACHE_TAR}" "${SCCACHE_FILENAME}"
+
+# Add sccache to PATH (if not already in PATH)
+echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ---

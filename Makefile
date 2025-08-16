@@ -65,6 +65,7 @@ export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
+export SCCACHE       ?= $(shell which sccache 2>/dev/null)
 
 #===================================================================================================
 # Libraries and Binaries
@@ -105,6 +106,12 @@ export NANVIX_MACHINE := $(MACHINE)
 # Tools
 export CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
 export CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
+
+# SCCACHE integration for C/C++ compilation (optional)
+ifneq ($(SCCACHE),)
+export CC := $(SCCACHE) $(CC)
+export CXX := $(SCCACHE) $(CXX)
+endif
 
 # C Compiler Options
 export CFLAGS := -std=c17
@@ -156,6 +163,11 @@ endif
 # Tools
 export CARGO := $(HOME)/.cargo/bin/cargo
 export RUSTC := $(HOME)/.cargo/bin/rustc
+
+# SCCACHE integration for Rust compilation (optional)
+ifneq ($(SCCACHE),)
+export RUSTC_WRAPPER := $(SCCACHE)
+endif
 
 # Rust flags for guest target.
 export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
@@ -344,6 +356,7 @@ help:
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
+	@echo "  SCCACHE          Path to ompilation cache binary (default: auto-detected from PATH) [impacts build time]"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
