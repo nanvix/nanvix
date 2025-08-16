@@ -91,6 +91,7 @@ use ::sys::{
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        ThreadCreateArgs,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -172,6 +173,32 @@ impl ProcessManagerInner {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Creates a new thread in the calling process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pm`: Handler to the process manager.
+    /// - `mm`: Handler to the virtual memory manager.
+    /// - `user_stack`: User stack to use for the new thread.
+    /// - `user_fn`: User function to execute in the new thread.
+    /// - `arg0`: First argument to pass to the user function.
+    /// - `arg1`: Second argument to pass to the user function.
+    /// - `enable_interrupts`: Whether to enable interrupts in the new thread.
+    ///
+    /// # Returns
+    ///
+    /// On successful completion, this function returns the thread identifier of the newly created
+    /// thread.  On failure, it returns an error object that provides details about the failure.
+    ///
+    /// # Safety Notes
+    ///
+    /// - `user_stack` refers to a memory region that lies within the user address space, it is
+    ///   writable and it has a size that is a multiple of `PAGE_SIZE`.
+    /// - `user_fn` lies within the user address space and points to an executable memory region.
+    ///
     fn forge_user_context(
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
@@ -182,36 +209,23 @@ impl ProcessManagerInner {
         enable_interrupts: bool,
     ) -> Result<(KernelStack, ContextInformation), Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, arg0={:#x?}, \
-             arg1={:#x?}, enable_interrupts={:?}",
-            user_stack,
-            user_fn,
-            arg0,
-            arg1,
-            enable_interrupts
+            "forge_user_context(): user_stack={user_stack:?}, user_fn={user_fn:#x?}, \
+             arg0={arg0:#x?}, arg1={arg1:#x?}, enable_interrupts={enable_interrupts:?}",
         );
 
         unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        // Ensure that user wrapper function lies within the user address space.
-        if !Vmem::is_user_addr(user_fn) {
-            let reason: &str = "user wrapper function is not within the user address space";
-            error!(
-                "forge_context(): {} (user_stack={:?}, user_func={:?})",
-                reason, user_stack, arg0
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        // NOTE: we don't check if the user function lies within the user address space, because
-        // if it is not it will self-crash.
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_region(user_stack.top().into_inner(), user_stack.size()));
+        debug_assert!(Vmem::is_user_addr(user_fn));
 
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
-        // Alloc kernel pages for the kernel stack.
+        // Alloc kernel pages for the kernel stack. If we fail beyond this point, `kernel_stack`
+        // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
@@ -239,7 +253,8 @@ impl ProcessManagerInner {
             AccessPermission::RDWR,
         )?;
 
-        // NOTE: if we fail, beyond this point we must unmap kernel pages from `vmem`.
+        // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
+        // will leak underlying pages.
 
         Ok((kernel_stack, context))
     }
@@ -253,28 +268,30 @@ impl ProcessManagerInner {
     ///
     /// - `mm`: Memory manager to use.
     /// - `pid`: Process identifier.
-    /// - `user_func`: User function to execute.
+    /// - `thread_create_args`: Arguments for the thread creation.
     ///
     /// # Returns
     ///
     /// Upon successful completion, the thread identifier of the new thread is returned.
     /// Otherwise, an error is returned instead.
     ///
+    /// # Safety Notes
+    ///
+    /// - `thread_create_args` must have valid fields, specifically:
+    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
+    ///   - `user_fn` must point to a user memory region that is executable.
+    ///
     fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_wrapper_fn: VirtualAddress,
-        user_fn: VirtualAddress,
-        user_fn_arg: usize,
+        thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
-        trace!(
-            "create_thread(): pid={:?}, user_wrapper_fn={:#x?}, user_fn={:#x?}, user_fn_arg={:#x?}",
-            pid,
-            user_wrapper_fn,
-            user_fn,
-            user_fn_arg
-        );
+        trace!("create_thread(): pid={pid:?}, thread_create_args={thread_create_args:?}");
+
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
@@ -299,9 +316,14 @@ impl ProcessManagerInner {
                 error!("create_thread(): {}", reason);
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
-            // TODO: include runnable process with interrupted threads.
+            if let ProcessRefMut::Runnable(_) = process {
+                let reason: &str = "process is runnable";
+                error!("create_thread(): {}", reason);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            }
 
-            // Allocate a new user stack.
+            // Allocate a new user stack. If we fail beyond this point, `user_stack` gets dropped as
+            // soon as we exit this scope and underlying pages are released.
             let user_stack: UserStack = match process.state_mut().get_user_stack_allocator_mut() {
                 Some(user_stack_allocator) => user_stack_allocator.alloc()?,
                 None => {
@@ -319,9 +341,9 @@ impl ProcessManagerInner {
                     mm,
                     process.state_mut().vmem_mut(),
                     &user_stack,
-                    user_wrapper_fn,
-                    user_fn.into_raw_value(),
-                    user_fn_arg,
+                    thread_create_args.user_wrapper_fn,
+                    thread_create_args.user_fn.into_raw_value(),
+                    thread_create_args.user_fn_arg,
                     enable_interrupts,
                 )?;
 
@@ -1326,17 +1348,40 @@ impl ProcessManager {
         self.try_borrow_mut()?.create_process(mm, elf, args, env)
     }
 
-    /// Creates a new thread.
+    ///
+    /// # Description
+    ///
+    /// Creates a new thread in the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Process identifier.
+    /// - `thread_create_args`: Arguments for the thread creation.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the thread identifier of the new thread is returned.
+    /// Otherwise, an error is returned instead.
+    ///
+    /// # Safety Notes
+    ///
+    /// - `thread_create_args` must have valid fields, specifically:
+    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
+    ///   - `user_fn` must point to a user memory region that is executable.
+    ///
     pub fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
-        user_wrapper_fn: VirtualAddress,
-        user_fn: VirtualAddress,
-        user_fn_arg: usize,
+        thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
+        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
+
         self.try_borrow_mut()?
-            .create_thread(mm, pid, user_wrapper_fn, user_fn, user_fn_arg)
+            .create_thread(mm, pid, thread_create_args)
     }
 
     pub fn has_capability(
