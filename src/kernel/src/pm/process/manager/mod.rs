@@ -172,6 +172,32 @@ impl ProcessManagerInner {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Creates a new thread in the calling process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pm`: Handler to the process manager.
+    /// - `mm`: Handler to the virtual memory manager.
+    /// - `user_stack`: User stack to use for the new thread.
+    /// - `user_fn`: User function to execute in the new thread.
+    /// - `arg0`: First argument to pass to the user function.
+    /// - `arg1`: Second argument to pass to the user function.
+    /// - `enable_interrupts`: Whether to enable interrupts in the new thread.
+    ///
+    /// # Returns
+    ///
+    /// On successful completion, this function returns the thread identifier of the newly created
+    /// thread.  On failure, it returns an error object that provides details about the failure.
+    ///
+    /// # Safety Notes
+    ///
+    /// - `user_stack` refers to a memory region that lies within the user address space, it is
+    ///   writable and it has a size that is a multiple of `PAGE_SIZE`.
+    /// - `user_fn` lies within the user address space and points to an executable memory region.
+    ///
     fn forge_user_context(
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
@@ -182,36 +208,23 @@ impl ProcessManagerInner {
         enable_interrupts: bool,
     ) -> Result<(KernelStack, ContextInformation), Error> {
         trace!(
-            "forge_user_context(): user_stack={:?}, user_wrapper_fn={:#x?}, arg0={:#x?}, \
-             arg1={:#x?}, enable_interrupts={:?}",
-            user_stack,
-            user_fn,
-            arg0,
-            arg1,
-            enable_interrupts
+            "forge_user_context(): user_stack={user_stack:?}, user_fn={user_fn:#x?}, \
+             arg0={arg0:#x?}, arg1={arg1:#x?}, enable_interrupts={enable_interrupts:?}",
         );
 
         unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        // Ensure that user wrapper function lies within the user address space.
-        if !Vmem::is_user_addr(user_fn) {
-            let reason: &str = "user wrapper function is not within the user address space";
-            error!(
-                "forge_context(): {} (user_stack={:?}, user_func={:?})",
-                reason, user_stack, arg0
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        // NOTE: we don't check if the user function lies within the user address space, because
-        // if it is not it will self-crash.
+        // Assert pre-conditions (these should have been checked by the caller).
+        debug_assert!(Vmem::is_user_region(user_stack.top().into_inner(), user_stack.size()));
+        debug_assert!(Vmem::is_user_addr(user_fn));
 
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
 
-        // Alloc kernel pages for the kernel stack.
+        // Alloc kernel pages for the kernel stack. If we fail beyond this point, `kernel_stack`
+        // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
         let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
@@ -239,7 +252,8 @@ impl ProcessManagerInner {
             AccessPermission::RDWR,
         )?;
 
-        // NOTE: if we fail, beyond this point we must unmap kernel pages from `vmem`.
+        // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
+        // will leak underlying pages.
 
         Ok((kernel_stack, context))
     }
