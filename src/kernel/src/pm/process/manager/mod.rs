@@ -299,7 +299,11 @@ impl ProcessManagerInner {
                 error!("create_thread(): {}", reason);
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
-            // TODO: include runnable process with interrupted threads.
+            if let ProcessRefMut::Runnable(_) = process {
+                let reason: &str = "process is runnable";
+                error!("create_thread(): {}", reason);
+                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+            }
 
             // Allocate a new user stack.
             let user_stack: UserStack = match process.state_mut().get_user_stack_allocator_mut() {
