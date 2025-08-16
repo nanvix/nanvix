@@ -24,6 +24,7 @@ concurrency:
 
 env:
   TARGET_BRANCH: ${{ github.ref_name }}
+  SCCACHE: "/usr/local/bin/sccache"
 
 jobs:
   ci:
