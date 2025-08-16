@@ -30,7 +30,11 @@ use ::sys::{
         exit_thread,
         join_thread,
     },
-    pm::ThreadIdentifier,
+    mm::VirtualAddress,
+    pm::{
+        ThreadCreateArgs,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -65,7 +69,15 @@ pub fn pthread_create(
         ::core::ptr::addr_of!(start_routine),
         arg
     );
-    create_thread(start_routine, arg)?.try_into()
+
+    let mut args: ThreadCreateArgs = ThreadCreateArgs {
+        // Placeholder for user wrapper function, it will be overridden by the kernel call interface.
+        user_wrapper_fn: VirtualAddress::from_raw_value(0),
+        user_fn: VirtualAddress::from_raw_value(start_routine as usize),
+        user_fn_arg: arg,
+    };
+
+    create_thread(&mut args)?.try_into()
 }
 
 pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
