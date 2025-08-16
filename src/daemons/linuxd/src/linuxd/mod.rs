@@ -352,7 +352,7 @@ impl LinuxDaemon {
                                 info!("linuxd received shutdown message from control-plane");
 
                                 // Close all existing connections to user VMs.
-                                while let Some(uvm_handle) = user_vm_connections.drain().next() {
+                                for uvm_handle in user_vm_connections.drain() {
                                     let conn_id: usize = uvm_handle.get_conn_id();
                                     info!("shutting down user VM (conn_id={conn_id})");
 
