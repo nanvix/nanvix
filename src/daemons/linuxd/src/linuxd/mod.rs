@@ -125,6 +125,7 @@ impl LinuxDaemon {
                     let entry: VacantEntry<UserVmHandle> = user_vm_connections.vacant_entry();
                     let entry_key: usize = entry.key();
                     let token: Token = Token(start_token + entry_key);
+                    trace!("accepted connection from user VM (conn_id={entry_key})");
 
                     user_vm_poll
                         .registry()
@@ -162,6 +163,10 @@ impl LinuxDaemon {
                         None
                     };
 
+                    trace!(
+                        "registered user VM handle (conn_id={entry_key}, gw_stream={})",
+                        gateway_stream.is_some()
+                    );
                     entry.insert(UserVmHandle::new(entry_key, user_vm_stream, gateway_stream));
                 },
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -361,7 +366,11 @@ impl LinuxDaemon {
                                 // Draining the user VM connections should also drain the worker
                                 // threads. Print an error if not.
                                 if !worker_threads.is_empty() {
-                                    error!("finished shutdown with orphaned worker threads");
+                                    error!(
+                                        "finished shutdown with orphaned worker threads \
+                                         (conn_ids={:?})",
+                                        worker_threads.keys().collect::<Vec<_>>()
+                                    );
                                 }
 
                                 break 'main_loop;
@@ -420,7 +429,8 @@ impl LinuxDaemon {
                             };
 
                             trace!(
-                                "message.source={:?}, message.destination={:?}, message.type={:?}",
+                                "uservm.id={conn_id}, message.source={:?}, \
+                                 message.destination={:?}, message.type={:?}",
                                 { message.source },
                                 { message.destination },
                                 message.message_type,
@@ -442,12 +452,16 @@ impl LinuxDaemon {
                             ) = {
                                 let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
                                     venv.lock().unwrap();
-                                let env = venv.get(source);
+                                let env = venv.get(conn_id, source);
                                 if let Some(env) = env {
                                     (env.get_channel_tx(), None)
                                 } else {
                                     // Join a new virtual environment.
-                                    match venv.join(source, VirtualEnvironmentIdentifier::NEW) {
+                                    match venv.join(
+                                        conn_id,
+                                        source,
+                                        VirtualEnvironmentIdentifier::NEW,
+                                    ) {
                                         Ok((_, channel_tx, channel_rx)) => {
                                             (channel_tx, Some(channel_rx))
                                         },
@@ -523,10 +537,10 @@ impl LinuxDaemon {
                                 // Remove thread from the virtual environment.
                                 let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
                                     venv.lock().unwrap();
-                                if let Err(error) = venv.leave(source) {
+                                if let Err(error) = venv.leave(conn_id, source) {
                                     warn!(
                                         "run(): failed to remove thread from virtual environment \
-                                         (tid={source:?}, error={error:?})",
+                                         (conn_id={conn_id}, tid={source:?}, error={error:?})",
                                     );
                                 }
                             }
