@@ -9,6 +9,7 @@ mod capability;
 mod gid;
 mod pid;
 mod sync;
+mod thread_create_args;
 mod tid;
 mod uid;
 
@@ -23,5 +24,6 @@ pub use sync::{
     ConditionAddress,
     MutexAddress,
 };
+pub use thread_create_args::ThreadCreateArgs;
 pub use tid::ThreadIdentifier;
 pub use uid::UserIdentifier;
