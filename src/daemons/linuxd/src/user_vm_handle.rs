@@ -24,7 +24,7 @@ use ::syscomm::{
 /// State associated with a user VM connected to this linuxd instance.
 #[derive(Clone)]
 pub struct UserVmHandle {
-    conn_id: usize,
+    conn_id: u32,
     // We keep track of a buffer to handle partial reads from the user VM socket. This buffer will
     // never exceed the IPC message size.
     user_vm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
@@ -33,7 +33,7 @@ pub struct UserVmHandle {
 
 impl UserVmHandle {
     pub fn new(
-        conn_id: usize,
+        conn_id: u32,
         user_vm_stream: SocketStream,
         gw_stream: Option<SocketStream>,
     ) -> Self {
@@ -57,7 +57,7 @@ impl UserVmHandle {
         }
     }
 
-    pub fn get_conn_id(&self) -> usize {
+    pub fn get_conn_id(&self) -> u32 {
         self.conn_id
     }
 

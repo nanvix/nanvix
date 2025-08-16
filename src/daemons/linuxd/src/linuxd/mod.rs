@@ -163,11 +163,19 @@ impl LinuxDaemon {
                         None
                     };
 
+                    // Convert the entry key to a u32 for portability.
+                    let conn_id: u32 = match u32::try_from(entry_key) {
+                        Ok(conn_id) => conn_id,
+                        Err(e) => {
+                            error!("error clipping connection id to u32 (error={e:})");
+                            continue;
+                        },
+                    };
                     trace!(
-                        "registered user VM handle (conn_id={entry_key}, gw_stream={})",
+                        "registered user VM handle (conn_id={conn_id}, gw_stream={})",
                         gateway_stream.is_some()
                     );
-                    entry.insert(UserVmHandle::new(entry_key, user_vm_stream, gateway_stream));
+                    entry.insert(UserVmHandle::new(conn_id, user_vm_stream, gateway_stream));
                 },
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No connections to be accepted, break.
@@ -189,9 +197,9 @@ impl LinuxDaemon {
     /// reference, and with the function call we ensure we return the borrow.
     fn process_connection(
         user_vm_connections: &mut Slab<UserVmHandle>,
-        conn_id: usize,
+        conn_id: u32,
     ) -> Result<UserVmHandle, Error> {
-        match user_vm_connections.get_mut(conn_id) {
+        match user_vm_connections.get_mut(conn_id as usize) {
             Some(user_vm_handle) => Ok(user_vm_handle.clone()),
             None => Err(Error::new(ErrorCode::InvalidArgument, "Invalid connection ID")),
         }
@@ -319,7 +327,7 @@ impl LinuxDaemon {
         // Map keeping track of the worker threads associated to each user VM identified by
         // connection ID. We use a HashMap and not a Slab because we need to support insert/removal
         // by key.
-        let mut worker_threads: HashMap<usize, VecDeque<WorkerThreadHandle>> = HashMap::new();
+        let mut worker_threads: HashMap<u32, VecDeque<WorkerThreadHandle>> = HashMap::new();
 
         'main_loop: loop {
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
@@ -353,7 +361,7 @@ impl LinuxDaemon {
 
                                 // Close all existing connections to user VMs.
                                 for uvm_handle in user_vm_connections.drain() {
-                                    let conn_id: usize = uvm_handle.get_conn_id();
+                                    let conn_id: u32 = uvm_handle.get_conn_id();
                                     info!("shutting down user VM (conn_id={conn_id})");
 
                                     Self::close_connection(
@@ -391,7 +399,14 @@ impl LinuxDaemon {
 
                     // Now we process events from active connections.
                     Token(t) => {
-                        let conn_id: usize = t - FIRST_USER_VM_CONNECTION_ID;
+                        let conn_id: u32 = match u32::try_from(t - FIRST_USER_VM_CONNECTION_ID) {
+                            Ok(conn_id) => conn_id,
+                            Err(e) => {
+                                // Skip to next token.
+                                error!("error clipping connection id to u32 (error={e:})");
+                                continue;
+                            },
+                        };
 
                         let uvm_handle: UserVmHandle =
                             Self::process_connection(&mut user_vm_connections, conn_id)?;
@@ -415,7 +430,7 @@ impl LinuxDaemon {
                                             &user_vm_poll,
                                             worker_threads.remove(&conn_id),
                                         );
-                                        user_vm_connections.remove(conn_id);
+                                        user_vm_connections.remove(conn_id as usize);
 
                                         break 'drain_loop;
                                     },

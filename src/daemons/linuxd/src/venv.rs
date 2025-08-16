@@ -28,7 +28,7 @@ use ::syscall::venv::VirtualEnvironmentIdentifier;
 ///
 /// Unique identifier for each user VM.
 ///
-pub type UserVmIdentifier = usize;
+pub type UserVmIdentifier = u32;
 
 ///
 /// # Description
@@ -148,14 +148,6 @@ impl VirtualEnviromentDirectory {
         uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<GlobalThreadIdentifier, Error> {
-        let uvmid: u32 = match u32::try_from(uvmid) {
-            Ok(value) => value,
-            Err(_) => {
-                let reason: &str = "error clipping user VM id to u32";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::ValueOverflow, reason));
-            },
-        };
         let tid: u32 = match u32::try_from(tid) {
             Ok(val) => val,
             Err(_) => {
