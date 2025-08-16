@@ -32,8 +32,8 @@ export NANVIX_HOME=${NANVIX_HOME:-$(git rev-parse --show-toplevel)}
 #===================================================================================================
 
 configure() {
-    CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-    CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
+    CC="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
+    CXX="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
     LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
     LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
     CFLAGS="-static -L $SYSROOT_DIR/lib" \

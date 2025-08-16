@@ -30,7 +30,7 @@ make_clean() {
     then
         return 0
     fi
-    cd "${SQLITE_HOME}"
+    cd "${SQLITE_HOME}" || exit 1
     make clean
 }
 
@@ -43,7 +43,7 @@ distclean() {
     then
         return 0
     fi
-    cd "${SQLITE_HOME}"
+    cd "${SQLITE_HOME}" || exit 1
     git clean -fdx
 }
 
@@ -55,9 +55,9 @@ configure() {
     AR="$TOOLCHAIN_DIR/bin/i686-nanvix-ar" \
     AS="$TOOLCHAIN_DIR/bin/i686-nanvix-as" \
     CC_FOR_BUILD=gcc \
-    CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-    CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
-    CPP="$TOOLCHAIN_DIR/bin/i686-nanvix-cpp" \
+    CC="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
+    CXX="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
+    CPP="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-cpp" \
     LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
     CFLAGS="-I $SYSROOT_DIR/include -DSQLITE_OMIT_WAL=1" \
     LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld -L $SYSROOT_DIR/lib -Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a $SYSROOT_DIR/lib/libz.a -Wl,--end-group" \
@@ -76,7 +76,7 @@ configure() {
 #===================================================================================================
 
 make_all() {
-    cd "${SQLITE_HOME}"
+    cd "${SQLITE_HOME}" || exit 1
     make all
 }
 
@@ -85,7 +85,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd "${SQLITE_HOME}"
+    cd "${SQLITE_HOME}" || exit 1
     make install
 }
 
@@ -94,7 +94,7 @@ make_install() {
 #===================================================================================================
 
 build() {
-    cd "${SQLITE_HOME}"
+    cd "${SQLITE_HOME}" || exit 1
     configure
     make_all
     make_install
@@ -109,9 +109,9 @@ init() {
     if [ ! -d "${SQLITE_HOME}/.git" ];
     then
         git clone ${SQLITE_REPOSITORY} ${SQLITE_HOME}
-        cd "${SQLITE_HOME}"
+        cd "${SQLITE_HOME}" || exit 1
     else
-        cd "${SQLITE_HOME}"
+        cd "${SQLITE_HOME}" || exit 1
         git fetch origin
         git reset --hard
     fi

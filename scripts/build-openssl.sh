@@ -26,10 +26,10 @@ export OPENSSL_COMMIT=b4773b592552f9d3c77fbd0e36509e3fcd030536
 
 configure() {
     CFLAGS="-I $TOOLCHAIN_DIR/usr/include/" \
-    CXX=$TOOLCHAIN_DIR/bin/i686-nanvix-g++ \
+    CXX="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
     AR=$TOOLCHAIN_DIR/bin/i686-nanvix-ar \
     RANLIB=$TOOLCHAIN_DIR/bin/i686-nanvix-ranlib \
-    CC=$TOOLCHAIN_DIR/bin/i686-nanvix-gcc \
+    CC="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
     ./Configure \
         --openssldir=$SYSROOT_DIR \
         --prefix=$SYSROOT_DIR \
@@ -54,7 +54,7 @@ make_clean() {
     then
         return 0
     fi
-    cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
     make clean
 }
 
@@ -67,7 +67,7 @@ distclean() {
     then
         return 0
     fi
-    cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
     git clean -fdx
 }
 
@@ -76,8 +76,8 @@ distclean() {
 #===================================================================================================
 
 make_all() {
-    cd "${OPENSSL_HOME}"
-    make -j $(nproc) all
+    cd "${OPENSSL_HOME}" || exit 1
+    make -j "$(nproc)" all
 }
 
 #===================================================================================================
@@ -85,7 +85,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
     make install
 }
 
@@ -95,7 +95,7 @@ make_install() {
 
 
 build() {
-    cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
     configure
     make_all
     make_install
@@ -110,9 +110,9 @@ init() {
     if [ ! -d "${OPENSSL_HOME}/.git" ];
     then
         git clone ${OPENSSL_REPOSITORY} ${OPENSSL_HOME}
-        cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
     else
-        cd "${OPENSSL_HOME}"
+    cd "${OPENSSL_HOME}" || exit 1
         git fetch origin
         git reset --hard
     fi
