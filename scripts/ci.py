@@ -89,6 +89,7 @@ def make(
     verbose: bool = False,
     timeout: int = None,
     build_opt: bool = False,
+    sccache: str = None,
 ) -> None:
     """
     Runs make command.
@@ -120,6 +121,9 @@ def make(
 
     if timeout:
         command.append(f"TIMEOUT={timeout}")
+
+    if sccache:
+        command.append(f"SCCACHE={sccache}")
 
     command.append("BUILD_OPT=yes" if build_opt else "BUILD_OPT=no")
 
@@ -181,6 +185,7 @@ def build(
     arch: str,
     release: bool,
     build_opt: bool,
+    sccache: str = None,
     toolchain_dir: str = None,
     log_level: str = None,
     verbose: bool = False,
@@ -194,6 +199,7 @@ def build(
         arch (str): Target architecture.
         release (bool): Release build.
         build_opt (bool): Build optional software.
+        sccache (str, optional): Path to sccache binary. Defaults to None.
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
@@ -210,6 +216,7 @@ def build(
         verbose,
         timeout,
         build_opt,
+        sccache,
     )
 
 
@@ -362,6 +369,12 @@ def parse_args() -> argparse.Namespace:
         help="Test Nanvix (implies --build)",
         default=False,
     )
+    parser.add_argument(
+        "--sccache",
+        type=str,
+        help="Set path to sccache binary (optional)",
+        required=False,
+    )
 
     return parser.parse_args()
 
@@ -381,6 +394,7 @@ def main() -> None:
     print(f"  - Lint: {args.lint}")
     print(f"  - Build: {args.build}")
     print(f"  - Disable Optional Software: {args.without_opt}")
+    print(f"  - SCCACHE: {args.sccache if args.sccache else ''}")
     print(f"  - Verbose: {args.verbose}")
     print(f"  - Timeout: {args.timeout}")
 
@@ -413,6 +427,7 @@ def main() -> None:
             args.target_arch,
             args.release or not args.debug,
             not args.without_opt,
+            args.sccache,
             args.toolchain_dir,
             args.log_level,
             args.verbose,

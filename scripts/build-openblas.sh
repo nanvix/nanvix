@@ -26,19 +26,20 @@ export OPENBLAS_COMMIT=f6026cdcc72df936edee97c9b3e628f9735a0a14
 
 configure() {
     # OpenBLAS uses make variables instead of configure script
-    export OPENBLAS_MAKE_OPTIONS="\
-        CC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc \
-        FC=${TOOLCHAIN_DIR}/bin/i686-nanvix-gfortran \
-        PREFIX=${SYSROOT_DIR} \
-        HOSTCC=gcc \
-        TARGET=P2 \
-        BINARY=32 \
-        CROSS=1 \
-        NO_SHARED=1 \
-        USE_OPENMP=0 \
-        USE_THREAD=0 \
-        USE_LOCKING=1 \
-        USE_TLS=0"
+    OPENBLAS_MAKE_OPTIONS=(
+        "CC=${SCCACHE} ${TOOLCHAIN_DIR}/bin/i686-nanvix-gcc"
+        "FC=${SCCACHE} ${TOOLCHAIN_DIR}/bin/i686-nanvix-gfortran"
+        "PREFIX=${SYSROOT_DIR}"
+        "HOSTCC=gcc"
+        "TARGET=P2"
+        "BINARY=32"
+        "CROSS=1"
+        "NO_SHARED=1"
+        "USE_OPENMP=0"
+        "USE_THREAD=0"
+        "USE_LOCKING=1"
+        "USE_TLS=0"
+    )
 }
 
 #===================================================================================================
@@ -50,8 +51,8 @@ make_clean() {
     then
         return 0
     fi
-    cd "${OPENBLAS_HOME}"
-    make ${OPENBLAS_MAKE_OPTIONS} clean
+    cd "${OPENBLAS_HOME}" || exit 1
+    make "${OPENBLAS_MAKE_OPTIONS[@]}" clean
 }
 
 #===================================================================================================
@@ -63,7 +64,7 @@ distclean() {
     then
         return 0
     fi
-    cd "${OPENBLAS_HOME}"
+    cd "${OPENBLAS_HOME}" || exit 1
     git clean -fdx
 }
 
@@ -72,8 +73,7 @@ distclean() {
 #===================================================================================================
 
 make_all() {
-    cd "${OPENBLAS_HOME}"
-    make ${OPENBLAS_MAKE_OPTIONS} all
+    make "${OPENBLAS_MAKE_OPTIONS[@]}" all
 }
 
 #===================================================================================================
@@ -81,8 +81,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd "${OPENBLAS_HOME}"
-    make ${OPENBLAS_MAKE_OPTIONS} install
+    make "${OPENBLAS_MAKE_OPTIONS[@]}" install
 }
 
 #===================================================================================================
@@ -91,7 +90,7 @@ make_install() {
 
 
 build() {
-    cd "${OPENBLAS_HOME}"
+    cd "${OPENBLAS_HOME}" || exit 1
     configure
     make_all
     make_install
@@ -106,9 +105,9 @@ init() {
     if [ ! -d "${OPENBLAS_HOME}/.git" ];
     then
         git clone ${OPENBLAS_REPOSITORY} ${OPENBLAS_HOME}
-        cd "${OPENBLAS_HOME}"
+        cd "${OPENBLAS_HOME}" || exit 1
     else
-        cd "${OPENBLAS_HOME}"
+        cd "${OPENBLAS_HOME}" || exit 1
         git fetch origin
         git reset --hard
     fi

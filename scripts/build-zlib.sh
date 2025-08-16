@@ -30,7 +30,7 @@ make_clean() {
     then
         return 0
     fi
-    cd "${ZLIB_HOME}"
+    cd "${ZLIB_HOME}" || exit 1
     make clean
 }
 
@@ -43,7 +43,7 @@ distclean() {
     then
         return 0
     fi
-    cd "${ZLIB_HOME}"
+    cd "${ZLIB_HOME}" || exit 1
     git clean -fdx
 }
 
@@ -54,9 +54,9 @@ distclean() {
 configure() {
     AR="$TOOLCHAIN_DIR/bin/i686-nanvix-ar" \
     AS="$TOOLCHAIN_DIR/bin/i686-nanvix-as" \
-    CC="$TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-    CXX="$TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
-    CPP="$TOOLCHAIN_DIR/bin/i686-nanvix-cpp" \
+    CC="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
+    CXX="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
+    CPP="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-cpp" \
     LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
     CFLAGS="-Wno-error" \
     LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld" \
@@ -71,7 +71,7 @@ configure() {
 #===================================================================================================
 
 make_all() {
-    cd "${ZLIB_HOME}"
+    cd "${ZLIB_HOME}" || exit 1
     make all
 }
 
@@ -80,7 +80,7 @@ make_all() {
 #===================================================================================================
 
 make_install() {
-    cd "${ZLIB_HOME}"
+    cd "${ZLIB_HOME}" || exit 1
     make install
 }
 
@@ -89,7 +89,7 @@ make_install() {
 #===================================================================================================
 
 build() {
-    cd "${ZLIB_HOME}"
+    cd "${ZLIB_HOME}" || exit 1
     configure
     make_all
     make_install
@@ -104,9 +104,9 @@ init() {
     if [ ! -d "${ZLIB_HOME}/.git" ];
     then
         git clone ${ZLIB_REPOSITORY} ${ZLIB_HOME}
-        cd "${ZLIB_HOME}"
+        cd "${ZLIB_HOME}" || exit 1
     else
-        cd "${ZLIB_HOME}"
+        cd "${ZLIB_HOME}" || exit 1
         git fetch origin
         git reset --hard
     fi
