@@ -51,6 +51,7 @@ impl Microvm {
         binary_directory: &str,
         control_plane_listener: &mut SocketListener,
         control_plane_poll: &mut Poll,
+        l2: bool,
     ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", binary_directory),
@@ -66,6 +67,13 @@ impl Microvm {
             ::microvm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             control_plane_addr.to_string(),
         ];
+
+        if l2 {
+            user_vm_args.push(::microvm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
+            user_vm_args.push("tcp".to_string());
+            user_vm_args.push(::microvm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string());
+            user_vm_args.push("tcp".to_string());
+        }
 
         if let Some(program_args) = program_args {
             user_vm_args.push(::microvm::args::Args::OPT_INITRD_ARGS.to_string());
@@ -86,18 +94,21 @@ impl Microvm {
             user_vm_args.splice(0..0, taskset);
         }
 
+        // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
         let child = Command::new(&user_vm_args[0])
             .args(&user_vm_args[1..])
-            .stdout(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .spawn()?;
 
         debug!(
-            "spawning microvm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?}",
+            "spawning microvm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?} l2={}",
             child.id(),
             program,
             program_args,
             addr,
-            stderr
+            stderr,
+            l2
         );
 
         // After the user VM has started, accept the incoming connection for the control-plane.
