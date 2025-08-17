@@ -144,24 +144,22 @@ pub extern "C" fn _start_thread(func: extern "C" fn(usize) -> usize, arg: usize)
     unreachable!("failed to exit thread");
 }
 
-pub fn create_thread(
-    user_fn: extern "C" fn(usize) -> usize,
-    arg: usize,
-) -> Result<ThreadIdentifier, Error> {
+pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Error> {
     unsafe extern "C" {
         fn _do_start_thread() -> !;
     }
 
-    let thread_create_args: ThreadCreateArgs = ThreadCreateArgs {
-        user_wrapper_fn: VirtualAddress::from_raw_value(_do_start_thread as usize),
-        user_fn: VirtualAddress::from_raw_value(user_fn as usize),
-        user_fn_arg: arg,
-    };
+    // Check if the user function is set.
+    if args.user_fn != ThreadCreateArgs::NULL_USER_FN {
+        // If the user function is already set, it means that this function has been called
+        // recursively, which is not allowed.
+        return Err(Error::new(ErrorCode::InvalidArgument, "user function is set"));
+    }
 
-    let result: i64 = kcall1!(
-        KcallNumber::CreateThread.into(),
-        &thread_create_args as *const ThreadCreateArgs as usize as u32
-    );
+    args.user_fn = VirtualAddress::from_raw_value(_do_start_thread as usize);
+
+    let result: i64 =
+        kcall1!(KcallNumber::CreateThread.into(), args as *const ThreadCreateArgs as usize as u32);
 
     ThreadIdentifier::try_from(result)
 }
@@ -180,14 +178,14 @@ pub fn exit_thread(status: usize) -> Result<!, Error> {
 // Join Thread
 //==================================================================================================
 
-pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<i64, Error> {
+pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Error> {
     let result: i64 =
         kcall2!(KcallNumber::JoinThread.into(), i32::from(tid) as u32, retval as *mut usize as u32);
 
     if result != 0 {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
     } else {
-        Ok(result)
+        Ok(())
     }
 }
 

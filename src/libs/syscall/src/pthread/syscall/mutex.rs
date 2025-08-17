@@ -5,12 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::pthread::syscall::MUTEXES;
 use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,
 };
-use ::spin::MutexGuard;
+use ::spin::{
+    Lazy,
+    Mutex,
+    MutexGuard,
+};
 use ::sys::{
     error::{
         Error,
@@ -30,6 +33,14 @@ use ::sysapi::{
         pthread_mutexattr_t,
     },
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Global map of mutexes for threads.
+pub(super) static MUTEXES: Lazy<Mutex<BTreeMap<usize, pthread_mutexattr_t>>> =
+    Lazy::new(|| Mutex::new(BTreeMap::new()));
 
 //==================================================================================================
 // Standalone Functions

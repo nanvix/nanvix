@@ -18,7 +18,9 @@ mod tda;
 // Imports
 //==================================================================================================
 
+use crate::safe::mem::stack::Stack;
 use ::alloc::collections::btree_map::BTreeMap;
+use ::config::memory_layout::USER_STACK_SIZE;
 use ::spin::{
     Lazy,
     Mutex,
@@ -30,49 +32,92 @@ use ::sys::{
         exit_thread,
         join_thread,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ThreadCreateArgs,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-use ::sysapi::sys_types::{
-    pthread_mutexattr_t,
-    pthread_t,
-};
+use ::sysapi::sys_types::pthread_t;
 pub use cond::*;
 pub use mutex::*;
 pub use tda::*;
 
 //==================================================================================================
-// Globals
+// Global Variables
 //==================================================================================================
 
-static MUTEXES: Lazy<Mutex<BTreeMap<usize, pthread_mutexattr_t>>> =
-    Lazy::new(|| Mutex::new(BTreeMap::new()));
+/// Map of stacks for threads.
+static STACKS: Lazy<Mutex<BTreeMap<pthread_t, Stack>>> = Lazy::new(|| Mutex::new(BTreeMap::new()));
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-pub fn pthread_create(
-    start_routine: extern "C" fn(usize) -> usize,
-    arg: usize,
-) -> Result<pthread_t, Error> {
-    ::syslog::trace!(
-        "pthread_create(): _start_routine={:?}, arg={:?}",
-        ::core::ptr::addr_of!(start_routine),
-        arg
-    );
-    create_thread(start_routine, arg)?.try_into()
+///
+/// # Description
+///
+/// Creates a new thread.
+///
+/// # Parameters
+///
+/// - `start_routine`: Function to be executed by the thread.
+/// - `arg`: Argument passed to the thread function.
+///
+/// # Return Value
+///
+/// On successful completion, this function returns an identifier for the newly created thread. On
+/// failure, this function returns an error that contains the reason for the failure.
+///
+pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result<pthread_t, Error> {
+    ::syslog::trace!("pthread_create(): func={:?}, arg={arg:?}", ::core::ptr::addr_of!(func));
+
+    // Create a new stack.
+    // NOTE: The stack is automatically deallocated if this object is dropped.
+    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+
+    let mut args: ThreadCreateArgs = ThreadCreateArgs {
+        // Placeholder for user wrapper function, it will be overridden by the kernel call interface.
+        user_fn: ThreadCreateArgs::NULL_USER_FN,
+        user_fn_arg0: func as usize,
+        user_fn_arg1: arg,
+        user_stack_base: stack.base(),
+        user_stack_size: stack.size(),
+    };
+
+    let thread: pthread_t = create_thread(&mut args)?.try_into()?;
+
+    // Store the stack in the global map.
+    // NOTE: The stack will be dropped either when the thread is joined or the process exits.
+    let previous_stack: Option<Stack> = STACKS.lock().insert(thread, stack);
+    debug_assert!(previous_stack.is_none(), "there should be no previous stack for this thread");
+
+    Ok(thread)
 }
 
-pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
-    ::syslog::trace!("pthread_join(): _thread={:?}", thread);
+///
+/// # Description
+///
+/// Joins a thread.
+///
+/// # Parameters
+///
+/// - `thread`: Thread identifier.
+///
+/// # Return Value
+///
+/// On successful completion, this function returns the return value of the joined thread. On
+/// failure, this function returns an error that contains the reason for the failure.
+///
+pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
+    ::syslog::trace!("pthread_join(): thread={thread:?}");
 
-    let mut retval: usize = 0;
-    let thread: ThreadIdentifier = match thread.try_into() {
+    // Attempt to convert thread identifier.
+    let tid: ThreadIdentifier = match thread.try_into() {
         Ok(tid) => tid,
         Err(error) => {
             ::syslog::error!("pthread_join(): {error:?} (thread={thread:?})");
@@ -80,17 +125,51 @@ pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
         },
     };
 
-    match join_thread(thread, &mut retval) {
-        Ok(_) => Ok(retval as isize),
-        Err(error) => Err(error),
-    }
+    let mut retval: usize = 0;
+    join_thread(tid, &mut retval)?;
+
+    // Remove the stack from the global map.
+    // NOTE: The stack will be dropped when this function returns.
+    let stack: Option<Stack> = STACKS.lock().remove(&thread);
+    debug_assert!(stack.is_some(), "there should be a stack for this thread");
+
+    Ok(retval)
 }
 
+///
+/// # Description
+///
+/// Exits the calling thread.
+///
+/// # Parameters
+///
+/// - `retval`: Return value of the thread.
+///
+/// # Return Value
+///
+/// On successful completion, this function does not return. On failure, this function returns an
+/// error that contains the reason for the failure.
+///
 pub fn pthread_exit(retval: usize) -> Result<!, Error> {
     ::syslog::trace!("pthread_exit(): retval={:?}", retval);
     exit_thread(retval)
 }
 
+///
+/// # Description
+///
+/// Returns the identifier of the calling thread.
+///
+/// # Return Value
+///
+/// The identifier of the calling thread.
+///
+/// # Safety Notes
+///
+/// This function panics if:
+/// - The thread is unable to retrieve its own identifier.
+/// - The thread identifier returned by the kernel is not valid.
+///
 pub fn pthread_self() -> pthread_t {
     ::sys::kcall::pm::gettid()
         .expect("a thread must be able to get its own identifier")
