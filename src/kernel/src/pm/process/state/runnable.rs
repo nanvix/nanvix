@@ -7,10 +7,7 @@
 
 use crate::{
     hal::arch::ContextInformation,
-    mm::{
-        ustack::UserStackAllocator,
-        Vmem,
-    },
+    mm::Vmem,
     pm::{
         clock,
         process::state::{
@@ -58,14 +55,9 @@ pub struct RunnableProcess {
 }
 
 impl RunnableProcess {
-    pub fn new(
-        pid: ProcessIdentifier,
-        ready_thread: ReadyThread,
-        vmem: Vmem,
-        user_stack_allocator: Option<UserStackAllocator>,
-    ) -> Self {
+    pub fn new(pid: ProcessIdentifier, ready_thread: ReadyThread, vmem: Vmem) -> Self {
         Self {
-            state: Box::new(ProcessState::new(pid, vmem, user_stack_allocator)),
+            state: Box::new(ProcessState::new(pid, vmem)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,

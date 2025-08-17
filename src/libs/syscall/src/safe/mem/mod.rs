@@ -7,3 +7,6 @@
 
 /// Memory segment.
 pub mod segment;
+
+/// Stack.
+pub mod stack;
