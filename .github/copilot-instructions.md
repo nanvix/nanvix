@@ -69,6 +69,16 @@ types and supports various runtimes.
 ./z build --with-docker -- format
 ```
 
+## Spell Check Commands
+
+```bash
+# Check for spelling errors in source code and documentation.
+./z build --with-docker -- spellcheck
+
+# Fix spelling errors in source code and documentation.
+./z build --with-docker -- spellcheck-fix
+```
+
 ## Testing Commands
 
 ### Unit Tests

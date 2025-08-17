@@ -16,6 +16,7 @@ apt-get install -y        \
     bridge-utils          \
     build-essential       \
     clang-format          \
+    codespell             \
     curl                  \
     dosfstools            \
     doxygen               \
