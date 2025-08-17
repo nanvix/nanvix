@@ -80,7 +80,7 @@ pub fn pthread_create(
     create_thread(&mut args)?.try_into()
 }
 
-pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
+pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
     ::syslog::trace!("pthread_join(): _thread={:?}", thread);
 
     let mut retval: usize = 0;
@@ -93,7 +93,7 @@ pub fn pthread_join(thread: pthread_t) -> Result<isize, Error> {
     };
 
     match join_thread(thread, &mut retval) {
-        Ok(_) => Ok(retval as isize),
+        Ok(()) => Ok(retval),
         Err(error) => Err(error),
     }
 }
