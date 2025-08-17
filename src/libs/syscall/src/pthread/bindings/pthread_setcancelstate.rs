@@ -15,12 +15,12 @@ use ::sysapi::ffi::c_int;
 ///
 /// # Description
 ///
-/// Sets the cancelability state of the calling thread.
+/// Sets the cancellability state of the calling thread.
 ///
 /// # Parameters
 ///
-/// - `state`: New cancelability state.
-/// - `oldstate`: Old cancelability state.
+/// - `state`: New cancellability state.
+/// - `oldstate`: Old cancellability state.
 ///
 /// # Returns
 ///

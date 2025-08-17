@@ -169,7 +169,7 @@ pub fn init(
     match madt {
         // MADT is present.
         Some(madt) => {
-            info!("retriving information from madt");
+            info!("retrieving information from madt");
 
             // Check if the 8259 PIC is present.
             let pic: Option<UninitPic> = match madt.has_8259_pic() {

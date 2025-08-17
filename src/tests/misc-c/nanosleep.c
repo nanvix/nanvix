@@ -18,7 +18,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can sleep for a given amount of time with `nanosleep()`.
+// Tests whether we can sleep for a given amount of time with `nanosleep()`.
 void test_nanosleep(void)
 {
     fprintf(stderr, "testing nanosleep() ... ");

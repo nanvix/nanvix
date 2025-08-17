@@ -17,7 +17,7 @@ use ::syscall::safe::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can get attributes of a file.
+/// Tests whether we can get attributes of a file.
 pub fn test() {
     let pathname: FileSystemPath = match FileSystemPath::new("README.md") {
         Ok(pathname) => pathname,

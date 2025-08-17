@@ -16,7 +16,7 @@ use ::syscall::safe::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can open and close a file.
+/// Tests whether we can open and close a file.
 pub fn test() {
     let pathname: FileSystemPath = match FileSystemPath::new("README.md") {
         Ok(pathname) => pathname,

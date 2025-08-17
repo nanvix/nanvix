@@ -385,7 +385,7 @@ impl Vmem {
         }
     }
 
-    /// Asserts wether an address lies in the kernel space.
+    /// Asserts whether an address lies in the kernel space.
     fn is_kernel_addr(virt_addr: VirtualAddress) -> bool {
         !Self::is_user_addr(virt_addr)
     }

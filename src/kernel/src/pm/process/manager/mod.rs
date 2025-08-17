@@ -1006,7 +1006,7 @@ impl ProcessManagerInner {
     ) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
 
-        // Check wether the capability should be set or cleared.
+        // Check whether the capability should be set or cleared.
         if set {
             // Check if capability is already set.
             if process.state_mut().has_capability(capability) {

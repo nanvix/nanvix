@@ -15,7 +15,7 @@ use ::syscall::safe::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can check if a file is a terminal.
+/// Tests whether we can check if a file is a terminal.
 pub fn test() {
     // Check if STDIN is a terminal.
     match StandardInput::get().is_terminal() {

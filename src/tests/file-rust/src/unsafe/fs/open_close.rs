@@ -16,7 +16,7 @@ use syscall::safe::RegularFileOpenFlags;
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can open and close a file using `open()` and `close()`.
+/// Tests whether we can open and close a file using `open()` and `close()`.
 pub fn test() {
     let filename: &str = "README.md";
 

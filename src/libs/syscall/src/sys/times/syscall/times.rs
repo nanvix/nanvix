@@ -56,7 +56,7 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     // Receive response.
     let response: Message = ::sys::kcall::ipc::recv()?;
 
-    // Check wether system call succeeded or not.
+    // Check whether system call succeeded or not.
     if response.status != 0 {
         ::syslog::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
         // System call failed, parse error code and return it.

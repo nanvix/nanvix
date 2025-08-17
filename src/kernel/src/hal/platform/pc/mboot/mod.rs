@@ -456,7 +456,7 @@ fn parse_basicmeminfo(tag: &MbootTag) -> Result<MbootBasicMeminfo, Error> {
 ///
 /// # Returns
 ///
-/// Upon success, returns boot informations. Otherwise, it returns an error.
+/// Upon success, returns boot information. Otherwise, it returns an error.
 ///
 pub fn parse(bootloader_magic: u32, addr: usize) -> Result<BootInfo, Error> {
     // Check if bootloader magic value mismatches what we expect.

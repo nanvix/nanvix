@@ -183,7 +183,7 @@ pub fn main() -> Result<()> {
     // Run main procd loop.
     let procd_ret = procd.run();
 
-    // Do not panic here as we have already exitted the loop. Instead, continue with clean-up.
+    // Do not panic here as we have already exited the loop. Instead, continue with clean-up.
     if procd_ret.is_err() {
         error!("error running procd (error={procd_ret:?})");
     }

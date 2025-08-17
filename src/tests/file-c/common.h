@@ -15,10 +15,10 @@ extern void test_chdir(void);
 // Tests system calls on directory entries.
 extern void test_dirent(void);
 
-// Tests wether we can open and close a file.
+// Tests whether we can open and close a file.
 extern void test_open_close(void);
 
-// Tests wether we can create and unlink a file.
+// Tests whether we can create and unlink a file.
 extern void test_create_unlink(void);
 
 // Tests whether we can get the current working directory.
@@ -126,7 +126,7 @@ extern void test_utimes(void);
 // Tests whether we can update file timestamps with `utime()`.
 extern void test_utime(void);
 
-// Tests wether we can write and read to/from a file.
+// Tests whether we can write and read to/from a file.
 extern void test_write_read(void);
 
 // Tests whether we can write to a file using vectorized I/O.
