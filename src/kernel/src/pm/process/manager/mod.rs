@@ -27,10 +27,7 @@ use crate::{
     mm::{
         elf::Elf32Fhdr,
         kstack::KernelStack,
-        ustack::{
-            UserStack,
-            UserStackAllocator,
-        },
+        ustack::UserStack,
         VirtMemoryManager,
         Vmem,
     },
@@ -71,6 +68,7 @@ use ::alloc::{
     rc::Rc,
 };
 use ::arch::mem::PAGE_SIZE;
+use ::config::memory_layout::USER_STACK_TOP_RAW;
 use ::core::cell::{
     Ref,
     RefCell,
@@ -149,8 +147,7 @@ impl ProcessManagerInner {
         root: Vmem,
         tm: ThreadManager,
     ) -> Self {
-        let kernel: RunnableProcess =
-            RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root, None);
+        let kernel: RunnableProcess = RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root);
 
         let (kernel, reason, _): (
             RunningProcess,
@@ -195,31 +192,26 @@ impl ProcessManagerInner {
     ///
     /// # Safety Notes
     ///
-    /// - `user_stack` refers to a memory region that lies within the user address space, it is
-    ///   writable and it has a size that is a multiple of `PAGE_SIZE`.
+    /// - `user_stack_base` refers to a memory region that lies within the user address space, it is
+    ///   writable.
+    /// - `user_stack_size` is a multiple of `PAGE_SIZE`.
     /// - `user_fn` lies within the user address space and points to an executable memory region.
     ///
     fn forge_user_context(
         mm: &mut VirtMemoryManager,
         vmem: &mut Vmem,
-        user_stack: &UserStack,
-        user_fn: VirtualAddress,
-        arg0: usize,
-        arg1: usize,
+        args: &ThreadCreateArgs,
         enable_interrupts: bool,
     ) -> Result<(KernelStack, ContextInformation), Error> {
-        trace!(
-            "forge_user_context(): user_stack={user_stack:?}, user_fn={user_fn:#x?}, \
-             arg0={arg0:#x?}, arg1={arg1:#x?}, enable_interrupts={enable_interrupts:?}",
-        );
+        trace!("forge_user_context(): args={args:?}, enable_interrupts={enable_interrupts:?}",);
 
         unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
         }
 
         // Assert pre-conditions (these should have been checked by the caller).
-        debug_assert!(Vmem::is_user_region(user_stack.top().into_inner(), user_stack.size()));
-        debug_assert!(Vmem::is_user_addr(user_fn));
+        debug_assert!(Vmem::is_user_region(args.user_stack_base, args.user_stack_size));
+        debug_assert!(Vmem::is_user_addr(args.user_fn));
 
         let kernel_func: VirtualAddress =
             VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
@@ -232,10 +224,10 @@ impl ProcessManagerInner {
         let esp: u32 = unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack.top().into_raw_value() as *mut u8,
-                user_stack.top().into_raw_value(),
-                user_fn.into_raw_value(),
-                arg0,
-                arg1,
+                args.user_stack_base.into_raw_value() + args.user_stack_size,
+                args.user_fn.into_raw_value(),
+                args.user_fn_arg0,
+                args.user_fn_arg1,
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
@@ -244,17 +236,6 @@ impl ProcessManagerInner {
 
         trace!("forge_context(): cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
         let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
-
-        // Alloc user stack and map it.
-        mm.alloc_upages(
-            vmem,
-            user_stack.base(),
-            user_stack.size() / PAGE_SIZE,
-            AccessPermission::RDWR,
-        )?;
-
-        // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
-        // will leak underlying pages.
 
         Ok((kernel_stack, context))
     }
@@ -280,6 +261,7 @@ impl ProcessManagerInner {
     /// - `thread_create_args` must have valid fields, specifically:
     ///   - `user_wrapper_fn` must point to a user memory region that is executable.
     ///   - `user_fn` must point to a user memory region that is executable.
+    ///   - `user_stack` must point to a user memory region that is writable.
     ///
     fn create_thread(
         &mut self,
@@ -290,7 +272,6 @@ impl ProcessManagerInner {
         trace!("create_thread(): pid={pid:?}, thread_create_args={thread_create_args:?}");
 
         // Assert pre-conditions (these should have been checked by the caller).
-        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
 
         let ready_thread: ReadyThread = {
@@ -322,28 +303,12 @@ impl ProcessManagerInner {
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
 
-            // Allocate a new user stack. If we fail beyond this point, `user_stack` gets dropped as
-            // soon as we exit this scope and underlying pages are released.
-            let user_stack: UserStack = match process.state_mut().get_user_stack_allocator_mut() {
-                Some(user_stack_allocator) => user_stack_allocator.alloc()?,
-                None => {
-                    // The user stack allocator is not available.
-                    panic!(
-                        "create_thread(): user stack allocator not found, is this the kernel \
-                         process?"
-                    );
-                },
-            };
-
             // Create a kernel context.
             let (kernel_stack, context): (KernelStack, ContextInformation) =
                 Self::forge_user_context(
                     mm,
                     process.state_mut().vmem_mut(),
-                    &user_stack,
-                    thread_create_args.user_wrapper_fn,
-                    thread_create_args.user_fn.into_raw_value(),
-                    thread_create_args.user_fn_arg,
+                    thread_create_args,
                     enable_interrupts,
                 )?;
 
@@ -352,8 +317,7 @@ impl ProcessManagerInner {
             //==============================================================
 
             // Create a new thread.
-            self.tm
-                .create_thread(Some(kernel_stack), Some(user_stack), context)
+            self.tm.create_thread(Some(kernel_stack), None, context)
         };
 
         Ok(self.try_add_thread(pid, ready_thread))
@@ -515,22 +479,32 @@ impl ProcessManagerInner {
             envp_vaddr, env
         );
 
-        // Create a stack allocator.
-        let user_stack_allocator: UserStackAllocator = UserStackAllocator::new()?;
-
         // Create a kernel context.
-        let user_stack: UserStack = user_stack_allocator.alloc()?;
+        let user_stack: UserStack =
+            UserStack::new(PageAligned::from_raw_value(USER_STACK_TOP_RAW)?);
         let user_fn: VirtualAddress = entry;
         let argp: usize = args_vaddr.into_raw_value();
         let envp: usize = envp_vaddr.into_raw_value();
-        let (kernel_stack, context): (KernelStack, ContextInformation) = Self::forge_user_context(
-            mm,
-            &mut vmem,
-            &user_stack,
+
+        let args: ThreadCreateArgs = ThreadCreateArgs {
             user_fn,
-            argp,
-            envp,
-            self.interrupt_capable,
+            user_fn_arg0: argp,
+            user_fn_arg1: envp,
+            user_stack_base: user_stack.base().into_inner(),
+            user_stack_size: user_stack.size(),
+        };
+
+        let (kernel_stack, context): (KernelStack, ContextInformation) =
+            Self::forge_user_context(mm, &mut vmem, &args, self.interrupt_capable)?;
+
+        // Alloc user stack and map it.
+        // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
+        // will leak underlying pages.
+        mm.alloc_upages(
+            &mut vmem,
+            user_stack.base(),
+            user_stack.size() / PAGE_SIZE,
+            AccessPermission::RDWR,
         )?;
 
         //==============================================================
@@ -544,8 +518,7 @@ impl ProcessManagerInner {
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
         self.next_pid = ProcessIdentifier::from(i32::from(pid) + 1);
-        let process: RunnableProcess =
-            RunnableProcess::new(pid, thread, vmem, Some(user_stack_allocator));
+        let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
         // Add process to the queue of ready processes.
         self.ready.push_back(process);
@@ -1369,6 +1342,7 @@ impl ProcessManager {
     /// - `thread_create_args` must have valid fields, specifically:
     ///   - `user_wrapper_fn` must point to a user memory region that is executable.
     ///   - `user_fn` must point to a user memory region that is executable.
+    ///   - `user_stack` must point to a user memory region that is writable.
     ///
     pub fn create_thread(
         &mut self,
@@ -1377,7 +1351,6 @@ impl ProcessManager {
         thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
         // Assert pre-conditions (these should have been checked by the caller).
-        debug_assert!(Vmem::is_user_addr(thread_create_args.user_wrapper_fn));
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
 
         self.try_borrow_mut()?

@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::pthread::syscall::MUTEXES;
+use crate::pthread::syscall::mutex::MUTEXES;
 use ::alloc::collections::btree_map::{
     BTreeMap,
     Entry,

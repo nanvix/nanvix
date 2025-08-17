@@ -19,6 +19,7 @@ use crate::{
         ProcessManager,
     },
 };
+use ::config::memory_layout::USER_STACK_SIZE;
 use ::core::mem::size_of;
 use ::sys::{
     error::ErrorCode,
@@ -83,19 +84,30 @@ pub fn create_thread(
     }
 
     // Check if the user wrapper function does not lie within the user address space.
-    if !Vmem::is_user_addr(thread_create_args.user_wrapper_fn) {
-        let reason: &str = "user wrapper function does not lie within the user address space";
+    if !Vmem::is_user_addr(thread_create_args.user_fn) {
+        let reason: &str = "user function does not lie within the user address space";
+        error!("create_thread(): {reason} (user_fn={:?})", thread_create_args.user_fn);
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
+
+    // Check if the user stack does not lie within the user address space.
+    if !Vmem::is_user_region(thread_create_args.user_stack_base, thread_create_args.user_stack_size)
+    {
+        let reason: &str = "user stack does not lie within the user address space";
         error!(
-            "create_thread(): {reason} (user_wrapper_fn={:?})",
-            thread_create_args.user_wrapper_fn
+            "create_thread(): {reason} (user_stack_base={:?}, user_stack_size={})",
+            thread_create_args.user_stack_base, thread_create_args.user_stack_size
         );
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
-    // Check if the user function does not lie within the user address space.
-    if !Vmem::is_user_addr(thread_create_args.user_fn) {
-        let reason: &str = "user function does not lie within the user address space";
-        error!("create_thread(): {reason} (user_fn={:?})", thread_create_args.user_fn);
+    // Check if user stack size is too small.
+    if thread_create_args.user_stack_size < USER_STACK_SIZE {
+        let reason: &str = "user stack size is too small";
+        error!(
+            "create_thread(): {reason} (user_stack_size={})",
+            thread_create_args.user_stack_size
+        );
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
