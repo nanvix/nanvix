@@ -103,7 +103,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_read {
                     ::syslog::error!("fd_read(): access denied");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 let file: &File = file.file();
@@ -132,7 +132,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_seek {
                     ::syslog::error!("fd_seek(): access denied");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 match file
@@ -162,7 +162,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_seek {
                     ::syslog::error!("fd_tell(): access denied");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 match file
@@ -227,7 +227,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !file.rights_base().fd_write {
                     ::syslog::error!("fd_write(): access denied");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 let file: &mut File = file.file_mut();

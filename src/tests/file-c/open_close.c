@@ -15,7 +15,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can open and close a file.
+// Tests whether we can open and close a file.
 void test_open_close(void)
 {
     const char *filename = "README.md";

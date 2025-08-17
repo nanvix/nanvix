@@ -336,6 +336,8 @@ help:
 	@echo "  format-check    Check code formatting without fixing"
 	@echo "  lint            Fix code linting issues automatically"
 	@echo "  lint-check      Check for linting issues without fixing"
+	@echo "  spellcheck      Check for spelling errors in source code and documentation"
+	@echo "  spellcheck-fix  Fix spelling errors in source code and documentation"
 	@echo ""
 	@echo "Testing Targets"
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
@@ -399,6 +401,14 @@ rust-lint: \
 	rust-lint-host-binaries \
 	rust-lint-host-rlibs \
 	rust-lint-microvm
+
+# Fixes spelling errors in source code and documentation.
+spellcheck-fix:
+	codespell --write-changes .
+
+# Checks for spelling errors in source code and documentation.
+spellcheck:
+	codespell .
 
 # Fixes code formatting issues.
 format: \

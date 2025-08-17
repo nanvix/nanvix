@@ -15,7 +15,7 @@ use sysapi::sys_stat::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can get the status of a file using `stat()`.
+/// Tests whether we can get the status of a file using `stat()`.
 pub fn test() {
     let filename: &str = "README.md";
 

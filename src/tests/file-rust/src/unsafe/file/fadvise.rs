@@ -19,7 +19,7 @@ use ::syscall::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can use posix_fadvise on a file.
+/// Tests whether we can use posix_fadvise on a file.
 pub fn test() {
     let filename: &str = "README.md";
 

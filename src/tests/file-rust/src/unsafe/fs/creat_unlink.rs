@@ -30,7 +30,7 @@ use sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can create a and unlink a file using `creat()` and `unlink()`.
+/// Tests whether we can create a and unlink a file using `creat()` and `unlink()`.
 pub fn test() {
     let filename: &str = "test-creat_unlink.txt";
     let mode: mode_t = S_IRUSR | S_IWUSR;

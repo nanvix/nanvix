@@ -25,7 +25,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can write and read to/from a file.
+// Tests whether we can write and read to/from a file.
 void test_write_read(void)
 {
     fprintf(stderr, "testing write()/read() ... ");

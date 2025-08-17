@@ -35,7 +35,7 @@ use ::sysapi::{
 ///
 /// # Safety
 ///
-/// The function is unsafe becase it may dereference pointers.
+/// The function is unsafe because it may dereference pointers.
 ///
 /// It is safe to use this function if the following conditions are met:
 /// - `oldpath` points to a valid null-terminated string.

@@ -374,7 +374,7 @@ mod test {
     fn test_ipv4_socket_addr_conversion() {
         let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
         let test_addr: sockaddr_in = sockaddr_in::try_from(&expected_addr)
-            .expect("conversion from socket addrress should succeed");
+            .expect("conversion from socket address should succeed");
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
 

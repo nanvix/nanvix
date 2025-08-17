@@ -57,7 +57,7 @@ pub mod ip_option_names {
     pub const IP_OPTIONS: c_int = 1;
     /// int; header is included with data
     pub const IP_HDRINCL: c_int = 2;
-    /// int; IP type of service and preced.
+    /// int; IP type of service and precede.
     pub const IP_TOS: c_int = 3;
     /// int; IP time to live
     pub const IP_TTL: c_int = 4;

@@ -156,7 +156,7 @@ fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
                 // SAFETY: the calling process is not the kernel.
                 let error: Error =
                     unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()).unwrap_err() };
-                panic!("failled to exit() (error={:?})", error);
+                panic!("failed to exit() (error={:?})", error);
             },
             InterruptReason::TimedOut => {
                 error!("failed to sleep: operation timed out");

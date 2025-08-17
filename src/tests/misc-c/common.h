@@ -50,7 +50,7 @@
 // Functions
 //==================================================================================================
 
-// Tests wether we can get the resolution of a clock with `clock_getres()`.
+// Tests whether we can get the resolution of a clock with `clock_getres()`.
 extern void test_clock_getres(void);
 
 // Tests whether we can get the effective group ID of the calling process with `getegid()`.
@@ -71,7 +71,7 @@ extern void test_getuid(void);
 // Tests whether we can get the current time of a clock with `clock_gettime()`.
 extern void test_clock_gettime(void);
 
-// Tests wether we can sleep for a given amount of time with `nanosleep()`.
+// Tests whether we can sleep for a given amount of time with `nanosleep()`.
 extern void test_nanosleep(void);
 
 // Tests whether `setegid()` can be used to set the effective group ID of the calling process.
@@ -89,7 +89,7 @@ extern void test_setuid(void);
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 
-// Tests wether we can get system information with `uname()`.
+// Tests whether we can get system information with `uname()`.
 extern void test_uname(void);
 
 #endif

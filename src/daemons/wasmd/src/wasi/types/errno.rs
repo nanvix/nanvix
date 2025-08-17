@@ -17,7 +17,7 @@ use ::num_enum::TryFromPrimitive;
 pub enum Errno {
     Success = 0,
     TooBig = 1,
-    Acces = 2,
+    AccessDenied = 2,
     Addrinuse = 3,
     Addrnotavail = 4,
     Afnosupport = 5,

@@ -47,7 +47,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !dirfd.rights_base().path_open {
                     ::syslog::error!("path_open(): access denied");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 // Set creation flag.
