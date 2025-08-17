@@ -105,7 +105,7 @@ jobs:
           sudo usermod -aG kvm $USER
 
           # Must run tests in sudo to use KVM.
-          sudo -E --user $USER -- python3 scripts/ci.py --${{ matrix.mode }} --toolchain-dir=${TOOLCHAIN_DIR} --target-arch=x86 --log-level=trace --target-machine=${{ matrix.target }} --lint --build --test
+          sudo -E --user $USER -- python3 scripts/ci.py --${{ matrix.mode }} --toolchain-dir=${TOOLCHAIN_DIR} --target-arch=x86 --log-level=trace --target-machine=${{ matrix.target }} --lint --spellcheck --build --test
         timeout-minutes: 60
 
       - name: "Upload logs in case of (test) failures"

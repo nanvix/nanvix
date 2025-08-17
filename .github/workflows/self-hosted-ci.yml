@@ -68,6 +68,11 @@ jobs:
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+    - name: "Spellcheck"
+      uses: ./.github/actions/spellcheck
+      with:
+        release: '${{ matrix.build-type }}'
+        log-level: 'trace'
     - name: "Build"
       uses: ./.github/actions/build
       with:
