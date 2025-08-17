@@ -23,6 +23,20 @@ use ::sys::{
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 
+///
+/// # Description
+///
+/// Unique identifier for each user VM.
+///
+pub type UserVmIdentifier = u32;
+
+///
+/// # Description
+///
+/// Unique identifier for each thread of execution. Each thread will belong to one user VM.
+///
+pub type GlobalThreadIdentifier = u64;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -59,7 +73,7 @@ pub struct VirtualEnviromentDirectory {
     /// Next environment identifier.
     next_env: VirtualEnvironmentIdentifier,
     /// Virtual environments.
-    processes: BTreeMap<ThreadIdentifier, VirtualEnvironment>,
+    processes: BTreeMap<GlobalThreadIdentifier, VirtualEnvironment>,
 }
 
 //==================================================================================================
@@ -118,6 +132,38 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Description
     ///
+    /// Generate a global thread identifier to index virtual environments.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvmid`: User VM identifier.
+    /// - `tid`: Thread identifier.
+    ///
+    /// # Returns
+    ///
+    /// On success, a u64 where the user VM id sits in the first 32 bits, and the thread id in the
+    /// second 32 bits. On error an error is returned.
+    ///
+    fn get_gtid(
+        uvmid: UserVmIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<GlobalThreadIdentifier, Error> {
+        let tid: u32 = match u32::try_from(tid) {
+            Ok(val) => val,
+            Err(_) => {
+                let reason: &str = "error clipping thread id to u32";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ValueOverflow, reason));
+            },
+        };
+
+        let key: u64 = ((uvmid as u64) << 32) | (tid as u64);
+        Ok(key)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Joins a virtual environment.
     ///
     /// # Parameters
@@ -132,23 +178,25 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn join(
         &mut self,
+        uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
     ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error>
     {
-        trace!("join(): tid={tid:?}, envid={envid:?}");
+        trace!("join(): uvmid={uvmid}, tid={tid:?}, envid={envid:?}");
 
         // Check if the process is already in an environment.
-        if let Some(env) = self.processes.get(&tid) {
+        let gtid: GlobalThreadIdentifier = Self::get_gtid(uvmid, tid)?;
+        if let Some(env) = self.processes.get(&gtid) {
             let reason: &str = "process is already in an environment";
-            error!("join(): {reason:?} (tid={tid:?}, envid={envid:?}, env={env:?})");
+            error!("join(): {reason:?} (uvmid={uvmid}, tid={tid:?}, envid={envid:?}, env={env:?})");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         };
 
         // Check whether the process requested to join a new environment or an existing one.
         if envid != VirtualEnvironmentIdentifier::NEW {
             let reason: &str = "joining existing environments is not supported";
-            error!("join(): {reason:?} (tid={tid:?}, envid={envid:?})");
+            error!("join(): {reason:?} (uvmid={uvmid}, tid={tid:?}, envid={envid:?})");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
@@ -159,8 +207,8 @@ impl VirtualEnviromentDirectory {
         envid = self.next_env;
         self.next_env = self.next_env.next();
         let env = VirtualEnvironment::new(envid, channel_tx.clone());
-        self.processes.insert(tid, env);
-        info!("process {tid:?} joined new environment {envid:?}");
+        self.processes.insert(gtid, env);
+        info!("process {tid:?} (uvmid={uvmid}) joined new environment {envid:?}");
 
         Ok((envid, channel_tx, channel_rx))
     }
@@ -172,6 +220,7 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
+    /// - `uvmid`: User VM identifier.
     /// - `tid`: Thread identifier.
     ///
     /// # Returns
@@ -179,18 +228,23 @@ impl VirtualEnviromentDirectory {
     /// On success, an identifier to the virtual environment which the process left is returned.
     /// Otherwise, an error is returned.
     ///
-    pub fn leave(&mut self, tid: ThreadIdentifier) -> Result<VirtualEnvironmentIdentifier, Error> {
-        trace!("leave(): tid={tid:?}");
+    pub fn leave(
+        &mut self,
+        uvmid: UserVmIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<VirtualEnvironmentIdentifier, Error> {
+        trace!("leave(): uvmid={uvmid} tid={tid:?}");
 
         // Leave environment.
-        match self.processes.remove(&tid) {
+        let gtid: GlobalThreadIdentifier = Self::get_gtid(uvmid, tid)?;
+        match self.processes.remove(&gtid) {
             Some(env) => {
-                info!("process {tid:?} left environment {env:?}");
+                info!("process {tid:?} (uvm={uvmid}) left environment {env:?}");
                 Ok(env.id())
             },
             None => {
                 let reason: &str = "process has not joined an environment";
-                error!("leave(): {reason:?} (tid={tid:?})");
+                error!("leave(): {reason:?} (uvmid={uvmid}, tid={tid:?})");
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -203,6 +257,7 @@ impl VirtualEnviromentDirectory {
     ///
     /// # Parameters
     ///
+    /// - `uvmid`: User VM identifier.
     /// - `tid`: Thread identifier.
     ///
     /// # Returns
@@ -210,7 +265,22 @@ impl VirtualEnviromentDirectory {
     /// If there is a virtual environment associated with the process, the function returns a
     /// reference to the virtual environment. Otherwise, it returns `None`.
     ///
-    pub fn get(&self, tid: ThreadIdentifier) -> Option<&VirtualEnvironment> {
-        self.processes.get(&tid)
+    pub fn get(
+        &self,
+        uvmid: UserVmIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Option<&VirtualEnvironment> {
+        let gtid: GlobalThreadIdentifier = match Self::get_gtid(uvmid, tid) {
+            Ok(gtid) => gtid,
+            Err(e) => {
+                error!(
+                    "error getting global thread identifier (uvmid={uvmid}, tid={tid:?}, \
+                     error={e:?})"
+                );
+                return None;
+            },
+        };
+
+        self.processes.get(&gtid)
     }
 }
