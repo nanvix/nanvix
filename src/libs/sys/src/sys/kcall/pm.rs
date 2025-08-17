@@ -149,7 +149,14 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
         fn _do_start_thread() -> !;
     }
 
-    args.user_wrapper_fn = VirtualAddress::from_raw_value(_do_start_thread as usize);
+    // Check if the user function is set.
+    if args.user_fn != ThreadCreateArgs::NULL_USER_FN {
+        // If the user function is already set, it means that this function has been called
+        // recursively, which is not allowed.
+        return Err(Error::new(ErrorCode::InvalidArgument, "user function is set"));
+    }
+
+    args.user_fn = VirtualAddress::from_raw_value(_do_start_thread as usize);
 
     let result: i64 =
         kcall1!(KcallNumber::CreateThread.into(), args as *const ThreadCreateArgs as usize as u32);
