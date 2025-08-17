@@ -24,3 +24,9 @@ updates:
       - dependency-name: "hyperlight-common"
       - dependency-name: "hyperlight-host"
       - dependency-name: "hyperlight-guest"
+
+    groups:
+      kvm-stack:
+        patterns:
+          - "kvm-ioctls"
+          - "kvm-bindings"
