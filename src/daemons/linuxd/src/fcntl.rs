@@ -1019,7 +1019,7 @@ pub fn do_fcntl(
                 // The following statement is unreachable because `libc::fcntl()` should return
                 // either 0 on success or -1 on error for `F_SETFD`, `F_SETFL`, and `F_SETOWN`.
                 unreachable!(
-                    "do_fcntl(): unexpeted return for F_SETFD | F_SETFL | F_SETOWN \
+                    "do_fcntl(): unexpected return for F_SETFD | F_SETFL | F_SETOWN \
                      (cmd={cmd:#x?}, arg={libc_arg}, ret={ret:?}"
                 )
             }

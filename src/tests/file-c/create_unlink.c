@@ -18,7 +18,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can create and unlink a file.
+// Tests whether we can create and unlink a file.
 void test_create_unlink(void)
 {
     fprintf(stderr, "testing create()/unlink() ... ");

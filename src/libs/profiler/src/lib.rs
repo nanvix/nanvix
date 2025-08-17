@@ -115,7 +115,7 @@ impl Profiler {
         }
     }
 
-    /// Create and enter a syncronous scope. Returns a [`Guard`](struct.Guard.html) that should be
+    /// Create and enter a synchronous scope. Returns a [`Guard`](struct.Guard.html) that should be
     /// dropped upon leaving the scope.
     ///
     /// Usually, this method will be called by the

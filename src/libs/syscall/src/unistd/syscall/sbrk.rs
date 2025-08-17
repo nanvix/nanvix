@@ -104,7 +104,7 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         // Align the new end.
         let new_end: *mut u8 = align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
 
-        // Check wether we should allocate or free memory.
+        // Check whether we should allocate or free memory.
         if size > 0 {
             // Allocate memory.
 

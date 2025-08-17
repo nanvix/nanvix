@@ -39,7 +39,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !socket.rights_base().sock_accept {
                     ::syslog::error!("sock_accept(): operation not permitted");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 // Accept connection on socket.
@@ -75,7 +75,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation (using alias to fd_read).
                 if !socket.rights_base().fd_read {
                     ::syslog::error!("sock_recv(): operation not permitted");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 let mut roflags = RoFlags::from(0);
@@ -133,7 +133,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation (using alias to fd_write).
                 if !socket.rights_base().fd_write {
                     ::syslog::error!("sock_send(): operation not permitted");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 let mut total_sent: usize = 0;
@@ -183,7 +183,7 @@ impl WasiCtxInner {
                 // Ensure that we have the right to invoke this operation.
                 if !socket.rights_base().sock_shutdown {
                     ::syslog::error!("sock_shutdown(): operation not permitted");
-                    return Err(Errno::Acces);
+                    return Err(Errno::AccessDenied);
                 }
 
                 match socket.socket().shutdown(how) {

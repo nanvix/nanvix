@@ -123,7 +123,7 @@ impl SymbolTable {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because does not perform any checks on wether the pointer is valid
+    /// This function is unsafe because does not perform any checks on whether the pointer is valid
     /// or not.
     ///
     /// This function is safe to use if all the following conditions are met:
@@ -184,7 +184,7 @@ impl StringTable {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because does not perform any checks on wether the pointer is valid
+    /// This function is unsafe because does not perform any checks on whether the pointer is valid
     /// or not.
     ///
     /// This function is safe to use if all the following conditions are met:
@@ -299,7 +299,7 @@ impl RelocationTable {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because does not perform any checks on wether the pointer is valid
+    /// This function is unsafe because does not perform any checks on whether the pointer is valid
     /// or not.
     ///
     /// This function is safe to use if all the following conditions are met:

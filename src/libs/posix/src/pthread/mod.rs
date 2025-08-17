@@ -713,12 +713,12 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 ///
 /// # Description
 ///
-/// Sets the cancelability type of the calling thread.
+/// Sets the cancellability type of the calling thread.
 ///
 /// # Parameters
 ///
-/// - `type_`: New cancelability type.
-/// - `oldtype`: Old cancelability type.
+/// - `type_`: New cancellability type.
+/// - `oldtype`: Old cancellability type.
 ///
 /// # Returns
 ///

@@ -44,7 +44,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
     ::syslog::error!("seteuid(): uid={uid:?}");
 
-    // Check wether `uid` equals to the effective user ID of the calling process.
+    // Check whether `uid` equals to the effective user ID of the calling process.
     match unistd::geteuid() {
         Ok(euid) if uid == euid => 0,
         Ok(euid) => {

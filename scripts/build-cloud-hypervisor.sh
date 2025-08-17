@@ -98,7 +98,7 @@ Environment="PATH=/usr/bin:/usr/local/bin" "RUST_LOG=trace"
 WantedBy=multi-user.target
 EOF
 
-# TODO: Investigate if we need to add `apt remove -y --purge snapd pollinate` to the script bellow.
+# TODO: Investigate if we need to add `apt remove -y --purge snapd pollinate` to the script below.
 cat >script <<EOF
 #!/bin/bash
 set -xe

@@ -12,7 +12,7 @@ use ::sys::error::{
 };
 
 //==================================================================================================
-// Multiboot Basic Mememory information Tag
+// Multiboot Basic Memory information Tag
 //==================================================================================================
 
 ///
@@ -53,7 +53,7 @@ impl core::fmt::Debug for MbootBasicMeminfoTag {
 ///
 /// mem_lower: Size of available memory below 1MB starting from 0x0.
 ///
-/// mem_upper: Size of the first contiguos memory region above 1MB.
+/// mem_upper: Size of the first contiguous memory region above 1MB.
 ///
 pub struct MbootBasicMeminfo<'a> {
     /// Tag.

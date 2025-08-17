@@ -66,7 +66,7 @@ pub unsafe extern "C" fn readlinkat(
         "readlinkat(): dirfd={dirfd:?}, path={path:?}, buf={buf:?}, bufsize={bufsize:?}"
     );
 
-    // Attemt to convert `buf`.
+    // Attempt to convert `buf`.
     let buf: &mut [u8] = {
         // Check if `bufsize` is invalid.
         let bufsize: usize = if (bufsize == 0) || (bufsize as usize > PATH_MAX) {

@@ -44,7 +44,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn setgid(gid: gid_t) -> c_int {
     ::syslog::error!("setgid(): gid={gid:?}");
 
-    // Check wether `gid` equals to the real group ID of the calling process.
+    // Check whether `gid` equals to the real group ID of the calling process.
     match unistd::getgid() {
         Ok(rgid) if gid == rgid => 0,
         Ok(rgid) => {

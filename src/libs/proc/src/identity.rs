@@ -250,7 +250,7 @@ impl ProcessIdentity {
     ///
     /// # Description
     ///
-    /// Checks wether the target identity is the root identity.
+    /// Checks whether the target identity is the root identity.
     ///
     /// # Return Values
     ///

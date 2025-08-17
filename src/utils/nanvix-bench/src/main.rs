@@ -6,7 +6,7 @@
 //==================================================================================================
 
 #![deny(clippy::all)]
-// These two allows are required because we conditionally compile the benchmarks based on wether
+// These two allows are required because we conditionally compile the benchmarks based on whether
 // the right compilation flags are used.
 #![allow(dead_code)]
 #![allow(unreachable_code)]
@@ -172,7 +172,7 @@ impl Benchmark {
         Ok(user_vm_cmd)
     }
 
-    /// Configures teh set-up by starting linuxd and the gateway server.
+    /// Configures the set-up by starting linuxd and the gateway server.
     pub fn setup(&mut self) {
         match self.start_nanvixd() {
             Ok(nanvixd) => self.nanvixd = Some(nanvixd),
