@@ -12,15 +12,15 @@ simplified build process or do it manually.
 - [Building Nanvix with `z` (Preferred Method)](#building-nanvix-with-z-preferred-method)
   - [Getting Started with `z`](#getting-started-with-z)
   - [Using `z` to Build Nanvix with Docker](#using-z-to-build-nanvix-with-docker)
-  - [Using `z` to Build Nanvix with a Native Toolchain](#using-z-to-build-nanvix-with-a-native-toolchain)
+  - [Using `z` to Build Nanvix with a Local Toolchain](#using-z-to-build-nanvix-with-a-local-toolchain)
 - [Building Nanvix Manually](#building-nanvix-manually)
   - [Manually Building Nanvix with Docker](#manually-building-nanvix-with-docker)
-  - [Manually Building Nanvix with a Native Toolchain](#manually-building-nanvix-with-a-native-toolchain)
+  - [Manually Building Nanvix with a Local Toolchain](#manually-building-nanvix-with-a-local-toolchain)
 
 ## Building Nanvix with `z` (Preferred Method)
 
 `z` is a utility for building Nanvix. It provides you with a simplified interface for building
-Nanvix either using Docker or your native toolchain.
+Nanvix either using Docker or your local toolchain.
 
 ### Getting Started with `z`
 
@@ -38,9 +38,9 @@ To build Nanvix using the latest Docker image and default build parameters, run:
 ./z build --with-docker -- all
 ```
 
-### Using `z` to Build Nanvix with a Native Toolchain
+### Using `z` to Build Nanvix with a Local Toolchain
 
-To build Nanvix using your native toolchain and default build parameters, run:
+To build Nanvix using your local toolchain and default build parameters, run:
 
 ```bash
 ./z build -- all
@@ -65,9 +65,9 @@ docker run \
     chown -R $(id -u):$(id -g) . "
 ```
 
-### Manually Building Nanvix with a Native Toolchain
+### Manually Building Nanvix with a Local Toolchain
 
-To build Nanvix using your native toolchain and default build parameters, run:
+To build Nanvix using your local toolchain and default build parameters, run:
 
 ```bash
 make all
