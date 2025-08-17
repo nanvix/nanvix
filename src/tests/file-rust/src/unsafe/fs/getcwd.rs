@@ -11,7 +11,7 @@ use ::syscall::unistd;
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can get the current working directory using `getcwd()`.
+/// Tests whether we can get the current working directory using `getcwd()`.
 pub fn test() {
     if let Err(error) = unistd::getcwd() {
         panic!("{error:?}");

@@ -18,7 +18,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can get the resolution of a clock with `clock_getres()`.
+// Tests whether we can get the resolution of a clock with `clock_getres()`.
 void test_clock_getres(void)
 {
     fprintf(stderr, "testing clock_getres() ... ");

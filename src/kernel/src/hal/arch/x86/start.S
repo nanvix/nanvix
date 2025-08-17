@@ -103,7 +103,7 @@ _do_start2:
 
     /*
      * Fill BSS section with zeros.
-     * We cannot do this later, becase the stack is in the BSS.
+     * We cannot do this later, because the stack is in the BSS.
      * We preserve values of EAX and EBX, as they store boot information.
      */
     movl %eax, %edx          /* Save value of EAX.                 */

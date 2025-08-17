@@ -74,7 +74,7 @@ const USER_VM_LISTENER_CONNECTION_ID: usize = 1;
 /// We use IDs 2 and onwards for all user VMs that connect to this instance.
 const FIRST_USER_VM_CONNECTION_ID: usize = 2;
 /// We use ID 0 for the gateway listener socket in the gateway poll structure. Given that this
-/// socket is monitored in a different poll, we can re-use the connection ID 0.
+/// socket is monitored in a different poll, we can reuse the connection ID 0.
 const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
 
 //==================================================================================================

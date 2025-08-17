@@ -429,7 +429,7 @@ impl WorkerThreadHandle {
                             match Self::send(uvm_stream.clone(), message) {
                                 Ok(()) => {},
                                 Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
-                                    debug!("user vm stream closed, worker thread exitting");
+                                    debug!("user vm stream closed, worker thread exiting");
                                     break;
                                 },
                                 Err(e) => {

@@ -23,7 +23,7 @@ use syscall::safe::RegularFileOpenFlags;
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can test if a file descriptor is a terminal using `isatty`.
+/// Tests whether we can test if a file descriptor is a terminal using `isatty`.
 pub fn test() {
     // Check if STDIN is a terminal.
     match unistd::isatty(STDIN_FILENO) {

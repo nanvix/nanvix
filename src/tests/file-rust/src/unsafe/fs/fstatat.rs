@@ -18,7 +18,7 @@ use ::syscall::sys;
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can get the status of a file using `fstatat().
+/// Tests whether we can get the status of a file using `fstatat().
 pub fn test() {
     let filename: &str = "README.md";
 

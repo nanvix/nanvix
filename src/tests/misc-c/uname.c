@@ -17,7 +17,7 @@
 // Standalone Functions
 //==================================================================================================
 
-// Tests wether we can get system information with `uname()`.
+// Tests whether we can get system information with `uname()`.
 void test_uname(void)
 {
     fprintf(stderr, "testing uname() ... ");

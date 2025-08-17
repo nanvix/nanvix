@@ -62,7 +62,7 @@ pub mod syscomm {
     ///
     /// # Description
     ///
-    /// Provides the length of the temporary bufer we use to read messages from the gateway.
+    /// Provides the length of the temporary buffer we use to read messages from the gateway.
     ///
     pub const GW_READ_BUFFER_LEN: usize = 4 * 1024;
 

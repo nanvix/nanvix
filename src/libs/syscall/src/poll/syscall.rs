@@ -144,7 +144,7 @@ pub fn poll(
     // Receive response.
     let response: Message = ipc::recv()?;
 
-    // Check wether system call succeeded or not.
+    // Check whether system call succeeded or not.
     if response.status != 0 {
         let reason: &str = "poll() failed";
         ::syslog::error!("poll(): failed (fds={fds:?}, timeout={timeout:?}, status={:?})", {

@@ -31,7 +31,7 @@ LDFLAGS := -m32 -Wl,--build-id=none -no-pie -nostdlib -nostartfiles -ffreestandi
 # Build Targets
 #===================================================================================================
 
-# Buidls everything.
+# Builds everything.
 all: $(OBJ)
 	$(LD) $(LDFLAGS) -o $(BINARIES_DIR)/$(BIN) $^
 

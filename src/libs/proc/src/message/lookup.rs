@@ -36,7 +36,7 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// A message tha encodes a lookup system call.
+/// A message that encodes a lookup system call.
 ///
 #[repr(C, packed)]
 pub struct LookupMessage {

@@ -215,7 +215,7 @@ struct RawDirectoryInner {
 ///
 /// # Description
 ///
-/// This structure represents a direcotry in a filesystem.
+/// This structure represents a directory in a filesystem.
 ///
 pub struct RawDirectory {
     inner: Arc<Mutex<RawDirectoryInner>>,

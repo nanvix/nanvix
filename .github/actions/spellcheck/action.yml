@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Spellcheck"
+description: "Run the spellcheck target on the source code and documentation"
+
+inputs:
+  release:
+    description: "Release type"
+    required: true
+    default: "release"
+  log-level:
+    description: "Log level"
+    required: true
+    default: "trace"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Spellcheck (qemu-pc)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=qemu-pc --${{ inputs.release }} --spellcheck
+    shell: bash
+
+  - name: "Spellcheck (microvm)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --spellcheck
+    shell: bash
+
+  - name: "Spellcheck (hyperlight)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --spellcheck
+    shell: bash

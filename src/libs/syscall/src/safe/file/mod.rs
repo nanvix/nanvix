@@ -154,7 +154,7 @@ pub fn fstat(fd: RawFileDescriptor) -> Result<FileSystemAttributes, Error> {
 ///
 /// # Description
 ///
-/// Sets access and modication times of a file descriptor.
+/// Sets access and modification times of a file descriptor.
 ///
 /// # Parameters
 ///

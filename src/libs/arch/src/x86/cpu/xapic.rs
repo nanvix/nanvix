@@ -583,13 +583,13 @@ pub enum XapicLvtDeliveryStatus {
 /// Delivery mode.
 #[repr(u8)]
 pub enum XapicIcrDeliveryMode {
-    FixedDelivery = 0,  // Fixed delivery mode.
-    LowestPriority = 1, // Lowest priority mode.
-    Smi = 2,            // System management mode.
-    Nmi = 4,            // Non-maskable interrupt.
-    Init = 5,           // INIT mode.
-    Startup = 6,        // Startup mode.
-    Extint = 7,         // External interrupt.
+    FixedDelivery = 0,     // Fixed delivery mode.
+    LowestPriority = 1,    // Lowest priority mode.
+    Smi = 2,               // System management mode.
+    Nmi = 4,               // Non-maskable interrupt.
+    Init = 5,              // INIT mode.
+    Startup = 6,           // Startup mode.
+    ExternalInterrupt = 7, // External interrupt.
 }
 
 /// Destination shorthand.

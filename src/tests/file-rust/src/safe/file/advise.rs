@@ -18,7 +18,7 @@ use ::syscall::safe::{
 // Standalone Functions
 //==================================================================================================
 
-/// Tests wether we can provide advices about the use of a regular file.
+/// Tests whether we can provide advices about the use of a regular file.
 pub fn test() {
     let pathname: FileSystemPath = match FileSystemPath::new("README.md") {
         Ok(pathname) => pathname,

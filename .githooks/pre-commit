@@ -89,6 +89,16 @@ main() {
     fi
 
     print_success "(pre-commit) Code linting check passed successfully."
+
+    # Run spell check.
+    if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
+        # Spell check failed, print the output.
+        cat "${tmpfile}"
+        print_error "(pre-commit) Spell check failed. Please fix spelling errors before committing."
+        exit 1
+    fi
+
+    print_success "(pre-commit) Spell check passed successfully."
 }
 
 # Run the main function.

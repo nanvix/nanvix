@@ -180,6 +180,29 @@ def format_check(
     make("format-check", machine, arch, release, toolchain_dir, log_level, verbose)
 
 
+def spellcheck(
+    machine: str,
+    arch: str,
+    release: bool,
+    toolchain_dir: str = None,
+    log_level: str = None,
+    verbose: bool = False,
+) -> None:
+    """
+    Checks for spelling errors in source code and documentation.
+
+    Args:
+        machine (str): Target machine.
+        arch (str): Target architecture.
+        release (bool): Release build.
+        toolchain_dir (str, optional): Toolchain directory. Defaults to None.
+        log_level (str, optional): Log level. Defaults to None.
+        verbose (bool, optional): Verbose build. Defaults to False.
+    """
+
+    make("spellcheck", machine, arch, release, toolchain_dir, log_level, verbose)
+
+
 def build(
     machine: str,
     arch: str,
@@ -355,6 +378,12 @@ def parse_args() -> argparse.Namespace:
         "--lint", action="store_true", help="Lint Nanvix source code", default=False
     )
     parser.add_argument(
+        "--spellcheck",
+        action="store_true",
+        help="Check for spelling errors in source code and documentation",
+        default=False,
+    )
+    parser.add_argument(
         "--build", action="store_true", help="Build Nanvix", default=False
     )
     parser.add_argument(
@@ -392,6 +421,7 @@ def main() -> None:
     print(f"  - Debug: {args.debug}")
     print(f"  - Format: {args.format}")
     print(f"  - Lint: {args.lint}")
+    print(f"  - Spellcheck: {args.spellcheck}")
     print(f"  - Build: {args.build}")
     print(f"  - Disable Optional Software: {args.without_opt}")
     print(f"  - SCCACHE: {args.sccache if args.sccache else ''}")
@@ -412,6 +442,17 @@ def main() -> None:
     # Lint source code.
     if args.lint:
         lint_check(
+            args.target_machine,
+            args.target_arch,
+            args.release or not args.debug,
+            args.toolchain_dir,
+            args.log_level,
+            args.verbose,
+        )
+
+    # Check spelling in source code and documentation.
+    if args.spellcheck:
+        spellcheck(
             args.target_machine,
             args.target_arch,
             args.release or not args.debug,
