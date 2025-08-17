@@ -19,6 +19,7 @@ apt-get install -y        \
     clang-format          \
     codespell             \
     curl                  \
+    debootstrap           \
     dosfstools            \
     doxygen               \
     flex                  \
