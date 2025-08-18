@@ -37,7 +37,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    mm::Alignment,
+    mm::{
+        Address,
+        Alignment,
+    },
 };
 
 //==================================================================================================
@@ -215,7 +218,7 @@ fn do_elf32_load(
             .p_align
             .try_into()
             .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
-        let mut virt_addr: usize = ::sys::mm::align_down(phdr.p_vaddr as usize, align);
+        let virt_addr_base: usize = ::sys::mm::align_down(phdr.p_vaddr as usize, align);
 
         // Compute access permissions.
         let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
@@ -228,9 +231,24 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
-        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr + size, PAGE_ALIGNMENT);
-        for vaddr in (virt_addr..virt_addr_end).step_by(mem::PAGE_SIZE) {
+        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_base + size, PAGE_ALIGNMENT);
+
+        let phys_addr_base: usize = unsafe {
+            (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
+        };
+
+        let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
+
+        // Load segment page by page.
+        debug!(
+            "do_elf32_load(): loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, \
+             phys_addr_base={:#x}, phys_addr_end={:#x}, access={:?})",
+            virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
+        );
+
+        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+
             // Check if address lies in user space.
             if vaddr < config::memory_layout::USER_BASE {
                 let reason: &str = "invalid load address";
@@ -246,37 +264,27 @@ fn do_elf32_load(
                 // TODO: selectively clear pages to improve performance.
                 mm.alloc_upage(vmem, vaddr, access, true)?;
             }
-        }
-
-        let phys_addr_base: usize = unsafe {
-            (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
-        };
-
-        let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
-
-        // Load segment page by page.
-        debug!(
-            "do_elf32_load(): loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, \
-             phys_addr_base={:#x}, phys_addr_end={:#x}, access={:?})",
-            virt_addr, virt_addr_end, phys_addr_base, phys_addr_end, access
-        );
-        for phys_addr in (phys_addr_base..phys_addr_end).step_by(mem::PAGE_SIZE) {
-            let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
-            let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
-
-            // Load the segment.
-            vmem.copy_to_user_unaligned_unchecked(
-                vaddr,
-                VirtualAddress::from_raw_value(phys_addr),
-                size,
-                dry_run,
-            )?;
-
-            virt_addr += size;
 
             // Update last address.
-            if virt_addr > last_address {
-                last_address = virt_addr;
+            if vaddr.into_raw_value() + mem::PAGE_SIZE > last_address {
+                last_address = vaddr.into_raw_value() + mem::PAGE_SIZE;
+            }
+
+            let phys_addr: usize = phys_addr_base + (vaddr.into_raw_value() - virt_addr_base);
+
+            // Load segment only if it is within bounds.
+            if phys_addr < phys_addr_end {
+                let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
+
+                // Load segment only if it has a non-zero size.
+                if size > 0 {
+                    vmem.copy_to_user_unaligned_unchecked(
+                        vaddr.into_inner(),
+                        VirtualAddress::from_raw_value(phys_addr),
+                        size,
+                        dry_run,
+                    )?;
+                }
             }
         }
     }
