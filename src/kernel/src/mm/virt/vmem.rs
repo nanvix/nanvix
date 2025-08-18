@@ -82,8 +82,14 @@ unsafe extern "C" {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it performs physical memory copying and may lead to
-    /// undefined behavior if the destination or source memory regions are invalid.
+    /// This function is marked as unsafe because it disables paging and performs a physical memory
+    /// copy.
+    ///
+    /// It is safe to call this function if and only if all the following conditions are met:
+    /// - `src` points to a physical memory address that is valid and safe to read from.
+    /// - `dst` points to a physical memory address that is valid and safe to write to.
+    ///
+    /// If the copy size is zero, this function does nothing.
     ///
     fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
 

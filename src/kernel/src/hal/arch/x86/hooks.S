@@ -530,6 +530,10 @@ __phys_memcpy:
 	movl 16(%esp), %esi /* src */
 	movl 20(%esp), %ecx /* size */
 
+	/* If copy size is zero, skip copying. */
+	test %ecx, %ecx
+	jz __phys_memcpy.done
+
 	/* Disable paging. */
 	movl %cr0, %eax
 	andl $0x80000000 - 1, %eax
@@ -554,6 +558,8 @@ __phys_memcpy.loop:
 	movl %cr0, %eax
 	orl $0x80000000, %eax
 	movl %eax, %cr0
+
+__phys_memcpy.done:
 
 	popl %edi
 	popl %esi
