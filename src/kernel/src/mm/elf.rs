@@ -15,9 +15,7 @@
 use crate::{
     hal::mem::{
         AccessPermission,
-        Address,
         PageAligned,
-        PhysicalAddress,
         VirtualAddress,
     },
     mm::{
@@ -264,24 +262,15 @@ fn do_elf32_load(
         );
         for phys_addr in (phys_addr_base..phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
-
-            if vaddr < config::memory_layout::USER_BASE {
-                let reason: &str = "invalid load address";
-                error!("elf32_load: {}", reason);
-                return Err(Error::new(ErrorCode::BadFile, "invalid load address"));
-            }
-
-            let paddr: PageAligned<PhysicalAddress> = PageAligned::from_raw_value(phys_addr)?;
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
-
             let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
 
-            // Check if we should load the segment.
-            if !dry_run {
-                // Load the segment.
-                // TODO: rollback memory allocation on failure.
-                vmem.memcpy(vaddr, paddr, size)?;
-            }
+            // Load the segment.
+            vmem.copy_to_user_unaligned_unchecked(
+                vaddr,
+                VirtualAddress::from_raw_value(phys_addr),
+                size,
+                dry_run,
+            )?;
 
             virt_addr += size;
 
