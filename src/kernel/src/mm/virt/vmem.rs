@@ -398,6 +398,33 @@ impl Vmem {
         !Self::is_user_addr(virt_addr)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Asserts whether a memory region lies entirely in kernel space.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Starting virtual address of the region.
+    /// - `size`: Size of the region in bytes.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the entire region lies in kernel space, `false` otherwise.
+    ///
+    fn is_kernel_region(start: VirtualAddress, size: usize) -> bool {
+        // Reject zero-length regions.
+        if size == 0 {
+            return false;
+        }
+
+        // Check if the start and end addresses of the region lie in kernel space.
+        match start.checked_add(size - 1) {
+            Some(end) => Self::is_kernel_addr(start) && Self::is_kernel_addr(end),
+            None => false,
+        }
+    }
+
     /// Looks up a page table in the list of page tables.
     fn lookup_page_table(
         &mut self,
