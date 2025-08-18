@@ -15,9 +15,7 @@
 use crate::{
     hal::mem::{
         AccessPermission,
-        Address,
         PageAligned,
-        PhysicalAddress,
         VirtualAddress,
     },
     mm::{
@@ -271,8 +269,12 @@ fn do_elf32_load(
                 return Err(Error::new(ErrorCode::BadFile, "invalid load address"));
             }
 
-            let paddr: PageAligned<PhysicalAddress> = PageAligned::from_raw_value(phys_addr)?;
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
+            // Check if [phys_addr, phys_addr + PAGE_SIZE) does not lie within physical memory.
+            if !Vmem::is_physical_region(phys_addr, mem::PAGE_SIZE) {
+                let reason: &str = "physical address does not lie within physical memory";
+                error!("elf32_load: {reason}");
+                return Err(Error::new(ErrorCode::BadAddress, reason));
+            }
 
             let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
 
@@ -280,7 +282,11 @@ fn do_elf32_load(
             if !dry_run {
                 // Load the segment.
                 // TODO: rollback memory allocation on failure.
-                vmem.memcpy(vaddr, paddr, size)?;
+                vmem.copy_to_user_unaligned(
+                    vaddr,
+                    VirtualAddress::from_raw_value(phys_addr),
+                    size,
+                )?;
             }
 
             virt_addr += size;
