@@ -672,10 +672,21 @@ impl Vmem {
     ///
     /// - `dst`: Destination address in user space.
     /// - `src`: Source address in kernel space.
+    /// - `size`: Number of bytes to copy.
     ///
-    /// # Returns
+    /// # Return Value
     ///
-    /// Upon success, empty is returned. Upon failure, an error code is returned instead.
+    /// Upon successful completion, this function returns empty. Upon failure, this function returns
+    /// an error that indicates the reason for the failure.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    /// - [`ErrorCode::InvalidArgument`]: The size of the copy is zero.
+    /// - [`ErrorCode::BadAddress`]: The source memory region does not lie in kernel space.
+    /// - [`ErrorCode::BadAddress`]: The destination memory region does not lie in user space.
+    /// - [`ErrorCode::BadAddress`]: The source memory region does not lie within physical memory.
+    /// - [`ErrorCode::BadAddress`]: The destination memory region does not lie within physical memory.
     ///
     pub fn copy_to_user_unaligned(
         &self,
@@ -686,72 +697,77 @@ impl Vmem {
         // Check if size is invalid.
         if size == 0 {
             let reason: &str = "zero-length copy";
-            error!("copy_to_user_unaligned(): {}", reason);
+            error!("copy_to_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, size={size:?})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        let _copy_to_user_unaligned = |dry_run: bool,
-                                       mut dst: VirtualAddress,
-                                       mut src: VirtualAddress,
-                                       mut size: usize|
+        // Check if the source memory region lies entirely in kernel space.
+        // NOTE: This check is sufficient because, by design, the kernel and user spaces do not
+        // share any memory page.
+        if !Self::is_kernel_region(src, size) {
+            let reason: &str = "source memory region does not lie entirely in kernel space";
+            error!("copy_to_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, size={size:?})",);
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // Check if the destination memory region lies entirely in user space.
+        // NOTE: This check is sufficient because, by design, the kernel and user spaces do not
+        // share any memory page.
+        if !Self::is_user_region(dst, size) {
+            let reason: &str = "destination memory region does not lie entirely in user space";
+            error!("copy_to_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, size={size:?})",);
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let copy_to_user_unaligned = |dry_run: bool,
+                                      mut dst: VirtualAddress,
+                                      mut src: VirtualAddress,
+                                      mut size: usize|
          -> Result<(), Error> {
             while size > 0 {
-                // Checks if start source address does not lie in kernel space.
-                if !Self::is_kernel_addr(src) {
-                    let reason: &str = "start source address does not lie in kernel space";
-                    error!(
-                        "copy_to_user_unaligned(): {} (dst={:?}, src={:?}, size={:?})",
-                        reason, dst, src, size
-                    );
-                    return Err(Error::new(ErrorCode::BadAddress, reason));
-                }
-
-                // Check if start destination address does not lie in user space.
-                if !Self::is_user_addr(dst) {
-                    let reason: &str = "start destination address does not lie in user space";
-                    error!(
-                        "copy_to_user_unaligned(): {} (dst={:?}, src={:?}, size={:?})",
-                        reason, dst, src, size
-                    );
-                    return Err(Error::new(ErrorCode::BadAddress, reason));
-                }
-
                 let vaddr: PageAligned<VirtualAddress> =
                     PageAligned::from_address(dst.align_down(PAGE_ALIGNMENT))?;
 
                 let offset: usize = dst.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(mem::PAGE_SIZE - offset, size);
 
-                // Check if end source address does not lie in kernel space.
-                if !Self::is_kernel_addr(VirtualAddress::new(src.into_raw_value() + copy_size - 1))
-                {
-                    let reason: &str = "end source address does not lie in kernel space";
-                    error!(
-                        "copy_to_user_unaligned(): {} (dst={:?}, src={:?}, size={:?})",
-                        reason, dst, src, size
-                    );
-                    return Err(Error::new(ErrorCode::BadAddress, reason));
-                }
-
-                // Check if end destination address does not lie in user space.
-                if !Self::is_user_addr(VirtualAddress::new(dst.into_raw_value() + copy_size - 1)) {
-                    let reason: &str = "end destination address does not lie in user space";
-                    error!(
-                        "copy_to_user_unaligned(): {} (dst={:?}, src={:?}, size={:?})",
-                        reason, dst, src, size
-                    );
-                    return Err(Error::new(ErrorCode::BadAddress, reason));
-                }
-
                 let dst_frame: FrameAddress = self.find_user_frame(vaddr)?;
+
+                let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
+                let src_phys_addr_raw: usize = src.into_raw_value();
+
+                // Check if [src_phys_addr_raw, src_phys_addr_raw + copy_size) doesn't not lies within physical memory.
+                if !Self::is_physical_region(src_phys_addr_raw, copy_size) {
+                    let reason: &str = "source memory region does not lie within physical memory";
+                    error!(
+                        "copy_to_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, \
+                         size={size:?})"
+                    );
+                    return Err(Error::new(ErrorCode::BadAddress, reason));
+                }
+
+                // Check if [dst_phys_addr_raw, dst_phys_addr_raw + copy_size) doesn't lie within physical memory.
+                if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
+                    let reason: &str =
+                        "destination memory region does not lie within physical memory";
+                    error!(
+                        "copy_to_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, \
+                         size={size:?})"
+                    );
+                    return Err(Error::new(ErrorCode::BadAddress, reason));
+                }
 
                 // Check if we are not in dry-run mode.
                 if !dry_run {
-                    // Copy data.
+                    // Copy memory from kernel space to user space.
+                    // SAFETY: The following conditions are guaranteed:
+                    // - `dst_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
+                    // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
+                    // - Both regions lie in physical memory.
                     unsafe {
                         __phys_memcpy(
-                            (dst_frame.into_raw_value() + offset) as *mut u8,
-                            src.into_raw_value() as *const u8,
+                            dst_phys_addr_raw as *mut u8,
+                            src_phys_addr_raw as *const u8,
                             copy_size,
                         )
                     };
@@ -765,9 +781,9 @@ impl Vmem {
         };
 
         // Run in dry-run mode first to check for errors.
-        _copy_to_user_unaligned(true, dst, src, size)?;
+        copy_to_user_unaligned(true, dst, src, size)?;
         // Run in normal mode to effectively copy data.
-        _copy_to_user_unaligned(false, dst, src, size)?;
+        copy_to_user_unaligned(false, dst, src, size)?;
 
         Ok(())
     }
