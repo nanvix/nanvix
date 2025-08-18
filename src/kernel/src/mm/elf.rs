@@ -262,32 +262,15 @@ fn do_elf32_load(
         );
         for phys_addr in (phys_addr_base..phys_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(virt_addr);
-
-            if vaddr < config::memory_layout::USER_BASE {
-                let reason: &str = "invalid load address";
-                error!("elf32_load: {}", reason);
-                return Err(Error::new(ErrorCode::BadFile, "invalid load address"));
-            }
-
-            // Check if [phys_addr, phys_addr + PAGE_SIZE) does not lie within physical memory.
-            if !Vmem::is_physical_region(phys_addr, mem::PAGE_SIZE) {
-                let reason: &str = "physical address does not lie within physical memory";
-                error!("elf32_load: {reason}");
-                return Err(Error::new(ErrorCode::BadAddress, reason));
-            }
-
             let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
 
-            // Check if we should load the segment.
-            if !dry_run {
-                // Load the segment.
-                // TODO: rollback memory allocation on failure.
-                vmem.copy_to_user_unaligned(
-                    vaddr,
-                    VirtualAddress::from_raw_value(phys_addr),
-                    size,
-                )?;
-            }
+            // Load the segment.
+            vmem.copy_to_user_unaligned_unchecked(
+                vaddr,
+                VirtualAddress::from_raw_value(phys_addr),
+                size,
+                dry_run,
+            )?;
 
             virt_addr += size;
 
