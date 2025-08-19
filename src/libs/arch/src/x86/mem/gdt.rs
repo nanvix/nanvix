@@ -16,7 +16,6 @@ use crate::x86::cpu::ring::PrivilegeLevel;
 ///
 /// A type that represents an entry in the Global Descriptor Table (GDT).
 ///
-#[derive(Default)]
 #[repr(C, align(8))]
 pub struct Gdte {
     /// The lower 16 bits of the segment limit.
@@ -56,15 +55,35 @@ impl Gdte {
     ///
     /// This function returns a new GDT entry.
     ///
-    pub fn new(base: u32, limit: u32, access: GdteAccessByte, flags: GdteFlags) -> Self {
+    pub const fn new(base: u32, limit: u32, access: GdteAccessByte, flags: GdteFlags) -> Self {
         Self {
             base_low: Self::compute_base_low(base),
             base_high: Self::compute_base_high(base),
             base_middle: Self::compute_base_middle(base),
             limit_low: Self::compute_limit_low(limit),
-            flags_limit: (Self::compute_flags_low(flags.into()) << 4)
+            flags_limit: (Self::compute_flags_low(flags.into_u8()) << 4)
                 | (Self::compute_limit_high(limit) & 0x0f),
-            access: access.into(),
+            access: access.into_u8(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new GDT entry with default values.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns a new GDT entry with default values.
+    ///
+    pub const fn default() -> Self {
+        Self {
+            base_low: 0,
+            base_middle: 0,
+            base_high: 0,
+            limit_low: 0,
+            flags_limit: 0,
+            access: 0,
         }
     }
 
@@ -110,7 +129,7 @@ impl Gdte {
     /// This function returns the lower 16 bits of the segment base address.
     ///
     #[inline(always)]
-    fn compute_base_low(base: u32) -> u16 {
+    const fn compute_base_low(base: u32) -> u16 {
         (base & 0xffff) as u16
     }
 
@@ -128,7 +147,7 @@ impl Gdte {
     /// This function returns the middle 8 bits of the segment base address.
     ///
     #[inline(always)]
-    fn compute_base_middle(base: u32) -> u8 {
+    const fn compute_base_middle(base: u32) -> u8 {
         ((base >> 16) & 0xff) as u8
     }
 
@@ -146,7 +165,7 @@ impl Gdte {
     /// This function returns the upper 8 bits of the segment base address.
     ///
     #[inline(always)]
-    fn compute_base_high(base: u32) -> u8 {
+    const fn compute_base_high(base: u32) -> u8 {
         ((base >> 24) & 0xff) as u8
     }
 
@@ -164,7 +183,7 @@ impl Gdte {
     /// This function returns the lower 16 bits of the segment limit.
     ///
     #[inline(always)]
-    fn compute_limit_low(limit: u32) -> u16 {
+    const fn compute_limit_low(limit: u32) -> u16 {
         (limit & 0xffff) as u16
     }
 
@@ -182,7 +201,7 @@ impl Gdte {
     /// This function returns the upper 4 bits of the segment limit.
     ///
     #[inline(always)]
-    fn compute_limit_high(limit: u32) -> u8 {
+    const fn compute_limit_high(limit: u32) -> u8 {
         ((limit >> 16) & 0x0f) as u8
     }
 
@@ -200,7 +219,7 @@ impl Gdte {
     /// This function returns the lower 4 bits of the flags.
     ///
     #[inline(always)]
-    fn compute_flags_low(flags: u8) -> u8 {
+    const fn compute_flags_low(flags: u8) -> u8 {
         flags & 0x0f
     }
 }
@@ -233,7 +252,7 @@ pub struct GdteFlags {
 
 impl GdteFlags {
     /// Creates a new set of flags for a GDTE.
-    pub fn new(
+    pub const fn new(
         granularity: GdteGranularity,
         protected_mode: GdteProtectedMode,
         long_mode: GdteLongMode,
@@ -244,16 +263,23 @@ impl GdteFlags {
             long_mode,
         }
     }
-}
 
-impl From<GdteFlags> for u8 {
-    fn from(val: GdteFlags) -> Self {
-        (val.granularity as u8) | (val.protected_mode as u8) | (val.long_mode as u8)
+    ///
+    /// # Description
+    ///
+    /// Converts the flags into a `u8`.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the flags as a `u8`.
+    ///
+    const fn into_u8(&self) -> u8 {
+        (self.granularity as u8) | (self.protected_mode as u8) | (self.long_mode as u8)
     }
 }
 
 /// Granularity flag for a GDTE.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum GdteGranularity {
     ByteGranularity = (0 << 3),
@@ -261,7 +287,7 @@ pub enum GdteGranularity {
 }
 
 /// Protected mode flag for a GDTE.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum GdteProtectedMode {
     ProtectedMode16 = (0 << 2),
@@ -269,7 +295,7 @@ pub enum GdteProtectedMode {
 }
 
 /// Long mode flag for a GDTE.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum GdteLongMode {
     CompatibilityMode = (0 << 1),
@@ -277,7 +303,7 @@ pub enum GdteLongMode {
 }
 
 /// Present flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessAccessed {
     NotAccessed = 0,
@@ -285,7 +311,7 @@ pub enum AccessAccessed {
 }
 
 /// Read flag for code segments in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessReadable {
     NonReadable = (0 << 1),
@@ -293,7 +319,7 @@ pub enum AccessReadable {
 }
 
 /// Write flag for data segments in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessWritable {
     Readonly = (0 << 1),
@@ -301,7 +327,7 @@ pub enum AccessWritable {
 }
 
 /// Read/Write flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessReadWrite {
     CodeSegment(AccessReadable),
@@ -309,7 +335,7 @@ pub enum AccessReadWrite {
 }
 
 /// Direction flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessDirection {
     GrowsUp = (0 << 2),
@@ -317,7 +343,7 @@ pub enum AccessDirection {
 }
 
 /// Conforming flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessConforming {
     NonConforming = (0 << 2),
@@ -325,7 +351,7 @@ pub enum AccessConforming {
 }
 
 /// Direction/Conforming flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessDirectionConforming {
     Direction(AccessDirection),
@@ -333,7 +359,7 @@ pub enum AccessDirectionConforming {
 }
 
 /// Code/Data flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessExecutable {
     Data = (0 << 3),
@@ -341,7 +367,7 @@ pub enum AccessExecutable {
 }
 
 /// Descriptor type flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessDescriptorType {
     System = (0 << 4),
@@ -349,7 +375,7 @@ pub enum AccessDescriptorType {
 }
 
 /// Descriptor privilege level flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum DescriptorPrivilegeLevel {
     Ring0 = (PrivilegeLevel::Ring0 as u8) << 5,
@@ -359,7 +385,7 @@ pub enum DescriptorPrivilegeLevel {
 }
 
 /// Present flag in access byte.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum AccessPresent {
     NotPresent = (0 << 7),
@@ -383,7 +409,7 @@ pub struct GdteAccessByte {
 
 impl GdteAccessByte {
     /// Creates a new access byte.
-    pub fn new(
+    pub const fn new(
         accessed: AccessAccessed,
         read_write: AccessReadWrite,
         direction_conforming: AccessDirectionConforming,
@@ -402,22 +428,29 @@ impl GdteAccessByte {
             present,
         }
     }
-}
 
-impl From<GdteAccessByte> for u8 {
-    fn from(val: GdteAccessByte) -> Self {
-        (val.accessed as u8)
-            | match val.read_write {
+    ///
+    /// # Description
+    ///
+    /// Converts the access byte into a `u8`.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the access byte as a `u8`.
+    ///
+    const fn into_u8(&self) -> u8 {
+        (self.accessed as u8)
+            | match self.read_write {
                 AccessReadWrite::CodeSegment(readable) => readable as u8,
                 AccessReadWrite::DataSegment(writable) => writable as u8,
             }
-            | match val.direction_conforming {
+            | match self.direction_conforming {
                 AccessDirectionConforming::Direction(direction) => direction as u8,
                 AccessDirectionConforming::Conforming(conforming) => conforming as u8,
             }
-            | (val.executable as u8)
-            | (val.descriptor_type as u8)
-            | (val.dpl as u8)
-            | (val.present as u8)
+            | (self.executable as u8)
+            | (self.descriptor_type as u8)
+            | (self.dpl as u8)
+            | (self.present as u8)
     }
 }

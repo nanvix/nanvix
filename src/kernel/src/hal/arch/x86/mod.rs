@@ -15,10 +15,7 @@ pub mod mem;
 use crate::hal::{
     arch::x86::{
         cpu::tss::TssRef,
-        mem::gdt::{
-            Gdt,
-            GdtPtr,
-        },
+        mem::gdt::GdtPtr,
     },
     io::{
         IoMemoryAllocator,
@@ -51,8 +48,6 @@ pub use cpu::{
 /// A type that describes the architecture-specific components.
 ///
 pub struct Arch {
-    /// Global Descriptor Table (GDT).
-    _gdt: Option<Gdt>,
     /// Global Descriptor Table Register (GDTR).
     pub _gdtr: Option<GdtPtr>,
     /// Task State Segment (TSS).
@@ -60,6 +55,7 @@ pub struct Arch {
     /// Interrupt controller.
     pub controller: Option<InterruptController>,
 }
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -72,10 +68,9 @@ pub fn init(
     info!("initializing architecture-specific components...");
 
     // Initialize interrupt controller.
-    let (gdt, gdtr, tss, controller) = cpu::init(ioports, ioaddresses, madt)?;
+    let (gdtr, tss, controller) = cpu::init(ioports, ioaddresses, madt)?;
 
     Ok(Arch {
-        _gdt: Some(gdt),
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller,
@@ -84,10 +79,9 @@ pub fn init(
 
 #[cfg(feature = "smp")]
 pub fn initialize_application_core(kstack: *const u8) -> Result<Arch, Error> {
-    let (gdt, gdtr, tss): (Gdt, GdtPtr, TssRef) = cpu::initialize_application_core(kstack)?;
+    let (gdtr, tss): (GdtPtr, TssRef) = cpu::initialize_application_core(kstack)?;
 
     Ok(Arch {
-        _gdt: Some(gdt),
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller: None,
