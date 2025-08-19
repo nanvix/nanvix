@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::control_plane;
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
+use ::linuxd::control_plane;
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
