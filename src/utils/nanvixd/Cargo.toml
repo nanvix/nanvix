@@ -22,6 +22,8 @@ hyper-util = { workspace = true, features = ["full"] }
 hwloc = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+microvm = { workspace = true }
+linuxd = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
 num_enum = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

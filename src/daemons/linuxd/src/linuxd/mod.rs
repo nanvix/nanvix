@@ -12,6 +12,7 @@ mod assemble;
 //==================================================================================================
 
 use crate::{
+    control_plane,
     message::RequestAssembler,
     user_vm_handle::UserVmHandle,
     venv::{
@@ -27,7 +28,6 @@ use ::mio::{
     Poll,
     Token,
 };
-use ::nanvixd::control_plane;
 use ::slab_external::{
     Slab,
     VacantEntry,
