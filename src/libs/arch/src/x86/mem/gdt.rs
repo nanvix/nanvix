@@ -71,6 +71,34 @@ impl Gdte {
     ///
     /// # Description
     ///
+    /// Sets the base address of the target GDT entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The new base address for the target GDT entry.
+    ///
+    pub fn set_base(&mut self, base: u32) {
+        self.base_low = Self::compute_base_low(base);
+        self.base_middle = Self::compute_base_middle(base);
+        self.base_high = Self::compute_base_high(base);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the base address of the target GDT entry.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the base address of the target GDT entry.
+    ///
+    pub fn get_base(&self) -> u32 {
+        (self.base_high as u32) << 24 | (self.base_middle as u32) << 16 | (self.base_low as u32)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Computes the lower 16 bits of the segment base address.
     ///
     /// # Parameters
