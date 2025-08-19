@@ -371,12 +371,14 @@ help:
 
 # Fixes code linting issues.
 lint: \
-	rust-lint
+	rust-lint \
+	shell-lint
 
 # Checks for linting issues in the code.
 lint-check: \
 	rust-lint-check \
-	python-lint
+	python-lint \
+	shell-lint-check
 
 # Runs clippy.
 rust-lint-check: \
@@ -465,6 +467,14 @@ python-format-check: python-init
 
 python-lint: python-init
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+
+# Checks for linting issues in shell scripts.
+shell-lint-check:
+	@shellcheck -S warning $(shell git ls-files -- "*.sh")
+
+# Fixes code linting issues in shell scripts.
+shell-lint:
+	@scripts/shell-lint-fix.sh
 
 # Check C/C++ formatting style.
 clang-format-check:
