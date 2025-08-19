@@ -52,24 +52,24 @@ impl Microvm {
     ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", binary_directory),
-            "-log-to-file".to_string(),
-            "-kernel".to_string(),
+            ::microvm::args::Args::OPT_LOGFILE.to_string(),
+            ::microvm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/kernel.elf", binary_directory),
-            "-initrd".to_string(),
+            ::microvm::args::Args::OPT_INITRD.to_string(),
             program.to_string(),
-            "-system-vm-addr".to_string(),
+            ::microvm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
             addr.to_string(),
-            "-control-plane-addr".to_string(),
+            ::microvm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             control_plane_addr.to_string(),
         ];
 
         if let Some(program_args) = program_args {
-            user_vm_args.push("-initrd_args".to_string());
+            user_vm_args.push(::microvm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
         }
 
         if let Some(stderr_file) = stderr {
-            user_vm_args.push("-stderr".to_string());
+            user_vm_args.push(::microvm::args::Args::OPT_STDERR.to_string());
             user_vm_args.push(stderr_file.to_string());
         }
 

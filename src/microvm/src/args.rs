@@ -58,27 +58,27 @@ pub struct Args {
 
 impl Args {
     /// Command-line option for printing the help message.
-    const OPT_HELP: &'static str = "-help";
+    pub const OPT_HELP: &'static str = "-help";
     /// Command-line option for initrd file.
-    const OPT_INITRD: &'static str = "-initrd";
+    pub const OPT_INITRD: &'static str = "-initrd";
     /// Command-line option for the kernel file.
-    const OPT_KERNEL: &'static str = "-kernel";
+    pub const OPT_KERNEL: &'static str = "-kernel";
     /// Command-line option for the memory size.
-    const OPT_MEMORY_SIZE: &'static str = "-memory";
+    pub const OPT_MEMORY_SIZE: &'static str = "-memory";
     /// Command-line option for the standard error.
-    const OPT_STDERR: &'static str = "-stderr";
+    pub const OPT_STDERR: &'static str = "-stderr";
     /// Command-line option for system VM address.
-    const OPT_SYSTEM_VM_SOCKADDR: &'static str = "-system-vm-addr";
+    pub const OPT_SYSTEM_VM_SOCKADDR: &'static str = "-system-vm-addr";
     /// Command-line option for the system VM socket type.
-    const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
+    pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
     /// Command-line option for control-plane address.
-    const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
+    pub const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
     /// Command-line option for the control-plane socket type.
-    const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
+    pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
-    const OPT_INITRD_ARGS: &'static str = "-initrd_args";
+    pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
-    const OPT_LOGFILE: &'static str = "-log-to-file";
+    pub const OPT_LOGFILE: &'static str = "-log-to-file";
 
     ///
     /// # Description

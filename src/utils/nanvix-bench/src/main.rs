@@ -117,13 +117,13 @@ impl Benchmark {
     fn start_nanvixd(&self) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
             format!("{}/bin/nanvixd.elf", get_proj_root()),
-            "-http-addr".to_string(),
+            ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
-            "-tmp-dir".to_string(),
+            ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
             self.nanvixd_tmp_dir.clone(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
-            nanvixd_args.push("-hwloc".to_string());
+            nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
             nanvixd_args.push(hwloc_file.clone());
         }
 
@@ -143,13 +143,13 @@ impl Benchmark {
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/bin/microvm.elf", get_proj_root()),
-            "-kernel".to_string(),
+            ::microvm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
-            "-initrd".to_string(),
+            ::microvm::args::Args::OPT_INITRD.to_string(),
             self.flavour.get_program(),
         ];
         if let Some(gateway_addr) = gateway_addr {
-            user_vm_args.push("-gateway".to_string());
+            user_vm_args.push(::microvm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
             user_vm_args.push(gateway_addr);
         }
         if let Some(hwloc) = self.hwloc.clone() {
