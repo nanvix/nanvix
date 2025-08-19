@@ -11,15 +11,25 @@ use crate::x86::cpu::ring::PrivilegeLevel;
 // Global Descriptor Table Entry (GDTE)
 //==================================================================================================
 
-/// Global descriptor table entry (GDTE).
+///
+/// # Description
+///
+/// A type that represents an entry in the Global Descriptor Table (GDT).
+///
 #[derive(Default)]
 #[repr(C, align(8))]
 pub struct Gdte {
+    /// The lower 16 bits of the segment limit.
     limit_low: u16,
+    /// The lower 16 bits of the base address.
     base_low: u16,
+    /// The middle 8 bits of the base address.
     base_middle: u8,
+    /// The access byte for the segment.
     access: u8,
+    /// The flags and the upper 8 bits of the segment limit.
     flags_limit: u8,
+    /// The upper 8 bits of the base address.
     base_high: u8,
 }
 
@@ -30,16 +40,168 @@ pub struct Gdte {
 ::static_assert::assert_eq_align!(Gdte, 8);
 
 impl Gdte {
+    ///
+    /// # Description
+    ///
     /// Creates a new GDT entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment.
+    /// - `limit`: The limit of the segment.
+    /// - `access`: The access byte for the segment.
+    /// - `flags`: The flags for the segment.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns a new GDT entry.
+    ///
     pub fn new(base: u32, limit: u32, access: GdteAccessByte, flags: GdteFlags) -> Self {
         Self {
-            base_low: (base & 0xffff) as u16,
-            base_middle: ((base >> 16) & 0xff) as u8,
-            base_high: ((base >> 24) & 0xff) as u8,
-            limit_low: (limit & 0xffff) as u16,
-            flags_limit: (((limit >> 16) & 0x0f) as u8) | (((Into::<u8>::into(flags)) & 0x0f) << 4),
-            access: Into::<u8>::into(access),
+            base_low: Self::compute_base_low(base),
+            base_high: Self::compute_base_high(base),
+            base_middle: Self::compute_base_middle(base),
+            limit_low: Self::compute_limit_low(limit),
+            flags_limit: (Self::compute_flags_low(flags.into()) << 4)
+                | (Self::compute_limit_high(limit) & 0x0f),
+            access: access.into(),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address of the target GDT entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The new base address for the target GDT entry.
+    ///
+    pub fn set_base(&mut self, base: u32) {
+        self.base_low = Self::compute_base_low(base);
+        self.base_middle = Self::compute_base_middle(base);
+        self.base_high = Self::compute_base_high(base);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the base address of the target GDT entry.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the base address of the target GDT entry.
+    ///
+    pub fn get_base(&self) -> u32 {
+        (self.base_high as u32) << 24 | (self.base_middle as u32) << 16 | (self.base_low as u32)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 16 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 16 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_low(base: u32) -> u16 {
+        (base & 0xffff) as u16
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the middle 8 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the middle 8 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_middle(base: u32) -> u8 {
+        ((base >> 16) & 0xff) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the upper 8 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the upper 8 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_high(base: u32) -> u8 {
+        ((base >> 24) & 0xff) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 16 bits of the segment limit.
+    ///
+    /// # Parameters
+    ///
+    /// - `limit`: The segment limit to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 16 bits of the segment limit.
+    ///
+    #[inline(always)]
+    fn compute_limit_low(limit: u32) -> u16 {
+        (limit & 0xffff) as u16
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the upper 4 bits of the segment limit.
+    ///
+    /// # Parameters
+    ///
+    /// - `limit`: The segment limit to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the upper 4 bits of the segment limit.
+    ///
+    #[inline(always)]
+    fn compute_limit_high(limit: u32) -> u8 {
+        ((limit >> 16) & 0x0f) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 4 bits of the flags.
+    ///
+    /// # Parameters
+    ///
+    /// - `flags`: The flags to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 4 bits of the flags.
+    ///
+    #[inline(always)]
+    fn compute_flags_low(flags: u8) -> u8 {
+        flags & 0x0f
     }
 }
 
@@ -57,6 +219,7 @@ impl core::fmt::Debug for Gdte {
         )
     }
 }
+
 //==================================================================================================
 // Flags
 //==================================================================================================
@@ -188,7 +351,7 @@ pub enum AccessDescriptorType {
 /// Descriptor privilege level flag in access byte.
 #[derive(Debug)]
 #[repr(u8)]
-pub enum DescriptorPrivilegeLegel {
+pub enum DescriptorPrivilegeLevel {
     Ring0 = (PrivilegeLevel::Ring0 as u8) << 5,
     Ring1 = (PrivilegeLevel::Ring1 as u8) << 5,
     Ring2 = (PrivilegeLevel::Ring2 as u8) << 5,
@@ -214,7 +377,7 @@ pub struct GdteAccessByte {
     direction_conforming: AccessDirectionConforming,
     executable: AccessExecutable,
     descriptor_type: AccessDescriptorType,
-    dpl: DescriptorPrivilegeLegel,
+    dpl: DescriptorPrivilegeLevel,
     present: AccessPresent,
 }
 
@@ -226,7 +389,7 @@ impl GdteAccessByte {
         direction_conforming: AccessDirectionConforming,
         executable: AccessExecutable,
         descriptor_type: AccessDescriptorType,
-        dpl: DescriptorPrivilegeLegel,
+        dpl: DescriptorPrivilegeLevel,
         present: AccessPresent,
     ) -> Self {
         Self {
