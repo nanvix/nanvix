@@ -20,10 +20,10 @@ function setup_qemu
     local PREFIX=$2/toolchain/qemu
     local VERSION=8.1.0
 
-    pushd $PWD
+    pushd "$PWD" || exit
 
     # Create build directory.
-    mkdir -p build-qemu && cd build-qemu
+    mkdir -p build-qemu && cd build-qemu || exit
 
     # Get the sources.
     wget "https://download.qemu.org/qemu-$VERSION.tar.bz2"
@@ -31,13 +31,13 @@ function setup_qemu
     rm -f qemu-$VERSION.tar.bz2
 
     # Build and install.
-    cd qemu-$VERSION
+    cd "qemu-$VERSION" || exit
     ./configure \
         --prefix=$PREFIX --target-list=$TARGET --enable-sdl --enable-curses
     make all
     make install
 
-    popd
+    popd || exit
 
     # Cleanup build files.
     rm -rf build-qemu

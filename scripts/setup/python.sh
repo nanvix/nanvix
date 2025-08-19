@@ -24,7 +24,7 @@ export CPYTHON_BRANCH=8efd04f0457041f3d56a6a634e8fca73eddad2d0
 
 mkdir -p ${CONTRIB_DIR}
 git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
-cd ${CPYTHON_HOME}
+cd "${CPYTHON_HOME}" || exit
 git checkout "${CPYTHON_BRANCH}"
 git clean -fdx
 
@@ -47,5 +47,5 @@ CFLAGS="-m32" \
     ac_cv_file__dev_ptmx=no \
     ac_cv_file__dev_ptc=no
 
-make -j $(nproc) all
+make -j "$(nproc)" all
 make install

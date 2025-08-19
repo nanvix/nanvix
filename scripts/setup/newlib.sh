@@ -25,7 +25,7 @@ export NEWLIB_COMMIT=2093e7bd26f7b6bebd1462266413d00580a6c88b
 
 mkdir -p ${CONTRIB_DIR}
 git clone ${NEWLIB_REPOSITORY} ${NEWLIB_HOME}
-cd ${NEWLIB_HOME}
+cd "${NEWLIB_HOME}" || exit
 git checkout ${NEWLIB_COMMIT}
 git clean -fdx
 
@@ -42,7 +42,7 @@ export PATH=$PREFIX/bin:$PATH
     --prefix=$PREFIX \
     --disable-multilib
 
-make -j $(nproc) all
+make -j "$(nproc)" all
 make install
 
 export PATH=$OLD_PATH
