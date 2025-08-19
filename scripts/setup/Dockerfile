@@ -28,6 +28,7 @@ RUN apt-get update && \
     bridge-utils \
     build-essential \
     clang-format \
+    codespell \
     curl \
     dosfstools \
     doxygen \
@@ -57,9 +58,10 @@ RUN apt-get update && \
     python3-venv \
     qemu-kvm \
     qemu-system-x86 \
+    shellcheck \
     texinfo \
-    xorriso \
-    wget && \
+    wget \
+    xorriso && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

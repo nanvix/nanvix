@@ -12,6 +12,7 @@ apt-get install -y build-essential --no-install-recommends
 # Install additional packages.
 # Keep the following list of packages sorted alphabetically.
 apt-get install -y        \
+    bc                    \
     bison                 \
     bridge-utils          \
     build-essential       \
@@ -26,6 +27,7 @@ apt-get install -y        \
     git                   \
     graphviz              \
     grub2                 \
+    iproute2              \
     jq                    \
     kpartx                \
     libglib2.0-dev        \
@@ -39,6 +41,7 @@ apt-get install -y        \
     libvirt-clients       \
     libvirt-daemon-system \
     mtools                \
+    netcat-openbsd        \
     ninja-build           \
     pkg-config            \
     python3-venv          \
@@ -46,4 +49,5 @@ apt-get install -y        \
     qemu-system-x86       \
     shellcheck            \
     texinfo               \
+    wget                  \
     xorriso
