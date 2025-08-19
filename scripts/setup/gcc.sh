@@ -28,13 +28,13 @@ export GCC_COMMIT=b0222fe731e2888cb26737e12c528818ec92cb81
 stage0() {
     mkdir -p ${CONTRIB_DIR}
     git clone ${GCC_REPOSITORY} ${GCC_HOME}
-    cd ${GCC_HOME}
+    cd "${GCC_HOME}" || exit
     git checkout ${GCC_COMMIT}
     git clean -fdx
 
     ./contrib/download_prerequisites
 
-    mkdir -p build && cd build
+    mkdir -p build && cd build || exit
 
     ../configure \
         --target=$TARGET \
@@ -47,7 +47,7 @@ stage0() {
         --disable-libquadmath-support \
         --with-newlib
 
-    make -j `nproc` all-gcc all-target-libgcc
+    make -j "$(nproc)" all-gcc all-target-libgcc
     make install-gcc install-target-libgcc
 }
 
@@ -60,7 +60,7 @@ stage1() {
     # We must rebuild GCC to have fix-includes are fixed.
     # Note this time we also enable libstdc++ compilation.
 
-    cd ${GCC_HOME}/build
+    cd "${GCC_HOME}/build" || exit
 
     ../configure \
         --target=$TARGET \
@@ -73,7 +73,7 @@ stage1() {
         --disable-libquadmath-support \
         --with-newlib
 
-    make -j `nproc` all-gcc all-target-libgcc all-target-libgfortran all-target-libstdc++-v3
+    make -j "$(nproc)" all-gcc all-target-libgcc all-target-libgfortran all-target-libstdc++-v3
     make install-gcc install-target-libgcc install-target-libgfortran install-target-libstdc++-v3
 
 }

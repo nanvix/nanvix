@@ -16,11 +16,9 @@ TOOLCHAIN_DIR=${1:-$PWD/toolchain}
 NANVIX_HOME=$(git rev-parse --show-toplevel)
 
 CHANGE_ID=138986
-RUST_VERSION=v1.87.0
 COMMIT_ID=0a7e34697b651d08007108b54e7143744a8115a3
 REPOSITORY_NAME=rust
 REPOSITORY=https://github.com/nanvix/rust.git
-RUST_HOME=${TOOLCHAIN_DIR}/src/rust
 
 #===================================================================================================
 # Sanity Checks
@@ -42,7 +40,7 @@ then
 fi
 
 mkdir -p "${TOOLCHAIN_DIR}"/src
-cd "${TOOLCHAIN_DIR}"/src
+cd "${TOOLCHAIN_DIR}/src" || exit
 
 WASI_OS=linux
 WASI_ARCH=x86_64
@@ -68,14 +66,16 @@ then
     tar xvf "${WASI_SDK_FILE}"
 fi
 
-export WASI_SDK_PATH=$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}
+WASI_SDK_PATH=
+WASI_SDK_PATH="$(pwd)/wasi-sdk-${WASI_VERSION_FULL}-${WASI_ARCH}-${WASI_OS}"
+export WASI_SDK_PATH
 
 # Clone repository.
 if [ ! -d "${REPOSITORY_NAME}" ];
 then
     git clone "${REPOSITORY}" "${REPOSITORY_NAME}"
 fi
-cd "${REPOSITORY_NAME}"
+cd "${REPOSITORY_NAME}" || exit
 git checkout ${COMMIT_ID}
 export DESTDIR=${TOOLCHAIN_DIR}
 
