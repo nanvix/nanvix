@@ -14,7 +14,7 @@ PREFIX=${2:-$PWD/toolchain}
 # Global Variables
 #===================================================================================================
 
-NANVIX_HOME=`git rev-parse --show-toplevel`
+NANVIX_HOME="$(git rev-parse --show-toplevel)"
 CONTRIB_DIR=${PREFIX}/src
 CLOUD_HYPERVISOR_HOME=${CONTRIB_DIR}/cloud-hypervisor
 CLOUD_HYPERVISOR_REPOSITORY=https://github.com/nanvix/cloud-hypervisor
@@ -39,7 +39,7 @@ IMAGE_NAME=custom-ubuntu.raw
 #===================================================================================================
 
 distclean() {
-	cd ${CLOUD_HYPERVISOR_HOME}
+	cd "${CLOUD_HYPERVISOR_HOME}" || exit
 	git clean -fdx
 }
 
@@ -48,7 +48,7 @@ distclean() {
 #===================================================================================================
 
 clean() {
-	cd ${CLOUD_HYPERVISOR_HOME}
+	cd "${CLOUD_HYPERVISOR_HOME}" || exit
     cargo clean
 }
 
@@ -57,10 +57,10 @@ clean() {
 #===================================================================================================
 
 build() {
-	cd ${CLOUD_HYPERVISOR_HOME}
-	pushd $PWD
+	cd "${CLOUD_HYPERVISOR_HOME}" || exit
+	pushd "$PWD" || exit
 
-	cd $IMAGES_DIR
+	cd $IMAGES_DIR || exit
 
 	IMAGE_NAME_BASE=jammy-server-cloudimg-amd64
 
@@ -118,8 +118,8 @@ exit
 EOF
 
 	sudo cp script extra_commands mnt
-	sudo cp ${SERVICE_FILE} mnt/etc/systemd/system/$(basename "${SERVICE_FILE}")
-	sudo cp ${SERVICE_ELF} mnt/usr/bin/${SERVICE_ELF_BASENAME}
+	sudo cp "${SERVICE_FILE} mnt/etc/systemd/system/$(basename "${SERVICE_FILE}")"
+	sudo cp "${SERVICE_ELF} mnt/usr/bin/${SERVICE_ELF_BASENAME}"
 	sudo chmod +x mnt/script
 	sudo chroot mnt ./script
 	sudo mv mnt/etc/resolv.conf.backup mnt/etc/resolv.conf
@@ -127,7 +127,7 @@ EOF
 	sudo kpartx -d $IMAGE_NAME_BASE.raw
 	cp $IMAGE_NAME_BASE.raw $IMAGE_NAME
 
-	popd
+	popd || exit
 }
 
 #===================================================================================================
@@ -135,7 +135,7 @@ EOF
 #===================================================================================================
 
 run() {
-	cd ${CLOUD_HYPERVISOR_HOME}
+	cd ${CLOUD_HYPERVISOR_HOME} || exit
 	./target/release/cloud-hypervisor \
 		--kernel $IMAGES_DIR/hypervisor-fw \
 		--disk path=$IMAGES_DIR/$IMAGE_NAME path=$IMAGES_DIR/ubuntu-cloudinit.img \
@@ -154,9 +154,9 @@ init() {
 	if [ ! -d "${CLOUD_HYPERVISOR_HOME}" ];
 	then
 		git clone ${CLOUD_HYPERVISOR_REPOSITORY} ${CLOUD_HYPERVISOR_HOME}
-		cd ${CLOUD_HYPERVISOR_HOME}
+		cd ${CLOUD_HYPERVISOR_HOME} || exit
 	else
-		cd ${CLOUD_HYPERVISOR_HOME}
+		cd ${CLOUD_HYPERVISOR_HOME} || exit
 		git fetch origin
 		git reset --hard ${CLOUD_HYPERVISOR_COMMIT}
 	fi
@@ -171,7 +171,7 @@ init() {
 	bash ./scripts/create-cloud-init.sh
 	mv /tmp/ubuntu-cloudinit.img $IMAGES_DIR
 
-	cd $IMAGES_DIR
+	cd $IMAGES_DIR || exit
 	wget https://github.com/cloud-hypervisor/rust-hypervisor-firmware/releases/download/0.5.0/hypervisor-fw
 }
 

@@ -12,8 +12,10 @@ TIMEOUT=$5  # Timeout
 
 # Global Variables
 export SCRIPT_NAME=$0
-export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
-export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
+SCRIPT_DIR=
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
+export SCRIPT_DIR=${SCRIPT_DIR}
+export NANVIX_HOME=${NANVIX_HOME:-$(git rev-parse --show-toplevel)}
 
 # Target configuration
 MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../build/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
@@ -108,7 +110,7 @@ function run_qemu
 	esac
 
 	# Select QEMU from path, if available.
-	if [ ! -z $(command -v qemu-system-$target) ];
+	if [ ! -z "$(command -v qemu-system-$target)" ];
 	then
 		qemu_cmd="qemu-system-$target"
 	else
@@ -152,7 +154,8 @@ function run_microvm
 
 	local microvm="$NANVIX_HOME/bin/microvm.elf"
 	local kernel="$NANVIX_HOME/bin/kernel.elf"
-	local memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
+	local memsize
+	memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
 
 	# Base command.
 	cmd="$microvm -kernel $kernel -initrd $image -memory ${memsize}M"

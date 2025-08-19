@@ -26,7 +26,7 @@ export BINUTILS_COMMIT=bf7e9ff67059a35c927cc8b598b8d7f974b7d55d
 
 mkdir -p ${CONTRIB_DIR}
 git clone ${BINUTILS_REPOSITORY} ${BINUTILS_HOME}
-cd ${BINUTILS_HOME}
+cd "${BINUTILS_HOME}" || exit
 git checkout ${BINUTILS_COMMIT}
 git clean -fdx
 
@@ -42,5 +42,5 @@ git clean -fdx
     --disable-nls \
     --disable-sim
 
-make -j `nproc` all
+make -j "$(nproc)" all
 make install
