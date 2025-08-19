@@ -31,6 +31,7 @@ apt-get install -y        \
     iproute2              \
     jq                    \
     kpartx                \
+    libelf-dev            \
     libglib2.0-dev        \
     libgmp-dev            \
     libgmp3-dev           \
