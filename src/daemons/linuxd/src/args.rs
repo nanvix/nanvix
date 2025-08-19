@@ -31,6 +31,8 @@ pub struct Args {
     gateway_bind_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
+    /// Deployed in an L2 VM?
+    l2: bool,
 }
 
 //==================================================================================================
@@ -54,6 +56,17 @@ impl Args {
     pub const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for log redirecting.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
+    /// Command-line option for signaling deployment in an L2 VM.
+    pub const OPT_L2: &'static str = "-l2";
+
+    // Command-line options for restoring linuxd from a snapshot using cloud-hypervisor. They are
+    // only used when using linuxd as a library, so we allow dead code when building the binary.
+    /// Command-line option to indicate the API socket path.
+    #[allow(dead_code)]
+    pub const OPT_CLH_API_SOCKET: &'static str = "--api-socket";
+    /// Command-line option to indicate the restore operation.
+    #[allow(dead_code)]
+    pub const OPT_CLH_RESTORE: &'static str = "--restore";
 
     ///
     /// # Description
@@ -77,6 +90,7 @@ impl Args {
         let mut gateway_bind_sockaddr: Option<String> = None;
         let mut gateway_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
+        let mut l2: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -112,6 +126,9 @@ impl Args {
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
                 },
+                Self::OPT_L2 => {
+                    l2 = true;
+                },
                 invalid_arg => {
                     return Err(anyhow::anyhow!("invalid argument: {invalid_arg}"));
                 },
@@ -138,6 +155,7 @@ impl Args {
             gateway_bind_sockaddr,
             gateway_bind_sockaddr_type,
             log_to_file,
+            l2,
         })
     }
 
@@ -254,5 +272,18 @@ impl Args {
     ///
     pub fn log_to_file(&self) -> bool {
         self.log_to_file
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether we are deployed inside an L2 VM.
+    ///
+    /// # Returns
+    ///
+    /// If deployed inside an L2 VM.
+    ///
+    pub fn l2(&self) -> bool {
+        self.l2
     }
 }
