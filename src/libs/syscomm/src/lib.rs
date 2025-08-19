@@ -491,14 +491,22 @@ impl BlockingSocketStream {
 
     /// Writes data to a socket stream.
     pub fn write_all(&mut self, buf: &[u8]) -> Result<(), SocketError> {
-        let result = match self {
-            BlockingSocketStream::Tcp(stream, _) => stream.write_all(buf),
-            BlockingSocketStream::Unix(stream, _) => stream.write_all(buf),
+        let do_write_all = |stream: &mut dyn Write, poll: &mut Poll| -> Result<(), SocketError> {
+            let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+            loop {
+                match stream.write_all(buf) {
+                    Ok(()) => return Ok(()),
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {},
+                    Err(e) => return Err(SocketError { error: e }),
+                }
+
+                poll.poll(&mut events, None)?;
+            }
         };
 
-        match result {
-            Ok(_) => Ok(()),
-            Err(error) => Err(SocketError { error }),
+        match self {
+            BlockingSocketStream::Tcp(stream, poll) => do_write_all(stream, poll),
+            BlockingSocketStream::Unix(stream, poll) => do_write_all(stream, poll),
         }
     }
 }
