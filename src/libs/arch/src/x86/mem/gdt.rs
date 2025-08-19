@@ -351,7 +351,7 @@ pub enum AccessDescriptorType {
 /// Descriptor privilege level flag in access byte.
 #[derive(Debug)]
 #[repr(u8)]
-pub enum DescriptorPrivilegeLegel {
+pub enum DescriptorPrivilegeLevel {
     Ring0 = (PrivilegeLevel::Ring0 as u8) << 5,
     Ring1 = (PrivilegeLevel::Ring1 as u8) << 5,
     Ring2 = (PrivilegeLevel::Ring2 as u8) << 5,
@@ -377,7 +377,7 @@ pub struct GdteAccessByte {
     direction_conforming: AccessDirectionConforming,
     executable: AccessExecutable,
     descriptor_type: AccessDescriptorType,
-    dpl: DescriptorPrivilegeLegel,
+    dpl: DescriptorPrivilegeLevel,
     present: AccessPresent,
 }
 
@@ -389,7 +389,7 @@ impl GdteAccessByte {
         direction_conforming: AccessDirectionConforming,
         executable: AccessExecutable,
         descriptor_type: AccessDescriptorType,
-        dpl: DescriptorPrivilegeLegel,
+        dpl: DescriptorPrivilegeLevel,
         present: AccessPresent,
     ) -> Self {
         Self {

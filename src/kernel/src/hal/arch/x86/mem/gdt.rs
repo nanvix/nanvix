@@ -18,7 +18,7 @@ use ::arch::mem::gdt::{
     AccessReadWrite,
     AccessReadable,
     AccessWritable,
-    DescriptorPrivilegeLegel,
+    DescriptorPrivilegeLevel,
     Gdte,
     GdteAccessByte,
     GdteFlags,
@@ -108,7 +108,7 @@ impl Gdt {
                     AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
                     AccessExecutable::Data,
                     AccessDescriptorType::System,
-                    DescriptorPrivilegeLegel::Ring0,
+                    DescriptorPrivilegeLevel::Ring0,
                     AccessPresent::NotPresent,
                 ),
                 GdteFlags::new(
@@ -127,7 +127,7 @@ impl Gdt {
                     AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
                     AccessExecutable::Code,
                     AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLegel::Ring0,
+                    DescriptorPrivilegeLevel::Ring0,
                     AccessPresent::Present,
                 ),
                 GdteFlags::new(
@@ -146,7 +146,7 @@ impl Gdt {
                     AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
                     AccessExecutable::Data,
                     AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLegel::Ring0,
+                    DescriptorPrivilegeLevel::Ring0,
                     AccessPresent::Present,
                 ),
                 GdteFlags::new(
@@ -165,7 +165,7 @@ impl Gdt {
                     AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
                     AccessExecutable::Code,
                     AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLegel::Ring3,
+                    DescriptorPrivilegeLevel::Ring3,
                     AccessPresent::Present,
                 ),
                 GdteFlags::new(
@@ -184,7 +184,7 @@ impl Gdt {
                     AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
                     AccessExecutable::Data,
                     AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLegel::Ring3,
+                    DescriptorPrivilegeLevel::Ring3,
                     AccessPresent::Present,
                 ),
                 GdteFlags::new(
@@ -203,7 +203,7 @@ impl Gdt {
                     AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
                     AccessExecutable::Code,
                     AccessDescriptorType::System,
-                    DescriptorPrivilegeLegel::Ring0,
+                    DescriptorPrivilegeLevel::Ring0,
                     AccessPresent::Present,
                 ),
                 GdteFlags::new(
