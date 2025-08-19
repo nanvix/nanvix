@@ -58,13 +58,122 @@ impl Gdte {
     ///
     pub fn new(base: u32, limit: u32, access: GdteAccessByte, flags: GdteFlags) -> Self {
         Self {
-            base_low: (base & 0xffff) as u16,
-            base_middle: ((base >> 16) & 0xff) as u8,
-            base_high: ((base >> 24) & 0xff) as u8,
-            limit_low: (limit & 0xffff) as u16,
-            flags_limit: (((limit >> 16) & 0x0f) as u8) | (((Into::<u8>::into(flags)) & 0x0f) << 4),
-            access: Into::<u8>::into(access),
+            base_low: Self::compute_base_low(base),
+            base_high: Self::compute_base_high(base),
+            base_middle: Self::compute_base_middle(base),
+            limit_low: Self::compute_limit_low(limit),
+            flags_limit: (Self::compute_flags_low(flags.into()) << 4)
+                | (Self::compute_limit_high(limit) & 0x0f),
+            access: access.into(),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 16 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 16 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_low(base: u32) -> u16 {
+        (base & 0xffff) as u16
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the middle 8 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the middle 8 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_middle(base: u32) -> u8 {
+        ((base >> 16) & 0xff) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the upper 8 bits of the segment base address.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the upper 8 bits of the segment base address.
+    ///
+    #[inline(always)]
+    fn compute_base_high(base: u32) -> u8 {
+        ((base >> 24) & 0xff) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 16 bits of the segment limit.
+    ///
+    /// # Parameters
+    ///
+    /// - `limit`: The segment limit to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 16 bits of the segment limit.
+    ///
+    #[inline(always)]
+    fn compute_limit_low(limit: u32) -> u16 {
+        (limit & 0xffff) as u16
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the upper 4 bits of the segment limit.
+    ///
+    /// # Parameters
+    ///
+    /// - `limit`: The segment limit to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the upper 4 bits of the segment limit.
+    ///
+    #[inline(always)]
+    fn compute_limit_high(limit: u32) -> u8 {
+        ((limit >> 16) & 0x0f) as u8
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the lower 4 bits of the flags.
+    ///
+    /// # Parameters
+    ///
+    /// - `flags`: The flags to extract bits from.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns the lower 4 bits of the flags.
+    ///
+    #[inline(always)]
+    fn compute_flags_low(flags: u8) -> u8 {
+        flags & 0x0f
     }
 }
 
