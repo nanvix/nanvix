@@ -189,13 +189,13 @@ impl RunnableProcess {
 
     pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
         // Search in the list of ready threads.
-        if self.ready_threads.iter().any(|thread| thread.tid() == tid) {
+        if self.ready_threads.iter().any(|thread| thread.id() == tid) {
             return true;
         }
 
         // Search in the list of interrupted threads.
         if let Some(interrupted_threads) = &self.interrupted_threads {
-            if interrupted_threads.iter().any(|thread| thread.tid() == tid) {
+            if interrupted_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }
@@ -209,7 +209,7 @@ impl RunnableProcess {
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie_threads {
-            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+            if zombie_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }
