@@ -44,5 +44,6 @@ apt-get install -y        \
     python3-venv          \
     qemu-kvm              \
     qemu-system-x86       \
+    shellcheck            \
     texinfo               \
     xorriso
