@@ -40,6 +40,7 @@ pub fn try_read_command(stream: &mut SocketStream) -> Result<Command, SocketErro
     })
 }
 
+#[allow(dead_code)]
 pub fn send_command(stream: &mut SocketStream, cmd: Command) -> Result<(), SocketError> {
     let byte: u8 = cmd.into();
     stream.write_all(&[byte])?;

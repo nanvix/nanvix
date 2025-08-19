@@ -16,7 +16,6 @@
 mod args;
 mod cache;
 mod config;
-mod control_plane;
 mod http;
 mod logging;
 mod message;
