@@ -30,12 +30,12 @@ pub struct Args {
 //==================================================================================================
 
 impl Args {
-    const OPT_HELP: &'static str = "-help";
-    const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
-    const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
-    const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
-    const OPT_CONSOLE_FILE: &'static str = "-console-file";
-    const OPT_HWLOC: &'static str = "-hwloc";
+    pub const OPT_HELP: &'static str = "-help";
+    pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
+    pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
+    pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
+    pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
+    pub const OPT_HWLOC: &'static str = "-hwloc";
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: String = String::new();

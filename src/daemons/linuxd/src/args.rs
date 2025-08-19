@@ -39,21 +39,21 @@ pub struct Args {
 
 impl Args {
     /// Command-line option for printing the help message.
-    const OPT_HELP: &'static str = "-help";
+    pub const OPT_HELP: &'static str = "-help";
     /// Command-line option for setting the control-plane socket address.
-    const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
+    pub const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
     /// Command-line option for setting the socket address type of the bind socket.
-    const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
+    pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
     /// Command-line option for setting bind socket address.
-    const OPT_USER_VM_BIND_SOCKADDR: &'static str = "-user-vm-bind-addr";
+    pub const OPT_USER_VM_BIND_SOCKADDR: &'static str = "-user-vm-bind-addr";
     /// Command-line option for setting the socket address type of the bind socket.
-    const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
+    pub const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
     /// Command-line option for setting socket address of gateway.
-    const OPT_GATEWAY_BIND_SOCKADDR: &'static str = "-gateway-bind-addr";
+    pub const OPT_GATEWAY_BIND_SOCKADDR: &'static str = "-gateway-bind-addr";
     /// Command-line option for setting the socket address type of the gateway socket.
-    const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
+    pub const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for log redirecting.
-    const OPT_LOGFILE: &'static str = "-log-to-file";
+    pub const OPT_LOGFILE: &'static str = "-log-to-file";
 
     ///
     /// # Description
