@@ -7,7 +7,10 @@
 
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
-use ::linuxd::control_plane;
+use ::linuxd::{
+    args,
+    control_plane,
+};
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
@@ -51,11 +54,11 @@ impl LinuxDaemon {
         );
         let mut linuxd_args: Vec<String> = vec![
             format!("{}/linuxd.elf", binary_directory),
-            "-control-plane-addr".to_string(),
+            args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             control_plane_sockaddr.to_string(),
-            "-user-vm-bind-addr".to_string(),
+            args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
             user_vm_sockaddr.to_string(),
-            "-gateway-bind-addr".to_string(),
+            args::Args::OPT_GATEWAY_BIND_SOCKADDR.to_string(),
             gateway_sockaddr.to_string(),
         ];
         if let Some(hwloc) = hwloc {
