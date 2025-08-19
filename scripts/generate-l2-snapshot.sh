@@ -20,14 +20,11 @@ PREFIX=${1:-$PWD/toolchain}
 #===================================================================================================
 
 NANVIX_HOME=$(git rev-parse --show-toplevel)
-BIN_DIR="${PREFIX}/bin"
+# Follow sym-links to avoid capabilities in the cloud-hypervisor binary not being propagated.
+BIN_DIR=$(readlink -f -- "${PREFIX}/bin")
 SHARE_DIR="${PREFIX}/share/cloud-hypervisor"
-IMAGES_DIR="${NANVIX_HOME}/build/images"
+IMAGES_DIR="${NANVIX_HOME}/images"
 L2_SYSVM_KERNEL="${SHARE_DIR}/l2_sysvm_vmlinux.bin"
-
-# Snapshot variables.
-SNAPSHOT_PATH="${IMAGES_DIR}/l2-sysvm-snapshot"
-L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 
 # Cloud-hypervisor variables.
 CLOUD_HYPERVISOR_PATH="${BIN_DIR}/cloud-hypervisor"
@@ -37,25 +34,34 @@ CLOUD_HYPERVISOR_REMOTE_PATH="${BIN_DIR}/ch-remote"
 # Utilities
 #===================================================================================================
 
+source "${NANVIX_HOME}/scripts/common/logging.sh"
 source "${NANVIX_HOME}/scripts/common/utils.sh"
 
 #===================================================================================================
 # Networking
 #===================================================================================================
 
-# FIXME (#838): these values are currently hard-coded here and in src/utils/nanvixd/src/config.rs
 GUEST_MAC_ADDRESS="12:34:56:78:90:ab"
 GUEST_BROADCAST_ADDRESS="192.168.249.1"
 MASK="255.255.255.0"
-GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "guest_tap_ip_address")
-HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "host_tap_ip_address")
+
+LINUXD_CONFIG_TOML="${NANVIX_HOME}/build/linuxd_config.toml"
+GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip_address")
+HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
+SNAPSHOT_MAGIC_STRING=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_magic_string")
 
 CLH_API_SOCKET="/tmp/cloud-hypervisor.sock"
 CLH_CONSOLE="/tmp/clh-console"
 
+trap 'rm -rf "${CLH_API_SOCKET}" "${CLH_CONSOLE}"' EXIT
+
 #===================================================================================================
 # Generate snapshot
 #===================================================================================================
+
+SNAPSHOT_NAME=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_name")
+SNAPSHOT_PATH="${IMAGES_DIR}/${SNAPSHOT_NAME}"
+L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 
 boot_clh_vm() {
     rm -f ${CLH_API_SOCKET}
@@ -89,32 +95,34 @@ fifo=$(mktemp -u)
 mkfifo "$fifo"
 
 # Boot the VM and wait until it has finished booting to take a snapshot.
+print_info "Booting CLH VM to be snapshotted..."
 vm_pid=$(boot_clh_vm)
 
-( tail -F ${CLH_CONSOLE} > $fifo ) &
-tail_pid=$!
+# Insert trap to kill the VM on exit in case of failure, but ignore failures if the VM
+# has already been properly killed.
+trap 'kill -s SIGKILL ${vm_pid} || true' EXIT
 
-echo -n "Waiting for CLH VM to boot..."
+( tail -F ${CLH_CONSOLE} > $fifo 2> /dev/null ) &
+
+print_info "Waiting for CLH VM to boot..."
 while IFS= read -r line; do
-    if [[ "$line" == *"Nanvix L2 System VM init wrapper started"* ]]; then
-        echo "... CLH VM done booting!"
+    if [[ "$line" == *"${SNAPSHOT_MAGIC_STRING}"* ]]; then
+        print_success "... CLH VM done booting!"
         sleep 1
         break
     fi
 done < "$fifo"
 
-echo -n "Snapshotting CLH VM..."
+print_info "Snapshotting CLH VM..."
 snapshot_clh_vm
-echo "...snapshot done!"
+print_success "Snapshot done!"
 
 # Clean-up.
 rm "$fifo"
 rm -f ${CLH_CONSOLE}
 
-echo -n "Killing CLH VM..."
+print_info "Killing CLH VM..."
 kill -s SIGTERM ${vm_pid}
-kill -s SIGTERM ${tail_pid}
 rm -f ${CLH_API_SOCKET}
-echo "...done!"
 
-echo "Snapshot is available at: ${SNAPSHOT_PATH}"
+print_success "Snapshot is available at: ${SNAPSHOT_PATH}"
