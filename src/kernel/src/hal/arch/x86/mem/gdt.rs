@@ -37,8 +37,10 @@ use ::sys::error::Error;
 // Structures
 //==================================================================================================
 
-pub struct Gdt(Pin<Box<[Gdte; 6]>>);
+/// Global descriptor table.
+pub struct Gdt;
 
+/// Global descriptor table pointer.
 pub struct GdtPtr(Pin<Box<::arch::mem::gdtr::Gdtr>>);
 
 /// Global descriptor table entries.
@@ -63,6 +65,111 @@ pub enum SegmentSelector {
     UserData = ((GdtEntries::UserData as u8) << 3) | 3,
     Tss = (GdtEntries::Tss as u8) << 3,
 }
+
+//===================================================================================================
+// Global Variables
+//===================================================================================================
+
+/// Global descriptor table.
+static mut GDT: [Gdte; 6] = [
+    // Null entry.
+    Gdte::new(
+        0x0,
+        0x0,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::DataSegment(AccessWritable::Readonly),
+            AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
+            AccessExecutable::Data,
+            AccessDescriptorType::System,
+            DescriptorPrivilegeLevel::Ring0,
+            AccessPresent::NotPresent,
+        ),
+        GdteFlags::new(
+            GdteGranularity::ByteGranularity,
+            GdteProtectedMode::ProtectedMode16,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
+    // Kernel code entry.
+    Gdte::new(
+        0x0,
+        0xfffff,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::CodeSegment(AccessReadable::Readable),
+            AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
+            AccessExecutable::Code,
+            AccessDescriptorType::CodeData,
+            DescriptorPrivilegeLevel::Ring0,
+            AccessPresent::Present,
+        ),
+        GdteFlags::new(
+            GdteGranularity::PageGranularity,
+            GdteProtectedMode::ProtectedMode32,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
+    // Kernel data entry.
+    Gdte::new(
+        0x0,
+        0xfffff,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::DataSegment(AccessWritable::ReadWrite),
+            AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
+            AccessExecutable::Data,
+            AccessDescriptorType::CodeData,
+            DescriptorPrivilegeLevel::Ring0,
+            AccessPresent::Present,
+        ),
+        GdteFlags::new(
+            GdteGranularity::PageGranularity,
+            GdteProtectedMode::ProtectedMode32,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
+    // User code entry.
+    Gdte::new(
+        0x0,
+        0xfffff,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::CodeSegment(AccessReadable::Readable),
+            AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
+            AccessExecutable::Code,
+            AccessDescriptorType::CodeData,
+            DescriptorPrivilegeLevel::Ring3,
+            AccessPresent::Present,
+        ),
+        GdteFlags::new(
+            GdteGranularity::PageGranularity,
+            GdteProtectedMode::ProtectedMode32,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
+    // User data entry.
+    Gdte::new(
+        0x0,
+        0xfffff,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::DataSegment(AccessWritable::ReadWrite),
+            AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
+            AccessExecutable::Data,
+            AccessDescriptorType::CodeData,
+            DescriptorPrivilegeLevel::Ring3,
+            AccessPresent::Present,
+        ),
+        GdteFlags::new(
+            GdteGranularity::PageGranularity,
+            GdteProtectedMode::ProtectedMode32,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
+    // Task segment selector entry (overwritten at system initialization).
+    Gdte::default(),
+];
 
 //==================================================================================================
 // Implementations
@@ -90,134 +197,37 @@ impl Gdt {
         );
     }
 
-    pub unsafe fn init(kstack: *const u8) -> Result<(Gdt, GdtPtr, TssRef), Error> {
+    pub unsafe fn init(kstack: *const u8) -> Result<(GdtPtr, TssRef), Error> {
         trace!("initializing gdt...");
         let ss0: u32 = SegmentSelector::KernelData as u32;
         let esp0: u32 = kstack as u32;
         trace!("ss0={:x}, esp0={:x}", ss0, esp0);
         let tss: TssRef = TssRef::new(ss0, esp0)?;
 
-        let gdt = Gdt(Pin::new(Box::new([
-            // Null GDTE.
-            Gdte::new(
-                0x0,
-                0x0,
-                GdteAccessByte::new(
-                    AccessAccessed::NotAccessed,
-                    AccessReadWrite::DataSegment(AccessWritable::Readonly),
-                    AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
-                    AccessExecutable::Data,
-                    AccessDescriptorType::System,
-                    DescriptorPrivilegeLevel::Ring0,
-                    AccessPresent::NotPresent,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::ByteGranularity,
-                    GdteProtectedMode::ProtectedMode16,
-                    GdteLongMode::CompatibilityMode,
-                ),
+        // Overwrite task segment selector entry.
+        GDT[GdtEntries::Tss as usize] = Gdte::new(
+            tss.address() as u32,
+            tss.size() as u32 - 1,
+            GdteAccessByte::new(
+                AccessAccessed::Accessed,
+                AccessReadWrite::DataSegment(AccessWritable::Readonly),
+                AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
+                AccessExecutable::Code,
+                AccessDescriptorType::System,
+                DescriptorPrivilegeLevel::Ring0,
+                AccessPresent::Present,
             ),
-            // Kernel code GDTE.
-            Gdte::new(
-                0x0,
-                0xfffff,
-                GdteAccessByte::new(
-                    AccessAccessed::NotAccessed,
-                    AccessReadWrite::CodeSegment(AccessReadable::Readable),
-                    AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
-                    AccessExecutable::Code,
-                    AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLevel::Ring0,
-                    AccessPresent::Present,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::PageGranularity,
-                    GdteProtectedMode::ProtectedMode32,
-                    GdteLongMode::CompatibilityMode,
-                ),
+            GdteFlags::new(
+                GdteGranularity::ByteGranularity,
+                GdteProtectedMode::ProtectedMode16,
+                GdteLongMode::CompatibilityMode,
             ),
-            // Kernel data GDTE.
-            Gdte::new(
-                0x0,
-                0xfffff,
-                GdteAccessByte::new(
-                    AccessAccessed::NotAccessed,
-                    AccessReadWrite::DataSegment(AccessWritable::ReadWrite),
-                    AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
-                    AccessExecutable::Data,
-                    AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLevel::Ring0,
-                    AccessPresent::Present,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::PageGranularity,
-                    GdteProtectedMode::ProtectedMode32,
-                    GdteLongMode::CompatibilityMode,
-                ),
-            ),
-            // User code GDTE.
-            Gdte::new(
-                0x0,
-                0xfffff,
-                GdteAccessByte::new(
-                    AccessAccessed::NotAccessed,
-                    AccessReadWrite::CodeSegment(AccessReadable::Readable),
-                    AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
-                    AccessExecutable::Code,
-                    AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLevel::Ring3,
-                    AccessPresent::Present,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::PageGranularity,
-                    GdteProtectedMode::ProtectedMode32,
-                    GdteLongMode::CompatibilityMode,
-                ),
-            ),
-            // User data GDTE.
-            Gdte::new(
-                0x0,
-                0xfffff,
-                GdteAccessByte::new(
-                    AccessAccessed::NotAccessed,
-                    AccessReadWrite::DataSegment(AccessWritable::ReadWrite),
-                    AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
-                    AccessExecutable::Data,
-                    AccessDescriptorType::CodeData,
-                    DescriptorPrivilegeLevel::Ring3,
-                    AccessPresent::Present,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::PageGranularity,
-                    GdteProtectedMode::ProtectedMode32,
-                    GdteLongMode::CompatibilityMode,
-                ),
-            ),
-            // TSS GDTE.
-            Gdte::new(
-                tss.address() as u32,
-                tss.size() as u32 - 1,
-                GdteAccessByte::new(
-                    AccessAccessed::Accessed,
-                    AccessReadWrite::DataSegment(AccessWritable::Readonly),
-                    AccessDirectionConforming::Conforming(AccessConforming::NonConforming),
-                    AccessExecutable::Code,
-                    AccessDescriptorType::System,
-                    DescriptorPrivilegeLevel::Ring0,
-                    AccessPresent::Present,
-                ),
-                GdteFlags::new(
-                    GdteGranularity::ByteGranularity,
-                    GdteProtectedMode::ProtectedMode16,
-                    GdteLongMode::CompatibilityMode,
-                ),
-            ),
-        ])));
+        );
 
         // Set the GDTPTR.
         let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
-            gdt.0.as_ptr() as u32,
-            (mem::size_of_val(&*gdt.0)) as u16,
+            GDT.as_ptr() as u32,
+            (mem::size_of_val(&GDT)) as u16,
         ))));
 
         info!("loading the GDT...");
@@ -226,6 +236,6 @@ impl Gdt {
         // Load the TSS.
         tss.load(SegmentSelector::Tss as u16);
 
-        Ok((gdt, gdtr, tss))
+        Ok((gdtr, tss))
     }
 }

@@ -59,7 +59,7 @@ pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
-) -> Result<(Gdt, GdtPtr, TssRef, Option<InterruptController>), Error> {
+) -> Result<(GdtPtr, TssRef, Option<InterruptController>), Error> {
     unsafe extern "C" {
         static kstack: u8;
     }
@@ -99,7 +99,7 @@ pub fn init(
         info!("- has pbe:   {}", cpuid::has_pbe());
     }
 
-    let (gdt, gdtr, tss): (Gdt, GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
+    let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
     unsafe { idt::init() };
 
     #[cfg(feature = "pic")]
@@ -114,13 +114,13 @@ pub fn init(
     #[cfg(not(feature = "pic"))]
     let controller: Option<InterruptController> = None;
 
-    Ok((gdt, gdtr, tss, controller))
+    Ok((gdtr, tss, controller))
 }
 
 #[cfg(feature = "smp")]
-pub fn initialize_application_core(kstack: *const u8) -> Result<(Gdt, GdtPtr, TssRef), Error> {
-    let (gdt, gdtr, tss): (Gdt, GdtPtr, TssRef) = unsafe { Gdt::init(kstack)? };
+pub fn initialize_application_core(kstack: *const u8) -> Result<(GdtPtr, TssRef), Error> {
+    let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(kstack)? };
     unsafe { idt::load() };
 
-    Ok((gdt, gdtr, tss))
+    Ok((gdtr, tss))
 }
