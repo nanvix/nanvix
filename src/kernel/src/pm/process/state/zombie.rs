@@ -59,6 +59,6 @@ impl ZombieProcess {
     }
 
     pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
-        self.zombie_threads.iter().any(|thread| thread.tid() == tid)
+        self.zombie_threads.iter().any(|thread| thread.id() == tid)
     }
 }
