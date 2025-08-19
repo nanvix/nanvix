@@ -11,15 +11,25 @@ use crate::x86::cpu::ring::PrivilegeLevel;
 // Global Descriptor Table Entry (GDTE)
 //==================================================================================================
 
-/// Global descriptor table entry (GDTE).
+///
+/// # Description
+///
+/// A type that represents an entry in the Global Descriptor Table (GDT).
+///
 #[derive(Default)]
 #[repr(C, align(8))]
 pub struct Gdte {
+    /// The lower 16 bits of the segment limit.
     limit_low: u16,
+    /// The lower 16 bits of the base address.
     base_low: u16,
+    /// The middle 8 bits of the base address.
     base_middle: u8,
+    /// The access byte for the segment.
     access: u8,
+    /// The flags and the upper 8 bits of the segment limit.
     flags_limit: u8,
+    /// The upper 8 bits of the base address.
     base_high: u8,
 }
 
@@ -30,7 +40,22 @@ pub struct Gdte {
 ::static_assert::assert_eq_align!(Gdte, 8);
 
 impl Gdte {
+    ///
+    /// # Description
+    ///
     /// Creates a new GDT entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The base address of the segment.
+    /// - `limit`: The limit of the segment.
+    /// - `access`: The access byte for the segment.
+    /// - `flags`: The flags for the segment.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns a new GDT entry.
+    ///
     pub fn new(base: u32, limit: u32, access: GdteAccessByte, flags: GdteFlags) -> Self {
         Self {
             base_low: (base & 0xffff) as u16,
@@ -57,6 +82,7 @@ impl core::fmt::Debug for Gdte {
         )
     }
 }
+
 //==================================================================================================
 // Flags
 //==================================================================================================
