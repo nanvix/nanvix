@@ -583,16 +583,13 @@ impl EventManagerInner {
             Some(owner) => owner,
             None => {
                 let reason: &str = "no owner for exception";
-                error!("wakeup_exception(): reason={:?}", reason);
-                unimplemented!("terminate process")
+                error!("wakeup_exception(): {reason}");
+                return Err(Error::new(ErrorCode::NoSuchProcess, reason));
             },
         };
 
         // Notify exception owner.
-        if let Err(e) = self.get_wait().notify_process(pid) {
-            warn!("wakeup_exception(): {:?}", e);
-            unimplemented!("terminate process")
-        }
+        self.get_wait().notify_process(pid)?;
 
         Ok(resume)
     }
@@ -982,19 +979,27 @@ fn do_exception_handler(
 
 fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
     if let Err(sleep_error) = do_exception_handler(info, ctx) {
-        error!("exception_handler(): {:?}", sleep_error);
-
         let status: ErrorCode = match sleep_error {
-            SleepError::Generic(generic_error) => generic_error.code,
-            SleepError::Interrupted(InterruptReason::Killed) => ErrorCode::Interrupted,
-            SleepError::Interrupted(InterruptReason::TimedOut) => ErrorCode::OperationTimedOut,
+            SleepError::Generic(generic_error) => {
+                error!("killing process ({:?})", generic_error.reason);
+                generic_error.code
+            },
+            SleepError::Interrupted(InterruptReason::Killed) => {
+                error!("killing process (interrupted by signal)");
+                ErrorCode::Interrupted
+            },
+            SleepError::Interrupted(InterruptReason::TimedOut) => {
+                error!("killing process (timed out)");
+                ErrorCode::OperationTimedOut
+            },
         };
+
+        error!("{info:?}");
+        error!("{ctx:?}");
 
         // SAFETY: the calling process is not the kernel.
         unsafe {
             let error: Error = ProcessManager::exit(status.into()).unwrap_err();
-            error!("{:?}", info);
-            error!("{:?}", ctx);
             panic!("failed to exit() (error={:?})", error);
         }
     }
