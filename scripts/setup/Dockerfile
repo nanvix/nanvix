@@ -71,9 +71,7 @@ ENV PATH=$HOME/.cargo/bin:$PATH
 
 # Install Rust toolchain and components.
 RUN rustup toolchain install $RUST_VERSION && \
-    rustup default $RUST_VERSION && \
-    rustup component add rust-src && \
-    rustup target add wasm32-wasip1
+    rustup default $RUST_VERSION
 
 # Clone Nanvix repository and build toolchain.
 RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
