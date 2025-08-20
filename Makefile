@@ -58,6 +58,7 @@ export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
 export IMAGE_DIR     := $(BUILD_DIR)/iso
+export SNAPSHOT_DIR  := $(BUILD_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
@@ -312,6 +313,7 @@ clean: \
 	clean-host-binaries \
 	clean-microvm \
 	clean-opt \
+	clean-snapshot \
 	image-clean
 
 distclean: clean distclean-opt
@@ -706,6 +708,18 @@ ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif
+
+#===================================================================================================
+# Build Rules for L2 System VM Snapshot
+#===================================================================================================
+
+# The snapshots for the L2 VM need linuxd.elf to be built first.
+all-snapshot: all-host-binaries
+	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
+	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh
+
+clean-snapshot:
+	$(FORCE_RM_CMD) $(SNAPSHOT_DIR)
 
 #===================================================================================================
 # Build Rules for Guest Static Libraries
