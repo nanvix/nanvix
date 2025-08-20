@@ -23,13 +23,8 @@ use crate::{
 use ::anyhow::Result;
 use ::hyperlight_host::{
     GuestBinary,
-    MultiUseSandbox,
     UninitializedSandbox,
     sandbox::SandboxConfiguration,
-    sandbox_state::{
-        sandbox::EvolvableSandbox,
-        transition::Noop,
-    },
 };
 use ::std::{
     fs::File,
@@ -162,9 +157,6 @@ impl Vmm {
                     // Add the actual initrd data
                     padded_bytes.extend_from_slice(&bytes);
 
-                    // Fill the rest with padding
-                    padded_bytes.resize(8 + actual_size + padding_size, 0);
-
                     log::debug!(
                         "initrd with padding: {} bytes total (8 byte header + {} bytes data + {} \
                          bytes padding)",
@@ -267,7 +259,7 @@ impl Vmm {
     fn run(&mut self) -> Result<u16> {
         crate::timer!("vmm_run");
         if let Some(sandbox) = self.sandbox.take() {
-            let _ = sandbox.evolve(Noop::<UninitializedSandbox, MultiUseSandbox>::default())?;
+            let _ = sandbox.evolve()?;
         }
 
         // TODO: return the exit status code when supported.

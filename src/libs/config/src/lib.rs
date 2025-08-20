@@ -282,4 +282,6 @@ pub mod hyperlight {
     pub const DEFAULT_INITRD_BASE: usize = 0x00802000;
     /// Number of bytes used to store initrd's size.
     pub const INITRD_SIZE_BYTES: usize = 8;
+    /// Default VMM shutdown command
+    pub const DEFAULT_VMM_SHUTDOWN_CMD: u8 = 0x20;
 }
