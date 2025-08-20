@@ -30,6 +30,7 @@ RUN apt-get update && \
     clang-format \
     codespell \
     curl \
+    debootstrap \
     dosfstools \
     doxygen \
     flex \
@@ -41,6 +42,7 @@ RUN apt-get update && \
     iproute2 \
     jq \
     kpartx \
+    libelf-dev \
     libglib2.0-dev \
     libgmp-dev \
     libgmp3-dev \
