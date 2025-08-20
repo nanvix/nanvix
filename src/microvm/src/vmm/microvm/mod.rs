@@ -83,9 +83,11 @@ pub struct Vmm {
     io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
-    _microvm: Arc<Mutex<MicroVm>>,
+    microvm: Arc<Mutex<MicroVm>>,
     control_input_rx: Receiver<ControlCommand>,
     control_output_tx: Sender<ControlCommandResponse>,
+    paused_microvm_rx: Receiver<()>,
+    resume_microvm_tx: Sender<()>,
     orchestrator_state: OrchestratorState,
 }
 
@@ -156,6 +158,8 @@ impl Vmm {
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
         let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
         let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
+        let (paused_microvm_tx, paused_microvm_rx) = mpsc::channel::<()>(); // What other uses could these channels have? Should they be more generic?
+        let (resume_microvm_tx, resume_microvm_rx) = mpsc::channel::<()>(); // What other uses could these channels have? Should they be more generic?
 
         // Spawn I/O thread.
         let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
@@ -175,7 +179,8 @@ impl Vmm {
         let output: Box<microvm::OutputFn> =
             Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vm_tx);
 
-        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output)?;
+        let mut microvm: MicroVm =
+            MicroVm::new(memory_size, input, output, paused_microvm_tx, resume_microvm_rx)?;
 
         let rip: u64 = microvm.load_kernel(kernel_filename)?;
         if let Some(ref initrd_filename) = initrd_filename {
@@ -276,9 +281,11 @@ impl Vmm {
             io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,
-            _microvm: microvm,
+            microvm,
             control_input_rx,
             control_output_tx,
+            paused_microvm_rx,
+            resume_microvm_tx,
             orchestrator_state: OrchestratorState::PreBoot,
         };
 
@@ -554,9 +561,35 @@ impl Vmm {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: pause MicroVM (Running -> Paused)
-        // and tell linuxd to flush (Running -> Flushing)
-        // This TODO requires pausing the vCPU and a control plane communication with linuxd
+        // TODO: tell linuxd to flush (Running -> Flushing)
+        // This TODO requires control plane communication with linuxd
+        self.microvm
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .async_pause()?;
+        // Wait for the MicroVM to confirm it has paused.
+        let start: Instant = Instant::now();
+        let mut counter: usize = 1;
+        loop {
+            match self.paused_microvm_rx.try_recv() {
+                Ok(_) => break,
+                Err(TryRecvError::Empty) => (),
+                Err(TryRecvError::Disconnected) => {
+                    let reason: String = "the vmm has disconnected".to_string();
+                    error!("resume_running_rx.try_recv(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+            // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
+            let elapsed_time: usize = start.elapsed().as_millis() as usize;
+            if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
+                warn!(
+                    "{}ms have passed waiting for `ResumeMicroVm` message",
+                    TIMEOUT_WARNING_INTERVAL_IN_MS * counter
+                );
+                counter += 1;
+            }
+        }
         trace!("MicroVM paused");
         // Flush output to linuxd
         self.control_output_tx
@@ -619,9 +652,21 @@ impl Vmm {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Attempts to resume execution of a paused MicroVM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    ///
     fn resume_microvm(&self) -> Result<()> {
-        // TODO: resume MicroVM
-        trace!("MicroVM resumed");
+        self.microvm
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .resume()?;
+        self.resume_microvm_tx.send(())?;
         Ok(())
     }
 }

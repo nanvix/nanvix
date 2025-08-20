@@ -13,15 +13,18 @@
 //==================================================================================================
 
 #[cfg(target_os = "linux")]
-use crate::vmm::microvm::kvm::{
-    emulator::Emulator,
-    partition::VirtualPartition,
-    vcpu::{
-        VirtualProcessor,
-        VirtualProcessorExitContext,
-        VirtualProcessorExitReason,
+use crate::vmm::microvm::{
+    TIMEOUT_WARNING_INTERVAL_IN_MS,
+    kvm::{
+        emulator::Emulator,
+        partition::VirtualPartition,
+        vcpu::{
+            VirtualProcessor,
+            VirtualProcessorExitContext,
+            VirtualProcessorExitReason,
+        },
+        vmem::VirtualMemory,
     },
-    vmem::VirtualMemory,
 };
 
 use ::anyhow::Result;
@@ -32,9 +35,17 @@ use ::libc::{
     sigaction,
     sigemptyset,
 };
-use ::std::sync::{
-    Arc,
-    Mutex,
+use ::std::{
+    sync::{
+        Arc,
+        Mutex,
+        mpsc::{
+            Receiver,
+            Sender,
+            TryRecvError,
+        },
+    },
+    time::Instant,
 };
 
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
@@ -59,6 +70,10 @@ pub struct MicroVm {
     emulator: Emulator,
     // If present, initial RAM disk location and size.
     initrd: Option<(u64, usize)>,
+    // Channel to tell the VMM / main thread that the MicroVM has paused running.
+    paused_tx: Sender<()>,
+    // Channel to receive commands to resume a paused MicroVM.
+    resume_running_rx: Receiver<()>,
 }
 
 unsafe impl Send for MicroVm {}
@@ -90,13 +105,21 @@ impl MicroVm {
     /// - `memory_size`: Size of the virtual memory of the virtual machine.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `paused_tx`: Channel to tell the VMM / main thread that the MicroVM has paused running.
+    /// - `resume_running_rx`: Channel to receive commands to resume a paused MicroVM.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns the MicroVM that was created. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>) -> Result<Self> {
+    pub fn new(
+        memory_size: usize,
+        input: Box<InputFn>,
+        output: Box<OutputFn>,
+        paused_tx: Sender<()>,
+        resume_running_rx: Receiver<()>,
+    ) -> Result<Self> {
         trace!("new(): memory_size={memory_size}");
         crate::timer!("vm_creation");
 
@@ -116,6 +139,8 @@ impl MicroVm {
             vcpu,
             emulator,
             initrd: None,
+            resume_running_rx,
+            paused_tx,
         })
     }
 
@@ -295,7 +320,46 @@ impl MicroVm {
                 VirtualProcessorExitReason::PmioAccess => {
                     crate::timer!("vm_run_pmio_access");
                     if let Some(exit_status) = self.emulator.handle_pmio_access(exit_context)? {
-                        self.vcpu.poweroff(exit_status);
+                        if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                            self.vcpu.poweroff(exit_status);
+                        }
+                        // The Nanvix Daemon requested to pause, this means we need to suspend execution,
+                        // but possibly resume it later.
+                        else {
+                            // This message changes the state from `PAUSE_REQUESTED` to `PAUSED`.
+                            self.paused_tx.send(())?;
+
+                            let start: Instant = Instant::now();
+                            let mut counter: usize = 1;
+                            loop {
+                                match self.resume_running_rx.try_recv() {
+                                    Ok(_) => break,
+                                    // NOTE: Should we add an option for shutting down (change the
+                                    // channel type)? Like so:
+                                    // Ok(Enum::Shutdown) => {self.vcpu.poweroff(0);},
+                                    Err(TryRecvError::Empty) => (),
+                                    Err(TryRecvError::Disconnected) => {
+                                        let reason: String = "the vmm has disconnected".to_string();
+                                        error!("resume_running_rx.try_recv(): {reason}");
+                                        anyhow::bail!(reason)
+                                    },
+                                }
+
+                                // NOTE: is it desirable to check for timeout in this case? If it is desirable,
+                                // should we use a larger constant, considering snapshots might take long?
+
+                                // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
+                                let elapsed_time: usize = start.elapsed().as_millis() as usize;
+                                if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
+                                    warn!(
+                                        "{}ms have passed waiting for `ResumeMicroVm` message",
+                                        TIMEOUT_WARNING_INTERVAL_IN_MS * counter
+                                    );
+                                    counter += 1;
+                                }
+                            }
+                            trace!("MicroVM resumed");
+                        }
                     }
                 },
 
@@ -330,5 +394,49 @@ impl MicroVm {
     ///
     pub fn vmem(&self) -> Arc<Mutex<VirtualMemory>> {
         self.vmem.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes a pause request where the kernel checks for them.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn async_pause(&self) -> Result<()> {
+        trace!("pause()");
+        crate::timer!("vm_pause");
+        self.vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .write_bytes(
+                ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                &::config::microvm::PAUSE_REQUEST.to_le_bytes(),
+            )?;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Erases a pause request where the kernel checks for them.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn resume(&self) -> Result<()> {
+        trace!("resume()");
+        crate::timer!("vm_resume");
+        self.vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+            .write_bytes(
+                ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                &::config::microvm::RUNNING.to_le_bytes(),
+            )?;
+        Ok(())
     }
 }
