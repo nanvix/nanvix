@@ -28,6 +28,7 @@ RUN apt-get update && \
     bridge-utils \
     build-essential \
     clang-format \
+    codespell \
     curl \
     dosfstools \
     doxygen \
@@ -57,9 +58,10 @@ RUN apt-get update && \
     python3-venv \
     qemu-kvm \
     qemu-system-x86 \
+    shellcheck \
     texinfo \
-    xorriso \
-    wget && \
+    wget \
+    xorriso && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -69,9 +71,7 @@ ENV PATH=$HOME/.cargo/bin:$PATH
 
 # Install Rust toolchain and components.
 RUN rustup toolchain install $RUST_VERSION && \
-    rustup default $RUST_VERSION && \
-    rustup component add rust-src && \
-    rustup target add wasm32-wasip1
+    rustup default $RUST_VERSION
 
 # Clone Nanvix repository and build toolchain.
 RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
