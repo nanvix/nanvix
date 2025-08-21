@@ -20,9 +20,17 @@ use ::std::{
 //==================================================================================================
 
 fn main() {
-    // Read the TOML file
+    // Read the TOML file using the workspace root for a reliable path
+    let manifest_dir: String =
+        env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    let workspace_dir = Path::new(&manifest_dir)
+        .ancestors()
+        .nth(3)
+        .expect("Failed to find workspace root");
+    let config_path = workspace_dir.join("build/kernel_config.toml");
+    eprintln!("{:#?}", config_path);
     let kernel_config_content =
-        fs::read_to_string("build/kernel_config.toml").expect("Failed to read kernel_config.toml");
+        fs::read_to_string(&config_path).expect("Failed to read kernel_config.toml");
 
     // Prepare the output path
     let out_dir: String = env::var("OUT_DIR").unwrap();
