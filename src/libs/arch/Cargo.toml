@@ -47,6 +47,7 @@ hyperlight = [
     "madt",
     "msr",
     "pic",
+    "pit",
     "xapic",
 ]
 microvm = [
