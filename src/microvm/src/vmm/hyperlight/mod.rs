@@ -46,12 +46,24 @@ use ::sys::ipc::{
 };
 use hyperlight_host::{
     HyperlightError,
-    mem::memory_region::MemoryRegionFlags,
+    mem::{
+        memory_region::MemoryRegionFlags,
+        mgr::SandboxMemoryManager,
+        shared_mem::ExclusiveSharedMemory,
+    },
     sandbox::uninitialized::{
         GuestBlob,
         GuestEnvironment,
     },
 };
+
+// ==================================================================================================
+// Globals
+// ==================================================================================================
+
+pub static mut VMEM: Option<SandboxMemoryManager<ExclusiveSharedMemory>> = None;
+
+// ==================================================================================================
 
 //==================================================================================================
 // Structure
@@ -60,6 +72,7 @@ use hyperlight_host::{
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
     _io_thread: Option<JoinHandle<Result<()>>>,
+    _memory_thread: JoinHandle<Result<()>>,
     sandbox: Option<UninitializedSandbox>,
 }
 
@@ -91,7 +104,8 @@ impl Vmm {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
-        let (gateway_tx, vm_rx) = mpsc::channel::<Message>();
+        let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
+        let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
 
         // Spawn I/O thread.
         let _io_thread: Option<JoinHandle<Result<()>>> =
@@ -191,6 +205,9 @@ impl Vmm {
 
         // Creates Hyperlight sandbox.
         let mut sandbox = UninitializedSandbox::new(guest_env, Some(config))?;
+        unsafe {
+            VMEM = Some(sandbox.mgr.unwrap_mgr().clone());
+        }
         sandbox.register_print(writer_fn)?;
 
         sandbox.register("VmbusWrite", move |data: Vec<u8>| -> Result<i32, HyperlightError> {
@@ -218,6 +235,7 @@ impl Vmm {
         sandbox.register("VmbusRead", move || -> Result<Vec<u8>, HyperlightError> {
             match vm_rx.try_recv() {
                 Ok(mut msg) => {
+                    consume_credit()?;
                     msg.message_type = MessageType::Ikc;
                     Ok(msg.to_bytes().to_vec())
                 },
@@ -235,7 +253,32 @@ impl Vmm {
             }
         })?;
 
+        // Create a thread that reads from vm_rx and writes to vm_rx2.
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
+            loop {
+                match memory_thread_rx.try_recv() {
+                    Ok(msg) => {
+                        if let Err(e) = memory_thread_tx.send(msg) {
+                            let reason: String = format!("failed to send message: {:?}", e);
+                            error!("memory_thread(): {}", reason);
+                            continue;
+                        }
+
+                        add_credit()?;
+                    },
+                    Err(TryRecvError::Disconnected) => {
+                        debug!("memory_thread(): channel has been disconnected");
+                        break Ok(());
+                    },
+                    Err(TryRecvError::Empty) => {
+                        // No message available.
+                    },
+                }
+            }
+        });
+
         Ok(Self {
+            _memory_thread: memory_thread,
             _gateway_tx: gateway_tx,
             _io_thread,
             sandbox: Some(sandbox),
@@ -298,5 +341,40 @@ impl Vmm {
             Arc::new(Mutex::new(File::create("/dev/stderr")?))
         };
         Ok(file_writer)
+    }
+}
+
+fn add_credit() -> Result<()> {
+    unsafe {
+        // TODO: can probably figure out a better way to do this after (i.e., without using a static mut).
+        #[allow(static_mut_refs)]
+        VMEM.as_mut()
+            .map(|vmem| -> Result<()> {
+                // TODO(danbugs): turn offset into const.
+                let mut credit = vmem.get_shared_mem_mut().read::<u64>(0x003a7000)?;
+                credit += 1;
+                vmem.get_shared_mem_mut().write::<u64>(0x003a7000, credit)?;
+
+                println!("Adding credit: {}", credit);
+                Ok(())
+            })
+            .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
+    }
+}
+
+fn consume_credit() -> Result<()> {
+    unsafe {
+        #[allow(static_mut_refs)]
+        VMEM.as_mut()
+            .map(|vmem| -> Result<()> {
+                // TODO(danbugs): turn offset into const.
+                let mut credit = vmem.get_shared_mem_mut().read::<u64>(0x003a7000)?;
+                credit -= 1;
+                vmem.get_shared_mem_mut().write::<u64>(0x003a7000, credit)?;
+
+                println!("Consuming credit: {}", credit);
+                Ok(())
+            })
+            .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
     }
 }
