@@ -21,6 +21,7 @@ use crate::{
     vmm::hyperlight::io::IoThread,
 };
 use ::anyhow::Result;
+use ::config::hyperlight::DEFAULT_HYPERLIGHT_CTRL_CREDITS;
 use ::hyperlight_host::{
     GuestBinary,
     UninitializedSandbox,
@@ -46,12 +47,23 @@ use ::sys::ipc::{
 };
 use hyperlight_host::{
     HyperlightError,
-    mem::memory_region::MemoryRegionFlags,
+    mem::{
+        memory_region::MemoryRegionFlags,
+        mgr::SandboxMemoryManager,
+        shared_mem::ExclusiveSharedMemory,
+    },
     sandbox::uninitialized::{
         GuestBlob,
         GuestEnvironment,
     },
 };
+use std::sync::OnceLock;
+
+// ==================================================================================================
+// Globals
+// ==================================================================================================
+
+static VMEM: OnceLock<Arc<Mutex<SandboxMemoryManager<ExclusiveSharedMemory>>>> = OnceLock::new();
 
 //==================================================================================================
 // Structure
@@ -60,6 +72,7 @@ use hyperlight_host::{
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
     _io_thread: Option<JoinHandle<Result<()>>>,
+    _memory_thread: JoinHandle<Result<()>>,
     sandbox: Option<UninitializedSandbox>,
 }
 
@@ -91,7 +104,8 @@ impl Vmm {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
-        let (gateway_tx, vm_rx) = mpsc::channel::<Message>();
+        let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
+        let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
 
         // Spawn I/O thread.
         let _io_thread: Option<JoinHandle<Result<()>>> =
@@ -191,6 +205,10 @@ impl Vmm {
 
         // Creates Hyperlight sandbox.
         let mut sandbox = UninitializedSandbox::new(guest_env, Some(config))?;
+        let manager = Arc::new(Mutex::new(sandbox.mgr.unwrap_mgr().clone()));
+        VMEM.set(manager).map_err(|_| {
+            anyhow::anyhow!("Failed to set VMEM: already initialized or not available")
+        })?;
         sandbox.register_print(writer_fn)?;
 
         sandbox.register("VmbusWrite", move |data: Vec<u8>| -> Result<i32, HyperlightError> {
@@ -218,6 +236,7 @@ impl Vmm {
         sandbox.register("VmbusRead", move || -> Result<Vec<u8>, HyperlightError> {
             match vm_rx.try_recv() {
                 Ok(mut msg) => {
+                    consume_credit()?;
                     msg.message_type = MessageType::Ikc;
                     Ok(msg.to_bytes().to_vec())
                 },
@@ -235,7 +254,32 @@ impl Vmm {
             }
         })?;
 
+        // Create a thread that reads from vm_rx and writes to vm_rx2.
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
+            loop {
+                match memory_thread_rx.try_recv() {
+                    Ok(msg) => {
+                        if let Err(e) = memory_thread_tx.send(msg) {
+                            let reason: String = format!("failed to send message: {:?}", e);
+                            error!("memory_thread(): {}", reason);
+                            continue;
+                        }
+
+                        add_credit()?;
+                    },
+                    Err(TryRecvError::Disconnected) => {
+                        debug!("memory_thread(): channel has been disconnected");
+                        break Ok(());
+                    },
+                    Err(TryRecvError::Empty) => {
+                        // No message available.
+                    },
+                }
+            }
+        });
+
         Ok(Self {
+            _memory_thread: memory_thread,
             _gateway_tx: gateway_tx,
             _io_thread,
             sandbox: Some(sandbox),
@@ -259,7 +303,18 @@ impl Vmm {
     fn run(&mut self) -> Result<u16> {
         crate::timer!("vmm_run");
         if let Some(sandbox) = self.sandbox.take() {
-            let _ = sandbox.evolve()?;
+            match sandbox.evolve() {
+                Ok(res) => anyhow::bail!("Expected DEFAULT_VMM_SHUTDOWN_CMD, got: {:#?}", res),
+                Err(err) => {
+                    // note: this is a bit of a hack to check for the shutdown command.
+                    if !err
+                        .to_string()
+                        .contains(&::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD.to_string())
+                    {
+                        anyhow::bail!("Failed to run VMM: {}", err);
+                    }
+                },
+            }
         }
 
         // TODO: return the exit status code when supported.
@@ -299,4 +354,45 @@ impl Vmm {
         };
         Ok(file_writer)
     }
+}
+
+// Adds a credit to the virtual machine's credit pool.
+fn add_credit() -> Result<()> {
+    VMEM.get()
+        .and_then(|vmem| vmem.lock().ok())
+        .map(|mut vmem| -> Result<()> {
+            let mut credit = vmem
+                .get_shared_mem_mut()
+                .read::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS)?;
+            credit += 1;
+            vmem.get_shared_mem_mut()
+                .write::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS, credit)?;
+
+            log::info!("Adding credit: {}", credit);
+            Ok(())
+        })
+        .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
+}
+
+// Consumes a credit from the virtual machine's credit pool.
+fn consume_credit() -> Result<()> {
+    VMEM.get()
+        .and_then(|vmem| vmem.lock().ok())
+        .map(|mut vmem| -> Result<()> {
+            let mut credit = vmem
+                .get_shared_mem_mut()
+                .read::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS)?;
+
+            if credit == 0 {
+                return Err(anyhow::anyhow!("No credit available to consume"));
+            }
+
+            credit -= 1;
+            vmem.get_shared_mem_mut()
+                .write::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS, credit)?;
+
+            log::info!("Consuming credit: {}", credit);
+            Ok(())
+        })
+        .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
 }
