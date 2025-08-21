@@ -81,6 +81,17 @@ pub fn read() -> Result<Option<Message>, Error> {
                 return Ok(None);
             }
         }
+        else if #[cfg(feature = "hyperlight")] {
+            // Read credits register.
+            let credits: u64 = unsafe {
+                core::ptr::read_volatile(0x003a7000 as *const u64)
+            };
+
+            // No message available.
+            if credits == 0 {
+                return Ok(None);
+            }
+        }
     }
 
     // Read message from the kernel's standard input.
