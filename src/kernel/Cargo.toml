@@ -46,6 +46,7 @@ hyperlight = [
     "madt",
     "msr",
     "pic",
+    "pit",
     "xapic",
     "dep:hyperlight-common",
     "dep:hyperlight-guest",

@@ -11,6 +11,8 @@ mod peb;
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "pit")]
+use crate::hal::platform::pit::Pit;
 use crate::{
     hal::{
         arch::x86::{
@@ -66,6 +68,8 @@ use peb::{
 
 pub struct Platform {
     pub arch: Arch,
+    #[cfg(feature = "pit")]
+    pub _pit: Pit,
 }
 
 //==================================================================================================
@@ -101,9 +105,7 @@ pub(super) unsafe fn disable_interrupts() {
 /// enabled.
 ///
 pub(super) unsafe fn enable_interrupts() {
-    // Hyperlight does not have an interrupt chip. Enabling interrupts in this context
-    // could lead to undefined behavior or other unintended side effects. Therefore, this
-    // function is intentionally left as a no-op.
+    ::arch::cpu::sti();
 }
 
 ///
@@ -118,9 +120,7 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    // Hyperlight does not have an interrupt chip. Waiting for interrupts (halt) in this context
-    // could lead to undefined behavior or other unintended side effects. Therefore, this function
-    // is intentionally left as a no-op.
+    ::arch::cpu::halt();
 }
 
 ///
@@ -213,12 +213,7 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 /// This function never returns.
 ///
 pub fn shutdown(_status: usize) -> ! {
-    unsafe {
-        ::arch::cpu::halt();
-    };
-    loop {
-        core::hint::spin_loop();
-    }
+    ::hyperlight_guest::exit::abort_with_code(&[::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD]);
 }
 
 ///
@@ -327,6 +322,26 @@ pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
     Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
 }
 
+#[cfg(feature = "pic")]
+fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
+    // Register I/O ports for 8259 PIC.
+    ioports.register_read_write(::arch::cpu::pic::PIC_CTRL_MASTER as u16)?;
+    ioports.register_read_write(::arch::cpu::pic::PIC_DATA_MASTER as u16)?;
+    ioports.register_read_write(::arch::cpu::pic::PIC_CTRL_SLAVE as u16)?;
+    ioports.register_read_write(::arch::cpu::pic::PIC_DATA_SLAVE as u16)?;
+    Ok(())
+}
+
+#[cfg(feature = "pit")]
+fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
+    // Register ports for the PIT.
+
+    ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_DATA)?;
+
+    Pit::new(ioports, ::config::kernel::TIMER_FREQ)
+}
+
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
@@ -335,6 +350,9 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
+    #[cfg(feature = "pic")]
+    register_pic_ioports(ioports)?;
+
     extern "C" {
         static __KERNEL_END: u8;
     }
@@ -427,5 +445,7 @@ pub fn init(
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
+        #[cfg(feature = "pit")]
+        _pit: register_pit(ioports)?,
     })
 }
