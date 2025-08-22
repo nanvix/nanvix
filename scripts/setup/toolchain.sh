@@ -9,6 +9,15 @@
 
 PREFIX=${1:-$PWD/toolchain}
 
+#==================================================================================================
+# Imports
+#==================================================================================================
+
+# Directory where to find scripts to import.
+IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/../common"
+
+source "${IMPORT_DIR}/logging.sh"
+
 #===================================================================================================
 # Environment Variables
 #===================================================================================================
@@ -19,7 +28,6 @@ REPO_ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null) || {
     exit 1
 }
 CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
-
 
 #===================================================================================================
 # Helper Functions
@@ -47,7 +55,7 @@ extract_toolchain_version() {
 
     # Check if the Cargo.toml file does not exist.
     if [[ ! -f "$cargo_toml" ]]; then
-        echo "ERROR: Cargo.toml not found at $cargo_toml" >&2
+        print_error "Cargo.toml not found at ${cargo_toml}."
         exit 1
     fi
 
@@ -56,7 +64,7 @@ extract_toolchain_version() {
 
     # Check if version was not extracted successfully.
     if [[ -z "$current_version" ]]; then
-        echo "ERROR: Could not extract version from Cargo.toml" >&2
+        print_error "Could not extract version from Cargo.toml."
         exit 1
     fi
 
@@ -67,7 +75,7 @@ extract_toolchain_version() {
 
     # Validate version format.
     if [[ ! "$major" =~ ^[0-9]+$ ]] || [[ ! "$minor" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: Invalid version format '$current_version'" >&2
+        print_error "Invalid version format '${current_version}'."
         exit 1
     fi
 
@@ -89,7 +97,7 @@ extract_toolchain_version() {
 # Create version file as the final step.
 toolchain_version=$(extract_toolchain_version "$CARGO_TOML_FILE_PATH")
 echo "nanvix-toolchain-v${toolchain_version}" > "${PREFIX}/version" || {
-    echo "ERROR: Failed to create version file at ${PREFIX}/version" >&2
+    print_error "Failed to create version file at ${PREFIX}/version."
     exit 1
 }
-echo "Created toolchain version file: ${PREFIX}/version with version: $toolchain_version"
+print_success "Created toolchain version file: ${PREFIX}/version with version: ${toolchain_version}"
