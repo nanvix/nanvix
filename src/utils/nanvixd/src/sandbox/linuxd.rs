@@ -6,11 +6,9 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::control_plane_api;
 use ::hwloc::HwLoc;
-use ::linuxd::{
-    args,
-    control_plane,
-};
+use ::linuxd::args;
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
@@ -109,9 +107,9 @@ impl LinuxDaemon {
 
     /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
     pub async fn shutdown(&mut self) -> Result<()> {
-        match control_plane::send_command(
+        match control_plane_api::send_command(
             &mut self.control_plane_stream,
-            control_plane::Command::Shutdown,
+            control_plane_api::Command::Shutdown,
         ) {
             Ok(()) => {},
             Err(e) => {
