@@ -15,6 +15,15 @@
 set -euo pipefail
 
 #==================================================================================================
+# Imports
+#==================================================================================================
+
+# Directory where to find scripts to import.
+IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts/common"
+
+source "${IMPORT_DIR}/logging.sh"
+
+#==================================================================================================
 # Global Constants
 #==================================================================================================
 
@@ -48,12 +57,6 @@ Z_CACHE_FILE=".z.cache"
 # Default toolchain directory for setup.
 DEFAULT_LOCAL_TOOLCHAIN_DIR="${HOME}/toolchain"
 
-# Colors
-RED='\033[0;31m'    # Red
-GREEN='\033[0;32m'  # Green
-YELLOW='\033[0;33m' # Yellow
-NC='\033[0m'        # No Color
-
 #==================================================================================================
 # Global Variables
 #==================================================================================================
@@ -69,62 +72,6 @@ TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 #==================================================================================================
 # Functions
 #==================================================================================================
-
-#
-# Description
-#   Prints an error message on stderr.
-#
-# Arguments
-#   $1 - The error message to print.
-#
-# Usage Example
-#   print_error "Print an error message."
-#
-print_error() {
-    echo -e "${RED}[ERROR] ${1}${NC}" >&2
-}
-
-#
-# Description
-#   Prints a success message on stdout.
-#
-# Arguments
-#   $1 - The success message to print.
-#
-# Usage Example
-#   print_success "Print a success message."
-#
-print_success() {
-    echo -e "${GREEN}[SUCCESS] ${1}${NC}"
-}
-
-#
-# Description
-#   Prints a message on stdout.
-#
-# Arguments
-#   $1 - The message to print.
-#
-# Usage Example
-#   print_info "Print an informational message."
-#
-print_info() {
-    echo -e "[INFO] ${1}"
-}
-
-#
-# Description
-#   Prints a warning message on stderr.
-#
-# Arguments
-#   $1 - The warning message to print.
-#
-# Usage Example
-#   print_warning "Print a warning message."
-#
-print_warning() {
-    echo -e "${YELLOW}[WARN] ${1}${NC}" >&2
-}
 
 #
 # DESCRIPTION
