@@ -9,6 +9,9 @@ inputs:
     description: "Architecture"
     required: true
     default: "X64"
+  benchmark_list:
+    description: "List of benchmarks to run"
+    required: true
 
 runs:
   using: "composite"
@@ -25,10 +28,15 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_microvm_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_microvm_${{ inputs.arch }}.txt
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+
+      for bench in "${benchmarks[@]}"; do
+        bench_underscore=${bench//-/_}
+        ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -benchmark ${bench} -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_${bench_underscore}_microvm_${{ inputs.arch }}.txt
+      done
     shell: bash
   - name: Clean-up temporary directory
     if: always()
@@ -47,11 +55,20 @@ runs:
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark boot-time -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_boot_time_hyperlight_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark cold-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_cold_start_hyperlight_${{ inputs.arch }}.txt
-      ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark warm-start -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_hyperlight_${{ inputs.arch }}.txt
-      # FIXME: warm-start-vmm is stuck on hyperlight (#709)
-      # ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark warm-start-vmm -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_warm_start_vmm_hyperlight_${{ inputs.arch }}.txt
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+
+      for bench in "${benchmarks[@]}"; do
+        # FIXME (#709): warm-start-vmm is stuck on hyperlight
+        if [[ "$bench" == "warm-start-vmm" ]]; then
+              continue
+        fi
+
+        bench_underscore=${bench//-/_}
+        ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -benchmark ${bench}  -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_${bench_underscore}_hyperlight_${{ inputs.arch }}.txt
+      done
     shell: bash
   - name: Clean-up temporary directory
     if: always()
@@ -62,10 +79,16 @@ runs:
   - name: Format benchmark results
     id: format
     run: |
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+      comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
+
       python3 ./scripts/ci_bench_summary.py \
         --dev-dir $HOME/ubench-results-dev \
         --target-dir $(pwd) \
-        --benchmarks boot-time,cold-start,warm-start,warm-start-vmm \
+        --benchmarks ${comma_separated_benchmarks} \
         --machine-types microvm,hyperlight \
         --archs X64 \
         --output-file /tmp/comment.txt
