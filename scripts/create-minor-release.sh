@@ -207,7 +207,7 @@ git_commit() {
 
     # Check if there are changes to commit
     if ! git diff --quiet "$cargo_toml"; then
-        print_message "Committing new version..."
+        print_info "Committing new version..."
 
         # Add the modified Cargo.toml
         git add "$cargo_toml"
@@ -217,7 +217,7 @@ git_commit() {
 
         print_success "Successfully created minor release: $new_version"
     else
-        print_message "No changes to commit"
+        print_info "No changes to commit"
     fi
 }
 
@@ -229,7 +229,7 @@ git_commit() {
 #   git_push
 #
 git_push() {
-    print_message "Pushing changes to remote..."
+    print_info "Pushing changes to remote..."
 
     # Check if git is not configured.
     if ! git_is_configured; then
@@ -240,7 +240,7 @@ git_push() {
     # Get current branch name
     local current_branch
     current_branch=$(git rev-parse --abbrev-ref HEAD)
-    print_message "Pushing to branch: $current_branch"
+    print_info "Pushing to branch: $current_branch"
 
     # Push to current branch
     git push --no-verify -u origin "$current_branch"
@@ -302,7 +302,7 @@ is_default_branch() {
         print_error "Remote 'origin' does not exist."
         exit 1
     fi
-    print_message "Current branch: $current_branch"
+    print_info "Current branch: $current_branch"
 
     # Get the default branch and ensure it exists.
     local default_branch
@@ -311,7 +311,7 @@ is_default_branch() {
         print_error "Could not determine default branch from remote 'origin'."
         exit 1
     fi
-    print_message "Default branch: $default_branch"
+    print_info "Default branch: $default_branch"
 
     if [[ "$current_branch" == "$default_branch" ]]; then
         # Current branch is the default branch.
@@ -361,20 +361,20 @@ main() {
         exit 1
     fi
 
-    print_message "Creating minor release..."
+    print_info "Creating minor release..."
 
     local current_version new_version
     current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
-    print_message "Current version: $current_version"
+    print_info "Current version: $current_version"
     new_version=$(increment_version "$current_version")
-    print_message "Incrementing version: $current_version -> $new_version"
+    print_info "Incrementing version: $current_version -> $new_version"
     update_cargo_toml "$CARGO_TOML_FILE_PATH" "$new_version"
     git_commit "$CARGO_TOML_FILE_PATH" "$new_version"
 
     if $push_flag; then
         git_push
     else
-        print_message "Changes committed locally."
+        print_info "Changes committed locally."
     fi
 }
 
