@@ -88,6 +88,12 @@ use syscomm::{
 // Constants
 //==================================================================================================
 
+// Name of this package, used for logging and error messages.
+const CARGO_PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
+    Some(cargo_pkg_name) => cargo_pkg_name,
+    None => "nanvix-bench",
+};
+
 /// Sleep duration (in ms) to wait for the system to clean up after a benchmark run.
 const CLEANUP_SLEEP_DURATION: u64 = 10;
 
@@ -677,20 +683,33 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(debug_assertions)]
-    {
-        error!(
-            "WARNING: the Nanvix benchmarks require compilation with RELEASE=yes and \
-             LOG_LEVEL=panic"
-        );
-        return Ok(());
-    }
-
     // Initialize logger, and make sure we print error logs.
     Logger::try_with_env_or_str("error")
         .expect("malformed RUST_LOG environment variable")
         .start()
         .expect("failed to initialize logger");
+
+    // Check if RELEASE=yes was set at build time.
+    match option_env!("RELEASE") {
+        Some("yes") => {},
+        Some(_) | None => {
+            let reason: String =
+                format!("{CARGO_PKG_NAME} requires Nanvix to be compiled with RELEASE=yes");
+            error!("{reason}");
+            anyhow::bail!(reason);
+        },
+    }
+
+    // Check if LOG_LEVEL was set at build time and ensure it is "panic".
+    match option_env!("LOG_LEVEL") {
+        Some("panic") => {},
+        Some(_) | None => {
+            let reason: String =
+                format!("{CARGO_PKG_NAME} requires Nanvix to be compiled with LOG_LEVEL=panic");
+            error!("{reason}");
+            anyhow::bail!(reason);
+        },
+    }
 
     let args: Args = Args::parse(std::env::args().collect())?;
 
