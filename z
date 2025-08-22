@@ -334,6 +334,73 @@ read_cache() {
     fi
 }
 
+#
+# Description
+#
+#   Checks if the specified directory resides on a supported file system (ext3/ext4). The toolchain
+#   build requires extended attributes support for setcap commands.
+#
+# Arguments
+#
+#   $1 - The directory path to check.
+#
+# Return Value
+#
+#   - 0 if the file system is supported.
+#   - 1 if the findmnt command is not available.
+#   - 2 if the directory path is empty.
+#   - 3 if the file system type cannot be determined.
+#   - 4 if the file system is not supported.
+#
+# Usage Example
+#
+#   check_filesystem_support "/path/to/toolchain"
+#
+check_filesystem_support() {
+    local target_dir="$1"
+
+    # Check if findmnt command is available.
+    if ! command -v findmnt >/dev/null 2>&1; then
+        print_warning "Cannot detect file system type (findmnt not available)."
+        return 1
+    fi
+
+    # Check if `target_dir` is empty.
+    if [[ -z "${target_dir}" ]]; then
+        print_warning "Toolchain directory path is empty."
+        return 2
+    fi
+
+    # Find first parent directory for `target_dir` that exists.
+    local parent_dir="${target_dir}"
+    while [[ ! -d "${parent_dir}" ]]; do
+        if [[ "${parent_dir}" == "/" ]]; then
+            break
+        fi
+        parent_dir="$(dirname "${parent_dir}")"
+    done
+
+    # Get the file system type for the existing directory.
+    local fs_type
+    if ! fs_type=$(findmnt -n -o FSTYPE --target "${parent_dir}" 2>/dev/null); then
+        print_warning "Cannot detect file system type for '${target_dir}'."
+        return 3
+    fi
+
+    # Check if the file system supports extended attributes.
+    case "${fs_type}" in
+        ext3|ext4)
+            return 0
+            ;;
+        *)
+            print_warning "Unsupported file system '${fs_type}' detected for toolchain directory '${target_dir}'"
+            print_warning "Only ext3/ext4 are supported because extended attributes (xattr) are required for setcap commands."
+            print_warning "Consider moving the toolchain directory to a partition formatted with ext3 or ext4."
+            return 4
+            ;;
+    esac
+}
+
 #==================================================================================================
 # Main Script
 #==================================================================================================
@@ -525,6 +592,12 @@ main() {
                     print_error "No write permissions to: ${TOOLCHAIN_DIR}. Run with appropriate permissions or specify another directory."
                     exit 1
                 fi
+
+                # Check if the toolchain directory is on a supported file system.
+                check_filesystem_support "${TOOLCHAIN_DIR}" || {
+                    print_error "Toolchain directory '${TOOLCHAIN_DIR}' is not on a supported file system (ext3/ext4)."
+                    exit 1
+                }
 
                 # Warn if toolchain directory is not empty.
                 if [ "$(ls -A "${TOOLCHAIN_DIR}" 2>/dev/null)" ]; then
