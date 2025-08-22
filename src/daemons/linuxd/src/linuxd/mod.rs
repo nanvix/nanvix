@@ -12,7 +12,6 @@ mod assemble;
 //==================================================================================================
 
 use crate::{
-    control_plane,
     message::RequestAssembler,
     user_vm_handle::UserVmHandle,
     venv::{
@@ -22,6 +21,7 @@ use crate::{
     worker_thread::WorkerThreadHandle,
 };
 use ::anyhow::Result;
+use ::control_plane_api;
 use ::mio::{
     Events,
     Interest,
@@ -341,8 +341,10 @@ impl LinuxDaemon {
                 match event.token() {
                     // Process control-plane messages before anything else.
                     CONTROL_PLANE_TOKEN => {
-                        let cmd: control_plane::Command =
-                            match control_plane::try_read_command(&mut self.control_plane_stream) {
+                        let cmd: control_plane_api::Command =
+                            match control_plane_api::try_read_command(
+                                &mut self.control_plane_stream,
+                            ) {
                                 Ok(cmd) => cmd,
                                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
                                 Err(e) => {
@@ -356,7 +358,7 @@ impl LinuxDaemon {
                                 },
                             };
                         match cmd {
-                            control_plane::Command::Shutdown => {
+                            control_plane_api::Command::Shutdown => {
                                 info!("linuxd received shutdown message from control-plane");
 
                                 // Close all existing connections to user VMs.
