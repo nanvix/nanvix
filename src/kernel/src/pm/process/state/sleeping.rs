@@ -196,7 +196,7 @@ impl SleepingProcess {
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie_threads {
-            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+            if zombie_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }

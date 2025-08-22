@@ -1,0 +1,132 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::pm::{
+    sync::condvar::Condvar,
+    thread::{
+        interrupted::InterruptReason,
+        state::ThreadState,
+        InterruptedThread,
+        ReadyThread,
+    },
+};
+use ::alloc::boxed::Box;
+use ::core::fmt::Debug;
+use ::sys::{
+    pm::ThreadIdentifier,
+    time::SystemTime,
+};
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// This structure represents a thread that is sleeping.
+///
+#[derive(Debug)]
+pub struct SleepingThread {
+    /// Thread state.
+    state: Box<ThreadState>,
+    /// Optional alarm time for waking up the thread.
+    alarm: Option<SystemTime>,
+}
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl SleepingThread {
+    ///
+    /// # Description
+    ///
+    /// Creates a sleeping thread from an existing thread state and alarm time.
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: The thread state.
+    /// - `alarm`: Optional alarm time for waking up the thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a new instance of a [`SleepingThread`].
+    ///
+    pub(super) fn from_state(state: Box<ThreadState>, alarm: Option<SystemTime>) -> Self {
+        Self { state, alarm }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes up the sleeping thread and transitions it to ready state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a [`ReadyThread`] instance.
+    ///
+    pub fn wakeup(self) -> ReadyThread {
+        ReadyThread::from_state(self.state)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Interrupts the sleeping thread with the specified reason.
+    ///
+    /// # Parameters
+    ///
+    /// - `reason`: The reason for the interruption.
+    ///
+    /// # Returns
+    ///
+    /// This function returns an [`InterruptedThread`] instance.
+    ///
+    pub fn interrupt(self, reason: InterruptReason) -> InterruptedThread {
+        InterruptedThread::from_state(self.state, reason)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the identifier of the sleeping thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the thread identifier.
+    ///
+    pub fn id(&self) -> ThreadIdentifier {
+        self.state.id()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the join condition variable of the sleeping thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the join condition variable.
+    ///
+    pub fn join_cond(&self) -> Condvar {
+        self.state.join_cond()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the alarm time of the sleeping thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the optional alarm time for waking up the thread.
+    ///
+    pub fn alarm(&self) -> Option<SystemTime> {
+        self.alarm
+    }
+}
