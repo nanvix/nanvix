@@ -112,7 +112,7 @@ get_rust_version() {
 #   Builds the Docker image for the Nanvix toolchain.
 #
 main() {
-    print_message "Building Docker image for Nanvix toolchain..."
+    print_info "Building Docker image for Nanvix toolchain..."
 
     # Sanity check that we are running inside a git repository.
     if ! git rev-parse --is-inside-work-tree &> /dev/null; then
@@ -149,12 +149,12 @@ main() {
         print_error "Dockerfile not found at ${DOCKERFILE_PATH}"
         exit 1
     fi
-    print_message "Using Dockerfile at '${DOCKERFILE_PATH}'"
+    print_info "Using Dockerfile at '${DOCKERFILE_PATH}'"
 
 
     local rust_version
     rust_version=$(get_rust_version)
-    print_message "Using Rust version: ${rust_version}"
+    print_info "Using Rust version: ${rust_version}"
 
     # Sanity check if rust version was correctly set.
     if [ -z "${rust_version}" ]; then
@@ -172,7 +172,7 @@ main() {
         -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" "${REPO_SCRIPTS_DIR}/setup/" \
     2>&1 | tee "${REPO_LOGS_DIR}/docker-build.log"
 
-    print_message "Logs saved to ${REPO_LOGS_DIR}/docker-build.log"
+    print_info "Logs saved to ${REPO_LOGS_DIR}/docker-build.log"
 
     print_success "Docker image built successfully."
 }
