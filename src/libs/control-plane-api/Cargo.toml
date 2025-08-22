@@ -1,0 +1,16 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "control-plane-api"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Control-Plane API Library"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+num_enum = { workspace = true }
+syscomm = { workspace = true }
