@@ -22,6 +22,7 @@ set -euo pipefail
 IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts/common"
 
 source "${IMPORT_DIR}/logging.sh"
+source "${IMPORT_DIR}/utils.sh"
 
 #==================================================================================================
 # Global Constants
@@ -72,40 +73,6 @@ TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 #==================================================================================================
 # Functions
 #==================================================================================================
-
-#
-# DESCRIPTION
-#   Extracts the current version from the Cargo.toml file.
-#
-# ARGUMENTS
-#   $1 - The path to the Cargo.toml file.
-#
-# RETURNS
-#   The current version as a string in the format MAJOR.MINOR.PATCH.
-#
-# USAGE EXAMPLE
-#   current_version=$(extract_current_version "path/to/Cargo.toml")
-#
-extract_current_version() {
-    local cargo_toml="$1"
-
-    # Check if the Cargo.toml file does not exist.
-    if [[ ! -f "$cargo_toml" ]]; then
-        print_error "Cargo.toml not found at $cargo_toml"
-        exit 1
-    fi
-
-    local current_version
-    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
-
-    # Check if version was not extracted successfully.
-    if [[ -z "$current_version" ]]; then
-        print_error "Could not extract version from Cargo.toml"
-        exit 1
-    fi
-
-    echo "$current_version"
-}
 
 #
 # Description
@@ -218,7 +185,7 @@ build_docker_command() {
     check_docker_installed
 
     local current_version
-    current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+    current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
 
     # Get the Docker image name.
     local image_name
@@ -508,7 +475,7 @@ main() {
 
                 # Get the Docker image name using the same logic as build_docker_command
                 local current_version
-                current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+                current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
 
                 # Get the Docker image name.
                 local image_name

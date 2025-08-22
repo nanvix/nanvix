@@ -22,6 +22,7 @@ set -euo pipefail
 IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/common"
 
 source "${IMPORT_DIR}/logging.sh"
+source "${IMPORT_DIR}/utils.sh"
 
 #===================================================================================================
 # Global Variables
@@ -51,40 +52,6 @@ Options
   --help   Print the help information.
   --push   Pushes the release commit to the remote origin.
 EOF
-}
-
-#
-# DESCRIPTION
-#   Extracts the current version from the Cargo.toml file.
-#
-# ARGUMENTS
-#   $1 - The path to the Cargo.toml file.
-#
-# RETURNS
-#   The current version as a string in the format MAJOR.MINOR.PATCH.
-#
-# USAGE EXAMPLE
-#   current_version=$(extract_current_version "path/to/Cargo.toml")
-#
-extract_current_version() {
-    local cargo_toml="$1"
-
-    # Check if the Cargo.toml file does not exist.
-    if [[ ! -f "$cargo_toml" ]]; then
-        print_error "Cargo.toml not found at $cargo_toml"
-        exit 1
-    fi
-
-    local current_version
-    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
-
-    # Check if version was not extracted successfully.
-    if [[ -z "$current_version" ]]; then
-        print_error "Could not extract version from Cargo.toml"
-        exit 1
-    fi
-
-    echo "$current_version"
 }
 
 #
@@ -149,7 +116,7 @@ update_cargo_toml() {
 
     # Check if version was not updated successfully.
     local updated_version
-    updated_version=$(extract_current_version "$cargo_toml")
+    updated_version=$(get_cargo_toml_version "$cargo_toml")
     if [[ "$updated_version" != "$new_version" ]]; then
         print_error "Failed to update version in Cargo.toml"
 
@@ -364,7 +331,7 @@ main() {
     print_info "Creating minor release..."
 
     local current_version new_version
-    current_version=$(extract_current_version "$CARGO_TOML_FILE_PATH")
+    current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
     print_info "Current version: $current_version"
     new_version=$(increment_version "$current_version")
     print_info "Incrementing version: $current_version -> $new_version"

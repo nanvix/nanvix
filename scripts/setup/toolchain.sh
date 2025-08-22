@@ -17,70 +17,17 @@ PREFIX=${1:-$PWD/toolchain}
 IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/../common"
 
 source "${IMPORT_DIR}/logging.sh"
+source "${IMPORT_DIR}/utils.sh"
 
 #===================================================================================================
 # Environment Variables
 #===================================================================================================
 
-SCRIPTS_DIR=$(dirname "$(readlink -f "$0")")
 REPO_ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "ERROR: Not in a git repository" >&2
     exit 1
 }
 CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
-
-#===================================================================================================
-# Helper Functions
-#===================================================================================================
-
-#
-# Description
-#
-#   Extracts the current version from the Cargo.toml file and formats it for toolchain versioning.
-#
-# Arguments
-#
-#   $1 - The path to the Cargo.toml file.
-#
-# Return Value
-#
-#   The toolchain version as a string in the format A.B.x.
-#
-# Usage Example
-#
-#   toolchain_version=$(extract_toolchain_version "path/to/Cargo.toml")
-#
-extract_toolchain_version() {
-    local cargo_toml="$1"
-
-    # Check if the Cargo.toml file does not exist.
-    if [[ ! -f "$cargo_toml" ]]; then
-        print_error "Cargo.toml not found at ${cargo_toml}."
-        exit 1
-    fi
-
-    local current_version
-    current_version=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cargo_toml" | head -n1)
-
-    # Check if version was not extracted successfully.
-    if [[ -z "$current_version" ]]; then
-        print_error "Could not extract version from Cargo.toml."
-        exit 1
-    fi
-
-    # Extract major and minor version numbers.
-    local major minor
-    major=$(echo "$current_version" | cut -d. -f1)
-    minor=$(echo "$current_version" | cut -d. -f2)
-
-    # Validate version format.
-    if [[ ! "$major" =~ ^[0-9]+$ ]] || [[ ! "$minor" =~ ^[0-9]+$ ]]; then
-        print_error "Invalid version format '${current_version}'."
-        exit 1
-    fi
-
-    echo "${major}.${minor}.x"
-}
 
 #===================================================================================================
 # Main Script
@@ -95,7 +42,10 @@ extract_toolchain_version() {
 "${SCRIPTS_DIR}/cloud-hypervisor.sh" "${PREFIX}"
 
 # Create version file as the final step.
-toolchain_version=$(extract_toolchain_version "$CARGO_TOML_FILE_PATH")
+current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
+major=$(echo "$current_version" | cut -d. -f1)
+minor=$(echo "$current_version" | cut -d. -f2)
+toolchain_version="${major}.${minor}.x"
 echo "nanvix-toolchain-v${toolchain_version}" > "${PREFIX}/version" || {
     print_error "Failed to create version file at ${PREFIX}/version."
     exit 1
