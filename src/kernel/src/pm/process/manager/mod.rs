@@ -329,7 +329,7 @@ impl ProcessManagerInner {
         ready_thread: ReadyThread,
     ) -> ThreadIdentifier {
         trace!("try_add_thread(): pid={pid:?}, ready_thread={ready_thread:?}");
-        let tid: ThreadIdentifier = ready_thread.tid();
+        let tid: ThreadIdentifier = ready_thread.id();
 
         // Search process in the list of sleeping processes.
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();

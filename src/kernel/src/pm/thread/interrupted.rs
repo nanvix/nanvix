@@ -1,0 +1,104 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::pm::{
+    sync::condvar::Condvar,
+    thread::{
+        state::ThreadState,
+        ReadyThread,
+    },
+};
+use ::alloc::boxed::Box;
+use ::core::fmt::Debug;
+use ::sys::pm::ThreadIdentifier;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum InterruptReason {
+    /// Process was killed.
+    Killed,
+    /// Timer expired.
+    TimedOut,
+}
+
+///
+/// # Description
+///
+/// This structure represents a thread that has been interrupted.
+///
+#[derive(Debug)]
+pub struct InterruptedThread {
+    state: Box<ThreadState>,
+    reason: InterruptReason,
+}
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl InterruptedThread {
+    ///
+    /// # Description
+    ///
+    /// Creates a new interrupted thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: The thread state.
+    /// - `reason`: The reason for the interruption.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a new instance of an [`InterruptedThread`].
+    ///
+    pub(super) fn from_state(state: Box<ThreadState>, reason: InterruptReason) -> Self {
+        Self { state, reason }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the identifier of the interrupted thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the thread identifier.
+    ///
+    pub fn id(&self) -> ThreadIdentifier {
+        self.state.id()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resumes the interrupted thread by transitioning it to ready state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a [`ReadyThread`] instance.
+    ///
+    pub fn resume(mut self) -> ReadyThread {
+        self.state.set_interrupt_reason(self.reason);
+        ReadyThread::from_state(self.state)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the join condition variable of the interrupted thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the join condition variable.
+    ///
+    pub fn join_cond(&self) -> Condvar {
+        self.state.join_cond()
+    }
+}

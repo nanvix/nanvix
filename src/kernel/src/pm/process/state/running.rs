@@ -346,7 +346,7 @@ impl RunningProcess {
 
         // Search for thread in zombie threads.
         if let Some(zombie_threads) = self.zombie.take() {
-            match zombie_threads.remove_if(|thread| thread.tid() == tid) {
+            match zombie_threads.remove_if(|thread| thread.id() == tid) {
                 Ok((zombie_threads, zombie_thread)) => {
                     self.zombie = NonEmptyVecDeque::from(zombie_threads);
                     return Ok(zombie_thread);
@@ -360,7 +360,7 @@ impl RunningProcess {
         // Search for thread in ready threads.
         if let Some(ready_threads) = &mut self.ready {
             for ready_thread in ready_threads.iter() {
-                if ready_thread.tid() == tid {
+                if ready_thread.id() == tid {
                     let join_cond: Condvar = ready_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
@@ -380,7 +380,7 @@ impl RunningProcess {
         // Search for thread in interrupted threads.
         if let Some(interrupted_threads) = &mut self.interrupted_threads {
             for interrupted_thread in interrupted_threads.iter() {
-                if interrupted_thread.tid() == tid {
+                if interrupted_thread.id() == tid {
                     let join_cond: Condvar = interrupted_thread.join_cond();
                     return Err(Ok(join_cond));
                 }
@@ -400,14 +400,14 @@ impl RunningProcess {
 
         // Search in the list of ready threads.
         if let Some(ready_threads) = &self.ready {
-            if ready_threads.iter().any(|thread| thread.tid() == tid) {
+            if ready_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }
 
         // Search in the list of interrupted threads.
         if let Some(interrupted_threads) = &self.interrupted_threads {
-            if interrupted_threads.iter().any(|thread| thread.tid() == tid) {
+            if interrupted_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }
@@ -421,7 +421,7 @@ impl RunningProcess {
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie {
-            if zombie_threads.iter().any(|thread| thread.tid() == tid) {
+            if zombie_threads.iter().any(|thread| thread.id() == tid) {
                 return true;
             }
         }
