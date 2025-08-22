@@ -61,6 +61,12 @@ jobs:
       uses: ./.github/actions/benchmark
       with:
         arch: '${{ matrix.arch }}'
+        benchmark_list: |
+          boot-time
+          cold-start
+          warm-start
+          warm-start-vmm
+
 
     - name: "Upload logs in case of benchmark failures"
       if: failure()
