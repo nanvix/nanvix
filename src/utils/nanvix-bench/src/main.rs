@@ -677,6 +677,12 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logger, and make sure we print error logs.
+    Logger::try_with_env_or_str("error")
+        .expect("malformed RUST_LOG environment variable")
+        .start()
+        .expect("failed to initialize logger");
+
     #[cfg(debug_assertions)]
     {
         error!(
@@ -685,12 +691,6 @@ async fn main() -> Result<()> {
         );
         return Ok(());
     }
-
-    // Initialize logger, and make sure we print error logs.
-    Logger::try_with_env_or_str("error")
-        .expect("malformed RUST_LOG environment variable")
-        .start()
-        .expect("failed to initialize logger");
 
     let args: Args = Args::parse(std::env::args().collect())?;
 
