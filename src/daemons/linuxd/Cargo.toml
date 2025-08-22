@@ -21,11 +21,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 config = { workspace = true }
+control-plane-api = { workspace = true }
 flexi_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
-num_enum = { workspace = true }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
 slab_external = { workspace = true }

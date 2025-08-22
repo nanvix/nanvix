@@ -1,8 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-// This file contains the messages used in the control-plane API between
-// nanvixd and linuxd/user VM.
+//! This file contains the messages used in the control-plane API between
+//! nanvixd and linuxd/user VM.
 
 use ::anyhow::Result;
 use ::num_enum::{
