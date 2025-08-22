@@ -107,13 +107,16 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 - Do not use `panic!`, `unwrap()`, or `expect()`, instead return `Result<T, E>`.
 - Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
-- Always add type annotations when defining variables and constants, even if type can be inferred (ie: `let x: u32 = 42;`).
-- Prefix all import statements with `::` (ie: use `::std:fs` instead of `std::fs`).
+- Always add type annotations when defining variables and constants, even if type can be inferred (e.g., `let x: u32 = 42;`).
+- Prefix all import statements with `::` (e.g., use `::std:fs` instead of `std::fs`).
 - Always log errors with `error!` before returning an error.
 - Use `warn!` log level for non-critical warnings that do not affect functionality.
 - Use `info!` log level for informational messages that are not errors or warnings.
 - Use `debug!` log level for debugging information that is for development purposes.
 - Use `trace!` log level for tracing execution flow and detailed debugging information.
+- Logs must be single-line, concise, and machine-parsable when feasible.
+  - Do not use multiline logs or explicit newlines (e.g., `\n`) in messages.
+  - Do not use pretty-printed debug formatting (e.g., `{:#?}`).
 
 ### Documentation & Comments
 
