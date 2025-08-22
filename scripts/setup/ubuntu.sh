@@ -18,6 +18,7 @@ apt-get install -y        \
     build-essential       \
     clang-format          \
     codespell             \
+    cpio                  \
     curl                  \
     debootstrap           \
     dosfstools            \
