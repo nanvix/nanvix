@@ -15,6 +15,15 @@
 set -euo pipefail
 
 #==================================================================================================
+# Imports
+#==================================================================================================
+
+# Directory where to find scripts to import.
+IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/../common"
+
+source "${IMPORT_DIR}/logging.sh"
+
+#==================================================================================================
 # Global Constants
 #==================================================================================================
 
@@ -38,71 +47,9 @@ DOCKER_IMAGE_NAME="nanvix/toolchain"
 # Default tag for the Docker image.
 DOCKER_IMAGE_TAG="latest"
 
-# Colors
-RED='\033[0;31m'    # Red
-GREEN='\033[0;32m'  # Green
-YELLOW='\033[0;33m' # Yellow
-NC='\033[0m'        # No Color
-
 #==================================================================================================
 # Functions
 #==================================================================================================
-
-#
-# DESCRIPTION
-#   Prints an error message on stderr.
-#
-# ARGUMENTS
-#   $1 - The error message to print.
-#
-# USAGE EXAMPLE
-#   print_error "Print an error message."
-#
-print_error() {
-    echo -e "${RED}[ERROR] ${1}${NC}" >&2
-}
-
-#
-# DESCRIPTION
-#   Prints a success message on stdout.
-#
-# ARGUMENTS
-#   $1 - The success message to print.
-#
-# USAGE EXAMPLE
-#   print_success "Print a success message."
-#
-print_success() {
-    echo -e "${GREEN}[INFO] ${1}${NC}"
-}
-
-#
-# DESCRIPTION
-#   Prints a message on stdout.
-#
-# ARGUMENTS
-#   $1 - The message to print.
-#
-# USAGE EXAMPLE
-#   print "Print an uncolored message."
-#
-print_message() {
-    echo -e "[INFO] ${1}"
-}
-
-#
-# DESCRIPTION
-#   Prints a warning message on stderr.
-#
-# ARGUMENTS
-#   $1 - The warning message to print.
-#
-# USAGE EXAMPLE
-#   print_warning "Print a warning message."
-#
-print_warning() {
-    echo -e "${YELLOW}[WARN] ${1}${NC}"
-}
 
 #
 # DESCRIPTION
