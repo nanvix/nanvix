@@ -12,7 +12,6 @@ This document provides instructions on how to run Nanvix.
 - [Running Nanvix Components Manually (Hyperlight and MicroVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-microvm-machines-only)
   - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
   - [Step 2: Run the MicroVM](#step-2-run-the-microvm)
-  - [Enabling Logging (Optional)](#enabling-logging-optional)
   - [Redirecting Standard Error (Optional)](#redirecting-standard-error-optional)
 - [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
 
@@ -27,16 +26,18 @@ Nanvixd exposes a unified RESTful API to interact with your deployment. To follo
 Open a terminal and run `nanvixd`:
 
 ```bash
-./bin/nanvixd.elf -http-addr 127.0.0.1:8080
+NANVIX_HTTP_ADDR=127.0.0.1:8080
+./bin/nanvixd.elf -http-addr $NANVIX_HTTP_ADDR
 ```
 
 To enable logging, make sure to prepend the previous command with `RUST_LOG=debug` (or even `RUST_LOG=trace`).
 
 ### Step 2: Run an Application
 
-You can now spawn and kill applications by sending `POST` requests to nanvixd's HTTP address.
+On a new terminal window, you can now spawn and kill applications by sending `POST` requests to nanvixd's HTTP address.
 
 ```bash
+NANVIX_HTTP_ADDR=127.0.0.1:8080
 NEW_JSON=$(jq -n \
     --arg tenant_id "foo" \
     --arg app_name "bar" \
@@ -80,7 +81,7 @@ curl \
     --header "X-NVX-Message-Type: KILL" \
     --request POST \
     --data "${KILL_JSON}" \
-    http://${NANVIX_HTTP_ADDR})
+    http://${NANVIX_HTTP_ADDR}
 ```
 
 To gracefully shutdown nanvixd, you can just press `Ctrl-C` in its terminal.
