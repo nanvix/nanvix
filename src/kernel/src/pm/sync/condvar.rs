@@ -97,25 +97,26 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Wakes a single thread that is waiting on the target condition variable.
+    /// Wakes up a single thread that is waiting on a condition variable.
     ///
-    /// # Returns
+    /// # Return Value
     ///
-    /// Upon successful completion, the number of threads that were awakened is returned. Otherwise,
-    /// an error is returned instead.
+    /// Upon successful completion, this function returns the number of threads that were awakened.
+    /// Otherwise, it returns an error object that specifying the reason of failure.
     ///
     /// # Safety
     ///
     /// This function is unsafe because it operates on global variables.
     ///
-    /// This function is safe to use if and only if the following conditions are met:
+    /// It is safe to call this function if and only if the following conditions are met:
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn notify_first(&self) -> Result<usize, Error> {
-        let mut awakened: usize = 0;
+    pub unsafe fn notify_first(&self) -> Result<u32, Error> {
+        let mut awakened: u32 = 0;
 
-        if let Some((_, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+        // Attempt to wake up the first thread in the sleeping queue.
+        if let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
             awakened += 1;
         }
@@ -217,24 +218,25 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Wakes up all threads waiting on the target condition variable.
+    /// Wakes up all threads waiting on a condition variable.
     ///
-    /// # Returns
+    /// # Return Value
     ///
-    /// Upon successful completion, the number of threads that were awakened is returned. Otherwise,
-    /// an error is returned instead.
+    /// Upon successful completion, this function returns the number of threads that were awakened.
+    /// Otherwise, it returns an error object that specifying the reason of failure.
     ///
     /// # Safety
     ///
     /// This function is unsafe because it operates on global variables.
     ///
-    /// This function is safe to use if and only if the following conditions are met:
+    /// It is safe to call this function if and only if the following conditions are met:
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn notify_all(&self) -> Result<usize, Error> {
-        let mut awakened: usize = 0;
+    pub unsafe fn notify_all(&self) -> Result<u32, Error> {
+        let mut awakened: u32 = 0;
 
+        // Traverse the sleeping queue, attempting to waking up all threads.
         while let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
             awakened += 1;
