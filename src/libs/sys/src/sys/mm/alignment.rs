@@ -2,6 +2,27 @@
 // Licensed under the MIT license.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![forbid(clippy::unwrap_used)]
+#![forbid(clippy::expect_used)]
+#![forbid(clippy::cast_possible_truncation)]
+#![forbid(clippy::cast_possible_wrap)]
+#![forbid(clippy::cast_precision_loss)]
+#![forbid(clippy::cast_sign_loss)]
+#![forbid(clippy::char_lit_as_u8)]
+#![forbid(clippy::fn_to_numeric_cast)]
+#![forbid(clippy::fn_to_numeric_cast_with_truncation)]
+#![forbid(clippy::ptr_as_ptr)]
+#![forbid(clippy::unnecessary_cast)]
+#![forbid(invalid_reference_casting)]
+#![forbid(clippy::panic)]
+#![forbid(clippy::unimplemented)]
+#![forbid(clippy::todo)]
+#![forbid(clippy::unreachable)]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -60,10 +81,10 @@ pub enum Alignment {
     Align4194304 = 4194304,
 }
 
-impl TryFrom<u32> for Alignment {
+impl TryFrom<usize> for Alignment {
     type Error = Error;
 
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
             4 => Ok(Alignment::Align4),
             8 => Ok(Alignment::Align8),
@@ -88,6 +109,36 @@ impl TryFrom<u32> for Alignment {
             4194304 => Ok(Alignment::Align4194304),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid alignment")),
         }
+    }
+}
+
+impl TryFrom<u8> for Alignment {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Alignment::try_from(value as usize)
+    }
+}
+
+impl TryFrom<u16> for Alignment {
+    type Error = Error;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        Alignment::try_from(value as usize)
+    }
+}
+
+impl TryFrom<u32> for Alignment {
+    type Error = Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Alignment::try_from(value as usize)
+    }
+}
+
+impl From<Alignment> for usize {
+    fn from(align: Alignment) -> Self {
+        align as usize
     }
 }
 
