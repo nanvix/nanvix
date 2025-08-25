@@ -212,22 +212,25 @@ impl ProcessManager {
     /// - The process manager is initialized.
     /// - The calling thread does not hold a reference to the process manager.
     /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
         trace!("exit(): status={status:?}");
 
         // Terminate the calling process and select another process to run next.
-        let (next_pid, next_tid, from, to): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = Self::get_mut().try_borrow_mut()?.exit(status);
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_EXIT_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
         // reached, it indicates a critical bug and undefined behavior. This is considered
@@ -260,36 +263,40 @@ impl ProcessManager {
     /// - The process manager is initialized.
     /// - The calling thread does not hold a reference to the process manager.
     /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
         // Terminate the calling thread and select another thread to run next.
-        let (next_pid, next_tid, from, to): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = {
             // Create a scope so the join condition variable is dropped before we context switch.
             // If we do not do this, the condition variable the reference count for the condition
             // variable will not be decremented, causing a memory leak.
 
-            let (next_pid, next_tid, join_cond, from, to): (
+            let (next_pid, next_tid, join_cond, from, to, user_tda): (
                 ProcessIdentifier,
                 ThreadIdentifier,
                 Condvar,
                 *mut ContextInformation,
                 *mut ContextInformation,
+                Option<VirtualAddress>,
             ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
             join_cond.notify_all()?;
 
-            (next_pid, next_tid, from, to)
+            (next_pid, next_tid, from, to, user_tda)
         };
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
         // reached, it indicates a critical bug and undefined behavior. This is considered
@@ -422,14 +429,17 @@ impl ProcessManager {
     /// - The process manager is initialized.
     /// - The calling thread does not hold a reference to the process manager.
     /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
         // Suspend the execution of the calling thread and select another thread to run next.
-        let (next_pid, next_tid, from, to): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = Self::get_mut()
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
@@ -438,7 +448,7 @@ impl ProcessManager {
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_SLEEP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // Check the reason why the thread was woken up.
         let interrupt_reason: Option<InterruptReason> = Self::get_mut()
@@ -475,6 +485,8 @@ impl ProcessManager {
     /// - The process manager is initialized.
     /// - The calling thread does not hold a reference to the process manager.
     /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
     ///
     pub unsafe fn giveup() -> Result<(), Error> {
         // Check the remaining quantum for the current thread to decide whether to perform a context switch.
@@ -488,18 +500,19 @@ impl ProcessManager {
             cold_path();
 
             // Re-schedule the calling thread and select another thread to run next.
-            let (next_pid, next_tid, from, to): (
+            let (next_pid, next_tid, from, to, user_tda): (
                 ProcessIdentifier,
                 ThreadIdentifier,
                 *mut ContextInformation,
                 *mut ContextInformation,
+                Option<VirtualAddress>,
             ) = Self::get_mut().try_borrow_mut()?.schedule();
 
             // Switch to the next thread and updating the remaining quantum accordingly.
             // SAFETY: `from` and `to` point to valid context information structures, and the
             // processor is running with interrupts disabled.
             PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-            Self::switch(next_pid, next_tid, from, to);
+            Self::switch(next_pid, next_tid, from, to, user_tda);
         }
 
         Ok(())
@@ -722,14 +735,21 @@ impl ProcessManager {
     /// - `next_tid`: Thread identifier of the next thread to run.
     /// - `from`: Pointer to the context information of the current thread.
     /// - `to`: Pointer to the context information of the next thread.
+    /// - `user_tda`: Optional base address for the user-space the thread data area of the next thread to run.
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it performs a context switch.
+    /// This function is unsafe because it performs a context switch between two execution contexts.
     ///
     /// It is safe to call this function if and only if the following conditions are met:
-    /// - `from` and `to` point to valid context information structures.
+    /// - `from` and `to` point to valid execution contexts.
     /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
+    ///
+    /// # Notes
+    ///
+    /// This function does not return to the caller immediately. Instead, it switches to the `to`
+    /// context. When the `from` context is switched back to, this function will return.
     ///
     #[inline(always)]
     unsafe fn switch(
@@ -737,6 +757,7 @@ impl ProcessManager {
         next_tid: ThreadIdentifier,
         from: *mut ContextInformation,
         to: *mut ContextInformation,
+        user_tda: Option<VirtualAddress>,
     ) {
         let previous_pid: ProcessIdentifier = ProcessIdentifier::from(CURRENT_PID.load(ORDER));
         let previous_tid: ThreadIdentifier = ThreadIdentifier::from(CURRENT_TID.load(ORDER));
@@ -753,7 +774,7 @@ impl ProcessManager {
             }
             CURRENT_TID.store(next_tid.into(), ORDER);
 
-            ContextInformation::switch(from, to);
+            ContextInformation::switch(from, to, user_tda);
         } else {
             // We do not need to perform a context switch, the same thread will continue running.
             PERF_SCHED_SOFT_CONTEXT_SWITCHES.fetch_add(1, ORDER);

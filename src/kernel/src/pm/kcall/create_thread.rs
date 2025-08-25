@@ -111,6 +111,16 @@ pub fn create_thread(
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
+    // Check if the base address of user-space thread data area does not lie in the user space.
+    if let Some(user_tda) = thread_create_args.user_tda {
+        if !Vmem::is_user_addr(user_tda) {
+            let reason: &str =
+                "user-space thread data area does not lie within the user address space";
+            error!("create_thread(): {reason} (user_tcb={:?})", thread_create_args.user_tda);
+            return KcallResult::Error(ErrorCode::InvalidArgument.into());
+        }
+    }
+
     // Handle thread creation.
     match pm.create_thread(mm, pid, &thread_create_args) {
         Ok(tid) => {

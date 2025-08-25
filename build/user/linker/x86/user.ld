@@ -45,6 +45,15 @@ SECTIONS
 		*(.rodata*)
 	}
 
+	/* Thread-local storage. */
+	.tls : ALIGN(PAGE_SIZE)
+	{
+		__TLS_START = .;
+		*(.tdata)
+		*(.tbss)
+		__TLS_END = .;
+	}
+
 	/* Discarded. */
 	/DISCARD/ :
 	{

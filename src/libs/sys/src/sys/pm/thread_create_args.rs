@@ -28,6 +28,9 @@ pub struct ThreadCreateArgs {
 
     /// Size of the user stack.
     pub user_stack_size: usize,
+
+    /// Optional base address for the user-space thread data area.
+    pub user_tda: Option<VirtualAddress>,
 }
 
 impl ThreadCreateArgs {
@@ -43,6 +46,7 @@ impl Default for ThreadCreateArgs {
             user_fn_arg1: 0,
             user_stack_base: VirtualAddress::from_raw_value(0),
             user_stack_size: 0,
+            user_tda: None,
         }
     }
 }

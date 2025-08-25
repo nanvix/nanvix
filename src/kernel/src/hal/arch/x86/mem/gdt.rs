@@ -52,17 +52,19 @@ enum GdtEntries {
     KernelData = 2,
     UserCode = 3,
     UserData = 4,
-    Tss = 5,
+    UserThreadDataArea = 5,
+    Tss = 6,
 }
 
 /// Segment selector.
 #[repr(u8)]
 pub enum SegmentSelector {
-    _Null = (GdtEntries::Null as u8) << 3,
+    Null = (GdtEntries::Null as u8) << 3,
     KernelCode = (GdtEntries::KernelCode as u8) << 3,
     KernelData = (GdtEntries::KernelData as u8) << 3,
     UserCode = ((GdtEntries::UserCode as u8) << 3) | 3,
     UserData = ((GdtEntries::UserData as u8) << 3) | 3,
+    UserThreadDataArea = ((GdtEntries::UserThreadDataArea as u8) << 3) | 3,
     Tss = (GdtEntries::Tss as u8) << 3,
 }
 
@@ -71,7 +73,7 @@ pub enum SegmentSelector {
 //===================================================================================================
 
 /// Global descriptor table.
-static mut GDT: [Gdte; 6] = [
+static mut GDT: [Gdte; 7] = [
     // Null entry.
     Gdte::new(
         0x0,
@@ -167,6 +169,25 @@ static mut GDT: [Gdte; 6] = [
             GdteLongMode::CompatibilityMode,
         ),
     ),
+    // Entry for user-space thread data area.
+    Gdte::new(
+        0x0,
+        0xfffff,
+        GdteAccessByte::new(
+            AccessAccessed::NotAccessed,
+            AccessReadWrite::DataSegment(AccessWritable::ReadWrite),
+            AccessDirectionConforming::Direction(AccessDirection::GrowsUp),
+            AccessExecutable::Data,
+            AccessDescriptorType::CodeData,
+            DescriptorPrivilegeLevel::Ring3,
+            AccessPresent::Present,
+        ),
+        GdteFlags::new(
+            GdteGranularity::PageGranularity,
+            GdteProtectedMode::ProtectedMode32,
+            GdteLongMode::CompatibilityMode,
+        ),
+    ),
     // Task segment selector entry (overwritten at system initialization).
     Gdte::default(),
 ];
@@ -184,13 +205,15 @@ impl Gdt {
             "lgdt (%eax)",
             "ljmp ${KERNEL_CS}, $2f",
             "2:",
+            "movw ${NULL}, %ax",
+            "movw %ax, %fs",
+            "movw %ax, %gs",
             "movw ${KERNEL_DS}, %ax",
             "movw %ax, %ds",
             "movw %ax, %es",
-            "movw %ax, %fs",
-            "movw %ax, %gs",
             "movw %ax, %ss",
             ptr = in(reg) ptr,
+            NULL = const SegmentSelector::Null as u16,
             KERNEL_CS = const SegmentSelector::KernelCode as u16,
             KERNEL_DS = const SegmentSelector::KernelData as u16,
             options(nostack, att_syntax)
@@ -237,5 +260,24 @@ impl Gdt {
         tss.load(SegmentSelector::Tss as u16);
 
         Ok((gdtr, tss))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area segment.
+    ///
+    /// # Parameters
+    ///
+    /// `tda_base`: The base address of the user-space thread data area segment.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it modifies the global descriptor table.
+    ///
+    /// It is safe to use this function if and only if the processor is running in privileged mode.
+    ///
+    pub unsafe fn set_thread_data_area(tda_base: u32) {
+        GDT[GdtEntries::UserThreadDataArea as usize].set_base(tda_base);
     }
 }

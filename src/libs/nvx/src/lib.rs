@@ -68,8 +68,8 @@ pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     cleanup();
 
     // Exits the runtime.
-    let Err(e) = ::sys::kcall::pm::exit(status);
-    panic!("failed to exit process manager daemon: {:?}", e);
+    let Err(error) = ::sys::kcall::pm::exit(status);
+    panic!("failed to exit process (error={error:?})");
 }
 
 ///
@@ -213,10 +213,28 @@ fn init() {
     if let Err(e) = sysalloc::init() {
         panic!("failed to initialize memory manager: {:?}", e);
     }
+    #[cfg(feature = "sysalloc")]
+    match sysalloc::tda::alloc() {
+        core::prelude::v1::Ok(Some(tda_ptr)) => {
+            if let Err(error) = ::sys::kcall::pm::set_thread_data_area(tda_ptr) {
+                panic!("init(): failed to set thread data area (error={error:?})");
+            }
+        },
+        core::prelude::v1::Ok(None) => {
+            // No thread-local storage to set.
+        },
+        Err(error) => {
+            panic!("init(): create thread data area (error={error:?})");
+        },
+    }
 }
 
 /// Cleans up system runtime.
 fn cleanup() {
+    #[cfg(feature = "sysalloc")]
+    if let Err(error) = ::sysalloc::tda::cleanup() {
+        panic!("failed to cleanup thread data area ({error:?})");
+    }
     #[cfg(feature = "sysalloc")]
     if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
