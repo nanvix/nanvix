@@ -284,6 +284,4 @@ pub mod hyperlight {
     pub const INITRD_SIZE_BYTES: usize = 8;
     /// Default VMM shutdown command
     pub const DEFAULT_VMM_SHUTDOWN_CMD: u8 = 0x20;
-    /// Default base address for Hyperlight credits register
-    pub const DEFAULT_HYPERLIGHT_CTRL_CREDITS: usize = 0x003a7000;
 }

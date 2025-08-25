@@ -21,7 +21,6 @@ use crate::{
     vmm::hyperlight::io::IoThread,
 };
 use ::anyhow::Result;
-use ::config::hyperlight::DEFAULT_HYPERLIGHT_CTRL_CREDITS;
 use ::hyperlight_host::{
     GuestBinary,
     UninitializedSandbox,
@@ -361,12 +360,11 @@ fn add_credit() -> Result<()> {
     VMEM.get()
         .and_then(|vmem| vmem.lock().ok())
         .map(|mut vmem| -> Result<()> {
-            let mut credit = vmem
-                .get_shared_mem_mut()
-                .read::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS)?;
+            let credits_offset = vmem.get_guest_credits_offset();
+            let mut credit = vmem.get_shared_mem_mut().read::<u64>(credits_offset)?;
             credit += 1;
             vmem.get_shared_mem_mut()
-                .write::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS, credit)?;
+                .write::<u64>(credits_offset, credit)?;
 
             log::info!("Adding credit: {}", credit);
             Ok(())
@@ -379,9 +377,8 @@ fn consume_credit() -> Result<()> {
     VMEM.get()
         .and_then(|vmem| vmem.lock().ok())
         .map(|mut vmem| -> Result<()> {
-            let mut credit = vmem
-                .get_shared_mem_mut()
-                .read::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS)?;
+            let credits_offset = vmem.get_guest_credits_offset();
+            let mut credit = vmem.get_shared_mem_mut().read::<u64>(credits_offset)?;
 
             if credit == 0 {
                 return Err(anyhow::anyhow!("No credit available to consume"));
@@ -389,7 +386,7 @@ fn consume_credit() -> Result<()> {
 
             credit -= 1;
             vmem.get_shared_mem_mut()
-                .write::<u64>(DEFAULT_HYPERLIGHT_CTRL_CREDITS, credit)?;
+                .write::<u64>(credits_offset, credit)?;
 
             log::info!("Consuming credit: {}", credit);
             Ok(())

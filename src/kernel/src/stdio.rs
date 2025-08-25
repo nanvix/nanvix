@@ -82,9 +82,10 @@ pub fn read() -> Result<Option<Message>, Error> {
             }
         }
         else if #[cfg(feature = "hyperlight")] {
+            use crate::hal::platform::hyperlight::peb::ProcessEnvironmentBlock;
             // Read credits register.
             let credits: u64 = unsafe {
-                core::ptr::read_volatile(::config::hyperlight::DEFAULT_HYPERLIGHT_CTRL_CREDITS as *const u64)
+                ProcessEnvironmentBlock::get_credits()?
             };
 
             // No message available.
