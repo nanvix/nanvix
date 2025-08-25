@@ -87,6 +87,8 @@ pub fn kcall_handler(
                         KcallNumber::WritePmio => io::pmio_write(pm, args),
                         KcallNumber::GetTime => pm::gettime(pm, args),
                         KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
+                        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pm, args),
+                        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pm, args),
                         _ => {
                             error!("invalid kernel call");
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())

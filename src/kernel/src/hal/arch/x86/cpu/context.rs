@@ -5,8 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::arch::x86::cpu::tss;
+use crate::hal::arch::x86::{
+    cpu::tss,
+    mem::gdt::{
+        Gdt,
+        SegmentSelector,
+    },
+};
 use ::arch::cpu::tss::Tss;
+use ::sys::mm::VirtualAddress;
 
 //==================================================================================================
 // Structures
@@ -67,24 +74,41 @@ impl ContextInformation {
     ///
     /// - `from`: Execution context to switch from.
     /// - `to`: Execution context to switch to.
+    /// - `user_tda`: Optional base address for the user-space thread data area for the next context.
     ///
     /// # Safety
     ///
-    /// This function leads to undefined behavior if any of the following conditions are violated:
-    /// - `from` and `to` do not point to valid execution contexts.
-    /// - The processor is running with interrupts enabled.
+    /// This function is unsafe because it performs a context switch between two execution contexts.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - `from` and `to` point to valid execution contexts.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
     ///
     /// # Notes
     ///
-    /// When this function returns another execution context is loaded.
+    /// This function does not return to the caller immediately. Instead, it switches to the `to`
+    /// context. When the `from` context is switched back to, this function will return.
     ///
-    pub unsafe fn switch(from: *mut ContextInformation, to: *mut ContextInformation) {
+    pub unsafe fn switch(
+        from: *mut ContextInformation,
+        to: *mut ContextInformation,
+        user_tda: Option<VirtualAddress>,
+    ) {
         unsafe extern "C" {
             pub fn __context_switch(
                 from: *mut ContextInformation,
                 to: *mut ContextInformation,
                 tss: *const Tss,
             );
+        }
+
+        // Set thread data area.
+        if let Some(user_tda) = user_tda {
+            (*to).gs = SegmentSelector::UserThreadDataArea as u32;
+            Gdt::set_thread_data_area(user_tda.into());
+        } else {
+            (*to).gs = SegmentSelector::Null as u32;
         }
 
         let tss: *const Tss = tss::get_curr();

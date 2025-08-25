@@ -12,7 +12,10 @@ use crate::{
         ustack::UserStack,
     },
 };
-use ::sys::pm::ThreadIdentifier;
+use ::sys::{
+    mm::VirtualAddress,
+    pm::ThreadIdentifier,
+};
 
 //==================================================================================================
 // Modules
@@ -64,7 +67,7 @@ impl ThreadManager {
     ///
     fn new() -> (ReadyThread, Self) {
         let kernel: ReadyThread =
-            ReadyThread::new(From::<i32>::from(0), None, None, ContextInformation::default());
+            ReadyThread::new(From::<i32>::from(0), None, None, None, ContextInformation::default());
         (
             kernel,
             Self {
@@ -82,6 +85,7 @@ impl ThreadManager {
     ///
     /// - `kernel_stack`: Optional kernel stack for the thread.
     /// - `user_stack`: Optional user stack for the thread.
+    /// - `user_tda`: Optional base address to user-space thread data area.
     /// - `context`: Execution context for the thread.
     ///
     /// # Returns
@@ -92,12 +96,13 @@ impl ThreadManager {
         &mut self,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
+        user_tda: Option<VirtualAddress>,
         context: ContextInformation,
     ) -> ReadyThread {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);
 
-        ReadyThread::new(id, kernel_stack, user_stack, context)
+        ReadyThread::new(id, kernel_stack, user_stack, user_tda, context)
     }
 }
 

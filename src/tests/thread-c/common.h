@@ -36,4 +36,7 @@ extern void test_pthread_mutex_timedlock(void);
 // Tests if calling `pthread_mutex_trylock() works.
 extern void test_pthread_mutex_trylock(void);
 
+// Tests if thread local storage works.
+extern void test_thread_local(void);
+
 #endif

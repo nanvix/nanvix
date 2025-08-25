@@ -111,6 +111,7 @@ int main(int argc, const char *argv[])
     test_pthread_cond_static_init();
     test_pthread_cond_timedwait();
     test_pthread_tda();
+    test_thread_local();
 
     // Must be last test.
     test_pthread_nowait();

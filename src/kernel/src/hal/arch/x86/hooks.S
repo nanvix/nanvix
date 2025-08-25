@@ -500,13 +500,18 @@ __leave_kernel_to_user_mode:
     popl %edx /* user function */
 
     /*
+     * Set segment registers for the user-space thread data area.
+     */
+    popl %eax /* eax gets user_tda */
+    movw %ax, %fs
+    movw %ax, %gs
+
+    /*
      * Restore data segment registers.
      */
     movl 16(%esp), %eax /* eax gets user_ds */
     movw %ax, %ds
     movw %ax, %es
-    movw %ax, %fs
-    movw %ax, %gs
 
     /*
      * Clear volatile kernel registers to avoid leaking kernel state to

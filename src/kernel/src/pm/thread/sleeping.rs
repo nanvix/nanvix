@@ -17,6 +17,7 @@ use crate::pm::{
 use ::alloc::boxed::Box;
 use ::core::fmt::Debug;
 use ::sys::{
+    mm::VirtualAddress,
     pm::ThreadIdentifier,
     time::SystemTime,
 };
@@ -128,5 +129,32 @@ impl SleepingThread {
     ///
     pub fn alarm(&self) -> Option<SystemTime> {
         self.alarm
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area for the target thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `user_tda`: Optional thread data area pointer to set.
+    ///
+    pub fn set_thread_data_area(&mut self, user_tda: Option<VirtualAddress>) {
+        self.state.store_thread_data_area(user_tda);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the base address for user-space thread data area for the target thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the optional base address for user-space thread data area for the
+    /// target thread.
+    ///
+    pub fn get_thread_data_area(&self) -> Option<VirtualAddress> {
+        self.state.get_thread_data_area()
     }
 }
