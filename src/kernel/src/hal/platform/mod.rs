@@ -13,7 +13,7 @@
 mod pc;
 
 #[cfg(feature = "hyperlight")]
-mod hyperlight;
+pub(crate) mod hyperlight;
 #[cfg(feature = "microvm")]
 mod microvm;
 
