@@ -49,5 +49,16 @@
     "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc",
     "C_Cpp.files.exclude": {
         "sysroot-*/**": true
+    },
+    //==============================================================================================
+    // Assembly Settings
+    //==============================================================================================
+    "[asm-intel-x86-generic]": {
+        "vim.textwidth": 80,
+        "editor.rulers": [
+            80
+        ],
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
     }
 }
