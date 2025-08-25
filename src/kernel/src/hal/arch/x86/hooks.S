@@ -496,8 +496,6 @@ __context_switch:
  */
 __leave_kernel_to_user_mode:
 
-    /* TODO: zero out all registers. */
-
     popl %ecx /* user function argument */
     popl %edx /* user function */
 
@@ -510,9 +508,19 @@ __leave_kernel_to_user_mode:
     movw %ax, %fs
     movw %ax, %gs
 
+    /*
+     * Clear volatile kernel registers to avoid leaking kernel state to
+     * user-mode. Preserve ECX and EDX registers because they hold the user
+     * function argument and the user function pointer respectively.
+     */
+    xorl %eax, %eax
+    xorl %ebx, %ebx
+    xorl %esi, %esi
+    xorl %edi, %edi
+    xorl %ebp, %ebp
+
 __leave_kernel:
     iret
-
 
 /*----------------------------------------------------------------------------*
  * __phys_memcpy()                                                            *
