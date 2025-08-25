@@ -21,6 +21,7 @@ use crate::{
             InterruptReason,
             InterruptedThread,
             ReadyThread,
+            RunningThread,
             SleepingThread,
             ZombieThread,
         },
@@ -32,6 +33,7 @@ use ::type_safe::NonEmptyVecDeque;
 use alloc::collections::vec_deque::VecDeque;
 use sys::{
     error::ErrorCode,
+    mm::VirtualAddress,
     pm::ThreadIdentifier,
     time::SystemTime,
 };
@@ -89,7 +91,23 @@ impl RunnableProcess {
         &mut self.state
     }
 
-    pub fn run(mut self) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation) {
+    ///
+    /// # Description
+    ///
+    /// Finds the next thread to run in the target process.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a tuple containing:
+    /// - The process in the running state.
+    /// - The reason why the thread was interrupted, if any.
+    /// - A pointer to the context information of the next thread to run.
+    /// - An optional pointer to the thread data area of the next thread to run.
+    ///
+    pub fn run(
+        mut self,
+    ) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
+    {
         let mut ready_threads: VecDeque<ReadyThread> = self.ready_threads.into();
 
         // Select thread with the earliest admission time.
@@ -108,7 +126,12 @@ impl RunnableProcess {
             },
         };
 
-        let (running_thread, interrupt_reason, next_context) = next_thread.run();
+        let (running_thread, interrupt_reason, next_context, user_tda): (
+            RunningThread,
+            Option<InterruptReason>,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ) = next_thread.run();
         (
             RunningProcess::new(
                 self.state,
@@ -120,6 +143,7 @@ impl RunnableProcess {
             ),
             interrupt_reason,
             next_context,
+            user_tda,
         )
     }
 

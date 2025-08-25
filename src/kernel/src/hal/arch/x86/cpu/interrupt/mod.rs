@@ -131,6 +131,10 @@ pub unsafe fn forge_user_stack(
     kstackp = kstackp.offset(-1);
     *kstackp = user_fn as u32;
 
+    // Push the segment selector for the users-space thread data area on the kernel stack.
+    kstackp = kstackp.offset(-1);
+    *kstackp = gdt::SegmentSelector::UserThreadDataArea as u32;
+
     // Push first argument to user function on the kernel stack.
     kstackp = kstackp.offset(-1);
     *kstackp = arg0 as u32;

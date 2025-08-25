@@ -25,9 +25,12 @@ use ::alloc::{
     fmt,
 };
 use ::core::pin::Pin;
-use ::sys::pm::{
-    MutexAddress,
-    ThreadIdentifier,
+use ::sys::{
+    mm::VirtualAddress,
+    pm::{
+        MutexAddress,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -50,6 +53,8 @@ pub struct ThreadState {
     join_cond: Condvar,
     /// Execution context.
     context: Pin<Box<ContextInformation>>,
+    /// Optional base address for the user-space thread data area.
+    user_tda: Option<VirtualAddress>,
     /// Lookup table of locked mutexes.
     locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
     /// Interrupt reason, if any.
@@ -71,6 +76,7 @@ impl ThreadState {
     /// - `id`: Thread identifier.
     /// - `kernel_stack`: Optional kernel stack.
     /// - `user_stack`: Optional user stack.
+    /// - `user_tda`: Optional base address for the user-space user-space thread data area.
     /// - `context`: Execution context.
     ///
     /// # Returns
@@ -81,6 +87,7 @@ impl ThreadState {
         id: ThreadIdentifier,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
+        user_tda: Option<VirtualAddress>,
         context: ContextInformation,
     ) -> Self {
         Self {
@@ -88,6 +95,7 @@ impl ThreadState {
             context: Box::pin(context),
             kernel_stack,
             user_stack,
+            user_tda,
             join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
             interrupt_reason: None,
@@ -214,6 +222,34 @@ impl ThreadState {
     ///
     pub(super) fn take_user_stack(&mut self) -> Option<UserStack> {
         self.user_stack.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area in the target thread state.
+    ///
+    /// # Parameters
+    ///
+    /// - `user_tda`: Optional thread data area pointer to set.
+    ///
+    pub(super) fn store_thread_data_area(&mut self, user_tda: Option<VirtualAddress>) {
+        self.user_tda = user_tda;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address for the user-space thread data area stored in the target thread
+    /// state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the base address for the user-space thread data area stored in the
+    /// target thread state.
+    ///
+    pub(super) fn get_thread_data_area(&self) -> Option<VirtualAddress> {
+        self.user_tda
     }
 }
 
