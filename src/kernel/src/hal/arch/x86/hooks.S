@@ -187,43 +187,43 @@
  * Exception hook.
  */
 .macro _do_excp_noerr_code, number
-	_do_excp\()\number:
+    _do_excp\()\number:
         push $0
-		xchg %eax, (%esp)
-		xchg %eax, EXCEPTION_SKIP(%esp)
-		xchg %eax, (%esp)
-		context_save %eax
-		movl $(\number), %ebx
-		movl $0, %ecx
-		jmp _do_excp
+        xchg %eax, (%esp)
+        xchg %eax, EXCEPTION_SKIP(%esp)
+        xchg %eax, (%esp)
+        context_save %eax
+        movl $(\number), %ebx
+        movl $0, %ecx
+        jmp _do_excp
 .endm
 
 /*
  * Exception with error code.
  */
 .macro _do_excp_err_code, number
-	_do_excp\()\number:
-		xchg %eax, (%esp)
-		xchg %eax, EXCEPTION_SKIP(%esp)
-		xchg %eax, (%esp)
-		context_save %eax
-		movl $(\number), %ebx
-		movl $0, %ecx
-		jmp _do_excp
+    _do_excp\()\number:
+        xchg %eax, (%esp)
+        xchg %eax, EXCEPTION_SKIP(%esp)
+        xchg %eax, (%esp)
+        context_save %eax
+        movl $(\number), %ebx
+        movl $0, %ecx
+        jmp _do_excp
 .endm
 
 /*
  * Exception with error code.
  */
 .macro _do_excp_err2_code, number
-	_do_excp\()\number:
-		xchg %eax, (%esp)
-		xchg %eax, EXCEPTION_SKIP(%esp)
-		xchg %eax, (%esp)
-		context_save %eax
-		movl $(\number), %ebx
-		movl %cr2, %ecx
-		jmp _do_excp
+    _do_excp\()\number:
+        xchg %eax, (%esp)
+        xchg %eax, EXCEPTION_SKIP(%esp)
+        xchg %eax, (%esp)
+        context_save %eax
+        movl $(\number), %ebx
+        movl %cr2, %ecx
+        jmp _do_excp
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -234,13 +234,13 @@
  * Low-level hardware interrupt dispatcher.
  */
 .macro _do_hwint num
-	_do_hwint\()\num:
-		context_save %eax
-		pushl $(\num)
-		call do_interrupt
-		addl $WORD_SIZE, %esp
-		context_restore
-		iret
+    _do_hwint\()\num:
+        context_save %eax
+        pushl $(\num)
+        call do_interrupt
+        addl $WORD_SIZE, %esp
+        context_restore
+        iret
 .endm
 
 /*============================================================================*
@@ -341,27 +341,27 @@ _do_excp_err_code   30 /* Security Exception.         */
  * Low-level exception handler dispatcher.
  */
 _do_excp:
-	/* Save exception information. */
-	movl CONTEXT_EIP(%eax), %edx
-	subl $EXCEPTION_SIZE, %esp
-	movl %ebx, EXCEPTION_NR(%esp)
-	movl %ecx, EXCEPTION_DATA(%esp)
-	movl %edx, EXCEPTION_CODE(%esp)
-	movl EXCEPTION_ERR(%esp), %ebx
-	movl %ebx, CONTEXT_ERR(%eax)
-	movl %esp, %ebx
+    /* Save exception information. */
+    movl CONTEXT_EIP(%eax), %edx
+    subl $EXCEPTION_SIZE, %esp
+    movl %ebx, EXCEPTION_NR(%esp)
+    movl %ecx, EXCEPTION_DATA(%esp)
+    movl %edx, EXCEPTION_CODE(%esp)
+    movl EXCEPTION_ERR(%esp), %ebx
+    movl %ebx, CONTEXT_ERR(%eax)
+    movl %esp, %ebx
 
-	/* Call high-level exception dispatcher. */
-	pushl %eax /* Execution context. */
-	pushl %ebx /* Exception context. */
+    /* Call high-level exception dispatcher. */
+    pushl %eax /* Execution context. */
+    pushl %ebx /* Exception context. */
     call do_exception
-	addl  $(2*WORD_SIZE), %esp
-	addl $EXCEPTION_SIZE, %esp
+    addl  $(2*WORD_SIZE), %esp
+    addl $EXCEPTION_SIZE, %esp
 
-	context_restore
+    context_restore
 
-	/* Pop error code. */
-	addl $WORD_SIZE, %esp
+    /* Pop error code. */
+    addl $WORD_SIZE, %esp
 
     jmp __leave_kernel
 
@@ -530,22 +530,22 @@ __leave_kernel:
  * Physical memory copy.
  */
 __phys_memcpy:
-	pushl %esi
-	pushl %edi
+    pushl %esi
+    pushl %edi
 
-	/* Get parameters. */
-	movl 12(%esp), %edi /* dest */
-	movl 16(%esp), %esi /* src */
-	movl 20(%esp), %ecx /* size */
+    /* Get parameters. */
+    movl 12(%esp), %edi /* dest */
+    movl 16(%esp), %esi /* src */
+    movl 20(%esp), %ecx /* size */
 
-	/* If copy size is zero, skip copying. */
-	test %ecx, %ecx
-	jz __phys_memcpy.done
+    /* If copy size is zero, skip copying. */
+    test %ecx, %ecx
+    jz __phys_memcpy.done
 
-	/* Disable paging. */
-	movl %cr0, %eax
-	andl $0x80000000 - 1, %eax
-	movl %eax, %cr0
+    /* Disable paging. */
+    movl %cr0, %eax
+    andl $0x80000000 - 1, %eax
+    movl %eax, %cr0
 
 /*
  * Copy memory from a page to another.
@@ -555,24 +555,24 @@ __phys_memcpy:
  * when paging is enabled.
  */
 __phys_memcpy.loop:
-	movb (%esi), %al
-	movb %al, (%edi)
-	inc %esi
-	inc %edi
-	dec %ecx
-	jnz __phys_memcpy.loop
+    movb (%esi), %al
+    movb %al, (%edi)
+    inc %esi
+    inc %edi
+    dec %ecx
+    jnz __phys_memcpy.loop
 
-	/* Re-enable paging. */
-	movl %cr0, %eax
-	orl $0x80000000, %eax
-	movl %eax, %cr0
+    /* Re-enable paging. */
+    movl %cr0, %eax
+    orl $0x80000000, %eax
+    movl %eax, %cr0
 
 __phys_memcpy.done:
 
-	popl %edi
-	popl %esi
+    popl %edi
+    popl %esi
 
-	ret
+    ret
 
 /*----------------------------------------------------------------------------*
  * __phys_memset()                                                            *
