@@ -32,6 +32,7 @@ use ::sys::{
         exit_thread,
         join_thread,
     },
+    mm::VirtualAddress,
     pm::{
         ThreadCreateArgs,
         ThreadIdentifier,
@@ -80,6 +81,9 @@ pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result
     // NOTE: The stack is automatically deallocated if this object is dropped.
     let stack: Stack = Stack::new(USER_STACK_SIZE)?;
 
+    let user_tda: Option<VirtualAddress> =
+        ::sysalloc::tda::alloc()?.map(|tda_ptr| VirtualAddress::new(tda_ptr as usize));
+
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         // Placeholder for user wrapper function, it will be overridden by the kernel call interface.
         user_fn: ThreadCreateArgs::NULL_USER_FN,
@@ -87,6 +91,7 @@ pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result
         user_fn_arg1: arg,
         user_stack_base: stack.base(),
         user_stack_size: stack.size(),
+        user_tda,
     };
 
     let thread: pthread_t = create_thread(&mut args)?.try_into()?;
@@ -152,6 +157,13 @@ pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
 ///
 pub fn pthread_exit(retval: usize) -> Result<!, Error> {
     ::syslog::trace!("pthread_exit(): retval={:?}", retval);
+
+    // Attempt to clean up thread data area and check for errors.
+    if let Err(error) = ::sysalloc::tda::cleanup() {
+        // Log warning and continue exiting, as we are about to terminate the thread anyway.
+        ::syslog::warn!("pthread_exit(): failed to cleanup thread data area ({error:?})");
+    }
+
     exit_thread(retval)
 }
 

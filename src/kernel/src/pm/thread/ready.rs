@@ -26,6 +26,7 @@ use ::alloc::boxed::Box;
 use ::core::fmt::Debug;
 use ::sys::{
     error::ErrorCode,
+    mm::VirtualAddress,
     pm::ThreadIdentifier,
     time::SystemTime,
 };
@@ -62,6 +63,7 @@ impl ReadyThread {
     /// - `id`: Thread identifier.
     /// - `kernel_stack`: Optional kernel stack.
     /// - `user_stack`: Optional user stack.
+    /// - `user_tda`: Optional base address for the user-space thread data area.
     /// - `context`: Execution context.
     ///
     /// # Returns
@@ -72,10 +74,11 @@ impl ReadyThread {
         id: ThreadIdentifier,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
+        user_tda: Option<VirtualAddress>,
         context: ContextInformation,
     ) -> Self {
         Self {
-            state: Box::new(ThreadState::new(id, kernel_stack, user_stack, context)),
+            state: Box::new(ThreadState::new(id, kernel_stack, user_stack, user_tda, context)),
             admission_time: clock::now(),
         }
     }
@@ -120,13 +123,20 @@ impl ReadyThread {
     ///
     /// # Returns
     ///
-    /// This function returns a tuple containing the running thread, an optional interrupt reason,
-    /// and a mutable pointer to the execution context.
+    /// This function returns a tuple containing:
+    /// - The running thread.
+    /// - An optional interrupt reason.
+    /// - A mutable pointer to the execution context
+    /// - An optional base address for the user-space thread data area of the running thread.
     ///
-    pub fn run(mut self) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation) {
+    pub fn run(
+        mut self,
+    ) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
+    {
         let ctx: *mut ContextInformation = self.state.context_mut();
         let interrupt_reason: Option<InterruptReason> = self.state.take_interrupt_reason();
-        (RunningThread::from_state(self.state), interrupt_reason, ctx)
+        let user_tda: Option<VirtualAddress> = self.state.get_thread_data_area();
+        (RunningThread::from_state(self.state), interrupt_reason, ctx, user_tda)
     }
 
     ///

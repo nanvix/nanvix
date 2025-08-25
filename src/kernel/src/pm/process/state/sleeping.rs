@@ -203,4 +203,44 @@ impl SleepingProcess {
 
         false
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to a sleeping thread with the given thread identifier.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: The identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread with the given identifier exists, a mutable reference to it is returned.
+    /// Otherwise, `None` is returned.
+    ///
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<&mut SleepingThread> {
+        self.sleeping_threads
+            .iter_mut()
+            .find(|thread| thread.id() == tid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a reference to a sleeping thread with the given thread identifier.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: The identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread with the given identifier exists, a reference to it is returned.
+    /// Otherwise, `None` is returned.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<&SleepingThread> {
+        self.sleeping_threads
+            .iter()
+            .find(|thread| thread.id() == tid)
+    }
 }

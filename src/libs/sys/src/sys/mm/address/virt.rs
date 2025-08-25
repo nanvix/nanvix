@@ -26,6 +26,9 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualAddress(usize);
 
+#[cfg(target_pointer_width = "32")]
+::static_assert::assert_eq_size!(VirtualAddress, ::core::mem::size_of::<u32>());
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -254,5 +257,30 @@ impl ::core::ops::Add<usize> for VirtualAddress {
 impl ::core::ops::AddAssign<usize> for VirtualAddress {
     fn add_assign(&mut self, rhs: usize) {
         self.0 = self.0 + rhs;
+    }
+}
+
+impl From<u32> for VirtualAddress {
+    fn from(value: u32) -> Self {
+        VirtualAddress::new(value as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+impl From<VirtualAddress> for u32 {
+    fn from(value: VirtualAddress) -> Self {
+        value.0 as u32
+    }
+}
+
+impl From<VirtualAddress> for u64 {
+    fn from(value: VirtualAddress) -> Self {
+        value.0 as u64
+    }
+}
+
+impl From<VirtualAddress> for usize {
+    fn from(value: VirtualAddress) -> Self {
+        value.0
     }
 }

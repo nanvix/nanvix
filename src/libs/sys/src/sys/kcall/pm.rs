@@ -351,3 +351,73 @@ pub fn sleep(timeout: Duration) -> Result<(), Error> {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to sleep"))
     }
 }
+
+//==================================================================================================
+// Get Thread Data Area
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the base address for the user-space thread data area of the calling thread.
+///
+/// # Return Value
+///
+/// On successful completion, this function returns the base address for the user-space thread data
+/// area of the calling thread. On failure, this function returns an error code that indicates the
+/// reason of failure.
+///
+/// # Errors
+///
+/// This function fails with the following error codes:
+///
+/// - [`ErrorCode::ValueOutOfRange`]: The thread-local pointer cannot be represented correctly.
+/// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+/// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
+///
+pub fn get_thread_data_area() -> Result<*mut u8, Error> {
+    let result: i64 = kcall0!(KcallNumber::GetThreadDataArea.into());
+
+    if result >= 0 {
+        Ok(result as *mut u8)
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to get thread data area"))
+    }
+}
+
+//==================================================================================================
+// Set Thread Data Area
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Sets the base address for the user-space thread data area of the calling thread.
+///
+/// # Parameters
+///
+/// - `user_tda`: Base address for the user-space thread data area. If null, clears the thread data area.
+///
+/// # Return Value
+///
+/// On successful completion, this function returns empty. On failure, this function returns an
+/// error code that indicates the reason of failure.
+///
+/// # Errors
+///
+/// This function fails with the following error codes:
+///
+/// - [`ErrorCode::InvalidArgument`]: The provided thread-local storage pointer is invalid.
+/// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+/// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
+///
+///
+pub fn set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
+    let result: i64 = kcall1!(KcallNumber::SetThreadDataArea.into(), user_tda as usize as u32);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to set data area"))
+    }
+}

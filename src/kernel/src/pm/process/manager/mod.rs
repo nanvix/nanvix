@@ -53,6 +53,7 @@ use crate::{
         thread::{
             InterruptReason,
             ReadyThread,
+            SleepingThread,
             ThreadManager,
             ZombieThread,
         },
@@ -149,10 +150,11 @@ impl ProcessManagerInner {
     ) -> Self {
         let kernel: RunnableProcess = RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root);
 
-        let (kernel, reason, _): (
+        let (kernel, reason, _, _user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = kernel.run();
         debug_assert!(reason.is_none(), "kernel process should not be interrupted");
 
@@ -317,7 +319,8 @@ impl ProcessManagerInner {
             //==============================================================
 
             // Create a new thread.
-            self.tm.create_thread(Some(kernel_stack), None, context)
+            self.tm
+                .create_thread(Some(kernel_stack), None, thread_create_args.user_tda, context)
         };
 
         Ok(self.try_add_thread(pid, ready_thread))
@@ -370,6 +373,112 @@ impl ProcessManagerInner {
         self.ready = ready;
 
         unreachable!("process must be either sleeping or runnable")
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area of a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: The identifier of the process containing the thread.
+    /// - `tid`: The identifier of the thread whose thread data area pointer is to be set.
+    /// - `user_tda`: Optional thread data area pointer to set.
+    ///
+    /// # Return Values
+    ///
+    /// Upon successful completion, this function return empty. Upon failure, this function returns
+    /// an error.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    ///
+    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+    ///
+    fn set_thread_data_area(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        user_tda: Option<VirtualAddress>,
+    ) -> Result<(), Error> {
+        // Search for the process in the list of sleeping processes.
+        let sleeping_process: &mut SleepingProcess = self
+            .suspended
+            .iter_mut()
+            .find(|p| p.state().pid() == pid)
+            .ok_or_else(|| {
+                let reason: &str = "process not found";
+                error!(
+                    "set_thread_data_area(): {reason} (pid={pid:?}, tid={tid:?}, \
+                     user_tda={user_tda:?})"
+                );
+                Error::new(ErrorCode::NoSuchEntry, reason)
+            })?;
+
+        // Search for the thread.
+        let sleeping_thread: &mut SleepingThread =
+            sleeping_process.find_thread_mut(tid).ok_or_else(|| {
+                let reason: &str = "thread not found";
+                error!(
+                    "set_thread_data_area(): {reason} (tid={tid:?}, pid={pid:?}, \
+                     user_tda={user_tda:?})"
+                );
+                Error::new(ErrorCode::NoSuchEntry, reason)
+            })?;
+
+        sleeping_thread.set_thread_data_area(user_tda);
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the based address for the user-space thread data area of a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: The identifier of the process containing the thread.
+    /// - `tid`: The identifier of the thread whose thread data area pointer is to be retrieved.
+    ///
+    /// # Return Values
+    ///
+    /// Upon successful completion, this function returns the based-address for the user-space
+    /// thread data area of the specified thread. Upon failure, this function returns an error.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    ///
+    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+    ///
+    fn get_thread_data_area(
+        &self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<Option<VirtualAddress>, Error> {
+        // Search for the process in the list of sleeping processes.
+        let sleeping_process: &SleepingProcess = self
+            .suspended
+            .iter()
+            .find(|p| p.state().pid() == pid)
+            .ok_or_else(|| {
+                let reason: &str = "process not found";
+                error!("get_thread_data_area(): {reason} (pid={pid:?}, tid={tid:?})");
+                Error::new(ErrorCode::NoSuchEntry, reason)
+            })?;
+
+        // Search for the thread
+        let sleeping_thread: &SleepingThread =
+            sleeping_process.find_thread(tid).ok_or_else(|| {
+                let reason: &str = "thread not found";
+                error!("get_thread_data_area(): {reason} (tid={tid:?}, pid={pid:?})");
+                Error::new(ErrorCode::NoSuchEntry, reason)
+            })?;
+
+        Ok(sleeping_thread.get_thread_data_area())
     }
 
     ///
@@ -492,6 +601,7 @@ impl ProcessManagerInner {
             user_fn_arg1: envp,
             user_stack_base: user_stack.base().into_inner(),
             user_stack_size: user_stack.size(),
+            user_tda: None, // The base address for the user-space thread data area the main thread is set by the user-space runtime.
         };
 
         let (kernel_stack, context): (KernelStack, ContextInformation) =
@@ -513,7 +623,7 @@ impl ProcessManagerInner {
 
         let thread: ReadyThread =
             self.tm
-                .create_thread(Some(kernel_stack), Some(user_stack), context);
+                .create_thread(Some(kernel_stack), Some(user_stack), args.user_tda, context);
 
         // Create process.
         let pid: ProcessIdentifier = self.next_pid;
@@ -538,11 +648,17 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     fn schedule(
         &mut self,
-    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
-    {
+    ) -> (
+        ProcessIdentifier,
+        ThreadIdentifier,
+        *mut ContextInformation,
+        *mut ContextInformation,
+        Option<VirtualAddress>,
+    ) {
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
 
@@ -560,17 +676,18 @@ impl ProcessManagerInner {
         // Select next process to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context): (
+        let (next_process, reason, next_context, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context)
+        (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
     // Traverses the list of sleeping processes, checking for expired alarms and moving processes
@@ -616,12 +733,18 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     fn sleep(
         &mut self,
         alarm: Option<SystemTime>,
-    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
-    {
+    ) -> (
+        ProcessIdentifier,
+        ThreadIdentifier,
+        *mut ContextInformation,
+        *mut ContextInformation,
+        Option<VirtualAddress>,
+    ) {
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -646,17 +769,18 @@ impl ProcessManagerInner {
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context): (
+        let (next_process, reason, next_context, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context)
+        (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
     ///
@@ -779,12 +903,18 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     fn exit(
         &mut self,
         status: ExitStatus,
-    ) -> (ProcessIdentifier, ThreadIdentifier, *mut ContextInformation, *mut ContextInformation)
-    {
+    ) -> (
+        ProcessIdentifier,
+        ThreadIdentifier,
+        *mut ContextInformation,
+        *mut ContextInformation,
+        Option<VirtualAddress>,
+    ) {
         let running_process: RunningProcess = self.take_running();
         trace!(
             "exit(): pid={:?}, tid={:?}, status={status:?}",
@@ -814,17 +944,18 @@ impl ProcessManagerInner {
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context): (
+        let (next_process, reason, next_context, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context)
+        (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
     ///
@@ -843,6 +974,7 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     /// # Safety
     ///
@@ -861,6 +993,7 @@ impl ProcessManagerInner {
         Condvar,
         *mut ContextInformation,
         *mut ContextInformation,
+        Option<VirtualAddress>,
     ) {
         let running_process: RunningProcess = self.take_running();
 
@@ -899,17 +1032,18 @@ impl ProcessManagerInner {
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context): (
+        let (next_process, reason, next_context, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            Option<VirtualAddress>,
         ) = next_process.run();
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, join_cond, previous_context, next_context)
+        (next_pid, next_tid, join_cond, previous_context, next_context, user_tda)
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
@@ -1355,6 +1489,68 @@ impl ProcessManager {
 
         self.try_borrow_mut()?
             .create_thread(mm, pid, thread_create_args)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area pointer for a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier.
+    /// - `tid`: Thread identifier.
+    /// - `user_tda`: Optional base address for the user-space thread data area to set.
+    ///
+    /// # Return Value
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    ///
+    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
+    ///
+    pub fn set_thread_data_area(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        user_tda: Option<VirtualAddress>,
+    ) -> Result<(), Error> {
+        self.try_borrow_mut()?
+            .set_thread_data_area(pid, tid, user_tda)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the user-space thread data area of a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: The identifier of the process containing the thread.
+    /// - `tid`: The identifier of the thread whose thread data area pointer is to be retrieved.
+    ///
+    /// # Return Values
+    ///
+    /// Upon successful completion, this function returns the user-space thread data area of the
+    /// specified thread. Upon failure, this function returns an error.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    ///
+    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
+    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
+    ///
+    pub fn get_thread_data_area(
+        &self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<Option<VirtualAddress>, Error> {
+        self.try_borrow()?.get_thread_data_area(pid, tid)
     }
 
     pub fn has_capability(
