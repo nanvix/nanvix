@@ -13,6 +13,9 @@ export TARGET ?= x86
 # Target Machine
 export MACHINE ?= microvm
 
+# Enable SSE/SSE2 Support?
+export SSE ?= no
+
 # Release Version?
 export RELEASE ?= no
 
@@ -188,6 +191,7 @@ export MICROVM_CARGO_FEATURES := --no-default-features
 export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
 export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
 export MICROVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
+export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(SSE)),--features sse,)
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
@@ -361,6 +365,7 @@ help:
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
 	@echo "  SCCACHE          Path to ompilation cache binary (default: auto-detected from PATH) [impacts build time]"
+	@echo "  SSE              Enable SSE/SSE2 support (default: $(SSE))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
@@ -370,6 +375,7 @@ help:
 	@echo "  PROFILER     yes, no"
 	@echo "  BUILD_OPT    yes, no"
 	@echo "  JAVY         path to javy executable"
+	@echo "  SSE          yes, no"
 
 # Fixes code linting issues.
 lint: \
