@@ -13,7 +13,24 @@ mod timer;
 // Exports
 //==================================================================================================
 
-use ::kvm_bindings::kvm_fpu;
+use ::arch::cpu::{
+    cpuid::{
+        CPUID_FEATURES,
+        EdxFeature,
+    },
+    mxcrs::{
+        DenormalOperationMask,
+        DivideByZeroMask,
+        OverflowMask,
+        PrecisionMask,
+        UnderflowMask,
+    },
+};
+use ::kvm_bindings::{
+    CpuId,
+    KVM_MAX_CPUID_ENTRIES,
+    kvm_fpu,
+};
 pub use exit::*;
 
 //==================================================================================================
@@ -45,8 +62,6 @@ use timer::Timer;
 const FP_CONTROL_WORD_DEFAULT: u16 = 0x37f;
 // Each 8 of x87 fpu registers is empty
 const FP_TAG_WORD_DEFAULT: u8 = 0xff;
-// Mask simd fp-exceptions, clear exception flags, set rounding to nearest, disable flush-to-zero mode, disable denormals-are-zero mode
-const MXCSR_DEFAULT: u32 = 0x1f80;
 
 //==================================================================================================
 // Structures
@@ -82,17 +97,27 @@ impl VirtualProcessor {
         // Create programmable interrupt timer.
         let timer: Timer = Timer::new(&partition)?;
 
-        let fd: VcpuFd = partition
+        let mut fd: VcpuFd = partition
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .vm()
             .create_vcpu(id)?;
 
+        #[cfg(feature = "sse")]
+        Self::setup_sse(partition.clone(), &mut fd, true)?;
+        #[cfg(not(feature = "sse"))]
+        Self::setup_sse(partition.clone(), &mut fd, false)?;
+
         // Reset FPU state.
-        let fpu = kvm_fpu {
+        let fpu: kvm_fpu = kvm_fpu {
             fcw: FP_CONTROL_WORD_DEFAULT,
             ftwx: FP_TAG_WORD_DEFAULT,
-            mxcsr: MXCSR_DEFAULT,
+            // Mask all SIMD exceptions.
+            mxcsr: (PrecisionMask::Masked as u32)
+                | (UnderflowMask::Masked as u32)
+                | (OverflowMask::Masked as u32)
+                | (DivideByZeroMask::Masked as u32)
+                | (DenormalOperationMask::Masked as u32),
             ..Default::default() // zero out the rest
         };
         fd.set_fpu(&fpu)?;
@@ -286,5 +311,58 @@ impl VirtualProcessor {
                 Ok(VirtualProcessorExitContext::Unknown)
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Enables or disables SSE support on a virtual processor.
+    ///
+    /// # Parameters
+    ///
+    /// - `partition`: Handle to the virtual partition.
+    /// - `fd`: Handle to the virtual processor.
+    /// - `enable`: If true, enables SSE support. If false, disables SSE support.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function returns empty. Otherwise, it returns an error.
+    ///
+    fn setup_sse(
+        partition: Arc<Mutex<VirtualPartition>>,
+        fd: &mut VcpuFd,
+        enable: bool,
+    ) -> Result<()> {
+        let mut kvm_cpuid: CpuId = partition
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .kvm()
+            .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)?;
+
+        for entry in kvm_cpuid.as_mut_slice().iter_mut() {
+            match entry.function {
+                CPUID_FEATURES => {
+                    if enable {
+                        entry.edx |= (EdxFeature::Fxsr as u32)
+                            | (EdxFeature::Sse as u32)
+                            | (EdxFeature::Sse2 as u32)
+                    } else {
+                        entry.edx &= !((EdxFeature::Fxsr as u32)
+                            | (EdxFeature::Sse as u32)
+                            | (EdxFeature::Sse2 as u32))
+                    }
+                },
+                _ => continue,
+            }
+        }
+
+        // Set CPUID and check for errors.
+        if let Err(error) = fd.set_cpuid2(&kvm_cpuid) {
+            let reason: String = format!("failed to set cpuid (error={error:?})");
+            error!("setup_sse(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        Ok(())
     }
 }

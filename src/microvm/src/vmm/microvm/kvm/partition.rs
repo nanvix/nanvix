@@ -22,7 +22,7 @@ use ::kvm_ioctls::{
 ///
 pub struct VirtualPartition {
     // Handle to the KVM.
-    _kvm: Kvm,
+    kvm: Kvm,
     // Handle to the virtual machine.
     vm: VmFd,
 }
@@ -67,7 +67,7 @@ impl VirtualPartition {
             anyhow::bail!(reason);
         }
 
-        Ok(Self { _kvm: kvm, vm })
+        Ok(Self { kvm, vm })
     }
 
     ///
@@ -77,5 +77,14 @@ impl VirtualPartition {
     ///
     pub fn vm(&self) -> &VmFd {
         &self.vm
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets a handle to the KVM.
+    ///
+    pub fn kvm(&self) -> &Kvm {
+        &self.kvm
     }
 }
