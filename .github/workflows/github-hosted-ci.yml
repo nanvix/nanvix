@@ -47,7 +47,7 @@ jobs:
           path: ./toolchain
           key: ${{ steps.extract-version.outputs.cache_key }}
 
-      - name: "Prepare build environemnt if not cached"
+      - name: "Prepare build environment if not cached"
         if: steps.cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
 
@@ -84,7 +84,7 @@ jobs:
           key: ${{ needs.setup-toolchain.outputs.cache-key }}
           fail-on-cache-miss: 'true'
 
-      - name: "Prepare build environemnt"
+      - name: "Prepare build environment"
         uses: ./.github/actions/setup
 
       - name: "Link Rust Toolchain for Nanvix"
