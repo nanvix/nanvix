@@ -102,7 +102,6 @@ const PT_INTERP: u32 = 3; // Interpreter.
 const PT_NOTE: u32 = 4; // Auxiliary information.
 const PT_SHLIB: u32 = 5; // Reserved.
 const PT_PHDR: u32 = 6; // Program header table.
-const PT_TLS: u32 = 7; // Thread-local storage segment.
 const PT_LOPROC: u32 = 0x70000000; // Low limit for processor-specific.
 const PT_HIPROC: u32 = 0x7fffffff; // High limit for processor-specific.
 
@@ -206,7 +205,7 @@ fn do_elf32_load(
 
     // Load segments.
     for phdr in phdrs {
-        if phdr.p_type != PT_LOAD && phdr.p_type != PT_TLS {
+        if phdr.p_type != PT_LOAD {
             continue;
         }
 
