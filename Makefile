@@ -408,11 +408,11 @@ rust-lint: \
 
 # Fixes spelling errors in source code and documentation.
 spellcheck-fix:
-	codespell --write-changes .
+	codespell --write-changes $(shell git ls-files)
 
 # Checks for spelling errors in source code and documentation.
 spellcheck:
-	codespell .
+	codespell $(shell git ls-files)
 
 # Fixes code formatting issues.
 format: \
