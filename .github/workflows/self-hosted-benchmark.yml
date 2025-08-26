@@ -64,7 +64,9 @@ jobs:
         benchmark_list: |
           boot-time
           cold-start
+          cold-start-l2
           warm-start
+          warm-start-l2
           warm-start-vmm
 
 
