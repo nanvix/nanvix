@@ -9,6 +9,12 @@ PROGRAM_INPUT=$4
 PROGRAM_EXPECTED_OUTPUT=$5
 TIMEOUT=${6:-90}
 
+# Check if expected program output is empty.
+if [ -z "${PROGRAM_EXPECTED_OUTPUT}" ]; then
+    echo "Error: expected program output is empty and it cannot."
+    exit 1
+fi
+
 NANVIX_HOME=$(git rev-parse --show-toplevel)
 LOGS_DIR=${NANVIX_HOME}/logs/nanvixd-$(basename "${PROGRAM_NAME}")
 
@@ -103,9 +109,7 @@ find . -maxdepth 1 -name '*.log' -exec mv {} "${LOGS_DIR}"/ \; 2>/dev/null || tr
 kill -s SIGINT "${NANVIXD_PID}" || true
 
 # Check if curl.log contains the expected output.
-echo "${PROGRAM_ACTUAL_OUTPUT}" | grep -q "${PROGRAM_EXPECTED_OUTPUT}"
-GREP_EXIT_CODE=$?
-if [ "${GREP_EXIT_CODE}" -eq 0 ]; then
+if grep -F -q -- "${PROGRAM_EXPECTED_OUTPUT}" <<< "${PROGRAM_ACTUAL_OUTPUT}"; then
     echo "Test passed."
     exit 0
 else
