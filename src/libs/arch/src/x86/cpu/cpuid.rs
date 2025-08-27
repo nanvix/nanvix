@@ -203,6 +203,7 @@ pub fn get_apic_id() -> u8 {
 pub fn has_cpuid() -> bool {
     let result: u32;
     unsafe {
+        #[cfg(target_pointer_width = "32")]
         ::core::arch::asm!(
             "pushfl",                   // Save EFLAGS
             "pushfl",                   // Store EFLAGS
@@ -213,6 +214,25 @@ pub fn has_cpuid() -> bool {
             "xorl (%esp), %eax",        // eax = whichever bits were changed
             "popfl",                    // Restore original EFLAGS
             "andl $0x200000, %eax",     // eax = zero if ID bit can't be changed, else non-zero
+            "movl $0, %eax",
+            "jz 1f",
+            "movl $1, %eax",
+            "1:",
+            out("eax") result,
+            options(preserves_flags, att_syntax)
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        ::core::arch::asm!(
+            "pushfq",                   // Save RFLAGS
+            "pushfq",                   // Store RFLAGS
+            "xorq $0x200000, (%rsp)",   // Invert the ID bit in stored RFLAGS
+            "popfq",                    // Load stored RFLAGS (with ID bit inverted)
+            "pushfq",                   // Store RFLAGS again (ID bit may or may not be inverted)
+            "popq %rax",                // rax = modified RFLAGS (ID bit may or may not be inverted)
+            "xorq (%rsp), %rax",        // rax = whichever bits were changed
+            "popfq",                    // Restore original RFLAGS
+            "andq $0x200000, %rax",     // rax = zero if ID bit can't be changed, else non-zero
             "movl $0, %eax",
             "jz 1f",
             "movl $1, %eax",
