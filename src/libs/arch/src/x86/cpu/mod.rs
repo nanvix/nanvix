@@ -21,6 +21,7 @@ pub mod ioapic;
 pub mod madt;
 #[cfg(feature = "msr")]
 pub mod msr;
+pub mod mxcrs;
 #[cfg(feature = "pic")]
 pub mod pic;
 #[cfg(feature = "pit")]
