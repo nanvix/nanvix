@@ -99,9 +99,13 @@ fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
 
     unsafe {
         core::arch::asm!(
+            "mov {ebx_backup}, rbx", // Save rbx
             "cpuid",
+            "mov {ebx_out:e}, ebx",  // Move ebx to output.
+            "mov rbx, {ebx_backup}", // Restore rbx
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
             inout("eax") eax => eax,
-            out("ebx") ebx,
             out("ecx") ecx,
             out("edx") edx,
             options(nomem, preserves_flags, nostack)
