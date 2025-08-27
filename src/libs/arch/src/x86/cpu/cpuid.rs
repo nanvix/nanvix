@@ -98,7 +98,22 @@ fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
     let mut edx: u32;
 
     unsafe {
-        core::arch::asm!(
+        #[cfg(target_pointer_width = "32")]
+        ::core::arch::asm!(
+            "mov {ebx_backup}, ebx", // Save ebx
+            "cpuid",
+            "mov {ebx_out}, ebx",    // Move ebx to output.
+            "mov ebx, {ebx_backup}", // Restore ebx
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
+            inout("eax") eax => eax,
+            out("ecx") ecx,
+            out("edx") edx,
+            options(nomem, preserves_flags, nostack)
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        ::core::arch::asm!(
             "mov {ebx_backup}, rbx", // Save rbx
             "cpuid",
             "mov {ebx_out:e}, ebx",  // Move ebx to output.
