@@ -9,6 +9,7 @@
 pub mod acpi;
 #[cfg(feature = "cpuid")]
 pub mod cpuid;
+pub mod cr0;
 pub mod eflags;
 pub mod excp;
 pub mod idt;
