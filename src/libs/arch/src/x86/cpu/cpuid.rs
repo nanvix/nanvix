@@ -41,36 +41,68 @@ impl EbxFeature {
     pub const INITIAL_APIC_ID_MASK: u32 = 0xFF << Self::INITIAL_APIC_ID_SHIFT;
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
 pub enum EdxFeature {
+    /// FPU on-chip.
     Fpu = 1 << 0,
+    /// Virtual-8086 Mode Enhancements.
     Vme = 1 << 1,
+    /// Debugging Extensions.
     De = 1 << 2,
+    /// Page Size Extension.
     Pse = 1 << 3,
+    /// Time Stamp Counter.
     Tsc = 1 << 4,
+    /// Model Specific Registers.
     Msr = 1 << 5,
+    /// Physical Address Extension.
     Pae = 1 << 6,
+    /// Machine Check Exception.
     Mce = 1 << 7,
+    /// CMPXCHG8B instruction.
     Cx8 = 1 << 8,
+    /// APIC on-chip.
     Apic = 1 << 9,
+    /// SYSENTER and SYSEXIT instructions.
     Sep = 1 << 11,
+    /// Memory Type Range Registers.
     Mtrr = 1 << 12,
+    /// Page Global Enable.
     Pge = 1 << 13,
+    /// Machine Check Architecture.
     Mca = 1 << 14,
+    /// Conditional Move instructions.
     Cmov = 1 << 15,
+    /// Page Attribute Table.
     Pat = 1 << 16,
+    /// 36-bit Page Size Extension.
     Pse36 = 1 << 17,
+    /// Processor Serial Number.
     Psn = 1 << 18,
+    /// CLFLUSH instruction.
     Clflush = 1 << 19,
+    /// Debug Store.
     Ds = 1 << 21,
+    /// Thermal Monitor and Software Controlled Clock.
     Acpi = 1 << 22,
+    /// MMX technology.
     Mmx = 1 << 23,
+    /// FXSAVE and FXRSTOR instructions.
     Fxsr = 1 << 24,
+    /// SSE extensions.
     Sse = 1 << 25,
+    /// SSE2 extensions.
     Sse2 = 1 << 26,
+    /// Self Snoop.
     Ss = 1 << 27,
+    /// Hyper-Threading Technology.
     Htt = 1 << 28,
+    /// Thermal Monitor.
     Tm = 1 << 29,
+    /// IA64 processor emulating x86.
     Ia64 = 1 << 30,
+    /// Pending Break Enable.
     Pbe = 1 << 31,
 }
 
