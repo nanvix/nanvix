@@ -71,3 +71,33 @@ get_cargo_toml_version() {
 
     echo "$cargo_toml_version"
 }
+
+#
+# Description
+#
+#   Reads a value from a simple, single-level TOML file with key = value pairs.
+#
+# Arguments
+#
+#   $1 - The path to the TOML file.
+#   $2 - The key to get the value for.
+#
+# Return Value
+#
+#   - On success, a string containing the value for the given key.
+#   - On failure, exits with a non-zero status.
+#
+# Usage Example
+#
+#   kstack_size=$(get_value_from_toml "./build/kernel_config.toml" "kstack_size")
+#
+get_value_from_toml() {
+    local toml_path=$1
+    local toml_key=$2
+    local val
+    val="$(
+    sed -nE "s/^[[:space:]]*${toml_key}[[:space:]]*=[[:space:]]*(\"([^\"]*)\"|\'([^\']*)\'|([^[:space:]]+)).*/\2\3\4/p" "$toml_path" \
+    | head -n1
+    )"
+    [[ -n "$val" ]] && printf '%s' "$val" || exit 1
+}
