@@ -25,8 +25,8 @@ use ::std::{
 ///
 /// # Description
 ///
-/// Helper method to load an TOML file from a file-path, and store it in a HashMap. This is a very
-/// simple-parser that only supports single-level TOMLs (i.e. no-nesting). Concretely, this
+/// Helper method to load a TOML file from a file path, and store it in a HashMap. This is a very
+/// simple parser that only supports single-level TOMLs (i.e. no-nesting). Concretely, this
 /// function only supports parsing files with the following format:
 ///
 /// ```toml
@@ -46,8 +46,7 @@ use ::std::{
 /// A hash-map with the key-values in the TOML file.
 ///
 fn load_toml(toml_path: &Path) -> HashMap<String, String> {
-    let toml_content: String =
-        fs::read_to_string(toml_path).expect("Failed to read kernel_config.toml");
+    let toml_content: String = fs::read_to_string(toml_path).expect("Failed to read TOML file");
 
     // Parse the config into a map
     let mut config: HashMap<String, String> = HashMap::new();
@@ -66,6 +65,17 @@ fn load_toml(toml_path: &Path) -> HashMap<String, String> {
     config
 }
 
+///
+/// # Description
+///
+/// This method converts a TOML file with build-time constants for the kernel into a file with rust
+/// constants that can be consumed by rust code.
+///
+/// # Arguments
+///
+/// - `kernel_config_toml_path`: Path to the TOML file to load.
+/// - `kernel_config_output_path`: Path to output the rust source file.
+///
 fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_path: &Path) {
     let kernel_config_toml: HashMap<String, String> = load_toml(kernel_config_toml_path);
 
@@ -128,14 +138,45 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
 }
 
+///
+/// # Description
+///
+/// This method converts a TOML file with build-time constants for linuxd into a file with rust
+/// constants that can be consumed by rust code.
+///
+/// # Arguments
+///
+/// - `linuxd_config_toml_path`: Path to the TOML file to load.
+/// - `linuxd_config_output_path`: Path to output the rust source file.
+///
+fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_path: &Path) {
+    let linuxd_config_toml: HashMap<String, String> = load_toml(linuxd_config_toml_path);
+
+    // Generate Rust constants from config.
+    let mut constants: String = String::new();
+    constants.push_str("pub mod linuxd {\n");
+    if let Some(guest_tap_ip) = linuxd_config_toml.get("guest_tap_ip_address") {
+        constants
+            .push_str(&format!("pub const GUEST_TAP_IP_ADDRESS: &str = \"{guest_tap_ip}\";\n"));
+    }
+    if let Some(host_tap_ip) = linuxd_config_toml.get("host_tap_ip_address") {
+        constants.push_str(&format!("pub const HOST_TAP_IP_ADDRESS: &str = \"{host_tap_ip}\";\n"));
+    }
+    constants.push_str("}\n");
+
+    // Write the generated file
+    fs::write(linuxd_config_output_path, constants).expect("Failed to write linuxd_config.rs");
+}
+
 fn main() {
     // Read the TOML file using the workspace root for a reliable path
     let manifest_dir: String =
         env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
-    let workspace_dir = Path::new(&manifest_dir)
+    let workspace_dir: PathBuf = Path::new(&manifest_dir)
         .ancestors()
         .nth(3)
-        .expect("Failed to find workspace root");
+        .expect("Failed to find workspace root")
+        .to_path_buf();
     let out_dir: String = env::var("OUT_DIR").unwrap();
 
     // Parse kernel configuration file.
@@ -143,6 +184,12 @@ fn main() {
     let kernel_dst_path: PathBuf = Path::new(&out_dir).join("kernel_config.rs");
     generate_kernel_config(&kernel_config_path, &kernel_dst_path);
 
+    // Parse linuxd configuration file.
+    let linuxd_config_path: PathBuf = Path::new(&workspace_dir).join("build/linuxd_config.toml");
+    let linuxd_dst_path: PathBuf = Path::new(&out_dir).join("linuxd_config.rs");
+    generate_linuxd_config(&linuxd_config_path, &linuxd_dst_path);
+
     // Inform Cargo to rerun the build script if the TOML changes
     println!("cargo:rerun-if-changed=build/kernel_config.toml");
+    println!("cargo:rerun-if-changed=build/linuxd_config.toml");
 }
