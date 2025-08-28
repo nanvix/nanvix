@@ -41,36 +41,68 @@ impl EbxFeature {
     pub const INITIAL_APIC_ID_MASK: u32 = 0xFF << Self::INITIAL_APIC_ID_SHIFT;
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
 pub enum EdxFeature {
+    /// FPU on-chip.
     Fpu = 1 << 0,
+    /// Virtual-8086 Mode Enhancements.
     Vme = 1 << 1,
+    /// Debugging Extensions.
     De = 1 << 2,
+    /// Page Size Extension.
     Pse = 1 << 3,
+    /// Time Stamp Counter.
     Tsc = 1 << 4,
+    /// Model Specific Registers.
     Msr = 1 << 5,
+    /// Physical Address Extension.
     Pae = 1 << 6,
+    /// Machine Check Exception.
     Mce = 1 << 7,
+    /// CMPXCHG8B instruction.
     Cx8 = 1 << 8,
+    /// APIC on-chip.
     Apic = 1 << 9,
+    /// SYSENTER and SYSEXIT instructions.
     Sep = 1 << 11,
+    /// Memory Type Range Registers.
     Mtrr = 1 << 12,
+    /// Page Global Enable.
     Pge = 1 << 13,
+    /// Machine Check Architecture.
     Mca = 1 << 14,
+    /// Conditional Move instructions.
     Cmov = 1 << 15,
+    /// Page Attribute Table.
     Pat = 1 << 16,
+    /// 36-bit Page Size Extension.
     Pse36 = 1 << 17,
+    /// Processor Serial Number.
     Psn = 1 << 18,
+    /// CLFLUSH instruction.
     Clflush = 1 << 19,
+    /// Debug Store.
     Ds = 1 << 21,
+    /// Thermal Monitor and Software Controlled Clock.
     Acpi = 1 << 22,
+    /// MMX technology.
     Mmx = 1 << 23,
+    /// FXSAVE and FXRSTOR instructions.
     Fxsr = 1 << 24,
+    /// SSE extensions.
     Sse = 1 << 25,
+    /// SSE2 extensions.
     Sse2 = 1 << 26,
+    /// Self Snoop.
     Ss = 1 << 27,
+    /// Hyper-Threading Technology.
     Htt = 1 << 28,
+    /// Thermal Monitor.
     Tm = 1 << 29,
+    /// IA64 processor emulating x86.
     Ia64 = 1 << 30,
+    /// Pending Break Enable.
     Pbe = 1 << 31,
 }
 
@@ -98,10 +130,29 @@ fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
     let mut edx: u32;
 
     unsafe {
-        core::arch::asm!(
+        #[cfg(target_pointer_width = "32")]
+        ::core::arch::asm!(
+            "mov {ebx_backup}, ebx", // Save ebx
             "cpuid",
+            "mov {ebx_out}, ebx",    // Move ebx to output.
+            "mov ebx, {ebx_backup}", // Restore ebx
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
             inout("eax") eax => eax,
-            out("ebx") ebx,
+            out("ecx") ecx,
+            out("edx") edx,
+            options(nomem, preserves_flags, nostack)
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        ::core::arch::asm!(
+            "mov {ebx_backup}, rbx", // Save rbx
+            "cpuid",
+            "mov {ebx_out:e}, ebx",  // Move ebx to output.
+            "mov rbx, {ebx_backup}", // Restore rbx
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
+            inout("eax") eax => eax,
             out("ecx") ecx,
             out("edx") edx,
             options(nomem, preserves_flags, nostack)
@@ -184,6 +235,7 @@ pub fn get_apic_id() -> u8 {
 pub fn has_cpuid() -> bool {
     let result: u32;
     unsafe {
+        #[cfg(target_pointer_width = "32")]
         ::core::arch::asm!(
             "pushfl",                   // Save EFLAGS
             "pushfl",                   // Store EFLAGS
@@ -194,9 +246,30 @@ pub fn has_cpuid() -> bool {
             "xorl (%esp), %eax",        // eax = whichever bits were changed
             "popfl",                    // Restore original EFLAGS
             "andl $0x200000, %eax",     // eax = zero if ID bit can't be changed, else non-zero
-            "movl $0, %eax",
-            "jz 1f",
-            "movl $1, %eax",
+            "testl %eax, %eax",         // Test if eax is zero
+            "movl $0, %eax",            // Set default result to 0
+            "jz 1f",                    // Jump if zero (CPUID not supported)
+            "movl $1, %eax",            // Set result to 1 (CPUID supported)
+            "1:",
+            out("eax") result,
+            options(preserves_flags, att_syntax)
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        ::core::arch::asm!(
+            "pushfq",                   // Save RFLAGS
+            "pushfq",                   // Store RFLAGS
+            "xorq $0x200000, (%rsp)",   // Invert the ID bit in stored RFLAGS
+            "popfq",                    // Load stored RFLAGS (with ID bit inverted)
+            "pushfq",                   // Store RFLAGS again (ID bit may or may not be inverted)
+            "popq %rax",                // rax = modified RFLAGS (ID bit may or may not be inverted)
+            "xorq (%rsp), %rax",        // rax = whichever bits were changed
+            "popfq",                    // Restore original RFLAGS
+            "andq $0x200000, %rax",     // rax = zero if ID bit can't be changed, else non-zero
+            "testq %rax, %rax",         // Test if rax is zero
+            "movl $0, %eax",            // Set default result to 0
+            "jz 1f",                    // Jump if zero (CPUID not supported)
+            "movl $1, %eax",            // Set result to 1 (CPUID supported)
             "1:",
             out("eax") result,
             options(preserves_flags, att_syntax)
