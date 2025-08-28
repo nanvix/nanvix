@@ -20,6 +20,12 @@ INITRAMFS_DIR="${IMAGES_DIR}/l2-sysvm-rootfs"
 LINUXD_ELF="${NANVIX_HOME}/bin/linuxd.elf"
 
 #===================================================================================================
+# Utilities
+#===================================================================================================
+
+source "${NANVIX_HOME}/scripts/common/utils.sh"
+
+#===================================================================================================
 # Command line arguments
 #===================================================================================================
 
@@ -43,10 +49,11 @@ fi
 # Socket address parsing
 #===================================================================================================
 
-# FIXME (#839): these values are currently hard-coded here and in src/utils/nanvixd/src/config.rs
-CONTROL_PLANE_SOCKADDR="192.168.249.3:9000"
-USER_VM_SOCKADDR="192.168.249.2:9001"
-GATEWAY_SOCKADDR="192.168.249.2:9002"
+GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "guest_tap_ip_address")
+HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "host_tap_ip_address")
+CONTROL_PLANE_SOCKADDR="${HOST_TAP_IP_ADDRESS}:9000"
+USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:9001"
+GATEWAY_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:9002"
 
 #===================================================================================================
 # Build initramfs
