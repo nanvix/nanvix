@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::ContextInformation,
+    hal::arch::{
+        x86::cpu::FpuState,
+        ContextInformation,
+    },
     mm::{
         kstack::KernelStack,
         ustack::UserStack,
@@ -59,6 +62,8 @@ pub struct ThreadState {
     locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
     /// Interrupt reason, if any.
     interrupt_reason: Option<InterruptReason>,
+    /// FPU state.
+    fpu_state: Pin<Box<FpuState>>,
 }
 
 //==================================================================================================
@@ -89,6 +94,7 @@ impl ThreadState {
         user_stack: Option<UserStack>,
         user_tda: Option<VirtualAddress>,
         context: ContextInformation,
+        fpu_state: FpuState,
     ) -> Self {
         Self {
             id,
@@ -99,6 +105,7 @@ impl ThreadState {
             join_cond: Condvar::new(),
             locked_mutexes: BTreeMap::new(),
             interrupt_reason: None,
+            fpu_state: Box::pin(fpu_state),
         }
     }
 
@@ -113,6 +120,19 @@ impl ThreadState {
     ///
     pub(super) fn context_mut(&mut self) -> *mut ContextInformation {
         self.context.as_mut().get_mut() as *mut ContextInformation
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable pointer to the FPU state of the thread.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable pointer to the FPU state of the thread.
+    ///
+    pub(super) fn fpu_state_mut(&mut self) -> *mut FpuState {
+        self.fpu_state.as_mut().get_mut() as *mut FpuState
     }
 
     ///

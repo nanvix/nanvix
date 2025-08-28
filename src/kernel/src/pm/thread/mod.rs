@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::ContextInformation,
+    hal::arch::{
+        x86::cpu::FpuState,
+        ContextInformation,
+    },
     mm::{
         kstack::KernelStack,
         ustack::UserStack,
@@ -66,8 +69,17 @@ impl ThreadManager {
     /// This function returns a tuple containing the kernel thread and a new instance of a [`ThreadManager`].
     ///
     fn new() -> (ReadyThread, Self) {
-        let kernel: ReadyThread =
-            ReadyThread::new(From::<i32>::from(0), None, None, None, ContextInformation::default());
+        let kernel: ReadyThread = {
+            ReadyThread::new(
+                From::<i32>::from(0),
+                None,
+                None,
+                None,
+                ContextInformation::default(),
+                // SAFETY: calls to FpuState::new are synchronized.
+                unsafe { FpuState::new() },
+            )
+        };
         (
             kernel,
             Self {
@@ -102,7 +114,15 @@ impl ThreadManager {
         let id: ThreadIdentifier = self.next_id;
         self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);
 
-        ReadyThread::new(id, kernel_stack, user_stack, user_tda, context)
+        ReadyThread::new(
+            id,
+            kernel_stack,
+            user_stack,
+            user_tda,
+            context,
+            // SAFETY: calls to FpuState::new are synchronized.
+            unsafe { FpuState::new() },
+        )
     }
 }
 

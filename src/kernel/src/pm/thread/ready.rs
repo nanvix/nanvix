@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::ContextInformation,
+    hal::arch::{
+        x86::cpu::FpuState,
+        ContextInformation,
+    },
     mm::{
         kstack::KernelStack,
         ustack::UserStack,
@@ -76,9 +79,17 @@ impl ReadyThread {
         user_stack: Option<UserStack>,
         user_tda: Option<VirtualAddress>,
         context: ContextInformation,
+        fpu_state: FpuState,
     ) -> Self {
         Self {
-            state: Box::new(ThreadState::new(id, kernel_stack, user_stack, user_tda, context)),
+            state: Box::new(ThreadState::new(
+                id,
+                kernel_stack,
+                user_stack,
+                user_tda,
+                context,
+                fpu_state,
+            )),
             admission_time: clock::now(),
         }
     }
@@ -131,12 +142,18 @@ impl ReadyThread {
     ///
     pub fn run(
         mut self,
-    ) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
-    {
+    ) -> (
+        RunningThread,
+        Option<InterruptReason>,
+        *mut ContextInformation,
+        *mut FpuState,
+        Option<VirtualAddress>,
+    ) {
         let ctx: *mut ContextInformation = self.state.context_mut();
+        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
         let interrupt_reason: Option<InterruptReason> = self.state.take_interrupt_reason();
         let user_tda: Option<VirtualAddress> = self.state.get_thread_data_area();
-        (RunningThread::from_state(self.state), interrupt_reason, ctx, user_tda)
+        (RunningThread::from_state(self.state), interrupt_reason, ctx, fpu_state, user_tda)
     }
 
     ///
