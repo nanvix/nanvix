@@ -214,9 +214,10 @@ pub fn has_cpuid() -> bool {
             "xorl (%esp), %eax",        // eax = whichever bits were changed
             "popfl",                    // Restore original EFLAGS
             "andl $0x200000, %eax",     // eax = zero if ID bit can't be changed, else non-zero
-            "movl $0, %eax",
-            "jz 1f",
-            "movl $1, %eax",
+            "testl %eax, %eax",         // Test if eax is zero
+            "movl $0, %eax",            // Set default result to 0
+            "jz 1f",                    // Jump if zero (CPUID not supported)
+            "movl $1, %eax",            // Set result to 1 (CPUID supported)
             "1:",
             out("eax") result,
             options(preserves_flags, att_syntax)
@@ -233,9 +234,10 @@ pub fn has_cpuid() -> bool {
             "xorq (%rsp), %rax",        // rax = whichever bits were changed
             "popfq",                    // Restore original RFLAGS
             "andq $0x200000, %rax",     // rax = zero if ID bit can't be changed, else non-zero
-            "movl $0, %eax",
-            "jz 1f",
-            "movl $1, %eax",
+            "testq %rax, %rax",         // Test if rax is zero
+            "movl $0, %eax",            // Set default result to 0
+            "jz 1f",                    // Jump if zero (CPUID not supported)
+            "movl $1, %eax",            // Set result to 1 (CPUID supported)
             "1:",
             out("eax") result,
             options(preserves_flags, att_syntax)
