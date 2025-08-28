@@ -34,6 +34,12 @@ CLOUD_HYPERVISOR_PATH="${BIN_DIR}/cloud-hypervisor"
 CLOUD_HYPERVISOR_REMOTE_PATH="${BIN_DIR}/ch-remote"
 
 #===================================================================================================
+# Utilities
+#===================================================================================================
+
+source "${NANVIX_HOME}/scripts/common/utils.sh"
+
+#===================================================================================================
 # Networking
 #===================================================================================================
 
@@ -41,8 +47,8 @@ CLOUD_HYPERVISOR_REMOTE_PATH="${BIN_DIR}/ch-remote"
 GUEST_MAC_ADDRESS="12:34:56:78:90:ab"
 GUEST_BROADCAST_ADDRESS="192.168.249.1"
 MASK="255.255.255.0"
-GUEST_TAP_IP_ADDRESS="192.168.249.2"
-HOST_TAP_IP_ADDRESS="192.168.249.3"
+GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "guest_tap_ip_address")
+HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "host_tap_ip_address")
 
 CLH_API_SOCKET="/tmp/cloud-hypervisor.sock"
 CLH_CONSOLE="/tmp/clh-console"

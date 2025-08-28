@@ -1,0 +1,5 @@
+# IP address of linuxd when running inside an L2 VM.
+guest_tap_ip_address = "192.168.249.2"
+
+# IP of the TAP device host processes can use to communicate with linuxd inside the L2 VM.
+host_tap_ip_address = "192.168.249.3"
