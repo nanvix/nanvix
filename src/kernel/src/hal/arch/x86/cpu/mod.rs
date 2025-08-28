@@ -13,6 +13,11 @@ mod interrupt;
 #[cfg(feature = "smp")]
 mod clock;
 
+#[cfg(feature = "sse")]
+mod fpu;
+#[cfg(not(feature = "sse"))]
+mod nofpu;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -50,6 +55,11 @@ pub use interrupt::{
     InterruptNumber,
 };
 pub mod tss;
+
+#[cfg(feature = "sse")]
+pub use fpu::FpuState;
+#[cfg(not(feature = "sse"))]
+pub use nofpu::FpuState;
 
 //==================================================================================================
 // Standalone Functions
@@ -97,6 +107,16 @@ pub fn init(
         info!("- has tm:    {}", cpuid::has_tm());
         info!("- has ia64:  {}", cpuid::has_ia64());
         info!("- has pbe:   {}", cpuid::has_pbe());
+
+        #[cfg(feature = "sse")]
+        if cpuid::has_sse() || cpuid::has_sse2() && (cpuid::has_fxsr()) {
+            // SAFETY: The following conditions are met:
+            // - Calls to this function are synchronized.
+            // - This function runs on a processor that supports SSE or SSE2 features.
+            // - This function runs on a processor that supports FXSAVE and FXRSTOR instructions.
+            // - This function runs at processor privilege level 0.
+            unsafe { fpu::init() };
+        }
     }
 
     let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };

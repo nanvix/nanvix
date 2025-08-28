@@ -18,7 +18,7 @@ name = "microvm"
 path = "src/main.rs"
 
 [dependencies]
-arch = { workspace = true }
+arch = { workspace = true, features = ["cpuid"] }
 anyhow = { workspace = true }
 flexi_logger = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
@@ -41,3 +41,6 @@ hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 profiler = ["profiler/auto-calibrate"]
 auto-calibrate = []
 timestamp-messages = ["profiler/timestamp-messages"]
+
+# Enables SSE/SSE2 support.
+sse = []
