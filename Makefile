@@ -181,6 +181,7 @@ export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
 export KERNEL_CARGO_FLAGS := -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --features $(LOG_LEVEL)
+export KERNEL_CARGO_FEATURES += $(if $(filter yes,$(SSE)),--features sse,)
 export WASMD_CARGO_FEATURES :=
 
 # Rust flags for host target.

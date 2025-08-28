@@ -444,6 +444,7 @@ _do_hwint 15
  * Saves the execution context of the calling process.
  */
 __context_switch:
+
     movl 4(%esp), %eax  /* from */
     movl 8(%esp), %edx  /* to   */
     movl 12(%esp), %ecx /* tss  */
@@ -484,7 +485,6 @@ __context_switch:
     movl CONTEXT_ESP0(%edx), %eax
     movl %eax, TSS_ESP0(%ecx)
 
-    __context_switch.out:
     ret
 
 /*----------------------------------------------------------------------------*
