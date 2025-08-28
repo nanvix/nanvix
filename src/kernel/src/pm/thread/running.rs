@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::ContextInformation,
+    hal::arch::{
+        x86::cpu::FpuState,
+        ContextInformation,
+    },
     pm::{
         sync::{
             condvar::Condvar,
@@ -81,9 +84,13 @@ impl RunningThread {
     ///
     /// This function returns a tuple containing the sleeping thread and a mutable pointer to the execution context.
     ///
-    pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
+    pub fn sleep(
+        mut self,
+        alarm: Option<SystemTime>,
+    ) -> (SleepingThread, *mut ContextInformation, *mut FpuState) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        (SleepingThread::from_state(self.state, alarm), ctx)
+        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
+        (SleepingThread::from_state(self.state, alarm), ctx, fpu_state)
     }
 
     ///
@@ -95,9 +102,10 @@ impl RunningThread {
     ///
     /// This function returns a tuple containing the ready thread and a mutable pointer to the execution context.
     ///
-    pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation) {
+    pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation, *mut FpuState) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        (ReadyThread::from_state(self.state), ctx)
+        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
+        (ReadyThread::from_state(self.state), ctx, fpu_state)
     }
 
     ///
@@ -140,9 +148,13 @@ impl RunningThread {
     ///
     /// This function returns a tuple containing the zombie thread and a mutable pointer to the execution context.
     ///
-    pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
+    pub fn exit(
+        mut self,
+        status: ExitStatus,
+    ) -> (ZombieThread, *mut ContextInformation, *mut FpuState) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        (ZombieThread::from_state(self.state, status), ctx)
+        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
+        (ZombieThread::from_state(self.state, status), ctx, fpu_state)
     }
 
     ///

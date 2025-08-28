@@ -11,7 +11,10 @@ use crate::{
     event::EventOwnership,
     hal::{
         self,
-        arch::ContextInformation,
+        arch::{
+            x86::cpu::FpuState,
+            ContextInformation,
+        },
         io::{
             AnyIoPort,
             IoMemoryRegion,
@@ -150,10 +153,11 @@ impl ProcessManagerInner {
     ) -> Self {
         let kernel: RunnableProcess = RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root);
 
-        let (kernel, reason, _, _user_tda): (
+        let (kernel, reason, _, _, _user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            *mut FpuState,
             Option<VirtualAddress>,
         ) = kernel.run();
         debug_assert!(reason.is_none(), "kernel process should not be interrupted");
@@ -648,6 +652,8 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - A pointer to the FPU state of the previous thread.
+    /// - A pointer to the FPU state of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     fn schedule(
@@ -657,12 +663,14 @@ impl ProcessManagerInner {
         ThreadIdentifier,
         *mut ContextInformation,
         *mut ContextInformation,
+        *mut FpuState,
+        *mut FpuState,
         Option<VirtualAddress>,
     ) {
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
 
-        let (previous_process, previous_context) = previous_process.schedule();
+        let (previous_process, previous_context, previous_fpu_state) = previous_process.schedule();
         self.ready.push_back(previous_process);
 
         self.check_alarm();
@@ -676,10 +684,11 @@ impl ProcessManagerInner {
         // Select next process to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context, user_tda): (
+        let (next_process, reason, next_context, next_fpu_state, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            *mut FpuState,
             Option<VirtualAddress>,
         ) = next_process.run();
 
@@ -687,7 +696,15 @@ impl ProcessManagerInner {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context, user_tda)
+        (
+            next_pid,
+            next_tid,
+            previous_context,
+            next_context,
+            previous_fpu_state,
+            next_fpu_state,
+            user_tda,
+        )
     }
 
     // Traverses the list of sleeping processes, checking for expired alarms and moving processes
@@ -733,6 +750,8 @@ impl ProcessManagerInner {
     /// - The thread identifier of the next thread to run.
     /// - A pointer to the context information of the previous thread.
     /// - A pointer to the context information of the next thread.
+    /// - A pointer to the FPU state of the previous thread.
+    /// - A pointer to the FPU state of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
     fn sleep(
@@ -743,6 +762,8 @@ impl ProcessManagerInner {
         ThreadIdentifier,
         *mut ContextInformation,
         *mut ContextInformation,
+        *mut FpuState,
+        *mut FpuState,
         Option<VirtualAddress>,
     ) {
         let running_process: RunningProcess = self.take_running();
@@ -753,26 +774,28 @@ impl ProcessManagerInner {
         }
 
         // Suspend the execution of the calling thread.
-        let previous_context: *mut ContextInformation = match running_process.sleep(alarm) {
-            // The calling process still has runnable threads, put it in the list of ready processes.
-            Ok((runnable_process, previous_context)) => {
-                self.ready.push_back(runnable_process);
-                previous_context
-            },
-            // The calling process has only sleeping threads left, put it in the list of suspended processes.
-            Err((suspended_process, previous_context)) => {
-                self.suspended.push_back(suspended_process);
-                previous_context
-            },
-        };
+        let (previous_context, previous_fpu_state): (*mut ContextInformation, *mut FpuState) =
+            match running_process.sleep(alarm) {
+                // The calling process still has runnable threads, put it in the list of ready processes.
+                Ok((runnable_process, previous_context, previous_fpu_state)) => {
+                    self.ready.push_back(runnable_process);
+                    (previous_context, previous_fpu_state)
+                },
+                // The calling process has only sleeping threads left, put it in the list of suspended processes.
+                Err((suspended_process, previous_context, previous_fpu_state)) => {
+                    self.suspended.push_back(suspended_process);
+                    (previous_context, previous_fpu_state)
+                },
+            };
 
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context, user_tda): (
+        let (next_process, reason, next_context, next_fpu_state, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            *mut FpuState,
             Option<VirtualAddress>,
         ) = next_process.run();
 
@@ -780,7 +803,15 @@ impl ProcessManagerInner {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context, user_tda)
+        (
+            next_pid,
+            next_tid,
+            previous_context,
+            next_context,
+            previous_fpu_state,
+            next_fpu_state,
+            user_tda,
+        )
     }
 
     ///
@@ -913,6 +944,8 @@ impl ProcessManagerInner {
         ThreadIdentifier,
         *mut ContextInformation,
         *mut ContextInformation,
+        *mut FpuState,
+        *mut FpuState,
         Option<VirtualAddress>,
     ) {
         let running_process: RunningProcess = self.take_running();
@@ -928,26 +961,28 @@ impl ProcessManagerInner {
         }
 
         // Terminate the calling thread.
-        let previous_context: *mut ContextInformation = match running_process.exit(status) {
-            // The calling process still has runnable threads, put it in the list of ready processes.
-            Ok((runnable_process, previous_context)) => {
-                self.ready.push_back(runnable_process);
-                previous_context
-            },
-            // The calling process has only sleeping threads left, put it in the list of zombies processes.
-            Err((zombie_process, previous_context)) => {
-                self.zombies.push_back(zombie_process);
-                previous_context
-            },
-        };
+        let (previous_context, previous_fpu_state): (*mut ContextInformation, *mut FpuState) =
+            match running_process.exit(status) {
+                // The calling process still has runnable threads, put it in the list of ready processes.
+                Ok((runnable_process, previous_context, previous_fpu_state)) => {
+                    self.ready.push_back(runnable_process);
+                    (previous_context, previous_fpu_state)
+                },
+                // The calling process has only sleeping threads left, put it in the list of zombies processes.
+                Err((zombie_process, previous_context, previous_fpu_state)) => {
+                    self.zombies.push_back(zombie_process);
+                    (previous_context, previous_fpu_state)
+                },
+            };
 
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context, user_tda): (
+        let (next_process, reason, next_context, next_fpu_state, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            *mut FpuState,
             Option<VirtualAddress>,
         ) = next_process.run();
 
@@ -955,7 +990,15 @@ impl ProcessManagerInner {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, previous_context, next_context, user_tda)
+        (
+            next_pid,
+            next_tid,
+            previous_context,
+            next_context,
+            previous_fpu_state,
+            next_fpu_state,
+            user_tda,
+        )
     }
 
     ///
@@ -993,6 +1036,8 @@ impl ProcessManagerInner {
         Condvar,
         *mut ContextInformation,
         *mut ContextInformation,
+        *mut FpuState,
+        *mut FpuState,
         Option<VirtualAddress>,
     ) {
         let running_process: RunningProcess = self.take_running();
@@ -1010,32 +1055,36 @@ impl ProcessManagerInner {
         }
 
         // Terminate the calling thread and schedule another thread to run.
-        let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
-            match running_process.exit_thread(status) {
-                // The calling process still has runnable threads, put it in the list of ready processes.
-                Ok((join_cond, runnable_process, previous_context)) => {
-                    self.ready.push_back(runnable_process);
-                    (join_cond, previous_context)
-                },
-                // The calling process has only sleeping threads left, put it in the list of suspended processes.
-                Err(Ok((join_cond, sleeping_process, previous_context))) => {
-                    self.suspended.push_back(sleeping_process);
-                    (join_cond, previous_context)
-                },
-                // The calling process has only zombie threads left, put it in the list of zombies processes.
-                Err(Err((join_cond, zombie_process, previous_context))) => {
-                    self.zombies.push_back(zombie_process);
-                    (join_cond, previous_context)
-                },
-            };
+        let (join_cond, previous_context, previous_fpu_state): (
+            Condvar,
+            *mut ContextInformation,
+            *mut FpuState,
+        ) = match running_process.exit_thread(status) {
+            // The calling process still has runnable threads, put it in the list of ready processes.
+            Ok((join_cond, runnable_process, previous_context, previous_fpu_state)) => {
+                self.ready.push_back(runnable_process);
+                (join_cond, previous_context, previous_fpu_state)
+            },
+            // The calling process has only sleeping threads left, put it in the list of suspended processes.
+            Err(Ok((join_cond, sleeping_process, previous_context, previous_fpu_state))) => {
+                self.suspended.push_back(sleeping_process);
+                (join_cond, previous_context, previous_fpu_state)
+            },
+            // The calling process has only zombie threads left, put it in the list of zombies processes.
+            Err(Err((join_cond, zombie_process, previous_context, previous_fpu_state))) => {
+                self.zombies.push_back(zombie_process);
+                (join_cond, previous_context, previous_fpu_state)
+            },
+        };
 
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
-        let (next_process, reason, next_context, user_tda): (
+        let (next_process, reason, next_context, next_fpu_state, user_tda): (
             RunningProcess,
             Option<InterruptReason>,
             *mut ContextInformation,
+            *mut FpuState,
             Option<VirtualAddress>,
         ) = next_process.run();
 
@@ -1043,7 +1092,16 @@ impl ProcessManagerInner {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
-        (next_pid, next_tid, join_cond, previous_context, next_context, user_tda)
+        (
+            next_pid,
+            next_tid,
+            join_cond,
+            previous_context,
+            next_context,
+            previous_fpu_state,
+            next_fpu_state,
+            user_tda,
+        )
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {

@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::hal::arch::x86::{
-    cpu::tss,
+    cpu::{
+        tss,
+        FpuState,
+    },
     mem::gdt::{
         Gdt,
         SegmentSelector,
@@ -74,6 +77,8 @@ impl ContextInformation {
     ///
     /// - `from`: Execution context to switch from.
     /// - `to`: Execution context to switch to.
+    /// - `from_fpu`: FPU state to save.
+    /// - `to_fpu`: FPU state to restore.
     /// - `user_tda`: Optional base address for the user-space thread data area for the next context.
     ///
     /// # Safety
@@ -82,6 +87,7 @@ impl ContextInformation {
     ///
     /// It is safe to call this function if and only if the following conditions are met:
     /// - `from` and `to` point to valid execution contexts.
+    /// - `from_fpu` and `to_fpu` point to valid FPU state structures.
     /// - The processor is running with interrupts disabled.
     /// - The processor is running in privileged mode.
     ///
@@ -93,6 +99,8 @@ impl ContextInformation {
     pub unsafe fn switch(
         from: *mut ContextInformation,
         to: *mut ContextInformation,
+        #[cfg_attr(not(feature = "sse"), allow(unused_variables))] from_fpu: *mut FpuState,
+        #[cfg_attr(not(feature = "sse"), allow(unused_variables))] to_fpu: *mut FpuState,
         user_tda: Option<VirtualAddress>,
     ) {
         unsafe extern "C" {
@@ -112,6 +120,16 @@ impl ContextInformation {
         }
 
         let tss: *const Tss = tss::get_curr();
+
+        #[cfg(feature = "sse")]
+        {
+            // Save FPU state.
+            ::core::arch::asm!("fxsave [{}]", in(reg) from_fpu, options(nostack, preserves_flags));
+
+            // Restore FPU state.
+            ::core::arch::asm!("fxrstor [{}]", in(reg) to_fpu, options(nostack, preserves_flags));
+        }
+
         __context_switch(from, to, tss);
     }
 }
