@@ -11,7 +11,6 @@
 // Modules
 //==================================================================================================
 
-mod io;
 mod kvm;
 mod microvm;
 mod pal;
@@ -27,11 +26,13 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
+    io::{
+        ControlCommand,
+        ControlCommandResponse,
+        IoThread,
+    },
+    memory,
     vmm::microvm::{
-        io::{
-            ControlCommandResponse,
-            IoThread,
-        },
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
     },
@@ -99,22 +100,6 @@ enum OrchestratorState {
     PreBoot,
     Running,
     Paused,
-}
-
-///
-/// # Description
-///
-/// Control plane commands.
-///
-#[derive(PartialEq)]
-pub enum ControlCommand {
-    _StartMicroVm,
-    _LoadSnapshotAndRun,
-    _PauseMicroVm,
-    _PauseAndCreateSnapshot,
-    _CreateSnapshot,
-    _ResumeMicroVm,
-    LinuxDaemonFlushed,
 }
 
 //==================================================================================================
@@ -211,36 +196,12 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
-            loop {
-                match memory_thread_rx.try_recv() {
-                    Ok(mut msg) => {
-                        profiler::timestamp_message!(
-                            &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                        );
-                        if let Err(e) = memory_thread_tx.send(msg) {
-                            let reason: String = format!("failed to send message: {e:?}");
-                            error!("memory_thread(): {reason}");
-                            continue;
-                        }
-                        vmem.lock()
-                            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                            .add_credit()?;
-                    },
-                    Err(TryRecvError::Disconnected) => {
-                        // When the guest finishes , the vCPU thread will disconnect from this
-                        // thread. This situation is normal and should not create an error log.
-                        debug!("memory_thread(): channel has been disconnected");
-                        break Ok(());
-                    },
-                    Err(TryRecvError::Empty) => {
-                        // No message available.
-                    },
-                }
-            }
-        });
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
+            memory::spawn(memory_thread_rx, memory_thread_tx, move || {
+                vmem.lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                    .add_credit()
+            });
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid. We synchronize the

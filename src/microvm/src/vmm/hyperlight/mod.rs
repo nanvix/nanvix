@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
-//==================================================================================================
-
-mod io;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -18,13 +12,30 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    vmm::hyperlight::io::IoThread,
+    io::{
+        ControlCommand,
+        ControlCommandResponse,
+        IoThread,
+    },
+    memory,
 };
 use ::anyhow::Result;
 use ::hyperlight_host::{
     GuestBinary,
+    HyperlightError,
     UninitializedSandbox,
-    sandbox::SandboxConfiguration,
+    mem::{
+        memory_region::MemoryRegionFlags,
+        mgr::SandboxMemoryManager,
+        shared_mem::ExclusiveSharedMemory,
+    },
+    sandbox::{
+        SandboxConfiguration,
+        uninitialized::{
+            GuestBlob,
+            GuestEnvironment,
+        },
+    },
 };
 use ::std::{
     fs::File,
@@ -32,8 +43,10 @@ use ::std::{
     sync::{
         Arc,
         Mutex,
+        OnceLock,
         mpsc,
         mpsc::{
+            Receiver,
             Sender,
             TryRecvError,
         },
@@ -44,19 +57,6 @@ use ::sys::ipc::{
     Message,
     MessageType,
 };
-use hyperlight_host::{
-    HyperlightError,
-    mem::{
-        memory_region::MemoryRegionFlags,
-        mgr::SandboxMemoryManager,
-        shared_mem::ExclusiveSharedMemory,
-    },
-    sandbox::uninitialized::{
-        GuestBlob,
-        GuestEnvironment,
-    },
-};
-use std::sync::OnceLock;
 
 // ==================================================================================================
 // Globals
@@ -73,6 +73,8 @@ pub struct Vmm {
     _io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     sandbox: Option<UninitializedSandbox>,
+    _control_input_rx: Receiver<ControlCommand>,
+    _control_output_tx: Sender<ControlCommandResponse>,
 }
 
 //==================================================================================================
@@ -105,10 +107,19 @@ impl Vmm {
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
+        let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
+        let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
 
         // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
+        let _io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
+            IoThread::spawn(
+                conn,
+                gateway_rx,
+                gateway_tx.clone(),
+                control_input_tx,
+                control_output_rx,
+            )
+        });
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size = 4 * 1024 * 1024;
@@ -254,34 +265,16 @@ impl Vmm {
         })?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
-            loop {
-                match memory_thread_rx.try_recv() {
-                    Ok(msg) => {
-                        if let Err(e) = memory_thread_tx.send(msg) {
-                            let reason: String = format!("failed to send message: {:?}", e);
-                            error!("memory_thread(): {}", reason);
-                            continue;
-                        }
-
-                        add_credit()?;
-                    },
-                    Err(TryRecvError::Disconnected) => {
-                        debug!("memory_thread(): channel has been disconnected");
-                        break Ok(());
-                    },
-                    Err(TryRecvError::Empty) => {
-                        // No message available.
-                    },
-                }
-            }
-        });
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
+            memory::spawn(memory_thread_rx, memory_thread_tx, add_credit);
 
         Ok(Self {
             _memory_thread: memory_thread,
             _gateway_tx: gateway_tx,
             _io_thread,
             sandbox: Some(sandbox),
+            _control_input_rx: control_input_rx,
+            _control_output_tx: control_output_tx,
         })
     }
 
