@@ -17,6 +17,9 @@ pub mod constants;
 // This is to allow these values to be easily used outside Rust code (e.g., in a Shell script).
 include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 
+// Linuxd build-time constants are generated in a similar fashion to kernel variables.
+include!(concat!(env!("OUT_DIR"), "/linuxd_config.rs"));
+
 //==================================================================================================
 // System
 //==================================================================================================

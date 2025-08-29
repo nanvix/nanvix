@@ -3,3 +3,14 @@ guest_tap_ip_address = "192.168.249.2"
 
 # IP of the TAP device host processes can use to communicate with linuxd inside the L2 VM.
 host_tap_ip_address = "192.168.249.3"
+
+# Magic string used to detect when an L2 VM is ready to be snapshotted.
+snapshot_magic_string = "Linuxd hit pre-snapshot trap"
+
+# Name for the snapshot file stored in the images directory.
+snapshot_name = "l2-sysvm-snapshot"
+
+# Ports used for different services in linuxd.
+control_plane_port = 9000
+user_vm_port = 9001
+gateway_port = 9002
