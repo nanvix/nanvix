@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//!
+//! This module implements the VMM "memory thread", a lightweight worker responsible for relaying
+//! messages between the I/O subsystem and the guest, while participating in a simple credit-based
+//! flow-control mechanism.
+//!
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -26,21 +32,22 @@ use ::sys::ipc::Message;
 ///
 /// # Description
 ///
-/// Spawns a new memory thread.
+/// Spawns a new memory thread. This thread relays messages between the I/O subsystem and the guest,
+/// while participating in a simple credit-based flow-control mechanism.
 ///
 /// # Parameters
 ///
-/// - `memory_thread_rx`: Receives messages from I/O thread.
-/// - `memory_thread_tx`: Sends messages to the virtual machine's stdin.
+/// - `data_rx`: Receives data messages from the I/O thread.
+/// - `data_tx`: Sends data messages to the virtual machine's stdin.
 /// - `add_credit`: Closure that adds a credit to the virtual machine credit pool.
 ///
 /// # Returns
 ///
-/// A handle to the I/O thread.
+/// A handle to the memory thread.
 ///
 pub fn spawn<F>(
-    memory_thread_rx: Receiver<Message>,
-    memory_thread_tx: Sender<Message>,
+    data_rx: Receiver<Message>,
+    data_tx: Sender<Message>,
     mut add_credit: F,
 ) -> JoinHandle<Result<()>>
 where
@@ -48,14 +55,14 @@ where
 {
     thread::spawn(move || {
         loop {
-            match memory_thread_rx.try_recv() {
+            match data_rx.try_recv() {
                 Ok(mut msg) => {
                     profiler::timestamp_message!(
                         &mut msg.payload,
                         mem::offset_of!(syscall::LinuxDaemonMessage, payload)
                             + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                     );
-                    if let Err(e) = memory_thread_tx.send(msg) {
+                    if let Err(e) = data_tx.send(msg) {
                         let reason: String = format!("failed to send message: {e:?}");
                         error!("memory_thread(): {reason}");
                         continue;
