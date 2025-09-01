@@ -27,7 +27,7 @@ use ::syscomm::{
     SocketType,
 };
 use ::tokio::sync::Mutex;
-use ::user_vm_api::UserVmIdentifier;
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -51,7 +51,7 @@ pub struct SandboxCache {
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
     // Auxiliary index structures.
     /// Reverse index mapping a sandbox ID to a sandbox tag.
-    sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
+    sandbox_index: HashMap<RawUserVmIdentifier, SandboxTag>,
 
     // Control-plane members.
     /// Listener socket on the control-plane address. Right now each different linuxd and user VM
@@ -225,7 +225,7 @@ impl SandboxCache {
     ///
     /// A reference to the sandbox.
     ///
-    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: RawUserVmIdentifier) -> Result<()> {
         let tag = self
             .sandbox_index
             .get(&user_vm_id)

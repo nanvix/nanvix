@@ -31,28 +31,28 @@ use crate::{
     },
     env::get_proj_root,
 };
-use ::sys::ipc::Message;
-use anyhow::Result;
-use flexi_logger::Logger;
-use hwloc::HwLoc;
-use indicatif::{
+use ::anyhow::Result;
+use ::flexi_logger::Logger;
+use ::hwloc::HwLoc;
+use ::indicatif::{
     ProgressBar,
     ProgressStyle,
 };
-use log::{
+use ::log::{
     debug,
     error,
 };
-use microvm::{
+use ::microvm::{
     Gateway,
     Vmm,
 };
-use mio::net::UnixStream;
-use reqwest::header::{
+use ::mio::net::UnixStream;
+use ::nanvixd::message::Kill;
+use ::reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
 };
-use std::{
+use ::std::{
     fs::File,
     io::BufReader,
     mem,
@@ -69,8 +69,11 @@ use std::{
         Instant,
     },
 };
-use sys::pm::ThreadIdentifier;
-use syscall::{
+use ::sys::{
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use ::syscall::{
     LinuxDaemonMessage,
     unistd::message::{
         ReadRequest,
@@ -78,11 +81,12 @@ use syscall::{
         WriteResponse,
     },
 };
-use syscomm::{
+use ::syscomm::{
     BlockingSocketStream,
     SocketStream,
     SocketType,
 };
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -209,7 +213,7 @@ impl Benchmark {
         &mut self,
         payload: nanvixd::message::New,
         headers: HeaderMap,
-    ) -> Result<(String, BlockingSocketStream)> {
+    ) -> Result<(RawUserVmIdentifier, BlockingSocketStream)> {
         let response: nanvixd::message::NewResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
@@ -238,7 +242,7 @@ impl Benchmark {
     }
 
     /// Kill the Nano VM via POST request to nanvixd.
-    pub async fn kill(&mut self, user_vm_id: String) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: RawUserVmIdentifier) -> Result<()> {
         let mut kill_msg_headers = HeaderMap::new();
         kill_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
         kill_msg_headers.insert(
@@ -246,9 +250,7 @@ impl Benchmark {
             format!("{}", nanvixd::message::MessageType::Kill).parse()?,
         );
 
-        let kill_msg = nanvixd::message::Kill {
-            user_vm_id: user_vm_id.clone(),
-        };
+        let kill_msg: Kill = Kill { user_vm_id };
         let response: nanvixd::message::KillResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))

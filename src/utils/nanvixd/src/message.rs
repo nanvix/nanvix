@@ -7,7 +7,7 @@ use ::serde::{
     Deserialize,
     Serialize,
 };
-use ::user_vm_api::UserVmIdentifier;
+use ::user_vm_api::RawUserVmIdentifier;
 
 /// This message can be used to create a new User VM managed by this nanvixd
 /// instance.
@@ -21,7 +21,7 @@ pub struct New {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NewResponse {
-    pub user_vm_id: UserVmIdentifier,
+    pub user_vm_id: RawUserVmIdentifier,
     /// UNIX socket where we can interact with the new VM's stdin/stdout.
     pub gateway_sockaddr: String,
 }
@@ -29,7 +29,7 @@ pub struct NewResponse {
 /// This message can be used to kill a running VM.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Kill {
-    pub user_vm_id: UserVmIdentifier,
+    pub user_vm_id: RawUserVmIdentifier,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
