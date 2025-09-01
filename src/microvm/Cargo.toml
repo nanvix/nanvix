@@ -20,15 +20,16 @@ path = "src/main.rs"
 [dependencies]
 arch = { workspace = true, features = ["cpuid"] }
 anyhow = { workspace = true }
+cfg-if = { workspace = true }
+config = { workspace = true, features = ["microvm"] }
 flexi_logger = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 sys = { workspace = true }
 syscall = { workspace = true }
-cfg-if = { workspace = true }
-config = { workspace = true, features = ["microvm"] }
 syscomm = { workspace = true }
+user-vm-api = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 kvm-bindings = { workspace = true }
