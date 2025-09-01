@@ -28,11 +28,11 @@ log = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
-slab_external = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
+user-vm-api = { workspace = true }
 
 [features]
 default = []

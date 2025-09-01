@@ -22,13 +22,7 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
-
-///
-/// # Description
-///
-/// Unique identifier for each user VM.
-///
-pub type UserVmIdentifier = u32;
+use ::user_vm_api::RawUserVmIdentifier;
 
 ///
 /// # Description
@@ -145,7 +139,7 @@ impl VirtualEnviromentDirectory {
     /// second 32 bits. On error an error is returned.
     ///
     fn get_gtid(
-        uvmid: UserVmIdentifier,
+        uvmid: RawUserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<GlobalThreadIdentifier, Error> {
         let tid: u32 = match u32::try_from(tid) {
@@ -178,7 +172,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn join(
         &mut self,
-        uvmid: UserVmIdentifier,
+        uvmid: RawUserVmIdentifier,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
     ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error>
@@ -230,7 +224,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn leave(
         &mut self,
-        uvmid: UserVmIdentifier,
+        uvmid: RawUserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
         trace!("leave(): uvmid={uvmid} tid={tid:?}");
@@ -267,7 +261,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn get(
         &self,
-        uvmid: UserVmIdentifier,
+        uvmid: RawUserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Option<&VirtualEnvironment> {
         let gtid: GlobalThreadIdentifier = match Self::get_gtid(uvmid, tid) {
