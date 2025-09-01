@@ -72,7 +72,7 @@ Once you are done, you can kill the user VM by sending a `KILL` POST request:
 
 ```bash
 KILL_JSON=$(jq -n \
-    --arg user_vm_id "${VM_ID}" \
+    --argjson user_vm_id "${VM_ID}" \
     '{user_vm_id: $user_vm_id}'
 )
 curl \
@@ -113,7 +113,7 @@ To enable logging, consider prepending the above command with `RUST_LOG=debug` o
 Open another terminal to run the MicroVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
 
 ```bash
-./bin/microvm.elf -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
+./bin/microvm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
 ```
 
 If you passed a `-gateway-bind-addr` flag to `linuxd` in step 1, you will need to open a netcat session to connect to it:
@@ -145,7 +145,7 @@ Redirecting the standard error of the MicroVM to another terminal can be useful 
 
     ```bash
     # Assuming /dev/pts/5 is the tty of the new terminal.
-    RUST_LOG=trace ./bin/microvm.elf -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
+    RUST_LOG=trace ./bin/microvm.elf -user-vm-id 1 -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
     ```
 
 ## Running Nanvix Through the Build System
