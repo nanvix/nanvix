@@ -10,7 +10,7 @@ use ::std::{
     self,
     hash::Hash,
 };
-use ::user_vm_api::UserVmIdentifier;
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 
@@ -18,7 +18,7 @@ use ::user_vm_api::UserVmIdentifier;
 pub struct SandboxTag {
     tenant_id: String,
     app_name: String,
-    sandbox_id: UserVmIdentifier,
+    sandbox_id: RawUserVmIdentifier,
 }
 
 impl SandboxTag {
