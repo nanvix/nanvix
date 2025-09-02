@@ -36,6 +36,7 @@ members = [
         "src/libs/sys",
         "src/libs/type-safe",
         "src/microvm",
+        "src/tests/arch-rust",
         "src/tests/file-rust",
         "src/tests/linux-app",
         "src/tests/testd",
