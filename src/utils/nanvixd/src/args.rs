@@ -17,10 +17,12 @@ use ::std::{
 // Structures
 //==================================================================================================
 
+#[derive(Clone)]
 pub struct Args {
     http_sockaddr: String,
     tmp_directory: String,
     binary_directory: String,
+    toolchain_binary_directory: String,
     console_file: Option<String>,
     hwloc: Option<HwLoc>,
 }
@@ -34,6 +36,7 @@ impl Args {
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
+    pub const OPT_TOOLCHAIN_BIN_DIRECTORY: &'static str = "-toolchain-bin-dir";
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
     pub const OPT_HWLOC: &'static str = "-hwloc";
 
@@ -41,6 +44,8 @@ impl Args {
         let mut http_sockaddr: String = String::new();
         let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
+        let mut toolchain_binary_directory: String =
+            config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
         let mut console_file: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
 
@@ -62,6 +67,10 @@ impl Args {
                 Self::OPT_BIN_DIRECTORY => {
                     i += 1;
                     binary_directory = args[i].clone();
+                },
+                Self::OPT_TOOLCHAIN_BIN_DIRECTORY => {
+                    i += 1;
+                    toolchain_binary_directory = args[i].clone();
                 },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
@@ -91,6 +100,7 @@ impl Args {
             http_sockaddr,
             tmp_directory,
             binary_directory,
+            toolchain_binary_directory,
             console_file,
             hwloc,
         })
@@ -98,13 +108,15 @@ impl Args {
 
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] [{} <hwloc.json>]",
+            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] [{} \
+             <toolchain_bin_dir>] [{} <hwloc.json>]",
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
             Self::OPT_TMP_DIRECTORY,
             Self::OPT_BIN_DIRECTORY,
-            Self::OPT_HWLOC
+            Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
+            Self::OPT_HWLOC,
         );
     }
 
@@ -120,7 +132,11 @@ impl Args {
         &self.binary_directory
     }
 
-    pub fn nanvix_console(&self) -> Option<String> {
+    pub fn toolchain_binary_directory(&self) -> &str {
+        &self.toolchain_binary_directory
+    }
+
+    pub fn console_file(&self) -> Option<String> {
         self.console_file.clone()
     }
 
