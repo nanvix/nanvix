@@ -97,7 +97,7 @@ KILL_EXIT_CODE=$(curl \
     --data "${KILL_JSON}" \
     http://localhost:"${NANVIXD_PORT_NUMBER}" | jq -r '.exit_code')
 
-if [ "${KILL_EXIT_CODE}" -ne 0 ]; then
+if [ "${KILL_EXIT_CODE}" != "0" ]; then
     echo "Test failed: error killing user VM (code=${KILL_EXIT_CODE})"
     exit 1
 fi
