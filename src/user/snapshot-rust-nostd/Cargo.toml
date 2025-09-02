@@ -1,0 +1,31 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "snapshot-rust-nostd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Long running program that prints sequential numbers"
+homepage.workspace = true
+
+[[bin]]
+name = "snapshot-rust-nostd"
+
+[dependencies]
+sys = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]

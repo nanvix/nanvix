@@ -271,7 +271,7 @@ ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
-ALL_GUEST_APPLICATIONS := hello-rust-nostd
+ALL_GUEST_APPLICATIONS := hello-rust-nostd snapshot-rust-nostd
 ALL_GUEST_TESTS := testd file-rust linux-app $(if $(filter yes,$(SSE)),arch-rust,)
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)

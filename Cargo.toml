@@ -43,6 +43,7 @@ members = [
         "src/tests/testd",
         "src/user/hello-rust-nostd",
         "src/user/hello-wasm",
+        "src/user/snapshot-rust-nostd",
         "src/utils/echo-client",
         "src/utils/nanvix-bench",
         "src/utils/nanvixd",
