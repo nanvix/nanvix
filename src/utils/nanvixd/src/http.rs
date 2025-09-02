@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    args::Args,
     cache::SandboxCache,
     config,
     message::{
@@ -22,7 +23,6 @@ use ::http_body_util::{
     BodyExt,
     Full,
 };
-use ::hwloc::HwLoc;
 use ::hyper::{
     body::{
         Bytes,
@@ -46,26 +46,14 @@ use ::tokio::sync::Mutex;
 
 pub struct HttpClient {
     sandbox_cache: Arc<Mutex<SandboxCache>>,
-    tmp_directory: String,
-    binary_directory: String,
-    console_file: Option<String>,
-    hwloc: Option<HwLoc>,
+    args: Arc<Args>,
 }
 
 impl HttpClient {
-    pub fn new(
-        sandbox_cache: Arc<Mutex<SandboxCache>>,
-        tmp_directory: String,
-        binary_directory: String,
-        console_file: Option<String>,
-        hwloc: Option<HwLoc>,
-    ) -> Self {
+    pub fn new(sandbox_cache: Arc<Mutex<SandboxCache>>, args: Arc<Args>) -> Self {
         Self {
             sandbox_cache,
-            tmp_directory,
-            binary_directory,
-            console_file,
-            hwloc,
+            args,
         }
     }
 
@@ -102,20 +90,18 @@ impl HttpClient {
 
     async fn serve_new(
         sandbox_cache: Arc<Mutex<SandboxCache>>,
+        args: Arc<Args>,
         message: &message::New,
-        tmp_directory: String,
-        binary_directory: String,
-        console_file: Option<String>,
-        hwloc: Option<HwLoc>,
     ) -> Result<message::NewResponse> {
         let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
+        let tmp_directory: &str = args.tmp_directory();
 
         let control_plane_sockaddr: String =
-            config::control_plane_sockaddr_builder(&tmp_directory, tag.tenant_id())?;
+            config::control_plane_sockaddr_builder(tmp_directory, tag.tenant_id())?;
         let gateway_sockaddr: String =
-            config::gateway_sockaddr_builder(&tmp_directory, tag.tenant_id())?;
+            config::gateway_sockaddr_builder(tmp_directory, tag.tenant_id())?;
         let user_vm_sockaddr: String =
-            config::user_vm_sockaddr_builder(&tmp_directory, tag.tenant_id())?;
+            config::user_vm_sockaddr_builder(tmp_directory, tag.tenant_id())?;
         let program_args = match message.program_args.len() {
             0 => None,
             _ => Some(message.program_args.clone()),
@@ -127,9 +113,10 @@ impl HttpClient {
             &user_vm_sockaddr,
             &message.program,
             program_args.clone(),
-            console_file.clone(),
-            hwloc.clone(),
-            &binary_directory,
+            args.console_file().clone(),
+            args.hwloc().clone(),
+            args.binary_directory(),
+            args.toolchain_binary_directory(),
         );
 
         // This method will create a sandbox if it is not in the cache.
@@ -148,7 +135,7 @@ impl HttpClient {
     ) -> Result<message::KillResponse> {
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
         let exit_code = match locked_sandbox_cache.kill(message.user_vm_id.clone()).await {
-            Ok(_) => 0,
+            Ok(()) => 0,
             // TODO: more advanced error codes.
             Err(_) => 1,
         };
@@ -164,11 +151,8 @@ impl Service<Request<Incoming>> for HttpClient {
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         // Clone all necessary values before moving them into the future
-        let tmp_directory: String = self.tmp_directory.clone();
-        let binary_directory: String = self.binary_directory.clone();
-        let console_file: Option<String> = self.console_file.clone();
-        let hwloc: Option<HwLoc> = self.hwloc.clone();
         let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
+        let args: Arc<Args> = self.args.clone();
         let future = async move {
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
@@ -211,16 +195,7 @@ impl Service<Request<Incoming>> for HttpClient {
                     debug!("- program file: {}", msg.program);
                     debug!("- program args: {}", msg.program_args);
 
-                    match Self::serve_new(
-                        sandbox_cache,
-                        &msg,
-                        tmp_directory.clone(),
-                        binary_directory.clone(),
-                        console_file.clone(),
-                        hwloc.clone(),
-                    )
-                    .await
-                    {
+                    match Self::serve_new(sandbox_cache, args, &msg).await {
                         Ok(response) => message::MessageResponse::New(response),
                         Err(_) => {
                             error!("error processing NEW request");

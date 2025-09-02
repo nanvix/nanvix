@@ -171,6 +171,7 @@ impl SandboxCache {
                             sandbox_config.gateway_sockaddr(),
                             sandbox_config.hwloc(),
                             sandbox_config.binary_directory(),
+                            sandbox_config.toolchain_binary_directory(),
                             control_plane_listener,
                             control_plane_poll,
                         )?),

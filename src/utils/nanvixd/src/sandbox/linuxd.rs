@@ -37,12 +37,15 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         control_plane_sockaddr: &str,
         user_vm_sockaddr: &str,
         gateway_sockaddr: &str,
         hwloc: Option<HwLoc>,
         binary_directory: &str,
+        // The toolchain binary directory will be used once we introduce the L2 VM.
+        _toolchain_binary_directory: &str,
         control_plane_listener: &mut SocketListener,
         control_plane_poll: &mut Poll,
     ) -> Result<Self> {
