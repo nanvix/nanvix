@@ -691,7 +691,7 @@ run: image
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 else
-	sudo -E $(BINARIES_DIR)/microvm.elf -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
+	sudo -E $(BINARIES_DIR)/microvm.elf -user-vm-id 1 -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
 endif
 
 # Runs system in debug mode.
