@@ -1,0 +1,37 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "arch-rust"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Tests for Architecture-Specific Features"
+homepage.workspace = true
+
+[[bin]]
+name = "arch-rust"
+
+[dependencies]
+arch = { workspace = true, features = ["cpuid"] }
+sys = { workspace = true }
+syscall = { workspace = true, features = ["syscall"] }
+sysapi = { workspace = true }
+nvx = { workspace = true, features = ["sysalloc"] }
+config = { workspace = true }
+syslog = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
+debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
+info = ["nvx/info", "syscall/info", "syslog/info"]
+warn = ["nvx/warn", "syscall/warn", "syslog/warn"]
+error = ["nvx/error", "syscall/error", "syslog/error"]
+panic = ["nvx/panic", "syscall/panic", "syslog/panic"]
+sse = []
