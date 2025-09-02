@@ -17,7 +17,7 @@ use crate::{
         ControlCommandResponse,
         IoThread,
     },
-    memory,
+    memory_thread,
     orchestrator::Orchestrator,
 };
 use ::anyhow::Result;
@@ -278,7 +278,7 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            memory::spawn(memory_thread_rx, memory_thread_tx, add_credit);
+            memory_thread::spawn(memory_thread_rx, memory_thread_tx, add_credit);
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid. We synchronize the

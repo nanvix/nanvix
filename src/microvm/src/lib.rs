@@ -37,7 +37,7 @@ pub mod args;
 mod elf;
 mod gateway;
 mod io_thread;
-mod memory;
+mod memory_thread;
 mod orchestrator;
 mod vmm;
 
