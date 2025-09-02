@@ -36,7 +36,7 @@ macro_rules! timer {
 pub mod args;
 mod elf;
 mod gateway;
-mod io;
+mod io_thread;
 mod memory;
 mod orchestrator;
 mod vmm;

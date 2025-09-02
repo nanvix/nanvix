@@ -26,7 +26,7 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    io::{
+    io_thread::{
         ControlCommand,
         ControlCommandResponse,
         IoThread,
