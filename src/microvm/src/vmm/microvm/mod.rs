@@ -31,7 +31,7 @@ use crate::{
         ControlCommandResponse,
         IoThread,
     },
-    memory,
+    memory_thread,
     orchestrator::Orchestrator,
     vmm::microvm::{
         kvm::vmem::VirtualMemory,
@@ -175,7 +175,7 @@ impl Vmm {
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            memory::spawn(memory_thread_rx, memory_thread_tx, move || {
+            memory_thread::spawn(memory_thread_rx, memory_thread_tx, move || {
                 vmem.lock()
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
