@@ -7,7 +7,7 @@
 
 import subprocess
 import argparse
-from typing import List
+from typing import List, Optional
 
 # ======================================================================================================================
 # Constants
@@ -71,6 +71,8 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
 
                 # Check for magic string and send SIGINT if found.
                 if MAGIC_STRING in stdout:
+                    # NOTE: using SIGINT to stop the process as soon as we detect the magic string.
+                    # We intentionally import signal via subprocess to keep existing behavior.
                     process.send_signal(subprocess.signal.SIGINT)
                     break
 
@@ -90,6 +92,7 @@ def make(
     timeout: int = None,
     build_opt: bool = False,
     sccache: str = None,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Runs make command.
@@ -103,6 +106,7 @@ def make(
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
         timeout (int, optional): Timeout. Defaults to None.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
     command = ["make", target, f"MACHINE={machine}", f"TARGET={arch}"]
@@ -127,6 +131,12 @@ def make(
 
     command.append("BUILD_OPT=yes" if build_opt else "BUILD_OPT=no")
 
+    # Append feature toggles (e.g., ["FOO=bar"]).
+    if features:
+        for feature in features:
+            if feature:
+                command.append(feature)
+
     return_code = run_command(command, f"{target}-stdout.log", f"{target}-stderr.log")
 
     if return_code:
@@ -141,6 +151,7 @@ def lint_check(
     toolchain_dir: str = None,
     log_level: str = None,
     verbose: bool = False,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Lints Nanvix source code.
@@ -152,9 +163,19 @@ def lint_check(
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
-    make("lint-check", machine, arch, release, toolchain_dir, log_level, verbose)
+    make(
+        "lint-check",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        features=features,
+    )
 
 
 def format_check(
@@ -164,6 +185,7 @@ def format_check(
     toolchain_dir: str = None,
     log_level: str = None,
     verbose: bool = False,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Checks for code formatting issues.
@@ -175,9 +197,19 @@ def format_check(
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
-    make("format-check", machine, arch, release, toolchain_dir, log_level, verbose)
+    make(
+        "format-check",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        features=features,
+    )
 
 
 def spellcheck(
@@ -187,6 +219,7 @@ def spellcheck(
     toolchain_dir: str = None,
     log_level: str = None,
     verbose: bool = False,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Checks for spelling errors in source code and documentation.
@@ -198,9 +231,19 @@ def spellcheck(
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
-    make("spellcheck", machine, arch, release, toolchain_dir, log_level, verbose)
+    make(
+        "spellcheck",
+        machine,
+        arch,
+        release,
+        toolchain_dir,
+        log_level,
+        verbose,
+        features=features,
+    )
 
 
 def build(
@@ -213,6 +256,7 @@ def build(
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Builds Nanvix for a target machine and architecture.
@@ -227,6 +271,7 @@ def build(
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
         timeout (int, optional): Timeout. Defaults to None.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
     make(
@@ -240,6 +285,7 @@ def build(
         timeout,
         build_opt,
         sccache,
+        features,
     )
 
 
@@ -251,6 +297,7 @@ def test(
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
+    features: Optional[List[str]] = None,
 ) -> None:
     """
     Tests Nanvix for a target machine and architecture.
@@ -263,6 +310,7 @@ def test(
         log_level (str, optional): Log level. Defaults to None.
         verbose (bool, optional): Verbose build. Defaults to False.
         timeout (int, optional): Timeout. Defaults to None.
+        features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
     make(
@@ -274,6 +322,7 @@ def test(
         log_level,
         verbose,
         timeout,
+        features=features,
     )
 
     make(
@@ -285,6 +334,7 @@ def test(
         log_level,
         verbose,
         timeout,
+        features=features,
     )
 
     # Check if last line of "test-stdout.log" contains the magic string.
@@ -309,6 +359,7 @@ def test(
             log_level,
             verbose,
             timeout,
+            features=features,
         )
 
 
@@ -404,6 +455,13 @@ def parse_args() -> argparse.Namespace:
         help="Set path to sccache binary (optional)",
         required=False,
     )
+    parser.add_argument(
+        "--features",
+        type=str,
+        help="Comma-separated FEATURE=VALUE pairs passed to make (e.g., 'FOO=bar')",
+        required=False,
+        default=None,
+    )
 
     return parser.parse_args()
 
@@ -427,6 +485,14 @@ def main() -> None:
     print(f"  - SCCACHE: {args.sccache if args.sccache else ''}")
     print(f"  - Verbose: {args.verbose}")
     print(f"  - Timeout: {args.timeout}")
+    print(f"  - Features: {args.features if args.features else ''}")
+
+    # Parse features into a list of FEATURE=VALUE tokens.
+    features_list: Optional[List[str]] = None
+    if args.features:
+        features_list = [
+            item.strip() for item in args.features.split(",") if item.strip()
+        ]
 
     # Format source code.
     if args.format:
@@ -437,6 +503,7 @@ def main() -> None:
             args.toolchain_dir,
             args.log_level,
             args.verbose,
+            features=features_list,
         )
 
     # Lint source code.
@@ -448,6 +515,7 @@ def main() -> None:
             args.toolchain_dir,
             args.log_level,
             args.verbose,
+            features=features_list,
         )
 
     # Check spelling in source code and documentation.
@@ -459,6 +527,7 @@ def main() -> None:
             args.toolchain_dir,
             args.log_level,
             args.verbose,
+            features=features_list,
         )
 
     # Build source code.
@@ -473,6 +542,7 @@ def main() -> None:
             args.log_level,
             args.verbose,
             args.timeout,
+            features=features_list,
         )
 
     # Test Nanvix.
@@ -485,6 +555,7 @@ def main() -> None:
             args.log_level,
             args.verbose,
             args.timeout,
+            features=features_list,
         )
 
 
