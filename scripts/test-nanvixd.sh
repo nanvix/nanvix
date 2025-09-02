@@ -34,6 +34,7 @@ CONSOLE_FILE_NAME="${LOGS_DIR}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
 RUST_LOG=trace timeout -s SIGINT --preserve-status --foreground "${TIMEOUT}" \
     ./bin/nanvixd.elf \
         -http-addr "${NANVIXD_SOCKADDR}" \
+        -toolchain-bin-dir "${TOOLCHAIN_DIR}/bin" \
         -tmp-dir "${TMP_DIR}" \
         -console-file "${CONSOLE_FILE_NAME}" &
 NANVIXD_PID=$!
