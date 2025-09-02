@@ -11,7 +11,6 @@
 // Modules
 //==================================================================================================
 
-mod io;
 mod kvm;
 mod microvm;
 mod pal;
@@ -27,11 +26,14 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
+    io_thread::{
+        ControlCommand,
+        ControlCommandResponse,
+        IoThread,
+    },
+    memory_thread,
+    orchestrator::Orchestrator,
     vmm::microvm::{
-        io::{
-            ControlCommandResponse,
-            IoThread,
-        },
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
     },
@@ -56,23 +58,14 @@ use ::std::{
             Receiver,
             RecvError,
             Sender,
-            TryRecvError,
         },
     },
     thread::JoinHandle,
-    time::Instant,
 };
 use ::sys::ipc::{
     Message,
     MessageType,
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-// This value was chosen so it catches issues without polluting the logs with too many warnings.
-const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 
 //==================================================================================================
 // Structure
@@ -84,37 +77,7 @@ pub struct Vmm {
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
     _microvm: Arc<Mutex<MicroVm>>,
-    control_input_rx: Receiver<ControlCommand>,
-    control_output_tx: Sender<ControlCommandResponse>,
-    orchestrator_state: OrchestratorState,
-}
-
-///
-/// # Description
-///
-/// States relating to snapshots functionality. Snapshots may be loaded at PreBoot, and created at Paused.
-///
-#[derive(PartialEq)]
-enum OrchestratorState {
-    PreBoot,
-    Running,
-    Paused,
-}
-
-///
-/// # Description
-///
-/// Control plane commands.
-///
-#[derive(PartialEq)]
-pub enum ControlCommand {
-    _StartMicroVm,
-    _LoadSnapshotAndRun,
-    _PauseMicroVm,
-    _PauseAndCreateSnapshot,
-    _CreateSnapshot,
-    _ResumeMicroVm,
-    LinuxDaemonFlushed,
+    orchestrator: Orchestrator,
 }
 
 //==================================================================================================
@@ -211,36 +174,12 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
-            loop {
-                match memory_thread_rx.try_recv() {
-                    Ok(mut msg) => {
-                        profiler::timestamp_message!(
-                            &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                        );
-                        if let Err(e) = memory_thread_tx.send(msg) {
-                            let reason: String = format!("failed to send message: {e:?}");
-                            error!("memory_thread(): {reason}");
-                            continue;
-                        }
-                        vmem.lock()
-                            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                            .add_credit()?;
-                    },
-                    Err(TryRecvError::Disconnected) => {
-                        // When the guest finishes , the vCPU thread will disconnect from this
-                        // thread. This situation is normal and should not create an error log.
-                        debug!("memory_thread(): channel has been disconnected");
-                        break Ok(());
-                    },
-                    Err(TryRecvError::Empty) => {
-                        // No message available.
-                    },
-                }
-            }
-        });
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
+            memory_thread::spawn(memory_thread_rx, memory_thread_tx, move || {
+                vmem.lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                    .add_credit()
+            });
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid. We synchronize the
@@ -271,20 +210,24 @@ impl Vmm {
         // before actually starting the vCPU.
         barrier.wait();
 
+        let orchestrator = Orchestrator::new(
+            control_input_rx,
+            control_output_tx,
+            || Ok(()), // TODO: create_snapshot
+        );
+
         let mut vmm: Vmm = Self {
             _gateway_tx: gateway_tx,
             io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,
             _microvm: microvm,
-            control_input_rx,
-            control_output_tx,
-            orchestrator_state: OrchestratorState::PreBoot,
+            orchestrator,
         };
 
         if vmm.io_thread.is_some() {
             while !vmm.vcpu_thread.is_finished() {
-                vmm.handle_command()?;
+                vmm.orchestrator.handle_command()?;
             }
         }
 
@@ -433,195 +376,5 @@ impl Vmm {
         };
 
         Box::new(output)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Attempts to handle a command from the control input.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Otherwise, an error is returned.
-    ///
-    fn handle_command(&mut self) -> Result<()> {
-        match self.control_input_rx.try_recv() {
-            Ok(command) => match command {
-                ControlCommand::_StartMicroVm => {
-                    if self.orchestrator_state == OrchestratorState::PreBoot {
-                        // TODO: separate starting logic from `spawn()` and put it here
-                        // This TODO could be done right now, but it's a major refactor.
-                        self.orchestrator_state = OrchestratorState::Running;
-                        trace!("OrchestratorState: PreBoot -> Running");
-                    }
-                    Ok(())
-                },
-                ControlCommand::_LoadSnapshotAndRun => {
-                    if self.orchestrator_state == OrchestratorState::PreBoot {
-                        // TODO: load snapshot
-                        // This TODO requires being able to create snapshots.
-
-                        // The Linux daemon should send messages to PreBoot VMMs by default,
-                        // so there's no need to tell it to resume sending messages.
-
-                        if let Err(e) = self.resume_microvm() {
-                            let reason: String =
-                                format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                        trace!("OrchestratorState: PreBoot -> Running");
-                    }
-                    Ok(())
-                },
-                ControlCommand::_PauseMicroVm => {
-                    if self.orchestrator_state == OrchestratorState::Running {
-                        if let Err(e) = self.pause_protocol() {
-                            let reason: String =
-                                format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                    }
-                    Ok(())
-                },
-                ControlCommand::_PauseAndCreateSnapshot => {
-                    if self.orchestrator_state == OrchestratorState::Running {
-                        if let Err(e) = self.pause_protocol() {
-                            let reason: String =
-                                format!("PauseAndCreateSnapshot: failed to pause microvm: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                        if let Err(e) = self.create_snapshot() {
-                            let reason: String =
-                                format!("PauseAndCreateSnapshot: failed to create snapshot: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                    }
-                    Ok(())
-                },
-                ControlCommand::_CreateSnapshot => {
-                    if self.orchestrator_state == OrchestratorState::Paused {
-                        if let Err(e) = self.create_snapshot() {
-                            let reason: String =
-                                format!("CreateSnapshot: failed to create snapshot: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                    }
-                    Ok(())
-                },
-                ControlCommand::_ResumeMicroVm => {
-                    if self.orchestrator_state == OrchestratorState::Paused {
-                        // TODO: tell linuxd it's fine to send more messages
-                        // This TODO requires having a control plane connection with linuxd
-                        if let Err(e) = self.resume_microvm() {
-                            let reason: String =
-                                format!("ResumeMicroVm: failed to resume microvm: {e:?}");
-                            error!("handle_command(): {reason}");
-                            anyhow::bail!(reason);
-                        }
-                        trace!("OrchestratorState: Paused -> Running");
-                    }
-                    Ok(())
-                },
-                ControlCommand::LinuxDaemonFlushed => {
-                    // NOTE: this will be unreachable once the communication is fully implemented
-                    // `LinuxDaemonFlushed` should only be sent in the middle of `pause_protocol`.
-                    // In fact, it should already be unreachable, but it cannot be tested ATM.
-                    Ok(())
-                },
-            },
-            Err(TryRecvError::Empty) => Ok(()),
-            Err(TryRecvError::Disconnected) => {
-                let reason: String =
-                    ("disconnected from the input control command channel").to_string();
-                error!("handle_command(): {reason}");
-                anyhow::bail!(reason);
-            },
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Attempts to pause the execution of the MicroVM and the communication with the Linux daemon.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Otherwise, an error is returned.
-    ///
-    fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: pause MicroVM (Running -> Paused)
-        // and tell linuxd to flush (Running -> Flushing)
-        // This TODO requires pausing the vCPU and a control plane communication with linuxd
-        trace!("MicroVM paused");
-        // Flush output to linuxd
-        self.control_output_tx
-            .send(ControlCommandResponse::FlushOutput)?;
-        // TODO: tell linuxd to stop sending messages (Flushing -> Paused)
-        // TODO: get a response from linuxd
-        // These TODOs require a control plane communication with linuxd
-        self.control_output_tx
-            .send(ControlCommandResponse::FlushInput)?;
-        self.receive_linux_daemon_flushed()?;
-        self.orchestrator_state = OrchestratorState::Paused;
-        self.control_output_tx
-            .send(ControlCommandResponse::MicroVmPaused)?;
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Attempts to receive a `LinuxDaemonFlushed` message from the control input.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Otherwise, an error is returned instead.
-    ///
-    fn receive_linux_daemon_flushed(&mut self) -> Result<()> {
-        // Check how long it takes to receive a response
-        let start: Instant = Instant::now();
-        let mut counter: usize = 1;
-        // Loop until `LinuxDaemonFlushed` arrives.
-        // Different kinds of messages can be ignored,
-        // as they wouldn't do anything while the VMM is pausing.
-        while match self.control_input_rx.try_recv() {
-            Ok(command) => command != ControlCommand::LinuxDaemonFlushed,
-            Err(TryRecvError::Empty) => true,
-            Err(TryRecvError::Disconnected) => {
-                let reason: String = "the vmm has disconnected".to_string();
-                error!("receive_linux_daemon_flushed(): {reason}");
-                anyhow::bail!(reason)
-            },
-        } {
-            // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
-            let elapsed_time: usize = start.elapsed().as_millis() as usize;
-            if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
-                warn!(
-                    "{}ms have passed waiting for `LinuxDaemonFlushed`",
-                    TIMEOUT_WARNING_INTERVAL_IN_MS * counter
-                );
-                counter += 1;
-            }
-        }
-        Ok(())
-    }
-
-    fn create_snapshot(&self) -> Result<()> {
-        // TODO: create snapshot
-        trace!("Snapshot created");
-        self.control_output_tx
-            .send(ControlCommandResponse::SnapshotCreated)?;
-        Ok(())
-    }
-
-    fn resume_microvm(&self) -> Result<()> {
-        // TODO: resume MicroVM
-        trace!("MicroVM resumed");
-        Ok(())
     }
 }
