@@ -526,6 +526,7 @@ run-nanvixd-tests: | \
 	test-misc-c \
 	test-network-c \
 	test-python3 \
+	test-arch-rust \
 	test-thread-c
 
 #===================================================================================================
@@ -1152,6 +1153,12 @@ $(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok'))
+ifneq ($(strip $(filter yes,$(SSE))),)
+$(eval $(call TEST_RULE,$(BINARIES_DIR),arch-rust,.elf,'','[]','ok'))
+else
+test-arch-rust:
+	@echo "\033[31mWarning: Skipping arch-rust test (requires SSE=yes).\033[0m"
+endif
 $(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
 
 define WASM_TEST_RULE
