@@ -22,6 +22,7 @@ pub struct Args {
     hwloc_file: Option<String>,
     iterations: usize,
     tmp_dir: String,
+    toolchain_bin_dir: String,
 }
 
 //==================================================================================================
@@ -34,16 +35,18 @@ impl Args {
     const OPT_HWLOC: &'static str = "-hwloc";
     const OPT_ITERATIONS: &'static str = "-iterations";
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
+    const OPT_TOOLCHAIN_BIN_DIR: &'static str = "-toolchain-bin-dir";
 
     fn usage() -> String {
         format!(
             "usage: ./bin/nanvix-bench.elf {} \
              [boot-time,cold-start,warm-start,warm-start-vmm,echo-breakdown] [{} \
-             <path_to_hwloc.json> {} <iterations> {} <tmp_dir>]",
+             <path_to_hwloc.json> {} <iterations> {} <tmp_dir> {} <toolchain_bin_dir>]",
             Self::OPT_BENCHMARK,
             Self::OPT_HWLOC,
             Self::OPT_ITERATIONS,
             Self::OPT_TMP_DIR,
+            Self::OPT_TOOLCHAIN_BIN_DIR,
         )
     }
 
@@ -52,6 +55,7 @@ impl Args {
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
         let mut tmp_dir: String = "/tmp/".to_string();
+        let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -93,6 +97,17 @@ impl Args {
                     }
                     tmp_dir = args[i].clone();
                 },
+                Self::OPT_TOOLCHAIN_BIN_DIR => {
+                    i += 1;
+                    if i >= args.len() {
+                        error!("{}", Self::usage());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_TOOLCHAIN_BIN_DIR
+                        ));
+                    }
+                    toolchain_bin_dir = args[i].clone();
+                },
                 arg => {
                     error!("{}", Self::usage());
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
@@ -108,6 +123,7 @@ impl Args {
                 hwloc_file,
                 iterations,
                 tmp_dir,
+                toolchain_bin_dir,
             }),
             Err(_) => {
                 error!("{}", Self::usage());
@@ -130,5 +146,9 @@ impl Args {
 
     pub fn tmp_dir(&self) -> String {
         self.tmp_dir.clone()
+    }
+
+    pub fn toolchain_bin_dir(&self) -> String {
+        self.toolchain_bin_dir.clone()
     }
 }

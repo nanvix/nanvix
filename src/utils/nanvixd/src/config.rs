@@ -12,8 +12,19 @@ use ::log::error;
 // Constants
 //==================================================================================================
 
-/// Default binary directory path.
+///
+/// # Description
+///
+/// Default binary directory path for Nanvix binaries.
+///
 pub const DEFAULT_BIN_DIRECTORY: &str = "./bin";
+
+///
+/// # Description
+///
+/// Default binary directory path for toolchain-related binaries.
+///
+pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
 
 /// Suffix for Unix sockets.
 #[cfg(debug_assertions)]

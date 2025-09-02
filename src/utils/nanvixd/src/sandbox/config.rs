@@ -26,6 +26,8 @@ pub struct SandboxConfig {
     hwloc: Option<HwLoc>,
     /// Path to the binary directory.
     binary_directory: String,
+    /// Path to the toolchain binary directory.
+    toolchain_binary_directory: String,
 }
 
 //==================================================================================================
@@ -48,6 +50,7 @@ impl SandboxConfig {
     /// - `console_file`: File for console output.
     /// - `hwloc`: Hardware locality configuration.
     /// - `binary_directory`: Path to the binary directory.
+    /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     ///
     /// # Returns
     ///
@@ -63,6 +66,7 @@ impl SandboxConfig {
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
         binary_directory: &str,
+        toolchain_binary_directory: &str,
     ) -> Self {
         Self {
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
@@ -73,6 +77,7 @@ impl SandboxConfig {
             console_file,
             hwloc,
             binary_directory: binary_directory.to_string(),
+            toolchain_binary_directory: toolchain_binary_directory.to_string(),
         }
     }
 
@@ -178,5 +183,18 @@ impl SandboxConfig {
     ///
     pub fn binary_directory(&self) -> &str {
         &self.binary_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the toolchain binary directory.
+    ///
+    /// # Returns
+    ///
+    /// The path to the toolchain binary directory.
+    ///
+    pub fn toolchain_binary_directory(&self) -> &str {
+        &self.toolchain_binary_directory
     }
 }
