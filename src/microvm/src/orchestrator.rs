@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::io::{
+use crate::io_thread::{
     ControlCommand,
     ControlCommandResponse,
 };
