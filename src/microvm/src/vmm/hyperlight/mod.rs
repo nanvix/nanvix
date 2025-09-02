@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
-//==================================================================================================
-
-mod io;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -18,22 +12,47 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    vmm::hyperlight::io::IoThread,
+    io_thread::{
+        ControlCommand,
+        ControlCommandResponse,
+        IoThread,
+    },
+    memory_thread,
+    orchestrator::Orchestrator,
 };
 use ::anyhow::Result;
 use ::hyperlight_host::{
     GuestBinary,
+    HyperlightError,
     UninitializedSandbox,
-    sandbox::SandboxConfiguration,
+    mem::{
+        memory_region::MemoryRegionFlags,
+        mgr::SandboxMemoryManager,
+        shared_mem::ExclusiveSharedMemory,
+    },
+    sandbox::{
+        SandboxConfiguration,
+        uninitialized::{
+            GuestBlob,
+            GuestEnvironment,
+        },
+    },
 };
+use ::libc::pthread_self;
 use ::std::{
     fs::File,
     io::Write,
     sync::{
         Arc,
+        Barrier,
         Mutex,
-        mpsc,
+        OnceLock,
+        atomic::{
+            AtomicUsize,
+            Ordering,
+        },
         mpsc::{
+            self,
             Sender,
             TryRecvError,
         },
@@ -44,19 +63,6 @@ use ::sys::ipc::{
     Message,
     MessageType,
 };
-use hyperlight_host::{
-    HyperlightError,
-    mem::{
-        memory_region::MemoryRegionFlags,
-        mgr::SandboxMemoryManager,
-        shared_mem::ExclusiveSharedMemory,
-    },
-    sandbox::uninitialized::{
-        GuestBlob,
-        GuestEnvironment,
-    },
-};
-use std::sync::OnceLock;
 
 // ==================================================================================================
 // Globals
@@ -70,9 +76,10 @@ static VMEM: OnceLock<Arc<Mutex<SandboxMemoryManager<ExclusiveSharedMemory>>>> =
 
 pub struct Vmm {
     _gateway_tx: Sender<Message>,
-    _io_thread: Option<JoinHandle<Result<()>>>,
+    io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
-    sandbox: Option<UninitializedSandbox>,
+    vcpu_thread: JoinHandle<Result<u16>>,
+    orchestrator: Orchestrator,
 }
 
 //==================================================================================================
@@ -80,6 +87,25 @@ pub struct Vmm {
 //==================================================================================================
 
 impl Vmm {
+    ///
+    /// # Description
+    ///
+    /// This function instantiates and runs the virtual machine monitor (VMM) with the given arguments.
+    ///
+    /// # Parameters
+    ///
+    /// - `memory_size`: The memory size for the virtual machine in bytes.
+    /// - `kernel_filename`: The path to the kernel file to be loaded into the virtual machine.
+    /// - `initrd_filename`: An optional path to the initial RAM disk (initrd) file.
+    /// - `initrd_args`: Optional arguments to be passed to the initrd.
+    /// - `stderr`: An optional path to a file where the virtual machine's standard error output will be written.
+    /// - `gateway_conn`: An optional connection to the gateway for communication with the virtual machine.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns the exit status of the virtual machine.
+    /// Otherwise, it returns an error.
+    ///
     pub fn spawn(
         memory_size: usize,
         kernel_filename: &str,
@@ -88,27 +114,24 @@ impl Vmm {
         stderr: Option<String>,
         gateway_conn: Option<Gateway>,
     ) -> Result<u16> {
-        Vmm::new(memory_size, kernel_filename, initrd_filename, _initrd_args, stderr, gateway_conn)?
-            .run()
-    }
-
-    fn new(
-        memory_size: usize,
-        kernel_filename: &str,
-        initrd_filename: Option<String>,
-        _initrd_args: Option<String>,
-        stderr: Option<String>,
-        gateway_conn: Option<Gateway>,
-    ) -> Result<Self> {
         crate::timer!("vmm_creation");
 
         let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
         let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
         let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
+        let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
+        let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
 
         // Spawn I/O thread.
-        let _io_thread: Option<JoinHandle<Result<()>>> =
-            gateway_conn.map(|conn| IoThread::spawn(conn, gateway_rx, gateway_tx.clone()));
+        let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
+            IoThread::spawn(
+                conn,
+                gateway_rx,
+                gateway_tx.clone(),
+                control_input_tx,
+                control_output_rx,
+            )
+        });
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size = 4 * 1024 * 1024;
@@ -254,54 +277,27 @@ impl Vmm {
         })?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = std::thread::spawn(move || {
-            loop {
-                match memory_thread_rx.try_recv() {
-                    Ok(msg) => {
-                        if let Err(e) = memory_thread_tx.send(msg) {
-                            let reason: String = format!("failed to send message: {:?}", e);
-                            error!("memory_thread(): {}", reason);
-                            continue;
-                        }
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
+            memory_thread::spawn(memory_thread_rx, memory_thread_tx, add_credit);
 
-                        add_credit()?;
-                    },
-                    Err(TryRecvError::Disconnected) => {
-                        debug!("memory_thread(): channel has been disconnected");
-                        break Ok(());
-                    },
-                    Err(TryRecvError::Empty) => {
-                        // No message available.
-                    },
-                }
-            }
-        });
+        // We use an atomic to pass the id of the created thread back to the caller context. We
+        // need this because std::thread's JoinHandle does not expose the tid. We synchronize the
+        // update using a barrier.
+        let pthread_id_holder: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
 
-        Ok(Self {
-            _memory_thread: memory_thread,
-            _gateway_tx: gateway_tx,
-            _io_thread,
-            sandbox: Some(sandbox),
-        })
-    }
+        let barrier_clone: Arc<Barrier> = Arc::clone(&barrier);
+        let pthread_id_holder_clone: Arc<AtomicUsize> = pthread_id_holder.clone();
+        let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
+            // Store the tid so that the caller can send signals to the vCPU thread.
+            // SAFETY: we are calling pthread_self() right after creating the thread so this is
+            // safe.
+            let pthread_id: libc::pthread_t = unsafe { pthread_self() };
+            pthread_id_holder_clone.store(pthread_id as usize, Ordering::Relaxed);
 
-    ///
-    /// # Description
-    ///
-    /// This function runs the virtual machine monitor (VMM) with the given arguments.
-    ///
-    /// # Parameters
-    ///
-    /// * `args` - Arguments for the virtual machine monitor.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns the exit status of the virtual machine.
-    /// Otherwise, it returns an error.
-    ///
-    fn run(&mut self) -> Result<u16> {
-        crate::timer!("vmm_run");
-        if let Some(sandbox) = self.sandbox.take() {
+            // Notify the outside thread that the thread id is ready.
+            barrier_clone.wait();
+
             match sandbox.evolve() {
                 Ok(res) => anyhow::bail!("Expected DEFAULT_VMM_SHUTDOWN_CMD, got: {:#?}", res),
                 Err(err) => {
@@ -314,10 +310,42 @@ impl Vmm {
                     }
                 },
             }
+
+            // TODO: return the exit status code when supported.
+            Ok(0)
+        });
+        // Wait right after spawning the vCPU thread such that we populate the pthread id holder
+        // before actually starting the vCPU.
+        barrier.wait();
+
+        let orchestrator = Orchestrator::new(
+            control_input_rx,
+            control_output_tx,
+            || Ok(()), // TODO: create_snapshot
+        );
+
+        let mut vmm: Vmm = Self {
+            _gateway_tx: gateway_tx,
+            io_thread,
+            _memory_thread: memory_thread,
+            vcpu_thread,
+            orchestrator,
+        };
+
+        if vmm.io_thread.is_some() {
+            while !vmm.vcpu_thread.is_finished() {
+                vmm.orchestrator.handle_command()?;
+            }
         }
 
-        // TODO: return the exit status code when supported.
-        Ok(0)
+        match vmm.vcpu_thread.join() {
+            Ok(exit_code) => exit_code,
+            Err(e) => {
+                let reason: String = format!("failed to join vCPU thread (error={e:?})");
+                error!("run(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
     }
 
     ///
