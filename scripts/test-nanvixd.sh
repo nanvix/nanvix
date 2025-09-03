@@ -85,6 +85,12 @@ echo "Gateway Socket Address: ${GATEWAY_SOCKADDR}"
 # Get output by writing to the gateway socket address.
 PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0')
 
+# Save program output to a log file.
+file_name=$(basename -- "${PROGRAM_NAME}")
+file_name_no_ext="${file_name%.*}"
+log_file="${LOGS_DIR}/${file_name_no_ext}_$(date "+%Y_%m_%d_%H_%M").log"
+echo "${PROGRAM_ACTUAL_OUTPUT}" > "${log_file}"
+
 # Kill the user VM.
 KILL_JSON=$(jq -n \
     --argjson user_vm_id "${VM_ID}" \
