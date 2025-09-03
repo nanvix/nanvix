@@ -14,6 +14,9 @@ mod mutex;
 /// Thread-specific data area.
 mod tda;
 
+/// Implementation of `pthread_attr_destroy()` system call.
+mod pthread_attr_destroy;
+
 /// Implementation of `pthread_attr_init()` system call.
 mod pthread_attr_init;
 
@@ -49,6 +52,7 @@ use ::sys::{
 use ::sysapi::sys_types::pthread_t;
 pub use cond::*;
 pub use mutex::*;
+pub use pthread_attr_destroy::*;
 pub use pthread_attr_init::*;
 pub use tda::*;
 
