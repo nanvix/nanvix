@@ -29,7 +29,7 @@ env:
 jobs:
   ci:
     name: "Nanvix CI/CD (self-hosted)"
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       matrix:
         build-type: [debug, release]

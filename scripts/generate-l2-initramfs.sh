@@ -14,7 +14,7 @@ set -euo pipefail
 #===================================================================================================
 
 NANVIX_HOME=$(git rev-parse --show-toplevel)
-IMAGES_DIR="${NANVIX_HOME}/build/images"
+IMAGES_DIR="${NANVIX_HOME}/images"
 INITRAMFS_IMAGE="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 INITRAMFS_DIR="${IMAGES_DIR}/l2-sysvm-rootfs"
 LINUXD_ELF="${NANVIX_HOME}/bin/linuxd.elf"
@@ -23,6 +23,7 @@ LINUXD_ELF="${NANVIX_HOME}/bin/linuxd.elf"
 # Utilities
 #===================================================================================================
 
+source "${NANVIX_HOME}/scripts/common/logging.sh"
 source "${NANVIX_HOME}/scripts/common/utils.sh"
 
 #===================================================================================================
@@ -40,7 +41,7 @@ done
 # Do a clean build if requested.
 if ${CLEAN}; then
     if [ -d ${INITRAMFS_DIR} ]; then
-        echo "WARN: removing initramfs from ${INITRAMFS_DIR}"
+        print_warn "removing initramfs from ${INITRAMFS_DIR}"
         rm -rf ${INITRAMFS_DIR}
     fi
 fi
@@ -49,35 +50,48 @@ fi
 # Socket address parsing
 #===================================================================================================
 
-GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "guest_tap_ip_address")
-HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${NANVIX_HOME}/build/linuxd_config.toml" "host_tap_ip_address")
-CONTROL_PLANE_SOCKADDR="${HOST_TAP_IP_ADDRESS}:9000"
-USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:9001"
-GATEWAY_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:9002"
+LINUXD_CONFIG_TOML="${NANVIX_HOME}/build/linuxd_config.toml"
+GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip_address")
+HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
+CONTROL_PLANE_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "control_plane_port")
+USER_VM_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "user_vm_port")
+GATEWAY_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "gateway_port")
+
+CONTROL_PLANE_SOCKADDR="${HOST_TAP_IP_ADDRESS}:${CONTROL_PLANE_PORT}"
+USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${USER_VM_PORT}"
+GATEWAY_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${GATEWAY_PORT}"
 
 #===================================================================================================
 # Build initramfs
 #===================================================================================================
 
 UBUNTU_VERSION="jammy"
-UBUNTU_MIRROR=$(awk '/^URIs:/ { print $2; exit }' /etc/apt/sources.list.d/ubuntu.sources)
+UBUNTU_COMPONENTS="main,restricted,universe,multiverse"
+# Robust mirror detection, and fallback to a safe default.
+UBUNTU_MIRROR="$(
+  grep -m1 -Po '^URIs:\s*\K(\S+)' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null \
+  | sed -E 's/^\[|]$//g' | awk '{print $1}'
+)"
+: "${UBUNTU_MIRROR:=http://archive.ubuntu.com/ubuntu}"
+export DEBIAN_FRONTEND=noninteractive
 
 build_initramfs() {
     mkdir -p ${IMAGES_DIR}
 
     if [ ! -d "$INITRAMFS_DIR" ]; then
-        echo "Creating minimal ubuntu (${UBUNTU_VERSION}, mirror: ${UBUNTU_MIRROR}) initramfs..."
-        sudo debootstrap \
+        print_info "Creating minimal ubuntu (${UBUNTU_VERSION}, mirror: ${UBUNTU_MIRROR}) initramfs..."
+        sudo -E mmdebstrap \
             --variant=minbase \
+            --components="${UBUNTU_COMPONENTS}" \
             --include=busybox-static,iputils-arping,libc6,libgcc-s1,libstdc++6,iproute2,jq \
             "${UBUNTU_VERSION}" "${INITRAMFS_DIR}" "${UBUNTU_MIRROR}"
         sudo chown -R "$(id -u):$(id -g)" "${INITRAMFS_DIR}"
 
-        echo "Creating /dev and /proc mount points..."
+        print_info "Creating /dev and /proc mount points..."
         mkdir -p "${INITRAMFS_DIR}"/{proc,bin,sbin,sys,dev,etc}
     fi
 
-    echo "Adding linuxd.elf to initramfs..."
+    print_info "Adding linuxd.elf to initramfs..."
     cp "$LINUXD_ELF" "$INITRAMFS_DIR/bin/linuxd.elf"
     chmod +x "$INITRAMFS_DIR/bin/linuxd.elf"
 cat >/tmp/init <<EOF
@@ -95,7 +109,8 @@ echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
     -user-vm-bind-addr ${USER_VM_SOCKADDR} \
     -user-vm-bind-socket-type tcp \
     -gateway-bind-addr ${GATEWAY_SOCKADDR} \
-    -gateway-bind-socket-type tcp
+    -gateway-bind-socket-type tcp \
+    -l2
 
 echo "[init] Nanvix L2 System VM shutting down!"
 busybox poweroff -f
@@ -103,12 +118,12 @@ EOF
     cp /tmp/init "$INITRAMFS_DIR/init"
     chmod +x "$INITRAMFS_DIR/init"
 
-    echo "Creating initramfs..."
+    print_info "Creating initramfs..."
     cd "${INITRAMFS_DIR}"
     find . | sudo cpio -H newc -o | gzip -9 > "$INITRAMFS_IMAGE"
     cd -
 
-    echo "Done! initramfs stored in: ${INITRAMFS_IMAGE}"
+    print_success "initramfs stored in: ${INITRAMFS_IMAGE}"
 }
 
 build_initramfs

@@ -61,7 +61,7 @@ export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
 export IMAGE_DIR     := $(BUILD_DIR)/iso
-export SNAPSHOT_DIR  := $(BUILD_DIR)/images
+export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
@@ -297,7 +297,8 @@ all: \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-microvm \
-	all-opt
+	all-opt \
+	all-snapshot
 
 # Performs local initialization.
 init: init-repo init-opt
@@ -724,7 +725,7 @@ endif
 # The snapshots for the L2 VM need linuxd.elf to be built first.
 all-snapshot: all-host-binaries
 	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
-	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh
+	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh $(TOOLCHAIN_DIR)
 
 clean-snapshot:
 	$(FORCE_RM_CMD) $(SNAPSHOT_DIR)

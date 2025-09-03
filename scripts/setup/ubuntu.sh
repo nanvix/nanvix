@@ -20,7 +20,6 @@ apt-get install -y        \
     codespell             \
     cpio                  \
     curl                  \
-    debootstrap           \
     dosfstools            \
     doxygen               \
     flex                  \
@@ -43,6 +42,7 @@ apt-get install -y        \
     libsdl2-dev           \
     libvirt-clients       \
     libvirt-daemon-system \
+    mmdebstrap            \
     mtools                \
     netcat-openbsd        \
     ninja-build           \

@@ -21,7 +21,9 @@ use std::{
 pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
+    ColdStartL2,
     WarmStart,
+    WarmStartL2,
     WarmStartVMM,
     EchoBreakdown,
 }
@@ -31,7 +33,9 @@ impl BenchmarkFlavour {
         match self {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::ColdStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::WarmStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStartVMM => {
                 format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
             },
@@ -47,7 +51,9 @@ impl fmt::Display for BenchmarkFlavour {
         let s = match self {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
+            BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
             BenchmarkFlavour::WarmStart => "warm-start",
+            BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
         };
@@ -62,7 +68,9 @@ impl FromStr for BenchmarkFlavour {
         match s.to_lowercase().as_str() {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
+            "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
+            "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             _ => Err(format!("Invalid benchmark type: {}", s)),

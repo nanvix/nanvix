@@ -162,6 +162,29 @@ fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_p
     if let Some(host_tap_ip) = linuxd_config_toml.get("host_tap_ip_address") {
         constants.push_str(&format!("pub const HOST_TAP_IP_ADDRESS: &str = \"{host_tap_ip}\";\n"));
     }
+    if let Some(snapshot_magic_string) = linuxd_config_toml.get("snapshot_magic_string") {
+        constants.push_str(&format!(
+            "pub const SNAPSHOT_MAGIC_STRING: &str = \"{snapshot_magic_string}\";\n"
+        ));
+    }
+    if let Some(snapshot_name) = linuxd_config_toml.get("snapshot_name") {
+        constants.push_str(&format!("pub const SNAPSHOT_NAME: &str = \"{snapshot_name}\";\n"));
+    }
+    if let Some(control_plane_port) = linuxd_config_toml.get("control_plane_port") {
+        if let Ok(val) = control_plane_port.parse::<u32>() {
+            constants.push_str(&format!("pub const CONTROL_PLANE_PORT: u32 = {val};\n"));
+        }
+    }
+    if let Some(user_vm_port) = linuxd_config_toml.get("user_vm_port") {
+        if let Ok(val) = user_vm_port.parse::<u32>() {
+            constants.push_str(&format!("pub const USER_VM_PORT: u32 = {val};\n"));
+        }
+    }
+    if let Some(gateway_port) = linuxd_config_toml.get("gateway_port") {
+        if let Ok(val) = gateway_port.parse::<u32>() {
+            constants.push_str(&format!("pub const GATEWAY_PORT: u32 = {val};\n"));
+        }
+    }
     constants.push_str("}\n");
 
     // Write the generated file

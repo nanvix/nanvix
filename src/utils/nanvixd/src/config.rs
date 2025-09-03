@@ -6,7 +6,12 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::linuxd::config::l2_system_vm_guest_ip;
 use ::log::error;
+use ::std::{
+    fs,
+    path::PathBuf,
+};
 
 //==================================================================================================
 // Constants
@@ -50,18 +55,27 @@ const UNIX_PATH_MAX: usize = 108;
 ///
 /// # Description
 ///
-/// Builds the control plane Unix socket address for a given tenant ID.
+/// Builds the control plane socket address for a given tenant ID. If nanvixd is configured to
+/// spawn linuxd in an L2 VM, it will return a TCP socket address, otherwise a Unix socket one.
+///
+/// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
+/// to 0.0.0.0.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
+/// - l2: Flag to enable deploying linuxd inside an L2 VM.
 ///
 /// # Returns
 ///
-/// On success, returns the name of the control plane Unix socket. On failure, returns an error.
+/// On success, returns the name of the control plane socket. On failure, returns an error.
 ///
-pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
+pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
+    }
+
     let unix_socket_name: String =
         format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
 
@@ -82,18 +96,23 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<
 ///
 /// # Description
 ///
-/// Builds the user VM Unix socket address for a given tenant ID.
+/// Builds the user VM socket address for a given tenant ID.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
+/// - l2: Flag to enable deploying linuxd inside an L2 VM.
 ///
 /// # Returns
 ///
 /// On success, returns the name of the user VM Unix socket. On failure, returns an error.
 ///
-pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
+pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!("{}:{}", l2_system_vm_guest_ip(), config::linuxd::USER_VM_PORT));
+    }
+
     let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
@@ -113,18 +132,23 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String
 ///
 /// # Description
 ///
-/// Builds the gateway Unix socket address for a given tenant ID.
+/// Builds the gateway socket address for a given tenant ID.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
+/// - l2: Flag to enable deploying linuxd inside an L2 VM.
 ///
 /// # Returns
 ///
 /// On success, returns the name of the gateway Unix socket. On failure, returns an error.
 ///
-pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String> {
+pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!("{}:{}", l2_system_vm_guest_ip(), config::linuxd::GATEWAY_PORT));
+    }
+
     let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:gw{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
@@ -139,4 +163,70 @@ pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str) -> Result<String
     }
 
     Ok(unix_socket_name)
+}
+
+///
+/// # Description
+///
+/// Gets the absolute path for the source root.
+///
+/// # Returns
+///
+/// The absolute path to the source code root.
+///
+fn get_proj_root() -> String {
+    format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
+}
+
+///
+/// # Description
+///
+/// Gets the absolute path for cloud-hypervisor's binary directory given a
+/// path (potentially sym-linked) to the toolchain binary directory.
+///
+/// During toolchain build we set the CAP_NET_ADMIN to the cloud-hypervisor
+/// binary and, depending on the file-system type, these capabilities do not
+/// propagate well.
+///
+/// # Arguments
+///
+/// - `toolchain_bin_dir`: path to Nanvix's toolchain binary directory.
+///
+/// # Returns
+///
+/// The absolute path to cloud-hypervisor's binary directory.
+///
+pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
+    let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
+    Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
+}
+
+///
+/// # Description
+///
+/// Gets the absolute path for cloud-hypervisor's snapshot directory.
+///
+/// # Returns
+///
+/// The absolute path to cloud-hypervisor's snapshot directory.
+///
+pub fn get_clh_snapshot_path() -> String {
+    format!("{}/images/{}", get_proj_root(), config::linuxd::SNAPSHOT_NAME)
+}
+
+///
+/// # Description
+///
+/// Gets the absolute path for cloud-hypervisor's API socket.
+///
+/// # Arguments
+///
+/// - tmp_dir: Temporary directory.
+///
+/// # Returns
+///
+/// The absolute path to cloud-hypervisor's snapshot directory.
+///
+pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
+    format!("{tmp_dir}/nanvixd-clh.{UNIX_SOCKET_SUFFIX}")
 }

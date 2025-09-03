@@ -31,7 +31,6 @@ RUN apt-get update && \
     codespell \
     cpio \
     curl \
-    debootstrap \
     dosfstools \
     doxygen \
     flex \
@@ -54,6 +53,7 @@ RUN apt-get update && \
     libsdl2-dev \
     libvirt-clients \
     libvirt-daemon-system \
+    mmdebstrap \
     mtools \
     netcat-openbsd \
     ninja-build \

@@ -94,6 +94,7 @@ impl SandboxCache {
     ///
     /// - `tag`: Tag of the sandbox.
     /// - `config`: Configuration of the sandbox.
+    /// - `tmp_directory`: Temporary directory for ephemeral sockets.
     ///
     /// # Returns
     ///
@@ -103,27 +104,37 @@ impl SandboxCache {
         &mut self,
         tag: &SandboxTag,
         config: Option<&SandboxConfig>,
+        tmp_directory: String,
     ) -> Result<Arc<Microvm>> {
         if !self.user_vm_instances.contains_key(tag) {
             // Cache miss.
             if let Some(sandbox_config) = config {
                 // Start control-plane listener socket lazily.
-                // FIXME(#764): make SocketType configurable.
                 if self.control_plane_listener.is_none() {
-                    let control_plane_sockaddr = sandbox_config.control_plane_sockaddr();
-                    let mut control_plane_listener =
-                        match Socket::bind(SocketType::Unix, control_plane_sockaddr.to_string()) {
-                            Ok(listener) => listener,
-                            Err(e) => {
-                                error!(
-                                    "failed to bind control-plane listening socket \
-                                     (address={control_plane_sockaddr}, error={e:?})"
-                                );
-                                return Err(anyhow::anyhow!(
-                                    "failed to bind control-plane listening socket"
-                                ));
-                            },
-                        };
+                    let control_plane_sockaddr: &str = sandbox_config.control_plane_sockaddr();
+                    // The control-plane socket type depends on whether we are deploying linuxd in
+                    // an L2 VM or not.
+                    let control_plane_socket_type: SocketType = if sandbox_config.l2() {
+                        SocketType::Tcp
+                    } else {
+                        SocketType::Unix
+                    };
+
+                    let mut control_plane_listener: SocketListener = match Socket::bind(
+                        control_plane_socket_type,
+                        control_plane_sockaddr.to_string(),
+                    ) {
+                        Ok(listener) => listener,
+                        Err(e) => {
+                            error!(
+                                "failed to bind control-plane listening socket \
+                                 (address={control_plane_sockaddr}, error={e:?})"
+                            );
+                            return Err(anyhow::anyhow!(
+                                "failed to bind control-plane listening socket"
+                            ));
+                        },
+                    };
 
                     // Add control-plane socket to a poll structure so that we can accept
                     // connections with a timeout.
@@ -150,12 +161,12 @@ impl SandboxCache {
                     self.control_plane_poll = Some(poll);
                 }
 
-                let control_plane_listener = self
+                let control_plane_listener: &mut SocketListener = self
                     .control_plane_listener
                     .as_mut()
                     .ok_or_else(|| anyhow::anyhow!("control-plane listener is none"))?;
 
-                let control_plane_poll = self
+                let control_plane_poll: &mut Poll = self
                     .control_plane_poll
                     .as_mut()
                     .ok_or_else(|| anyhow::anyhow!("control-plane poll is none"))?;
@@ -175,6 +186,8 @@ impl SandboxCache {
                             sandbox_config.toolchain_binary_directory(),
                             control_plane_listener,
                             control_plane_poll,
+                            sandbox_config.l2(),
+                            tmp_directory,
                         )?),
                     );
                 }
@@ -193,6 +206,7 @@ impl SandboxCache {
                         sandbox_config.binary_directory(),
                         control_plane_listener,
                         control_plane_poll,
+                        sandbox_config.l2(),
                     )?),
                 );
                 self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
