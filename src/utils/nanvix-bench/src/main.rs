@@ -171,6 +171,8 @@ impl Benchmark {
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/bin/microvm.elf", get_proj_root()),
+            ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
+            "1".to_string(),
             ::microvm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
             ::microvm::args::Args::OPT_INITRD.to_string(),
