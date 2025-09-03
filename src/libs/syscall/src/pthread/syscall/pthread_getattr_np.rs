@@ -40,7 +40,7 @@ use sysalloc::Address;
 ///
 /// The following errors can be returned by this function:
 ///
-/// - [`ErrorCode::InvalidArgument`] if `attr` references a thread attribute object that was already
+/// - [`ErrorCode::ResourceBusy`] if `attr` references a thread attribute object that was already
 ///   initialized.
 ///
 pub fn pthread_getattr_np(thread: pthread_t, attr: &mut pthread_attr_t) -> Result<(), Error> {
@@ -50,7 +50,7 @@ pub fn pthread_getattr_np(thread: pthread_t, attr: &mut pthread_attr_t) -> Resul
     if attr.is_initialized != 0 {
         let reason: &'static str = "thread attributes object was already initialized";
         ::syslog::error!("pthread_getattr_np(): {reason} (attr={:p})", attr as *const _);
-        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        return Err(Error::new(ErrorCode::ResourceBusy, reason));
     }
 
     *attr = pthread_attr_t::default();

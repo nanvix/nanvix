@@ -104,6 +104,7 @@ int main(int argc, const char *argv[])
 
     test_pthread_self();
     test_pthread_attr_init_destroy();
+    test_pthread_getattr_np_destroy();
     test_pthread_create_join();
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
