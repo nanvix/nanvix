@@ -19,6 +19,7 @@ use ::std::{
     str::FromStr,
 };
 use ::syscomm::SocketType;
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Public Structures
@@ -30,6 +31,8 @@ use ::syscomm::SocketType;
 /// This structure packs the command-line arguments that were passed to the program.
 ///
 pub struct Args {
+    /// Unique identifier for this VM.
+    user_vm_id: RawUserVmIdentifier,
     /// Kernel filename.
     kernel_filename: String,
     /// Initrd filename.
@@ -59,6 +62,8 @@ pub struct Args {
 impl Args {
     /// Command-line option for printing the help message.
     pub const OPT_HELP: &'static str = "-help";
+    /// Command-line option for id.
+    pub const OPT_USER_VM_ID: &'static str = "-user-vm-id";
     /// Command-line option for initrd file.
     pub const OPT_INITRD: &'static str = "-initrd";
     /// Command-line option for the kernel file.
@@ -91,6 +96,7 @@ impl Args {
     /// to the program. Otherwise, it returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
+        let mut user_vm_id: Option<u32> = None;
         let mut kernel_filename: String = String::new();
         let mut initrd_filename: Option<String> = None;
         let mut initrd_args: Option<String> = None;
@@ -110,6 +116,19 @@ impl Args {
                 Self::OPT_HELP => {
                     Self::usage();
                     process::exit(0);
+                },
+                // Parse user VM ID.
+                Self::OPT_USER_VM_ID if i + 1 < args.len() => {
+                    let user_vm_id_arg: &String = &args[i + 1];
+
+                    // Parse memory size.
+                    user_vm_id = match user_vm_id_arg.parse::<u32>() {
+                        Ok(id) => Some(id),
+                        Err(e) => {
+                            anyhow::bail!("invalid user vm id (arg={user_vm_id_arg}, error={e:?})");
+                        },
+                    };
+                    i += 1;
                 },
                 // Set initrd file.
                 Self::OPT_INITRD if i + 1 < args.len() => {
@@ -202,6 +221,14 @@ impl Args {
             i += 1;
         }
 
+        let user_vm_id: u32 = match user_vm_id {
+            Some(id) => id,
+            None => {
+                Self::usage();
+                anyhow::bail!("user vm id is missing");
+            },
+        };
+
         // Check if kernel file is missing.
         if kernel_filename.is_empty() {
             Self::usage();
@@ -215,6 +242,7 @@ impl Args {
         }
 
         Ok(Self {
+            user_vm_id,
             kernel_filename,
             initrd_filename,
             initrd_args,
@@ -235,9 +263,10 @@ impl Args {
     ///
     pub fn usage() {
         eprintln!(
-            "Usage: {} {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} <socket-address>] \
-             [{}] [{} <args>]",
+            "Usage: {} {} <id> {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} \
+             <socket-address>] [{}] [{} <args>]",
             env::args().next().unwrap_or("microvm".to_string()),
+            Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
             Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,
@@ -246,6 +275,19 @@ impl Args {
             Self::OPT_LOGFILE,
             Self::OPT_INITRD_ARGS,
         );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the user VM ID that was passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The ID of the user VM.
+    ///
+    pub fn user_vm_id(&self) -> u32 {
+        self.user_vm_id
     }
 
     ///

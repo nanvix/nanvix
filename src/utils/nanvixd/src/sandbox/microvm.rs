@@ -20,6 +20,7 @@ use ::tokio::process::{
     Child,
     Command,
 };
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Structures
@@ -40,6 +41,7 @@ pub struct Microvm {
 impl Microvm {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
+        id: RawUserVmIdentifier,
         program: &str,
         program_args: Option<&str>,
         addr: &str,
@@ -53,6 +55,8 @@ impl Microvm {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", binary_directory),
             ::microvm::args::Args::OPT_LOGFILE.to_string(),
+            ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
+            id.to_string(),
             ::microvm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/kernel.elf", binary_directory),
             ::microvm::args::Args::OPT_INITRD.to_string(),

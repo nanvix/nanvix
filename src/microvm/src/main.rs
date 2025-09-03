@@ -45,9 +45,11 @@ use ::std::{
     time::Duration,
 };
 use ::syscomm::{
+    BlockingSocketStream,
     SocketStream,
     SocketType,
 };
+use ::user_vm_api::NewUserVm;
 
 //==================================================================================================
 // Constants
@@ -91,7 +93,13 @@ fn main() -> Result<ExitCode> {
     let gateway: Option<Gateway> = match &system_vm_addr {
         Some(addr) => loop {
             match SocketStream::connect(system_vm_socket_type, addr.clone()) {
-                Ok(stream) => break Some(Gateway::new(stream)),
+                Ok(stream) => {
+                    let mut blocking_stream: BlockingSocketStream = stream.set_blocking()?;
+                    let new_msg: NewUserVm = NewUserVm::new(args.user_vm_id());
+                    new_msg.send(&mut blocking_stream)?;
+
+                    break Some(Gateway::new(blocking_stream.set_nonblocking()?));
+                },
                 // The micro VM is trying to connect before the system VM's listener socket is
                 // responsive.
                 Err(ref e) if e.kind() == ErrorKind::NotFound => {

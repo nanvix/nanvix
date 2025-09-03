@@ -124,7 +124,7 @@ impl HttpClient {
         let _ = locked_sandbox_cache.get(&tag, Some(&config)).await?;
 
         Ok(message::NewResponse {
-            user_vm_id: tag.sandbox_id().to_string(),
+            user_vm_id: tag.sandbox_id(),
             gateway_sockaddr: gateway_sockaddr.clone(),
         })
     }
@@ -134,7 +134,7 @@ impl HttpClient {
         message: &message::Kill,
     ) -> Result<message::KillResponse> {
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
-        let exit_code = match locked_sandbox_cache.kill(message.user_vm_id.clone()).await {
+        let exit_code = match locked_sandbox_cache.kill(message.user_vm_id).await {
             Ok(()) => 0,
             // TODO: more advanced error codes.
             Err(_) => 1,

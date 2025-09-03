@@ -5,11 +5,12 @@
 // Imports
 //==================================================================================================
 
+use ::rand::Rng;
 use ::std::{
     self,
     hash::Hash,
 };
-use ::uuid::Uuid;
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 
@@ -17,15 +18,18 @@ use ::uuid::Uuid;
 pub struct SandboxTag {
     tenant_id: String,
     app_name: String,
-    sandbox_id: String,
+    sandbox_id: RawUserVmIdentifier,
 }
 
 impl SandboxTag {
     pub fn new(tenant_id: &str, app_name: &str) -> Self {
+        let mut rng: rand::rngs::ThreadRng = rand::rng();
+        let sandbox_id: u32 = rng.random();
+
         Self {
             tenant_id: tenant_id.to_string(),
             app_name: app_name.to_string(),
-            sandbox_id: Uuid::new_v4().to_string(),
+            sandbox_id,
         }
     }
 
@@ -33,8 +37,8 @@ impl SandboxTag {
         &self.tenant_id
     }
 
-    pub fn sandbox_id(&self) -> &str {
-        &self.sandbox_id
+    pub fn sandbox_id(&self) -> u32 {
+        self.sandbox_id
     }
 }
 

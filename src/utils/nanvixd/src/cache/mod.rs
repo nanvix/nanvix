@@ -27,6 +27,7 @@ use ::syscomm::{
     SocketType,
 };
 use ::tokio::sync::Mutex;
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -50,7 +51,7 @@ pub struct SandboxCache {
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
     // Auxiliary index structures.
     /// Reverse index mapping a sandbox ID to a sandbox tag.
-    sandbox_index: HashMap<String, SandboxTag>,
+    sandbox_index: HashMap<RawUserVmIdentifier, SandboxTag>,
 
     // Control-plane members.
     /// Listener socket on the control-plane address. Right now each different linuxd and user VM
@@ -182,6 +183,7 @@ impl SandboxCache {
                 self.user_vm_instances.insert(
                     tag.clone(),
                     Arc::new(Microvm::spawn(
+                        tag.sandbox_id(),
                         sandbox_config.program(),
                         sandbox_config.program_args(),
                         sandbox_config.user_vm_sockaddr(),
@@ -193,8 +195,7 @@ impl SandboxCache {
                         control_plane_poll,
                     )?),
                 );
-                self.sandbox_index
-                    .insert(tag.sandbox_id().to_string(), tag.clone());
+                self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
             } else {
                 let reason: String =
                     format!("sandbox not cached, and no sandbox config provided (tag={tag:?})");
@@ -224,7 +225,7 @@ impl SandboxCache {
     ///
     /// A reference to the sandbox.
     ///
-    pub async fn kill(&mut self, user_vm_id: String) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: RawUserVmIdentifier) -> Result<()> {
         let tag = self
             .sandbox_index
             .get(&user_vm_id)
@@ -265,7 +266,7 @@ impl SandboxCache {
             // User VM is dropped.
         }
 
-        self.sandbox_index.remove(user_vm_id);
+        self.sandbox_index.remove(&user_vm_id);
 
         Ok(())
     }
