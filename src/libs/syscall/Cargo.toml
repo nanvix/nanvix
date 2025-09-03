@@ -51,6 +51,7 @@ rustc-dep-of-std = [
     "sbrk",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
+    "config/rustc-dep-of-std",
     "nvx/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
