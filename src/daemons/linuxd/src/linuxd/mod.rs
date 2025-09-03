@@ -12,6 +12,7 @@ mod assemble;
 //==================================================================================================
 
 use crate::{
+    config::restore_gate_sockaddr_builder,
     message::RequestAssembler,
     user_vm_handle::UserVmHandle,
     venv::{
@@ -57,8 +58,10 @@ use ::sys::{
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 use ::syscomm::{
     BlockingSocketStream,
+    Socket,
     SocketListener,
     SocketStream,
+    SocketType,
 };
 use ::user_vm_api::{
     self,
@@ -83,10 +86,12 @@ const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
 
 pub struct LinuxDaemon {
     assembler: Arc<Mutex<RequestAssembler>>,
-    control_plane_stream: SocketStream,
+    control_plane_sockaddr: String,
+    control_plane_socktype: SocketType,
     user_vm_listener: SocketListener,
     gateway_listener: Option<SocketListener>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
+    in_l2: bool,
 }
 
 //==================================================================================================
@@ -95,17 +100,87 @@ pub struct LinuxDaemon {
 
 impl LinuxDaemon {
     pub fn init(
-        control_plane_stream: SocketStream,
+        control_plane_sockaddr: String,
+        control_plane_socktype: SocketType,
         user_vm_listener: SocketListener,
         gateway_listener: Option<SocketListener>,
+        in_l2: bool,
     ) -> Result<Self, Error> {
         Ok(Self {
             assembler: Arc::new(Mutex::new(RequestAssembler::default())),
-            control_plane_stream,
+            control_plane_sockaddr,
+            control_plane_socktype,
             user_vm_listener,
             gateway_listener,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
+            in_l2,
         })
+    }
+
+    /// This helper method accepts a connection from the control-plane.
+    fn accept_control_plane_connection(&self) -> Result<SocketStream> {
+        match SocketStream::connect(
+            self.control_plane_socktype,
+            self.control_plane_sockaddr.clone(),
+        ) {
+            Ok(socket) => {
+                info!("Connected to control plane on: {:?}", self.control_plane_sockaddr);
+                Ok(socket)
+            },
+            Err(e) => {
+                let reason: String = format!(
+                    "failed to connect to control-plane socket address (address={}, error={e:?})",
+                    self.control_plane_sockaddr.clone()
+                );
+                error!("{reason}");
+                Err(anyhow::anyhow!(reason))
+            },
+        }
+    }
+
+    /// This helper method will trap waiting for a message in a given port if we are about to be
+    /// snapshotted.
+    fn trap_if_pending_snapshot(&self) -> Result<()> {
+        if self.in_l2 {
+            // We only need one token to block in the trap poll.
+            const TRAP_TOKEN: Token = Token(0);
+
+            let mut trap_listener: SocketListener =
+                Socket::bind(SocketType::Tcp, restore_gate_sockaddr_builder())?;
+
+            let mut trap_poll: Poll = Poll::new()?;
+            trap_poll
+                .registry()
+                .register(&mut trap_listener, TRAP_TOKEN, Interest::READABLE)?;
+
+            let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+            'poll_loop: loop {
+                // Deliberately print to stdout so that it can be captured by the snapshot creation
+                // script.
+                println!("{}", config::linuxd::SNAPSHOT_MAGIC_STRING);
+
+                // Must poll infinitely. Timeout-based approaches will not work with the restore
+                // process.
+                trap_poll.poll(&mut events, None)?;
+                for event in &events {
+                    if event.token() != TRAP_TOKEN {
+                        continue 'poll_loop;
+                    }
+
+                    if event.is_error() || event.is_read_closed() || event.is_write_closed() {
+                        continue 'poll_loop;
+                    }
+
+                    if event.is_readable() {
+                        if let Ok(_stream) = trap_listener.accept() {
+                            break 'poll_loop;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// This helper method accepts connections into the main user VM listener socket, and, if
@@ -288,12 +363,6 @@ impl LinuxDaemon {
             .map_err(|_| Self::log_and_error(ErrorCode::IoErr, "failed to create Poll"))?;
         user_vm_poll
             .registry()
-            .register(&mut self.control_plane_stream, CONTROL_PLANE_TOKEN, Interest::READABLE)
-            .map_err(|_| {
-                Self::log_and_error(ErrorCode::IoErr, "failed to register control-plane to poll")
-            })?;
-        user_vm_poll
-            .registry()
             .register(&mut self.user_vm_listener, USER_VM_LISTENER_TOKEN, Interest::READABLE)
             .map_err(|_| {
                 Self::log_and_error(ErrorCode::IoErr, "failed to register user VM listener to poll")
@@ -331,6 +400,23 @@ impl LinuxDaemon {
         let mut worker_threads: HashMap<RawUserVmIdentifier, VecDeque<WorkerThreadHandle>> =
             HashMap::new();
 
+        // Right before entering the main loop, block if we are pending to be snapshotted, and
+        // accept the control-plane stream afterwards. We are pending to be snapshotted if we are
+        // in this line of code, and are deployed in an L2 VM.
+        self.trap_if_pending_snapshot().map_err(|_| {
+            Self::log_and_error(ErrorCode::IoErr, "error conditionally trapping on snapshot gate")
+        })?;
+        let mut control_plane_stream: SocketStream =
+            self.accept_control_plane_connection().map_err(|_| {
+                Self::log_and_error(ErrorCode::IoErr, "failed to accept control-plane connection")
+            })?;
+        user_vm_poll
+            .registry()
+            .register(&mut control_plane_stream, CONTROL_PLANE_TOKEN, Interest::READABLE)
+            .map_err(|_| {
+                Self::log_and_error(ErrorCode::IoErr, "failed to register control-plane to poll")
+            })?;
+
         'main_loop: loop {
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
             let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
@@ -344,9 +430,7 @@ impl LinuxDaemon {
                     // Process control-plane messages before anything else.
                     CONTROL_PLANE_TOKEN => {
                         let cmd: control_plane_api::Command =
-                            match control_plane_api::try_read_command(
-                                &mut self.control_plane_stream,
-                            ) {
+                            match control_plane_api::try_read_command(&mut control_plane_stream) {
                                 Ok(cmd) => cmd,
                                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
                                 Err(e) => {

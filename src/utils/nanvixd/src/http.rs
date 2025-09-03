@@ -95,13 +95,14 @@ impl HttpClient {
     ) -> Result<message::NewResponse> {
         let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
         let tmp_directory: &str = args.tmp_directory();
+        let in_l2: bool = args.l2();
 
         let control_plane_sockaddr: String =
-            config::control_plane_sockaddr_builder(tmp_directory, tag.tenant_id())?;
+            config::control_plane_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
         let gateway_sockaddr: String =
-            config::gateway_sockaddr_builder(tmp_directory, tag.tenant_id())?;
+            config::gateway_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
         let user_vm_sockaddr: String =
-            config::user_vm_sockaddr_builder(tmp_directory, tag.tenant_id())?;
+            config::user_vm_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
         let program_args = match message.program_args.len() {
             0 => None,
             _ => Some(message.program_args.clone()),
@@ -117,11 +118,14 @@ impl HttpClient {
             args.hwloc().clone(),
             args.binary_directory(),
             args.toolchain_binary_directory(),
+            args.l2(),
         );
 
         // This method will create a sandbox if it is not in the cache.
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
-        let _ = locked_sandbox_cache.get(&tag, Some(&config)).await?;
+        let _ = locked_sandbox_cache
+            .get(&tag, Some(&config), args.tmp_directory().to_string())
+            .await?;
 
         Ok(message::NewResponse {
             user_vm_id: tag.sandbox_id(),

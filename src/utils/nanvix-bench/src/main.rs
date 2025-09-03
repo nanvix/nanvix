@@ -98,8 +98,20 @@ const CARGO_PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
     None => "nanvix-bench",
 };
 
+///
+/// # Description
+///
 /// Sleep duration (in ms) to wait for the system to clean up after a benchmark run.
+///
 const CLEANUP_SLEEP_DURATION: u64 = 10;
+
+///
+/// # Description
+///
+/// Sleep duration (in ms) to wait for the system to clean up after a benchmark run when deploying
+/// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
+///
+const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
 
 //==================================================================================================
 
@@ -124,7 +136,8 @@ impl Benchmark {
         Ok((new_msg_headers, new_msg))
     }
 
-    fn start_nanvixd(&self) -> Result<Child> {
+    /// Start nanvixd and, optionally, configure it to deploy linuxd inside an L2 VM.
+    fn start_nanvixd(&self, l2: bool) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
             format!("{}/bin/nanvixd.elf", get_proj_root()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
@@ -137,6 +150,9 @@ impl Benchmark {
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
             nanvixd_args.push(hwloc_file.clone());
+        }
+        if l2 {
+            nanvixd_args.push(::nanvixd::args::Args::OPT_L2.to_string());
         }
 
         debug!("Starting nanvixd with command: {}", nanvixd_args.join(" "));
@@ -155,6 +171,8 @@ impl Benchmark {
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/bin/microvm.elf", get_proj_root()),
+            ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
+            "1".to_string(),
             ::microvm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
             ::microvm::args::Args::OPT_INITRD.to_string(),
@@ -185,8 +203,8 @@ impl Benchmark {
     }
 
     /// Configures the set-up by starting linuxd and the gateway server.
-    pub fn setup(&mut self) {
-        match self.start_nanvixd() {
+    pub fn setup(&mut self, l2: bool) {
+        match self.start_nanvixd(l2) {
             Ok(nanvixd) => self.nanvixd = Some(nanvixd),
             Err(_) => {
                 error!("error starting up nanvixd");
@@ -213,6 +231,7 @@ impl Benchmark {
         &mut self,
         payload: nanvixd::message::New,
         headers: HeaderMap,
+        l2: bool,
     ) -> Result<(RawUserVmIdentifier, BlockingSocketStream)> {
         let response: nanvixd::message::NewResponse = self
             .nanvixd_client
@@ -229,8 +248,13 @@ impl Benchmark {
         // TODO: we need to connect the SocketStream after creating the user VM (and thus adding to
         // the cold-start time) because currently nanvixd determines the gateway address at
         // deployment time.
+        let gateway_socktype: SocketType = if l2 {
+            SocketType::Tcp
+        } else {
+            SocketType::Unix
+        };
         let gateway_stream: SocketStream = loop {
-            match SocketStream::connect(SocketType::Unix, response.gateway_sockaddr.clone()) {
+            match SocketStream::connect(gateway_socktype, response.gateway_sockaddr.clone()) {
                 Ok(stream) => break stream,
                 Err(_) => continue,
             };
@@ -339,7 +363,7 @@ impl Benchmark {
 
     /// This function runs the cold-start experiment, where we measure the time to start linuxd,
     /// start a VM, and send a request to the new VM.
-    pub async fn run_cold_start(&mut self) -> Result<()> {
+    pub async fn run_cold_start(&mut self, l2: bool) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -366,11 +390,11 @@ impl Benchmark {
             // We need to start nanvixd in each iteration of the loop, as otherwise re-using the
             // same nanvixd instance but with different linuxd instances can exhaust resource
             // limits (like open file descriptors).
-            self.setup();
+            self.setup(l2);
 
             // Start the clock.
             let start = Instant::now();
-            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
+            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
             gateway_stream.write_all(&payload)?;
             gateway_stream.read_exact(&mut response_payload)?;
             latencies.push(start.elapsed().as_micros());
@@ -390,8 +414,12 @@ impl Benchmark {
 
             pb.inc(1);
 
-            // Need to give some time to clean-up
-            thread::sleep(Duration::from_millis(10));
+            // Need to give some time to clean-up (a bit longer for L2 benchmarks).
+            if l2 {
+                thread::sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION));
+            } else {
+                thread::sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION));
+            }
         }
 
         pb.finish();
@@ -409,7 +437,7 @@ impl Benchmark {
 
     /// This function runs the warm start benchmark, where we measure the time to send a request
     /// into the VM once it has started executing.
-    pub async fn run_warm_start(&mut self) -> Result<()> {
+    pub async fn run_warm_start(&mut self, l2: bool) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -427,10 +455,10 @@ impl Benchmark {
         let (new_msg_headers, new_msg) = self.prepare_new_message()?;
 
         // Start nanvixd.
-        self.setup();
+        self.setup(l2);
 
         // Start User VM.
-        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
+        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
@@ -784,7 +812,21 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start().await
+                benchmark.run_cold_start(false).await
+            }
+        },
+        BenchmarkFlavour::ColdStartL2 => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                error!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+                return Ok(());
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_cold_start(true).await
             }
         },
         BenchmarkFlavour::WarmStart => {
@@ -798,7 +840,21 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_warm_start().await
+                benchmark.run_warm_start(false).await
+            }
+        },
+        BenchmarkFlavour::WarmStartL2 => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                error!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+                return Ok(());
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_warm_start(true).await
             }
         },
         BenchmarkFlavour::WarmStartVMM => {
