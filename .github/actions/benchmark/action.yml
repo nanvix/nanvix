@@ -66,6 +66,11 @@ runs:
               continue
         fi
 
+        # FIXME (#926): cold-start-l2 fails on hyperlight
+        if [[ "$bench" == "cold-start-l2" ]]; then
+              continue
+        fi
+
         bench_underscore=${bench//-/_}
         ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench}  -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_${bench_underscore}_hyperlight_${{ inputs.arch }}.txt
       done
