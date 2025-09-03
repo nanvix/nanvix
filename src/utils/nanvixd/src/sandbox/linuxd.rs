@@ -163,6 +163,7 @@ impl LinuxDaemon {
         } else {
             vec![
                 format!("{}/linuxd.elf", binary_directory),
+                args::Args::OPT_LOGFILE.to_string(),
                 args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
                 control_plane_sockaddr.to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
