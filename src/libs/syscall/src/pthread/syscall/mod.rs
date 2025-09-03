@@ -20,6 +20,9 @@ mod pthread_attr_destroy;
 /// Implementation of `pthread_attr_init()` system call.
 mod pthread_attr_init;
 
+/// Implementation of `pthread_getattr_np()` system call.
+mod pthread_getattr_np;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -54,6 +57,7 @@ pub use cond::*;
 pub use mutex::*;
 pub use pthread_attr_destroy::*;
 pub use pthread_attr_init::*;
+pub use pthread_getattr_np::*;
 pub use tda::*;
 
 //==================================================================================================
