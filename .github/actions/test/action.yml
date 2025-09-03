@@ -27,6 +27,11 @@ runs:
       python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --test
     shell: bash
 
+  - name: "Test (microvm: full-featured)"
+    run: |
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --features=SSE=yes --test
+    shell: bash
+
   - name: "Test (hyperlight)"
     run: |
       python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --test
