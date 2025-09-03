@@ -87,7 +87,7 @@ PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR
 
 # Kill the user VM.
 KILL_JSON=$(jq -n \
-    --arg user_vm_id "${VM_ID}" \
+    --argjson user_vm_id "${VM_ID}" \
     '{user_vm_id: $user_vm_id}'
 )
 KILL_EXIT_CODE=$(curl \
