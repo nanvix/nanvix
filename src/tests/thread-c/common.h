@@ -39,4 +39,7 @@ extern void test_pthread_mutex_trylock(void);
 // Tests if thread local storage works.
 extern void test_thread_local(void);
 
+// Tests if pthread attributes can be initialized and destroyed.
+extern void test_pthread_attr_init_destroy(void);
+
 #endif
