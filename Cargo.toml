@@ -35,6 +35,7 @@ members = [
         "src/libs/syslog",
         "src/libs/sys",
         "src/libs/type-safe",
+        "src/libs/user-vm-api",
         "src/microvm",
         "src/tests/arch-rust",
         "src/tests/file-rust",
@@ -58,6 +59,7 @@ homepage = "https://github.com/nanvix"
 arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.98"
 base64 = "0.22.1"
+bincode = "2.0.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 cc = "1.2.26"
 cfg-if = "1.0.0"
@@ -93,6 +95,7 @@ nvx = { path = "src/libs/nvx", default-features = false }
 profiler = { path = "src/libs/profiler", default-features = false }
 posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
+rand = "0.9.2"
 raw-array = { path = "src/libs/raw-array", default-features = false }
 reqwest = { version = "0.12", default-features = false }
 serde = { version = "1.0.219", default-features = false }
@@ -101,19 +104,18 @@ serde_json = { version = "1.0.140", default-features = false, features = [
 ] }
 signal-hook = "0.3.18"
 slab = { path = "src/libs/slab", default-features = false }
-slab_external = { package = "slab", version = "0.4" }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
+sys = { path = "src/libs/sys", default-features = false }
 sysapi = { path = "src/libs/sysapi", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 syscall = { path = "src/libs/syscall", default-features = false }
-sys = { path = "src/libs/sys", default-features = false }
+syscomm = { path = "src/libs/syscomm", default-features = false }
+syslog = { path = "src/libs/syslog", default-features = false }
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 tokio = { version = "1.45.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
-uuid = { version = "1.17.0", features = ["v4"] }
-syscomm = { path = "src/libs/syscomm", default-features = false }
-syslog = { path = "src/libs/syslog", default-features = false }
+user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 wasmi = { version = "0.51.0", default-features = false }
 
 [profile.dev]

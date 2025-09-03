@@ -419,6 +419,30 @@ impl BlockingSocketStream {
     ///
     /// # Description
     ///
+    /// Convert a blocking socket stream to a non-blocking socket stream. It is important to
+    /// de-register the stream from the poll, as otherwise we could have issues trying to register
+    /// the non-blocking socket stream to a different poll.
+    ///
+    /// # Returns
+    ///
+    /// A non-blocking socket stream.
+    ///
+    pub fn set_nonblocking(self) -> io::Result<SocketStream> {
+        match self {
+            BlockingSocketStream::Tcp(mut stream, poll) => {
+                poll.registry().deregister(&mut stream)?;
+                Ok(SocketStream::Tcp(stream))
+            },
+            BlockingSocketStream::Unix(mut stream, poll) => {
+                poll.registry().deregister(&mut stream)?;
+                Ok(SocketStream::Unix(stream))
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Blocking read implementation.
     ///
     /// # Parameters

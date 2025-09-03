@@ -17,6 +17,7 @@ use crate::{
     venv::{
         VenvCommand,
         VirtualEnviromentDirectory,
+        VirtualEnvironment,
     },
     worker_thread::WorkerThreadHandle,
 };
@@ -27,10 +28,6 @@ use ::mio::{
     Interest,
     Poll,
     Token,
-};
-use ::slab_external::{
-    Slab,
-    VacantEntry,
 };
 use ::std::{
     collections::{
@@ -59,8 +56,13 @@ use ::sys::{
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 use ::syscomm::{
+    BlockingSocketStream,
     SocketListener,
     SocketStream,
+};
+use ::user_vm_api::{
+    self,
+    RawUserVmIdentifier,
 };
 
 //==================================================================================================
@@ -71,8 +73,6 @@ use ::syscomm::{
 const CONTROL_PLANE_CONNECTION_ID: usize = 0;
 /// We use ID 1 for the listener socket accepting user VM connections.
 const USER_VM_LISTENER_CONNECTION_ID: usize = 1;
-/// We use IDs 2 and onwards for all user VMs that connect to this instance.
-const FIRST_USER_VM_CONNECTION_ID: usize = 2;
 /// We use ID 0 for the gateway listener socket in the gateway poll structure. Given that this
 /// socket is monitored in a different poll, we can reuse the connection ID 0.
 const GATEWAY_LISTENER_CONNECTION_ID: usize = 0;
@@ -112,20 +112,41 @@ impl LinuxDaemon {
     /// necessary, accepts incoming connections for the gateway into this user VM.
     fn accept_connections(
         &mut self,
-        user_vm_connections: &mut Slab<UserVmHandle>,
+        user_vm_connections: &mut HashMap<RawUserVmIdentifier, UserVmHandle>,
         user_vm_poll: &Poll,
         gateway_poll: &mut Option<Poll>,
-        start_token: usize,
     ) -> Result<(), Error> {
         // Accept new connection in a loop, as we have a non-blocking socket, and
         // we may have more than one connection pending to be accepted.
         loop {
             match self.user_vm_listener.accept() {
-                Ok(mut user_vm_stream) => {
-                    let entry: VacantEntry<UserVmHandle> = user_vm_connections.vacant_entry();
-                    let entry_key: usize = entry.key();
-                    let token: Token = Token(start_token + entry_key);
-                    trace!("accepted connection from user VM (conn_id={entry_key})");
+                Ok(user_vm_stream) => {
+                    // Temporarily set the user VM stream to blocking mode in order to receive the
+                    // handshake message with metadata from the user VM.
+                    let mut blocking_user_vm_stream: BlockingSocketStream =
+                        user_vm_stream.set_blocking().map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "error setting stream to blocking mode",
+                            )
+                        })?;
+                    let new_msg: user_vm_api::NewUserVm = user_vm_api::NewUserVm::recv(
+                        &mut blocking_user_vm_stream,
+                    )
+                    .map_err(|_| {
+                        Self::log_and_error(ErrorCode::IoErr, "error receiving ID from new user VM")
+                    })?;
+                    let mut user_vm_stream: SocketStream =
+                        blocking_user_vm_stream.set_nonblocking().map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "error setting stream to non-blocking mode",
+                            )
+                        })?;
+                    let user_vm_id: RawUserVmIdentifier = new_msg.id();
+
+                    let token: Token = Token(user_vm_id as usize);
+                    trace!("accepted connection from user VM (vm_id={user_vm_id})");
 
                     user_vm_poll
                         .registry()
@@ -163,19 +184,12 @@ impl LinuxDaemon {
                         None
                     };
 
-                    // Convert the entry key to a u32 for portability.
-                    let conn_id: u32 = match u32::try_from(entry_key) {
-                        Ok(conn_id) => conn_id,
-                        Err(e) => {
-                            error!("error clipping connection id to u32 (error={e:})");
-                            continue;
-                        },
-                    };
                     trace!(
-                        "registered user VM handle (conn_id={conn_id}, gw_stream={})",
+                        "registered user VM handle (vm_id={user_vm_id}, gw_stream={})",
                         gateway_stream.is_some()
                     );
-                    entry.insert(UserVmHandle::new(conn_id, user_vm_stream, gateway_stream));
+                    user_vm_connections
+                        .insert(user_vm_id, UserVmHandle::new(user_vm_stream, gateway_stream));
                 },
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No connections to be accepted, break.
@@ -191,18 +205,6 @@ impl LinuxDaemon {
         }
 
         Ok(())
-    }
-
-    /// Wrapper around the extraction of the connection from the slab, as we need a mutable
-    /// reference, and with the function call we ensure we return the borrow.
-    fn process_connection(
-        user_vm_connections: &mut Slab<UserVmHandle>,
-        conn_id: u32,
-    ) -> Result<UserVmHandle, Error> {
-        match user_vm_connections.get_mut(conn_id as usize) {
-            Some(user_vm_handle) => Ok(user_vm_handle.clone()),
-            None => Err(Error::new(ErrorCode::InvalidArgument, "Invalid connection ID")),
-        }
     }
 
     /// Helper method to close a connection to a user VM identified by the connection id. Closing
@@ -277,7 +279,6 @@ impl LinuxDaemon {
     pub fn run(mut self) -> Result<(), Error> {
         const CONTROL_PLANE_TOKEN: Token = Token(CONTROL_PLANE_CONNECTION_ID);
         const USER_VM_LISTENER_TOKEN: Token = Token(USER_VM_LISTENER_CONNECTION_ID);
-        const FIRST_USER_VM_TOKEN: Token = Token(FIRST_USER_VM_CONNECTION_ID);
         const GATEWAY_LISTENER_TOKEN: Token = Token(GATEWAY_LISTENER_CONNECTION_ID);
 
         let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
@@ -322,12 +323,13 @@ impl LinuxDaemon {
 
         // Structure keeping track of the active user VM connections, indexed by their connection
         // ID. We use a slab to easily get the smallest available entry.
-        let mut user_vm_connections: Slab<UserVmHandle> = Slab::new();
+        let mut user_vm_connections: HashMap<RawUserVmIdentifier, UserVmHandle> = HashMap::new();
 
         // Map keeping track of the worker threads associated to each user VM identified by
         // connection ID. We use a HashMap and not a Slab because we need to support insert/removal
         // by key.
-        let mut worker_threads: HashMap<u32, VecDeque<WorkerThreadHandle>> = HashMap::new();
+        let mut worker_threads: HashMap<RawUserVmIdentifier, VecDeque<WorkerThreadHandle>> =
+            HashMap::new();
 
         'main_loop: loop {
             let venv: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
@@ -362,14 +364,13 @@ impl LinuxDaemon {
                                 info!("linuxd received shutdown message from control-plane");
 
                                 // Close all existing connections to user VMs.
-                                for uvm_handle in user_vm_connections.drain() {
-                                    let conn_id: u32 = uvm_handle.get_conn_id();
-                                    info!("shutting down user VM (conn_id={conn_id})");
+                                for (uvm_id, uvm_handle) in user_vm_connections.drain() {
+                                    info!("shutting down user VM (vm_id={uvm_id})");
 
                                     Self::close_connection(
                                         uvm_handle,
                                         &user_vm_poll,
-                                        worker_threads.remove(&conn_id),
+                                        worker_threads.remove(&uvm_id),
                                     );
                                 }
 
@@ -395,23 +396,27 @@ impl LinuxDaemon {
                             &mut user_vm_connections,
                             &user_vm_poll,
                             &mut gateway_poll,
-                            FIRST_USER_VM_TOKEN.into(),
                         )?;
                     },
 
                     // Now we process events from active connections.
                     Token(t) => {
-                        let conn_id: u32 = match u32::try_from(t - FIRST_USER_VM_CONNECTION_ID) {
-                            Ok(conn_id) => conn_id,
+                        let uvm_id: RawUserVmIdentifier = match RawUserVmIdentifier::try_from(t) {
+                            Ok(id) => id,
                             Err(e) => {
                                 // Skip to next token.
-                                error!("error clipping connection id to u32 (error={e:})");
+                                error!("error clipping connection id (error={e:})");
                                 continue;
                             },
                         };
 
-                        let uvm_handle: UserVmHandle =
-                            Self::process_connection(&mut user_vm_connections, conn_id)?;
+                        let uvm_handle: UserVmHandle = match user_vm_connections.get(&uvm_id) {
+                            Some(handle) => handle.clone(),
+                            None => {
+                                error!("error getting user VM handle (vm_id={uvm_id})");
+                                continue;
+                            },
+                        };
 
                         // Drain the user VM stream until we cannot read any more messages (i.e.
                         // WouldBlock). This is because messages may be buffered in the poll.
@@ -425,14 +430,14 @@ impl LinuxDaemon {
                                     // No more messages to read.
                                     ErrorKind::WouldBlock => break 'drain_loop,
                                     ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
-                                        info!("connection from user VM closed (conn_id={conn_id})");
+                                        info!("connection from user VM closed (conn_id={uvm_id})");
 
                                         Self::close_connection(
                                             uvm_handle,
                                             &user_vm_poll,
-                                            worker_threads.remove(&conn_id),
+                                            worker_threads.remove(&uvm_id),
                                         );
-                                        user_vm_connections.remove(conn_id as usize);
+                                        user_vm_connections.remove(&uvm_id);
 
                                         break 'drain_loop;
                                     },
@@ -446,7 +451,7 @@ impl LinuxDaemon {
                             };
 
                             trace!(
-                                "uservm.id={conn_id}, message.source={:?}, \
+                                "uservm.id={uvm_id}, message.source={:?}, \
                                  message.destination={:?}, message.type={:?}",
                                 { message.source },
                                 { message.destination },
@@ -469,13 +474,13 @@ impl LinuxDaemon {
                             ) = {
                                 let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
                                     venv.lock().unwrap();
-                                let env = venv.get(conn_id, source);
+                                let env: Option<&VirtualEnvironment> = venv.get(uvm_id, source);
                                 if let Some(env) = env {
                                     (env.get_channel_tx(), None)
                                 } else {
                                     // Join a new virtual environment.
                                     match venv.join(
-                                        conn_id,
+                                        uvm_id,
                                         source,
                                         VirtualEnvironmentIdentifier::NEW,
                                     ) {
@@ -540,7 +545,7 @@ impl LinuxDaemon {
                                         assembler,
                                     )?;
                                 worker_threads
-                                    .entry(conn_id)
+                                    .entry(uvm_id)
                                     .or_default()
                                     .push_back(worker_thread_handle);
                             }
@@ -554,10 +559,10 @@ impl LinuxDaemon {
                                 // Remove thread from the virtual environment.
                                 let mut venv: MutexGuard<'_, VirtualEnviromentDirectory> =
                                     venv.lock().unwrap();
-                                if let Err(error) = venv.leave(conn_id, source) {
+                                if let Err(error) = venv.leave(uvm_id, source) {
                                     warn!(
                                         "run(): failed to remove thread from virtual environment \
-                                         (conn_id={conn_id}, tid={source:?}, error={error:?})",
+                                         (uvm_id={uvm_id}, tid={source:?}, error={error:?})",
                                     );
                                 }
                             }
