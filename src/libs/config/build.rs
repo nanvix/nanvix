@@ -185,9 +185,14 @@ fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_p
             constants.push_str(&format!("pub const USER_VM_PORT: u32 = {val};\n"));
         }
     }
-    if let Some(gateway_port) = linuxd_config_toml.get("gateway_port") {
+    if let Some(gateway_port) = linuxd_config_toml.get("gateway_port_range_begin") {
         if let Ok(val) = gateway_port.parse::<u32>() {
-            constants.push_str(&format!("pub const GATEWAY_PORT: u32 = {val};\n"));
+            constants.push_str(&format!("pub const GATEWAY_PORT_RANGE_BEGIN: u16 = {val};\n"));
+        }
+    }
+    if let Some(gateway_port) = linuxd_config_toml.get("gateway_port_range_end") {
+        if let Ok(val) = gateway_port.parse::<u32>() {
+            constants.push_str(&format!("pub const GATEWAY_PORT_RANGE_END: u16 = {val};\n"));
         }
     }
     constants.push_str("}\n");

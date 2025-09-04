@@ -17,6 +17,10 @@ use ::linuxd::{
     args,
     config::restore_gate_sockaddr_builder,
 };
+use ::log::{
+    debug,
+    error,
+};
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
@@ -127,7 +131,6 @@ impl LinuxDaemon {
     pub fn spawn(
         control_plane_sockaddr: &str,
         user_vm_sockaddr: &str,
-        gateway_sockaddr: &str,
         hwloc: Option<HwLoc>,
         binary_directory: &str,
         toolchain_binary_directory: &str,
@@ -138,7 +141,7 @@ impl LinuxDaemon {
     ) -> Result<Self> {
         debug!(
             "spawning linux daemon (control-plane={control_plane_sockaddr}, \
-             user-vm={user_vm_sockaddr}, gateway={gateway_sockaddr}, l2={l2})"
+             user-vm={user_vm_sockaddr}, l2={l2})"
         );
 
         let clh_api_socket_path: String = get_clh_api_socket_path(&tmp_directory);
@@ -168,8 +171,6 @@ impl LinuxDaemon {
                 control_plane_sockaddr.to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
                 user_vm_sockaddr.to_string(),
-                args::Args::OPT_GATEWAY_BIND_SOCKADDR.to_string(),
-                gateway_sockaddr.to_string(),
             ]
         };
         if let Some(hwloc) = hwloc {

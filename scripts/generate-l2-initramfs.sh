@@ -55,11 +55,9 @@ GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip
 HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
 CONTROL_PLANE_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "control_plane_port")
 USER_VM_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "user_vm_port")
-GATEWAY_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "gateway_port")
 
 CONTROL_PLANE_SOCKADDR="${HOST_TAP_IP_ADDRESS}:${CONTROL_PLANE_PORT}"
 USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${USER_VM_PORT}"
-GATEWAY_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${GATEWAY_PORT}"
 
 #===================================================================================================
 # Build initramfs
@@ -108,8 +106,6 @@ echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
     -control-plane-socket-type tcp \
     -user-vm-bind-addr ${USER_VM_SOCKADDR} \
     -user-vm-bind-socket-type tcp \
-    -gateway-bind-addr ${GATEWAY_SOCKADDR} \
-    -gateway-bind-socket-type tcp \
     -l2
 
 echo "[init] Nanvix L2 System VM shutting down!"
