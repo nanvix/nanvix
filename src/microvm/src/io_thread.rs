@@ -35,17 +35,17 @@ pub struct IoThread {
     /// Connection to the gateway.
     gateway: Gateway,
     /// Gateway receiver.
-    microvm_rx: Receiver<Message>,
+    data_rx: Receiver<Message>,
     /// Gateway sender.
-    microvm_tx: Sender<Message>,
+    data_tx: Sender<Message>,
     /// Queue of incoming messages.
     incoming: VecDeque<Message>,
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
     /// Command sender to the VMM.
-    _vmm_control_tx: Sender<ControlCommand>,
+    _control_tx: Sender<IoControlCommand>,
     /// Response receiver from the VMM.
-    vmm_control_rx: Receiver<ControlCommandResponse>,
+    control_rx: Receiver<IoControlResponse>,
     // TODO: channels to an outside issuer of snapshot commands and to linuxd.
 }
 
@@ -56,10 +56,10 @@ pub struct IoThread {
 ///
 /// # Description
 ///
-/// Control plane commands.
+/// Control plane commands from the I/O thread to the VMM.
 ///
 #[derive(PartialEq)]
-pub enum ControlCommand {
+pub enum IoControlCommand {
     _StartMicroVm,
     _LoadSnapshotAndRun,
     _PauseMicroVm,
@@ -72,10 +72,10 @@ pub enum ControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses.
+/// Control plane command responses from the VMM to the I/O thread.
 ///
 #[derive(PartialEq)]
-pub enum ControlCommandResponse {
+pub enum IoControlResponse {
     MicroVmPaused,
     SnapshotCreated,
     FlushOutput,
@@ -95,10 +95,10 @@ impl IoThread {
     /// # Parameters
     ///
     /// - `gateway`: Connection to gateway.
-    /// - `microvm_rx`: MicroVM receiver.
-    /// - `microvm_tx`: MicroVM sender.
-    /// - `vmm_control_tx`: Command sender.
-    /// - `vmm_control_rx`: Response receiver.
+    /// - `data_rx`: MicroVM receiver.
+    /// - `data_tx`: MicroVM sender.
+    /// - `control_tx`: Command sender.
+    /// - `control_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -106,14 +106,14 @@ impl IoThread {
     ///
     pub fn spawn(
         gateway: Gateway,
-        microvm_rx: Receiver<Message>,
-        microvm_tx: Sender<Message>,
-        vmm_control_tx: Sender<ControlCommand>,
-        vmm_control_rx: Receiver<ControlCommandResponse>,
+        data_rx: Receiver<Message>,
+        data_tx: Sender<Message>,
+        control_tx: Sender<IoControlCommand>,
+        control_rx: Receiver<IoControlResponse>,
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
             let mut io_thread: IoThread =
-                IoThread::new(gateway, microvm_rx, microvm_tx, vmm_control_tx, vmm_control_rx)?;
+                IoThread::new(gateway, data_rx, data_tx, control_tx, control_rx)?;
             io_thread.run()?;
             Ok(())
         })
@@ -127,10 +127,10 @@ impl IoThread {
     /// # Parameters
     ///
     /// - `gateway`: Connection to gateway.
-    /// - `microvm_rx`: MicroVM receiver.
-    /// - `microvm_tx`: MicroVM sender.
-    /// - `vmm_control_tx`: Command sender.
-    /// - `vmm_control_rx`: Response receiver.
+    /// - `data_rx`: MicroVM receiver.
+    /// - `data_tx`: MicroVM sender.
+    /// - `control_tx`: Command sender.
+    /// - `control_rx`: Response receiver.
     ///
     /// # Returns
     ///
@@ -138,19 +138,19 @@ impl IoThread {
     ///
     fn new(
         gateway: Gateway,
-        microvm_rx: Receiver<Message>,
-        microvm_tx: Sender<Message>,
-        vmm_control_tx: Sender<ControlCommand>,
-        vmm_control_rx: Receiver<ControlCommandResponse>,
+        data_rx: Receiver<Message>,
+        data_tx: Sender<Message>,
+        control_tx: Sender<IoControlCommand>,
+        control_rx: Receiver<IoControlResponse>,
     ) -> Result<Self> {
         Ok(Self {
             gateway,
-            microvm_rx,
-            microvm_tx,
+            data_rx,
+            data_tx,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            _vmm_control_tx: vmm_control_tx,
-            vmm_control_rx,
+            _control_tx: control_tx,
+            control_rx,
         })
     }
 
@@ -213,7 +213,7 @@ impl IoThread {
     /// Otherwise, if the channel is empty, `false` is returned. Otherwise, an error is returned.
     ///
     fn try_receive_from_microvm(&mut self) -> Result<bool> {
-        match self.microvm_rx.try_recv() {
+        match self.data_rx.try_recv() {
             Ok(mut message) => {
                 profiler::timestamp_message!(
                     &mut message.payload,
@@ -289,7 +289,7 @@ impl IoThread {
                         + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
                 // NOTE: calling `send()` on a channel does not block.
-                self.microvm_tx.send(message)?;
+                self.data_tx.send(message)?;
                 Ok(())
             },
             None => Ok(()),
@@ -306,10 +306,10 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn try_receive_from_vmm_control(&mut self) -> Result<()> {
-        match self.vmm_control_rx.try_recv() {
+        match self.control_rx.try_recv() {
             Ok(response) => match response {
-                ControlCommandResponse::FlushOutput => self.flush_microvm_output(),
-                ControlCommandResponse::FlushInput => self.flush_linuxd_input(),
+                IoControlResponse::FlushOutput => self.flush_microvm_output(),
+                IoControlResponse::FlushInput => self.flush_linuxd_input(),
                 _ => Ok(()), // TODO: forward to whoever is interested. This requires having control channels.
             },
             Err(TryRecvError::Empty) => Ok(()),
@@ -332,7 +332,7 @@ impl IoThread {
     ///
     fn flush_microvm_output(&mut self) -> Result<()> {
         while self.try_receive_from_microvm()? {
-            // Keep looping until `microvm_rx` is empty, which breaks the loop.
+            // Keep looping until `data_rx` is empty, which breaks the loop.
         }
         while !self.outgoing.is_empty() {
             self.try_send_to_gateway()?;

@@ -27,8 +27,8 @@ extern crate kvm_ioctls;
 use crate::{
     Gateway,
     io_thread::{
-        ControlCommand,
-        ControlCommandResponse,
+        IoControlCommand,
+        IoControlResponse,
         IoThread,
     },
     memory_thread,
@@ -72,7 +72,7 @@ use ::sys::ipc::{
 //==================================================================================================
 
 pub struct Vmm {
-    _gateway_tx: Sender<Message>,
+    _io_thread_data_tx: Sender<Message>,
     io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
@@ -114,29 +114,29 @@ impl Vmm {
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
-        let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
-        let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
-        let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
-        let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
-        let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
+        let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>();
+        let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>();
+        let (memory_thread_data_tx, vcpu_thread_stdin_rx) = mpsc::channel::<Message>();
+        let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>();
+        let (io_control_tx, io_thread_control_rx) = mpsc::channel::<IoControlResponse>();
 
         // Spawn I/O thread.
         let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
             IoThread::spawn(
                 conn,
-                gateway_rx,
-                gateway_tx.clone(),
-                control_input_tx,
-                control_output_rx,
+                io_thread_data_rx,
+                io_thread_data_tx.clone(),
+                io_thread_control_tx,
+                io_thread_control_rx,
             )
         });
 
         // Input function used for emulating I/O port reads.
-        let input: Box<microvm::InputFn> = Self::build_input_fn(vm_rx);
+        let input: Box<microvm::InputFn> = Self::build_input_fn(vcpu_thread_stdin_rx);
 
         // Output function used for emulating I/O port writes.
         let output: Box<microvm::OutputFn> =
-            Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vm_tx);
+            Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vcpu_thread_stdout_tx);
 
         let mut microvm: MicroVm = MicroVm::new(memory_size, input, output)?;
 
@@ -173,9 +173,9 @@ impl Vmm {
             .reset_credits()?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
-        let memory_thread_tx: Sender<Message> = memory_thread_tx.clone();
+        let memory_thread_data_tx: Sender<Message> = memory_thread_data_tx.clone();
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            memory_thread::spawn(memory_thread_rx, memory_thread_tx, move || {
+            memory_thread::spawn(memory_thread_data_rx, memory_thread_data_tx, move || {
                 vmem.lock()
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
@@ -211,13 +211,13 @@ impl Vmm {
         barrier.wait();
 
         let orchestrator = Orchestrator::new(
-            control_input_rx,
-            control_output_tx,
+            io_control_rx,
+            io_control_tx,
             || Ok(()), // TODO: create_snapshot
         );
 
         let mut vmm: Vmm = Self {
-            _gateway_tx: gateway_tx,
+            _io_thread_data_tx: io_thread_data_tx,
             io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,

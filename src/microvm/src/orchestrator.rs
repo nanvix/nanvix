@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::io_thread::{
-    ControlCommand,
-    ControlCommandResponse,
+    IoControlCommand,
+    IoControlResponse,
 };
 use ::anyhow::Result;
 use ::std::{
@@ -37,8 +37,8 @@ pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 ///
 pub struct Orchestrator {
     state: State,
-    io_control_rx: Receiver<ControlCommand>,
-    io_control_tx: Sender<ControlCommandResponse>,
+    io_control_rx: Receiver<IoControlCommand>,
+    io_control_tx: Sender<IoControlResponse>,
     create_snapshot: fn() -> Result<()>,
 }
 
@@ -67,8 +67,8 @@ enum State {
 
 impl Orchestrator {
     pub fn new(
-        io_control_rx: Receiver<ControlCommand>,
-        io_control_tx: Sender<ControlCommandResponse>,
+        io_control_rx: Receiver<IoControlCommand>,
+        io_control_tx: Sender<IoControlResponse>,
         create_snapshot: fn() -> Result<()>,
     ) -> Self {
         Self {
@@ -91,7 +91,7 @@ impl Orchestrator {
     pub fn handle_command(&mut self) -> Result<()> {
         match self.io_control_rx.try_recv() {
             Ok(command) => match command {
-                ControlCommand::_StartMicroVm => {
+                IoControlCommand::_StartMicroVm => {
                     if self.state == State::PreBoot {
                         // TODO: separate starting logic from `spawn()` and put it here
                         // This TODO could be done right now, but it's a major refactor.
@@ -100,7 +100,7 @@ impl Orchestrator {
                     }
                     Ok(())
                 },
-                ControlCommand::_LoadSnapshotAndRun => {
+                IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
                         // TODO: load snapshot
                         // This TODO requires being able to create snapshots.
@@ -118,7 +118,7 @@ impl Orchestrator {
                     }
                     Ok(())
                 },
-                ControlCommand::_PauseMicroVm => {
+                IoControlCommand::_PauseMicroVm => {
                     if self.state == State::Running {
                         if let Err(e) = self.pause_protocol() {
                             let reason: String =
@@ -129,7 +129,7 @@ impl Orchestrator {
                     }
                     Ok(())
                 },
-                ControlCommand::_PauseAndCreateSnapshot => {
+                IoControlCommand::_PauseAndCreateSnapshot => {
                     if self.state == State::Running {
                         if let Err(e) = self.pause_protocol() {
                             let reason: String =
@@ -145,11 +145,11 @@ impl Orchestrator {
                         }
                         trace!("Snapshot created");
                         self.io_control_tx
-                            .send(ControlCommandResponse::SnapshotCreated)?;
+                            .send(IoControlResponse::SnapshotCreated)?;
                     }
                     Ok(())
                 },
-                ControlCommand::_CreateSnapshot => {
+                IoControlCommand::_CreateSnapshot => {
                     if self.state == State::Paused {
                         if let Err(e) = (self.create_snapshot)() {
                             let reason: String =
@@ -159,11 +159,11 @@ impl Orchestrator {
                         }
                         trace!("Snapshot created");
                         self.io_control_tx
-                            .send(ControlCommandResponse::SnapshotCreated)?;
+                            .send(IoControlResponse::SnapshotCreated)?;
                     }
                     Ok(())
                 },
-                ControlCommand::_ResumeMicroVm => {
+                IoControlCommand::_ResumeMicroVm => {
                     if self.state == State::Paused {
                         // TODO: tell linuxd it's fine to send more messages
                         // This TODO requires having a control plane connection with linuxd
@@ -177,7 +177,7 @@ impl Orchestrator {
                     }
                     Ok(())
                 },
-                ControlCommand::LinuxDaemonFlushed => {
+                IoControlCommand::LinuxDaemonFlushed => {
                     // NOTE: this will be unreachable once the communication is fully implemented
                     // `LinuxDaemonFlushed` should only be sent in the middle of `pause_protocol`.
                     // In fact, it should already be unreachable, but it cannot be tested ATM.
@@ -209,17 +209,14 @@ impl Orchestrator {
         // This TODO requires pausing the vCPU and a control plane communication with linuxd
         trace!("MicroVM paused");
         // Flush output to linuxd
-        self.io_control_tx
-            .send(ControlCommandResponse::FlushOutput)?;
+        self.io_control_tx.send(IoControlResponse::FlushOutput)?;
         // TODO: tell linuxd to stop sending messages (Flushing -> Paused)
         // TODO: get a response from linuxd
         // These TODOs require a control plane communication with linuxd
-        self.io_control_tx
-            .send(ControlCommandResponse::FlushInput)?;
+        self.io_control_tx.send(IoControlResponse::FlushInput)?;
         self.receive_linux_daemon_flushed()?;
         self.state = State::Paused;
-        self.io_control_tx
-            .send(ControlCommandResponse::MicroVmPaused)?;
+        self.io_control_tx.send(IoControlResponse::MicroVmPaused)?;
         Ok(())
     }
 
@@ -240,7 +237,7 @@ impl Orchestrator {
         // Different kinds of messages can be ignored,
         // as they wouldn't do anything while the VMM is pausing.
         while match self.io_control_rx.try_recv() {
-            Ok(command) => command != ControlCommand::LinuxDaemonFlushed,
+            Ok(command) => command != IoControlCommand::LinuxDaemonFlushed,
             Err(TryRecvError::Empty) => true,
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the vmm has disconnected".to_string();
