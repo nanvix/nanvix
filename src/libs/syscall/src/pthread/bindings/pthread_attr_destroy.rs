@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::pthread::syscall;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::c_int,
@@ -22,11 +23,29 @@ use ::sysapi::{
 ///
 /// # Parameters
 ///
-/// - `attr`: Thread attributes object.
+/// - `attr`: Pointer to the thread attributes object to be destroyed.
 ///
-/// # Returns
+/// # Return Value
 ///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
+/// On success, this function returns zero. Otherwise, it returns an non-zero error code indicating
+/// the reason for the failure.
+///
+/// # Errors
+///
+/// The following errors can be returned by this function:
+///
+/// - [`ErrorCode::InvalidArgument`] if `attr` points to an invalid address.
+/// - [`ErrorCode::InvalidArgument`] if `attr` points to a misaligned address.
+/// - [`ErrorCode::InvalidArgument`] if `attr` references a thread attribute object that was not
+///   initialized.
+///
+/// # Notes
+///
+/// - Destroying a thread attributes object has no effect on threads that were created using that
+///   object.
+///
+/// - This function always succeed, but portable applications should nevertheless handle a possible
+///   error return.
 ///
 /// # Safety
 ///
@@ -38,15 +57,34 @@ use ::sysapi::{
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_int {
-    ::syslog::trace!("pthread_attr_destroy(): attr={:?}", attr);
+    ::syslog::trace!("pthread_attr_destroy(): attr={attr:p}");
 
-    // Check if `attr` is not valid.
+    // Check if `attr` is points to an invalid address.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_destroy(): invalid attribute pointer");
+        ::syslog::error!(
+            "pthread_attr_destroy(): invalid pointer to thread attributes object (attr={attr:p})"
+        );
         return ErrorCode::InvalidArgument.get();
     }
 
-    (*attr).is_initialized = 0;
+    // Check if `attr` points to a misaligned address.
+    if (attr as usize) % core::mem::align_of::<pthread_attr_t>() != 0 {
+        ::syslog::error!(
+            "pthread_attr_destroy(): misaligned pointer to thread attributes object \
+             (attr={attr:p})"
+        );
+        return ErrorCode::InvalidArgument.get();
+    }
 
-    0
+    // Attempt to destroy thread attributes object and check for errors.
+    match syscall::pthread_attr_destroy(&mut *attr) {
+        Ok(()) => {
+            ::syslog::trace!("pthread_attr_destroy(): success (attr={attr:p})");
+            0
+        },
+        Err(error) => {
+            ::syslog::warn!("pthread_attr_destroy(): {error:?} (attr={attr:p})");
+            error.code.get()
+        },
+    }
 }

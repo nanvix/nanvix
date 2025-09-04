@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::pthread::syscall;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::c_int,
@@ -22,11 +23,32 @@ use ::sysapi::{
 ///
 /// # Parameters
 ///
-/// - `attr`: Thread attributes object.
+/// - `attr` - Pointer to the thread attributes object to be initialized.
 ///
-/// # Returns
+/// # Return Value
 ///
-/// If successful, zero is returned. Otherwise, an error code is returned instead.
+/// On success, this function returns zero. Otherwise, it returns an non-zero error code indicating
+/// the reason for the failure.
+///
+/// # Errors
+///
+/// The following errors can be returned by this function:
+///
+/// - [`ErrorCode::InvalidArgument`] if `attr` points to an invalid address.
+/// - [`ErrorCode::InvalidArgument`] if `attr` points to a misaligned address.
+/// - [`ErrorCode::InvalidArgument`] if `attr` points to a thread attribute object that was already
+///   initialized.
+///
+/// # Notes
+///
+/// - Calling this function on a thread attributes object that has already been initialized results
+///   in undefined behavior.
+///
+/// - When a thread attributes object is no longer required, it should be destroyed using the
+///   `pthread_attr_destroy()` function.
+///
+/// - This function always succeed, but portable applications should nevertheless handle a possible
+///   error return.
 ///
 /// # Safety
 ///
@@ -38,15 +60,33 @@ use ::sysapi::{
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
-    ::syslog::trace!("pthread_attr_init(): attr={:?}", attr);
+    ::syslog::trace!("pthread_attr_init(): attr={attr:p}");
 
-    // Check if `attr` is not valid.
+    // Check if `attr` is points to an invalid address.
     if attr.is_null() {
-        ::syslog::error!("pthread_attr_init(): invalid attribute pointer");
+        ::syslog::error!(
+            "pthread_attr_init(): invalid pointer to thread attributes object (attr={attr:p})"
+        );
         return ErrorCode::InvalidArgument.get();
     }
 
-    *attr = pthread_attr_t::default();
+    // Check if `attr` points to a misaligned address.
+    if (attr as usize) % core::mem::align_of::<pthread_attr_t>() != 0 {
+        ::syslog::error!(
+            "pthread_attr_init(): misaligned pointer to thread attributes object (attr={attr:p})"
+        );
+        return ErrorCode::InvalidArgument.get();
+    }
 
-    0
+    // Attempt to initialize thread attributes object and check for errors.
+    match syscall::pthread_attr_init(&mut *attr) {
+        Ok(()) => {
+            ::syslog::trace!("pthread_attr_init(): success (attr={attr:p})");
+            0
+        },
+        Err(error) => {
+            ::syslog::warn!("pthread_attr_init(): {error:?} (attr={attr:p})");
+            error.code.get()
+        },
+    }
 }
