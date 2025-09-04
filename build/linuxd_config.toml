@@ -13,4 +13,11 @@ snapshot_name = "l2-sysvm-snapshot"
 # Ports used for different services in linuxd.
 control_plane_port = 9000
 user_vm_port = 9001
-gateway_port = 9002
+
+# Each user VM instance gets a different gateway port, so we define the allowed port range
+# here. Note that this range limits the total number of concurrent user VMs we can have
+# at any point in time. We pick large values that are unlikely to overlap with other
+# services, and with the ephemeral port range used in Linux, readable with:
+# cat /proc/sys/net/ipv4/ip_local_port_range
+gateway_port_range_begin = 49152
+gateway_port_range_end = 65535

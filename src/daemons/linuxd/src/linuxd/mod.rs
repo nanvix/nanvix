@@ -237,17 +237,10 @@ impl LinuxDaemon {
                         match Socket::bind(gateway_socket_type, gateway_sockaddr.clone()) {
                             Ok(listener) => listener,
                             Err(e) => {
-                                // Need to duplicate the error message becase log_and_error can
-                                // only take a &str, and we want a formatted String with the error
-                                // message.
-                                error!(
-                                    "error binding to gateway socket (addr={gateway_sockaddr}, \
-                                     error={e:?})"
-                                );
-                                return Err(Self::log_and_error(
-                                    ErrorCode::IoErr,
-                                    "failed to bind gateway socket for user VM",
-                                ));
+                                let reason: &'static str =
+                                    "failed to bind gateway socket for user VM";
+                                error!("{reason} (addr={gateway_sockaddr}, error={e:?})");
+                                return Err(Self::log_and_error(ErrorCode::IoErr, reason));
                             },
                         };
 
