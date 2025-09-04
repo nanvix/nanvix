@@ -13,8 +13,8 @@ extern crate kvm_ioctls;
 use crate::{
     Gateway,
     io_thread::{
-        ControlCommand,
-        ControlCommandResponse,
+        IoControlCommand,
+        IoControlResponse,
         IoThread,
     },
     memory_thread,
@@ -75,7 +75,7 @@ static VMEM: OnceLock<Arc<Mutex<SandboxMemoryManager<ExclusiveSharedMemory>>>> =
 //==================================================================================================
 
 pub struct Vmm {
-    _gateway_tx: Sender<Message>,
+    _io_thread_data_tx: Sender<Message>,
     io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
@@ -116,20 +116,20 @@ impl Vmm {
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
-        let (vm_tx, gateway_rx) = mpsc::channel::<Message>();
-        let (gateway_tx, memory_thread_rx) = mpsc::channel::<Message>();
-        let (memory_thread_tx, vm_rx) = mpsc::channel::<Message>();
-        let (control_input_tx, control_input_rx) = mpsc::channel::<ControlCommand>();
-        let (control_output_tx, control_output_rx) = mpsc::channel::<ControlCommandResponse>();
+        let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>();
+        let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>();
+        let (memory_thread_data_tx, vcpu_thread_stdin_rx) = mpsc::channel::<Message>();
+        let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>();
+        let (io_control_tx, io_thread_control_rx) = mpsc::channel::<IoControlResponse>();
 
         // Spawn I/O thread.
         let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
             IoThread::spawn(
                 conn,
-                gateway_rx,
-                gateway_tx.clone(),
-                control_input_tx,
-                control_output_rx,
+                io_thread_data_rx,
+                io_thread_data_tx.clone(),
+                io_thread_control_tx,
+                io_thread_control_rx,
             )
         });
 
@@ -246,7 +246,7 @@ impl Vmm {
                 },
             };
 
-            if let Err(e) = vm_tx.send(message) {
+            if let Err(e) = vcpu_thread_stdout_tx.send(message) {
                 let reason: String = format!("failed to send message: {:?}", e);
                 error!("output(): {}", reason);
                 return Err(HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
@@ -256,7 +256,7 @@ impl Vmm {
         })?;
 
         sandbox.register("VmbusRead", move || -> Result<Vec<u8>, HyperlightError> {
-            match vm_rx.try_recv() {
+            match vcpu_thread_stdin_rx.try_recv() {
                 Ok(mut msg) => {
                     consume_credit()?;
                     msg.message_type = MessageType::Ikc;
@@ -278,7 +278,7 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            memory_thread::spawn(memory_thread_rx, memory_thread_tx, add_credit);
+            memory_thread::spawn(memory_thread_data_rx, memory_thread_data_tx, add_credit);
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid. We synchronize the
@@ -319,13 +319,13 @@ impl Vmm {
         barrier.wait();
 
         let orchestrator = Orchestrator::new(
-            control_input_rx,
-            control_output_tx,
+            io_control_rx,
+            io_control_tx,
             || Ok(()), // TODO: create_snapshot
         );
 
         let mut vmm: Vmm = Self {
-            _gateway_tx: gateway_tx,
+            _io_thread_data_tx: io_thread_data_tx,
             io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,
