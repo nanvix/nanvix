@@ -78,9 +78,6 @@ const DEFAULT_CONTROL_PLANE_SOCKET_TYPE: SocketType = SocketType::Unix;
 /// Default user VM type.
 const DEFAULT_USER_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
 
-/// Default gateway socket type.
-const DEFAULT_GATEWAY_SOCKET_TYPE: SocketType = SocketType::Unix;
-
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -93,7 +90,6 @@ pub fn main() -> Result<()> {
     // Work-out the socket addresses.
     let control_plane_sockaddr: String = args.control_plane_sockaddr();
     let user_vm_sockaddr: String = args.user_vm_bind_sockaddr();
-    let gateway_sockaddr: Option<String> = args.gateway_bind_sockaddr();
 
     // Deployed in an L2 VM?
     let in_l2: bool = args.l2();
@@ -121,17 +117,6 @@ pub fn main() -> Result<()> {
         None => DEFAULT_USER_VM_SOCKET_TYPE,
     };
 
-    let gateway_bind_socket_type: SocketType = match args.gateway_bind_socket_type() {
-        Some(typ) => match SocketType::from_str(typ.as_str()) {
-            Ok(typ) => typ,
-            Err(error) => {
-                error!("{error} (type={typ:?})");
-                anyhow::bail!("failed to parse socket address type");
-            },
-        },
-        None => DEFAULT_GATEWAY_SOCKET_TYPE,
-    };
-
     // Start listening for incoming connections from user VMs associated to this linuxd instance.
     let user_vm_listener: SocketListener =
         match Socket::bind(user_vm_bind_socket_type, user_vm_sockaddr.clone()) {
@@ -146,26 +131,10 @@ pub fn main() -> Result<()> {
         };
     info!("Listening to user VMs on: {user_vm_sockaddr:?}");
 
-    // Start listening for requests for requests to feed input to the user VM.
-    let gateway_listener: Option<SocketListener> = match gateway_sockaddr {
-        Some(ref sockaddr) => match Socket::bind(gateway_bind_socket_type, sockaddr.clone()) {
-            Ok(stream) => {
-                info!("Listening for user VM input on gateway at: {:?}", gateway_sockaddr);
-                Some(stream)
-            },
-            Err(e) => {
-                error!("failed to bind to gateway (address={}, error={e:?})", sockaddr.clone());
-                anyhow::bail!("failed to bind to gateway");
-            },
-        },
-        None => None,
-    };
-
     let procd: LinuxDaemon = match LinuxDaemon::init(
         control_plane_sockaddr,
         control_plane_socket_type,
         user_vm_listener,
-        gateway_listener,
         in_l2,
     ) {
         Ok(procd) => procd,
