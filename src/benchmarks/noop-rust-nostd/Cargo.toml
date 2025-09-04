@@ -16,7 +16,7 @@ name = "noop-rust-nostd"
 [dependencies]
 sys = { workspace = true }
 cfg-if = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 sysalloc = { workspace = true }
 
 [build-dependencies]

@@ -6,7 +6,12 @@
 //==================================================================================================
 
 use ::arch::mem::PAGE_SIZE;
+use ::config::memory_layout::{
+    USER_MMAPPED_END_RAW,
+    USER_MMAP_BASE_RAW,
+};
 use ::sys::{
+    config::memory_layout::USER_MMAP_BASE,
     mm::{
         AccessPermission,
         Address,
@@ -43,7 +48,7 @@ fn test_mmap_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_BASE;
 
     // Map a page.
     match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -87,7 +92,7 @@ fn test_mmap_write_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_BASE;
 
     // Map a page.
     match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
@@ -147,10 +152,10 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / PAGE_SIZE;
+    let ntimes: usize = ((USER_MMAPPED_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
 
     for _ in 0..ntimes {
-        let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
+        let vaddr: VirtualAddress = USER_MMAP_BASE;
 
         // Map a page.
         match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -195,9 +200,9 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = (config::kernel::MEMORY_SIZE / 8) / PAGE_SIZE;
+    let ntimes: usize = ((USER_MMAPPED_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
 
-    for vaddr in (0..ntimes).map(|i| config::memory_layout::USER_HEAP_BASE_RAW + i * PAGE_SIZE) {
+    for vaddr in (0..ntimes).map(|i| USER_MMAP_BASE_RAW + i * PAGE_SIZE) {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.
@@ -242,7 +247,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = ::sys::config::memory_layout::USER_HEAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_BASE;
 
     // Map a page.
     if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY).is_err() {
