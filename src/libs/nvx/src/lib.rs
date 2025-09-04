@@ -21,7 +21,8 @@ mod panic;
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "staticlib")]
+// We link the `alloc` crate when building static libraries to provide heap allocation support.
+#[cfg(all(feature = "staticlib", not(feature = "rustc-dep-of-std")))]
 extern crate alloc;
 
 #[cfg(feature = "staticlib")]
@@ -209,11 +210,11 @@ fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
 
 /// Initializes system runtime.
 fn init() {
-    #[cfg(feature = "sysalloc")]
+    #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(e) = sysalloc::init() {
         panic!("failed to initialize memory manager: {:?}", e);
     }
-    #[cfg(feature = "sysalloc")]
+    #[cfg(any(target_os = "none", target_os = "nanvix"))]
     match sysalloc::tda::alloc() {
         core::prelude::v1::Ok(Some(tda_ptr)) => {
             if let Err(error) = ::sys::kcall::pm::set_thread_data_area(tda_ptr) {
@@ -231,11 +232,11 @@ fn init() {
 
 /// Cleans up system runtime.
 fn cleanup() {
-    #[cfg(feature = "sysalloc")]
+    #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(error) = ::sysalloc::tda::cleanup() {
         panic!("failed to cleanup thread data area ({error:?})");
     }
-    #[cfg(feature = "sysalloc")]
+    #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
     }

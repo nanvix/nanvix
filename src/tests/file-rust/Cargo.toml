@@ -14,7 +14,7 @@ homepage.workspace = true
 name = "file-rust"
 
 [dependencies]
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }

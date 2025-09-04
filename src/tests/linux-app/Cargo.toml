@@ -15,7 +15,7 @@ name = "linux-app"
 
 [dependencies]
 sys = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true }

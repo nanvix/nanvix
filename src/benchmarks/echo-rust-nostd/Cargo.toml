@@ -14,7 +14,7 @@ homepage.workspace = true
 name = "echo-rust-nostd"
 
 [dependencies]
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 sys = { workspace = true }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
