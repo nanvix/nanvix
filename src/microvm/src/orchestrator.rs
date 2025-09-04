@@ -5,10 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::io_thread::{
-    IoControlCommand,
-    IoControlResponse,
-};
 use ::anyhow::Result;
 use ::std::{
     sync::mpsc::{
@@ -39,6 +35,10 @@ pub struct Orchestrator {
     state: State,
     io_control_rx: Receiver<IoControlCommand>,
     io_control_tx: Sender<IoControlResponse>,
+    memory_control_rx: Receiver<MemoryControlResponse>,
+    memory_control_tx: Sender<MemoryControlCommand>,
+    vcpu_control_rx: Receiver<VcpuControlResponse>,
+    vcpu_control_tx: Sender<VcpuControlCommand>,
     create_snapshot: fn() -> Result<()>,
 }
 
@@ -61,6 +61,78 @@ enum State {
     Paused,
 }
 
+///
+/// # Description
+///
+/// Control plane commands from the I/O thread to the VMM.
+///
+#[derive(PartialEq)]
+pub enum IoControlCommand {
+    _StartMicroVm,
+    _LoadSnapshotAndRun,
+    _PauseMicroVm,
+    _PauseAndCreateSnapshot,
+    _CreateSnapshot,
+    _ResumeMicroVm,
+    LinuxDaemonFlushed,
+}
+
+///
+/// # Description
+///
+/// Control plane command responses from the VMM to the I/O thread.
+///
+#[derive(PartialEq)]
+pub enum IoControlResponse {
+    MicroVmPaused,
+    SnapshotCreated,
+    FlushOutput,
+    FlushInput,
+}
+
+///
+/// # Description
+///
+/// Control plane commands from the VMM to the memory thread.
+///
+#[derive(PartialEq)]
+pub enum MemoryControlCommand {
+    Pause,
+    Resume,
+}
+
+///
+/// # Description
+///
+/// Control plane command responses from the memory thread to the VMM.
+///
+#[derive(PartialEq)]
+pub enum MemoryControlResponse {
+    PauseError,
+    ResumeError,
+    ResumeWritten,
+}
+
+///
+/// # Description
+///
+/// Control plane commands from the VMM to the vCPU thread.
+///
+#[derive(PartialEq)]
+pub enum VcpuControlCommand {
+    Resume,
+}
+
+///
+/// # Description
+///
+/// Control plane command responses from the vCPU thread to the VMM.
+///
+#[derive(PartialEq)]
+pub enum VcpuControlResponse {
+    _Paused,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -69,12 +141,20 @@ impl Orchestrator {
     pub fn new(
         io_control_rx: Receiver<IoControlCommand>,
         io_control_tx: Sender<IoControlResponse>,
+        memory_control_rx: Receiver<MemoryControlResponse>,
+        memory_control_tx: Sender<MemoryControlCommand>,
+        vcpu_control_rx: Receiver<VcpuControlResponse>,
+        vcpu_control_tx: Sender<VcpuControlCommand>,
         create_snapshot: fn() -> Result<()>,
     ) -> Self {
         Self {
             state: State::PreBoot,
             io_control_rx,
             io_control_tx,
+            memory_control_rx,
+            memory_control_tx,
+            vcpu_control_rx,
+            vcpu_control_tx,
             create_snapshot,
         }
     }
@@ -204,9 +284,47 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: pause MicroVM (Running -> Paused)
-        // and tell linuxd to flush (Running -> Flushing)
-        // This TODO requires pausing the vCPU and a control plane communication with linuxd
+        // TODO: tell linuxd to flush (Running -> Flushing)
+        // This TODO requires control plane communication with linuxd
+        self.memory_control_tx.send(MemoryControlCommand::Pause)?;
+        // Wait for the MicroVM to confirm it has paused.
+        let start: Instant = Instant::now();
+        let mut counter: usize = 1;
+        loop {
+            match self.vcpu_control_rx.try_recv() {
+                Ok(VcpuControlResponse::_Paused) => break,
+                Err(TryRecvError::Empty) => (),
+                Err(TryRecvError::Disconnected) => {
+                    let reason: String = "the vmm has disconnected".to_string();
+                    error!("pause_protocol(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+            // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
+            let elapsed_time: usize = start.elapsed().as_millis() as usize;
+            if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
+                warn!(
+                    "pause_protocol(): {}ms have passed waiting for `ResumeMicroVm` message",
+                    TIMEOUT_WARNING_INTERVAL_IN_MS * counter
+                );
+                match self.memory_control_rx.try_recv() {
+                    Ok(MemoryControlResponse::PauseError) => todo!(), // TODO: graceful shutdown
+                    Ok(MemoryControlResponse::ResumeError) => unreachable!(
+                        "PauseError is the only message that can be sent at this point."
+                    ),
+                    Ok(MemoryControlResponse::ResumeWritten) => unreachable!(
+                        "PauseError is the only message that can be sent at this point."
+                    ),
+                    Err(TryRecvError::Empty) => (),
+                    Err(TryRecvError::Disconnected) => {
+                        let reason: String = "the vmm has disconnected".to_string();
+                        error!("pause_protocol(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                }
+                counter += 1;
+            }
+        }
         trace!("MicroVM paused");
         // Flush output to linuxd
         self.io_control_tx.send(IoControlResponse::FlushOutput)?;
@@ -216,6 +334,7 @@ impl Orchestrator {
         self.io_control_tx.send(IoControlResponse::FlushInput)?;
         self.receive_linux_daemon_flushed()?;
         self.state = State::Paused;
+        trace!("State: Running -> Paused");
         self.io_control_tx.send(IoControlResponse::MicroVmPaused)?;
         Ok(())
     }
@@ -268,6 +387,36 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn resume_microvm(&mut self) -> Result<()> {
+        // Tell memory thread to write to the kernel
+        self.memory_control_tx.send(MemoryControlCommand::Resume)?;
+        // Wait for confirmation
+        let start: Instant = Instant::now();
+        let mut counter: usize = 1;
+        while match self.memory_control_rx.try_recv() {
+            Ok(MemoryControlResponse::ResumeWritten) => false,
+            Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown
+            Ok(MemoryControlResponse::PauseError) => {
+                unreachable!("PauseError cannot be sent at this point.")
+            },
+            Err(TryRecvError::Empty) => true,
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = "the memory thread has disconnected".to_string();
+                error!("resume_microvm(): {reason}");
+                anyhow::bail!(reason)
+            },
+        } {
+            // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
+            let elapsed_time: usize = start.elapsed().as_millis() as usize;
+            if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
+                warn!(
+                    "{}ms have passed waiting for `ResumeWritten`",
+                    TIMEOUT_WARNING_INTERVAL_IN_MS * counter
+                );
+                counter += 1;
+            }
+        }
+        // Tell microvm to resume
+        self.vcpu_control_tx.send(VcpuControlCommand::Resume)?;
         self.state = State::Running;
         trace!("State: Paused -> Running");
         Ok(())

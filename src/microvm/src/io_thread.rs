@@ -5,7 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::Gateway;
+use crate::{
+    Gateway,
+    orchestrator::{
+        IoControlCommand,
+        IoControlResponse,
+    },
+};
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
@@ -47,39 +53,6 @@ pub struct IoThread {
     /// Response receiver from the VMM.
     control_rx: Receiver<IoControlResponse>,
     // TODO: channels to an outside issuer of snapshot commands and to linuxd.
-}
-
-//==================================================================================================
-// Enums
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Control plane commands from the I/O thread to the VMM.
-///
-#[derive(PartialEq)]
-pub enum IoControlCommand {
-    _StartMicroVm,
-    _LoadSnapshotAndRun,
-    _PauseMicroVm,
-    _PauseAndCreateSnapshot,
-    _CreateSnapshot,
-    _ResumeMicroVm,
-    LinuxDaemonFlushed,
-}
-
-///
-/// # Description
-///
-/// Control plane command responses from the VMM to the I/O thread.
-///
-#[derive(PartialEq)]
-pub enum IoControlResponse {
-    MicroVmPaused,
-    SnapshotCreated,
-    FlushOutput,
-    FlushInput,
 }
 
 //==================================================================================================
