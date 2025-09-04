@@ -1,6 +1,9 @@
 # Total size of physical memory (in bytes)
 memory_size = 134217728
 
+# Number of processors.
+num_processors = 1
+
 # Total size of the kernel pool (in bytes)
 # Notes:
 # - This size should be a multiple of a page size.
