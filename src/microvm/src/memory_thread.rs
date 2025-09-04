@@ -25,6 +25,11 @@ use ::std::{
 };
 use ::sys::ipc::Message;
 
+use crate::orchestrator::{
+    MemoryControlCommand,
+    MemoryControlResponse,
+};
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -39,19 +44,29 @@ use ::sys::ipc::Message;
 ///
 /// - `data_rx`: Receives data messages from the I/O thread.
 /// - `data_tx`: Sends data messages to the virtual machine's stdin.
+/// - `control_rx`: Receives control commands from the VMM.
+/// - `control_tx`: Sends control responses to the VMM.
 /// - `add_credit`: Closure that adds a credit to the virtual machine credit pool.
+/// - `pause_microvm`: Closure that writes to the kernel's memory to pause the MicroVM.
+/// - `resume_microvm`: Closure that writes to the kernel's memory it shouldn't pause the MicroVM.
 ///
 /// # Returns
 ///
 /// A handle to the memory thread.
 ///
-pub fn spawn<F>(
+pub fn spawn<F1, F2, F3>(
     data_rx: Receiver<Message>,
     data_tx: Sender<Message>,
-    mut add_credit: F,
+    control_rx: Receiver<MemoryControlCommand>,
+    control_tx: Sender<MemoryControlResponse>,
+    mut add_credit: F1,
+    mut pause_microvm: F2,
+    mut resume_microvm: F3,
 ) -> JoinHandle<Result<()>>
 where
-    F: FnMut() -> Result<()> + std::marker::Send + 'static,
+    F1: FnMut() -> Result<()> + std::marker::Send + 'static,
+    F2: FnMut() -> Result<()> + std::marker::Send + 'static,
+    F3: FnMut() -> Result<()> + std::marker::Send + 'static,
 {
     thread::spawn(move || {
         loop {
@@ -64,7 +79,7 @@ where
                     );
                     if let Err(e) = data_tx.send(msg) {
                         let reason: String = format!("failed to send message: {e:?}");
-                        error!("memory_thread(): {reason}");
+                        error!("spawn(): {reason}");
                         continue;
                     }
                     add_credit()?;
@@ -72,7 +87,33 @@ where
                 Err(TryRecvError::Disconnected) => {
                     // When the guest finishes , the vCPU thread will disconnect from this
                     // thread. This situation is normal and should not create an error log.
-                    debug!("memory_thread(): channel has been disconnected");
+                    debug!("spawn(): channel has been disconnected");
+                    break Ok(());
+                },
+                Err(TryRecvError::Empty) => {
+                    // No message available.
+                },
+            }
+            match control_rx.try_recv() {
+                Ok(MemoryControlCommand::Pause) => {
+                    trace!("pause()");
+                    crate::timer!("vm_pause");
+                    if pause_microvm().is_err() {
+                        control_tx.send(MemoryControlResponse::PauseError)?;
+                    }
+                },
+                Ok(MemoryControlCommand::Resume) => {
+                    trace!("resume()");
+                    crate::timer!("vm_resume");
+                    if resume_microvm().is_err() {
+                        control_tx.send(MemoryControlResponse::ResumeError)?;
+                    }
+                    control_tx.send(MemoryControlResponse::ResumeWritten)?;
+                },
+                Err(TryRecvError::Disconnected) => {
+                    // When the guest finishes , the vCPU thread will disconnect from this
+                    // thread. This situation is normal and should not create an error log.
+                    debug!("spawn(): channel has been disconnected");
                     break Ok(());
                 },
                 Err(TryRecvError::Empty) => {
