@@ -87,6 +87,11 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
             constants.push_str(&format!("pub const MEMORY_SIZE: usize = {val};\n"));
         }
     }
+    if let Some(num_processors) = kernel_config_toml.get("num_processors") {
+        if let Ok(val) = num_processors.parse::<usize>() {
+            constants.push_str(&format!("pub const NUM_PROCESSORS: usize = {val};\n"));
+        }
+    }
     if let Some(kpool_size) = kernel_config_toml.get("kpool_size") {
         if let Ok(val) = kpool_size.parse::<usize>() {
             constants.push_str(&format!("pub const KPOOL_SIZE: usize = {val};\n"));
