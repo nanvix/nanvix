@@ -15,7 +15,7 @@ name = "snapshot-rust-nostd"
 
 [dependencies]
 sys = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
