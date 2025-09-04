@@ -9,6 +9,8 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;
         pub use syscall::Pointer;
+        pub use syscall::pthread_attr_destroy;
+        pub use syscall::pthread_attr_init;
         pub use syscall::pthread_create;
         pub use syscall::pthread_exit;
         pub use syscall::pthread_join;
