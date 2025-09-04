@@ -23,6 +23,7 @@ source "${IMPORT_DIR}/utils.sh"
 # Environment Variables
 #===================================================================================================
 
+SCRIPTS_DIR=$(dirname "$(readlink -f "$0")")
 REPO_ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "ERROR: Not in a git repository" >&2
     exit 1
