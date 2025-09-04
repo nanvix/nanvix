@@ -23,11 +23,7 @@ mod mm;
 
 extern crate nvx;
 
-use ::sys::{
-    config,
-    mm::Address,
-    pm::ProcessIdentifier,
-};
+use ::sys::pm::ProcessIdentifier;
 
 //==================================================================================================
 // Macros
@@ -90,7 +86,7 @@ pub fn main() {
     // Force a page fault.
     ::syslog::info!("triggering a page fault...");
     unsafe {
-        let ptr: *mut u8 = config::memory_layout::USER_HEAP_BASE.into_raw_value() as *mut u8;
+        let ptr: *mut u8 = ::config::memory_layout::USER_MMAP_BASE_RAW as *mut u8;
         *ptr = 1;
     }
 

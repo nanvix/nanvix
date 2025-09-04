@@ -15,7 +15,7 @@ name = "wasmd"
 
 [dependencies]
 num_enum = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true }
 sysapi = { workspace = true }

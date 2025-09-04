@@ -15,7 +15,7 @@ name = "memd"
 
 [dependencies]
 sys = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true }
 

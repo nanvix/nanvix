@@ -18,7 +18,7 @@ arch = { workspace = true, features = ["cpuid"] }
 sys = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
 sysapi = { workspace = true }
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 config = { workspace = true }
 syslog = { workspace = true }
 
