@@ -5,12 +5,29 @@
 // Modules
 //==================================================================================================
 
-use crate::sys::utsname;
+pub mod config;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    safe::sys::config::{
+        SysConfigName,
+        SysConfigValue,
+    },
+    sys::utsname,
+};
 use ::alloc::{
     string::String,
     vec::Vec,
 };
-use ::sys::error::Error;
+use ::arch::mem::PAGE_SIZE;
+use ::config::kernel::NUM_PROCESSORS;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //===================================================================================================
 // System
@@ -49,5 +66,42 @@ impl System {
         };
 
         Ok(system_name)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the value of a system configuration variable.
+    ///
+    /// # Parameters
+    ///
+    /// - `name` - Name of the system configuration variable to query.
+    ///
+    /// # Return Value
+    ///
+    /// On success, this function returns the value of the specified system configuration variable.
+    /// Otherwise, it returns an error that indicates the reason of the failure.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can be returned by this function:
+    ///
+    /// - [`ErrorCode::InvalidArgument`] if the specified system configuration name is invalid.
+    /// - [`ErrorCode::OperationNotSupported`] if the specified system configuration name is not
+    ///   supported.
+    /// - [`ErrorCode::ValueOutOfRange`] if the value of the specified system configuration variable
+    ///   cannot be represented by the return type.
+    ///
+    pub fn config(name: SysConfigName) -> Result<SysConfigValue, Error> {
+        // Get system configuration variable.
+        match name {
+            SysConfigName::PageSize => Ok(PAGE_SIZE.try_into()?),
+            SysConfigName::NumProcessorsAvailable => Ok(NUM_PROCESSORS.try_into()?),
+            _ => {
+                let reason: &str = "unsupported system configuration name";
+                ::syslog::error!("config(): {reason}");
+                Err(Error::new(ErrorCode::OperationNotSupported, reason))
+            },
+        }
     }
 }
