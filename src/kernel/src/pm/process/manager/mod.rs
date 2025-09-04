@@ -58,6 +58,7 @@ use crate::{
             ReadyThread,
             SleepingThread,
             ThreadManager,
+            ThreadRef,
             ZombieThread,
         },
     },
@@ -474,15 +475,15 @@ impl ProcessManagerInner {
                 Error::new(ErrorCode::NoSuchEntry, reason)
             })?;
 
-        // Search for the thread
-        let sleeping_thread: &SleepingThread =
-            sleeping_process.find_thread(tid).ok_or_else(|| {
+        // Attempt to get thread data area and check for errors.
+        match sleeping_process.find_thread(tid) {
+            Some(ThreadRef::Sleeping(thread)) => Ok(thread.get_thread_data_area()),
+            _ => {
                 let reason: &str = "thread not found";
                 error!("get_thread_data_area(): {reason} (tid={tid:?}, pid={pid:?})");
-                Error::new(ErrorCode::NoSuchEntry, reason)
-            })?;
-
-        Ok(sleeping_thread.get_thread_data_area())
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        }
     }
 
     ///
@@ -829,7 +830,7 @@ impl ProcessManagerInner {
     ///
     pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Check if thread belongs to the running process.
-        if self.get_running().has_thread(tid) {
+        if self.get_running().find_thread(tid).is_some() {
             let running_process: RunningProcess = self.take_running();
             match running_process.wakeup(tid) {
                 Ok(running_process) => {
@@ -865,7 +866,7 @@ impl ProcessManagerInner {
         let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
         while let Some(process) = self.suspended.pop_front() {
             // Found.
-            if process.has_thread(tid) {
+            if process.find_thread(tid).is_some() {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
                         while let Some(process) = suspended.pop_back() {
@@ -892,7 +893,7 @@ impl ProcessManagerInner {
         let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
         while let Some(process) = self.ready.pop_front() {
             // Found.
-            if process.has_thread(tid) {
+            if process.find_thread(tid).is_some() {
                 match process.wakeup(tid) {
                     Ok(runnable_process) => {
                         while let Some(process) = ready.pop_back() {
@@ -1431,16 +1432,42 @@ impl ProcessManagerInner {
         }
     }
 
-    fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ProcessRefMut, Error> {
-        if self.get_running_mut().has_thread(tid) {
+    ///
+    /// # Description
+    ///
+    /// Finds a process by looking for a thread identifier.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Thread identifier to search for.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a mutable reference to the process containing the thread is
+    /// returned.  Otherwise, an error code is returned instead.
+    ///
+    fn find_process_by_tid(&mut self, tid: ThreadIdentifier) -> Result<ProcessRefMut, Error> {
+        if self.get_running_mut().find_thread(tid).is_some() {
             Ok(ProcessRefMut::Running(self.get_running_mut()))
-        } else if let Some(process) = self.ready.iter_mut().find(|p| p.has_thread(tid)) {
+        } else if let Some(process) = self.ready.iter_mut().find(|p| p.find_thread(tid).is_some()) {
             Ok(ProcessRefMut::Runnable(process))
-        } else if let Some(process) = self.suspended.iter_mut().find(|p| p.has_thread(tid)) {
+        } else if let Some(process) = self
+            .suspended
+            .iter_mut()
+            .find(|p| p.find_thread(tid).is_some())
+        {
             Ok(ProcessRefMut::Sleeping(process))
-        } else if let Some(process) = self.interrupted.iter_mut().find(|p| p.has_thread(tid)) {
+        } else if let Some(process) = self
+            .interrupted
+            .iter_mut()
+            .find(|p| p.find_thread(tid).is_some())
+        {
             Ok(ProcessRefMut::Interrupted(process))
-        } else if let Some(process) = self.zombies.iter_mut().find(|p| p.has_thread(tid)) {
+        } else if let Some(process) = self
+            .zombies
+            .iter_mut()
+            .find(|p| p.find_thread(tid).is_some())
+        {
             Ok(ProcessRefMut::Zombie(process))
         } else {
             let reason: &str = "thread not found";
@@ -1845,7 +1872,7 @@ impl ProcessManager {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
         let mut process: ProcessRefMut = match receiver.as_id() {
             Ok(pid) => pm.find_process_mut(pid)?,
-            Err(tid) => pm.find_thread_mut(tid)?,
+            Err(tid) => pm.find_process_by_tid(tid)?,
         };
         process.state_mut().post_message(message);
         pm.number_buffered_messages += 1;
