@@ -8,6 +8,10 @@
 extern crate alloc;
 
 use ::anyhow::Result;
+use ::bincode::{
+    Decode,
+    Encode,
+};
 use ::log::error;
 use ::mio::{
     net::{
@@ -50,7 +54,7 @@ const BLOCKING_THREAD_TOKEN: Token = Token(0);
 //==================================================================================================
 
 /// An enum representing the type of a socket.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Decode, Encode)]
 pub enum SocketType {
     /// TCP socket.
     Tcp,
