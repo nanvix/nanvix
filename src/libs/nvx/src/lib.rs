@@ -22,11 +22,51 @@ mod panic;
 //==================================================================================================
 
 // We link the `alloc` crate when building static libraries to provide heap allocation support.
-#[cfg(all(feature = "staticlib", not(feature = "rustc-dep-of-std")))]
+#[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
-#[cfg(feature = "staticlib")]
+#[cfg(not(feature = "staticlib"))]
+use ::core::sync::atomic::{
+    AtomicI32,
+    AtomicPtr,
+    Ordering,
+};
+
 use ::alloc::vec::Vec;
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Pointer to environment variables.
+///
+/// # Note
+///
+/// - This symbol is not name-mangled so it can be referenced from foreign code (for example C).
+/// - The symbol name is lowercase because external languages expect this conventional name.
+///
+#[allow(non_upper_case_globals)]
+#[unsafe(no_mangle)]
+static mut environ: *mut *mut i8 = core::ptr::null_mut();
+
+///
+/// # Description
+///
+/// Pointer to command line arguments.
+///
+#[cfg(not(feature = "staticlib"))]
+pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(core::ptr::null_mut());
+
+///
+/// # Description
+///
+/// Number of command line arguments in the `argv` array.
+///
+#[cfg(not(feature = "staticlib"))]
+pub static ARGC: AtomicI32 = AtomicI32::new(0);
 
 //==================================================================================================
 // Standalone Functions
@@ -50,18 +90,52 @@ core::arch::global_asm!(
     "#
 );
 
+///
+/// # Description
+///
+/// Entry point of the program.
+///
+/// # Parameters
+///
+/// - `argp`: A pointer to a null-terminated string containing the program arguments.
+/// - `envp`: A pointer to a null-terminated string containing the environment variables.
+///
+/// # Returns
+///
+/// This function does not return.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+///
 #[unsafe(no_mangle)]
-pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
+pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
     syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
     // Initializes the system runtime.
     init();
 
+    // Build vector of command line arguments.
+    let argv: Vec<*const i8> = unsafe { parse_argp(argp) };
+    let argc: i32 = argv.len() as i32 - 1;
+    let argv: *mut *const u8 = argv.as_ptr() as *mut *const u8;
+    #[cfg(not(feature = "staticlib"))]
+    {
+        ARGC.store(argc, Ordering::SeqCst);
+        ARGV.store(argv, Ordering::SeqCst);
+    }
+
+    // Build vector of environment variables.
+    let mut env: Vec<*mut i8> = unsafe { parse_envp(envp) };
+    unsafe {
+        environ = env.as_mut_ptr();
+    }
+
     cfg_if::cfg_if! {
         if #[cfg(feature = "staticlib")] {
-            let status: i32 = c_trampoline(argp, envp);
+            let status: i32 = c_trampoline(argc, argv);
         } else {
-            let status: i32 = rust_trampoline(argp);
+            let status: i32 = rust_trampoline();
         }
     }
 
@@ -86,7 +160,6 @@ pub extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
 ///
 /// - A vector of pointers to null-terminated strings.
 ///
-#[cfg(feature = "staticlib")]
 unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
     use core::ptr;
 
@@ -129,7 +202,6 @@ unsafe fn build_string_table(string: *mut i8) -> Vec<*mut i8> {
 ///
 /// Wrapper for parsing `argp`.
 ///
-#[cfg(feature = "staticlib")]
 unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
     build_string_table(argp)
         .into_iter()
@@ -140,7 +212,6 @@ unsafe fn parse_argp(argp: *mut i8) -> Vec<*const i8> {
 ///
 /// Wrapper for parsing `envp`.
 ///
-#[cfg(feature = "staticlib")]
 unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
     build_string_table(envp)
 }
@@ -149,7 +220,7 @@ unsafe fn parse_envp(envp: *mut i8) -> Vec<*mut i8> {
 /// Trampoline for Rust applications.
 ///
 #[cfg(all(not(feature = "staticlib"), not(feature = "rustc-dep-of-std")))]
-fn rust_trampoline(_argp: *mut i8) -> i32 {
+fn rust_trampoline() -> i32 {
     unsafe extern "Rust" {
         fn main() -> Result<(), ::sys::error::Error>;
     }
@@ -165,7 +236,7 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 /// Trampoline for Rust applications.
 ///
 #[cfg(all(not(feature = "staticlib"), feature = "rustc-dep-of-std"))]
-fn rust_trampoline(_argp: *mut i8) -> i32 {
+fn rust_trampoline() -> i32 {
     unsafe extern "Rust" {
         fn main();
     }
@@ -180,24 +251,11 @@ fn rust_trampoline(_argp: *mut i8) -> i32 {
 /// Trampoline for C applications.
 ///
 #[cfg(feature = "staticlib")]
-fn c_trampoline(argp: *mut i8, envp: *mut i8) -> i32 {
+fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
     unsafe extern "C" {
         fn main(argc: i32, argv: *const *const u8) -> i32;
         fn _init();
         fn _fini();
-    }
-
-    #[allow(non_upper_case_globals)]
-    #[unsafe(no_mangle)]
-    static mut environ: *mut *mut i8 = core::ptr::null_mut();
-
-    // Build arguments vector.
-    let argv: Vec<*const i8> = unsafe { parse_argp(argp) };
-    let argc: i32 = argv.len() as i32 - 1;
-    let argv: *const *const u8 = argv.as_ptr() as *const *const u8;
-    let mut env = unsafe { parse_envp(envp) };
-    unsafe {
-        environ = env.as_mut_ptr();
     }
 
     unsafe {
