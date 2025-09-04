@@ -51,6 +51,10 @@ pub struct Args {
     control_plane_addr: Option<String>,
     /// Control-plane socket type.
     control_plane_socket_type: Option<SocketType>,
+    /// Socket address exposed in the system VM for users to connect to the user VM's stdin/stdout.
+    gateway_addr: Option<String>,
+    /// Socket type for the gateway socket.
+    gateway_socket_type: Option<SocketType>,
     /// Log to file?
     log_to_file: bool,
 }
@@ -80,6 +84,10 @@ impl Args {
     pub const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
     /// Command-line option for the control-plane socket type.
     pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
+    /// Command-line option for setting socket address of the gateway.
+    pub const OPT_GATEWAY_SOCKADDR: &'static str = "-gateway-addr";
+    /// Command-line option for setting the socket address type of the gateway socket.
+    pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
@@ -106,6 +114,8 @@ impl Args {
         let mut system_vm_socket_type: Option<String> = None;
         let mut control_plane_addr: Option<String> = None;
         let mut control_plane_socket_type: Option<SocketType> = None;
+        let mut gateway_addr: Option<String> = None;
+        let mut gateway_socket_type: Option<SocketType> = None;
         let mut log_to_file: bool = false;
 
         // Parse command-line arguments.
@@ -207,6 +217,24 @@ impl Args {
                     }
                     i += 1;
                 },
+                // Set gateway address.
+                Self::OPT_GATEWAY_SOCKADDR if i + 1 < args.len() => {
+                    gateway_addr = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set gateway socket type.
+                Self::OPT_GATEWAY_SOCKET_TYPE if i + 1 < args.len() => {
+                    match SocketType::from_str(&args[i + 1]) {
+                        Ok(typ) => gateway_socket_type = Some(typ),
+                        Err(_) => {
+                            let reason: String =
+                                format!("unrecognised socket type: {}", args[i + 1].clone());
+                            error!("{reason}");
+                            return Err(anyhow::anyhow!("{reason}"));
+                        },
+                    }
+                    i += 1;
+                },
                 // Set log to file flag.
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
@@ -252,6 +280,8 @@ impl Args {
             system_vm_socket_type,
             control_plane_addr,
             control_plane_socket_type,
+            gateway_addr,
+            gateway_socket_type,
             log_to_file,
         })
     }
@@ -264,7 +294,7 @@ impl Args {
     pub fn usage() {
         eprintln!(
             "Usage: {} {} <id> {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} \
-             <socket-address>] [{}] [{} <args>]",
+             <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{}] [{} <args>]",
             env::args().next().unwrap_or("microvm".to_string()),
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -272,6 +302,8 @@ impl Args {
             Self::OPT_INITRD,
             Self::OPT_STDERR,
             Self::OPT_SYSTEM_VM_SOCKADDR,
+            Self::OPT_CONTROL_PLANE_SOCKADDR,
+            Self::OPT_GATEWAY_SOCKADDR,
             Self::OPT_LOGFILE,
             Self::OPT_INITRD_ARGS,
         );
@@ -413,6 +445,34 @@ impl Args {
     ///
     pub fn control_plane_socket_type(&mut self) -> Option<SocketType> {
         self.control_plane_socket_type.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the address of the gateway that was passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The gateway address that was passed as a command-line argument to the program.
+    ///
+    pub fn gateway_addr(&mut self) -> Option<String> {
+        self.gateway_addr.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket address type of the gateway socket that was passed as a command-line
+    /// argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The socket address type of the gateway socket that was passed as a command-line argument to
+    /// the program.
+    ///
+    pub fn gateway_socket_type(&mut self) -> Option<SocketType> {
+        self.gateway_socket_type.take()
     }
 
     ///
