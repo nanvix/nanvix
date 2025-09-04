@@ -15,6 +15,7 @@ pub mod pthread_cond_signal;
 pub mod pthread_cond_timedwait;
 pub mod pthread_cond_wait;
 pub mod pthread_create;
+pub mod pthread_getattr_np;
 pub mod pthread_getschedparam;
 pub mod pthread_getspecific;
 pub mod pthread_join;

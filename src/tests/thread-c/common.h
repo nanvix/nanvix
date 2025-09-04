@@ -42,4 +42,7 @@ extern void test_thread_local(void);
 // Tests if pthread attributes can be initialized and destroyed.
 extern void test_pthread_attr_init_destroy(void);
 
+// Tests if pthread_getattr_np() can retrieve attributes and they can be destroyed.
+extern void test_pthread_getattr_np_destroy(void);
+
 #endif

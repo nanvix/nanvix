@@ -28,6 +28,10 @@ use crate::{
     },
     sys_socket::socklen_t,
 };
+use ::config::memory_layout::{
+    USER_STACK_SIZE,
+    USER_STACK_TOP_RAW,
+};
 use ::core::mem::size_of;
 
 #[cfg(target_pointer_width = "32")]
@@ -166,8 +170,8 @@ impl Default for pthread_attr_t {
         // TODO: review this once all fields are supported
         Self {
             is_initialized: 1,
-            stackaddr: core::ptr::null_mut(),
-            stacksize: 0,
+            stackaddr: USER_STACK_TOP_RAW as *mut _,
+            stacksize: USER_STACK_SIZE as c_size_t,
             contentionscope: 0,
             inheritsched: 0,
             schedpolicy: SCHED_OTHER,

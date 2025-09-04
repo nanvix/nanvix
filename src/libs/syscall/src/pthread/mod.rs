@@ -13,6 +13,7 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_attr_init;
         pub use syscall::pthread_create;
         pub use syscall::pthread_exit;
+        pub use syscall::pthread_getattr_np;
         pub use syscall::pthread_join;
         pub use syscall::pthread_self;
         pub use syscall::pthread_mutex_destroy;
