@@ -45,6 +45,50 @@ pub use sleeping::SleepingThread;
 pub use zombie::ZombieThread;
 
 //==================================================================================================
+// Thread Reference
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A reference to a thread.
+///
+pub enum ThreadRef<'a> {
+    /// A reference to a ready thread.
+    Ready(&'a ReadyThread),
+    /// A reference to a running thread.
+    Running(&'a RunningThread),
+    /// A reference to a sleeping thread.
+    Sleeping(&'a SleepingThread),
+    /// A reference to an interrupted thread.
+    Interrupted(&'a InterruptedThread),
+    /// A reference to a zombie thread.
+    Zombie(&'a ZombieThread),
+}
+
+//==================================================================================================
+// Mutable Thread Reference
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A mutable reference to a thread.
+///
+pub enum ThreadRefMut<'a> {
+    /// A mutable reference to a ready thread.
+    Ready(&'a mut ReadyThread),
+    /// A mutable reference to a running thread.
+    Running(&'a mut RunningThread),
+    /// A mutable reference to a sleeping thread.
+    Sleeping(&'a mut SleepingThread),
+    /// A mutable reference to an interrupted thread.
+    Interrupted(&'a mut InterruptedThread),
+    /// A mutable reference to a zombie thread.
+    Zombie(&'a mut ZombieThread),
+}
+
+//==================================================================================================
 // Thread Manager
 //==================================================================================================
 

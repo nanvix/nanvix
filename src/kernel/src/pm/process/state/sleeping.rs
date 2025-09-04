@@ -16,6 +16,7 @@ use crate::pm::{
         InterruptedThread,
         ReadyThread,
         SleepingThread,
+        ThreadRef,
         ZombieThread,
     },
 };
@@ -184,26 +185,6 @@ impl SleepingProcess {
         )
     }
 
-    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
-        // Search in the list of sleeping threads.
-        if self
-            .sleeping_threads
-            .iter()
-            .any(|thread| thread.id() == tid)
-        {
-            return true;
-        }
-
-        // Search in the list of zombie threads.
-        if let Some(zombie_threads) = &self.zombie_threads {
-            if zombie_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
-            }
-        }
-
-        false
-    }
-
     ///
     /// # Description
     ///
@@ -227,20 +208,32 @@ impl SleepingProcess {
     ///
     /// # Description
     ///
-    /// Returns a reference to a sleeping thread with the given thread identifier.
+    /// Finds a thread in the target process.
     ///
-    /// # Parameters
+    /// # Arguments
     ///
-    /// - `tid`: The identifier of the thread to find.
+    /// - `tid`: Identifier of the thread to find.
     ///
     /// # Returns
     ///
-    /// If a thread with the given identifier exists, a reference to it is returned.
-    /// Otherwise, `None` is returned.
+    /// If a thread that matches the specified thread identifier is found, then a reference to it is
+    /// returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<&SleepingThread> {
-        self.sleeping_threads
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
+        if let Some(thread) = self
+            .sleeping_threads
             .iter()
             .find(|thread| thread.id() == tid)
+        {
+            return Some(ThreadRef::Sleeping(thread));
+        }
+
+        if let Some(zombie_threads) = &self.zombie_threads {
+            if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Zombie(thread));
+            }
+        }
+
+        None
     }
 }

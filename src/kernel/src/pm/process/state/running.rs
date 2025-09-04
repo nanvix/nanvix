@@ -25,6 +25,7 @@ use crate::{
             ReadyThread,
             RunningThread,
             SleepingThread,
+            ThreadRef,
             ZombieThread,
         },
     },
@@ -410,40 +411,54 @@ impl RunningProcess {
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
 
-    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a reference to it is
+    /// returned. Otherwise, empty is returned instead.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
         // Check if the running thread matches.
         if self.running.id() == tid {
-            return true;
+            return Some(ThreadRef::Running(&self.running));
         }
 
         // Search in the list of ready threads.
         if let Some(ready_threads) = &self.ready {
-            if ready_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = ready_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Ready(thread));
             }
         }
 
         // Search in the list of interrupted threads.
         if let Some(interrupted_threads) = &self.interrupted_threads {
-            if interrupted_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = interrupted_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Interrupted(thread));
             }
         }
 
         // Search in the list of sleeping threads.
         if let Some(sleeping_threads) = &self.sleeping_threads {
-            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = sleeping_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Sleeping(thread));
             }
         }
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie {
-            if zombie_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Zombie(thread));
             }
         }
 
-        false
+        None
     }
 }
