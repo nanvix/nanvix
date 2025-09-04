@@ -14,7 +14,7 @@ homepage.workspace = true
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-nvx = { workspace = true, features = ["sysalloc"] }
+nvx = { workspace = true }
 sys = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
