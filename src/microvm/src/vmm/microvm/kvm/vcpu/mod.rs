@@ -103,10 +103,7 @@ impl VirtualProcessor {
             .vm()
             .create_vcpu(id)?;
 
-        #[cfg(feature = "sse")]
-        Self::setup_sse(partition.clone(), &mut fd, true)?;
-        #[cfg(not(feature = "sse"))]
-        Self::setup_sse(partition.clone(), &mut fd, false)?;
+        Self::setup_sse(partition.clone(), &mut fd)?;
 
         // Reset FPU state.
         let fpu: kvm_fpu = kvm_fpu {
@@ -322,17 +319,12 @@ impl VirtualProcessor {
     ///
     /// - `partition`: Handle to the virtual partition.
     /// - `fd`: Handle to the virtual processor.
-    /// - `enable`: If true, enables SSE support. If false, disables SSE support.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this function returns empty. Otherwise, it returns an error.
     ///
-    fn setup_sse(
-        partition: Arc<Mutex<VirtualPartition>>,
-        fd: &mut VcpuFd,
-        enable: bool,
-    ) -> Result<()> {
+    fn setup_sse(partition: Arc<Mutex<VirtualPartition>>, fd: &mut VcpuFd) -> Result<()> {
         let mut kvm_cpuid: CpuId = partition
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
@@ -342,15 +334,9 @@ impl VirtualProcessor {
         for entry in kvm_cpuid.as_mut_slice().iter_mut() {
             match entry.function {
                 CPUID_FEATURES => {
-                    if enable {
-                        entry.edx |= (EdxFeature::Fxsr as u32)
-                            | (EdxFeature::Sse as u32)
-                            | (EdxFeature::Sse2 as u32)
-                    } else {
-                        entry.edx &= !((EdxFeature::Fxsr as u32)
-                            | (EdxFeature::Sse as u32)
-                            | (EdxFeature::Sse2 as u32))
-                    }
+                    entry.edx |= (EdxFeature::Fxsr as u32)
+                        | (EdxFeature::Sse as u32)
+                        | (EdxFeature::Sse2 as u32)
                 },
                 _ => continue,
             }

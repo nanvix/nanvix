@@ -99,7 +99,6 @@ pub(super) static CURRENT_TID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KER
 static REMAINING_QUANTUM: AtomicUsize = AtomicUsize::new(SCHEDULER_FREQ);
 
 /// ID of thread that owns the FPU.
-#[cfg(feature = "sse")]
 pub(super) static FPU_OWNER_TID: AtomicI32 = AtomicI32::new(ThreadIdentifier::KERNEL_RAW);
 
 //==================================================================================================

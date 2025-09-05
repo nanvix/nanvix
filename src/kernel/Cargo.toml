@@ -99,7 +99,6 @@ ioapic = []
 madt = []
 msr = []
 pic = []
-sse = []
 xapic = []
 
 # Platform Features

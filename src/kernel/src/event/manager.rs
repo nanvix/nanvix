@@ -964,7 +964,6 @@ fn do_exception_handler(
     }
 
     // Handle FPU Exceptions.
-    #[cfg(feature = "sse")]
     if info.num() == ::arch::cpu::excp::Exception::CoprocessorNotAvailable as u32 {
         // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };

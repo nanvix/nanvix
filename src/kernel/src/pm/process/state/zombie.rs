@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Lint Configuration
-//==================================================================================================
-
-#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -103,7 +97,6 @@ impl ZombieProcess {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    #[cfg(feature = "sse")]
     pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
         self.zombie_threads
             .iter_mut()

@@ -42,6 +42,3 @@ hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 profiler = ["profiler/auto-calibrate"]
 auto-calibrate = []
 timestamp-messages = ["profiler/timestamp-messages"]
-
-# Enables SSE/SSE2 support.
-sse = []
