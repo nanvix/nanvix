@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::{
-        x86::cpu::FpuState,
-        ContextInformation,
-    },
+    hal::arch::ContextInformation,
     pm::{
         sync::{
             condvar::Condvar,
@@ -82,15 +79,12 @@ impl RunningThread {
     ///
     /// # Returns
     ///
-    /// This function returns a tuple containing the sleeping thread and a mutable pointer to the execution context.
+    /// This function returns a tuple containing the sleeping thread and a mutable pointer to the
+    /// execution context.
     ///
-    pub fn sleep(
-        mut self,
-        alarm: Option<SystemTime>,
-    ) -> (SleepingThread, *mut ContextInformation, *mut FpuState) {
+    pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
-        (SleepingThread::from_state(self.state, alarm), ctx, fpu_state)
+        (SleepingThread::from_state(self.state, alarm), ctx)
     }
 
     ///
@@ -100,12 +94,12 @@ impl RunningThread {
     ///
     /// # Returns
     ///
-    /// This function returns a tuple containing the ready thread and a mutable pointer to the execution context.
+    /// This function returns a tuple containing the ready thread and a mutable pointer to the
+    /// execution context.
     ///
-    pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation, *mut FpuState) {
+    pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
-        (ReadyThread::from_state(self.state), ctx, fpu_state)
+        (ReadyThread::from_state(self.state), ctx)
     }
 
     ///
@@ -119,6 +113,32 @@ impl RunningThread {
     ///
     pub fn id(&self) -> ThreadIdentifier {
         self.state.id()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a reference to the thread state.
+    ///
+    pub fn thread_state(&self) -> &ThreadState {
+        &self.state
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the thread state.
+    ///
+    pub fn thread_state_mut(&mut self) -> &mut ThreadState {
+        &mut self.state
     }
 
     ///
@@ -148,13 +168,9 @@ impl RunningThread {
     ///
     /// This function returns a tuple containing the zombie thread and a mutable pointer to the execution context.
     ///
-    pub fn exit(
-        mut self,
-        status: ExitStatus,
-    ) -> (ZombieThread, *mut ContextInformation, *mut FpuState) {
+    pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
-        (ZombieThread::from_state(self.state, status), ctx, fpu_state)
+        (ZombieThread::from_state(self.state, status), ctx)
     }
 
     ///

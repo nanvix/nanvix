@@ -130,6 +130,32 @@ impl ReadyThread {
     ///
     /// # Description
     ///
+    /// Returns a reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a reference to the thread state.
+    ///
+    pub fn thread_state(&self) -> &ThreadState {
+        &self.state
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the thread state.
+    ///
+    pub fn thread_state_mut(&mut self) -> &mut ThreadState {
+        &mut self.state
+    }
+
+    ///
+    /// # Description
+    ///
     /// Transitions the ready thread to running state.
     ///
     /// # Returns
@@ -142,18 +168,12 @@ impl ReadyThread {
     ///
     pub fn run(
         mut self,
-    ) -> (
-        RunningThread,
-        Option<InterruptReason>,
-        *mut ContextInformation,
-        *mut FpuState,
-        Option<VirtualAddress>,
-    ) {
+    ) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
+    {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        let fpu_state: *mut FpuState = self.state.fpu_state_mut();
         let interrupt_reason: Option<InterruptReason> = self.state.take_interrupt_reason();
         let user_tda: Option<VirtualAddress> = self.state.get_thread_data_area();
-        (RunningThread::from_state(self.state), interrupt_reason, ctx, fpu_state, user_tda)
+        (RunningThread::from_state(self.state), interrupt_reason, ctx, user_tda)
     }
 
     ///
