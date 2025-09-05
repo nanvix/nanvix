@@ -87,6 +87,41 @@ impl FpuState {
             data: INITIAL_FPU_STATE.data,
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Saves the current FPU state to the given memory location.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer.
+    ///
+    /// It is safe to call this function if the following conditions are met:
+    /// - `to` is a valid pointer to a memory region that is at least `FPU_STATE_SIZE` bytes long.
+    ///
+    pub unsafe fn save(to: *mut FpuState) {
+        asm!("fxsave [{}]", in(reg) to, options(nostack, preserves_flags));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Restores the FPU state from the given memory location.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because:
+    /// - It dereferences a raw pointer.
+    /// - It changes the state of the FPU.
+    ///
+    /// It is safe to call this function if the following conditions are met:
+    /// - `from` is a valid pointer to a memory region that is at least `FPU_STATE_SIZE` bytes long.
+    /// - The caller executes in a context where changing the FPU state is safe.
+    ///
+    pub unsafe fn restore(from: *const FpuState) {
+        asm!("fxrstor [{}]", in(reg) from, options(nostack, preserves_flags));
+    }
 }
 
 ///

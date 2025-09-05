@@ -963,6 +963,18 @@ fn do_exception_handler(
         panic!("the kernel triggered an exception");
     }
 
+    // Handle FPU Exceptions.
+    #[cfg(feature = "sse")]
+    if info.num() == ::arch::cpu::excp::Exception::CoprocessorNotAvailable as u32 {
+        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
+        // Handle FPU exception.
+        pm.handle_fpu_exception().map_err(SleepError::Generic)?;
+
+        return Ok(());
+    }
+
     // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
     let resume: Condvar = unsafe {
         EventManager::get()

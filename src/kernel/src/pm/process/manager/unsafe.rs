@@ -7,10 +7,7 @@
 
 use crate::{
     hal::{
-        arch::{
-            x86::cpu::FpuState,
-            ContextInformation,
-        },
+        arch::ContextInformation,
         mem::{
             Address,
             PageAligned,
@@ -95,11 +92,15 @@ static mut PROCESS_MANAGER: Option<ProcessManager> = None;
 /// ID of the current process.
 static CURRENT_PID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
 
-// ID of the current thread.
-static CURRENT_TID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
+/// ID of the current thread.
+pub(super) static CURRENT_TID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
 
 /// Remaining quantum for the current thread.
 static REMAINING_QUANTUM: AtomicUsize = AtomicUsize::new(SCHEDULER_FREQ);
+
+/// ID of thread that owns the FPU.
+#[cfg(feature = "sse")]
+pub(super) static FPU_OWNER_TID: AtomicI32 = AtomicI32::new(ThreadIdentifier::KERNEL_RAW);
 
 //==================================================================================================
 // Implementations
@@ -222,20 +223,18 @@ impl ProcessManager {
         trace!("exit(): status={status:?}");
 
         // Terminate the calling process and select another process to run next.
-        let (next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
-            *mut FpuState,
-            *mut FpuState,
             Option<VirtualAddress>,
         ) = Self::get_mut().try_borrow_mut()?.exit(status);
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_EXIT_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
         // reached, it indicates a critical bug and undefined behavior. This is considered
@@ -273,39 +272,35 @@ impl ProcessManager {
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
         // Terminate the calling thread and select another thread to run next.
-        let (next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
-            *mut FpuState,
-            *mut FpuState,
             Option<VirtualAddress>,
         ) = {
             // Create a scope so the join condition variable is dropped before we context switch.
             // If we do not do this, the condition variable the reference count for the condition
             // variable will not be decremented, causing a memory leak.
 
-            let (next_pid, next_tid, join_cond, from, to, from_fpu, to_fpu, user_tda): (
+            let (next_pid, next_tid, join_cond, from, to, user_tda): (
                 ProcessIdentifier,
                 ThreadIdentifier,
                 Condvar,
                 *mut ContextInformation,
                 *mut ContextInformation,
-                *mut FpuState,
-                *mut FpuState,
                 Option<VirtualAddress>,
             ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
 
             join_cond.notify_all()?;
 
-            (next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda)
+            (next_pid, next_tid, from, to, user_tda)
         };
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // SAFETY: Self::switch() performs a context switch and never returns. If this line is ever
         // reached, it indicates a critical bug and undefined behavior. This is considered
@@ -443,13 +438,11 @@ impl ProcessManager {
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
         // Suspend the execution of the calling thread and select another thread to run next.
-        let (next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda): (
+        let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
             ThreadIdentifier,
             *mut ContextInformation,
             *mut ContextInformation,
-            *mut FpuState,
-            *mut FpuState,
             Option<VirtualAddress>,
         ) = Self::get_mut()
             .try_borrow_mut()
@@ -459,7 +452,7 @@ impl ProcessManager {
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
         PERF_SCHED_SLEEP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-        Self::switch(next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // Check the reason why the thread was woken up.
         let interrupt_reason: Option<InterruptReason> = Self::get_mut()
@@ -511,13 +504,11 @@ impl ProcessManager {
             cold_path();
 
             // Re-schedule the calling thread and select another thread to run next.
-            let (next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda): (
+            let (next_pid, next_tid, from, to, user_tda): (
                 ProcessIdentifier,
                 ThreadIdentifier,
                 *mut ContextInformation,
                 *mut ContextInformation,
-                *mut FpuState,
-                *mut FpuState,
                 Option<VirtualAddress>,
             ) = Self::get_mut().try_borrow_mut()?.schedule();
 
@@ -525,7 +516,7 @@ impl ProcessManager {
             // SAFETY: `from` and `to` point to valid context information structures, and the
             // processor is running with interrupts disabled.
             PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-            Self::switch(next_pid, next_tid, from, to, from_fpu, to_fpu, user_tda);
+            Self::switch(next_pid, next_tid, from, to, user_tda);
         }
 
         Ok(())
@@ -748,8 +739,6 @@ impl ProcessManager {
     /// - `next_tid`: Thread identifier of the next thread to run.
     /// - `from`: Pointer to the context information of the current thread.
     /// - `to`: Pointer to the context information of the next thread.
-    /// - `from_fpu`: Pointer to the FPU state of the current thread.
-    /// - `to_fpu`: Pointer to the FPU state of the next thread.
     /// - `user_tda`: Optional base address for the user-space the thread data area of the next thread to run.
     ///
     /// # Safety
@@ -758,7 +747,6 @@ impl ProcessManager {
     ///
     /// It is safe to call this function if and only if the following conditions are met:
     /// - `from` and `to` point to valid execution contexts.
-    /// - `from_fpu` and `to_fpu` point to valid FPU state structures.
     /// - The processor is running with interrupts disabled.
     /// - The processor is running in privileged mode.
     ///
@@ -773,8 +761,6 @@ impl ProcessManager {
         next_tid: ThreadIdentifier,
         from: *mut ContextInformation,
         to: *mut ContextInformation,
-        from_fpu: *mut FpuState,
-        to_fpu: *mut FpuState,
         user_tda: Option<VirtualAddress>,
     ) {
         let previous_pid: ProcessIdentifier = ProcessIdentifier::from(CURRENT_PID.load(ORDER));
@@ -792,7 +778,7 @@ impl ProcessManager {
             }
             CURRENT_TID.store(next_tid.into(), ORDER);
 
-            ContextInformation::switch(from, to, from_fpu, to_fpu, user_tda);
+            ContextInformation::switch(from, to, user_tda);
         } else {
             // We do not need to perform a context switch, the same thread will continue running.
             PERF_SCHED_SOFT_CONTEXT_SWITCHES.fetch_add(1, ORDER);

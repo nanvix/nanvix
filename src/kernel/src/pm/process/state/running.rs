@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    hal::arch::{
-        x86::cpu::FpuState,
-        ContextInformation,
-    },
+    hal::arch::ContextInformation,
     pm::{
         process::state::{
             interrupted::interrupt,
@@ -25,6 +28,8 @@ use crate::{
             ReadyThread,
             RunningThread,
             SleepingThread,
+            ThreadRef,
+            ThreadRefMut,
             ZombieThread,
         },
     },
@@ -110,9 +115,9 @@ impl RunningProcess {
         &mut self.running
     }
 
-    pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation, *mut FpuState) {
+    pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {
         let running_thread = self.running;
-        let (ready_thread, ctx, fpu_state) = running_thread.schedule();
+        let (ready_thread, ctx) = running_thread.schedule();
 
         let ready_threads = match self.ready.take() {
             Some(mut ready_threads) => {
@@ -131,7 +136,6 @@ impl RunningProcess {
                 self.zombie.take(),
             ),
             ctx,
-            fpu_state,
         )
     }
 
@@ -139,10 +143,10 @@ impl RunningProcess {
         mut self,
         alarm: Option<SystemTime>,
     ) -> Result<
-        (RunnableProcess, *mut ContextInformation, *mut FpuState),
-        (SleepingProcess, *mut ContextInformation, *mut FpuState),
+        (RunnableProcess, *mut ContextInformation),
+        (SleepingProcess, *mut ContextInformation),
     > {
-        let (sleeping_thread, ctx, fpu_state) = self.running.sleep(alarm);
+        let (sleeping_thread, ctx) = self.running.sleep(alarm);
 
         // Push sleeping thread.
         let sleeping_threads = match self.sleeping_threads.take() {
@@ -164,7 +168,6 @@ impl RunningProcess {
                     self.zombie.take(),
                 ),
                 ctx,
-                fpu_state,
             ));
         }
 
@@ -177,24 +180,18 @@ impl RunningProcess {
                 self.zombie.take(),
             );
 
-            return Ok((interrupted_process.resume(), ctx, fpu_state));
+            return Ok((interrupted_process.resume(), ctx));
         }
 
-        Err((
-            SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()),
-            ctx,
-            fpu_state,
-        ))
+        Err((SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()), ctx))
     }
 
     pub fn exit(
         mut self,
         status: ExitStatus,
-    ) -> Result<
-        (RunnableProcess, *mut ContextInformation, *mut FpuState),
-        (ZombieProcess, *mut ContextInformation, *mut FpuState),
-    > {
-        let (zombie_thread, ctx, fpu_state) = self.running.exit(status);
+    ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
+    {
+        let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
@@ -230,9 +227,9 @@ impl RunningProcess {
                 Some(zombie_threads),
             );
 
-            Ok((interrupted_process.resume(), ctx, fpu_state))
+            Ok((interrupted_process.resume(), ctx))
         } else {
-            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx, fpu_state))
+            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
         }
     }
 
@@ -258,15 +255,15 @@ impl RunningProcess {
         mut self,
         status: ExitStatus,
     ) -> Result<
-        (Condvar, RunnableProcess, *mut ContextInformation, *mut FpuState),
+        (Condvar, RunnableProcess, *mut ContextInformation),
         Result<
-            (Condvar, SleepingProcess, *mut ContextInformation, *mut FpuState),
-            (Condvar, ZombieProcess, *mut ContextInformation, *mut FpuState),
+            (Condvar, SleepingProcess, *mut ContextInformation),
+            (Condvar, ZombieProcess, *mut ContextInformation),
         >,
     > {
         let join_cond: Condvar = self.running.join_cond();
 
-        let (zombie_thread, ctx, fpu_state) = self.running.exit(status);
+        let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
@@ -286,7 +283,6 @@ impl RunningProcess {
                     Some(zombie_threads),
                 ),
                 ctx,
-                fpu_state,
             ))
         } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
@@ -296,21 +292,15 @@ impl RunningProcess {
                 self.zombie.take(),
             );
 
-            Ok((join_cond, interrupted_process.resume(), ctx, fpu_state))
+            Ok((join_cond, interrupted_process.resume(), ctx))
         } else if let Some(sleeping_threads) = self.sleeping_threads.take() {
             Err(Ok((
                 join_cond,
                 SleepingProcess::new(self.state, sleeping_threads, Some(zombie_threads)),
                 ctx,
-                fpu_state,
             )))
         } else {
-            Err(Err((
-                join_cond,
-                ZombieProcess::new(self.state, zombie_threads, status),
-                ctx,
-                fpu_state,
-            )))
+            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, status), ctx)))
         }
     }
 
@@ -410,40 +400,112 @@ impl RunningProcess {
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
 
-    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a reference to it is
+    /// returned. Otherwise, empty is returned instead.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
         // Check if the running thread matches.
         if self.running.id() == tid {
-            return true;
+            return Some(ThreadRef::Running(&self.running));
         }
 
         // Search in the list of ready threads.
         if let Some(ready_threads) = &self.ready {
-            if ready_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = ready_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Ready(thread));
             }
         }
 
         // Search in the list of interrupted threads.
         if let Some(interrupted_threads) = &self.interrupted_threads {
-            if interrupted_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = interrupted_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Interrupted(thread));
             }
         }
 
         // Search in the list of sleeping threads.
         if let Some(sleeping_threads) = &self.sleeping_threads {
-            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = sleeping_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Sleeping(thread));
             }
         }
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie {
-            if zombie_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Zombie(thread));
             }
         }
 
-        false
+        None
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a mutable reference
+    /// to it is returned. Otherwise, empty is returned instead.
+    ///
+    #[cfg(feature = "sse")]
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+        // Check if the running thread matches.
+        if self.running.id() == tid {
+            return Some(ThreadRefMut::Running(&mut self.running));
+        }
+
+        // Search in the list of ready threads.
+        if let Some(ready_threads) = &mut self.ready {
+            if let Some(thread) = ready_threads.iter_mut().find(|thread| thread.id() == tid) {
+                return Some(ThreadRefMut::Ready(thread));
+            }
+        }
+
+        // Search in the list of interrupted threads.
+        if let Some(interrupted_threads) = &mut self.interrupted_threads {
+            if let Some(thread) = interrupted_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+            {
+                return Some(ThreadRefMut::Interrupted(thread));
+            }
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &mut self.sleeping_threads {
+            if let Some(thread) = sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+            {
+                return Some(ThreadRefMut::Sleeping(thread));
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &mut self.zombie {
+            if let Some(thread) = zombie_threads.iter_mut().find(|thread| thread.id() == tid) {
+                return Some(ThreadRefMut::Zombie(thread));
+            }
+        }
+
+        None
     }
 }

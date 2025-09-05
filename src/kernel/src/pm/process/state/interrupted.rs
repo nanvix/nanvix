@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -14,6 +20,8 @@ use crate::pm::{
         InterruptReason,
         InterruptedThread,
         SleepingThread,
+        ThreadRef,
+        ThreadRefMut,
         ZombieThread,
     },
 };
@@ -91,31 +99,90 @@ impl InterruptedProcess {
         )
     }
 
-    pub fn has_thread(&self, tid: ThreadIdentifier) -> bool {
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a reference to it is
+    /// returned. Otherwise, empty is returned instead.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
         // Search in the list of interrupted threads.
-        if self
+        if let Some(thread) = self
             .interrupted_threads
             .iter()
-            .any(|thread| thread.id() == tid)
+            .find(|thread| thread.id() == tid)
         {
-            return true;
+            return Some(ThreadRef::Interrupted(thread));
         }
 
         // Search in the list of sleeping threads.
         if let Some(sleeping_threads) = &self.sleeping_threads {
-            if sleeping_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = sleeping_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Sleeping(thread));
             }
         }
 
         // Search in the list of zombie threads.
         if let Some(zombie_threads) = &self.zombie_threads {
-            if zombie_threads.iter().any(|thread| thread.id() == tid) {
-                return true;
+            if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
+                return Some(ThreadRef::Zombie(thread));
             }
         }
 
-        false
+        None
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a mutable reference
+    /// to it is returned. Otherwise, empty is returned instead.
+    ///
+    #[cfg(feature = "sse")]
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+        // Search in the list of interrupted threads.
+        if let Some(thread) = self
+            .interrupted_threads
+            .iter_mut()
+            .find(|thread| thread.id() == tid)
+        {
+            return Some(ThreadRefMut::Interrupted(thread));
+        }
+
+        // Search in the list of sleeping threads.
+        if let Some(sleeping_threads) = &mut self.sleeping_threads {
+            if let Some(thread) = sleeping_threads
+                .iter_mut()
+                .find(|thread| thread.id() == tid)
+            {
+                return Some(ThreadRefMut::Sleeping(thread));
+            }
+        }
+
+        // Search in the list of zombie threads.
+        if let Some(zombie_threads) = &mut self.zombie_threads {
+            if let Some(thread) = zombie_threads.iter_mut().find(|thread| thread.id() == tid) {
+                return Some(ThreadRefMut::Zombie(thread));
+            }
+        }
+
+        None
     }
 }
 
