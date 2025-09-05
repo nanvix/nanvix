@@ -131,7 +131,7 @@ impl ThreadState {
     ///
     /// This function returns a mutable pointer to the FPU state of the thread.
     ///
-    pub(super) fn fpu_state_mut(&mut self) -> *mut FpuState {
+    pub fn fpu_state_mut(&mut self) -> *mut FpuState {
         self.fpu_state.as_mut().get_mut() as *mut FpuState
     }
 

@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    hal::arch::{
-        x86::cpu::FpuState,
-        ContextInformation,
-    },
+    hal::arch::ContextInformation,
     pm::{
         process::state::{
             interrupted::interrupt,
@@ -112,9 +115,9 @@ impl RunningProcess {
         &mut self.running
     }
 
-    pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation, *mut FpuState) {
+    pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {
         let running_thread = self.running;
-        let (ready_thread, ctx, fpu_state) = running_thread.schedule();
+        let (ready_thread, ctx) = running_thread.schedule();
 
         let ready_threads = match self.ready.take() {
             Some(mut ready_threads) => {
@@ -133,7 +136,6 @@ impl RunningProcess {
                 self.zombie.take(),
             ),
             ctx,
-            fpu_state,
         )
     }
 
@@ -141,10 +143,10 @@ impl RunningProcess {
         mut self,
         alarm: Option<SystemTime>,
     ) -> Result<
-        (RunnableProcess, *mut ContextInformation, *mut FpuState),
-        (SleepingProcess, *mut ContextInformation, *mut FpuState),
+        (RunnableProcess, *mut ContextInformation),
+        (SleepingProcess, *mut ContextInformation),
     > {
-        let (sleeping_thread, ctx, fpu_state) = self.running.sleep(alarm);
+        let (sleeping_thread, ctx) = self.running.sleep(alarm);
 
         // Push sleeping thread.
         let sleeping_threads = match self.sleeping_threads.take() {
@@ -166,7 +168,6 @@ impl RunningProcess {
                     self.zombie.take(),
                 ),
                 ctx,
-                fpu_state,
             ));
         }
 
@@ -179,24 +180,18 @@ impl RunningProcess {
                 self.zombie.take(),
             );
 
-            return Ok((interrupted_process.resume(), ctx, fpu_state));
+            return Ok((interrupted_process.resume(), ctx));
         }
 
-        Err((
-            SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()),
-            ctx,
-            fpu_state,
-        ))
+        Err((SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()), ctx))
     }
 
     pub fn exit(
         mut self,
         status: ExitStatus,
-    ) -> Result<
-        (RunnableProcess, *mut ContextInformation, *mut FpuState),
-        (ZombieProcess, *mut ContextInformation, *mut FpuState),
-    > {
-        let (zombie_thread, ctx, fpu_state) = self.running.exit(status);
+    ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
+    {
+        let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
@@ -232,9 +227,9 @@ impl RunningProcess {
                 Some(zombie_threads),
             );
 
-            Ok((interrupted_process.resume(), ctx, fpu_state))
+            Ok((interrupted_process.resume(), ctx))
         } else {
-            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx, fpu_state))
+            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
         }
     }
 
@@ -260,15 +255,15 @@ impl RunningProcess {
         mut self,
         status: ExitStatus,
     ) -> Result<
-        (Condvar, RunnableProcess, *mut ContextInformation, *mut FpuState),
+        (Condvar, RunnableProcess, *mut ContextInformation),
         Result<
-            (Condvar, SleepingProcess, *mut ContextInformation, *mut FpuState),
-            (Condvar, ZombieProcess, *mut ContextInformation, *mut FpuState),
+            (Condvar, SleepingProcess, *mut ContextInformation),
+            (Condvar, ZombieProcess, *mut ContextInformation),
         >,
     > {
         let join_cond: Condvar = self.running.join_cond();
 
-        let (zombie_thread, ctx, fpu_state) = self.running.exit(status);
+        let (zombie_thread, ctx) = self.running.exit(status);
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
@@ -288,7 +283,6 @@ impl RunningProcess {
                     Some(zombie_threads),
                 ),
                 ctx,
-                fpu_state,
             ))
         } else if let Some(interrupted_threads) = self.interrupted_threads.take() {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
@@ -298,21 +292,15 @@ impl RunningProcess {
                 self.zombie.take(),
             );
 
-            Ok((join_cond, interrupted_process.resume(), ctx, fpu_state))
+            Ok((join_cond, interrupted_process.resume(), ctx))
         } else if let Some(sleeping_threads) = self.sleeping_threads.take() {
             Err(Ok((
                 join_cond,
                 SleepingProcess::new(self.state, sleeping_threads, Some(zombie_threads)),
                 ctx,
-                fpu_state,
             )))
         } else {
-            Err(Err((
-                join_cond,
-                ZombieProcess::new(self.state, zombie_threads, status),
-                ctx,
-                fpu_state,
-            )))
+            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, status), ctx)))
         }
     }
 
