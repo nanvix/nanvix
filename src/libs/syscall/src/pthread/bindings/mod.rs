@@ -6,6 +6,7 @@
 //==================================================================================================
 
 pub mod pthread_attr_destroy;
+pub mod pthread_attr_getstack;
 pub mod pthread_attr_init;
 pub mod pthread_attr_setstacksize;
 pub mod pthread_cond_broadcast;
