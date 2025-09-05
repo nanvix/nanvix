@@ -96,17 +96,34 @@ where
             }
             match control_rx.try_recv() {
                 Ok(MemoryControlCommand::Pause) => {
-                    trace!("pause()");
                     crate::timer!("vm_pause");
-                    if pause_microvm().is_err() {
-                        control_tx.send(MemoryControlResponse::PauseError)?;
+                    if let Err(e) = pause_microvm() {
+                        let reason: String =
+                            format!("error requesting pause in the kernel's memory (error={e:?})");
+                        error!("spawn(): {reason}");
+                        if let Err(e) = control_tx.send(MemoryControlResponse::PauseError) {
+                            let reason: String =
+                                format!("error sending `PauseError` to the VMM (error={e:?})");
+                            error!("spawn(): {reason}");
+                            anyhow::bail!(reason)
+                        }
+                        anyhow::bail!(reason)
                     }
                 },
                 Ok(MemoryControlCommand::Resume) => {
-                    trace!("resume()");
                     crate::timer!("vm_resume");
-                    if resume_microvm().is_err() {
-                        control_tx.send(MemoryControlResponse::ResumeError)?;
+                    if let Err(e) = resume_microvm() {
+                        let reason: String = format!(
+                            "error overwriting pause request in the kernel's memory (error={e:?})"
+                        );
+                        error!("spawn(): {reason}");
+                        if let Err(e) = control_tx.send(MemoryControlResponse::ResumeError) {
+                            let reason: String =
+                                format!("error sending `ResumeError` to the VMM (error={e:?})");
+                            error!("spawn(): {reason}");
+                            anyhow::bail!(reason)
+                        }
+                        anyhow::bail!(reason)
                     }
                     control_tx.send(MemoryControlResponse::ResumeWritten)?;
                 },

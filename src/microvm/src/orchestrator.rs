@@ -183,7 +183,7 @@ impl Orchestrator {
                 IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
                         // TODO: load snapshot https://github.com/nanvix/nanvix/issues/948
-                        
+
                         // The Linux daemon should send messages to PreBoot VMMs by default,
                         // so there's no need to tell it to resume sending messages.
 
@@ -283,7 +283,12 @@ impl Orchestrator {
     ///
     fn pause_protocol(&mut self) -> Result<()> {
         // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
-        self.memory_control_tx.send(MemoryControlCommand::Pause)?;
+        if let Err(e) = self.memory_control_tx.send(MemoryControlCommand::Pause) {
+            let reason: String =
+                format!("error sending `Pause` to the memory thread (error={e:?})");
+            error!("pause_protocol: {reason}");
+            anyhow::bail!(reason)
+        }
         // Wait for the MicroVM to confirm it has paused.
         let start: Instant = Instant::now();
         let mut counter: usize = 1;
@@ -301,7 +306,7 @@ impl Orchestrator {
             let elapsed_time: usize = start.elapsed().as_millis() as usize;
             if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
                 warn!(
-                    "pause_protocol(): {}ms have passed waiting for `ResumeMicroVm` message",
+                    "pause_protocol(): {}ms have passed waiting for `Paused` message from vCPU",
                     TIMEOUT_WARNING_INTERVAL_IN_MS * counter
                 );
                 match self.memory_control_rx.try_recv() {
