@@ -52,7 +52,7 @@ pub struct IoThread {
     _control_tx: Sender<IoControlCommand>,
     /// Response receiver from the VMM.
     control_rx: Receiver<IoControlResponse>,
-    // TODO: channels to an outside issuer of snapshot commands and to linuxd.
+    // TODO: channels to linuxd and nanvixd https://github.com/nanvix/nanvix/issues/945
 }
 
 //==================================================================================================
@@ -283,7 +283,7 @@ impl IoThread {
             Ok(response) => match response {
                 IoControlResponse::FlushOutput => self.flush_microvm_output(),
                 IoControlResponse::FlushInput => self.flush_linuxd_input(),
-                _ => Ok(()), // TODO: forward to whoever is interested. This requires having control channels.
+                _ => Ok(()), // TODO: forward to linuxd or nanvixd https://github.com/nanvix/nanvix/issues/945
             },
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {

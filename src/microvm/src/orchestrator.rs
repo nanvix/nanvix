@@ -174,7 +174,7 @@ impl Orchestrator {
                 IoControlCommand::_StartMicroVm => {
                     if self.state == State::PreBoot {
                         // TODO: separate starting logic from `spawn()` and put it here
-                        // This TODO could be done right now, but it's a major refactor.
+                        // This only makes sense when snapshots can already be loaded https://github.com/nanvix/nanvix/issues/948
                         self.state = State::Running;
                         trace!("State: PreBoot -> Running");
                     }
@@ -182,9 +182,8 @@ impl Orchestrator {
                 },
                 IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
-                        // TODO: load snapshot
-                        // This TODO requires being able to create snapshots.
-
+                        // TODO: load snapshot https://github.com/nanvix/nanvix/issues/948
+                        
                         // The Linux daemon should send messages to PreBoot VMMs by default,
                         // so there's no need to tell it to resume sending messages.
 
@@ -245,8 +244,7 @@ impl Orchestrator {
                 },
                 IoControlCommand::_ResumeMicroVm => {
                     if self.state == State::Paused {
-                        // TODO: tell linuxd it's fine to send more messages
-                        // This TODO requires having a control plane connection with linuxd
+                        // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
                         if let Err(e) = self.resume_microvm() {
                             let reason: String =
                                 format!("ResumeMicroVm: failed to resume microvm: {e:?}");
@@ -284,8 +282,7 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: tell linuxd to flush (Running -> Flushing)
-        // This TODO requires control plane communication with linuxd
+        // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
         self.memory_control_tx.send(MemoryControlCommand::Pause)?;
         // Wait for the MicroVM to confirm it has paused.
         let start: Instant = Instant::now();
@@ -308,7 +305,7 @@ impl Orchestrator {
                     TIMEOUT_WARNING_INTERVAL_IN_MS * counter
                 );
                 match self.memory_control_rx.try_recv() {
-                    Ok(MemoryControlResponse::PauseError) => todo!(), // TODO: graceful shutdown
+                    Ok(MemoryControlResponse::PauseError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
                     Ok(MemoryControlResponse::ResumeError) => unreachable!(
                         "PauseError is the only message that can be sent at this point."
                     ),
@@ -328,9 +325,8 @@ impl Orchestrator {
         trace!("MicroVM paused");
         // Flush output to linuxd
         self.io_control_tx.send(IoControlResponse::FlushOutput)?;
-        // TODO: tell linuxd to stop sending messages (Flushing -> Paused)
-        // TODO: get a response from linuxd
-        // These TODOs require a control plane communication with linuxd
+        // TODO: tell linuxd to stop sending messages (Flushing -> Paused) https://github.com/nanvix/nanvix/issues/945
+        // TODO: get a response from linuxd https://github.com/nanvix/nanvix/issues/945
         self.io_control_tx.send(IoControlResponse::FlushInput)?;
         self.receive_linux_daemon_flushed()?;
         self.state = State::Paused;
@@ -394,7 +390,7 @@ impl Orchestrator {
         let mut counter: usize = 1;
         while match self.memory_control_rx.try_recv() {
             Ok(MemoryControlResponse::ResumeWritten) => false,
-            Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown
+            Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
             Ok(MemoryControlResponse::PauseError) => {
                 unreachable!("PauseError cannot be sent at this point.")
             },

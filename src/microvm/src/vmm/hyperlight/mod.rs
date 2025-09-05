@@ -342,7 +342,7 @@ impl Vmm {
             memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
-            || Ok(()), // TODO: create_snapshot
+            || Ok(()), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
         );
 
         let mut vmm: Vmm = Self {
@@ -444,10 +444,10 @@ fn consume_credit() -> Result<()> {
 
 // Requests the kernel to pause the virtual machine's execution by writing to a specific register.
 fn pause_microvm() -> Result<()> {
-    Ok(()) // TODO
+    Ok(()) // TODO: https://github.com/nanvix/nanvix/issues/791
 }
 
 // Writes to a specific kernel register that execution should not be paused.
 fn resume_microvm() -> Result<()> {
-    Ok(()) // TODO
+    Ok(()) // TODO: https://github.com/nanvix/nanvix/issues/791
 }
