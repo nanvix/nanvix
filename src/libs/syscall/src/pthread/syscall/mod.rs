@@ -20,6 +20,9 @@ mod pthread_attr_destroy;
 /// Implementation of `pthread_attr_init()` system call.
 mod pthread_attr_init;
 
+/// Implementation of `pthread_attr_getstack()` system call.
+mod pthread_attr_getstack;
+
 /// Implementation of `pthread_getattr_np()` system call.
 mod pthread_getattr_np;
 
@@ -56,6 +59,7 @@ use ::sysapi::sys_types::pthread_t;
 pub use cond::*;
 pub use mutex::*;
 pub use pthread_attr_destroy::*;
+pub use pthread_attr_getstack::*;
 pub use pthread_attr_init::*;
 pub use pthread_getattr_np::*;
 pub use tda::*;
