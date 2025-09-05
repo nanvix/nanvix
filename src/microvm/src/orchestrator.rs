@@ -187,7 +187,7 @@ impl Orchestrator {
                         // The Linux daemon should send messages to PreBoot VMMs by default,
                         // so there's no need to tell it to resume sending messages.
 
-                        if let Err(e) = self.resume_microvm() {
+                        if let Err(e) = self.resume_protocol() {
                             let reason: String =
                                 format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
                             error!("handle_command(): {reason}");
@@ -245,7 +245,7 @@ impl Orchestrator {
                 IoControlCommand::_ResumeMicroVm => {
                     if self.state == State::Paused {
                         // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
-                        if let Err(e) = self.resume_microvm() {
+                        if let Err(e) = self.resume_protocol() {
                             let reason: String =
                                 format!("ResumeMicroVm: failed to resume microvm: {e:?}");
                             error!("handle_command(): {reason}");
@@ -286,7 +286,7 @@ impl Orchestrator {
         if let Err(e) = self.memory_control_tx.send(MemoryControlCommand::Pause) {
             let reason: String =
                 format!("error sending `Pause` to the memory thread (error={e:?})");
-            error!("pause_protocol: {reason}");
+            error!("pause_protocol(): {reason}");
             anyhow::bail!(reason)
         }
         // Wait for the MicroVM to confirm it has paused.
@@ -312,10 +312,12 @@ impl Orchestrator {
                 match self.memory_control_rx.try_recv() {
                     Ok(MemoryControlResponse::PauseError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
                     Ok(MemoryControlResponse::ResumeError) => unreachable!(
-                        "PauseError is the only message that can be sent at this point."
+                        "Received `ResumeError` during pause protocol: this indicates a protocol \
+                         violation, as `ResumeError` should not be sent while pausing."
                     ),
                     Ok(MemoryControlResponse::ResumeWritten) => unreachable!(
-                        "PauseError is the only message that can be sent at this point."
+                        "Received `ResumeWritten` during pause protocol: this indicates a \
+                         protocol violation, as `ResumeWritten` should not be sent while pausing."
                     ),
                     Err(TryRecvError::Empty) => (),
                     Err(TryRecvError::Disconnected) => {
@@ -387,25 +389,29 @@ impl Orchestrator {
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
-    fn resume_microvm(&mut self) -> Result<()> {
+    fn resume_protocol(&mut self) -> Result<()> {
         // Tell memory thread to write to the kernel
         self.memory_control_tx.send(MemoryControlCommand::Resume)?;
         // Wait for confirmation
         let start: Instant = Instant::now();
         let mut counter: usize = 1;
-        while match self.memory_control_rx.try_recv() {
-            Ok(MemoryControlResponse::ResumeWritten) => false,
-            Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
-            Ok(MemoryControlResponse::PauseError) => {
-                unreachable!("PauseError cannot be sent at this point.")
-            },
-            Err(TryRecvError::Empty) => true,
-            Err(TryRecvError::Disconnected) => {
-                let reason: String = "the memory thread has disconnected".to_string();
-                error!("resume_microvm(): {reason}");
-                anyhow::bail!(reason)
-            },
-        } {
+        loop {
+            match self.memory_control_rx.try_recv() {
+                Ok(MemoryControlResponse::ResumeWritten) => break,
+                Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
+                Ok(MemoryControlResponse::PauseError) => {
+                    unreachable!(
+                        "Received `PauseError` during resume protocol: this indicates a protocol \
+                         violation, as `PauseError` should not be sent while resuming."
+                    )
+                },
+                Err(TryRecvError::Empty) => (),
+                Err(TryRecvError::Disconnected) => {
+                    let reason: String = "the memory thread has disconnected".to_string();
+                    error!("resume_protocol(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
             // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
             let elapsed_time: usize = start.elapsed().as_millis() as usize;
             if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
