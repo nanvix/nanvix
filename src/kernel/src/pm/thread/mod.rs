@@ -2,9 +2,14 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Imports
+// Lint Configuration
 //==================================================================================================
 
+#![cfg_attr(not(feature = "sse"), allow(dead_code))]
+
+//==================================================================================================
+// Imports
+//==================================================================================================
 use crate::{
     hal::arch::{
         x86::cpu::FpuState,
@@ -14,6 +19,7 @@ use crate::{
         kstack::KernelStack,
         ustack::UserStack,
     },
+    pm::thread::state::ThreadState,
 };
 use ::sys::{
     mm::VirtualAddress,
@@ -66,6 +72,28 @@ pub enum ThreadRef<'a> {
     Zombie(&'a ZombieThread),
 }
 
+impl<'a> ThreadRef<'a> {
+    ///
+    /// # Description
+    ///
+    /// Returns a reference to the thread's state.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns a reference to the thread's state.
+    ///
+    #[allow(dead_code)] // TODO: remove this.
+    pub fn thread_state(&self) -> &ThreadState {
+        match self {
+            ThreadRef::Ready(thread) => thread.thread_state(),
+            ThreadRef::Running(thread) => thread.thread_state(),
+            ThreadRef::Sleeping(thread) => thread.thread_state(),
+            ThreadRef::Interrupted(thread) => thread.thread_state(),
+            ThreadRef::Zombie(thread) => thread.thread_state(),
+        }
+    }
+}
+
 //==================================================================================================
 // Mutable Thread Reference
 //==================================================================================================
@@ -86,6 +114,27 @@ pub enum ThreadRefMut<'a> {
     Interrupted(&'a mut InterruptedThread),
     /// A mutable reference to a zombie thread.
     Zombie(&'a mut ZombieThread),
+}
+
+impl<'a> ThreadRefMut<'a> {
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the thread's state.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns a mutable reference to the thread's state.
+    ///
+    pub fn thread_state_mut(&mut self) -> &mut ThreadState {
+        match self {
+            ThreadRefMut::Ready(thread) => thread.thread_state_mut(),
+            ThreadRefMut::Running(thread) => thread.thread_state_mut(),
+            ThreadRefMut::Sleeping(thread) => thread.thread_state_mut(),
+            ThreadRefMut::Interrupted(thread) => thread.thread_state_mut(),
+            ThreadRefMut::Zombie(thread) => thread.thread_state_mut(),
+        }
+    }
 }
 
 //==================================================================================================

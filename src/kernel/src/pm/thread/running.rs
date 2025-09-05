@@ -124,6 +124,32 @@ impl RunningThread {
     ///
     /// # Description
     ///
+    /// Returns a reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a reference to the thread state.
+    ///
+    pub fn thread_state(&self) -> &ThreadState {
+        &self.state
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the thread state.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the thread state.
+    ///
+    pub fn thread_state_mut(&mut self) -> &mut ThreadState {
+        &mut self.state
+    }
+
+    ///
+    /// # Description
+    ///
     /// Wakes up all threads waiting on the join condition variable.
     ///
     /// # Returns
