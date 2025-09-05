@@ -82,7 +82,7 @@ impl<'a> ThreadRef<'a> {
     ///
     /// This function returns a reference to the thread's state.
     ///
-    #[allow(dead_code)] // TODO: remove this.
+    #[allow(dead_code)]
     pub fn thread_state(&self) -> &ThreadState {
         match self {
             ThreadRef::Ready(thread) => thread.thread_state(),

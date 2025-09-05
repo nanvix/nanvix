@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    hal::arch::{
-        x86::cpu::FpuState,
-        ContextInformation,
-    },
+    hal::arch::ContextInformation,
     mm::Vmem,
     pm::{
         clock,
@@ -111,13 +114,8 @@ impl RunnableProcess {
     ///
     pub fn run(
         mut self,
-    ) -> (
-        RunningProcess,
-        Option<InterruptReason>,
-        *mut ContextInformation,
-        *mut FpuState,
-        Option<VirtualAddress>,
-    ) {
+    ) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
+    {
         let mut ready_threads: VecDeque<ReadyThread> = self.ready_threads.into();
 
         // Select thread with the earliest admission time.
@@ -136,11 +134,10 @@ impl RunnableProcess {
             },
         };
 
-        let (running_thread, interrupt_reason, next_context, fpu_state, user_tda): (
+        let (running_thread, interrupt_reason, next_context, user_tda): (
             RunningThread,
             Option<InterruptReason>,
             *mut ContextInformation,
-            *mut FpuState,
             Option<VirtualAddress>,
         ) = next_thread.run();
         (
@@ -154,7 +151,6 @@ impl RunnableProcess {
             ),
             interrupt_reason,
             next_context,
-            fpu_state,
             user_tda,
         )
     }

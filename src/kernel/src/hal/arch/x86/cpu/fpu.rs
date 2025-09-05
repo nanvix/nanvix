@@ -95,7 +95,7 @@ impl FpuState {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it deferences a raw pointer.
+    /// This function is unsafe because it dereferences a raw pointer.
     ///
     /// It is safe to call this function if the following conditions are met:
     /// - `to` is a valid pointer to a memory region that is at least `FPU_STATE_SIZE` bytes long.
