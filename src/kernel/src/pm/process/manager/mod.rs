@@ -1475,6 +1475,62 @@ impl ProcessManagerInner {
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a thread.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a mutable reference
+    /// to it is returned. Otherwise, empty is returned instead.
+    ///
+    #[cfg(feature = "sse")]
+    fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ThreadRefMut, Error> {
+        // Search thread in the running process.
+        if let Some(thread) = self.running.as_mut() {
+            if let Some(thread) = thread.find_thread_mut(tid) {
+                return Ok(thread);
+            }
+        }
+
+        // Search thread in the list of ready processes.
+        for process in self.ready.iter_mut() {
+            if let Some(thread) = process.find_thread_mut(tid) {
+                return Ok(thread);
+            }
+        }
+
+        // Search thread in the list of sleeping processes.
+        for process in self.suspended.iter_mut() {
+            if let Some(thread) = process.find_thread_mut(tid) {
+                return Ok(thread);
+            }
+        }
+
+        // Search thread in the list of interrupted processes.
+        for process in self.interrupted.iter_mut() {
+            if let Some(thread) = process.find_thread_mut(tid) {
+                return Ok(thread);
+            }
+        }
+
+        // Search thread in the list of zombie processes.
+        for process in self.zombies.iter_mut() {
+            if let Some(thread) = process.find_thread_mut(tid) {
+                return Ok(thread);
+            }
+        }
+
+        let reason: &str = "thread not found";
+        error!("find_thread_mut(): {} (tid={:?})", reason, tid);
+        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+    }
 }
 
 //==================================================================================================

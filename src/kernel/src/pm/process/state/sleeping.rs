@@ -17,6 +17,7 @@ use crate::pm::{
         ReadyThread,
         SleepingThread,
         ThreadRef,
+        ThreadRefMut,
         ZombieThread,
     },
 };
@@ -188,26 +189,6 @@ impl SleepingProcess {
     ///
     /// # Description
     ///
-    /// Returns a mutable reference to a sleeping thread with the given thread identifier.
-    ///
-    /// # Parameters
-    ///
-    /// - `tid`: The identifier of the thread to find.
-    ///
-    /// # Returns
-    ///
-    /// If a thread with the given identifier exists, a mutable reference to it is returned.
-    /// Otherwise, `None` is returned.
-    ///
-    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<&mut SleepingThread> {
-        self.sleeping_threads
-            .iter_mut()
-            .find(|thread| thread.id() == tid)
-    }
-
-    ///
-    /// # Description
-    ///
     /// Finds a thread in the target process.
     ///
     /// # Arguments
@@ -231,6 +212,38 @@ impl SleepingProcess {
         if let Some(zombie_threads) = &self.zombie_threads {
             if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
                 return Some(ThreadRef::Zombie(thread));
+            }
+        }
+
+        None
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a mutable reference
+    /// to it is returned. Otherwise, empty is returned instead.
+    ///
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+        if let Some(thread) = self
+            .sleeping_threads
+            .iter_mut()
+            .find(|thread| thread.id() == tid)
+        {
+            return Some(ThreadRefMut::Sleeping(thread));
+        }
+
+        if let Some(zombie_threads) = &mut self.zombie_threads {
+            if let Some(thread) = zombie_threads.iter_mut().find(|thread| thread.id() == tid) {
+                return Some(ThreadRefMut::Zombie(thread));
             }
         }
 

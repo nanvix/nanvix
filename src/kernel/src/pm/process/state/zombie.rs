@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(unused_imports))]
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -9,6 +15,7 @@ use crate::pm::{
     process::state::ProcessState,
     thread::{
         ThreadRef,
+        ThreadRefMut,
         ZombieThread,
     },
 };
@@ -80,5 +87,27 @@ impl ZombieProcess {
             .iter()
             .find(|thread| thread.id() == tid)
             .map(ThreadRef::Zombie)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a thread in the target process.
+    ///
+    /// # Arguments
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If a thread that matches the specified thread identifier is found, then a mutable reference
+    /// to it is returned. Otherwise, empty is returned instead.
+    ///
+    #[cfg(feature = "sse")]
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+        self.zombie_threads
+            .iter_mut()
+            .find(|thread| thread.id() == tid)
+            .map(ThreadRefMut::Zombie)
     }
 }
