@@ -27,8 +27,13 @@ env:
   SCCACHE: "/usr/local/bin/sccache"
 
 jobs:
+  precheck:
+    uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
+    secrets: inherit
+
   benchmark:
     name: "Nanvix Benchmark (self-hosted)"
+    needs: precheck
     timeout-minutes: 240
     strategy:
       matrix:
@@ -41,18 +46,16 @@ jobs:
     # - Non-draft PRs where the source branch starts with one of:
     #     'enhancement-', 'feature-', 'bugfix-', or 'copilot/' (skip dependabot PRs)
     if: |
-      github.event_name != 'pull_request' ||
-      (
+      (github.event_name != 'pull_request' || (
         !github.event.pull_request.draft &&
         !startsWith(github.head_ref, 'dependabot/') &&
-        !startsWith(github.head_ref, 'dependabot-') &&
-        (
+        !startsWith(github.head_ref, 'dependabot-') && (
           startsWith(github.head_ref, 'enhancement-') ||
           startsWith(github.head_ref, 'feature-') ||
           startsWith(github.head_ref, 'bugfix-') ||
           startsWith(github.head_ref, 'copilot/')
         )
-      )
+      )) && needs.precheck.outputs.up_to_date == 'true'
 
     steps:
     - uses: actions/checkout@v5
