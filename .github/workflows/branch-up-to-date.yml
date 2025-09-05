@@ -17,7 +17,7 @@ on:
 jobs:
   precheck:
     name: "Compute Branch Divergence"
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       pull-requests: write  # Needed to comment on PRs.
     outputs:
