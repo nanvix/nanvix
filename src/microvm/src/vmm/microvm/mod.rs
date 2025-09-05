@@ -200,8 +200,8 @@ impl Vmm {
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
             },
-            move || Ok(()), // TODO: pause
-            move || Ok(()), // TODO: resume
+            move || Ok(()), // TODO: pause https://github.com/nanvix/nanvix/issues/791
+            move || Ok(()), // TODO: resume https://github.com/nanvix/nanvix/issues/791
         );
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
@@ -240,7 +240,7 @@ impl Vmm {
             memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
-            || Ok(()), // TODO: create_snapshot
+            || Ok(()), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
         );
 
         let mut vmm: Vmm = Self {
