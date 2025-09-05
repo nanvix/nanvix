@@ -442,12 +442,28 @@ fn consume_credit() -> Result<()> {
         .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
 }
 
-// Requests the kernel to pause the virtual machine's execution by writing to a specific register.
+///
+/// # Description
+///
+/// Requests the kernel to pause the virtual machine's execution by writing to a specific register.
+///
+/// # Returns
+///
+/// On success, returns empty. Otherwise, returns an error.
+///
 fn pause_microvm() -> Result<()> {
     Ok(()) // TODO: https://github.com/nanvix/nanvix/issues/791
 }
 
-// Writes to a specific kernel register that execution should not be paused.
+///
+/// # Description
+///
+/// Writes to a specific kernel register that execution should not be paused.
+///
+/// # Returns
+///
+/// On success, returns empty. Otherwise, returns an error.
+///
 fn resume_microvm() -> Result<()> {
     Ok(()) // TODO: https://github.com/nanvix/nanvix/issues/791
 }

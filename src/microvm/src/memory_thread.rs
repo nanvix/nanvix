@@ -128,7 +128,7 @@ where
                     control_tx.send(MemoryControlResponse::ResumeWritten)?;
                 },
                 Err(TryRecvError::Disconnected) => {
-                    // When the guest finishes , the vCPU thread will disconnect from this
+                    // When the guest finishes, the vCPU thread will disconnect from this
                     // thread. This situation is normal and should not create an error log.
                     debug!("spawn(): channel has been disconnected");
                     break Ok(());
