@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Lint Configuration
+//==================================================================================================
+
+#![cfg_attr(not(feature = "sse"), allow(dead_code))]
+
+//==================================================================================================
 // Modules
 //==================================================================================================
 
@@ -22,6 +28,10 @@ use crate::hal::{
         IoPortAllocator,
     },
     platform::madt::MadtInfo,
+};
+use ::arch::cpu::cr0::{
+    Cr0Register,
+    TaskSwitchedFlag,
 };
 use ::sys::error::Error;
 
@@ -59,6 +69,44 @@ pub struct Arch {
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Clears the CR0.TS flag to enable FPU/SSE instructions.
+///
+/// # Safety
+///
+/// It is unsafe to call this function because it executes privileged instructions.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - Calls to this function are synchronized.
+/// - The caller runs at processor privilege level 0.
+///
+pub unsafe fn clear_task_switched() {
+    let mut cr0: Cr0Register = Cr0Register::read();
+    cr0.task_switched = TaskSwitchedFlag::Clear;
+    cr0.write();
+}
+
+///
+/// # Description
+///
+/// Sets the CR0.TS flag to disable FPU/SSE instructions.
+///
+/// # Safety
+///
+/// It is unsafe to call this function because it executes privileged instructions.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - Calls to this function are synchronized.
+/// - The caller runs at processor privilege level 0.
+///
+pub unsafe fn set_task_switched() {
+    let mut cr0: Cr0Register = Cr0Register::read();
+    cr0.task_switched = TaskSwitchedFlag::Set;
+    cr0.write();
+}
 
 pub fn init(
     ioports: &mut IoPortAllocator,
