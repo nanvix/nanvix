@@ -1,0 +1,96 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Pre-Check if Branch is Up-To-Date"
+
+# Reusable workflow that checks if the current ref branch is behind the repository's default
+# branch. The default branch is detected dynamically. If branch is up-to-date (not behind) the
+# default branch, `up_to_date` output variable is set to 'true', otherwise it is set to 'false'.
+
+on:
+  workflow_call:
+    outputs:
+      up_to_date:
+        description: "Whether the branch is up to date with the default branch (not behind)."
+        value: ${{ jobs.precheck.outputs.up_to_date }}
+
+jobs:
+  precheck:
+    name: "Compute Branch Divergence"
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      pull-requests: write  # Needed to comment on PRs.
+    outputs:
+      up_to_date: ${{ steps.branch_status.outputs.up_to_date }}
+      # Extra metadata (not currently used by callers, but useful for diagnostics / comments).
+      behind_count: ${{ steps.branch_status.outputs.behind_count }}
+      default_branch: ${{ steps.branch_status.outputs.default_branch }}
+    steps:
+      - name: "Checkout (full history for dev)"
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: "Determine if branch is behind default branch"
+        id: branch_status
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_BRANCH="${GITHUB_REF_NAME}"
+          # Discover default branch from remote metadata.
+          DEFAULT_BRANCH=$(git remote show origin | awk '/HEAD branch:/ {print $NF}')
+          if [ -z "${DEFAULT_BRANCH}" ]; then
+            echo "Failed to determine default branch; assuming up-to-date to avoid false positives." >&2
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "behind_count=0" >> "$GITHUB_OUTPUT"
+            echo "default_branch=unknown" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${CURRENT_BRANCH}" = "${DEFAULT_BRANCH}" ]; then
+            echo "On default branch (${DEFAULT_BRANCH}); marking up_to_date=true." >&2
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "behind_count=0" >> "$GITHUB_OUTPUT"
+            echo "default_branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fetch latest default branch snapshot.
+          git fetch --no-tags origin "${DEFAULT_BRANCH}"
+          # Compute commits present in default branch but not in HEAD (behind count).
+          COUNTS=$(git rev-list --left-right --count "origin/${DEFAULT_BRANCH}...HEAD")
+          BEHIND=$(echo "$COUNTS" | awk '{print $1}')
+          if [ "${BEHIND}" -eq 0 ]; then
+            echo "Branch is not behind ${DEFAULT_BRANCH} (behind=${BEHIND})." >&2
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "behind_count=${BEHIND}" >> "$GITHUB_OUTPUT"
+            echo "default_branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Branch is behind ${DEFAULT_BRANCH} by ${BEHIND} commits." >&2
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+            echo "behind_count=${BEHIND}" >> "$GITHUB_OUTPUT"
+            echo "default_branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: "Comment on PR when branch is behind default branch"
+        if: ${{ github.event_name == 'pull_request' && steps.branch_status.outputs.up_to_date == 'false' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const number = context.payload.pull_request.number;
+            const defaultBranch = `${{ steps.branch_status.outputs.default_branch }}`;
+            const behind = `${{ steps.branch_status.outputs.behind_count }}`;
+            const body = [
+              `⚠️ This branch is behind \`${defaultBranch}\` by ${behind} commit(s).`,
+              '',
+              'Please update your branch so CI can proceed:',
+              '```bash',
+              'git fetch origin',
+              `git rebase origin/${defaultBranch}`,
+              'git push --force-with-lease',
+              '```',
+              '',
+              'After updating, re-run the workflows by pushing new commits or using the GitHub UI.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+              body
+            });
