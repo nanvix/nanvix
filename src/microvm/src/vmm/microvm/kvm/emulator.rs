@@ -120,6 +120,9 @@ impl Emulator {
                             let status: u16 = (data & 0xffff) as u16;
                             return Ok(Some(status));
                         },
+                        ::config::microvm::DEFAULT_VMM_PAUSE_CMD => {
+                            return Ok(Some(::config::microvm::DEFAULT_VMM_PAUSE_CMD));
+                        },
                         cmd => anyhow::bail!("unknown virtual machine command (cmd=:{cmd:#06x})"),
                     }
                 },
