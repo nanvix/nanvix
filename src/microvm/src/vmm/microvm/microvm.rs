@@ -45,6 +45,7 @@ use ::std::{
         Mutex,
         mpsc::{
             Receiver,
+            SendError,
             Sender,
             TryRecvError,
         },
@@ -398,5 +399,22 @@ impl MicroVm {
     ///
     pub fn vmem(&self) -> Arc<Mutex<VirtualMemory>> {
         self.vmem.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends the vCPU thread's tid to the main thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: The vCPU thread's tid.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn send_tid(&self, tid: u64) -> Result<(), SendError<VcpuControlResponse>> {
+        self.control_tx.send(VcpuControlResponse::Tid(tid))
     }
 }
