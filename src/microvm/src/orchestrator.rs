@@ -130,7 +130,7 @@ pub enum VcpuControlCommand {
 ///
 #[derive(PartialEq)]
 pub enum VcpuControlResponse {
-    _Paused,
+    Paused,
 }
 
 //==================================================================================================
@@ -183,6 +183,7 @@ impl Orchestrator {
                 IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
                         // TODO: load snapshot https://github.com/nanvix/nanvix/issues/948
+                        trace!("State: PreBoot -> Paused");
 
                         // The Linux daemon should send messages to PreBoot VMMs by default,
                         // so there's no need to tell it to resume sending messages.
@@ -193,7 +194,6 @@ impl Orchestrator {
                             error!("handle_command(): {reason}");
                             anyhow::bail!(reason);
                         }
-                        trace!("State: PreBoot -> Running");
                     }
                     Ok(())
                 },
@@ -251,7 +251,6 @@ impl Orchestrator {
                             error!("handle_command(): {reason}");
                             anyhow::bail!(reason);
                         }
-                        trace!("State: Paused -> Running");
                     }
                     Ok(())
                 },
@@ -294,7 +293,7 @@ impl Orchestrator {
         let mut counter: usize = 1;
         loop {
             match self.vcpu_control_rx.try_recv() {
-                Ok(VcpuControlResponse::_Paused) => break,
+                Ok(VcpuControlResponse::Paused) => break,
                 Err(TryRecvError::Empty) => (),
                 Err(TryRecvError::Disconnected) => {
                     let reason: String = "the vmm has disconnected".to_string();
