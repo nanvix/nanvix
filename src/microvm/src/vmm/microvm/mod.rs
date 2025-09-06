@@ -189,7 +189,8 @@ impl Vmm {
             .reset_credits()?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
-        let memory_thread_data_tx: Sender<Message> = memory_thread_data_tx.clone();
+        let vmem_pause_microvm = vmem.clone();
+        let vmem_resume_microvm = vmem.clone();
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> = memory_thread::spawn(
             memory_thread_data_rx,
             memory_thread_data_tx,
@@ -200,8 +201,24 @@ impl Vmm {
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
             },
-            move || Ok(()), // TODO: pause https://github.com/nanvix/nanvix/issues/791
-            move || Ok(()), // TODO: resume https://github.com/nanvix/nanvix/issues/791
+            move || {
+                vmem_pause_microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .write_bytes(
+                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                        &::config::microvm::PAUSE_REQUEST.to_le_bytes(),
+                    )
+            },
+            move || {
+                vmem_resume_microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .write_bytes(
+                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                        &::config::microvm::RUNNING.to_le_bytes(),
+                    )
+            },
         );
 
         // We use an atomic to pass the id of the created thread back to the caller context. We

@@ -15,6 +15,7 @@
 #[cfg(target_os = "linux")]
 use crate::{
     orchestrator::{
+        TIMEOUT_WARNING_INTERVAL_IN_MS,
         VcpuControlCommand,
         VcpuControlResponse,
     },
@@ -38,13 +39,17 @@ use ::libc::{
     sigaction,
     sigemptyset,
 };
-use ::std::sync::{
-    Arc,
-    Mutex,
-    mpsc::{
-        Receiver,
-        Sender,
+use ::std::{
+    sync::{
+        Arc,
+        Mutex,
+        mpsc::{
+            Receiver,
+            Sender,
+            TryRecvError,
+        },
     },
+    time::Instant,
 };
 
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
@@ -70,9 +75,9 @@ pub struct MicroVm {
     // If present, initial RAM disk location and size.
     initrd: Option<(u64, usize)>,
     // Channel to receive commands from the VMM.
-    _control_rx: Receiver<VcpuControlCommand>,
+    control_rx: Receiver<VcpuControlCommand>,
     // Channel to send control responses to the VMM.
-    _control_tx: Sender<VcpuControlResponse>,
+    control_tx: Sender<VcpuControlResponse>,
 }
 
 unsafe impl Send for MicroVm {}
@@ -138,8 +143,8 @@ impl MicroVm {
             vcpu,
             emulator,
             initrd: None,
-            _control_rx: control_rx,
-            _control_tx: control_tx,
+            control_rx,
+            control_tx,
         })
     }
 
@@ -319,7 +324,46 @@ impl MicroVm {
                 VirtualProcessorExitReason::PmioAccess => {
                     crate::timer!("vm_run_pmio_access");
                     if let Some(exit_status) = self.emulator.handle_pmio_access(exit_context)? {
-                        self.vcpu.poweroff(exit_status);
+                        if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                            self.vcpu.poweroff(exit_status);
+                        }
+                        // The Nanvix Daemon requested to pause, this means we need to suspend execution,
+                        // but possibly resume it later.
+                        else {
+                            // This message changes the state from `PAUSE_REQUESTED` to `PAUSED`.
+                            self.control_tx.send(VcpuControlResponse::Paused)?;
+
+                            let start: Instant = Instant::now();
+                            let mut counter: usize = 1;
+                            // TODO: exponential back-off timeout https://github.com/nanvix/nanvix/issues/943
+                            loop {
+                                match self.control_rx.try_recv() {
+                                    Ok(VcpuControlCommand::Resume) => break,
+                                    // NOTE: Should we add an option for shutting down? Like so:
+                                    // Ok(VcpuControlCommand::Shutdown) => self.vcpu.poweroff(0),
+                                    Err(TryRecvError::Empty) => (),
+                                    Err(TryRecvError::Disconnected) => {
+                                        let reason: String = "the vmm has disconnected".to_string();
+                                        error!("run(): {reason}");
+                                        anyhow::bail!(reason)
+                                    },
+                                }
+
+                                // NOTE: is it desirable to check for timeout in this case? If it is,
+                                // should we use a larger constant, considering snapshots might take long?
+
+                                // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
+                                let elapsed_time: usize = start.elapsed().as_millis() as usize;
+                                if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
+                                    warn!(
+                                        "{}ms have passed waiting for `ResumeMicroVm` message",
+                                        TIMEOUT_WARNING_INTERVAL_IN_MS * counter
+                                    );
+                                    counter += 1;
+                                }
+                            }
+                            trace!("MicroVM resumed");
+                        }
                     }
                 },
 

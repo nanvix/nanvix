@@ -248,6 +248,9 @@ pub mod microvm {
     /// Default VMM shutdown command
     pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
 
+    /// Default VMM pause command. This MUST be a value that's never an exit code.
+    pub const DEFAULT_VMM_PAUSE_CMD: u16 = 0x3000;
+
     /// Default base address for MicroVM control registers.
     pub const DEFAULT_MICROVM_CTRL_BASE: usize = 0x00000000;
 
@@ -256,6 +259,15 @@ pub mod microvm {
 
     /// Default base address for MicroVM credits register (32-bit wide read-only register)
     pub const DEFAULT_MICROVM_CTRL_CREDITS: usize = 0x00000004;
+
+    /// Default base address for MicroVM pause-requested register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED: usize = 0x00000008;
+
+    /// Magic value that identifies the running state in the pause-requested register.
+    pub const RUNNING: u32 = 0x00000000;
+
+    /// Magic value that flags that the VMM requested the guest OS to pause MicroVM execution.
+    pub const PAUSE_REQUEST: u32 = 0x00000001;
 }
 
 #[cfg(feature = "pc")]
