@@ -5,7 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::Gateway;
+use crate::{
+    Gateway,
+    orchestrator::{
+        IoControlCommand,
+        IoControlResponse,
+    },
+};
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
@@ -46,40 +52,7 @@ pub struct IoThread {
     _control_tx: Sender<IoControlCommand>,
     /// Response receiver from the VMM.
     control_rx: Receiver<IoControlResponse>,
-    // TODO: channels to an outside issuer of snapshot commands and to linuxd.
-}
-
-//==================================================================================================
-// Enums
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Control plane commands from the I/O thread to the VMM.
-///
-#[derive(PartialEq)]
-pub enum IoControlCommand {
-    _StartMicroVm,
-    _LoadSnapshotAndRun,
-    _PauseMicroVm,
-    _PauseAndCreateSnapshot,
-    _CreateSnapshot,
-    _ResumeMicroVm,
-    LinuxDaemonFlushed,
-}
-
-///
-/// # Description
-///
-/// Control plane command responses from the VMM to the I/O thread.
-///
-#[derive(PartialEq)]
-pub enum IoControlResponse {
-    MicroVmPaused,
-    SnapshotCreated,
-    FlushOutput,
-    FlushInput,
+    // TODO: channels to linuxd and nanvixd https://github.com/nanvix/nanvix/issues/945
 }
 
 //==================================================================================================
@@ -310,7 +283,7 @@ impl IoThread {
             Ok(response) => match response {
                 IoControlResponse::FlushOutput => self.flush_microvm_output(),
                 IoControlResponse::FlushInput => self.flush_linuxd_input(),
-                _ => Ok(()), // TODO: forward to whoever is interested. This requires having control channels.
+                _ => Ok(()), // TODO: forward to linuxd or nanvixd https://github.com/nanvix/nanvix/issues/945
             },
             Err(TryRecvError::Empty) => Ok(()),
             Err(TryRecvError::Disconnected) => {

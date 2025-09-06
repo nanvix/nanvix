@@ -26,13 +26,17 @@ extern crate kvm_ioctls;
 
 use crate::{
     Gateway,
-    io_thread::{
+    io_thread::IoThread,
+    memory_thread,
+    orchestrator::{
         IoControlCommand,
         IoControlResponse,
-        IoThread,
+        MemoryControlCommand,
+        MemoryControlResponse,
+        Orchestrator,
+        VcpuControlCommand,
+        VcpuControlResponse,
     },
-    memory_thread,
-    orchestrator::Orchestrator,
     vmm::microvm::{
         kvm::vmem::VirtualMemory,
         microvm::MicroVm,
@@ -72,7 +76,6 @@ use ::sys::ipc::{
 //==================================================================================================
 
 pub struct Vmm {
-    _io_thread_data_tx: Sender<Message>,
     io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
@@ -114,18 +117,25 @@ impl Vmm {
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
+        // io/memory/vcpu_control_rx/tx are channels owned by the VMM and transfer control messages.
+        // *_thread_control_rx/tx are channels owned by the threads that transfer control messages.
         let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>();
         let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>();
         let (memory_thread_data_tx, vcpu_thread_stdin_rx) = mpsc::channel::<Message>();
         let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>();
         let (io_control_tx, io_thread_control_rx) = mpsc::channel::<IoControlResponse>();
+        let (memory_control_tx, memory_thread_control_rx) = mpsc::channel::<MemoryControlCommand>();
+        let (memory_thread_control_tx, memory_control_rx) =
+            mpsc::channel::<MemoryControlResponse>();
+        let (vcpu_control_tx, vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
+        let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
         // Spawn I/O thread.
         let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
             IoThread::spawn(
                 conn,
                 io_thread_data_rx,
-                io_thread_data_tx.clone(),
+                io_thread_data_tx,
                 io_thread_control_tx,
                 io_thread_control_rx,
             )
@@ -138,7 +148,13 @@ impl Vmm {
         let output: Box<microvm::OutputFn> =
             Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vcpu_thread_stdout_tx);
 
-        let mut microvm: MicroVm = MicroVm::new(memory_size, input, output)?;
+        let mut microvm: MicroVm = MicroVm::new(
+            memory_size,
+            input,
+            output,
+            vcpu_thread_control_rx,
+            vcpu_thread_control_tx,
+        )?;
 
         let rip: u64 = microvm.load_kernel(kernel_filename)?;
         if let Some(ref initrd_filename) = initrd_filename {
@@ -174,12 +190,19 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread_data_tx: Sender<Message> = memory_thread_data_tx.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> =
-            memory_thread::spawn(memory_thread_data_rx, memory_thread_data_tx, move || {
+        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = memory_thread::spawn(
+            memory_thread_data_rx,
+            memory_thread_data_tx,
+            memory_thread_control_rx,
+            memory_thread_control_tx,
+            move || {
                 vmem.lock()
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
-            });
+            },
+            move || Ok(()), // TODO: pause https://github.com/nanvix/nanvix/issues/791
+            move || Ok(()), // TODO: resume https://github.com/nanvix/nanvix/issues/791
+        );
 
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid. We synchronize the
@@ -213,11 +236,14 @@ impl Vmm {
         let orchestrator = Orchestrator::new(
             io_control_rx,
             io_control_tx,
-            || Ok(()), // TODO: create_snapshot
+            memory_control_rx,
+            memory_control_tx,
+            vcpu_control_rx,
+            vcpu_control_tx,
+            || Ok(()), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
         );
 
         let mut vmm: Vmm = Self {
-            _io_thread_data_tx: io_thread_data_tx,
             io_thread,
             _memory_thread: memory_thread,
             vcpu_thread,
