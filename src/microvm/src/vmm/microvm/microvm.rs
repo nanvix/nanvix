@@ -13,15 +13,21 @@
 //==================================================================================================
 
 #[cfg(target_os = "linux")]
-use crate::vmm::microvm::kvm::{
-    emulator::Emulator,
-    partition::VirtualPartition,
-    vcpu::{
-        VirtualProcessor,
-        VirtualProcessorExitContext,
-        VirtualProcessorExitReason,
+use crate::{
+    orchestrator::{
+        VcpuControlCommand,
+        VcpuControlResponse,
     },
-    vmem::VirtualMemory,
+    vmm::microvm::kvm::{
+        emulator::Emulator,
+        partition::VirtualPartition,
+        vcpu::{
+            VirtualProcessor,
+            VirtualProcessorExitContext,
+            VirtualProcessorExitReason,
+        },
+        vmem::VirtualMemory,
+    },
 };
 
 use ::anyhow::Result;
@@ -35,6 +41,10 @@ use ::libc::{
 use ::std::sync::{
     Arc,
     Mutex,
+    mpsc::{
+        Receiver,
+        Sender,
+    },
 };
 
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
@@ -59,6 +69,10 @@ pub struct MicroVm {
     emulator: Emulator,
     // If present, initial RAM disk location and size.
     initrd: Option<(u64, usize)>,
+    // Channel to receive commands from the VMM.
+    _control_rx: Receiver<VcpuControlCommand>,
+    // Channel to send control responses to the VMM.
+    _control_tx: Sender<VcpuControlResponse>,
 }
 
 unsafe impl Send for MicroVm {}
@@ -90,13 +104,21 @@ impl MicroVm {
     /// - `memory_size`: Size of the virtual memory of the virtual machine.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `control_rx`: Channel to receive commands from the VMM.
+    /// - `control_tx`: Channel to send control responses to the VMM.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns the MicroVM that was created. Otherwise, it
     /// returns an error.
     ///
-    pub fn new(memory_size: usize, input: Box<InputFn>, output: Box<OutputFn>) -> Result<Self> {
+    pub fn new(
+        memory_size: usize,
+        input: Box<InputFn>,
+        output: Box<OutputFn>,
+        control_rx: Receiver<VcpuControlCommand>,
+        control_tx: Sender<VcpuControlResponse>,
+    ) -> Result<Self> {
         trace!("new(): memory_size={memory_size}");
         crate::timer!("vm_creation");
 
@@ -116,6 +138,8 @@ impl MicroVm {
             vcpu,
             emulator,
             initrd: None,
+            _control_rx: control_rx,
+            _control_tx: control_tx,
         })
     }
 
