@@ -3,9 +3,8 @@
 
 name: "Pre-Check if Branch is Up-To-Date"
 
-# Reusable workflow that checks if the current ref branch is behind the repository's default
-# branch. The default branch is detected dynamically. If branch is up-to-date (not behind) the
-# default branch, `up_to_date` output variable is set to 'true', otherwise it is set to 'false'.
+# Reusable workflow that checks if the current ref branch is behind the repository's
+# default branch. The default branch is resolved from the event context to support PRs and forks.
 
 on:
   workflow_call:
@@ -13,38 +12,57 @@ on:
       up_to_date:
         description: "Whether the branch is up to date with the default branch (not behind)."
         value: ${{ jobs.precheck.outputs.up_to_date }}
+      behind_count:
+        description: "How many commits the branch is behind the default branch."
+        value: ${{ jobs.precheck.outputs.behind_count }}
+      default_branch:
+        description: "The default branch name resolved for the base repository."
+        value: ${{ jobs.precheck.outputs.default_branch }}
 
 jobs:
   precheck:
     name: "Compute Branch Divergence"
     runs-on: ubuntu-24.04
     permissions:
-      pull-requests: write  # Needed to comment on PRs.
+      contents: read
+      pull-requests: write
     outputs:
       up_to_date: ${{ steps.branch_status.outputs.up_to_date }}
-      # Extra metadata (not currently used by callers, but useful for diagnostics / comments).
       behind_count: ${{ steps.branch_status.outputs.behind_count }}
       default_branch: ${{ steps.branch_status.outputs.default_branch }}
     steps:
-      - name: "Checkout (full history for dev)"
+      - name: "Checkout (full history; prefer PR head on PRs)"
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
       - name: "Determine if branch is behind default branch"
         id: branch_status
         shell: bash
+        env:
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name || github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch || github.ref_name }}
         run: |
           set -euo pipefail
+
           CURRENT_BRANCH="${GITHUB_REF_NAME}"
-          # Discover default branch from remote metadata.
-          DEFAULT_BRANCH=$(git remote show origin | awk '/HEAD branch:/ {print $NF}')
-          if [ -z "${DEFAULT_BRANCH}" ]; then
-            echo "Failed to determine default branch; assuming up-to-date to avoid false positives." >&2
+
+          # Resolve default branch from event base ref; fallback to remote metadata.
+          DEFAULT_BRANCH="${BASE_REF}"
+          if [ -z "${DEFAULT_BRANCH}" ] || [ "${DEFAULT_BRANCH}" = "refs/heads/" ]; then
+            DEFAULT_BRANCH=$(git remote show origin | awk '/HEAD branch:/ {print $NF}')
+          fi
+
+          if [ -z "${DEFAULT_BRANCH:-}" ]; then
+            echo "Could not determine default branch; marking up_to_date=true (non-blocking)." >&2
             echo "up_to_date=true" >> "$GITHUB_OUTPUT"
             echo "behind_count=0" >> "$GITHUB_OUTPUT"
             echo "default_branch=unknown" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
           if [ "${CURRENT_BRANCH}" = "${DEFAULT_BRANCH}" ]; then
             echo "On default branch (${DEFAULT_BRANCH}); marking up_to_date=true." >&2
             echo "up_to_date=true" >> "$GITHUB_OUTPUT"
@@ -52,11 +70,25 @@ jobs:
             echo "default_branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Fetch latest default branch snapshot.
-          git fetch --no-tags origin "${DEFAULT_BRANCH}"
-          # Compute commits present in default branch but not in HEAD (behind count).
-          COUNTS=$(git rev-list --left-right --count "origin/${DEFAULT_BRANCH}...HEAD")
-          BEHIND=$(echo "$COUNTS" | awk '{print $1}')
+
+          # Ensure upstream (base repo) remote exists and fetch the default branch ref.
+          if ! git remote | grep -q '^upstream$'; then
+            git remote add upstream "https://github.com/${BASE_REPO}.git"
+          fi
+          git fetch --no-tags upstream "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/upstream/${DEFAULT_BRANCH}"
+
+          # Compute commits present in upstream/default but not in HEAD (behind count).
+          COUNTS=$(git rev-list --left-right --count "upstream/${DEFAULT_BRANCH}...HEAD" 2>/dev/null || true)
+          if [ -z "${COUNTS}" ]; then
+            # Fallback to origin default branch if upstream ref isn't available.
+            git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}" || true
+            COUNTS=$(git rev-list --left-right --count "origin/${DEFAULT_BRANCH}...HEAD" 2>/dev/null || echo "0 0")
+          fi
+
+          LEFT=$(echo "${COUNTS}" | awk '{print $1}')
+          RIGHT=$(echo "${COUNTS}" | awk '{print $2}')
+          BEHIND=${LEFT:-0}
+
           if [ "${BEHIND}" -eq 0 ]; then
             echo "Branch is not behind ${DEFAULT_BRANCH} (behind=${BEHIND})." >&2
             echo "up_to_date=true" >> "$GITHUB_OUTPUT"
@@ -68,6 +100,7 @@ jobs:
             echo "behind_count=${BEHIND}" >> "$GITHUB_OUTPUT"
             echo "default_branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
           fi
+
       - name: "Comment on PR when branch is behind default branch"
         if: ${{ github.event_name == 'pull_request' && steps.branch_status.outputs.up_to_date == 'false' }}
         uses: actions/github-script@v7
@@ -83,10 +116,8 @@ jobs:
               '```bash',
               'git fetch origin',
               `git rebase origin/${defaultBranch}`,
-              'git push --force-with-lease',
               '```',
-              '',
-              'After updating, re-run the workflows by pushing new commits or using the GitHub UI.'
+              'After updating, re-run the workflows by pushing new commits.'
             ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
