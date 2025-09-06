@@ -32,6 +32,9 @@ export HOST_CPU ?=
 # Build optional software?
 export BUILD_OPT ?= yes
 
+# L2 VM deployment?
+export L2_VM ?= yes
+
 # Log Level
 export LOG_LEVEL ?= warn
 
@@ -361,7 +364,8 @@ help:
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
-	@echo "  SCCACHE          Path to ompilation cache binary (default: auto-detected from PATH) [impacts build time]"
+	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
+	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
@@ -371,6 +375,7 @@ help:
 	@echo "  PROFILER     yes, no"
 	@echo "  BUILD_OPT    yes, no"
 	@echo "  JAVY         path to javy executable"
+	@echo "  L2_VM        yes, no"
 
 # Fixes code linting issues.
 lint: \
@@ -717,8 +722,11 @@ endif
 
 # The snapshots for the L2 VM need linuxd.elf to be built first.
 all-snapshot: all-host-binaries
+# Snapshots are only generated for microvm/hyperlight machines when L2_VM is enabled.
+ifneq (,$(and $(filter yes,$(L2_VM)),$(filter $(MACHINE),microvm hyperlight)))
 	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
 	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh $(TOOLCHAIN_DIR)
+endif
 
 clean-snapshot:
 	$(FORCE_RM_CMD) $(SNAPSHOT_DIR)
