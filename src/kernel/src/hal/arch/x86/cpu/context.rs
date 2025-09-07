@@ -113,14 +113,11 @@ impl ContextInformation {
 
         let tss: *const Tss = tss::get_curr();
 
-        #[cfg(feature = "sse")]
-        {
-            // Set CR0.TS flag to disable FPU/SSE instructions for the new thread.
-            // This implements lazy FPU context switching. If the new thread attempts to use
-            // FPU/SSE instructions, a #NM exception will be raised and handled appropriately.
+        // Set CR0.TS flag to disable FPU/SSE instructions for the new thread.
+        // This implements lazy FPU context switching. If the new thread attempts to use
+        // FPU/SSE instructions, a #NM exception will be raised and handled appropriately.
 
-            crate::hal::arch::set_task_switched();
-        }
+        crate::hal::arch::set_task_switched();
 
         __context_switch(from, to, tss);
     }

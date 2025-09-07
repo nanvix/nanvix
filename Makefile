@@ -13,9 +13,6 @@ export TARGET ?= x86
 # Target Machine
 export MACHINE ?= microvm
 
-# Enable SSE/SSE2 Support?
-export SSE ?= no
-
 # Release Version?
 export RELEASE ?= no
 
@@ -181,7 +178,6 @@ export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
 export KERNEL_CARGO_FLAGS := -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 export KERNEL_CARGO_FEATURES := --no-default-features --features $(MACHINE) --features $(LOG_LEVEL)
-export KERNEL_CARGO_FEATURES += $(if $(filter yes,$(SSE)),--features sse,)
 export WASMD_CARGO_FEATURES :=
 
 # Rust flags for host target.
@@ -192,7 +188,6 @@ export MICROVM_CARGO_FEATURES := --no-default-features
 export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
 export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
 export MICROVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
-export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(SSE)),--features sse,)
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
@@ -272,7 +267,7 @@ ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust linux-app $(if $(filter yes,$(SSE)),arch-rust,)
+ALL_GUEST_TESTS := testd file-rust linux-app arch-rust
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 
@@ -367,7 +362,6 @@ help:
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
 	@echo "  SCCACHE          Path to ompilation cache binary (default: auto-detected from PATH) [impacts build time]"
-	@echo "  SSE              Enable SSE/SSE2 support (default: $(SSE))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
@@ -377,7 +371,6 @@ help:
 	@echo "  PROFILER     yes, no"
 	@echo "  BUILD_OPT    yes, no"
 	@echo "  JAVY         path to javy executable"
-	@echo "  SSE          yes, no"
 
 # Fixes code linting issues.
 lint: \
@@ -1154,12 +1147,7 @@ $(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok'))
-ifneq ($(strip $(filter yes,$(SSE))),)
 $(eval $(call TEST_RULE,$(BINARIES_DIR),arch-rust,.elf,'','[]','ok'))
-else
-test-arch-rust:
-	@echo "\033[31mWarning: Skipping arch-rust test (requires SSE=yes).\033[0m"
-endif
 $(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
 
 define WASM_TEST_RULE

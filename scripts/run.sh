@@ -122,7 +122,7 @@ function run_qemu
 			$stdout
 			$smp
 			-display none
-			-cpu pentium2
+			-cpu pentium3
 			-m ${MEMSIZE}B
 			-mem-prealloc"
 

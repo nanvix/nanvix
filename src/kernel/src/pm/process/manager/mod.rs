@@ -1147,7 +1147,6 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    #[cfg(feature = "sse")]
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
         use crate::{
             hal::arch::x86::cpu::FpuState,
@@ -1496,7 +1495,6 @@ impl ProcessManagerInner {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    #[cfg(feature = "sse")]
     fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ThreadRefMut, Error> {
         // Search thread in the running process.
         if let Some(thread) = self.running.as_mut() {
@@ -1974,7 +1972,6 @@ impl ProcessManager {
         Ok(self.try_borrow()?.number_buffered_messages)
     }
 
-    #[cfg(feature = "sse")]
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
         self.try_borrow_mut()?.handle_fpu_exception()
     }
