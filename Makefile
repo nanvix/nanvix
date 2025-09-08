@@ -53,6 +53,25 @@ export IMAGE ?= nanvix.iso
 endif
 
 #===================================================================================================
+# Optional Software Repositories (URLs and pinned commits)
+#===================================================================================================
+
+OPENBLAS_REPOSITORY := https://github.com/nanvix/OpenBLAS
+OPENBLAS_COMMIT := d3c27df6553ed0f2d383d4202591a3c7f5c1d64d
+
+OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
+OPENSSL_COMMIT := a715a4bdface4259d469f261415278aaf5397d76
+
+PYTHON_REPOSITORY := https://github.com/nanvix/cpython
+PYTHON_COMMIT := 8f9c22c578c45d87eb43b14e3f4d4c65a2d442d5
+
+SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
+SQLITE_COMMIT := f477aef20dc2e9d7832a3899368ebc66c2d097a0
+
+ZLIB_REPOSITORY := https://github.com/nanvix/zlib
+ZLIB_COMMIT := fe7fae43935133eedf20a1d1e4dafe397d42a9c5
+
+#===================================================================================================
 # Directories
 #===================================================================================================
 
@@ -578,10 +597,10 @@ $(OPENBLAS_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building OpenBLAS (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
 	elif [ $@ -ot $(LIBPOSIX) ]; then \
 		echo "Building OpenBLAS (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
 	else \
 		echo "OpenBLAS up-to-date!"; \
 	fi
@@ -589,13 +608,13 @@ endif
 
 clean-openblas: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
 	$(RM_CMD) $(OPENBLAS_LIB)
 endif
 
 init-openblas: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
 endif
 
 #===================================================================================================
@@ -611,10 +630,10 @@ $(OPENSSL_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building OpenSSL (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
 	elif [ $@ -ot $(LIBPOSIX) ]; then \
 		echo "Building OpenSSL (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
 	else \
 		echo "OpenSSL up-to-date!"; \
 	fi
@@ -622,13 +641,13 @@ endif
 
 clean-openssl:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
 	$(RM_CMD) $(OPENSSL_LIB) $(CRYPTO_LIB)
 endif
 
 init-openssl: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
 endif
 
 #===================================================================================================
@@ -643,10 +662,10 @@ $(PYTHON_LIB): init-repo install all-openssl all-sqlite all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building Python (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
 	elif [ $@ -ot $(LIBPOSIX) ]; then \
 		echo "Building Python (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
 	else \
 		echo "Python up-to-date!"; \
 	fi
@@ -654,13 +673,13 @@ endif
 
 clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
 	$(RM_CMD) $(PYTHON_LIB)
 endif
 
 init-python: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
 endif
 
 #===================================================================================================
@@ -675,10 +694,10 @@ $(SQLITE_LIB): init-repo install all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building SQLite (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
 	elif [ $@ -ot $(LIBPOSIX) ]; then \
 		echo "Building SQLite (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
 	else \
 		echo "SQLite up-to-date!"; \
 	fi
@@ -686,13 +705,13 @@ endif
 
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
 	$(RM_CMD) $(SQLITE_LIB)
 endif
 
 init-sqlite: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
 endif
 
 #===================================================================================================
@@ -707,10 +726,10 @@ $(ZLIB_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building ZLib (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
 	elif [ $@ -ot $(LIBPOSIX) ]; then \
 		echo "Building ZLib (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
 	else \
 		echo "ZLib up-to-date!"; \
 	fi
@@ -718,13 +737,13 @@ endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
 	$(RM_CMD) $(ZLIB_LIB)
 endif
 
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
 endif
 
 #===================================================================================================
