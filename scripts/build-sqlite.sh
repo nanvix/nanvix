@@ -4,10 +4,15 @@
 # Licensed under the MIT License.
 
 #===================================================================================================
+
+# Fast fail on errors, unset variables, and pipe failures.
+set -euo pipefail
+
+#===================================================================================================
 # Script Arguments
 #===================================================================================================
 
-RULE=${1:-build}
+RULE=${1:-init}
 TOOLCHAIN_DIR=${2:-$PWD/toolchain}
 SYSROOT_DIR=${3:-$PWD/sysroot}
 
@@ -15,127 +20,71 @@ SYSROOT_DIR=${3:-$PWD/sysroot}
 # Global Variables
 #===================================================================================================
 
-export CONTRIB_DIR=${SYSROOT_DIR}/src
-export SQLITE_HOME=${CONTRIB_DIR}/sqlite
-export SQLITE_REPOSITORY=https://github.com/nanvix/sqlite
-export SQLITE_COMMIT=eefd69769fef1cb3d29d63e89a62a8b2d0ef8b0d
-export NANVIX_HOME=${NANVIX_HOME:-`git rev-parse --show-toplevel`}
+CONTRIB_DIR="${SYSROOT_DIR}/src"
+REPOSITORY_HOME="${CONTRIB_DIR}/sqlite"
 
 #===================================================================================================
-# Clean
+# Global Constants
 #===================================================================================================
 
-make_clean() {
-    if [ ! -d "${SQLITE_HOME}" ];
-    then
-        return 0
-    fi
-    cd "${SQLITE_HOME}" || exit 1
-    make clean
-}
+REPOSITORY=https://github.com/nanvix/sqlite
+COMMIT=f477aef20dc2e9d7832a3899368ebc66c2d097a0
 
 #===================================================================================================
-# Clean Everything
-#===================================================================================================
-
-distclean() {
-    if [ ! -d "${SQLITE_HOME}" ];
-    then
-        return 0
-    fi
-    cd "${SQLITE_HOME}" || exit 1
-    git clean -fdx
-}
-
-#===================================================================================================
-# Configure
-#===================================================================================================
-
-configure() {
-    AR="$TOOLCHAIN_DIR/bin/i686-nanvix-ar" \
-    AS="$TOOLCHAIN_DIR/bin/i686-nanvix-as" \
-    CC_FOR_BUILD=gcc \
-    CC="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-gcc" \
-    CXX="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-g++" \
-    CPP="${SCCACHE} $TOOLCHAIN_DIR/bin/i686-nanvix-cpp" \
-    LD="$TOOLCHAIN_DIR/bin/i686-nanvix-ld" \
-    CFLAGS="-I $SYSROOT_DIR/include -DSQLITE_OMIT_WAL=1" \
-    LDFLAGS="-static -T $NANVIX_HOME/build/user/linker/x86/user.ld -L $SYSROOT_DIR/lib -Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a $SYSROOT_DIR/lib/libz.a -Wl,--end-group" \
-    LIBS="-Wl,--start-group $NANVIX_HOME/lib/libposix.a $TOOLCHAIN_DIR/i686-nanvix/lib/libc.a $TOOLCHAIN_DIR/i686-nanvix/lib/libm.a $SYSROOT_DIR/lib/libz.a -Wl,--end-group" \
-    ./configure \
-        --disable-shared \
-        --sysroot=$SYSROOT_DIR \
-        --prefix=$SYSROOT_DIR \
-        --host=i686-nanvix \
-        --disable-tcl \
-        --disable-threadsafe
-}
-
-#===================================================================================================
-# Make
-#===================================================================================================
-
-make_all() {
-    cd "${SQLITE_HOME}" || exit 1
-    make all
-}
-
-#===================================================================================================
-# Install
-#===================================================================================================
-
-make_install() {
-    cd "${SQLITE_HOME}" || exit 1
-    make install
-}
-
-#===================================================================================================
-# Build
-#===================================================================================================
-
-build() {
-    cd "${SQLITE_HOME}" || exit 1
-    configure
-    make_all
-    make_install
-}
-
-#===================================================================================================
-# Init
+# Functions
 #===================================================================================================
 
 init() {
-    mkdir -p ${CONTRIB_DIR}
-    if [ ! -d "${SQLITE_HOME}/.git" ];
+    mkdir -p "${CONTRIB_DIR}"
+    if [ ! -d "${REPOSITORY_HOME}/.git" ];
     then
-        git clone ${SQLITE_REPOSITORY} ${SQLITE_HOME}
-        cd "${SQLITE_HOME}" || exit 1
+        git clone "${REPOSITORY}" "${REPOSITORY_HOME}"
+        cd "${REPOSITORY_HOME}" || exit 1
     else
-        cd "${SQLITE_HOME}" || exit 1
+        cd "${REPOSITORY_HOME}" || exit 1
         git fetch origin
         git reset --hard
     fi
-    git checkout ${SQLITE_COMMIT}
+    git checkout ${COMMIT}
+}
+
+build() {
+    cd "${REPOSITORY_HOME}" || exit 1
+
+    ./z configure --toolchain-path="${TOOLCHAIN_DIR}" --sysroot-path="${SYSROOT_DIR}"
+    ./z build
+    ./z install
+}
+
+clean() {
+    cd "${REPOSITORY_HOME}" || exit 1
+
+    ./z clean
 }
 
 #===================================================================================================
+# Main Script
+#===================================================================================================
 
 # Save current environment variables.
-OLD_AR=$AR
-OLD_AS=$AS
+OLD_PATH=$PATH
 OLD_CC=$CC
 OLD_CXX=$CXX
-OLD_CPP=$CPP
-OLD_LD=$LD
 OLD_CFLAGS=$CFLAGS
 OLD_CXXFLAGS=$CXXFLAGS
 OLD_LD_FLAGS=$LDFLAGS
-OLD_LIBC=$LIBC
-OLD_LIBM=$LIBM
+
+# Prepend SCCACHE's directory to PATH if the SCCACHE variable is set.
+if [[ -n "${SCCACHE:-}" ]]; then
+    sccache_dir="$(dirname "${SCCACHE}")"
+
+    # Add sccache_dir to PATH if directory exists.
+    if [[ -d "${sccache_dir}" ]]; then
+        export PATH="${sccache_dir}:${PATH}"
+    fi
+fi
 
 # Unset variables that might interfere with the build process.
-unset AR
-unset AS
 unset CC
 unset CXX
 unset CPP
@@ -143,8 +92,6 @@ unset LD
 unset CFLAGS
 unset CXXFLAGS
 unset LDFLAGS
-unset LIBC
-unset LIBM
 
 case $RULE in
     build)
@@ -162,14 +109,9 @@ case $RULE in
 esac
 
 # Restore original environment variables.
-export AR=$OLD_AR
-export AS=$OLD_AS
+export PATH=$OLD_PATH
 export CC=$OLD_CC
 export CXX=$OLD_CXX
-export CPP=$OLD_CPP
-export LD=$OLD_LD
 export CFLAGS=$OLD_CFLAGS
 export CXXFLAGS=$OLD_CXXFLAGS
 export LDFLAGS=$OLD_LD_FLAGS
-export LIBC=$OLD_LIBC
-export LIBM=$OLD_LIBM
