@@ -55,9 +55,9 @@ use ::tokio::{
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    logging::initialize();
-
     let args: Args = Args::parse(std::env::args().collect())?;
+
+    logging::initialize(args.log_to_file());
 
     let mut signals: Signal = signal(SignalKind::interrupt())?;
     let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
