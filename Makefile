@@ -327,6 +327,17 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
+# Installs build artifacts.
+install: all
+	@echo "Installing Nanvix in ${SYSROOT_DIR}..."
+	@mkdir -p ${SYSROOT_DIR}/bin
+	@mkdir -p ${SYSROOT_DIR}/lib
+	@mkdir -p ${SYSROOT_DIR}/etc/scripts
+	@cp -r ${BINARIES_DIR}/* ${SYSROOT_DIR}/bin/
+	@cp -r ${LIBRARIES_DIR}/* ${SYSROOT_DIR}/lib/
+	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
+	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
+
 # Shows available make targets and build parameters.
 help:
 	@echo ""
@@ -340,6 +351,7 @@ help:
 	@echo "  check           Run all validation checks (syntax, compilation)"
 	@echo "  format          Fix code formatting issues automatically"
 	@echo "  format-check    Check code formatting without fixing"
+	@echo "  install         Install build artifacts in the sysroot directory"
 	@echo "  lint            Fix code linting issues automatically"
 	@echo "  lint-check      Check for linting issues without fixing"
 	@echo "  spellcheck      Check for spelling errors in source code and documentation"
@@ -366,6 +378,7 @@ help:
 	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
 	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
+	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
