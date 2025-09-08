@@ -103,7 +103,7 @@ impl VirtualProcessor {
             .vm()
             .create_vcpu(id)?;
 
-        Self::setup_sse(partition.clone(), &mut fd)?;
+        Self::setup_pentium4_cpu_features(partition.clone(), &mut fd)?;
 
         // Reset FPU state.
         let fpu: kvm_fpu = kvm_fpu {
@@ -313,7 +313,7 @@ impl VirtualProcessor {
     ///
     /// # Description
     ///
-    /// Enables or disables SSE support on a virtual processor.
+    /// Configures the virtual processor's CPU features to emulate a Pentium 4 processor.
     ///
     /// # Parameters
     ///
@@ -324,7 +324,10 @@ impl VirtualProcessor {
     ///
     /// Upon successful completion, this function returns empty. Otherwise, it returns an error.
     ///
-    fn setup_sse(partition: Arc<Mutex<VirtualPartition>>, fd: &mut VcpuFd) -> Result<()> {
+    fn setup_pentium4_cpu_features(
+        partition: Arc<Mutex<VirtualPartition>>,
+        fd: &mut VcpuFd,
+    ) -> Result<()> {
         let mut kvm_cpuid: CpuId = partition
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
@@ -334,9 +337,34 @@ impl VirtualProcessor {
         for entry in kvm_cpuid.as_mut_slice().iter_mut() {
             match entry.function {
                 CPUID_FEATURES => {
-                    entry.edx |= (EdxFeature::Fxsr as u32)
-                        | (EdxFeature::Sse as u32)
-                        | (EdxFeature::Sse2 as u32)
+                    entry.edx |= (EdxFeature::Fpu as u32) // FPU on-chip
+                        | (EdxFeature::Vme as u32)        // Virtual-8086 Mode Enhancements
+                        | (EdxFeature::De as u32)         // Debugging Extensions
+                        | (EdxFeature::Pse as u32)        // Page Size Extension
+                        | (EdxFeature::Tsc as u32)        // Time Stamp Counter
+                        | (EdxFeature::Msr as u32)        // Model Specific Registers
+                        | (EdxFeature::Pae as u32)        // Physical Address Extension
+                        | (EdxFeature::Mce as u32)        // Machine Check Exception
+                        | (EdxFeature::Cx8 as u32)        // CMPXCHG8B instruction
+                        | (EdxFeature::Apic as u32)       // APIC on-chip
+                        | (EdxFeature::Sep as u32)        // SYSENTER and SYSEXIT instructions
+                        | (EdxFeature::Mtrr as u32)       // Memory Type Range Registers
+                        | (EdxFeature::Pge as u32)        // Page Global Enable
+                        | (EdxFeature::Mca as u32)        // Machine Check Architecture
+                        | (EdxFeature::Cmov as u32)       // Conditional Move instructions
+                        | (EdxFeature::Pat as u32)        // Page Attribute Table
+                        | (EdxFeature::Pse36 as u32)      // 36-bit Page Size Extension
+                        | (EdxFeature::Clflush as u32)    // CLFLUSH instruction
+                        | (EdxFeature::Ds as u32)         // Debug Store
+                        | (EdxFeature::Acpi as u32)       // Thermal Monitor and Software Controlled Clock
+                        | (EdxFeature::Mmx as u32)        // MMX Instructions
+                        | (EdxFeature::Fxsr as u32)       // FXSAVE/FXRSTOR instructions
+                        | (EdxFeature::Sse as u32)        // SSE instructions
+                        | (EdxFeature::Sse2 as u32)       // SSE2 instructions
+                        | (EdxFeature::Ss as u32)         // Self Snoop
+                        | (EdxFeature::Tm as u32)         // Thermal Monitor
+                        | (EdxFeature::Pbe as u32)        // Pending Break Enable
+                        ;
                 },
                 _ => continue,
             }
@@ -345,7 +373,7 @@ impl VirtualProcessor {
         // Set CPUID and check for errors.
         if let Err(error) = fd.set_cpuid2(&kvm_cpuid) {
             let reason: String = format!("failed to set cpuid (error={error:?})");
-            error!("setup_sse(): {reason}");
+            error!("setup_pentium4_cpu_features(): {reason}");
             return Err(anyhow::anyhow!(reason));
         }
 
