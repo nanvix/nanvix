@@ -286,7 +286,10 @@ ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 #===================================================================================================
 
 # Builds everything.
-all: \
+all: all-nanvix all-opt
+
+# Builds all Nanvix components.
+all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
@@ -295,7 +298,6 @@ all: \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-microvm \
-	all-opt \
 	all-snapshot
 
 # Performs local initialization.
@@ -320,7 +322,7 @@ clean: \
 	clean-snapshot \
 	image-clean
 
-distclean: clean distclean-opt
+distclean: clean
 	$(FORCE_RM_CMD) Cargo.lock
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
@@ -328,7 +330,7 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
 # Installs build artifacts.
-install: all
+install: all-nanvix
 	@echo "Installing Nanvix in ${SYSROOT_DIR}..."
 	@mkdir -p ${SYSROOT_DIR}/bin
 	@mkdir -p ${SYSROOT_DIR}/lib
@@ -516,7 +518,7 @@ check: \
 	check-host-rlibs \
 	check-microvm
 
-run-unit-tests: all \
+run-unit-tests: all-nanvix \
 	test-guest-rlibs
 
 run-nanvixd-tests: | \
@@ -551,9 +553,6 @@ all-opt: init all-openblas all-openssl all-python all-sqlite all-zlib
 
 clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
 
-distclean-opt: distclean-openblas distclean-openssl distclean-python distclean-sqlite distclean-zlib
-	$(FORCE_RM_CMD) $(SYSROOT_DIR)
-
 init-opt: init-openblas init-openssl init-python init-sqlite init-zlib
 
 else
@@ -561,8 +560,6 @@ else
 all-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 clean-opt:
-	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
-distclean-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 init-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
@@ -573,7 +570,7 @@ endif
 # Build Rules for OpenBLAS
 #===================================================================================================
 
-all-openblas: init-repo all-guest-staticlibs
+all-openblas: init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building OpenBLAS..."
 	bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -582,11 +579,6 @@ endif
 clean-openblas: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-openblas.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-openblas: distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-openblas: init-repo
@@ -598,7 +590,7 @@ endif
 # Build Rules for OpenSSL
 #===================================================================================================
 
-all-openssl: init-repo
+all-openssl: init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building openssl..."
 	bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -609,10 +601,6 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-openssl.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
-distclean-openssl:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
 
 init-openssl: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -623,7 +611,7 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init-repo all-guest-staticlibs all-sqlite all-openssl all-zlib
+all-python: init-repo install all-sqlite all-openssl all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Python..."
 	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -632,11 +620,6 @@ endif
 clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-python: distclean-sqlite distclean-openssl distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-python: init-repo
@@ -648,7 +631,7 @@ endif
 # Build Rules for Sqlite
 #===================================================================================================
 
-all-sqlite: init-repo all-guest-staticlibs all-zlib
+all-sqlite: init-repo install all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building sqlite..."
 	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -657,11 +640,6 @@ endif
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-sqlite: distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-sqlite: init-repo
@@ -673,7 +651,7 @@ endif
 # Build Rules for Zlib
 #===================================================================================================
 
-all-zlib: init-repo all-guest-staticlibs
+all-zlib: init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	echo "Building Zlib..."
 	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
@@ -682,11 +660,6 @@ endif
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-zlib:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
 endif
 
 init-zlib: init-repo
@@ -717,7 +690,7 @@ endif
 #===================================================================================================
 
 # Builds the system image.
-image: all
+image: all-nanvix
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
