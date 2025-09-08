@@ -570,15 +570,27 @@ endif
 # Build Rules for OpenBLAS
 #===================================================================================================
 
-all-openblas: init-repo install
+OPENBLAS_LIB := $(SYSROOT_DIR)/lib/libopenblas.a
+
+all-openblas: $(OPENBLAS_LIB)
+
+$(OPENBLAS_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building OpenBLAS..."
-	bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building OpenBLAS (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building OpenBLAS (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	else \
+		echo "OpenBLAS up-to-date!"; \
+	fi
 endif
 
 clean-openblas: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-openblas.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	$(RM_CMD) $(OPENBLAS_LIB)
 endif
 
 init-openblas: init-repo
@@ -590,17 +602,29 @@ endif
 # Build Rules for OpenSSL
 #===================================================================================================
 
-all-openssl: init-repo install
+CRYPTO_LIB := $(SYSROOT_DIR)/lib/libcrypto.a
+OPENSSL_LIB := $(SYSROOT_DIR)/lib/libssl.a
+
+all-openssl: $(OPENSSL_LIB)
+
+$(OPENSSL_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building openssl..."
-	bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building OpenSSL (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building OpenSSL (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	else \
+		echo "OpenSSL up-to-date!"; \
+	fi
 endif
 
 clean-openssl:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-openssl.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	$(RM_CMD) $(OPENSSL_LIB) $(CRYPTO_LIB)
 endif
-
 
 init-openssl: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -611,15 +635,27 @@ endif
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init-repo install all-sqlite all-openssl all-zlib
+PYTHON_LIB := $(SYSROOT_DIR)/lib/libpython3.12.a
+
+all-python: $(PYTHON_LIB)
+
+$(PYTHON_LIB): init-repo install all-openssl all-sqlite all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building Python..."
-	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building Python (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building Python (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	else \
+		echo "Python up-to-date!"; \
+	fi
 endif
 
 clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	$(RM_CMD) $(PYTHON_LIB)
 endif
 
 init-python: init-repo
@@ -631,15 +667,27 @@ endif
 # Build Rules for Sqlite
 #===================================================================================================
 
-all-sqlite: init-repo install all-zlib
+SQLITE_LIB := $(SYSROOT_DIR)/lib/libsqlite3.a
+
+all-sqlite: $(SQLITE_LIB)
+
+$(SQLITE_LIB): init-repo install all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building sqlite..."
-	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building SQLite (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building SQLite (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	else \
+		echo "SQLite up-to-date!"; \
+	fi
 endif
 
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	$(RM_CMD) $(SQLITE_LIB)
 endif
 
 init-sqlite: init-repo
@@ -651,15 +699,27 @@ endif
 # Build Rules for Zlib
 #===================================================================================================
 
-all-zlib: init-repo install
+ZLIB_LIB := $(SYSROOT_DIR)/lib/libz.a
+
+all-zlib: $(ZLIB_LIB)
+
+$(ZLIB_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building Zlib..."
-	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building ZLib (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building ZLib (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR); \
+	else \
+		echo "ZLib up-to-date!"; \
+	fi
 endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	$(RM_CMD) $(ZLIB_LIB)
 endif
 
 init-zlib: init-repo
