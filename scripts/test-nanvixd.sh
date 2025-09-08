@@ -14,6 +14,7 @@ NANVIX_HOME=$(git rev-parse --show-toplevel)
 
 source "${NANVIX_HOME}/scripts/common/logging.sh"
 source "${NANVIX_HOME}/scripts/common/utils.sh"
+source "${NANVIX_HOME}/scripts/common/cloud_hypervisor_vars.sh"
 
 #===================================================================================================
 # Command line arguments
@@ -25,6 +26,7 @@ PROGRAM_ARGS=$3
 PROGRAM_INPUT=$4
 PROGRAM_EXPECTED_OUTPUT=$5
 TIMEOUT=${6:-90}
+NOEOF=${7:-'false'}
 
 # Check if expected program output is empty.
 if [ -z "${PROGRAM_EXPECTED_OUTPUT}" ]; then
@@ -74,6 +76,71 @@ wait_for_unix_socket() {
     print_error "Timed-out waiting for UNIX socket at ${path}"
 }
 
+#
+# Description
+#
+# This method tries to write to a netcat connection over TCP and retries if is
+# not ready.
+#
+# Probing the connection using nc is tricky because it has the side-effect that
+# we establish the connection once. This is OK for the main nanvixd HTTP server,
+# but not for the gateway connection which only accepts one connection, and
+# moves on.
+#
+# To overcome situations where the connection is not ready, we need to set the
+# -w flag to not hang, and retry to connect. Annoyingly, this same flag also
+# works as an idle timeout, so we need to set it long enough for long tests
+# to pass. Netcat is only awaken from the -w wait with an EOF. For tests that
+# do not pass an EOF, we break after the first line has been read.
+#
+# All of the aforementioned complexities are not an issue with Unix sockets
+# because we can wait on the socket to be ready by waiting on the file to be
+# available, without attempting to connect.
+#
+# Arguments
+#
+# - gateway_host: IP of the host.
+# - gateway_port: port of the host.
+# - program_input: what to write to the nc connection.
+#
+# Returns
+#
+# The output returned by netcat.
+#
+write_to_nc_retry_if_failed() {
+    local gateway_host=$1
+    local gateway_port=$2
+    local program_input=$3
+
+    local program_actual_output=""
+    for i in $(seq 1 $MAX_TRIALS); do
+        if [[ "${NOEOF}" == "true" ]]; then
+            if out=$(echo "$program_input" \
+                | nc -w ${TIMEOUT} -q 0 "$gateway_host" "$gateway_port" 2>/dev/null \
+                | awk 'NR==1 {print; exit}'); then
+                program_actual_output="$(printf %s "$out" | tr -d '\0')"
+                break
+            fi
+        else
+            if out=$(echo "$program_input" \
+                | nc -w ${TIMEOUT} -q 0 "$gateway_host" "$gateway_port" 2>/dev/null); then
+                program_actual_output="$(printf %s "$out" | tr -d '\0')"
+                break
+            fi
+        fi
+
+        sleep "$SLEEP_INTERVAL"
+    done
+
+    if [[ -z "$program_actual_output" ]]; then
+        print_error "Failed to connect to ${gateway_host}:${gateway_port} after ${MAX_TRIALS} attempts."
+        exit 1
+    fi
+
+    # Return program output.
+    echo ${program_actual_output}
+}
+
 #===================================================================================================
 # Test execution
 #===================================================================================================
@@ -95,6 +162,7 @@ RUST_LOG=trace setsid timeout -s SIGINT --preserve-status --foreground "${TIMEOU
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_DIR}/bin" \
         -tmp-dir "${TMP_DIR}" \
+        "$([ "$L2_VM" = "yes" ] && echo "-l2")" \
         -console-file "${CONSOLE_FILE_NAME}" &
 NANVIXD_PID=$!
 
@@ -145,8 +213,23 @@ print_info "VM ID: ${VM_ID}"
 print_info "Gateway Socket Address: ${GATEWAY_SOCKADDR}"
 
 # Get output by writing to the gateway socket address.
-wait_for_unix_socket "${GATEWAY_SOCKADDR}"
-PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0')
+if [[ "${L2_VM}" == "yes" ]]; then
+    # In an L2 VM, the gateway socket address corresponds to a TCP socket, so
+    # we need to split host:port into host port.
+    gateway_host=${GATEWAY_SOCKADDR%:*}
+    gateway_port=${GATEWAY_SOCKADDR#*:}
+
+    # In the gateway we cannot wait for a TCP socket by probing using `nc`
+    # because linuxd accepts only one connection, and the probing would be
+    # mistook by a genuine connection.
+    PROGRAM_ACTUAL_OUTPUT=$(write_to_nc_retry_if_failed "${gateway_host}" "${gateway_port}" "${PROGRAM_INPUT}")
+else
+    # In an L2 VM, the gateway socket address corresponds to a UNIX socket.
+    wait_for_unix_socket "${GATEWAY_SOCKADDR}"
+    PROGRAM_ACTUAL_OUTPUT=$(
+        echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0'
+    )
+fi
 
 # Save program output to a log file.
 file_name=$(basename -- "${PROGRAM_NAME}")
@@ -175,6 +258,12 @@ fi
 # Move all Rust logs to the logs directory.
 # FIXME: https://github.com/nanvix/nanvix/issues/543
 find . -maxdepth 1 -name '*.log' -exec mv {} "${LOGS_DIR}"/ \; 2>/dev/null || true
+
+# Move L2 VM logs to log dir.
+if [[ "${L2_VM}" == "yes" ]]; then
+    linuxd_log_file="${LOGS_DIR}/linuxd_l2_$(date "+%Y_%m_%d_%H_%M").log"
+    cp ${CLH_CONSOLE} ${linuxd_log_file}
+fi
 
 kill -s SIGINT "${NANVIXD_PID}" || true
 wait "${NANVIXD_PID}" 2>/dev/null || true
