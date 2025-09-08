@@ -25,6 +25,8 @@ pub struct Args {
     toolchain_binary_directory: String,
     console_file: Option<String>,
     hwloc: Option<HwLoc>,
+    /// Whether to log to a file instead of stdout/stderr.
+    log_to_file: bool,
     /// Whether linuxd must be deployed in an L2 VM or not.
     l2: bool,
 }
@@ -41,6 +43,7 @@ impl Args {
     pub const OPT_TOOLCHAIN_BIN_DIRECTORY: &'static str = "-toolchain-bin-dir";
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
     pub const OPT_HWLOC: &'static str = "-hwloc";
+    pub const OPT_LOG_TO_FILE: &'static str = "--log-to-file";
     pub const OPT_L2: &'static str = "-l2";
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
@@ -51,6 +54,7 @@ impl Args {
             config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
         let mut console_file: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
+        let mut log_to_file: bool = false;
         let mut l2: bool = false;
 
         let mut i: usize = 1;
@@ -95,6 +99,9 @@ impl Args {
                 Self::OPT_L2 => {
                     l2 = true;
                 },
+                Self::OPT_LOG_TO_FILE => {
+                    log_to_file = true;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -110,6 +117,7 @@ impl Args {
             toolchain_binary_directory,
             console_file,
             hwloc,
+            log_to_file,
             l2,
         })
     }
@@ -117,7 +125,7 @@ impl Args {
     pub fn usage(program_name: &str) {
         println!(
             "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] [{} \
-             <toolchain_bin_dir>] [{} <hwloc.json>] [{}]",
+             <toolchain_bin_dir>] [{} <hwloc.json>] [{}] [{}]",
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
@@ -125,6 +133,7 @@ impl Args {
             Self::OPT_BIN_DIRECTORY,
             Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             Self::OPT_HWLOC,
+            Self::OPT_LOG_TO_FILE,
             Self::OPT_L2
         );
     }
@@ -155,5 +164,9 @@ impl Args {
 
     pub fn l2(&self) -> bool {
         self.l2
+    }
+
+    pub fn log_to_file(&self) -> bool {
+        self.log_to_file
     }
 }
