@@ -350,17 +350,26 @@ def test(
 
     # Check if nanvixd tests are supported.
     if has_nanvixd_tests(machine):
-        make(
-            "run-nanvixd-tests",
-            machine,
-            arch,
-            release,
-            toolchain_dir,
-            log_level,
-            verbose,
-            timeout,
-            features=features,
-        )
+        # Run nanvixd tests for both L2_VM enabled and disabled.
+        for l2_vm in ["yes", "no"]:
+            l2_feature = f"L2_VM={l2_vm}"
+
+            if features is None:
+                features = [l2_feature]
+            else:
+                features += [l2_feature]
+
+            make(
+                "run-nanvixd-tests",
+                machine,
+                arch,
+                release,
+                toolchain_dir,
+                log_level,
+                verbose,
+                timeout,
+                features=features,
+            )
 
 
 def has_nanvixd_tests(machine: str) -> bool:
