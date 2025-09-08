@@ -36,6 +36,7 @@ CLOUD_HYPERVISOR_REMOTE_PATH="${BIN_DIR}/ch-remote"
 
 source "${NANVIX_HOME}/scripts/common/logging.sh"
 source "${NANVIX_HOME}/scripts/common/utils.sh"
+source "${NANVIX_HOME}/scripts/common/cloud_hypervisor_vars.sh"
 
 #===================================================================================================
 # Networking
@@ -50,8 +51,6 @@ GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip
 HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
 SNAPSHOT_MAGIC_STRING=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_magic_string")
 
-CLH_API_SOCKET="/tmp/cloud-hypervisor.sock"
-CLH_CONSOLE="/tmp/clh-console"
 
 trap 'rm -rf "${CLH_API_SOCKET}" "${CLH_CONSOLE}"' EXIT
 
@@ -74,7 +73,7 @@ boot_clh_vm() {
         --serial "off" \
         --cmdline "console=hvc0 rdinit=/init ip=${GUEST_TAP_IP_ADDRESS}::${GUEST_BROADCAST_ADDRESS}:${MASK}::eth0:off" \
         --cpus "boot=2" \
-        --memory "size=512M" \
+        --memory "size=1G" \
         --rng "src=/dev/urandom" \
         --net "tap=vmtap0,mac=${GUEST_MAC_ADDRESS},ip=${HOST_TAP_IP_ADDRESS},mask=${MASK},num_queues=2,queue_size=256" > /dev/null 2>&1 &
 

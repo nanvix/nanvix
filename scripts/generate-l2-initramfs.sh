@@ -17,7 +17,6 @@ NANVIX_HOME=$(git rev-parse --show-toplevel)
 IMAGES_DIR="${NANVIX_HOME}/images"
 INITRAMFS_IMAGE="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 INITRAMFS_DIR="${IMAGES_DIR}/l2-sysvm-rootfs"
-LINUXD_ELF="${NANVIX_HOME}/bin/linuxd.elf"
 
 #===================================================================================================
 # Utilities
@@ -41,7 +40,7 @@ done
 # Do a clean build if requested.
 if ${CLEAN}; then
     if [ -d ${INITRAMFS_DIR} ]; then
-        print_warn "removing initramfs from ${INITRAMFS_DIR}"
+        print_warning "removing initramfs from ${INITRAMFS_DIR}"
         rm -rf ${INITRAMFS_DIR}
     fi
 fi
@@ -87,11 +86,14 @@ build_initramfs() {
 
         print_info "Creating /dev and /proc mount points..."
         mkdir -p "${INITRAMFS_DIR}"/{proc,bin,sbin,sys,dev,etc}
+        mkdir -p "${INITRAMFS_DIR}/usr"/{bin,lib}
+        mkdir -p "${INITRAMFS_DIR}/etc/scripts"
     fi
 
-    print_info "Adding linuxd.elf to initramfs..."
-    cp "$LINUXD_ELF" "$INITRAMFS_DIR/bin/linuxd.elf"
-    chmod +x "$INITRAMFS_DIR/bin/linuxd.elf"
+    # Copy pre-built files and libraries into the L2 initramfs.
+    cp "${SYSROOT_DIR}/bin/linuxd.elf" "${INITRAMFS_DIR}/usr/bin/linuxd.elf"
+    cp -r "${SYSROOT_DIR}/lib/python3.12" "${INITRAMFS_DIR}/usr/lib/"
+
 cat >/tmp/init <<EOF
 #!/bin/sh
 
@@ -100,8 +102,7 @@ echo "[init] Nanvix L2 System VM init wrapper started!"
 # Set-up any resources that linuxd needs when running in the L2-VM.
 
 # We must bind to the same IP, as it is the only one available in the guest.
-echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
-/usr/bin/linuxd.elf \
+RUST_LOG=${LOG_LEVEL:-warn} /usr/bin/linuxd.elf \
     -control-plane-addr ${CONTROL_PLANE_SOCKADDR} \
     -control-plane-socket-type tcp \
     -user-vm-bind-addr ${USER_VM_SOCKADDR} \
