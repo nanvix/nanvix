@@ -53,6 +53,25 @@ export IMAGE ?= nanvix.iso
 endif
 
 #===================================================================================================
+# Optional Software Repositories (URLs and pinned commits)
+#===================================================================================================
+
+OPENBLAS_REPOSITORY := https://github.com/nanvix/OpenBLAS
+OPENBLAS_COMMIT := d3c27df6553ed0f2d383d4202591a3c7f5c1d64d
+
+OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
+OPENSSL_COMMIT := a715a4bdface4259d469f261415278aaf5397d76
+
+PYTHON_REPOSITORY := https://github.com/nanvix/cpython
+PYTHON_COMMIT := 8f9c22c578c45d87eb43b14e3f4d4c65a2d442d5
+
+SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
+SQLITE_COMMIT := f477aef20dc2e9d7832a3899368ebc66c2d097a0
+
+ZLIB_REPOSITORY := https://github.com/nanvix/zlib
+ZLIB_COMMIT := fe7fae43935133eedf20a1d1e4dafe397d42a9c5
+
+#===================================================================================================
 # Directories
 #===================================================================================================
 
@@ -286,7 +305,10 @@ ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 #===================================================================================================
 
 # Builds everything.
-all: \
+all: all-nanvix all-opt
+
+# Builds all Nanvix components.
+all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
@@ -295,7 +317,6 @@ all: \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-microvm \
-	all-opt \
 	all-snapshot
 
 # Performs local initialization.
@@ -320,7 +341,7 @@ clean: \
 	clean-snapshot \
 	image-clean
 
-distclean: clean distclean-opt
+distclean: clean
 	$(FORCE_RM_CMD) Cargo.lock
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
@@ -328,7 +349,7 @@ distclean: clean distclean-opt
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
 
 # Installs build artifacts.
-install: all
+install: all-nanvix
 	@echo "Installing Nanvix in ${SYSROOT_DIR}..."
 	@mkdir -p ${SYSROOT_DIR}/bin
 	@mkdir -p ${SYSROOT_DIR}/lib
@@ -516,7 +537,7 @@ check: \
 	check-host-rlibs \
 	check-microvm
 
-run-unit-tests: all \
+run-unit-tests: all-nanvix \
 	test-guest-rlibs
 
 run-nanvixd-tests: | \
@@ -551,9 +572,6 @@ all-opt: init all-openblas all-openssl all-python all-sqlite all-zlib
 
 clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
 
-distclean-opt: distclean-openblas distclean-openssl distclean-python distclean-sqlite distclean-zlib
-	$(FORCE_RM_CMD) $(SYSROOT_DIR)
-
 init-opt: init-openblas init-openssl init-python init-sqlite init-zlib
 
 else
@@ -561,8 +579,6 @@ else
 all-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 clean-opt:
-	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
-distclean-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
 init-opt:
 	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
@@ -573,125 +589,161 @@ endif
 # Build Rules for OpenBLAS
 #===================================================================================================
 
-all-openblas: init-repo all-guest-staticlibs
+OPENBLAS_LIB := $(SYSROOT_DIR)/lib/libopenblas.a
+
+all-openblas: $(OPENBLAS_LIB)
+
+$(OPENBLAS_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building OpenBLAS..."
-	bash $(SCRIPTS_DIR)/build-openblas.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building OpenBLAS (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building OpenBLAS (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
+	else \
+		echo "OpenBLAS up-to-date!"; \
+	fi
 endif
 
 clean-openblas: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-openblas: distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
+	$(RM_CMD) $(OPENBLAS_LIB)
 endif
 
 init-openblas: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openblas.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
 endif
 
 #===================================================================================================
 # Build Rules for OpenSSL
 #===================================================================================================
 
-all-openssl: init-repo
+CRYPTO_LIB := $(SYSROOT_DIR)/lib/libcrypto.a
+OPENSSL_LIB := $(SYSROOT_DIR)/lib/libssl.a
+
+all-openssl: $(OPENSSL_LIB)
+
+$(OPENSSL_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building openssl..."
-	bash $(SCRIPTS_DIR)/build-openssl.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building OpenSSL (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building OpenSSL (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
+	else \
+		echo "OpenSSL up-to-date!"; \
+	fi
 endif
 
 clean-openssl:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-openssl:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
+	$(RM_CMD) $(OPENSSL_LIB) $(CRYPTO_LIB)
 endif
 
 init-openssl: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-openssl.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
 endif
 
 #===================================================================================================
 # Build Rules for Python
 #===================================================================================================
 
-all-python: init-repo all-guest-staticlibs all-sqlite all-openssl all-zlib
+PYTHON_LIB := $(SYSROOT_DIR)/lib/libpython3.12.a
+
+all-python: $(PYTHON_LIB)
+
+$(PYTHON_LIB): init-repo install all-openssl all-sqlite all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building Python..."
-	bash $(SCRIPTS_DIR)/build-python.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building Python (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building Python (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
+	else \
+		echo "Python up-to-date!"; \
+	fi
 endif
 
 clean-python: clean-sqlite clean-openssl clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-python: distclean-sqlite distclean-openssl distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
+	$(RM_CMD) $(PYTHON_LIB)
 endif
 
 init-python: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-python.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
 endif
 
 #===================================================================================================
 # Build Rules for Sqlite
 #===================================================================================================
 
-all-sqlite: init-repo all-guest-staticlibs all-zlib
+SQLITE_LIB := $(SYSROOT_DIR)/lib/libsqlite3.a
+
+all-sqlite: $(SQLITE_LIB)
+
+$(SQLITE_LIB): init-repo install all-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building sqlite..."
-	bash $(SCRIPTS_DIR)/build-sqlite.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building SQLite (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building SQLite (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
+	else \
+		echo "SQLite up-to-date!"; \
+	fi
 endif
 
 clean-sqlite: clean-zlib
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-sqlite: distclean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
+	$(RM_CMD) $(SQLITE_LIB)
 endif
 
 init-sqlite: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-sqlite.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
 endif
 
 #===================================================================================================
 # Build Rules for Zlib
 #===================================================================================================
 
-all-zlib: init-repo all-guest-staticlibs
+ZLIB_LIB := $(SYSROOT_DIR)/lib/libz.a
+
+all-zlib: $(ZLIB_LIB)
+
+$(ZLIB_LIB): init-repo install
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	echo "Building Zlib..."
-	bash $(SCRIPTS_DIR)/build-zlib.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	@if [ ! -f $@ ]; then \
+		echo "Building ZLib (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building ZLib (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
+	else \
+		echo "ZLib up-to-date!"; \
+	fi
 endif
 
 clean-zlib:
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
-endif
-
-distclean-zlib:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh distclean $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
+	$(RM_CMD) $(ZLIB_LIB)
 endif
 
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	bash $(SCRIPTS_DIR)/build-zlib.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
 endif
 
 #===================================================================================================
@@ -717,7 +769,7 @@ endif
 #===================================================================================================
 
 # Builds the system image.
-image: all
+image: all-nanvix
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
