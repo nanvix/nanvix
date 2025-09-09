@@ -50,7 +50,7 @@ pub fn store(index: usize, value: usize) -> Result<(), Error> {
     // Check if the index is out of bounds.
     if index >= KREDZONE_SIZE / mem::size_of::<usize>() {
         let reason: &str = "index out of bounds";
-        error!("store(): index={:?}, value={:?}, (error={})", index, value, reason);
+        error!("index={:?}, value={:?}, (error={})", index, value, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -82,7 +82,7 @@ pub fn load(index: usize) -> Result<usize, Error> {
     // Check if the index is out of bounds.
     if index >= KREDZONE_SIZE / mem::size_of::<usize>() {
         let reason: &str = "index out of bounds";
-        error!("load(): index={:?}, (error={})", index, reason);
+        error!("index={:?}, (error={})", index, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 

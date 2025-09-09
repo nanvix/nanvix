@@ -48,7 +48,7 @@ pub fn get_thread_data_area(pm: &ProcessManager, args: &KcallArgs) -> KcallResul
     let pid: ProcessIdentifier = args.pid;
     let tid: ThreadIdentifier = args.tid;
 
-    trace!("get_thread_data_area(): pid={pid:?}, tid={tid:?}");
+    trace!("pid={pid:?}, tid={tid:?}");
 
     // Handle kernel call.
     match pm.get_thread_data_area(pid, tid) {
@@ -57,12 +57,12 @@ pub fn get_thread_data_area(pm: &ProcessManager, args: &KcallArgs) -> KcallResul
                 Some(user_tda) => u32::from(user_tda).into(),
                 None => 0,
             };
-            trace!("get_thread_data_area(): success (user_tda={user_tda_value:#x})");
+            trace!("user_tda={user_tda_value:#x}");
             KcallResult::Success(user_tda_value.into())
         },
 
         Err(error) => {
-            error!("get_thread_data_area(): failed: {error:?}");
+            error!("{error:?}");
             KcallResult::Error(error.code.into())
         },
     }

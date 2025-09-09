@@ -48,7 +48,7 @@ pub unsafe fn unlock_mutex(
     tid: ThreadIdentifier,
     mutex_addr: usize,
 ) -> Result<(), Error> {
-    trace!("unlock_mutex(): pid={pid:?}, tid={tid:?}, mutex_addr={mutex_addr:?}");
+    trace!("pid={pid:?}, tid={tid:?}, mutex_addr={mutex_addr:?}");
 
     // Unpack kernel call arguments.
     let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);

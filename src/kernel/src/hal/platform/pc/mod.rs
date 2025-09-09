@@ -163,7 +163,7 @@ fn register_bios_data_area(
     // NOTE: This is possible because mem_lower_size start at address 0x0.
     if mem_lower_size < bios::BiosDataArea::BASE + mem::PAGE_SIZE {
         let reason: &str = "bios data memory region doesn't fit in lower memory available";
-        error!("register_bios_data_area(): {:?}", reason);
+        error!("{:?}", reason);
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
 
@@ -246,7 +246,7 @@ pub fn init(
         Some(mem_lower_size) => mem_lower_size,
         None => {
             let reason: &str = "availability of lower memory is not known";
-            error!("init(): {:?}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
     };
@@ -258,7 +258,7 @@ pub fn init(
     // NOTE: This is possible because mem_lower_size start at address 0x0.
     if mem_lower_size < platform::TRAMPOLINE_ADDRESS.into_raw_value() + mem::PAGE_SIZE {
         let reason: &str = "Trampoline memory region doesn't fit in lower memory available";
-        error!("init(): {:?}", reason);
+        error!("{reason}");
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
     // Trampoline.

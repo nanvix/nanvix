@@ -73,7 +73,7 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";
-            error!("mmap(): {}", reason);
+            error!("{reason}");
             return KcallResult::Error(ErrorCode::PermissionDenied.into());
         },
         Err(e) => return KcallResult::Error(e.code.into()),
@@ -83,7 +83,7 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     let src_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
         Ok(pid) => pid,
         Err(error) => {
-            error!("mcopy(): {error:?}");
+            error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };
@@ -95,7 +95,7 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     let dst_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg2) {
         Ok(pid) => pid,
         Err(error) => {
-            error!("mcopy(): {error:?}");
+            error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };

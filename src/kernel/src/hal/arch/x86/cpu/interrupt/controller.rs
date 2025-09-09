@@ -141,7 +141,7 @@ impl InterruptController {
         }
 
         let reason: &str = "no interrupt controller found";
-        warn!("new(): {}", reason);
+        warn!("{reason}");
         Err(Error::new(ErrorCode::NoSuchDevice, reason))
     }
 
@@ -197,7 +197,7 @@ impl InterruptController {
         match self.intctrl {
             InterruptControllerType::Legacy(_) => {
                 let reason: &str = "legacy pic does not support starting cores";
-                error!("start_core(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
             InterruptControllerType::Xapic(ref mut xapic, _) => {

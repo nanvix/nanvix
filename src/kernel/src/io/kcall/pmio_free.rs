@@ -33,12 +33,12 @@ fn do_pmio_free(
     pid: ProcessIdentifier,
     port_number: u16,
 ) -> Result<(), Error> {
-    trace!("do_pmio_free(): pid={:?}, portnum={:?}", pid, port_number);
+    trace!("pid={:?}, portnum={:?}", pid, port_number);
 
     // Check if the process does not have I/O management capabilities.
     if !pm.has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have io management capabilities";
-        error!("do_pmio_free(): {}", reason);
+        error!("{reason}");
         return Err(Error::new(ErrorCode::PermissionDenied, reason));
     }
 

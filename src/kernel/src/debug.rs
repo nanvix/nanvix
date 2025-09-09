@@ -27,7 +27,7 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
         Ok(s) => s,
         Err(e) => {
             let reason: &str = "invalid UTF-8";
-            error!("debug(): {} (error={:?})", reason, e);
+            error!("{reason} (error={e:?})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
     };
@@ -51,7 +51,7 @@ pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     // Sanity check message size.
     if size > BUFFER_SIZE {
         let reason: &str = "message too large";
-        error!("debug() {}", reason);
+        error!("{reason}");
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 

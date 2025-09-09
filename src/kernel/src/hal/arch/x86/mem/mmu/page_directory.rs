@@ -103,7 +103,7 @@ impl PageDirectory {
             Some(pde) => pde,
             None => {
                 let reason: &str = "failed to read page directory entry";
-                error!("map(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -111,7 +111,7 @@ impl PageDirectory {
         // Check if page directory entry is busy.
         if pde.is_present() {
             let reason: &str = "page directory entry is busy";
-            error!("map(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
@@ -163,7 +163,7 @@ impl PageDirectory {
             Some(pde) => pde,
             None => {
                 let reason: &str = "failed to read page directory entry";
-                error!("unmap(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -171,7 +171,7 @@ impl PageDirectory {
         // Check if page directory entry is present.
         if !pde.is_present() {
             let reason: &str = "page directory entry is not present";
-            error!("unmap(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 

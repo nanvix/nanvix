@@ -230,8 +230,8 @@ pub fn shutdown(_status: usize) -> ! {
 ///
 /// A new boot information structure.
 ///
-pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
-    trace!("parse_bootinfo()");
+pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
+    trace!("{magic:?}, {info:?}");
 
     extern "C" {
         static __KERNEL_END: u8;
@@ -284,8 +284,7 @@ pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
                     core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
 
                     debug!(
-                        "parse_bootinfo(): initrd relocated from {current_initrd_start:#010x} to \
-                         {:#010x}",
+                        "initrd relocated from {current_initrd_start:#010x} to {:#010x}",
                         ::config::hyperlight::DEFAULT_INITRD_BASE
                     );
 
@@ -295,7 +294,7 @@ pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
                 }
             },
             None => {
-                error!("parse_bootinfo(): PEB not initialized");
+                error!("PEB not initialized");
                 return Err(Error::new(ErrorCode::NoSuchDevice, "PEB not initialized"));
             },
         }
@@ -305,10 +304,7 @@ pub fn parse_bootinfo(_: u32, _: usize) -> Result<BootInfo, Error> {
 
     // Register initrd as a kernel module.
     if initrd_size != 0 {
-        info!(
-            "parse_bootinfo(): initrd_base={:#010x}, initrd_size={:#010x}",
-            initrd_base, initrd_size
-        );
+        info!("initrd_base={:#010x}, initrd_size={:#010x}", initrd_base, initrd_size);
 
         // Add kernel module to the list of kernel modules.
         let module: KernelModule = KernelModule::new(

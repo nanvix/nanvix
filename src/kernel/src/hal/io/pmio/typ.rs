@@ -53,7 +53,7 @@ impl TryFrom<usize> for IoPortType {
             2 => Ok(Self::ReadWrite),
             _ => {
                 let reason: &str = "invalid io port type";
-                error!("try_from(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::InvalidArgument, reason))
             },
         }
