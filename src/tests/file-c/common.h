@@ -132,4 +132,7 @@ extern void test_write_read(void);
 // Tests whether we can write to a file using vectorized I/O.
 extern void test_writev(void);
 
+// Tests whether we can poll a file descriptor for read/write readiness.
+extern void test_poll(void);
+
 #endif

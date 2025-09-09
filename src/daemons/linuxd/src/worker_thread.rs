@@ -20,7 +20,6 @@ use crate::{
         RequestAssembler,
         RequestAssemblerTrait,
     },
-    poll,
     socket,
     times,
     unistd,
@@ -84,6 +83,7 @@ use ::syscall::{
         UnlinkAtRequest,
     },
     message::LinuxDaemonMessagePart,
+    poll::message::PollRequest,
     sys::{
         socket::message::{
             AcceptSocketRequest,
@@ -346,7 +346,6 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
                                 | LinuxDaemonMessageHeader::PipeRequest
-                                | LinuxDaemonMessageHeader::PollRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                                     match Self::handle_short_request_messages(source, message) {
                                         Ok(message) => message,
@@ -403,7 +402,8 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::FileChmodAtRequestPart
                                 | LinuxDaemonMessageHeader::OpenAtRequestPart
                                 | LinuxDaemonMessageHeader::RenameAtRequestPart
-                                | LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
+                                | LinuxDaemonMessageHeader::UnlinkAtRequestPart
+                                | LinuxDaemonMessageHeader::PollRequestPart => {
                                     match Self::handle_long_request_messages(
                                         uvm_stream.clone(),
                                         assembler.clone(),
@@ -565,11 +565,6 @@ impl WorkerThreadHandle {
                 let request: PartialWriteRequest = PartialWriteRequest::from_bytes(message.payload);
                 unistd::do_pwrite(source, request)
             },
-            LinuxDaemonMessageHeader::PollRequest => {
-                let request: syscall::poll::message::PollRequest =
-                    syscall::poll::message::PollRequest::from_bytes(message.payload);
-                poll::do_poll(source, request)
-            },
             LinuxDaemonMessageHeader::ReceiveSocketRequest => {
                 let request: ReceiveSocketRequest =
                     ReceiveSocketRequest::from_bytes(message.payload);
@@ -676,6 +671,9 @@ impl WorkerThreadHandle {
                 Self::handle_long_request::<UnlinkAtRequest>(
                     uvm_stream, assembler, source, &message,
                 )
+            },
+            LinuxDaemonMessageHeader::PollRequestPart => {
+                Self::handle_long_request::<PollRequest>(uvm_stream, assembler, source, &message)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this

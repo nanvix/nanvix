@@ -6,6 +6,11 @@
 //==================================================================================================
 
 use crate::{
+    message::{
+        LinuxDaemonLongMessage,
+        LinuxDaemonMessagePart,
+        MessagePartitioner,
+    },
     poll::message::{
         PollRequest,
         PollResponse,
@@ -115,9 +120,10 @@ impl PollFd {
 ///
 /// # Returns
 ///
-/// Upon success, returns a tuple containing the number of file descriptors that are ready for I/O
-/// and a vector of events that occurred on each file descriptor. If `zero` is returned, the timeout
-/// expired without any file descriptor becoming ready. Upon failure, an `Error` is returned.
+/// Upon success, this function returns a tuple containing the number of file descriptors that are
+/// ready for I/O and a vector of events that occurred on each file descriptor. If `zero` is
+/// returned, the timeout expired without any file descriptor becoming ready. On failure, this
+/// function returns an error.
 ///
 /// # Safety
 ///
@@ -138,55 +144,90 @@ pub fn poll(
     let events: Vec<i16> = fds.iter().map(|fd| fd.events.0).collect();
     let poll_fds: Vec<RawFileDescriptor> = fds.iter().map(|fd| fd.fd).collect();
     let timeout: i32 = timeout.into();
-    let request: Message = PollRequest::build(tid, &poll_fds, &events, timeout)?;
-    ipc::send(&request)?;
+    let request: PollRequest = PollRequest::new(&poll_fds, &events, timeout)?;
+    let requests: Vec<Message> = request.into_parts(tid)?;
+    for request in &requests {
+        ipc::send(request)?;
+    }
 
-    // Receive response.
-    let response: Message = ipc::recv()?;
+    // Compute maximum number of parts in the response.
+    let capacity: usize = PollResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
 
-    // Check whether system call succeeded or not.
-    if response.status != 0 {
-        let reason: &str = "poll() failed";
-        ::syslog::error!("poll(): failed (fds={fds:?}, timeout={timeout:?}, status={:?})", {
-            response.status
-        });
+    loop {
+        let response: Message = ipc::recv()?;
 
-        // Parse error.
-        match ErrorCode::try_from(response.status) {
-            Ok(error_code) => Err(Error::new(error_code, reason)),
-            Err(error) => {
-                ::syslog::warn!("poll(): failed to parse error code (error={error:?})");
-                Err(Error::new(ErrorCode::TryAgain, reason))
-            },
+        // Check if system call failed.
+        if response.status != 0 {
+            let reason: &str = "poll() failed";
+            match ErrorCode::try_from(response.status) {
+                Ok(error_code) => {
+                    break Err(Error::new(error_code, reason));
+                },
+                Err(error) => {
+                    ::syslog::error!(
+                        "poll(): failed to parse error code (fds={fds:?}, timeout={timeout:?}, \
+                         error={error:?})"
+                    );
+                    break Err(Error::new(ErrorCode::TryAgain, reason));
+                },
+            }
         }
-    } else {
-        // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
-        // response was successfully parsed.
-        match message.header {
-            // Response was successfully parsed.
-            LinuxDaemonMessageHeader::PollResponse => {
-                let message: PollResponse = PollResponse::from_bytes(message.payload);
-                let nready: i32 = message.nready.into();
-                let mut ready: Vec<(RawFileDescriptor, PollEvents)> =
-                    Vec::with_capacity(nready as usize);
 
-                for i in 0..nready as usize {
-                    ready.push((
-                        message.fds[i] as RawFileDescriptor,
-                        PollEvents(message.revents[i] as c_short),
-                    ));
+        // Parse system call response.
+        let message: LinuxDaemonMessage = match LinuxDaemonMessage::try_from_bytes(response.payload)
+        {
+            Ok(m) => m,
+            Err(error) => {
+                ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                break Err(error);
+            },
+        };
+
+        match message.header {
+            LinuxDaemonMessageHeader::PollResponsePart => {
+                let part: LinuxDaemonMessagePart =
+                    LinuxDaemonMessagePart::from_bytes(message.payload);
+
+                // Add response part to message assembler and check for errors.
+                if let Err(e) = assembler.add_part(part) {
+                    ::syslog::error!(
+                        "poll(): failed to assemble response (fds={fds:?}, timeout={timeout:?})"
+                    );
+                    break Err(e);
                 }
 
-                Ok(ready)
+                // Check if all response parts were not yet received.
+                if !assembler.is_complete() {
+                    continue;
+                }
+
+                let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+
+                // Assemble message.
+                match PollResponse::from_parts(&parts) {
+                    Ok(response) => {
+                        let nready: usize = response.nready as usize;
+                        let mut ready: Vec<(RawFileDescriptor, PollEvents)> =
+                            Vec::with_capacity(nready);
+                        for i in 0..nready {
+                            ready.push((
+                                response.fds[i] as RawFileDescriptor,
+                                PollEvents(response.revents[i] as c_short),
+                            ));
+                        }
+                        break Ok(ready);
+                    },
+                    Err(error) => {
+                        ::syslog::error!("poll(): {error:?} (fds={fds:?}, timeout={timeout:?})");
+                        break Err(error);
+                    },
+                }
             },
-            // Response was not successfully parsed.
-            header => {
-                ::syslog::error!(
-                    "poll(): invalid response (fds={fds:?}, timeout={timeout:?}, \
-                     header={header:?})"
-                );
-                Err(Error::new(ErrorCode::InvalidMessage, "poll() failed"))
+            _ => {
+                let reason: &'static str = "unexpected message header";
+                ::syslog::error!("poll(): {reason} (fds={fds:?}, timeout={timeout:?})");
+                break Err(Error::new(ErrorCode::InvalidMessage, reason));
             },
         }
     }
