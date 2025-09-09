@@ -220,6 +220,10 @@ impl Vmm {
             },
         }
 
+        let create_snapshot_clone: MicroVm = microvm.clone();
+        let mut load_snapshot_clone: MicroVm = microvm.clone();
+        let filename: String = initrd_filename.unwrap_or("bin/default.elf".to_string());
+        let filename_clone: String = filename.clone();
         let orchestrator = Orchestrator::new(
             io_control_rx,
             io_control_tx,
@@ -245,7 +249,8 @@ impl Vmm {
                         &::config::microvm::RUNNING.to_le_bytes(),
                     )
             }),
-            Box::new(|| Ok(())), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
+            Box::new(move || create_snapshot_clone.create_snapshot(&filename_clone)),
+            Box::new(move || load_snapshot_clone.load_snapshot(&filename)),
         );
 
         let mut vmm: Vmm = Self {

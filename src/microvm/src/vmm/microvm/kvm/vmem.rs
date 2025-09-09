@@ -16,10 +16,17 @@ use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
+    fs::File,
+    io::{
+        Read,
+        Write,
+    },
     mem,
+    path::PathBuf,
     ptr::{
         self,
     },
+    slice,
     sync::{
         Arc,
         Mutex,
@@ -45,13 +52,42 @@ pub struct VirtualMemory {
     /// Kernel location and size.
     kernel: Option<(u64, usize)>,
     /// Initial RAM disk location and size.
-    _initrd: Option<(u64, usize)>,
+    initrd: Option<(u64, usize)>,
     /// Control register used to inform the guest about the number of messages ready to be consumed.
     credits: u32,
 }
 
+///
+/// # Description
+///
+/// A structure that represents the header in virtual memory snapshot files.
+///
+#[repr(C)]
+struct SnapshotHeader {
+    /// Memory size (8 bytes): usize
+    memory_size: usize,
+    /// Kernel base (8 bytes): u64
+    kernel_base: u64,
+    /// Kernel size (8 bytes): usize
+    kernel_size: usize,
+    /// Initrd base (8 bytes): u64
+    initrd_base: u64,
+    /// Initrd size (8 bytes): usize
+    initrd_size: usize,
+    /// Credits (4 bytes): u32
+    credits: u32,
+    /// Padding (20 bytes): zeros
+    padding: [u8; 20],
+}
+
 unsafe impl Send for VirtualMemory {}
 unsafe impl Sync for VirtualMemory {}
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const SIZE_OF_HEADER: usize = mem::size_of::<SnapshotHeader>();
 
 //==================================================================================================
 // Implementations
@@ -102,7 +138,7 @@ impl VirtualMemory {
             ptr,
             size: memory_size,
             kernel: None,
-            _initrd: None,
+            initrd: None,
             credits: 0,
         };
 
@@ -198,7 +234,7 @@ impl VirtualMemory {
             initrd.size()
         };
 
-        self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
+        self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
 
         Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size))
     }
@@ -220,7 +256,7 @@ impl VirtualMemory {
         trace!("write_args(): {args}");
         let args_bytes: &[u8] = args.as_bytes();
 
-        let initrd_end: usize = match self._initrd {
+        let initrd_end: usize = match self.initrd {
             Some((initrd_base, initrd_size)) => initrd_base as usize + initrd_size,
             None => {
                 let reason: String = "initrd not loaded".to_string();
@@ -386,6 +422,116 @@ impl VirtualMemory {
 
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Saves the current state of the virtual memory to a snapshot file.
+    /// The snapshot includes the memory contents and metadata about the kernel and initrd.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn save_snapshot(&self, path: &PathBuf) -> Result<()> {
+        trace!("save_snapshot(): writing to {:?}", path);
+        crate::timer!("vmem_save_snapshot");
+
+        let mut file: File = File::create(path)
+            .map_err(|e| anyhow::anyhow!("failed to create snapshot file: {}", e))?;
+
+        // Kernel metadata (guaranteed to exist)
+        let (kernel_base, kernel_size) = self
+            .kernel
+            .ok_or_else(|| anyhow::anyhow!("kernel not loaded"))?;
+
+        // Initrd metadata (guaranteed to exist)
+        let (initrd_base, initrd_size) = self
+            .initrd
+            .ok_or_else(|| anyhow::anyhow!("initrd not loaded"))?;
+
+        let header = SnapshotHeader::new(
+            self.size,
+            kernel_base,
+            kernel_size,
+            initrd_base,
+            initrd_size,
+            self.credits,
+        );
+
+        file.write_all(header.as_bytes())
+            .map_err(|e| anyhow::anyhow!("failed to write header: {}", e))?;
+
+        // Write the actual memory contents
+        let memory_slice: &[u8] = unsafe { slice::from_raw_parts(self.ptr, self.size) };
+        file.write_all(memory_slice)
+            .map_err(|e| anyhow::anyhow!("failed to write memory contents: {}", e))?;
+
+        file.sync_all()
+            .map_err(|e| anyhow::anyhow!("failed to sync snapshot file: {}", e))?;
+
+        trace!("save_snapshot(): successfully saved snapshot to {:?}", path);
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads a virtual memory snapshot from a snapshot file.
+    /// This restores the memory contents and metadata.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn load_snapshot(&mut self, path: &PathBuf) -> Result<()> {
+        crate::timer!("vmem_load_snapshot");
+
+        if !path.exists() {
+            return Err(anyhow::anyhow!("snapshot file '{:?}' not found", path));
+        }
+
+        trace!("load_snapshot(): loading from {:?}", path);
+
+        let mut file: File =
+            File::open(path).map_err(|e| anyhow::anyhow!("failed to open snapshot file: {}", e))?;
+
+        // Read and parse header
+        let mut header_bytes: [u8; SIZE_OF_HEADER] = [0u8; SIZE_OF_HEADER];
+        file.read_exact(&mut header_bytes)
+            .map_err(|e| anyhow::anyhow!("failed to read snapshot header: {}", e))?;
+        let header: &SnapshotHeader = SnapshotHeader::from_bytes(&header_bytes);
+
+        // Ensure the snapshot has the same memory size as the virtual memory.
+        if header.memory_size != self.size {
+            return Err(anyhow::anyhow!(
+                "memory size mismatch: snapshot has {} bytes, current VM has {} bytes",
+                header.memory_size,
+                self.size
+            ));
+        }
+
+        // Read memory contents
+        let memory_slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(self.ptr, self.size) };
+        file.read_exact(memory_slice)
+            .map_err(|e| anyhow::anyhow!("failed to read memory contents: {}", e))?;
+
+        // Restore metadata
+        self.credits = header.credits;
+        self.kernel = Some((header.kernel_base, header.kernel_size));
+        self.initrd = Some((header.initrd_base, header.initrd_size));
+
+        trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
+        Ok(())
+    }
 }
 
 impl Drop for VirtualMemory {
@@ -396,5 +542,54 @@ impl Drop for VirtualMemory {
                 error!("munmap() failed (ret={ret})");
             }
         }
+    }
+}
+
+impl SnapshotHeader {
+    fn new(
+        memory_size: usize,
+        kernel_base: u64,
+        kernel_size: usize,
+        initrd_base: u64,
+        initrd_size: usize,
+        credits: u32,
+    ) -> Self {
+        SnapshotHeader {
+            memory_size,
+            kernel_base,
+            kernel_size,
+            initrd_base,
+            initrd_size,
+            credits,
+            padding: [0u8; 20],
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Serializes the snapshot header (which has `repr(C)`) as a slice of bytes.
+    ///
+    /// # Returns
+    ///
+    /// A slice of bytes containing the snapshot header.
+    ///
+    fn as_bytes(&self) -> &[u8; SIZE_OF_HEADER] {
+        // SAFETY: The size of the slice is the same of the struct.
+        unsafe { &*(self as *const SnapshotHeader as *const [u8; SIZE_OF_HEADER]) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Casts a snapshot header slice to a struct.
+    ///
+    /// # Returns
+    ///
+    /// A struct with the slice of bytes' content.
+    ///
+    pub fn from_bytes(bytes: &[u8; SIZE_OF_HEADER]) -> &Self {
+        // SAFETY: We're casting exactly the length that we just read.
+        unsafe { &*(bytes.as_ptr() as *const SnapshotHeader) }
     }
 }

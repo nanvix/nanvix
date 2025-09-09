@@ -13,6 +13,14 @@ mod timer;
 // Exports
 //==================================================================================================
 
+pub use exit::*;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::vmm::microvm::kvm::partition::VirtualPartition;
+use ::anyhow::Result;
 use ::arch::cpu::{
     cpuid::{
         CPUID_FEATURES,
@@ -30,22 +38,16 @@ use ::kvm_bindings::{
     CpuId,
     KVM_MAX_CPUID_ENTRIES,
     kvm_fpu,
-};
-pub use exit::*;
-
-//==================================================================================================
-// Imports
-//==================================================================================================
-
-use crate::vmm::microvm::kvm::partition::VirtualPartition;
-use ::anyhow::Result;
-use ::kvm_bindings::{
     kvm_regs,
     kvm_sregs,
 };
 use ::kvm_ioctls::{
     VcpuExit,
     VcpuFd,
+};
+use ::serde::{
+    Deserialize,
+    Serialize,
 };
 use ::std::sync::{
     Arc,
@@ -82,6 +84,25 @@ pub struct VirtualProcessor {
     /// Handle to timer.
     _timer: Timer,
     /// Processor state.
+    online: bool,
+    /// Exit status code.
+    exit_status: u16,
+}
+
+///
+/// # Description
+///
+/// Virtual CPU state that can be serialized and saved to disk.
+///
+#[derive(Serialize, Deserialize)]
+pub struct VirtualProcessorState {
+    /// General purpose registers.
+    regs: kvm_regs,
+    /// System registers (segment registers, control registers, etc.).
+    sregs: kvm_sregs,
+    /// FPU/SIMD state.
+    fpu: Vec<u8>,
+    /// Whether the processor is online.
     online: bool,
     /// Exit status code.
     exit_status: u16,
@@ -380,5 +401,146 @@ impl VirtualProcessor {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Captures the current state of the virtual processor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, returns the current processor state that can be serialized and
+    /// saved to a file. Otherwise, returns an error.
+    ///
+    pub fn get_state(&self) -> Result<VirtualProcessorState> {
+        Ok(VirtualProcessorState::new(
+            self.fd
+                .get_regs()
+                .map_err(|e| anyhow::anyhow!("failed to get registers: {e:?}"))?,
+            self.fd
+                .get_sregs()
+                .map_err(|e| anyhow::anyhow!("failed to get system registers: {e:?}"))?,
+            self.fd
+                .get_fpu()
+                .map_err(|e| anyhow::anyhow!("failed to get FPU state: {e:?}"))?,
+            self.is_online(),
+            self.exit_status(),
+        ))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Restores the virtual processor to a previously saved state.
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: Processor state to restore.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, returns empty. Otherwise, returns an error.
+    ///
+    pub fn set_state(&mut self, state: VirtualProcessorState) -> Result<()> {
+        self.fd
+            .set_regs(&state.regs)
+            .map_err(|e| anyhow::anyhow!("failed to set registers: {e:?}"))?;
+
+        self.fd
+            .set_sregs(&state.sregs)
+            .map_err(|e| anyhow::anyhow!("failed to set system registers: {e:?}"))?;
+
+        self.fd
+            .set_fpu(&VirtualProcessorState::deserialize_fpu(&state.fpu)?)
+            .map_err(|e| anyhow::anyhow!("failed to set FPU state: {e:?}"))?;
+
+        self.online = state.online;
+        self.exit_status = state.exit_status;
+
+        Ok(())
+    }
+}
+
+impl VirtualProcessorState {
+    ///
+    /// # Description
+    ///
+    /// Converts `kvm_fpu` to serializable format.
+    ///
+    /// # Parameters
+    ///
+    /// - `fpu`: FPU state to serialize.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns the FPU state in a serializable format. Otherwise, returns an error.
+    ///
+    fn serialize_fpu(fpu: &kvm_fpu) -> Vec<u8> {
+        // SAFETY: we're reading the memory right after initializing the variable, so this is safe.
+        unsafe {
+            let data: *const u8 = fpu as *const kvm_fpu as *const u8;
+            let len: usize = ::std::mem::size_of_val(fpu);
+            ::std::slice::from_raw_parts(data, len).to_vec()
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts serialized bytes to `kvm_fpu`.
+    ///
+    /// # Parameters
+    ///
+    /// - `data`: Bytes to deserialize.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns the FPU state as `kvm_fpu`. Otherwise, returns an error.
+    ///
+    fn deserialize_fpu(data: &[u8]) -> Result<kvm_fpu> {
+        let kvm_fpu_size: usize = ::std::mem::size_of::<kvm_fpu>();
+        if data.len() != kvm_fpu_size {
+            Err(anyhow::anyhow!(
+                "Invalid kvm_fpu data size: expected {}, got {}",
+                kvm_fpu_size,
+                data.len()
+            ))
+        } else {
+            // SAFETY: we're checking the length before copying it, so this is safe.
+            unsafe {
+                let mut fpu: kvm_fpu = ::std::mem::zeroed();
+                let ptr: *mut u8 = &mut fpu as *mut kvm_fpu as *mut u8;
+                ::std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+                Ok(fpu)
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Serializes `kvm_fpu` and creates a new `VirtualProcessorState`.
+    ///
+    /// # Parameters
+    ///
+    /// - `regs`: General purpose registers.
+    /// - `sregs`: System registers (segment registers, control registers, etc.).
+    /// - `fpu`: FPU/SIMD state.
+    /// - `onlline`: Whether the processor is online.
+    /// - `exit_status`: Exit status code.
+    ///
+    /// # Returns
+    ///
+    /// A serializable representation of the virtual processor state.
+    ///
+    fn new(regs: kvm_regs, sregs: kvm_sregs, fpu: kvm_fpu, online: bool, exit_status: u16) -> Self {
+        Self {
+            regs,
+            sregs,
+            fpu: Self::serialize_fpu(&fpu),
+            online,
+            exit_status,
+        }
     }
 }

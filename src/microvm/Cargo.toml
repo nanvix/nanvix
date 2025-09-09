@@ -26,13 +26,15 @@ flexi_logger = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sys = { workspace = true }
 syscall = { workspace = true }
 syscomm = { workspace = true }
 user-vm-api = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-kvm-bindings = { workspace = true }
+kvm-bindings = { workspace = true, features = ["serde"] }
 kvm-ioctls = { workspace = true }
 libc = { workspace = true }
 
