@@ -33,6 +33,12 @@ pub const POSIX_NAME_MAX: usize = 14;
 /// Maximum number of bytes in a filename (not including the terminating null of a filename string).
 pub const XOPEN_NAME_MAX: usize = 255;
 
+/// Maximum number of files that can be opened by a process.
+pub const OPEN_MAX: usize = 64;
+
+/// POSIX-mandated minimum number of files that a process must be able to open.
+pub const POSIX_OPEN_MAX: usize = 20;
+
 /// Maximum number of bytes the implementation stores as a pathname in a user-supplied buffer of
 /// unspecified size, including the terminating null character. Minimum number the implementation
 /// shall accept as the maximum number of bytes in a pathname.
