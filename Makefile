@@ -63,7 +63,7 @@ OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
 OPENSSL_COMMIT := a715a4bdface4259d469f261415278aaf5397d76
 
 PYTHON_REPOSITORY := https://github.com/nanvix/cpython
-PYTHON_COMMIT := 8f9c22c578c45d87eb43b14e3f4d4c65a2d442d5
+PYTHON_COMMIT := 7158004b255e8b848562b7f537a9e3c44188997e
 
 SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
 SQLITE_COMMIT := f477aef20dc2e9d7832a3899368ebc66c2d097a0
