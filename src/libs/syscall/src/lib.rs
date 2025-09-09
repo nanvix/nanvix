@@ -201,8 +201,8 @@ pub enum LinuxDaemonMessageHeader {
     FileAccessAtResponse,
     GetIdsRequest,
     GetIdsResponse,
-    PollRequest,
-    PollResponse,
+    PollRequestPart,
+    PollResponsePart,
 }
 // Manual TryFrom<u16> implementation for LinuxDaemonMessageHeader
 impl TryFrom<u16> for LinuxDaemonMessageHeader {
@@ -313,8 +313,8 @@ impl TryFrom<u16> for LinuxDaemonMessageHeader {
             x if x == FileAccessAtResponse as u16 => Ok(FileAccessAtResponse),
             x if x == GetIdsRequest as u16 => Ok(GetIdsRequest),
             x if x == GetIdsResponse as u16 => Ok(GetIdsResponse),
-            x if x == PollRequest as u16 => Ok(PollRequest),
-            x if x == PollResponse as u16 => Ok(PollResponse),
+            x if x == PollRequestPart as u16 => Ok(PollRequestPart),
+            x if x == PollResponsePart as u16 => Ok(PollResponsePart),
             _ => Err(()),
         }
     }
