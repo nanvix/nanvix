@@ -90,18 +90,19 @@ pub fn do_poll(
                         Ok(response) => match response.into_parts(tid) {
                             Ok(messages) => Ok(messages),
                             Err(error) => {
-                                unreachable!("poll(): failed to partition response ({error:?})")
+                                error!("poll(): failed to partition response ({error:?})");
+                                Ok(vec![crate::build_error(tid, error.code)])
                             },
                         },
                         Err(error) => {
-                            unreachable!("poll(): failed to build response ({error:?})")
+                            error!("poll(): failed to build response ({error:?})");
+                            Ok(vec![crate::build_error(tid, error.code)])
                         },
                     }
                 },
                 Err(_error) => {
-                    unreachable!(
-                        "poll(): invalid number of ready file descriptors (nread={nready:?})"
-                    );
+                    error!("poll(): invalid number of ready file descriptors (nread={nready:?})");
+                    Ok(vec![crate::build_error(tid, ErrorCode::ValueOutOfRange)])
                 },
             }
         },
