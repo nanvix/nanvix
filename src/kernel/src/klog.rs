@@ -60,20 +60,25 @@ impl Klog {
     ///
     /// # Description
     ///
-    /// Instantiates a kernel log with a given tag and level.
+    /// Instantiates a kernel log with a given tag, level, and function name.
     ///
     /// # Parameters
     ///
-    /// - `tag`: Tag of the kernel log.
+    /// - `tag`: Tag of the kernel log (module path).
     /// - `level`: Level of the kernel log.
+    /// - `function_name`: Name of the function from which the log is called.
     ///
     /// # Returns
     ///
     /// A kernel log instance.
     ///
-    pub fn get(tag: &str, level: KlogLevel) -> Self {
+    pub fn get(tag: &str, level: KlogLevel, function_name: &str) -> Self {
         let mut ret: Self = Self;
-        let _ = write!(&mut ret, "[{level:?}][{tag}] ");
+
+        // Extract just the module name from the full module path.
+        let module_name: &str = tag.split("::").last().unwrap_or(tag);
+
+        let _ = write!(&mut ret, "[{level:?}][{module_name}] {function_name}(): ");
         ret
     }
 }
