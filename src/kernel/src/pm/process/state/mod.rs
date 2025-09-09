@@ -244,7 +244,7 @@ impl ProcessState {
             Some(index) => Ok(self.pmio.remove(index)),
             None => {
                 let reason: &'static str = "io port not found";
-                error!("remove_pmio(): {:?}", reason);
+                error!("{:?}", reason);
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -256,7 +256,7 @@ impl ProcessState {
             Some(port) => Ok(port),
             None => {
                 let reason: &'static str = "io port not found";
-                error!("get_pmio(): {:?}", reason);
+                error!("{:?}", reason);
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -296,7 +296,7 @@ impl ProcessState {
         // Check if maximum number of mutexes has been reached.
         if self.mutexes.len() >= MUTEX_OPEN_MAX {
             let reason: &'static str = "maximum number of mutexes reached";
-            error!("get_mutex(): {:?} (addr={:#x?})", reason, mutex_addr);
+            error!("{:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
@@ -324,7 +324,7 @@ impl ProcessState {
         // Check if mutex exists.
         if !self.mutexes.contains_key(&mutex_addr) {
             let reason: &'static str = "mutex not found";
-            error!("put_mutex(): {:?} (addr={:#x?})", reason, mutex_addr);
+            error!("{:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
@@ -355,7 +355,7 @@ impl ProcessState {
         // Check if maximum number of condition variables has been reached.
         if self.conditions.len() >= COND_OPEN_MAX {
             let reason: &'static str = "maximum number of condition variables reached";
-            error!("get_condition(): {:?} (addr={:#x?})", reason, cond_addr);
+            error!("{:?} (addr={:#x?})", reason, cond_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
@@ -383,7 +383,7 @@ impl ProcessState {
         // Check if condition variable exists.
         if !self.conditions.contains_key(&cond_addr) {
             let reason: &'static str = "condition variable not found";
-            error!("put_condition(): {:?} (addr={:#x?})", reason, cond_addr);
+            error!("{:?} (addr={:#x?})", reason, cond_addr);
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
@@ -401,7 +401,7 @@ impl ProcessState {
             Some(port) => Ok(port),
             None => {
                 let reason: &'static str = "io port not found";
-                error!("get_pmio_mut(): {:?}", reason);
+                error!("{:?}", reason);
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }

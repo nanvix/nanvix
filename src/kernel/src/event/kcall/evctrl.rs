@@ -39,7 +39,7 @@ fn do_evctrl(
 }
 
 pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    trace!("evctrl(): ev={:?}, req={:?}", args.arg0, args.arg1);
+    trace!("ev={:?}, req={:?}", args.arg0, args.arg1);
 
     let ev: Event = match Event::try_from(args.arg0) {
         Ok(ev) => ev,

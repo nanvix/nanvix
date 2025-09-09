@@ -41,17 +41,12 @@ fn do_pmio_alloc(
     port_type: IoPortType,
     port_number: u16,
 ) -> Result<(), Error> {
-    trace!(
-        "do_pmio_alloc(): pid={:?}, port_number={:?}, port_type={:?}",
-        pid,
-        port_number,
-        port_type
-    );
+    trace!("pid={:?}, port_number={:?}, port_type={:?}", pid, port_number, port_type);
 
     // Check if the process does not have I/O management capabilities.
     if !pm.has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have io management capabilities";
-        error!("do_pmio_alloc(): {}", reason);
+        error!("{reason}");
         return Err(Error::new(ErrorCode::PermissionDenied, reason));
     }
 

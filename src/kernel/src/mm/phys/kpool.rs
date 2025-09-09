@@ -43,7 +43,7 @@ struct KpoolInner {
 
 impl KpoolInner {
     fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error> {
-        trace!("new(): region={region:?}");
+        trace!("region={region:?}");
         debug_assert_eq!(
             region.size() % mem::PAGE_SIZE,
             0,
@@ -57,7 +57,7 @@ impl KpoolInner {
         let index: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
-                error!("alloc(): {error:?}");
+                error!("{error:?}");
                 return Err(error);
             },
         };
@@ -84,7 +84,7 @@ impl KpoolInner {
         let index: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
-                error!("alloc_range(): {error:?} (count={count})");
+                error!("{error:?} (count={count})");
                 return Err(error);
             },
         };
@@ -110,7 +110,7 @@ impl KpoolInner {
         match self.bitmap.clear(index) {
             Ok(()) => Ok(()),
             Err(error) => {
-                error!("free(): {error:?} (addr={addr:?})");
+                error!("{error:?} (addr={addr:?})");
                 Err(error)
             },
         }

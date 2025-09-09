@@ -76,7 +76,7 @@ impl ExceptionController {
     pub unsafe fn init() -> Result<Self, Error> {
         if SINGLETON_CONTROLLER.is_some() {
             let reason: &str = "exception controller already initialized";
-            error!("init(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
@@ -103,12 +103,12 @@ impl ExceptionController {
     /// This function is unsafe because it mutates global variables.
     ///
     pub unsafe fn register_handler(&mut self, handler: ExceptionHandler) -> Result<(), Error> {
-        trace!("register_handler(): handler={:?}", handler);
+        trace!("handler={:?}", handler);
 
         // Check if the handler is already set.
         if HANDLER.is_some() {
             let reason: &str = "exception handler already set";
-            error!("register_handler(): {}", reason);
+            error!("{}", reason);
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 

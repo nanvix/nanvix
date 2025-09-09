@@ -390,7 +390,7 @@ impl RunningProcess {
         }
 
         let reason: &str = "thread not found";
-        error!("join_thread(): {:?} (state={:?})", reason, self.state());
+        error!("{:?} (state={:?})", reason, self.state());
         Err(Err(Error::new(ErrorCode::NoSuchProcess, reason)))
     }
 

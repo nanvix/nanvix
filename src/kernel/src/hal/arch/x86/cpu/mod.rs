@@ -107,7 +107,7 @@ pub fn init(
         // Check if required hardware features are supported.
         if !((cpuid::has_sse() || cpuid::has_sse2()) && cpuid::has_fxsr()) {
             let reason: &str = "cpu does not support SSE or SSE2 features with FXSR";
-            error!("init(): {reason}");
+            error!("{reason}");
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 

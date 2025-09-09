@@ -39,7 +39,7 @@ pub fn write(message: Message) -> Result<(), Error> {
     // Checks if message type is not supported.
     if { message.message_type } != MessageType::Ikc {
         let reason: &str = "unsupported message type";
-        error!("write(): {}", reason);
+        error!("{reason}");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
@@ -116,7 +116,7 @@ pub fn read() -> Result<Option<Message>, Error> {
         // No message available.
         Err(e) if e.code == ErrorCode::NoMessageAvailable => Ok(None),
         Err(e) => {
-            warn!("read(): {:?} ", e);
+            warn!("{e:?}");
             Err(e)
         },
     }

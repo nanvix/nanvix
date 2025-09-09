@@ -51,7 +51,7 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";
-            error!("mctrl(): {}", reason);
+            error!("{reason}");
             return KcallResult::Error(ErrorCode::PermissionDenied.into());
         },
         Err(e) => return KcallResult::Error(e.code.into()),
@@ -61,7 +61,7 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     let pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
         Ok(pid) => pid,
         Err(error) => {
-            error!("mctrl(): {error:?}");
+            error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };

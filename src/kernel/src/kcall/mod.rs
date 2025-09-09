@@ -108,7 +108,7 @@ impl ScoreBoard {
                 Ok(scoreboard)
             } else {
                 let reason: &str = "uninitialized scoreboard";
-                error!("borrow(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::TryAgain, reason))
             }
         }

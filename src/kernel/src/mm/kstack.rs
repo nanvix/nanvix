@@ -133,7 +133,7 @@ impl fmt::Debug for KernelStack {
 
 impl Drop for KernelStack {
     fn drop(&mut self) {
-        debug!("drop(): {:?}", &self);
+        debug!("{:?}", &self);
         while let Some(kpage) = self.kpages.pop() {
             drop(kpage);
         }

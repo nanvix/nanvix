@@ -39,7 +39,7 @@ impl IoMemoryAllocator {
 
     #[allow(dead_code)] // TODO: Remove this attribute.
     pub fn register(&mut self, region: TruncatedMemoryRegion<VirtualAddress>) -> Result<(), Error> {
-        trace!("register(): region={:?}", region);
+        trace!("region={:?}", region);
 
         // TODO: Check regions overlap.
 
@@ -49,7 +49,7 @@ impl IoMemoryAllocator {
         for reg in self.regions.iter() {
             if reg.base() == region.start() {
                 let reason: &str = "address already registered";
-                error!("register(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::EntryExists, reason));
             }
         }
@@ -65,7 +65,7 @@ impl IoMemoryAllocator {
             if region.base().into_inner() == addr {
                 if region.ref_count() > 1 {
                     let reason: &str = "region already allocated";
-                    error!("allocate(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::EntryExists, reason));
                 }
 
@@ -74,7 +74,7 @@ impl IoMemoryAllocator {
         }
 
         let reason: &str = "region not registered";
-        error!("allocate(): {}", reason);
+        error!("{reason}");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 }

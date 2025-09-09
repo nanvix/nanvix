@@ -86,7 +86,7 @@ impl FrameAllocator {
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(frame_number) => frame_number,
             Err(error) => {
-                error!("alloc(): {error:?}");
+                error!("{error:?}");
                 return Err(error);
             },
         };
@@ -94,7 +94,7 @@ impl FrameAllocator {
             Some(frame_number) => frame_number,
             None => {
                 let reason: &str = "frame number is out of bounds";
-                error!("alloc(): {reason:?}");
+                error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
@@ -103,7 +103,7 @@ impl FrameAllocator {
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => Ok(frame_address),
             Err(error) => {
-                error!("alloc(): {error:?}");
+                error!("{error:?}");
                 Err(error)
             },
         }
@@ -127,7 +127,7 @@ impl FrameAllocator {
         match self.bitmap.clear(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
-                error!("free(): {error:?} (frame={frame:?})");
+                error!("{error:?} (frame={frame:?})");
                 Err(error)
             },
         }
@@ -151,7 +151,7 @@ impl FrameAllocator {
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
-                error!("book(): {error:?} (phys_addr={phys_addr:?})");
+                error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)
             },
         }
@@ -192,7 +192,7 @@ impl FrameAllocator {
         // Book all frames in the range.
         for index in start_frame_number..=end_frame_number {
             if let Err(error) = self.bitmap.set(index) {
-                error!("alloc_range(): {error:?} (region={region:?})");
+                error!("{error:?} (region={region:?})");
                 return Err(error);
             }
         }

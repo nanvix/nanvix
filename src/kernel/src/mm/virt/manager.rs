@@ -186,7 +186,7 @@ impl VirtMemoryManager {
         let new_vmem: Vmem = Vmem::clone(vmem)?;
 
         trace!(
-            "new_vmem(): new_vmem={:?}, old_vmem={:?}",
+            "new_vmem={:?}, old_vmem={:?}",
             new_vmem.pgdir().physical_address(),
             vmem.pgdir().physical_address()
         );
@@ -205,7 +205,7 @@ impl VirtMemoryManager {
             Ok(mut physman) => physman.alloc_user_frame()?,
             Err(_) => {
                 let reason: &str = "failed to borrow physical memory manager";
-                error!("alloc_upage(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             },
         };
@@ -216,7 +216,7 @@ impl VirtMemoryManager {
                 Ok(mut physman) => physman.alloc_kernel_frame(true)?,
                 Err(_) => {
                     let reason: &str = "failed to borrow physical memory manager";
-                    error!("alloc_upage(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::ResourceBusy, reason));
                 },
             };
@@ -267,7 +267,7 @@ impl VirtMemoryManager {
         nframes: usize,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        trace!("alloc_upages(): vaddr={:?}, nframes={}", vaddr, nframes);
+        trace!("vaddr={:?}, nframes={}", vaddr, nframes);
 
         let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
 
@@ -276,7 +276,7 @@ impl VirtMemoryManager {
                 Ok(mut physman) => physman.alloc_kernel_frame(true)?,
                 Err(_) => {
                     let reason: &str = "failed to borrow physical memory manager";
-                    error!("alloc_upage(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::ResourceBusy, reason));
                 },
             };
@@ -290,7 +290,7 @@ impl VirtMemoryManager {
             Ok(mut physman) => physman.alloc_many_user_frames(nframes)?,
             Err(_) => {
                 let reason: &str = "failed to borrow physical memory manager";
-                error!("alloc_upages(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             },
         };
@@ -347,7 +347,7 @@ impl VirtMemoryManager {
             Ok(mut physman) => physman.alloc_kernel_frame(clear)?,
             Err(_) => {
                 let reason: &str = "failed to borrow physical memory manager";
-                error!("alloc_kpage(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             },
         };
@@ -374,7 +374,7 @@ impl VirtMemoryManager {
             Ok(mut physman) => physman.alloc_many_kernel_frames(clear, count)?,
             Err(_) => {
                 let reason: &str = "failed to borrow physical memory manager";
-                error!("alloc_kpages(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             },
         };

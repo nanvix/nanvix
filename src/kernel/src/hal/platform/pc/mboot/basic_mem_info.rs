@@ -69,14 +69,14 @@ impl MbootBasicMeminfo<'_> {
         // Ensure that `ptr` is not null.
         if ptr.is_null() {
             let reason: &str = "null pointer";
-            error!("from_raw(): {:?}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Check if `ptr` is misaligned.
         if !ptr.is_aligned_to(core::mem::align_of::<MbootBasicMeminfo>()) {
             let reason: &str = "unaligned pointer";
-            error!("from_raw(): {:?}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -86,7 +86,7 @@ impl MbootBasicMeminfo<'_> {
         // Check if pointer arithmetic wraps around the address space.
         if ptr.wrapping_add(tag.size as usize) < ptr {
             let reason: &str = "pointer arithmetic wraps around the address space";
-            error!("from_raw(): {:?}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -98,7 +98,7 @@ impl MbootBasicMeminfo<'_> {
         // Check if pointer arithmetic wraps around the address space.
         if ptr.wrapping_add(core::mem::size_of::<u32>()) < ptr {
             let reason: &str = "pointer arithmetic wraps around the address space";
-            error!("from_raw(): {:?}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
