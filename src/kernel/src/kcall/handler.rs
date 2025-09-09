@@ -24,7 +24,6 @@ use crate::{
         ProcessManager,
     },
 };
-use ::config::kernel::IKC_POLL_BATCH_SIZE;
 use ::sys::{
     error::ErrorCode,
     event::ProcessTerminationInfo,
@@ -32,6 +31,9 @@ use ::sys::{
     pm::ProcessIdentifier,
     ExitStatus,
 };
+
+#[cfg(feature = "stdio")]
+use ::config::kernel::IKC_POLL_BATCH_SIZE;
 
 //==================================================================================================
 //  Standalone Functions
