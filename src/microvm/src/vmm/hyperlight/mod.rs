@@ -52,7 +52,6 @@ use ::std::{
         OnceLock,
         mpsc::{
             self,
-            Sender,
             TryRecvError,
         },
     },
