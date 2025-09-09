@@ -34,6 +34,11 @@ runs:
       )
 
       for bench in "${benchmarks[@]}"; do
+        # FIXME (#975): warm-start-vmm is failing intermittently on MicroVM
+        if [[ "$bench" == "warm-start-vmm" ]]; then
+              continue
+        fi
+
         # FIXME (#937): cold-start-l2 is failing intermittently on MicroVM
         if [[ "$bench" == "cold-start-l2" ]]; then
           continue
