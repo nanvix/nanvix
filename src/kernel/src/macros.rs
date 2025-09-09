@@ -23,7 +23,37 @@ pub static STDOUT_LOCK: Spinlock = Spinlock::new();
 ///
 /// # Description
 ///
-/// Logs an INFO-level formatted message.
+/// Helper macro to extract the current function name using nightly Rust features.
+/// This creates a closure and extracts the function name from its type signature.
+///
+/// # Returns
+///
+/// A `&'static str` containing the function name, or `"<unknown>"` if extraction fails.
+///
+macro_rules! extract_function_name {
+    () => {{
+        let closure = || {};
+        let closure_type_name: &'static str = ::core::any::type_name_of_val(&closure);
+
+        // Parse the function name from the closure type name.
+        // Format: "module::function_name::{{closure}}"
+        if let Some(start) = closure_type_name.rfind("::") {
+            let before_closure: &str = &closure_type_name[..start];
+            if let Some(func_start) = before_closure.rfind("::") {
+                &before_closure[func_start + 2..]
+            } else {
+                before_closure
+            }
+        } else {
+            "<unknown>"
+        }
+    }};
+}
+
+///
+/// # Description
+///
+/// Logs an INFO-level formatted message with function context.
 ///
 /// # Parameters
 ///
@@ -38,7 +68,11 @@ macro_rules! info{
 			#[cfg(feature = "smp")]
 			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
 			let _ = write!(
-				&mut crate::klog::Klog::get(module_path!(), crate::klog::KlogLevel::Info),
+				&mut crate::klog::Klog::get(
+					module_path!(),
+					crate::klog::KlogLevel::Info,
+					extract_function_name!()
+				),
 				$($arg)*
 			);
 		}
@@ -63,7 +97,11 @@ macro_rules! trace{
 			#[cfg(feature = "smp")]
 			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
 			let _ = write!(
-				&mut crate::klog::Klog::get(module_path!(), crate::klog::KlogLevel::Trace),
+				&mut crate::klog::Klog::get(
+					module_path!(),
+					crate::klog::KlogLevel::Trace,
+					extract_function_name!()
+				),
 				$($arg)*
 			);
 		}
@@ -88,7 +126,11 @@ macro_rules! debug{
 			#[cfg(feature = "smp")]
 			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
 			let _ = write!(
-				&mut crate::klog::Klog::get(module_path!(), crate::klog::KlogLevel::Debug),
+				&mut crate::klog::Klog::get(
+					module_path!(),
+					crate::klog::KlogLevel::Debug,
+					extract_function_name!()
+				),
 				$($arg)*
 			);
 		}
@@ -113,7 +155,11 @@ macro_rules! warn{
 			#[cfg(feature = "smp")]
 			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
 			let _ = write!(
-				&mut crate::klog::Klog::get(module_path!(), crate::klog::KlogLevel::Warn),
+				&mut crate::klog::Klog::get(
+					module_path!(),
+					crate::klog::KlogLevel::Warn,
+					extract_function_name!()
+				),
 				$($arg)*
 			);
 		}
@@ -138,7 +184,11 @@ macro_rules! error{
 			#[cfg(feature = "smp")]
 			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
 			let _ = write!(
-				&mut crate::klog::Klog::get(module_path!(), crate::klog::KlogLevel::Error),
+				&mut crate::klog::Klog::get(
+					module_path!(),
+					crate::klog::KlogLevel::Error,
+					extract_function_name!()
+				),
 				$($arg)*
 			);
 		}

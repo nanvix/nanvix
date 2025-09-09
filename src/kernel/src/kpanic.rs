@@ -41,7 +41,7 @@ use ::sys::{
 pub fn kpanic(info: &PanicInfo) -> ! {
     // Create anonymous scope to release reference to kernel log.
     {
-        let klog: &mut Klog = &mut crate::klog::Klog::get("kernel", KlogLevel::Panic);
+        let klog: &mut Klog = &mut crate::klog::Klog::get("kernel", KlogLevel::Panic, "kpanic");
         // Extract panic information.
         let (file, line): (&str, u32) = match info.location() {
             Some(location) => (location.file(), location.line()),
