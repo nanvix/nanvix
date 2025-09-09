@@ -11,39 +11,47 @@ use ::sys::{
     ipc::Message,
     pm::ThreadIdentifier,
 };
-use ::sysapi::poll::{
-    poll_errors::{
-        POLLERR,
-        POLLHUP,
-        POLLNVAL,
-    },
-    poll_flags::{
-        POLLIN,
-        POLLOUT,
-        POLLPRI,
-        POLLRDBAND,
-        POLLRDNORM,
-        POLLWRBAND,
-        POLLWRNORM,
+use ::sysapi::{
+    limits::OPEN_MAX,
+    poll::{
+        poll_errors::{
+            POLLERR,
+            POLLHUP,
+            POLLNVAL,
+        },
+        poll_flags::{
+            POLLIN,
+            POLLOUT,
+            POLLPRI,
+            POLLRDBAND,
+            POLLRDNORM,
+            POLLWRBAND,
+            POLLWRNORM,
+        },
     },
 };
-use ::syscall::poll::message::{
-    PollRequest,
-    PollResponse,
-    NFDS_MAX,
+use ::syscall::{
+    message::MessagePartitioner,
+    poll::message::{
+        PollRequest,
+        PollResponse,
+    },
 };
 
 //==================================================================================================
 // do_poll()
 //==================================================================================================
 
-pub fn do_poll(tid: ThreadIdentifier, request: PollRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_poll(
+    tid: ThreadIdentifier,
+    request: PollRequest,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("poll(): tid={tid:?}, request={request:?}");
 
     // Check if request is not valid.
-    if request.nfds == 0 || request.nfds as usize > NFDS_MAX {
+    if request.nfds == 0 || request.nfds as usize > OPEN_MAX {
         error!("poll(): invalid request ({request:?})");
-        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
+        return Ok(vec![crate::build_error(tid, ErrorCode::InvalidArgument)]);
     }
 
     // Unpack request.
@@ -61,10 +69,10 @@ pub fn do_poll(tid: ThreadIdentifier, request: PollRequest) -> Result<Message, W
         nready if nready >= 0 => {
             debug!("poll(): nready={nready:?}");
 
-            match nready.try_into() {
+            match usize::try_from(nready) {
                 Ok(nready) => {
-                    let mut ready_fds: Vec<i32> = Vec::with_capacity(nready as usize);
-                    let mut revents: Vec<i16> = Vec::with_capacity(nready as usize);
+                    let mut ready_fds: Vec<i32> = Vec::with_capacity(nready);
+                    let mut revents: Vec<i16> = Vec::with_capacity(nready);
 
                     for (i, fd) in fds.iter_mut().enumerate() {
                         if fd.revents != 0 {
@@ -78,10 +86,15 @@ pub fn do_poll(tid: ThreadIdentifier, request: PollRequest) -> Result<Message, W
                     }
 
                     // Build response.
-                    match PollResponse::build(tid, nready, &ready_fds, &revents) {
-                        Ok(response) => Ok(response),
+                    match PollResponse::new(&ready_fds, &revents) {
+                        Ok(response) => match response.into_parts(tid) {
+                            Ok(messages) => Ok(messages),
+                            Err(error) => {
+                                unreachable!("poll(): failed to partition response ({error:?})")
+                            },
+                        },
                         Err(error) => {
-                            unreachable!("poll(): failed to build response ({error:?})");
+                            unreachable!("poll(): failed to build response ({error:?})")
                         },
                     }
                 },
@@ -103,7 +116,7 @@ pub fn do_poll(tid: ThreadIdentifier, request: PollRequest) -> Result<Message, W
             error!("poll(): errno={errno:?}");
             let error: ErrorCode = ErrorCode::try_from(errno)
                 .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
-            Ok(crate::build_error(tid, error))
+            Ok(vec![crate::build_error(tid, error)])
         },
     }
 }

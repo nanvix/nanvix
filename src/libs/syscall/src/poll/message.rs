@@ -6,169 +6,239 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
+    message::{
+        LinuxDaemonMessagePart,
+        MessageDeserializer,
+        MessagePartitioner,
+        MessageSerializer,
+    },
     LinuxDaemonMessageHeader,
 };
+use ::alloc::vec::Vec;
 use ::core::mem;
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
+    ipc::Message,
     pm::ThreadIdentifier,
 };
-use sys::ipc::{
-    Message,
-    MessageReceiver,
-    MessageSender,
-    MessageType,
-};
+use ::sysapi::limits::OPEN_MAX;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-/// Maximum number of file descriptors that can be polled in a single request.
-pub const NFDS_MAX: usize = 4;
-
-// Ensure that the maximum number of file descriptors can be encoded in a `PollRequest`.
-::static_assert::assert_eq!(NFDS_MAX < u8::MAX as usize);
+// Ensure that the maximum number of file descriptors can be encoded in a `u8`.
+::static_assert::assert_eq!(OPEN_MAX < u8::MAX as usize);
 
 //==================================================================================================
 // Structure
 //==================================================================================================
 
 #[derive(Debug)]
-#[repr(C, packed)]
 pub struct PollRequest {
-    /// Number of file descriptors in the `fds` array.
+    /// Number of file descriptors to poll.
     pub nfds: u8,
-    /// File descriptors to poll.
-    pub fds: [i32; NFDS_MAX],
-    /// Events to poll for on each file descriptor.
-    pub events: [i16; NFDS_MAX],
     /// Timeout for the poll operation, in milliseconds.
     pub timeout: i32,
-    /// Padding to align the structure to the size of `LinuxDaemonMessage`.
-    _padding: [u8; Self::PADDING_SIZE],
-}
-::static_assert::assert_eq_size!(PollRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
-
-impl PollRequest {
-    /// Padding size to align the structure.
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - mem::size_of::<[i32; NFDS_MAX]>() // fds
-        - mem::size_of::<[i16; NFDS_MAX]>() // events
-        - mem::size_of::<i32>() // timeout
-        - mem::size_of::<u8>(); // nfds
+    /// File descriptors to poll (length == nfds).
+    pub fds: Vec<i32>,
+    /// Events to poll for on each file descriptor (length == nfds).
+    pub events: Vec<i16>,
 }
 
 impl PollRequest {
-    /// Creates a new `PollRequest`.
-    fn new(nfds: i8, fds: &[i32], events: &[i16], timeout: i32) -> Self {
-        debug_assert!(nfds > 0 && nfds as usize <= NFDS_MAX, "nfds must be > 0 && <= {NFDS_MAX}");
-        debug_assert!(
-            !fds.is_empty() && fds.len() <= NFDS_MAX,
-            "fds.len() must be > 0 && <= {NFDS_MAX}"
-        );
-        debug_assert!(fds.len() == events.len(), "fds and events must have the same length");
+    /// Size of `nfds` field.
+    pub const SIZE_OF_NFDS: usize = mem::size_of::<u8>();
+    /// Size of `timeout` field.
+    pub const SIZE_OF_TIMEOUT: usize = mem::size_of::<i32>();
+    /// Offset of `nfds` field.
+    pub const OFFSET_OF_NFDS: usize = 0;
+    /// Offset of `timeout` field.
+    pub const OFFSET_OF_TIMEOUT: usize = Self::OFFSET_OF_NFDS + Self::SIZE_OF_NFDS;
+    /// Offset where the array of file descriptors starts.
+    pub const OFFSET_OF_FDS: usize = Self::OFFSET_OF_TIMEOUT + Self::SIZE_OF_TIMEOUT;
 
-        // Pack file descriptors.
-        let mut poll_fds: [i32; NFDS_MAX] = [0; NFDS_MAX];
-        for (i, &fd) in fds.iter().enumerate() {
-            if i < NFDS_MAX {
-                poll_fds[i] = fd;
-            }
+    /// Maximum size of the message.
+    pub const MAX_SIZE: usize =
+        Self::OFFSET_OF_FDS + OPEN_MAX * (mem::size_of::<i32>() + mem::size_of::<i16>());
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new request for the `poll()` system call.
+    ///
+    /// # Parameters
+    ///
+    /// - `fds`: File descriptors to poll.
+    /// - `events`: Events to poll for on each file descriptor.
+    /// - `timeout`: Timeout for the poll operation, in milliseconds.
+    ///
+    /// # Return Value
+    ///
+    /// On success, this function returns the newly created request message for the `poll()` system
+    /// call. Otherwise, it returns an error object that describes the failure.
+    ///
+    pub fn new(fds: &[i32], events: &[i16], timeout: i32) -> Result<Self, Error> {
+        // Check if array of file descriptors is empty.
+        if fds.is_empty() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "no file descriptors"));
         }
 
-        // Pack events.
-        let mut poll_events: [i16; NFDS_MAX] = [0; NFDS_MAX];
-        for (i, &event) in events.iter().enumerate() {
-            if i < NFDS_MAX {
-                poll_events[i] = event;
-            }
+        // Check if array of file descriptors is too large.
+        if fds.len() > OPEN_MAX {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "number of file descriptors exceeds maximum supported",
+            ));
         }
 
-        Self {
-            nfds: nfds as u8,
-            fds: poll_fds,
-            events: poll_events,
-            timeout,
-            _padding: [0; Self::PADDING_SIZE],
-        }
-    }
-
-    /// Creates a `PollRequest` from a byte array.
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
-        unsafe { mem::transmute(bytes) }
-    }
-
-    /// Converts the request into a byte array.
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
-        unsafe { mem::transmute(self) }
-    }
-
-    /// Builds a `Message` from a `PollRequest`.
-    pub fn build(
-        tid: ThreadIdentifier,
-        fds: &[i32],
-        events: &[i16],
-        timeout: i32,
-    ) -> Result<Message, Error> {
-        // Check if number of file descriptors exceeds the maximum supported.
-        if fds.len() > NFDS_MAX {
-            let reason: &str = "number of file descriptors exceeds maximum supported";
-            #[cfg(not(target_os = "linux"))]
-            ::syslog::error!(
-                "build(): {reason:?}, (max={NFDS_MAX}, fds.len()={}, events.len()={}, \
-                 timeout={timeout:?})",
-                fds.len(),
-                events.len(),
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        let nfds: i8 = match fds.len().try_into() {
-            Ok(n) => n,
-            Err(_) => {
-                let reason: &str = "number of file descriptors exceeds maximum supported";
-                #[cfg(not(target_os = "linux"))]
-                ::syslog::error!(
-                    "build(): {reason:?}, (max={NFDS_MAX}, fds.len()={}, events.len()={}, \
-                     timeout={timeout:?})",
-                    fds.len(),
-                    events.len(),
-                );
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        // Attempt to convert `fds.len()` as a `u8`.
+        let nfds: u8 = match fds.len().try_into() {
+            Ok(nfds) => nfds,
+            Err(_error) => {
+                return Err(Error::new(
+                    ErrorCode::ValueOutOfRange,
+                    "cannot encode number of file descriptors",
+                ));
             },
         };
 
-        // Check if number of events does not match the number of file descriptors.
-        if events.len() != fds.len() {
-            let reason: &str = "number of events does not match number of file descriptors";
-            #[cfg(not(target_os = "linux"))]
-            ::syslog::error!(
-                "build(): {reason:?}, (fds.len()={}, events.len()={}, timeout={timeout:?})",
-                fds.len(),
-                events.len(),
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        // Check if array of events is empty.
+        if events.is_empty() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "no events"));
         }
 
-        let message: PollRequest = Self::new(nfds, fds, events, timeout);
+        // Check if array of events is too large.
+        if events.len() > OPEN_MAX {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "number of events exceeds maximum supported",
+            ));
+        }
 
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollRequest, message.into_bytes());
+        // Check if the number of events does not match the number of file descriptors.
+        if fds.len() != events.len() {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "number of events does not match number of file descriptors",
+            ));
+        }
 
-        let message: Message = Message::new(
-            MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
-            None,
-            message.into_bytes(),
+        Ok(Self {
+            nfds,
+            timeout,
+            fds: fds.to_vec(),
+            events: events.to_vec(),
+        })
+    }
+}
+
+impl MessageSerializer for PollRequest {
+    /// Serializes a request message for the `poll()` system call.
+    fn to_bytes(&self) -> Vec<u8> {
+        // Allocate buffer.
+        let mut buffer: Vec<u8> = Vec::new();
+
+        // Serialize `nfds` field.
+        buffer.push(self.nfds);
+        // Serialize `timeout` field.
+        buffer.extend_from_slice(&self.timeout.to_le_bytes());
+        // Serialize `fds` array.
+        for fd in &self.fds {
+            buffer.extend_from_slice(&fd.to_le_bytes());
+        }
+        // Serialize `events` array.
+        for ev in &self.events {
+            buffer.extend_from_slice(&ev.to_le_bytes());
+        }
+
+        buffer
+    }
+}
+
+impl MessageDeserializer for PollRequest {
+    /// Deserializes a request message for the `poll()` system call.
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        // Check if the buffer is too short.
+        if bytes.len() < Self::OFFSET_OF_FDS {
+            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        }
+
+        // Check if message is too long.
+        if bytes.len() > Self::MAX_SIZE {
+            return Err(Error::new(ErrorCode::InvalidMessage, "message is too long"));
+        }
+
+        // Deserialize `nfds` field.
+        let nfds: u8 = bytes[Self::OFFSET_OF_NFDS];
+        if nfds == 0 || nfds as usize > OPEN_MAX {
+            return Err(Error::new(ErrorCode::InvalidMessage, "invalid nfds"));
+        }
+
+        // Deserialize `timeout` field.
+        let timeout: i32 = i32::from_le_bytes(
+            bytes[Self::OFFSET_OF_TIMEOUT..Self::OFFSET_OF_FDS]
+                .try_into()
+                .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid timeout"))?,
         );
 
-        Ok(message)
+        // Check if the buffer is too short to hold all fds and events.
+        let fds_size: usize = nfds as usize * mem::size_of::<i32>();
+        let events_size: usize = nfds as usize * mem::size_of::<i16>();
+        if bytes.len() < Self::OFFSET_OF_FDS + fds_size + events_size {
+            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        }
+
+        // Deserialize `fds` array.
+        let mut fds: Vec<i32> = Vec::with_capacity(nfds.into());
+        let mut events: Vec<i16> = Vec::with_capacity(nfds.into());
+        let fds_offset: usize = Self::OFFSET_OF_FDS;
+        for i in 0..nfds as usize {
+            let base: usize = fds_offset + i * mem::size_of::<i32>();
+            let fd: i32 = i32::from_le_bytes(
+                bytes[base..base + mem::size_of::<i32>()]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid fd"))?,
+            );
+            fds.push(fd);
+        }
+
+        // Deserialize `events` array.
+        let events_offset: usize = fds_offset + fds_size;
+        for i in 0..nfds as usize {
+            let base: usize = events_offset + i * mem::size_of::<i16>();
+            let ev: i16 = i16::from_le_bytes(
+                bytes[base..base + mem::size_of::<i16>()]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid event"))?,
+            );
+            events.push(ev);
+        }
+
+        PollRequest::new(&fds, &events, timeout)
+    }
+}
+
+impl MessagePartitioner for PollRequest {
+    /// Creates a new message request part for the `poll()` system call.
+    fn new_part(
+        tid: ThreadIdentifier,
+        total_parts: u16,
+        part_number: u16,
+        payload_size: u8,
+        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+    ) -> Result<Message, Error> {
+        LinuxDaemonMessagePart::build_request(
+            tid,
+            LinuxDaemonMessageHeader::PollRequestPart,
+            total_parts,
+            part_number,
+            payload_size,
+            payload,
+        )
     }
 }
 
@@ -177,106 +247,172 @@ impl PollRequest {
 //==================================================================================================
 
 #[derive(Debug)]
-#[repr(C, packed)]
 pub struct PollResponse {
     /// Number of file descriptors with ready events.
     pub nready: u8,
-    /// File descriptors to poll.
-    pub fds: [i32; NFDS_MAX],
-    /// Events that occurred on each file descriptor.
-    pub revents: [i16; NFDS_MAX],
-    /// Padding to align the structure to the size of `LinuxDaemonMessage`.
-    _padding: [u8; Self::PADDING_SIZE],
+    /// File descriptors that are ready.
+    pub fds: Vec<i32>,
+    /// Events that occurred on each ready file descriptor.
+    pub revents: Vec<i16>,
 }
 
 impl PollResponse {
-    /// Padding size to align the structure.
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-    - mem::size_of::<u8>() // nready
-    - mem::size_of::<[i32; NFDS_MAX]>() // fds
-    - mem::size_of::<[i16; NFDS_MAX]>(); // revents
+    /// Offset of `nready`.
+    pub const OFFSET_OF_NREADY: usize = 0;
+    /// Offset of first array (fds) after nready.
+    pub const OFFSET_OF_FDS: usize = Self::OFFSET_OF_NREADY + mem::size_of::<u8>();
 
-    /// Creates a new `PollResponse`.
-    fn new(nready: u8, fds: &[i32], revents: &[i16]) -> Self {
-        debug_assert!(fds.len() == revents.len(), "fds and revents must have the same length");
+    /// Maximum size of the message.
+    pub const MAX_SIZE: usize = Self::OFFSET_OF_FDS
+        + OPEN_MAX * (core::mem::size_of::<i32>() + core::mem::size_of::<i16>());
 
-        // Pack file descriptors.
-        let mut ready_fds: [i32; NFDS_MAX] = [0; NFDS_MAX];
-        for (i, &fd) in fds.iter().enumerate() {
-            if i < NFDS_MAX {
-                ready_fds[i] = fd;
-            }
+    ///
+    /// # Description
+    ///
+    /// Creates a new response for the `poll()` system call.
+    ///
+    /// # Parameters
+    ///
+    /// - `fds`: File descriptors that are ready.
+    /// - `revents`: Events that occurred on each ready file descriptor.
+    ///
+    /// # Return Value
+    ///
+    /// On success, this function returns the newly created response message for the `poll()` system
+    /// call. Otherwise, it returns an error object that describes the failure.
+    ///
+    pub fn new(fds: &[i32], revents: &[i16]) -> Result<Self, Error> {
+        // Check if array of file descriptors is too large.
+        if fds.len() > OPEN_MAX {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "number of file descriptors exceeds maximum supported",
+            ));
         }
 
-        // Pack revents.
-        let mut ready_events: [i16; NFDS_MAX] = [0; NFDS_MAX];
-        for (i, &revent) in revents.iter().enumerate() {
-            if i < NFDS_MAX {
-                ready_events[i] = revent;
-            }
+        // Check if array of events is too large.
+        if revents.len() > OPEN_MAX {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "number of events exceeds maximum supported",
+            ));
         }
 
-        Self {
+        // Check if the number of events does not match the number of file descriptors.
+        if fds.len() != revents.len() {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "fds and revents must have the same length",
+            ));
+        }
+
+        // Attempt to convert `fds.len()` as a `u8`.
+        let nready: u8 = match fds.len().try_into() {
+            Ok(nready) => nready,
+            Err(_error) => {
+                return Err(Error::new(
+                    ErrorCode::ValueOutOfRange,
+                    "cannot encode number of ready file descriptors",
+                ));
+            },
+        };
+
+        Ok(Self {
             nready,
-            fds: ready_fds,
-            revents: ready_events,
-            _padding: [0; Self::PADDING_SIZE],
+            fds: fds.to_vec(),
+            revents: revents.to_vec(),
+        })
+    }
+}
+
+impl MessageSerializer for PollResponse {
+    /// Serializes a response message for the `poll()` system call.
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer: Vec<u8> = Vec::new();
+        buffer.push(self.nready);
+        for fd in &self.fds {
+            buffer.extend_from_slice(&fd.to_le_bytes());
         }
+        for ev in &self.revents {
+            buffer.extend_from_slice(&ev.to_le_bytes());
+        }
+        buffer
     }
+}
 
-    /// Creates a `PollResponse` from a byte array.
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
-        unsafe { mem::transmute(bytes) }
+impl MessageDeserializer for PollResponse {
+    /// Deserializes a response message for the `poll()` system call.
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        // Check if the buffer is too short.
+        if bytes.len() < Self::OFFSET_OF_FDS {
+            // need at least nready
+            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        }
+
+        // Check if message is too long.
+        if bytes.len() > Self::MAX_SIZE {
+            return Err(Error::new(ErrorCode::InvalidMessage, "message is too long"));
+        }
+
+        // Deserialize `nready` field.
+        let nready: u8 = bytes[Self::OFFSET_OF_NREADY];
+        if nready as usize > OPEN_MAX {
+            return Err(Error::new(ErrorCode::InvalidMessage, "invalid nready"));
+        }
+
+        // Check if the buffer is too short to hold all fds and events.
+        let fds_size: usize = nready as usize * mem::size_of::<i32>();
+        let events_size: usize = nready as usize * mem::size_of::<i16>();
+        if bytes.len() < Self::OFFSET_OF_FDS + fds_size + events_size {
+            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        }
+
+        // Deserialize `fds` array.
+        let mut fds: Vec<i32> = Vec::with_capacity(nready as usize);
+        let mut revents: Vec<i16> = Vec::with_capacity(nready as usize);
+        let fds_offset: usize = Self::OFFSET_OF_FDS;
+        for i in 0..nready as usize {
+            let base: usize = fds_offset + i * mem::size_of::<i32>();
+            let fd: i32 = i32::from_le_bytes(
+                bytes[base..base + mem::size_of::<i32>()]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid fd"))?,
+            );
+            fds.push(fd);
+        }
+
+        // Deserialize `revents` array.
+        let events_offset: usize = fds_offset + fds_size;
+        for i in 0..nready as usize {
+            let base: usize = events_offset + i * mem::size_of::<i16>();
+            let ev: i16 = i16::from_le_bytes(
+                bytes[base..base + mem::size_of::<i16>()]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid event"))?,
+            );
+            revents.push(ev);
+        }
+
+        PollResponse::new(&fds, &revents)
     }
+}
 
-    /// Converts the response into a byte array.
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
-        unsafe { mem::transmute(self) }
-    }
-
-    /// Builds a `Message` from a `PollResponse`.
-    pub fn build(
+impl MessagePartitioner for PollResponse {
+    /// Creates a new response message part for the `poll()` system call.
+    fn new_part(
         tid: ThreadIdentifier,
-        nready: u8,
-        fds: &[i32],
-        revents: &[i16],
+        total_parts: u16,
+        part_number: u16,
+        payload_size: u8,
+        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
     ) -> Result<Message, Error> {
-        // Check if number of file descriptors exceeds the maximum supported.
-        if fds.len() > NFDS_MAX {
-            let reason: &str = "number of file descriptors exceeds maximum supported";
-            #[cfg(not(target_os = "linux"))]
-            ::syslog::error!(
-                "build(): {reason:?}, (max={NFDS_MAX}, fds.len()={}, revents.len()={})",
-                fds.len(),
-                revents.len(),
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        // Check if number of events does not match the number of file descriptors.
-        if revents.len() != fds.len() {
-            let reason: &str = "number of events does not match number of file descriptors";
-            #[cfg(not(target_os = "linux"))]
-            ::syslog::error!(
-                "build(): {reason:?}, (fds.len()={}, revents.len()={})",
-                fds.len(),
-                revents.len(),
-            );
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        let message: PollResponse = Self::new(nready, fds, revents);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::PollResponse, message.into_bytes());
-
-        let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
-            MessageReceiver::from(tid),
-            MessageType::Ikc,
-            None,
-            message.into_bytes(),
-        );
-
-        Ok(message)
+        LinuxDaemonMessagePart::build_response(
+            tid,
+            LinuxDaemonMessageHeader::PollResponsePart,
+            total_parts,
+            part_number,
+            payload_size,
+            payload,
+        )
     }
 }
