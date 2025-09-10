@@ -55,7 +55,7 @@ impl InterruptController {
         // Check if the interrupt controller was already initialized.
         if INTERRUPT_CONTROLLER.is_some() {
             let reason: &str = "interrupt controller already initialized";
-            error!("init(): reason={:?}", reason);
+            error!("reason={:?}", reason);
             return Err(Error::new(
                 ErrorCode::EntryExists,
                 "interrupt controller already initialized",

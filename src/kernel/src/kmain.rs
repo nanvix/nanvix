@@ -125,7 +125,7 @@ mod startup {
                 Some(fence) => fence.wait(),
                 None => {
                     let reason: &str = "startup fence not initialized";
-                    error!("wait(): {:?}", reason);
+                    error!("{reason:?}");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }
@@ -140,7 +140,7 @@ mod startup {
                 Some(fence) => fence.signal(),
                 None => {
                     let reason: &str = "startup fence not initialized";
-                    error!("signal(): {:?}", reason);
+                    error!("{reason:?}");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }

@@ -35,7 +35,7 @@ use ::sys::{
 //==================================================================================================
 
 fn do_send(pm: &mut ProcessManager, message: Message) -> Result<(), Error> {
-    trace!("do_send(): src={:?}, dst={:?}", { message.source }, { message.destination });
+    trace!("src={:?}, dst={:?}", { message.source }, { message.destination });
 
     // TODO: Check if source process has permission to send message to destination process.
 
@@ -58,7 +58,7 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
         != MessageSender::from(src_pid)
     {
         let reason: &str = "invalid message source";
-        error!("do_send(): {reason:?} (message={:?})", message);
+        error!("{reason:?} (message={message:?})");
     }
 
     // Route message based on its type.
@@ -75,7 +75,7 @@ pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
                     }
                 } else {
                     // Standard input/output is not available.
-                    error!("send(): stdio is not available");
+                    error!("stdio is not available");
                     KcallResult::Error(sys::error::ErrorCode::ProtocolNotSupported.into())
                 }
             }
@@ -97,7 +97,7 @@ pub unsafe fn recv(
     msg: usize,
 ) -> Result<(), SleepError> {
     if pid != ProcessIdentifier::INITD {
-        trace!("do_recv(): pid={:?}", pid);
+        trace!("pid={:?}", pid);
     }
 
     match EventManager::wait(tid, pid) {

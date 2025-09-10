@@ -32,7 +32,7 @@ fn do_gettime(
     pid: ProcessIdentifier,
     buffer_addr: VirtualAddress,
 ) -> Result<(), Error> {
-    trace!("do_gettime(): pid={:?}, buffer_addr={:?}", pid, buffer_addr);
+    trace!("pid={pid:?}, buffer_addr={buffer_addr:?}");
 
     // Get system time.
     let now: SystemTime = clock::now();

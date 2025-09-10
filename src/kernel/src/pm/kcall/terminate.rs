@@ -23,7 +23,7 @@ pub fn terminate(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     let pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
         Ok(pid) => pid,
         Err(error) => {
-            error!("terminate(): {error:?}");
+            error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };

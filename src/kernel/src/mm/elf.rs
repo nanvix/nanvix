@@ -181,7 +181,7 @@ fn do_elf32_load(
     elf: &Elf32Fhdr,
     dry_run: bool,
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-    trace!("do_el32_load(): dry_run={}", dry_run);
+    trace!("dry_run={}", dry_run);
 
     let mut last_address: usize = 0;
 

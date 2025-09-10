@@ -63,7 +63,7 @@ impl Pit {
 
         // Check if frequency is valid.
         if !(pit::PIT_MIN_FREQUENCY..=pit::PIT_MAX_FREQUENCY).contains(&freq) {
-            error!("new(): invalid frequency for pit (freq={})", freq);
+            error!("invalid frequency for pit (freq={})", freq);
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid frequency"));
         }
 

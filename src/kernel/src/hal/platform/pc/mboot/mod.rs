@@ -237,7 +237,7 @@ fn parse_module(
         Ok(raw_addr) => PhysicalAddress::from_raw_value(raw_addr)?,
         Err(_) => {
             let reason: &'static str = "invalid kernel module start address";
-            error!("parse_module(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         },
     };
@@ -283,7 +283,7 @@ fn parse_mmap(
             Ok(raw_addr) => VirtualAddress::from_raw_value(raw_addr).align_down(PAGE_ALIGNMENT),
             Err(_) => {
                 let reason: &'static str = "invalid memory region address";
-                error!("parse_mmap(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::BadAddress, reason));
             },
         };
@@ -297,7 +297,7 @@ fn parse_mmap(
             },
             Err(_) => {
                 let reason: &'static str = "invalid memory region size";
-                error!("parse_mmap(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::BadAddress, reason));
             },
         };

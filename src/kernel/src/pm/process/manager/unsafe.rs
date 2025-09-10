@@ -219,7 +219,7 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
-        trace!("exit(): status={status:?}");
+        trace!("status={status:?}");
 
         // Terminate the calling process and select another process to run next.
         let (next_pid, next_tid, from, to, user_tda): (
@@ -342,7 +342,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<ExitStatus, SleepError> {
-        trace!("join_thread(): pid={:?}, tid={:?}", pid, tid);
+        trace!("pid={:?}, tid={:?}", pid, tid);
 
         loop {
             let result: Result<ZombieThread, Result<Condvar, Error>> = Self::get_mut()
@@ -461,7 +461,7 @@ impl ProcessManager {
 
         // Check if the thread was interrupted.
         if let Some(reason) = interrupt_reason {
-            warn!("sleep(): interrupted (reason={:?})", reason);
+            warn!("interrupted (reason={reason:?})");
             return Err(SleepError::Interrupted(reason));
         }
 

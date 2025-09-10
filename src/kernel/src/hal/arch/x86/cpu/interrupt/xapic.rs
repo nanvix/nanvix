@@ -68,7 +68,7 @@ impl UninitXapic {
         let apic_id: xapic::XapicId = xapic::XapicId::from_u32(xapic.read(xapic::XAPIC_ID));
         if apic_id.id() != xapic.id as u32 {
             let reason: &str = "id mismatch";
-            error!("init(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         // Setup spurious interrupt vector.
@@ -366,7 +366,7 @@ impl Xapic {
         }
 
         let reason: &str = "maximum number of retries exceeded";
-        error!("wait(): {}", reason);
+        error!("{reason}");
         Err(Error::new(ErrorCode::TimerExpired, reason))
     }
 }

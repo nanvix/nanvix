@@ -83,7 +83,7 @@ impl UninitIoapic {
         // Check ID mismatch.
         if ioapic::IoapicId::id(ioapic.deref_mut()) != self.id {
             let reason: &str = "id mismatch";
-            error!("init(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -129,7 +129,7 @@ pub struct Ioapic {
 impl Ioapic {
     /// Enables an interrupt line.
     pub fn enable(&mut self, irq: u8, cpunum: u8) -> Result<(), Error> {
-        info!("trace(): irq={}, cpunum={}", irq, cpunum);
+        info!("irq={}, cpunum={}", irq, cpunum);
         // When using physical destination mode, only the lower 4 bits of the
         // destination field are used. The specification is unclear about the
         // behavior of the upper bits. See 82093AA I/O ADVANCED PROGRAMMABLE
@@ -139,14 +139,14 @@ impl Ioapic {
         // Check IRQ lies in a valid range.
         if irq >= ioapic::IoapicVersion::maxredirect(self.deref_mut()) {
             let reason: &str = "invalid irq number";
-            error!("enable(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
         // Check CPU number lies in a valid range.
         if cpunum > MAXIMUM_NUMBER_CPUS {
             let reason: &str = "invalid cpu number";
-            error!("enable(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
