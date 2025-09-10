@@ -50,13 +50,8 @@ use ::std::{
     mem,
     sync::{
         Arc,
-        Barrier,
         Mutex,
         MutexGuard,
-        atomic::{
-            AtomicUsize,
-            Ordering,
-        },
         mpsc,
         mpsc::{
             Receiver,
@@ -221,34 +216,35 @@ impl Vmm {
             },
         );
 
-        // We use an atomic to pass the id of the created thread back to the caller context. We
-        // need this because std::thread's JoinHandle does not expose the tid. We synchronize the
-        // update using a barrier.
-        let pthread_id_holder: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
-
         let microvm_clone: Arc<Mutex<MicroVm>> = microvm.clone();
-        let barrier_clone: Arc<Barrier> = Arc::clone(&barrier);
-        let pthread_id_holder_clone: Arc<AtomicUsize> = pthread_id_holder.clone();
         let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
             // Store the tid so that the caller can send signals to the vCPU thread.
             // SAFETY: we are calling pthread_self() right after creating the thread so this is
             // safe.
             let pthread_id: libc::pthread_t = unsafe { pthread_self() };
-            pthread_id_holder_clone.store(pthread_id as usize, Ordering::Relaxed);
-
-            // Notify the outside thread that the thread id is ready.
-            barrier_clone.wait();
-
-            microvm_clone
+            let mut locked_vm = microvm_clone
                 .lock()
-                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                .run()
+                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+            locked_vm
+                .send_tid(pthread_id)
+                .map_err(|e| anyhow::anyhow!("failed to send tid {e:?}"))?;
+            locked_vm.run()
         });
 
         // Wait right after spawning the vCPU thread such that we populate the pthread id holder
         // before actually starting the vCPU.
-        barrier.wait();
+        match vcpu_control_rx.recv() {
+            Ok(VcpuControlResponse::Tid(tid)) => trace!("Received vCPU thread tid: {tid}"),
+            Ok(response) => unreachable!(
+                "the first message sent on this channel is always a Tid response ( \
+                 response={response:?})"
+            ),
+            Err(e) => {
+                let reason: String = format!("the vCPU thread has disconnected (error={e:?})");
+                error!("spawn(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
 
         let orchestrator = Orchestrator::new(
             io_control_rx,
@@ -278,7 +274,7 @@ impl Vmm {
             Ok(exit_code) => exit_code,
             Err(e) => {
                 let reason: String = format!("failed to join vCPU thread (error={e:?})");
-                error!("run(): {reason}");
+                error!("spawn(): {reason}");
                 anyhow::bail!(reason)
             },
         }
