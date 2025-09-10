@@ -182,6 +182,7 @@ impl LinuxDaemon {
             linuxd_args.splice(0..0, taskset);
         }
 
+        debug!("spawning linuxd with args: {}", linuxd_args.join(" "));
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
         let child: Child = Command::new(&linuxd_args[0])
             .args(&linuxd_args[1..])

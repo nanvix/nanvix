@@ -177,6 +177,8 @@ impl LinuxDaemon {
             }
         }
 
+        info!("Restored after snapshot trap");
+
         Ok(())
     }
 
@@ -276,6 +278,7 @@ impl LinuxDaemon {
                                 )
                             })?,
                     );
+                    trace!("accepted gateway connection for user VM (vm_id={user_vm_id})");
 
                     trace!(
                         "registered user VM handle (vm_id={user_vm_id}, gw_stream={})",
