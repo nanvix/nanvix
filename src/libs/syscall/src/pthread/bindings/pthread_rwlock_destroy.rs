@@ -19,7 +19,7 @@ use ::sysapi::{
 ///
 /// # Description
 ///
-/// Acquires a write lock on a read-write lock.
+/// Destroys a read-write lock.
 ///
 /// # Parameters
 ///
@@ -38,25 +38,24 @@ use ::sysapi::{
 /// - `rwlock` points to a valid `pthread_rwlock_t` structure.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_rwlock_wrlock(rwlock: *mut pthread_rwlock_t) -> c_int {
+pub unsafe extern "C" fn pthread_rwlock_destroy(rwlock: *mut pthread_rwlock_t) -> c_int {
     // Check if `rwlock` object is invalid.
     if rwlock.is_null() {
-        ::syslog::error!("pthread_rwlock_wrlock(): invalid read-write lock (rwlock={rwlock:p})");
+        ::syslog::error!("pthread_rwlock_destroy(): invalid read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `rwlock` is unaligned.
     if (rwlock as usize) % align_of::<pthread_rwlock_t>() != 0 {
-        ::syslog::error!("pthread_rwlock_wrlock(): unaligned read-write lock (rwlock={rwlock:p})");
+        ::syslog::error!("pthread_rwlock_destroy(): unaligned read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Attempt to acquire a write lock on the read-write lock and check for errors.
-    match crate::pthread::pthread_rwlock_wrlock(&mut *rwlock) {
-        Ok(()) => 0,
-        Err(error) => {
-            ::syslog::error!("pthread_rwlock_wrlock(): {error:?} (rwlock={rwlock:p})");
-            error.code.get()
-        },
+    // Attempt to destroy the read-write lock and check for errors.
+    if let Err(error) = crate::pthread::pthread_rwlock_destroy(&mut *rwlock) {
+        ::syslog::error!("pthread_rwlock_destroy(): {error:?} (rwlock={rwlock:p})");
+        return error.code.get();
     }
+
+    0
 }

@@ -11,6 +11,9 @@ mod cond;
 /// Mutexes.
 mod mutex;
 
+/// Read-write locks.
+mod rwlock;
+
 /// Thread-specific data area.
 mod tda;
 
@@ -62,6 +65,7 @@ pub use pthread_attr_destroy::*;
 pub use pthread_attr_getstack::*;
 pub use pthread_attr_init::*;
 pub use pthread_getattr_np::*;
+pub use rwlock::*;
 pub use tda::*;
 
 //==================================================================================================

@@ -48,4 +48,10 @@ extern void test_pthread_getattr_np_destroy(void);
 // Tests if pthread_attr_getstack() can retrieve stack attributes and they can be destroyed.
 extern void test_pthread_attr_getstack(void);
 
+// Tests if statically initialized read-write locks can synchronize multiple readers.
+extern void test_pthread_rwlock_static_init(void);
+
+// Tests if dynamically initialized read-write locks work (init/destroy + exclusion semantics).
+extern void test_pthread_rwlock_dynamic_init(void);
+
 #endif
