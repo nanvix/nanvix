@@ -106,9 +106,11 @@ impl ContextInformation {
         // Set thread data area.
         if let Some(user_tda) = user_tda {
             (*to).gs = SegmentSelector::UserThreadDataArea as u32;
+            (*to).fs = SegmentSelector::UserThreadDataArea as u32;
             Gdt::set_thread_data_area(user_tda.into());
         } else {
             (*to).gs = SegmentSelector::Null as u32;
+            (*to).fs = SegmentSelector::Null as u32;
         }
 
         let tss: *const Tss = tss::get_curr();
