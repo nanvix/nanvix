@@ -128,9 +128,10 @@ pub enum VcpuControlCommand {
 ///
 /// Control plane command responses from the vCPU thread to the VMM.
 ///
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum VcpuControlResponse {
     Paused,
+    Tid(u64),
 }
 
 //==================================================================================================
@@ -294,6 +295,10 @@ impl Orchestrator {
         loop {
             match self.vcpu_control_rx.try_recv() {
                 Ok(VcpuControlResponse::Paused) => break,
+                Ok(VcpuControlResponse::Tid(tid)) => unreachable!(
+                    "The tid is only sent when the vCPU thread is spawned. Sending it in the \
+                     middle of a pause protocol is against the protocol. tid=({tid})"
+                ),
                 Err(TryRecvError::Empty) => (),
                 Err(TryRecvError::Disconnected) => {
                     let reason: String = "the vmm has disconnected".to_string();
