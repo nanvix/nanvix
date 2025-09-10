@@ -19,7 +19,7 @@ use ::sysapi::{
 ///
 /// # Description
 ///
-/// Acquires a write lock on a read-write lock.
+/// Unlocks (releases) a read or write lock held on a read-write lock.
 ///
 /// # Parameters
 ///
@@ -27,7 +27,7 @@ use ::sysapi::{
 ///
 /// # Returns
 ///
-/// If successful, this function returns zero. Otherwise, if returns a non-zero error code.
+/// If successful, this function returns zero returned. Otherwise, if returns a non-zero error code.
 ///
 /// # Safety
 ///
@@ -38,24 +38,24 @@ use ::sysapi::{
 /// - `rwlock` points to a valid `pthread_rwlock_t` structure.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_rwlock_wrlock(rwlock: *mut pthread_rwlock_t) -> c_int {
+pub unsafe extern "C" fn pthread_rwlock_unlock(rwlock: *mut pthread_rwlock_t) -> c_int {
     // Check if `rwlock` object is invalid.
     if rwlock.is_null() {
-        ::syslog::error!("pthread_rwlock_wrlock(): invalid read-write lock (rwlock={rwlock:p})");
+        ::syslog::error!("pthread_rwlock_unlock(): invalid read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `rwlock` is unaligned.
     if (rwlock as usize) % align_of::<pthread_rwlock_t>() != 0 {
-        ::syslog::error!("pthread_rwlock_wrlock(): unaligned read-write lock (rwlock={rwlock:p})");
+        ::syslog::error!("pthread_rwlock_unlock(): unaligned read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Attempt to acquire a write lock on the read-write lock and check for errors.
-    match crate::pthread::pthread_rwlock_wrlock(&mut *rwlock) {
+    // Attempt to release the read-write lock and check for errors.
+    match crate::pthread::pthread_rwlock_unlock(&mut *rwlock) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("pthread_rwlock_wrlock(): {error:?} (rwlock={rwlock:p})");
+            ::syslog::error!("pthread_rwlock_unlock(): {error:?} (rwlock={rwlock:p})");
             error.code.get()
         },
     }
