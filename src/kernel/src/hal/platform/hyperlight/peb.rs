@@ -56,7 +56,7 @@ impl ProcessEnvironmentBlock {
     pub unsafe fn init(peb_base: *mut HyperlightPEB) -> Result<(), Error> {
         if GUEST_HANDLE.peb().is_some() {
             let reason: &'static str = "init: peb already initialized";
-            error!("{}", reason);
+            error!("{reason}");
             Err(Error::new(ErrorCode::ResourceBusy, reason))
         } else {
             GUEST_HANDLE = GuestHandle::init(peb_base);
@@ -76,7 +76,7 @@ impl ProcessEnvironmentBlock {
             },
             None => {
                 let reason: &'static str = "set_guest_function_dispatch_ptr: peb not initialized";
-                error!("{}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::NoSuchDevice, reason))
             },
         }
@@ -100,7 +100,7 @@ impl ProcessEnvironmentBlock {
             Some(peb_ptr) => Ok((*peb_ptr).credits_value),
             None => {
                 let reason: &'static str = "get_credits: peb not initialized";
-                error!("{}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::NoSuchDevice, reason))
             },
         }

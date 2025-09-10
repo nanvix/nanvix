@@ -231,11 +231,11 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     // Check if magic number matches what we expect.
     if magic != ::config::microvm::DEFAULT_BOOT_MAGIC {
         let reason: &str = "invalid boot magic number";
-        error!("parse_bootinfo(): magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
+        error!("magic={:#010x}, info={:#010x} (error={})", magic, info, reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
-    trace!("parse_bootinfo(): magic={:#010x}, info={:#010x}", magic, info);
+    trace!("magic={:#010x}, info={:#010x}", magic, info);
 
     // Retrieve initrd information.
     // - Lower bits encode the size of the initrd.
@@ -258,14 +258,13 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             Ok(s) => s,
             Err(_) => {
                 let reason: &str = "invalid UTF-8 in command line";
-                error!("parse_bootinfo(): invalid UTF-8 in command line");
+                error!("invalid UTF-8 in command line");
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
 
         info!(
-            "parse_bootinfo(): initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, \
-             cmdline={:?}",
+            "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
             initrd_base,
             (initrd_size * mem::PAGE_SIZE),
             cmdline_len,

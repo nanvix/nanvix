@@ -63,7 +63,7 @@ pub unsafe fn find_table_by_sig(
             Ok(sig) => sig,
             Err(_) => {
                 let reason: &str = "invalid signature";
-                warn!("find_table_by_sig(): {}", reason);
+                warn!("{reason}");
                 continue;
             },
         };
@@ -83,6 +83,6 @@ pub unsafe fn find_table_by_sig(
 
     // Table not found.
     let reason: &str = "table not found";
-    error!("find_table_by_sig(): {}", reason);
+    error!("{reason}");
     Err(Error::new(ErrorCode::NoSuchEntry, reason))
 }

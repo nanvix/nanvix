@@ -30,7 +30,7 @@ fn do_capctl(
     capability: Capability,
     value: bool,
 ) -> Result<(), Error> {
-    trace!("do_capctl(): pid={:?}, capability={:?}, value={:?}", pid, capability, value);
+    trace!("pid={:?}, capability={:?}, value={:?}", pid, capability, value);
 
     //FIXME: check if process has enough privileges to change capabilities.
 

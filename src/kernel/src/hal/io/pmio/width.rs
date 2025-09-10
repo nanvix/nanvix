@@ -56,7 +56,7 @@ impl TryFrom<usize> for IoPortWidth {
             2 => Ok(Self::Bits32),
             _ => {
                 let reason: &str = "invalid io port width";
-                error!("try_from(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::InvalidArgument, reason))
             },
         }

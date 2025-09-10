@@ -59,15 +59,12 @@ impl InterruptManager {
         intnum: arch::InterruptNumber,
         handler: arch::InterruptHandler,
     ) -> Result<(), Error> {
-        trace!("register_handler(): intnum={:?}, handler={:?}", intnum, handler);
+        trace!("intnum={:?}, handler={:?}", intnum, handler);
 
         // Check if another handler is already registered.
         if self.controller.get_handler(intnum)?.is_some() {
             let reason: &str = "interrupt handler already registered";
-            error!(
-                "register_handler(): intnum={:?}, handler={:?}, reason={:?}",
-                intnum, handler, reason
-            );
+            error!("intnum={:?}, handler={:?}, reason={:?}", intnum, handler, reason);
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 

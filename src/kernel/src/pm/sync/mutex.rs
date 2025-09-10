@@ -201,7 +201,7 @@ impl Drop for MutexGuard {
     fn drop(&mut self) {
         // Safety: The lock is ensured to be held by the caller.
         if let Err(error) = unsafe { self.mutex.unlock_unchecked() } {
-            warn!("drop(): failed to unlock mutex (self={self:?}, error={error:?})");
+            warn!("failed to unlock mutex (self={self:?}, error={error:?})");
         }
     }
 }

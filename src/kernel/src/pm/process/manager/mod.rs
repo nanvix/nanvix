@@ -206,7 +206,7 @@ impl ProcessManagerInner {
         args: &ThreadCreateArgs,
         enable_interrupts: bool,
     ) -> Result<(KernelStack, ContextInformation), Error> {
-        trace!("forge_user_context(): args={args:?}, enable_interrupts={enable_interrupts:?}",);
+        trace!("args={args:?}, enable_interrupts={enable_interrupts:?}",);
 
         unsafe extern "C" {
             pub fn __leave_kernel_to_user_mode();
@@ -237,7 +237,7 @@ impl ProcessManagerInner {
         } as u32;
         let esp0: u32 = kernel_stack.top().into_raw_value() as u32;
 
-        trace!("forge_context(): cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
+        trace!("cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
         let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
 
         Ok((kernel_stack, context))
@@ -272,7 +272,7 @@ impl ProcessManagerInner {
         pid: ProcessIdentifier,
         thread_create_args: &ThreadCreateArgs,
     ) -> Result<ThreadIdentifier, Error> {
-        trace!("create_thread(): pid={pid:?}, thread_create_args={thread_create_args:?}");
+        trace!("pid={pid:?}, thread_create_args={thread_create_args:?}");
 
         // Assert pre-conditions (these should have been checked by the caller).
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
@@ -287,22 +287,22 @@ impl ProcessManagerInner {
             if let ProcessRefMut::Running(_) = process {
                 // TODO: Re-evaluate this condition when we support multicore.
                 let reason: &str = "process is running";
-                error!("create_thread(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
             if let ProcessRefMut::Interrupted(_) = process {
                 let reason: &str = "process is interrupted";
-                error!("create_thread(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
             if let ProcessRefMut::Zombie(_) = process {
                 let reason: &str = "process is a zombie";
-                error!("create_thread(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
             if let ProcessRefMut::Runnable(_) = process {
                 let reason: &str = "process is runnable";
-                error!("create_thread(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
 
@@ -332,7 +332,7 @@ impl ProcessManagerInner {
         pid: ProcessIdentifier,
         ready_thread: ReadyThread,
     ) -> ThreadIdentifier {
-        trace!("try_add_thread(): pid={pid:?}, ready_thread={ready_thread:?}");
+        trace!("pid={pid:?}, ready_thread={ready_thread:?}");
         let tid: ThreadIdentifier = ready_thread.id();
 
         // Search process in the list of sleeping processes.
@@ -411,10 +411,7 @@ impl ProcessManagerInner {
             .find(|p| p.state().pid() == pid)
             .ok_or_else(|| {
                 let reason: &str = "process not found";
-                error!(
-                    "set_thread_data_area(): {reason} (pid={pid:?}, tid={tid:?}, \
-                     user_tda={user_tda:?})"
-                );
+                error!("{reason} (pid={pid:?}, tid={tid:?}, user_tda={user_tda:?})");
                 Error::new(ErrorCode::NoSuchEntry, reason)
             })?;
 
@@ -426,10 +423,7 @@ impl ProcessManagerInner {
             },
             _ => {
                 let reason: &str = "thread not found";
-                error!(
-                    "set_thread_data_area(): {reason} (tid={tid:?}, pid={pid:?}, \
-                     user_tda={user_tda:?})"
-                );
+                error!("{reason} (tid={tid:?}, pid={pid:?}, user_tda={user_tda:?})");
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -468,7 +462,7 @@ impl ProcessManagerInner {
             .find(|p| p.state().pid() == pid)
             .ok_or_else(|| {
                 let reason: &str = "process not found";
-                error!("get_thread_data_area(): {reason} (pid={pid:?}, tid={tid:?})");
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Error::new(ErrorCode::NoSuchEntry, reason)
             })?;
 
@@ -477,7 +471,7 @@ impl ProcessManagerInner {
             Some(ThreadRef::Sleeping(thread)) => Ok(thread.get_thread_data_area()),
             _ => {
                 let reason: &str = "thread not found";
-                error!("get_thread_data_area(): {reason} (tid={tid:?}, pid={pid:?})");
+                error!("{reason} (tid={tid:?}, pid={pid:?})");
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -511,7 +505,7 @@ impl ProcessManagerInner {
             pub fn __leave_kernel_to_user_mode();
         }
 
-        trace!("create_process(): args={:?}, env={:?}", args, env);
+        trace!("args={:?}, env={:?}", args, env);
 
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
@@ -521,7 +515,7 @@ impl ProcessManagerInner {
             Ok(cmdline) => cmdline,
             Err(error) => {
                 let reason: &str = "failed to convert command line string";
-                error!("create_process(): {} (error={:?})", reason, error);
+                error!("{} (error={:?})", reason, error);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
@@ -535,7 +529,7 @@ impl ProcessManagerInner {
             Ok(cmdline) => cmdline,
             Err(error) => {
                 let reason: &str = "failed to convert environment string";
-                error!("create_process(): {} (error={:?})", reason, error);
+                error!("{reason} (error={error:?})");
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
@@ -552,7 +546,7 @@ impl ProcessManagerInner {
         // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
         if args.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
             let reason: &str = "command line is too long";
-            error!("create_process(): {} (cmdline.len={:?})", reason, args.len());
+            error!("{reason} (cmdline.len={:?})", args.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         mm.alloc_upage(&mut vmem, args_vaddr, AccessPermission::RDWR, true)?;
@@ -561,16 +555,13 @@ impl ProcessManagerInner {
             VirtualAddress::new(args.as_ptr() as usize),
             args.len(),
         )?;
-        debug!(
-            "create_process(): arguments written to user space (args_vaddr={:?}, args={:?})",
-            args_vaddr, args
-        );
+        debug!("arguments written to user space (args_vaddr={:?}, args={:?})", args_vaddr, args);
 
         // Allocate another page for the environment variables and check for errors.
         // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.
         if env.len() > PAGE_SIZE - ::core::mem::size_of::<*const u8>() {
             let reason: &str = "environment variables are too long";
-            error!("create_process(): {} (env.len={:?})", reason, env.len());
+            error!("{reason} (env.len={:?})", env.len());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
@@ -585,8 +576,7 @@ impl ProcessManagerInner {
             env.len(),
         )?;
         debug!(
-            "create_process(): environment variables written to user space (envp_vaddr={:?}, \
-             env={:?})",
+            "environment variables written to user space (envp_vaddr={:?}, env={:?})",
             envp_vaddr, env
         );
 
@@ -706,7 +696,7 @@ impl ProcessManagerInner {
             match process.wakeup_alarm(now) {
                 Ok(interrupted_process) => {
                     trace!(
-                        "check_alarm(): process {:?} interrupted at {now:?}",
+                        "process {:?} interrupted at {now:?}",
                         interrupted_process.state().pid(),
                     );
                     self.interrupted.push_back(interrupted_process);
@@ -751,7 +741,7 @@ impl ProcessManagerInner {
 
         // Check if kernel is trying to sleep.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
-            panic!("sleep(): kernel process cannot sleep");
+            panic!("kernel process cannot sleep");
         }
 
         // Suspend the execution of the calling thread.
@@ -810,7 +800,7 @@ impl ProcessManagerInner {
                 Err(running_process) => {
                     self.running = Some(running_process);
                     let reason: &str = "thread not found";
-                    error!("wake_up(): {reason} (tid={tid:?})");
+                    error!("{reason} (tid={tid:?})");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             }
@@ -821,7 +811,7 @@ impl ProcessManagerInner {
             Some(runnable_process) => runnable_process,
             None => {
                 let reason: &str = "thread not found";
-                error!("wake_up(): {reason} (tid={tid:?})");
+                error!("{reason} (tid={tid:?})");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             },
         };
@@ -919,7 +909,7 @@ impl ProcessManagerInner {
     ) {
         let running_process: RunningProcess = self.take_running();
         trace!(
-            "exit(): pid={:?}, tid={:?}, status={status:?}",
+            "pid={:?}, tid={:?}, status={status:?}",
             running_process.state().pid(),
             running_process.get_tid(),
         );
@@ -1000,7 +990,7 @@ impl ProcessManagerInner {
         let running_process: RunningProcess = self.take_running();
 
         trace!(
-            "exit_thread(): pid={:?}, tid={:?}, status={:?}",
+            "pid={:?}, tid={:?}, status={:?}",
             running_process.state().pid(),
             running_process.get_tid(),
             status
@@ -1008,7 +998,7 @@ impl ProcessManagerInner {
 
         // Check if kernel is trying to exit.
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
-            panic!("exit_thread(): kernel process cannot exit (status={status:?})");
+            panic!("kernel process cannot exit (status={status:?})");
         }
 
         // Terminate the calling thread and schedule another thread to run.
@@ -1052,14 +1042,14 @@ impl ProcessManagerInner {
         // Check if terminating kernel process.
         if pid == ProcessIdentifier::KERNEL {
             let reason: &str = "cannot terminate kernel process";
-            error!("terminate(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
         // Check if target process is running.
         if self.running.is_some() && self.get_running().state().pid() == pid {
             let reason: &str = "cannot terminate running process";
-            error!("terminate(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
@@ -1088,7 +1078,7 @@ impl ProcessManagerInner {
         }
 
         let reason: &str = "process not found";
-        error!("terminate(): {}", reason);
+        error!("{reason}");
         Err(Error::new(ErrorCode::NoSuchProcess, reason))
     }
 
@@ -1120,7 +1110,7 @@ impl ProcessManagerInner {
             // Check if capability is already set.
             if process.state_mut().has_capability(capability) {
                 let reason: &str = "capability already set";
-                error!("capctl(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::ResourceBusy, reason));
             }
             process.state_mut().set_capability(capability);
@@ -1128,7 +1118,7 @@ impl ProcessManagerInner {
             // Check if capability is not set.
             if !process.state_mut().has_capability(capability) {
                 let reason: &str = "capability not set";
-                error!("capctl(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             }
             process.state_mut().clear_capability(capability);
@@ -1169,7 +1159,7 @@ impl ProcessManagerInner {
                 Some(mut running) => running.thread_state_mut().fpu_state_mut(),
                 None => {
                     let reason: &str = "no running process";
-                    error!("handle_fpu_exception(): {reason} (tid={current_tid:?})");
+                    error!("{reason} (tid={current_tid:?})");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 },
             };
@@ -1232,22 +1222,22 @@ impl ProcessManagerInner {
             ProcessRefMut::Running(process) => process.try_join_thread(tid),
             ProcessRefMut::Runnable(_) => {
                 let reason: &str = "process is runnable";
-                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Sleeping(_) => {
                 let reason: &str = "process is sleeping";
-                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Interrupted(_) => {
                 let reason: &str = "process is interrupted";
-                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
             ProcessRefMut::Zombie(_) => {
                 let reason: &str = "process is a zombie";
-                error!("join_thread(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))
             },
         }
@@ -1354,7 +1344,7 @@ impl ProcessManagerInner {
             Some(mutex_guard) => mutex_guard,
             None => {
                 let reason: &str = "thread does not own mutex";
-                error!("take_mutex_guard(): {} (pid={:?}, tid={:?})", reason, pid, tid);
+                error!("{reason} (pid={pid:?}, tid={tid:?})");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             },
         };
@@ -1414,7 +1404,7 @@ impl ProcessManagerInner {
             Ok(ProcessRef::Zombie(process))
         } else {
             let reason: &str = "process not found";
-            error!("find_process(): {} (pid={:?})", reason, pid);
+            error!("{reason} (pid={pid:?})");
             Err(Error::new(ErrorCode::NoSuchProcess, reason))
         }
     }
@@ -1432,7 +1422,7 @@ impl ProcessManagerInner {
             Ok(ProcessRefMut::Zombie(process))
         } else {
             let reason: &str = "process not found";
-            error!("find_process(): {} (pid={:?})", reason, pid);
+            error!("{reason} (pid={pid:?})");
             Err(Error::new(ErrorCode::NoSuchProcess, reason))
         }
     }
@@ -1476,7 +1466,7 @@ impl ProcessManagerInner {
             Ok(ProcessRefMut::Zombie(process))
         } else {
             let reason: &str = "thread not found";
-            error!("find_process(): {} (tid={:?})", reason, tid);
+            error!("{reason} (tid={tid:?})");
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         }
     }
@@ -1532,7 +1522,7 @@ impl ProcessManagerInner {
         }
 
         let reason: &str = "thread not found";
-        error!("find_thread_mut(): {} (tid={:?})", reason, tid);
+        error!("{reason} (tid={tid:?})");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 }
@@ -1784,10 +1774,7 @@ impl ProcessManager {
                     if let Err(error) = mm.unmap_upage(state.vmem_mut(), vaddr) {
                         // We failed, but this is not too bad, as we will free all pages
                         // when wiping out the address space anyways.
-                        warn!(
-                            "harvest_zombies(): failed to unmap page (vaddr={:?}, error={:?})",
-                            vaddr, error
-                        );
+                        warn!("failed to unmap page (vaddr={:?}, error={:?})", vaddr, error);
                     }
                 }
 
@@ -1981,7 +1968,7 @@ impl ProcessManager {
             Ok(pm) => Ok(pm),
             Err(_) => {
                 let reason: &str = "cannot borrow process manager";
-                error!("try_borrow(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::ResourceBusy, reason))
             },
         }
@@ -1992,7 +1979,7 @@ impl ProcessManager {
             Ok(pm) => Ok(pm),
             Err(_) => {
                 let reason: &str = "cannot borrow process manager";
-                error!("try_borrow_mut(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::ResourceBusy, reason))
             },
         }

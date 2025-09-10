@@ -126,7 +126,7 @@ impl UninitPic {
                 None => {
                     // NOTE: This error is unexpected, as resources should be available.
                     let reason: &str = "pic already initialized";
-                    error!("init(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::TryAgain, reason));
                 },
             };

@@ -35,18 +35,12 @@ fn do_pmio_write(
     port_width: IoPortWidth,
     value: u32,
 ) -> Result<(), Error> {
-    trace!(
-        "do_pmio_write(): pid={:?}, port_number={:?}, port_width={:?}, value={:?}",
-        pid,
-        port_number,
-        port_width,
-        value
-    );
+    trace!("pid={pid:?}, port_number={port_number:?}, port_width={port_width:?}, value={value:?}");
 
     // Check if the process does not have I/O management capabilities.
     if !pm.has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have io management capabilities";
-        error!("do_pmio_write(): {}", reason);
+        error!("{reason}");
         return Err(Error::new(ErrorCode::PermissionDenied, reason));
     }
 

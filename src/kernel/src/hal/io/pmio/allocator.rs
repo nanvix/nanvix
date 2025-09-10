@@ -161,7 +161,7 @@ impl IoPortAllocator {
         for entry in self.ports.iter() {
             if let Ok(e) = entry.try_borrow() {
                 if e.port.number() == port.number() {
-                    error!("register(): io port {:#06x} is already registered", port.number());
+                    error!("io port {:#06x} is already registered", port.number());
                     return Err(Error::new(
                         ErrorCode::AddressInUse,
                         "io port is already registered",
@@ -337,7 +337,7 @@ impl AnyIoPort {
             },
             AnyIoPort::WriteOnly(_) => {
                 let reason: &'static str = "write-only io port";
-                error!("read(): {:?}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
             AnyIoPort::ReadWrite(port) => match port_width {
@@ -352,7 +352,7 @@ impl AnyIoPort {
         match self {
             AnyIoPort::ReadOnly(_) => {
                 let reason: &'static str = "read-only io port";
-                error!("write(): {:?}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotSupported, reason));
             },
             AnyIoPort::WriteOnly(port) => match port_width {

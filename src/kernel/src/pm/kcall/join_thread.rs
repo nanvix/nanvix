@@ -63,7 +63,7 @@ pub unsafe fn join_thread(
     let tid: ThreadIdentifier = match ThreadIdentifier::try_from(arg0) {
         Ok(tid) => tid,
         Err(error) => {
-            error!("join_thread(): {error:?}");
+            error!("{error:?}");
             return Err(SleepError::Generic(error));
         },
     };

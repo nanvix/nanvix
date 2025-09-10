@@ -42,12 +42,12 @@ fn do_mmio_alloc(
     pid: ProcessIdentifier,
     addr: PageAligned<VirtualAddress>,
 ) -> Result<(), Error> {
-    trace!("do_mmio_alloc(): pid={:?}, addr={:?}", pid, addr.into_inner());
+    trace!("pid={:?}, addr={:?}", pid, addr.into_inner());
 
     // Check if process does not have I/O management capabilities.
     if !pm.has_capability(pid, Capability::IoManagement)? {
         let reason: &'static str = "process does not have I/O management capabilities";
-        error!("do_mmio_alloc(): {}", reason);
+        error!("{}", reason);
         return Err(Error::new(ErrorCode::PermissionDenied, reason));
     }
 

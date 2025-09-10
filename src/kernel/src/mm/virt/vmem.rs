@@ -134,7 +134,7 @@ impl Vmem {
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) -> Result<Self, Error> {
-        trace!("new()");
+        trace!("kernel_pages.len()={}", kernel_pages.len());
 
         // Create a clean page directory.
         let mut pgdir: PageDirectory = PageDirectory::new(PageDirectoryStorage::new());
@@ -237,7 +237,7 @@ impl Vmem {
             Some(pde) => pde,
             None => {
                 let reason: &str = "failed to read page directory entry";
-                error!("map_kpage(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::TryAgain, reason));
             },
         };
@@ -288,7 +288,7 @@ impl Vmem {
         }
 
         let reason: &str = "page table not found";
-        error!("lookup_kernel_page_table(): {}", reason);
+        error!("{reason}");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
@@ -303,11 +303,8 @@ impl Vmem {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in user space";
-            error!(
-                "map(): {} (uframe={:?}, vaddr={:?}, access={:?})",
-                reason, uframe, vaddr, access
-            );
-            return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
+            error!("{reason} (uframe={uframe:?}, vaddr={vaddr:?}, access={access:?})",);
+            return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         // Get corresponding page table.
@@ -321,7 +318,7 @@ impl Vmem {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
-                    error!("map(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::TryAgain, reason));
                 },
             };
@@ -461,7 +458,7 @@ impl Vmem {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
             let reason: &str = "page table not present";
-            error!("lookup_page_table(): {reason:?} (pde={pde:?})");
+            error!("{reason:?} (pde={pde:?})");
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
@@ -481,7 +478,7 @@ impl Vmem {
             Some(pt) => Ok(pt),
             None => {
                 let reason: &str = "page table not found";
-                error!("lookup_page_table(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -494,7 +491,7 @@ impl Vmem {
         // Check if corresponding page table does not exist.
         if !pde.is_present() {
             let reason: &str = "page table not present";
-            error!("lookup_kernel_page_table(): {reason:?} (pde={pde:?})");
+            error!("{reason:?} (pde={pde:?})");
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
@@ -515,7 +512,7 @@ impl Vmem {
             Some(entry) => Ok(entry),
             None => {
                 let reason: &str = "page table not found";
-                error!("lookup_kernel_page_table(): {}", reason);
+                error!("{reason}");
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
@@ -551,7 +548,7 @@ impl Vmem {
         }
 
         let reason: &str = "page not found";
-        error!("find_page(): {} (vaddr={:?})", reason, vaddr);
+        error!("{reason} (vaddr={vaddr:?})");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
@@ -901,7 +898,7 @@ impl Vmem {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in user space";
-            error!("unmap(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -920,7 +917,7 @@ impl Vmem {
                     Some(pde) => pde,
                     None => {
                         let reason: &str = "failed to read page directory entry";
-                        error!("map(): {}", reason);
+                        error!("{reason}");
                         return Err(Error::new(ErrorCode::TryAgain, reason));
                     },
                 };
@@ -929,7 +926,7 @@ impl Vmem {
                 // Check if corresponding page table does not exist.
                 if !pde.is_present() {
                     let reason: &str = "page table not present";
-                    error!("unmap(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 };
 
@@ -980,7 +977,7 @@ impl Vmem {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in user space";
-            error!("ctrl(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -994,7 +991,7 @@ impl Vmem {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
-                    error!("ctrl(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::TryAgain, reason));
                 },
             };
@@ -1002,7 +999,7 @@ impl Vmem {
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
                 let reason: &str = "page table not present";
-                error!("ctrl(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 
@@ -1023,12 +1020,12 @@ impl Vmem {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        trace!("kctrl(): {:?}", vaddr);
+        trace!("{vaddr:?}");
 
         // Check if the provided address lies outside the kernel space.
         if !Self::is_kernel_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in kernel space";
-            error!("kctrl(): {}", reason);
+            error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
@@ -1042,7 +1039,7 @@ impl Vmem {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
-                    error!("ctrl(): {}", reason);
+                    error!("{reason}");
                     return Err(Error::new(ErrorCode::TryAgain, reason));
                 },
             };
@@ -1050,7 +1047,7 @@ impl Vmem {
             // Check if corresponding page table does not exist.
             if !pde.is_present() {
                 let reason: &str = "page table not present";
-                error!("ctrl(): {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 

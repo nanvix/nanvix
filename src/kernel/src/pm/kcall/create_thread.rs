@@ -66,7 +66,7 @@ pub fn create_thread(
     // Check if thread_create_args does not lie in user space.
     if !Vmem::is_user_region(unsafe_thread_create_args, size_of::<ThreadCreateArgs>()) {
         let reason: &str = "thread_create_args does not lie in user space";
-        error!("create_thread(): {reason} (thread_create_args={unsafe_thread_create_args:?})");
+        error!("{reason} (thread_create_args={unsafe_thread_create_args:?})");
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
@@ -79,14 +79,14 @@ pub fn create_thread(
         unsafe_thread_create_args.into_raw_value() as *const ThreadCreateArgs,
     ) {
         let reason: &str = "failed to copy thread_create_args from user space";
-        error!("create_thread(): {reason:?} (error={:?})", error);
+        error!("{reason:?} (error={:?})", error);
         return KcallResult::Error(error.code.into());
     }
 
     // Check if the user wrapper function does not lie within the user address space.
     if !Vmem::is_user_addr(thread_create_args.user_fn) {
         let reason: &str = "user function does not lie within the user address space";
-        error!("create_thread(): {reason} (user_fn={:?})", thread_create_args.user_fn);
+        error!("{reason} (user_fn={:?})", thread_create_args.user_fn);
         return KcallResult::Error(ErrorCode::InvalidArgument.into());
     }
 
@@ -116,7 +116,7 @@ pub fn create_thread(
         if !Vmem::is_user_addr(user_tda) {
             let reason: &str =
                 "user-space thread data area does not lie within the user address space";
-            error!("create_thread(): {reason} (user_tcb={:?})", thread_create_args.user_tda);
+            error!("{reason} (user_tcb={:?})", thread_create_args.user_tda);
             return KcallResult::Error(ErrorCode::InvalidArgument.into());
         }
     }
@@ -124,7 +124,7 @@ pub fn create_thread(
     // Handle thread creation.
     match pm.create_thread(mm, pid, &thread_create_args) {
         Ok(tid) => {
-            debug!("create_thread(): thread {tid:?} created");
+            debug!("thread {tid:?} created");
             KcallResult::Success(<i32>::from(tid).into())
         },
         Err(e) => KcallResult::Error(e.code.into()),

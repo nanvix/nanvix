@@ -245,7 +245,7 @@ impl Condvar {
             // Attempt to wake up thread and check for errors.
             if let Err(error) = ProcessManager::wakeup(tid) {
                 // Failed to wake up thread, log a warning, store the first error, and continue.
-                warn!("notify_all(): {error:?} (pid={pid:?}, tid={tid:?})");
+                warn!("{error:?} (pid={pid:?}, tid={tid:?})");
                 if first_error.is_none() {
                     first_error = Some(error);
                 }
@@ -345,7 +345,7 @@ impl fmt::Debug for Condvar {
 impl Drop for CondvarInner {
     fn drop(&mut self) {
         if !self.sleeping.borrow().is_empty() {
-            panic!("drop(): {self:?}");
+            panic!("{self:?}");
         }
     }
 }

@@ -176,7 +176,7 @@ impl SleepingProcess {
     }
 
     pub fn add_thread(mut self, ready_thread: ReadyThread) -> RunnableProcess {
-        trace!("add_thread(): self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
+        trace!("self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
         RunnableProcess::from_state(
             self.state,
             NonEmptyVecDeque::new(ready_thread),

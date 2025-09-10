@@ -44,7 +44,7 @@ use ::sys::{
 /// - It may block the calling thread.
 ///
 pub unsafe fn sleep(seconds: usize, nanoseconds: usize) -> Result<(), SleepError> {
-    trace!("sleep(): seconds={seconds:?}, nanoseconds={nanoseconds:?}");
+    trace!("seconds={seconds:?}, nanoseconds={nanoseconds:?}");
 
     // Get the current time.
     let now: SystemTime = clock::now();
