@@ -5,20 +5,57 @@
 // Imports
 //==================================================================================================
 
-use ::sysapi::ffi::{
-    c_int,
-    c_void,
+use ::core::mem::align_of;
+use ::sys::error::ErrorCode;
+use ::sysapi::{
+    ffi::c_int,
+    sys_types::pthread_rwlock_t,
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-// TODO: add description
-#[allow(clippy::missing_safety_doc)]
+///
+/// # Description
+///
+/// Destroys a read-write lock.
+///
+/// # Parameters
+///
+/// - `rwlock`: Read-write lock object.
+///
+/// # Returns
+///
+/// If successful, this function returns zero. Otherwise, if returns a non-zero error code.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+///
+/// - `rwlock` points to a valid `pthread_rwlock_t` structure.
+///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_rwlock_destroy(_rwlock: *mut c_void) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/973
-    ::syslog::warn!("pthread_rwlock_destroy(): not implemented");
+pub unsafe extern "C" fn pthread_rwlock_destroy(rwlock: *mut pthread_rwlock_t) -> c_int {
+    // Check if `rwlock` object is invalid.
+    if rwlock.is_null() {
+        ::syslog::error!("pthread_rwlock_destroy(): invalid read-write lock (rwlock={rwlock:p})");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `rwlock` is unaligned.
+    if (rwlock as usize) % align_of::<pthread_rwlock_t>() != 0 {
+        ::syslog::error!("pthread_rwlock_destroy(): unaligned read-write lock (rwlock={rwlock:p})");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Attempt to destroy the read-write lock and check for errors.
+    if let Err(error) = crate::pthread::pthread_rwlock_destroy(&mut *rwlock) {
+        ::syslog::error!("pthread_rwlock_destroy(): {error:?} (rwlock={rwlock:p})");
+        return error.code.get();
+    }
+
     0
 }
