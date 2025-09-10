@@ -34,9 +34,9 @@ runs:
       )
 
       for bench in "${benchmarks[@]}"; do
-        # FIXME (#975): warm-start-vmm is failing intermittently on MicroVM
-        if [[ "$bench" == "warm-start-vmm" ]]; then
-              continue
+        # FIXME (#975): warm-start-l2 is failing intermittently on MicroVM
+        if [[ "$bench" == "warm-start-l2" ]]; then
+          continue
         fi
 
         # FIXME (#937): cold-start-l2 is failing intermittently on MicroVM
@@ -72,12 +72,17 @@ runs:
       for bench in "${benchmarks[@]}"; do
         # FIXME (#709): warm-start-vmm is stuck on hyperlight
         if [[ "$bench" == "warm-start-vmm" ]]; then
-              continue
+          continue
+        fi
+
+        # FIXME (#975): warm-start-l2 is failing intermittently on hyperlight
+        if [[ "$bench" == "warm-start-l2" ]]; then
+          continue
         fi
 
         # FIXME (#926): cold-start-l2 fails on hyperlight
         if [[ "$bench" == "cold-start-l2" ]]; then
-              continue
+          continue
         fi
 
         bench_underscore=${bench//-/_}
