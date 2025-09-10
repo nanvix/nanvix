@@ -26,6 +26,7 @@ pub mod pthread_mutex_destroy;
 pub mod pthread_mutex_init;
 pub mod pthread_mutex_lock;
 pub mod pthread_mutex_unlock;
+pub mod pthread_rwlock_init;
 pub mod pthread_rwlock_rdlock;
 pub mod pthread_rwlock_unlock;
 pub mod pthread_rwlock_wrlock;
