@@ -300,11 +300,6 @@ impl ProcessManagerInner {
                 error!("{reason}");
                 return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
             }
-            if let ProcessRefMut::Runnable(_) = process {
-                let reason: &str = "process is runnable";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
 
             // Create a kernel context.
             let (kernel_stack, context): (KernelStack, ContextInformation) =
