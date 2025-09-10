@@ -14,6 +14,7 @@
 use crate::sys_types::{
     pthread_cond_t,
     pthread_mutex_t,
+    pthread_rwlock_t,
     pthread_t,
 };
 
@@ -61,3 +62,6 @@ pub mod pthread_mutex_type {
     /// map this mutex to one of the other mutex types.
     pub const PTHREAD_MUTEX_DEFAULT: c_int = 3;
 }
+
+/// Used to initialize a read-write lock statically.
+pub const PTHREAD_RWLOCK_INITIALIZER: pthread_rwlock_t = 0xffffffff;
