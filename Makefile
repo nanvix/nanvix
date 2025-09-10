@@ -305,7 +305,7 @@ ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 #===================================================================================================
 
 # Builds everything.
-all: all-nanvix all-opt
+all: all-nanvix all-opt all-snapshot
 
 # Builds all Nanvix components.
 all-nanvix: \
@@ -316,8 +316,7 @@ all-nanvix: \
 	all-kernel \
 	all-wasm-binaries \
 	all-host-binaries \
-	all-microvm \
-	all-snapshot
+	all-microvm
 
 # Performs local initialization.
 init: init-repo init-opt
@@ -785,8 +784,8 @@ endif
 # Build Rules for L2 System VM Snapshot
 #===================================================================================================
 
-# The snapshots for the L2 VM need linuxd.elf to be built first.
-all-snapshot: all-host-binaries
+# The snapshots for the L2 VM needs all the Nanvix files to be installed in $(SYSROOT_DIR)
+all-snapshot: install
 # Snapshots are only generated for microvm/hyperlight machines when L2_VM is enabled.
 ifneq (,$(and $(filter yes,$(L2_VM)),$(filter $(MACHINE),microvm hyperlight)))
 	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
