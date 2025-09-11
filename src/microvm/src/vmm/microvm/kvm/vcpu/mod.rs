@@ -225,7 +225,9 @@ impl VirtualProcessor {
         // Run the virtual processor and parse exit reason.
         match self.fd.run()? {
             // Read from an I/O port.
-            VcpuExit::IoIn(port, data) => Ok(VirtualProcessorExitContext::PmioIn(port, data)),
+            VcpuExit::IoIn(port, data) => {
+                Ok(VirtualProcessorExitContext::PmioIn(port, data.to_vec()))
+            },
             // Write to an I/O port.
             VcpuExit::IoOut(port, data) => {
                 let mut value: u32 = 0;

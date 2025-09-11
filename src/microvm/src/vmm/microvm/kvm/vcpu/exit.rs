@@ -26,9 +26,9 @@ pub enum VirtualProcessorExitReason {
 ///
 /// Virtual processor exit contexts.
 ///
-pub enum VirtualProcessorExitContext<'a> {
+pub enum VirtualProcessorExitContext {
     /// Port-mapped I/O input.
-    PmioIn(u16, &'a mut [u8]),
+    PmioIn(u16, Vec<u8>),
     /// Port-mapped I/O output.
     PmioOut(u16, u32, usize),
     /// Halt virtual processor.
@@ -43,7 +43,7 @@ pub enum VirtualProcessorExitContext<'a> {
 // Implementations
 //==================================================================================================
 
-impl VirtualProcessorExitContext<'_> {
+impl VirtualProcessorExitContext {
     ///
     /// # Description
     ///

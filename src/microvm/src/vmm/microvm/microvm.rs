@@ -43,9 +43,9 @@ use ::std::{
     sync::{
         Arc,
         Mutex,
+        MutexGuard,
         mpsc::{
             Receiver,
-            SendError,
             Sender,
             TryRecvError,
         },
@@ -64,13 +64,25 @@ pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 ///
 /// A structure that represents a MicroVM.
 ///
+#[derive(Clone)]
 pub struct MicroVm {
     // Virtual partition that hosts the virtual machine.
     _partition: Arc<Mutex<VirtualPartition>>,
     // Virtual memory of the virtual machine.
     vmem: Arc<Mutex<VirtualMemory>>,
     // Virtual processor of the virtual machine.
-    vcpu: VirtualProcessor,
+    vcpu: Arc<Mutex<VirtualProcessor>>,
+    // Wraps fields that don't require individual `Arc<Mutex<_>>`s.
+    handle: Arc<Mutex<InteriorMicroVmHandle>>,
+}
+
+///
+/// # Description
+///
+/// An internal structure to the MicroVM that wraps its contents in `Arc<Mutex<_>>`. It allows
+/// `MicroVm` to be clonable without wrapping each field in `Arc<Mutex<_>>`.
+///
+struct InteriorMicroVmHandle {
     // Emulator of the virtual machine.
     emulator: Emulator,
     // If present, initial RAM disk location and size.
@@ -81,8 +93,8 @@ pub struct MicroVm {
     control_tx: Sender<VcpuControlResponse>,
 }
 
-unsafe impl Send for MicroVm {}
-unsafe impl Sync for MicroVm {}
+unsafe impl Send for InteriorMicroVmHandle {}
+unsafe impl Sync for InteriorMicroVmHandle {}
 
 //==================================================================================================
 // Types
@@ -134,18 +146,24 @@ impl MicroVm {
         let vmem: Arc<Mutex<VirtualMemory>> =
             Arc::new(Mutex::new(VirtualMemory::new(partition.clone(), memory_size)?));
 
-        let vcpu: VirtualProcessor = VirtualProcessor::new(partition.clone(), 0)?;
+        let vcpu: Arc<Mutex<VirtualProcessor>> =
+            Arc::new(Mutex::new(VirtualProcessor::new(partition.clone(), 0)?));
 
         let emulator: Emulator = Emulator::new(vmem.clone(), input, output)?;
+
+        let state: Arc<Mutex<InteriorMicroVmHandle>> =
+            Arc::new(Mutex::new(InteriorMicroVmHandle {
+                emulator,
+                initrd: None,
+                control_rx,
+                control_tx,
+            }));
 
         Ok(Self {
             _partition: partition,
             vmem,
             vcpu,
-            emulator,
-            initrd: None,
-            control_rx,
-            control_tx,
+            handle: state,
         })
     }
 
@@ -195,7 +213,10 @@ impl MicroVm {
             .lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .load_initrd(initrd_filename)?;
-        self.initrd = Some(initrd);
+        self.handle
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .initrd = Some(initrd);
         Ok(())
     }
 
@@ -243,7 +264,11 @@ impl MicroVm {
         // Check if initrd is too large.
         let nzeros: usize = ::config::microvm::DEFAULT_INITRD_BASE.trailing_zeros() as usize;
         let max_initrd_size: usize = (1 << 12) * ((1 << nzeros) - 1);
-        if let Some((_, initrd_size)) = self.initrd {
+        let locked_state: MutexGuard<'_, InteriorMicroVmHandle> = self
+            .handle
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+        if let Some((_, initrd_size)) = locked_state.initrd {
             if initrd_size > max_initrd_size {
                 return Err(anyhow::anyhow!(
                     "initrd is too large (initrd_size={initrd_size}, \
@@ -253,7 +278,7 @@ impl MicroVm {
         }
 
         // Retrieve initrd information.
-        let (initrd_base, initrd_size): (u64, u64) = match self.initrd {
+        let (initrd_base, initrd_size): (u64, u64) = match locked_state.initrd {
             Some((base, size)) => (base, size as u64),
             None => (0, 0),
         };
@@ -268,7 +293,10 @@ impl MicroVm {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
-        self.vcpu.reset(rip, rax, rbx)
+        self.vcpu
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .reset(rip, rax, rbx)
     }
 
     /// Install a signal handler on the vCPU thread.
@@ -315,30 +343,50 @@ impl MicroVm {
         // Install a signal handler in the virtual processor's thread.
         Self::install_signal_handler();
 
-        // Run the virtual processor until it goes offline.
-        while self.vcpu.is_online() {
-            let exit_context: VirtualProcessorExitContext = self.vcpu.run()?;
+        loop {
+            let exit_context: VirtualProcessorExitContext;
+            // Lock scope.
+            {
+                let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self
+                    .vcpu
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+                // Exit if the vCPU is no longer online.
+                if !locked_vcpu.is_online() {
+                    return Ok(locked_vcpu.exit_status());
+                }
+                exit_context = locked_vcpu.run()?;
+            }
 
             // Parse exit reason.
             match exit_context.reason() {
                 // The guest requested to access an I/O port.
                 VirtualProcessorExitReason::PmioAccess => {
                     crate::timer!("vm_run_pmio_access");
-                    if let Some(exit_status) = self.emulator.handle_pmio_access(exit_context)? {
+                    let mut locked_state: MutexGuard<'_, InteriorMicroVmHandle> = self
+                        .handle
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+                    if let Some(exit_status) =
+                        locked_state.emulator.handle_pmio_access(exit_context)?
+                    {
                         if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
-                            self.vcpu.poweroff(exit_status);
+                            self.vcpu
+                                .lock()
+                                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                                .poweroff(exit_status);
                         }
                         // The Nanvix Daemon requested to pause, this means we need to suspend execution,
                         // but possibly resume it later.
                         else {
                             // This message changes the state from `PAUSE_REQUESTED` to `PAUSED`.
-                            self.control_tx.send(VcpuControlResponse::Paused)?;
+                            locked_state.control_tx.send(VcpuControlResponse::Paused)?;
 
                             let start: Instant = Instant::now();
                             let mut counter: usize = 1;
                             // TODO: exponential back-off timeout https://github.com/nanvix/nanvix/issues/943
                             loop {
-                                match self.control_rx.try_recv() {
+                                match locked_state.control_rx.try_recv() {
                                     Ok(VcpuControlCommand::Resume) => break,
                                     // NOTE: Should we add an option for shutting down? Like so:
                                     // Ok(VcpuControlCommand::Shutdown) => self.vcpu.poweroff(0),
@@ -370,12 +418,18 @@ impl MicroVm {
 
                 // The guest requested to halt the virtual processor.
                 VirtualProcessorExitReason::Halt => {
-                    self.vcpu.poweroff(0);
+                    self.vcpu
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                        .poweroff(0);
                 },
 
                 // The guest was interrupted, this means we need to power-off.
                 VirtualProcessorExitReason::Interrupted => {
-                    self.vcpu.poweroff(0);
+                    self.vcpu
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+                        .poweroff(0);
                 },
 
                 // Virtual machine exited due to an unknown reason.
@@ -384,8 +438,6 @@ impl MicroVm {
                 },
             }
         }
-
-        Ok(self.vcpu.exit_status())
     }
 
     ///
@@ -414,7 +466,12 @@ impl MicroVm {
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    pub fn send_tid(&self, tid: u64) -> Result<(), SendError<VcpuControlResponse>> {
-        self.control_tx.send(VcpuControlResponse::Tid(tid))
+    pub fn send_tid(&self, tid: u64) -> Result<()> {
+        Ok(self
+            .handle
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .control_tx
+            .send(VcpuControlResponse::Tid(tid))?)
     }
 }
