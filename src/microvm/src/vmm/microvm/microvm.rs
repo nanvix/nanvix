@@ -93,6 +93,12 @@ struct InteriorMicroVmHandle {
     control_tx: Sender<VcpuControlResponse>,
 }
 
+// SAFETY: Every component of InteriorMicroVmHandle is Send + Sync:
+// Emulator contains:
+// - `VirtualMemory`, which is Send + Sync;
+// - `input` and `output`, which are boxed function pointers accessed from a single thread;
+// Option<(u64, usize)> is trivially Send + Sync;
+// `control_rx` and `control_tx` are only ever accessed by the vCPU thread, so they're Send + Sync.
 unsafe impl Send for InteriorMicroVmHandle {}
 unsafe impl Sync for InteriorMicroVmHandle {}
 
