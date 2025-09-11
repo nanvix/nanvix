@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::sandbox::tcp_port::TcpPort;
 use ::anyhow::Result;
 use ::linuxd::config::l2_system_vm_guest_ip;
 use ::log::error;
@@ -12,6 +13,7 @@ use ::std::{
     fs,
     path::PathBuf,
 };
+use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -132,24 +134,32 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Res
 ///
 /// # Description
 ///
-/// Builds the gateway socket address for a given tenant ID.
+/// Builds the gateway Unix socket address for a given tenant and sandbox ID.
 ///
 /// # Arguments
 ///
 /// - tmp_str: Temporary directory path.
 /// - tenant_id: Tenant ID.
-/// - l2: Flag to enable deploying linuxd inside an L2 VM.
+/// - sandbox_id: Sandbox ID.
+/// - l2_port: Optional value to indicate deployment in an L2 VM. If set, it contains the TCP port
+///   for the gateway in the L2 VM.
 ///
 /// # Returns
 ///
 /// On success, returns the name of the gateway Unix socket. On failure, returns an error.
 ///
-pub fn gateway_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
-    if l2 {
-        return Ok(format!("{}:{}", l2_system_vm_guest_ip(), config::linuxd::GATEWAY_PORT));
+pub fn gateway_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    sandbox_id: RawUserVmIdentifier,
+    l2_port: &Option<TcpPort>,
+) -> Result<String> {
+    if let Some(l2_port) = l2_port {
+        return Ok(format!("{}:{:?}", l2_system_vm_guest_ip(), l2_port));
     }
 
-    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:gw{UNIX_SOCKET_SUFFIX}");
+    let unix_socket_name: String =
+        format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {

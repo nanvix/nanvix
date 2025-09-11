@@ -89,7 +89,6 @@ pub struct LinuxDaemon {
     control_plane_sockaddr: String,
     control_plane_socktype: SocketType,
     user_vm_listener: SocketListener,
-    gateway_listener: Option<SocketListener>,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
     in_l2: bool,
 }
@@ -103,7 +102,6 @@ impl LinuxDaemon {
         control_plane_sockaddr: String,
         control_plane_socktype: SocketType,
         user_vm_listener: SocketListener,
-        gateway_listener: Option<SocketListener>,
         in_l2: bool,
     ) -> Result<Self, Error> {
         Ok(Self {
@@ -111,7 +109,6 @@ impl LinuxDaemon {
             control_plane_sockaddr,
             control_plane_socktype,
             user_vm_listener,
-            gateway_listener,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
             in_l2,
         })
@@ -189,7 +186,6 @@ impl LinuxDaemon {
         &mut self,
         user_vm_connections: &mut HashMap<RawUserVmIdentifier, UserVmHandle>,
         user_vm_poll: &Poll,
-        gateway_poll: &mut Option<Poll>,
     ) -> Result<(), Error> {
         // Accept new connection in a loop, as we have a non-blocking socket, and
         // we may have more than one connection pending to be accepted.
@@ -233,31 +229,53 @@ impl LinuxDaemon {
                             )
                         })?;
 
-                    // After accepting a connection from the user VM, accept a connection from the
-                    // gateway if necessary.
-                    let gateway_stream: Option<SocketStream> = if let Some(gateway_poll) =
-                        gateway_poll.as_mut()
-                    {
-                        if let Some(gateway_listener) = self.gateway_listener.as_mut() {
-                            Some(
-                                gateway_listener
-                                    .accept_timeout(
-                                        gateway_poll,
-                                        Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-                                    )
-                                    .map_err(|_| {
-                                        Self::log_and_error(
-                                            ErrorCode::IoErr,
-                                            "error accepting connection from gateway",
-                                        )
-                                    })?,
+                    // After accepting a connection from the user VM, open a listening socket for
+                    // the user VM's gateway.
+                    let gateway_sockaddr: String = new_msg.gateway_sockaddr().to_string();
+                    let gateway_socket_type: SocketType = new_msg.gateway_socket_type();
+                    let mut gateway_listener: SocketListener =
+                        match Socket::bind(gateway_socket_type, gateway_sockaddr.clone()) {
+                            Ok(listener) => listener,
+                            Err(e) => {
+                                let reason: &'static str =
+                                    "failed to bind gateway socket for user VM";
+                                error!("{reason} (addr={gateway_sockaddr}, error={e:?})");
+                                return Err(Self::log_and_error(ErrorCode::IoErr, reason));
+                            },
+                        };
+
+                    // Accept one connection. We use an ephemeral poll, but this step will become
+                    // unnecessary when we introduce support for lazily accepting a gateway
+                    // connection.
+                    let mut gateway_poll: Poll = Poll::new().map_err(|_| {
+                        Self::log_and_error(ErrorCode::IoErr, "failed to create Poll")
+                    })?;
+                    gateway_poll
+                        .registry()
+                        .register(
+                            &mut gateway_listener,
+                            Token(GATEWAY_LISTENER_CONNECTION_ID),
+                            Interest::READABLE,
+                        )
+                        .map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "failed to register gateway listener to poll",
                             )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
+                        })?;
+                    let gateway_stream: Option<SocketStream> = Some(
+                        gateway_listener
+                            .accept_timeout(
+                                &mut gateway_poll,
+                                Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+                            )
+                            .map_err(|_| {
+                                Self::log_and_error(
+                                    ErrorCode::IoErr,
+                                    "error accepting connection from gateway",
+                                )
+                            })?,
+                    );
 
                     trace!(
                         "registered user VM handle (vm_id={user_vm_id}, gw_stream={})",
@@ -354,7 +372,6 @@ impl LinuxDaemon {
     pub fn run(mut self) -> Result<(), Error> {
         const CONTROL_PLANE_TOKEN: Token = Token(CONTROL_PLANE_CONNECTION_ID);
         const USER_VM_LISTENER_TOKEN: Token = Token(USER_VM_LISTENER_CONNECTION_ID);
-        const GATEWAY_LISTENER_TOKEN: Token = Token(GATEWAY_LISTENER_CONNECTION_ID);
 
         let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
 
@@ -367,28 +384,6 @@ impl LinuxDaemon {
             .map_err(|_| {
                 Self::log_and_error(ErrorCode::IoErr, "failed to register user VM listener to poll")
             })?;
-
-        // Poll structure used to accept connections from the gateway in a blocking fashion. For
-        // the gateway we want to give each worker thread the mutex-protected socket stream
-        // connected to the gateway.
-        let mut gateway_poll: Option<Poll> =
-            if let Some(gateway_listener) = self.gateway_listener.as_mut() {
-                let gateway_poll: Poll = Poll::new()
-                    .map_err(|_| Self::log_and_error(ErrorCode::IoErr, "failed to create Poll"))?;
-                gateway_poll
-                    .registry()
-                    .register(gateway_listener, GATEWAY_LISTENER_TOKEN, Interest::READABLE)
-                    .map_err(|_| {
-                        Self::log_and_error(
-                            ErrorCode::IoErr,
-                            "failed to register gateway listener to poll",
-                        )
-                    })?;
-
-                Some(gateway_poll)
-            } else {
-                None
-            };
 
         // Structure keeping track of the active user VM connections, indexed by their connection
         // ID. We use a slab to easily get the smallest available entry.
@@ -476,11 +471,7 @@ impl LinuxDaemon {
                     // Check if we have received any messages on the main listener socket.
                     // These indicate new user VMs connecting to linuxd.
                     USER_VM_LISTENER_TOKEN => {
-                        self.accept_connections(
-                            &mut user_vm_connections,
-                            &user_vm_poll,
-                            &mut gateway_poll,
-                        )?;
+                        self.accept_connections(&mut user_vm_connections, &user_vm_poll)?;
                     },
 
                     // Now we process events from active connections.

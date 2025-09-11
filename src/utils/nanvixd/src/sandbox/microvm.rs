@@ -5,8 +5,15 @@
 // Imports
 //==================================================================================================
 
+use crate::sandbox::{
+    config::SandboxConfig,
+    tag::SandboxTag,
+};
 use ::anyhow::Result;
-use ::hwloc::HwLoc;
+use ::log::{
+    debug,
+    error,
+};
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
@@ -20,7 +27,6 @@ use ::tokio::process::{
     Child,
     Command,
 };
-use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
 // Structures
@@ -32,6 +38,9 @@ pub struct Microvm {
     #[allow(dead_code)]
     // FIXME: the micro VM still does not support processing messages from the control-plane.
     control_plane_stream: SocketStream,
+    /// Configuration for this sandbox instance. It includes a RAII handle around the TCP
+    /// port used for the gateway of this user VM if linuxd is deployed in an L2 VM.
+    _config: SandboxConfig,
 }
 
 //==================================================================================================
@@ -39,53 +48,49 @@ pub struct Microvm {
 //==================================================================================================
 
 impl Microvm {
-    #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
-        id: RawUserVmIdentifier,
-        program: &str,
-        program_args: Option<&str>,
-        addr: &str,
-        control_plane_addr: &str,
-        stderr: Option<&str>,
-        hwloc: Option<HwLoc>,
-        binary_directory: &str,
+    pub async fn spawn(
+        sandbox_tag: SandboxTag,
+        sandbox_config: SandboxConfig,
         control_plane_listener: &mut SocketListener,
         control_plane_poll: &mut Poll,
-        l2: bool,
     ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/microvm.elf", binary_directory),
+            format!("{}/microvm.elf", sandbox_config.binary_directory()),
             ::microvm::args::Args::OPT_LOGFILE.to_string(),
             ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
-            id.to_string(),
+            sandbox_tag.sandbox_id().to_string(),
             ::microvm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/kernel.elf", binary_directory),
+            format!("{}/kernel.elf", sandbox_config.binary_directory()),
             ::microvm::args::Args::OPT_INITRD.to_string(),
-            program.to_string(),
+            sandbox_config.program().to_string(),
             ::microvm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
-            addr.to_string(),
+            sandbox_config.user_vm_sockaddr().to_string(),
             ::microvm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
-            control_plane_addr.to_string(),
+            sandbox_config.control_plane_sockaddr().to_string(),
+            ::microvm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
+            sandbox_config.gateway_sockaddr().to_string(),
         ];
 
-        if l2 {
+        if sandbox_config.l2() {
             user_vm_args.push(::microvm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
             user_vm_args.push("tcp".to_string());
             user_vm_args.push(::microvm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string());
             user_vm_args.push("tcp".to_string());
+            user_vm_args.push(::microvm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string());
+            user_vm_args.push("tcp".to_string());
         }
 
-        if let Some(program_args) = program_args {
+        if let Some(program_args) = sandbox_config.program_args() {
             user_vm_args.push(::microvm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
         }
 
-        if let Some(stderr_file) = stderr {
+        if let Some(stderr_file) = sandbox_config.console_file() {
             user_vm_args.push(::microvm::args::Args::OPT_STDERR.to_string());
             user_vm_args.push(stderr_file.to_string());
         }
 
-        if let Some(hwloc) = hwloc {
+        if let Some(hwloc) = sandbox_config.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
                 "-ac".to_string(),
@@ -104,11 +109,11 @@ impl Microvm {
         debug!(
             "spawning microvm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?} l2={}",
             child.id(),
-            program,
-            program_args,
-            addr,
-            stderr,
-            l2
+            sandbox_config.program(),
+            sandbox_config.program_args(),
+            sandbox_config.user_vm_sockaddr(),
+            sandbox_config.console_file(),
+            sandbox_config.l2(),
         );
 
         // After the user VM has started, accept the incoming connection for the control-plane.
@@ -140,8 +145,9 @@ impl Microvm {
 
         Ok(Self {
             child: Some(child),
-            addr: addr.to_string(),
+            addr: sandbox_config.user_vm_sockaddr().to_string(),
             control_plane_stream,
+            _config: sandbox_config,
         })
     }
 }

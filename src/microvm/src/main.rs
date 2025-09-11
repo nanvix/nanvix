@@ -61,6 +61,7 @@ const CONNECT_TIMEOUT_SLEEP_MS: u64 = 1;
 /// Default socket bind type.
 const DEFAULT_SYSTEM_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
 const DEFAULT_CONTROL_PLANE_SOCKET_TYPE: SocketType = SocketType::Unix;
+const DEFAULT_GATEWAY_SOCKET_TYPE: SocketType = SocketType::Unix;
 
 //==================================================================================================
 // Standalone Functions
@@ -94,11 +95,27 @@ fn main() -> Result<ExitCode> {
         Some(addr) => loop {
             match SocketStream::connect(system_vm_socket_type, addr.clone()) {
                 Ok(stream) => {
-                    let mut blocking_stream: BlockingSocketStream = stream.set_blocking()?;
-                    let new_msg: NewUserVm = NewUserVm::new(args.user_vm_id());
-                    new_msg.send(&mut blocking_stream)?;
+                    let gateway_socket_type: SocketType = match args.gateway_socket_type() {
+                        Some(socket_type) => socket_type,
+                        None => DEFAULT_GATEWAY_SOCKET_TYPE,
+                    };
+                    if let Some(gateway_sockaddr) = args.gateway_addr() {
+                        let mut blocking_stream: BlockingSocketStream = stream.set_blocking()?;
+                        let new_msg: NewUserVm = NewUserVm::new(
+                            args.user_vm_id(),
+                            gateway_sockaddr,
+                            gateway_socket_type,
+                        );
+                        new_msg.send(&mut blocking_stream)?;
 
-                    break Some(Gateway::new(blocking_stream.set_nonblocking()?));
+                        break Some(Gateway::new(blocking_stream.set_nonblocking()?));
+                    } else {
+                        let reason: String = "configured user VM with system VM but without \
+                                              gateway address"
+                            .to_string();
+                        error!("main() {reason}");
+                        anyhow::bail!(reason);
+                    }
                 },
                 // The micro VM is trying to connect before the system VM's listener socket is
                 // responsive.

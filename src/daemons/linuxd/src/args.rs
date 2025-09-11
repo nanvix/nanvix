@@ -25,10 +25,6 @@ pub struct Args {
     user_vm_bind_sockaddr: String,
     /// Server socket address type.
     user_vm_bind_sockaddr_type: Option<String>,
-    /// Socket address linuxd listens to for messages from the gateway.
-    gateway_bind_sockaddr: Option<String>,
-    /// Gateway socket address type.
-    gateway_bind_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
     /// Deployed in an L2 VM?
@@ -50,10 +46,6 @@ impl Args {
     pub const OPT_USER_VM_BIND_SOCKADDR: &'static str = "-user-vm-bind-addr";
     /// Command-line option for setting the socket address type of the bind socket.
     pub const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
-    /// Command-line option for setting socket address of gateway.
-    pub const OPT_GATEWAY_BIND_SOCKADDR: &'static str = "-gateway-bind-addr";
-    /// Command-line option for setting the socket address type of the gateway socket.
-    pub const OPT_GATEWAY_BIND_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for log redirecting.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
     /// Command-line option for signaling deployment in an L2 VM.
@@ -87,8 +79,6 @@ impl Args {
         let mut control_plane_sockaddr_type: Option<String> = None;
         let mut user_vm_bind_sockaddr: String = String::new();
         let mut user_vm_bind_sockaddr_type: Option<String> = None;
-        let mut gateway_bind_sockaddr: Option<String> = None;
-        let mut gateway_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
         let mut l2: bool = false;
 
@@ -110,14 +100,6 @@ impl Args {
                 Self::OPT_USER_VM_BIND_SOCKADDR => {
                     i += 1;
                     user_vm_bind_sockaddr = args[i].clone();
-                },
-                Self::OPT_GATEWAY_BIND_SOCKADDR => {
-                    i += 1;
-                    gateway_bind_sockaddr = Some(args[i].clone());
-                },
-                Self::OPT_GATEWAY_BIND_SOCKET_TYPE => {
-                    i += 1;
-                    gateway_bind_sockaddr_type = Some(args[i].clone());
                 },
                 Self::OPT_USER_VM_BIND_SOCKET_TYPE => {
                     i += 1;
@@ -152,8 +134,6 @@ impl Args {
             control_plane_sockaddr_type,
             user_vm_bind_sockaddr,
             user_vm_bind_sockaddr_type,
-            gateway_bind_sockaddr,
-            gateway_bind_sockaddr_type,
             log_to_file,
             l2,
         })
@@ -171,15 +151,13 @@ impl Args {
     pub fn usage(program_name: &str) {
         println!(
             "Usage: {} {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} \
-             <user-vm-sockaddr> {} <user-vm-socktype> {} <gateway-sockaddr> {} <gateway-socktype>",
+             <user-vm-sockaddr> {} <user-vm-socktype>",
             program_name,
             Self::OPT_LOGFILE,
             Self::OPT_CONTROL_PLANE_SOCKADDR,
             Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             Self::OPT_USER_VM_BIND_SOCKADDR,
             Self::OPT_USER_VM_BIND_SOCKET_TYPE,
-            Self::OPT_GATEWAY_BIND_SOCKADDR,
-            Self::OPT_GATEWAY_BIND_SOCKET_TYPE
         );
     }
 
@@ -233,32 +211,6 @@ impl Args {
     ///
     pub fn user_vm_bind_socket_type(&self) -> Option<String> {
         self.user_vm_bind_sockaddr_type.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the gateway socket address.
-    ///
-    /// # Returns
-    ///
-    /// The socket address of the gateway.
-    ///
-    pub fn gateway_bind_sockaddr(&self) -> Option<String> {
-        self.gateway_bind_sockaddr.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the socket address type of the gateway socket.
-    ///
-    /// # Returns
-    ///
-    /// The socket address type of the gateway socket.
-    ///
-    pub fn gateway_bind_socket_type(&self) -> Option<String> {
-        self.gateway_bind_sockaddr_type.clone()
     }
 
     ///

@@ -101,10 +101,10 @@ nc -lU /tmp/control-plane.socket
 in another terminal, start linuxd:
 
 ```bash
-./bin/linuxd.elf -control-plane-addr /tmp/control-plane.socket -user-vm-bind-addr /tmp/user-vm-bind.socket -gateway-bind-addr /tmp/gw-bind.socket
+./bin/linuxd.elf -control-plane-addr /tmp/control-plane.socket -user-vm-bind-addr /tmp/user-vm-bind.socket
 ```
 
-all `-x-addr` flags have a corresponding `-x-socket-type` flag to switch between `tcp` or `unix` sockets. The default values are `unix`. The `-gateway-bind-addr` is optional, and should only be used if you want to connect to the VM's stdin/stdout.
+all `-x-addr` flags have a corresponding `-x-socket-type` flag to switch between `tcp` or `unix` sockets. The default values are `unix`.
 
 To enable logging, consider prepending the above command with `RUST_LOG=debug` or `RUST_LOG=trace`.
 
@@ -113,16 +113,16 @@ To enable logging, consider prepending the above command with `RUST_LOG=debug` o
 Open another terminal to run the MicroVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
 
 ```bash
-./bin/microvm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-initrd-args <args>]
+./bin/microvm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-gateway-addr /tmp/gw.sock] [-initrd-args <args>]
 ```
 
-If you passed a `-gateway-bind-addr` flag to `linuxd` in step 1, you will need to open a netcat session to connect to it:
+The `-gateway-addr` argument is optional, and should only be used if you want to connect to the VM's stdin/stdout. If you do set it, you next need to open a netcat session to connect to it:
 
 ```bash
-nc -U /tmp/gw-bind.socket
+nc -U /tmp/gw.socket
 ```
 
-For example, the `./bin/echo-c.elf` binary uses the gateway. Inside the netcat terminal, once you have written your message press `Ctrl-D` so that it is flushed to linuxd.
+For example, the `./bin/echo-c.elf` binary uses the gateway because it reads input from stdin. Inside the netcat terminal, once you have written your message press `Ctrl-D` so that it is flushed to linuxd.
 
 Alternatively to an interactive netcat session, you can use something like the following:
 
