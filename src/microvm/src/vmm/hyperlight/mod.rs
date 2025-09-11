@@ -287,8 +287,6 @@ impl Vmm {
             memory_thread_control_rx,
             memory_thread_control_tx,
             add_credit,
-            pause_microvm,
-            resume_microvm,
         );
 
         let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
@@ -340,7 +338,9 @@ impl Vmm {
             memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
-            || Ok(()), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
+            Box::new(pause_microvm),
+            Box::new(resume_microvm),
+            Box::new(|| Ok(())), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
         );
 
         let mut vmm: Vmm = Self {
