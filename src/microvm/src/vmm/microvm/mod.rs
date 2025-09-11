@@ -74,7 +74,7 @@ pub struct Vmm {
     io_thread: Option<JoinHandle<Result<()>>>,
     _memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
-    _microvm: Arc<Mutex<MicroVm>>,
+    _microvm: MicroVm,
     orchestrator: Orchestrator,
 }
 
@@ -172,20 +172,15 @@ impl Vmm {
 
         microvm.reset(rip)?;
 
-        let microvm: Arc<Mutex<MicroVm>> = Arc::new(Mutex::new(microvm));
-
-        let vmem: Arc<Mutex<VirtualMemory>> = microvm
-            .lock()
-            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-            .vmem();
+        let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
 
         vmem.lock()
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .reset_credits()?;
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
-        let vmem_pause_microvm = vmem.clone();
-        let vmem_resume_microvm = vmem.clone();
+        let vmem_pause_microvm: Arc<Mutex<VirtualMemory>> = vmem.clone();
+        let vmem_resume_microvm: Arc<Mutex<VirtualMemory>> = vmem.clone();
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> = memory_thread::spawn(
             memory_thread_data_rx,
             memory_thread_data_tx,
@@ -216,19 +211,16 @@ impl Vmm {
             },
         );
 
-        let microvm_clone: Arc<Mutex<MicroVm>> = microvm.clone();
+        let mut microvm_clone: MicroVm = microvm.clone();
         let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
             // Store the tid so that the caller can send signals to the vCPU thread.
             // SAFETY: we are calling pthread_self() right after creating the thread so this is
             // safe.
             let pthread_id: libc::pthread_t = unsafe { pthread_self() };
-            let mut locked_vm = microvm_clone
-                .lock()
-                .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
-            locked_vm
+            microvm_clone
                 .send_tid(pthread_id)
                 .map_err(|e| anyhow::anyhow!("failed to send tid {e:?}"))?;
-            locked_vm.run()
+            microvm_clone.run()
         });
 
         // Wait right after spawning the vCPU thread such that we populate the pthread id holder
