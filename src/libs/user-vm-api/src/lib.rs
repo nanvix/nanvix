@@ -18,7 +18,10 @@ use ::bincode::{
 };
 use ::log::error;
 use ::std::io;
-use ::syscomm::BlockingSocketStream;
+use ::syscomm::{
+    BlockingSocketStream,
+    SocketType,
+};
 
 //==================================================================================================
 // Types
@@ -44,15 +47,52 @@ pub type RawUserVmIdentifier = u32;
 #[derive(Clone, Debug, Decode, Encode)]
 pub struct NewUserVm {
     user_vm_id: RawUserVmIdentifier,
+    /// Socket address that users can read/write to communicate with the VM's stdin/stdout.
+    gateway_sockaddr: String,
+    gateway_socket_type: SocketType,
 }
 
 impl NewUserVm {
-    pub fn new(user_vm_id: RawUserVmIdentifier) -> Self {
-        Self { user_vm_id }
+    pub fn new(
+        user_vm_id: RawUserVmIdentifier,
+        gateway_sockaddr: String,
+        gateway_socket_type: SocketType,
+    ) -> Self {
+        Self {
+            user_vm_id,
+            gateway_sockaddr,
+            gateway_socket_type,
+        }
     }
 
     pub fn id(&self) -> RawUserVmIdentifier {
         self.user_vm_id
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the gateway socket address.
+    ///
+    /// # Return Value
+    ///
+    /// The gateway socket address.
+    ///
+    pub fn gateway_sockaddr(&self) -> &str {
+        self.gateway_sockaddr.as_ref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the gateway socket type.
+    ///
+    /// # Return Value
+    ///
+    /// The gateway socket type.
+    ///
+    pub fn gateway_socket_type(&self) -> SocketType {
+        self.gateway_socket_type.clone()
     }
 
     ///
@@ -70,8 +110,8 @@ impl NewUserVm {
     /// indicating the reason for the failure.
     ///
     pub fn send(&self, blocking_stream: &mut BlockingSocketStream) -> io::Result<()> {
-        let payload: Vec<u8> = bincode::encode_to_vec(self.user_vm_id, config::standard())
-            .map_err(|encode_error| {
+        let payload: Vec<u8> =
+            bincode::encode_to_vec(self, config::standard()).map_err(|encode_error| {
                 let reason: String =
                     format!("failed to serialize message (error={encode_error:?})");
                 error!("send(): {reason}");

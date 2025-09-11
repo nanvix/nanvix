@@ -1,6 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use crate::sandbox::tcp_port::TcpPort;
 use hwloc::HwLoc;
 
 //==================================================================================================
@@ -8,7 +9,7 @@ use hwloc::HwLoc;
 //==================================================================================================
 
 /// Packs configuration for a sandbox.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SandboxConfig {
     /// Socket address for the control plane nanvixd <-> linuxd.
     control_plane_sockaddr: String,
@@ -30,6 +31,10 @@ pub struct SandboxConfig {
     toolchain_binary_directory: String,
     /// Flag to deploy linuxd in an L2 VM.
     l2: bool,
+    /// TCP port for the gateway in the L2 VM if L2 deployment enabled.
+    // The value is never read, but we keep it around to trigger a port
+    // release upon drop.
+    _gateway_l2_port: Option<TcpPort>,
 }
 
 //==================================================================================================
@@ -54,6 +59,7 @@ impl SandboxConfig {
     /// - `binary_directory`: Path to the binary directory.
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `l2`: Flag to deploy linuxd in an L2 VM.
+    /// - `gateway_l2_port`: Port for the gateway in the L2 VM.
     ///
     /// # Returns
     ///
@@ -71,6 +77,7 @@ impl SandboxConfig {
         binary_directory: &str,
         toolchain_binary_directory: &str,
         l2: bool,
+        gateway_l2_port: Option<TcpPort>,
     ) -> Self {
         Self {
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
@@ -83,6 +90,7 @@ impl SandboxConfig {
             binary_directory: binary_directory.to_string(),
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
             l2,
+            _gateway_l2_port: gateway_l2_port,
         }
     }
 

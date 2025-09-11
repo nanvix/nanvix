@@ -103,7 +103,7 @@ impl SandboxCache {
     pub async fn get(
         &mut self,
         tag: &SandboxTag,
-        config: Option<&SandboxConfig>,
+        config: Option<SandboxConfig>,
         tmp_directory: String,
     ) -> Result<Arc<Microvm>> {
         if !self.user_vm_instances.contains_key(tag) {
@@ -180,14 +180,13 @@ impl SandboxCache {
                         Arc::new(LinuxDaemon::spawn(
                             sandbox_config.control_plane_sockaddr(),
                             sandbox_config.user_vm_sockaddr(),
-                            sandbox_config.gateway_sockaddr(),
                             sandbox_config.hwloc(),
                             sandbox_config.binary_directory(),
                             sandbox_config.toolchain_binary_directory(),
                             control_plane_listener,
                             control_plane_poll,
                             sandbox_config.l2(),
-                            tmp_directory,
+                            tmp_directory.clone(),
                         )?),
                     );
                 }
@@ -195,19 +194,17 @@ impl SandboxCache {
                 // Spawn the user VM that will connect to the linuxd instance.
                 self.user_vm_instances.insert(
                     tag.clone(),
-                    Arc::new(Microvm::spawn(
-                        tag.sandbox_id(),
-                        sandbox_config.program(),
-                        sandbox_config.program_args(),
-                        sandbox_config.user_vm_sockaddr(),
-                        sandbox_config.control_plane_sockaddr(),
-                        sandbox_config.console_file(),
-                        sandbox_config.hwloc(),
-                        sandbox_config.binary_directory(),
-                        control_plane_listener,
-                        control_plane_poll,
-                        sandbox_config.l2(),
-                    )?),
+                    Arc::new(
+                        Microvm::spawn(
+                            tag.clone(),
+                            // Pass ownership of the sandbox config, including the TCP port if
+                            // allocated, to the user VM so that we bind their lifetimes.
+                            sandbox_config,
+                            control_plane_listener,
+                            control_plane_poll,
+                        )
+                        .await?,
+                    ),
                 );
                 self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
             } else {
@@ -272,7 +269,7 @@ impl SandboxCache {
         if let Some(user_vm) = self.user_vm_instances.remove(tag) {
             if Arc::strong_count(&user_vm) != 1 {
                 warn!(
-                    "trying to drop user VM, but there are dangling references to itthis may \
+                    "trying to drop user VM, but there are dangling references to it this may \
                      introduce unexpected behaviour"
                 );
             }

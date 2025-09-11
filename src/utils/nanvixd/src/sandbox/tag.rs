@@ -37,7 +37,7 @@ impl SandboxTag {
         &self.tenant_id
     }
 
-    pub fn sandbox_id(&self) -> u32 {
+    pub fn sandbox_id(&self) -> RawUserVmIdentifier {
         self.sandbox_id
     }
 }

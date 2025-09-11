@@ -16,6 +16,10 @@ use crate::{
     sandbox::{
         config::SandboxConfig,
         tag::SandboxTag,
+        tcp_port::{
+            get_tcp_port_allocator,
+            TcpPort,
+        },
     },
 };
 use ::anyhow::Result;
@@ -99,10 +103,34 @@ impl HttpClient {
 
         let control_plane_sockaddr: String =
             config::control_plane_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
-        let gateway_sockaddr: String =
-            config::gateway_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
         let user_vm_sockaddr: String =
             config::user_vm_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
+
+        // Take a lock on the sandbox cache so that we can get the next available port, and then
+        // get the sandbox from the cache.
+        let mut locked_sandbox_cache = sandbox_cache.lock().await;
+
+        // Work-out the gateway address. We use one per user VM instance.
+        let gateway_l2_port: Option<TcpPort> = if in_l2 {
+            match get_tcp_port_allocator().lock().await.allocate().await {
+                Some(port) => Some(port),
+                None => {
+                    let reason: String = "failed to allocate TCP port for gateway".to_string();
+                    error!("{reason}");
+                    return Err(::anyhow::anyhow!("{reason}"));
+                },
+            }
+        } else {
+            None
+        };
+
+        let gateway_sockaddr: String = config::gateway_sockaddr_builder(
+            tmp_directory,
+            tag.tenant_id(),
+            tag.sandbox_id(),
+            &gateway_l2_port,
+        )?;
+
         let program_args = match message.program_args.len() {
             0 => None,
             _ => Some(message.program_args.clone()),
@@ -119,12 +147,13 @@ impl HttpClient {
             args.binary_directory(),
             args.toolchain_binary_directory(),
             args.l2(),
+            // Pass ownership of the L2 gateway port, if L2 deployment enabled.
+            gateway_l2_port,
         );
 
         // This method will create a sandbox if it is not in the cache.
-        let mut locked_sandbox_cache = sandbox_cache.lock().await;
         let _ = locked_sandbox_cache
-            .get(&tag, Some(&config), args.tmp_directory().to_string())
+            .get(&tag, Some(config), args.tmp_directory().to_string())
             .await?;
 
         Ok(message::NewResponse {
