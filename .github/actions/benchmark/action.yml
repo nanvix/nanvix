@@ -43,6 +43,8 @@ runs:
         if [[ "$bench" == "cold-start-l2" ]]; then
           continue
         fi
+
+        echo "Running benchmark: ${bench} (Microvm)"
         bench_underscore=${bench//-/_}
         ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench} -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_${bench_underscore}_microvm_${{ inputs.arch }}.txt
       done
@@ -85,6 +87,7 @@ runs:
           continue
         fi
 
+        echo "Running benchmark: ${bench} (Hyperlight)"
         bench_underscore=${bench//-/_}
         ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench}  -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:)' > bench_${bench_underscore}_hyperlight_${{ inputs.arch }}.txt
       done
