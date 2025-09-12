@@ -29,17 +29,31 @@ pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 ///
 /// # Description
 ///
-/// Channels used for orchestrating control commands and the state in the snapshotting protocol.
+/// This structure holds the state of the VM, channels used for orchestrating control commands, and
+/// callback functions which implement specific functionality that's different between the MicroVM
+/// and Hyperlight.
 ///
 pub struct Orchestrator {
+    // The state of the VM.
     state: State,
+    // Channel that receives commands from the I/O thread.
     io_control_rx: Receiver<IoControlCommand>,
+    // Channel that sends commands to the I/O thread.
     io_control_tx: Sender<IoControlResponse>,
-    memory_control_rx: Receiver<MemoryControlResponse>,
-    memory_control_tx: Sender<MemoryControlCommand>,
+    // Channel that receives commands from the memory thread.
+    _memory_control_rx: Receiver<MemoryControlResponse>,
+    // Channel that sends commands to the memory thread.
+    _memory_control_tx: Sender<MemoryControlCommand>,
+    // Channel that receives commands from the vCPU thread.
     vcpu_control_rx: Receiver<VcpuControlResponse>,
+    // Channel that sends commands to the vCPU thread.
     vcpu_control_tx: Sender<VcpuControlCommand>,
-    create_snapshot: fn() -> Result<()>,
+    // Callback function to write to the kernel's memory a pause request.
+    pause_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
+    // Callback function to erase a pause request from the kernel's memory.
+    resume_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
+    // Callback function to create a snapshot.
+    create_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
 }
 
 //==================================================================================================
@@ -96,10 +110,7 @@ pub enum IoControlResponse {
 /// Control plane commands from the VMM to the memory thread.
 ///
 #[derive(PartialEq)]
-pub enum MemoryControlCommand {
-    Pause,
-    Resume,
-}
+pub enum MemoryControlCommand {}
 
 ///
 /// # Description
@@ -107,11 +118,7 @@ pub enum MemoryControlCommand {
 /// Control plane command responses from the memory thread to the VMM.
 ///
 #[derive(PartialEq)]
-pub enum MemoryControlResponse {
-    PauseError,
-    ResumeError,
-    ResumeWritten,
-}
+pub enum MemoryControlResponse {}
 
 ///
 /// # Description
@@ -139,6 +146,7 @@ pub enum VcpuControlResponse {
 //==================================================================================================
 
 impl Orchestrator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         io_control_rx: Receiver<IoControlCommand>,
         io_control_tx: Sender<IoControlResponse>,
@@ -146,16 +154,20 @@ impl Orchestrator {
         memory_control_tx: Sender<MemoryControlCommand>,
         vcpu_control_rx: Receiver<VcpuControlResponse>,
         vcpu_control_tx: Sender<VcpuControlCommand>,
-        create_snapshot: fn() -> Result<()>,
+        pause_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
+        resume_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
+        create_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
     ) -> Self {
         Self {
             state: State::PreBoot,
             io_control_rx,
             io_control_tx,
-            memory_control_rx,
-            memory_control_tx,
+            _memory_control_rx: memory_control_rx,
+            _memory_control_tx: memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
+            pause_microvm,
+            resume_microvm,
             create_snapshot,
         }
     }
@@ -283,12 +295,7 @@ impl Orchestrator {
     ///
     fn pause_protocol(&mut self) -> Result<()> {
         // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
-        if let Err(e) = self.memory_control_tx.send(MemoryControlCommand::Pause) {
-            let reason: String =
-                format!("error sending `Pause` to the memory thread (error={e:?})");
-            error!("pause_protocol(): {reason}");
-            anyhow::bail!(reason)
-        }
+        (self.pause_microvm)()?;
         // Wait for the MicroVM to confirm it has paused.
         let start: Instant = Instant::now();
         let mut counter: usize = 1;
@@ -313,23 +320,6 @@ impl Orchestrator {
                     "pause_protocol(): {}ms have passed waiting for `Paused` message from vCPU",
                     TIMEOUT_WARNING_INTERVAL_IN_MS * counter
                 );
-                match self.memory_control_rx.try_recv() {
-                    Ok(MemoryControlResponse::PauseError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
-                    Ok(MemoryControlResponse::ResumeError) => unreachable!(
-                        "Received `ResumeError` during pause protocol: this indicates a protocol \
-                         violation, as `ResumeError` should not be sent while pausing."
-                    ),
-                    Ok(MemoryControlResponse::ResumeWritten) => unreachable!(
-                        "Received `ResumeWritten` during pause protocol: this indicates a \
-                         protocol violation, as `ResumeWritten` should not be sent while pausing."
-                    ),
-                    Err(TryRecvError::Empty) => (),
-                    Err(TryRecvError::Disconnected) => {
-                        let reason: String = "the vmm has disconnected".to_string();
-                        error!("pause_protocol(): {reason}");
-                        anyhow::bail!(reason)
-                    },
-                }
                 counter += 1;
             }
         }
@@ -394,38 +384,8 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn resume_protocol(&mut self) -> Result<()> {
-        // Tell memory thread to write to the kernel
-        self.memory_control_tx.send(MemoryControlCommand::Resume)?;
-        // Wait for confirmation
-        let start: Instant = Instant::now();
-        let mut counter: usize = 1;
-        loop {
-            match self.memory_control_rx.try_recv() {
-                Ok(MemoryControlResponse::ResumeWritten) => break,
-                Ok(MemoryControlResponse::ResumeError) => todo!(), // TODO: graceful shutdown https://github.com/nanvix/nanvix/issues/949
-                Ok(MemoryControlResponse::PauseError) => {
-                    unreachable!(
-                        "Received `PauseError` during resume protocol: this indicates a protocol \
-                         violation, as `PauseError` should not be sent while resuming."
-                    )
-                },
-                Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => {
-                    let reason: String = "the memory thread has disconnected".to_string();
-                    error!("resume_protocol(): {reason}");
-                    anyhow::bail!(reason)
-                },
-            }
-            // Log a warning and increment the counter every TIMEOUT_WARNING_INTERVAL_IN_MS ms.
-            let elapsed_time: usize = start.elapsed().as_millis() as usize;
-            if elapsed_time > TIMEOUT_WARNING_INTERVAL_IN_MS * counter {
-                warn!(
-                    "{}ms have passed waiting for `ResumeWritten`",
-                    TIMEOUT_WARNING_INTERVAL_IN_MS * counter
-                );
-                counter += 1;
-            }
-        }
+        // Write to the kernel a pause is no longer requested.
+        (self.resume_microvm)()?;
         // Tell microvm to resume
         self.vcpu_control_tx.send(VcpuControlCommand::Resume)?;
         self.state = State::Running;

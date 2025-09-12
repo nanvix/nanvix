@@ -191,24 +191,6 @@ impl Vmm {
                     .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                     .add_credit()
             },
-            move || {
-                vmem_pause_microvm
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
-                    .write_bytes(
-                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
-                        &::config::microvm::PAUSE_REQUEST.to_le_bytes(),
-                    )
-            },
-            move || {
-                vmem_resume_microvm
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
-                    .write_bytes(
-                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
-                        &::config::microvm::RUNNING.to_le_bytes(),
-                    )
-            },
         );
 
         let mut microvm_clone: MicroVm = microvm.clone();
@@ -245,7 +227,25 @@ impl Vmm {
             memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
-            || Ok(()), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
+            Box::new(move || {
+                vmem_pause_microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .write_bytes(
+                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                        &::config::microvm::PAUSE_REQUEST.to_le_bytes(),
+                    )
+            }),
+            Box::new(move || {
+                vmem_resume_microvm
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("failed to acquire lock {:?}", e))?
+                    .write_bytes(
+                        ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
+                        &::config::microvm::RUNNING.to_le_bytes(),
+                    )
+            }),
+            Box::new(|| Ok(())), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
         );
 
         let mut vmm: Vmm = Self {
