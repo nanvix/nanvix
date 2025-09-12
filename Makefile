@@ -1184,6 +1184,11 @@ rust-lint-check-microvm:
 # List of supported functions in hyperlight.
 HYPERLIGHT_WHITELIST := echo-c echo-cpp echo-rust-nostd hello-c hello-cpp
 
+# List of supported functions in the L2 VM.
+# FIXME (#986): modify tests such that they don't rely on linuxd being invoked
+# from the root of the source tree.
+MICROVM_L2_BLOCKLIST := dlfcn-c file-c file-rust python3
+
 comma:=,
 
 define TEST_RULE
@@ -1195,32 +1200,40 @@ ifeq ($(MACHINE),hyperlight)
 		if [ `stat -c%s "$(1)/$(2)$(3)"` -gt 16777216 ]; then \
 			echo "\033[31mWarning: $(1)/$(2)$(3) exceeds 16 MB, skipping test.\033[0m"; \
 		else \
-			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT); \
+			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT) $(7); \
 		fi; \
 	else \
 		echo "\033[31mWarning: Skipping $(2) on hyperlight (not supported).\033[0m"; \
 	fi
 else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT)
+ifeq ($(L2_VM),yes)
+		if printf '%s\n' $(MICROVM_L2_BLOCKLIST) | grep -Fxq -- "$(2)"; then \
+			echo "\033[31mWarning: Skipping $(2) on microvm L2 (not supported).\033[0m"; \
+		else \
+			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT) $(7); \
+		fi
+else
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT) $(7)
+endif
 endif
 endif
 endef
 
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'','["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'','["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','[]','Hello$(comma) world from C!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','[]','Hello$(comma) world from C++!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),arch-rust,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','["hello world!"]','hello world!','true'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'','["hello world!"]','hello world!','true'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'','["hello world!"]','hello world!','true'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','[]','Hello$(comma) world from C!','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','[]','Hello$(comma) world from C++!','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),arch-rust,.elf,'','[]','ok','false'))
+$(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!','false'))
 
 define WASM_TEST_RULE
 test-$(1): all
