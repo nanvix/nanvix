@@ -13,6 +13,14 @@ mod timer;
 // Exports
 //==================================================================================================
 
+pub use exit::*;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::vmm::microvm::kvm::partition::VirtualPartition;
+use ::anyhow::Result;
 use ::arch::cpu::{
     cpuid::{
         CPUID_FEATURES,
@@ -30,22 +38,16 @@ use ::kvm_bindings::{
     CpuId,
     KVM_MAX_CPUID_ENTRIES,
     kvm_fpu,
-};
-pub use exit::*;
-
-//==================================================================================================
-// Imports
-//==================================================================================================
-
-use crate::vmm::microvm::kvm::partition::VirtualPartition;
-use ::anyhow::Result;
-use ::kvm_bindings::{
     kvm_regs,
     kvm_sregs,
 };
 use ::kvm_ioctls::{
     VcpuExit,
     VcpuFd,
+};
+use ::serde::{
+    Deserialize,
+    Serialize,
 };
 use ::std::sync::{
     Arc,
@@ -85,6 +87,16 @@ pub struct VirtualProcessor {
     online: bool,
     /// Exit status code.
     exit_status: u16,
+}
+
+///
+/// # Description
+///
+/// Virtual CPU state that can be serialized and saved to disk.
+///
+#[derive(Serialize, Deserialize)]
+pub struct VirtualProcessorState {
+    // TODO: fill struct with relevant state https://github.com/nanvix/nanvix/issues/947
 }
 
 impl VirtualProcessor {
@@ -379,6 +391,39 @@ impl VirtualProcessor {
             return Err(anyhow::anyhow!(reason));
         }
 
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Captures the current state of the virtual processor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, returns the current processor state that can be serialized and
+    /// saved to a file. Otherwise, returns an error.
+    ///
+    pub fn get_state(&self) -> Result<VirtualProcessorState> {
+        // TODO: get virtual processor state https://github.com/nanvix/nanvix/issues/947
+        Ok(VirtualProcessorState {})
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Restores the virtual processor to a previously saved state.
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: Processor state to restore.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, returns empty. Otherwise, returns an error.
+    ///
+    pub fn _set_state(&mut self, _state: VirtualProcessorState) -> Result<()> {
+        // TODO: set virtual processor state https://github.com/nanvix/nanvix/issues/948
         Ok(())
     }
 }
