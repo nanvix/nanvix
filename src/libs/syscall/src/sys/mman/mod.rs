@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
         mod syscalls;
         pub use self::syscalls::{
             mmap::mmap,
+            mprotect::mprotect,
             munmap::munmap,
         };
         pub mod bindings;
