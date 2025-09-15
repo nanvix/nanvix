@@ -70,6 +70,8 @@ int main(int argc, const char *argv[])
 
     test_sbrk();
     test_mmap_munmap();
+    test_malloc_free();
+    test_aligned_alloc_free();
 
     // Write magic string to signal that the test passed.
     {
