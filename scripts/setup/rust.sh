@@ -84,7 +84,7 @@ export DESTDIR=${TOOLCHAIN_DIR}
     --release-channel=nightly \
     --disable-docs \
     --disable-compiler-docs \
-    --set llvm.download-ci-llvm=true \
+    --set llvm.download-ci-llvm=false \
     --enable-cargo-native-static \
     --target=x86_64-unknown-linux-gnu,wasm32-wasip1,i686-unknown-nanvix \
     --set change-id=$CHANGE_ID
