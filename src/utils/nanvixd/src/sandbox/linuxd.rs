@@ -24,7 +24,6 @@ use ::log::{
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
-    thread,
     time::Duration,
 };
 use ::syscomm::{
@@ -37,13 +36,6 @@ use ::tokio::process::{
     Child,
     Command,
 };
-
-/// When deploying linuxd from a snapshot of an L2 VM, a few operations require polling. We want to
-/// avoid nanvixd looping forever as it is a critical piece in the control-plane, so we set a
-/// maximum number of retires.
-const MAX_NUM_RETRIES: u32 = 1000;
-/// Period to sleep between retries.
-const BACKOFF_SLEEP_MS: u32 = 1;
 
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
 /// triggers a readable event in the receiving socket should work.
@@ -78,23 +70,17 @@ impl LinuxDaemon {
             "\r\n",
         );
 
-        let mut retries: u32 = 0;
-        let mut clh_api_socket: BlockingSocketStream = loop {
-            if retries >= MAX_NUM_RETRIES {
-                let reason: &str = "timed-out connecting to CLH API socket";
+        let mut clh_api_socket: BlockingSocketStream = match SocketStream::connect_timeout(
+            SocketType::Unix,
+            clh_api_socket_path.clone(),
+            Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
+        ) {
+            Ok(stream) => stream.set_blocking()?,
+            Err(e) => {
+                let reason: String = format!("error connecting to CLH API socket (error={e:?})");
                 error!("{reason}");
                 return Err(anyhow::anyhow!(reason));
-            }
-
-            match SocketStream::connect(SocketType::Unix, clh_api_socket_path.clone()) {
-                Ok(stream) => {
-                    break stream.set_blocking()?;
-                },
-                Err(_) => {
-                    thread::sleep(Duration::from_millis(BACKOFF_SLEEP_MS.into()));
-                    retries += 1;
-                },
-            }
+            },
         };
 
         // Write HTTP request.

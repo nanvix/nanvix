@@ -152,11 +152,19 @@ impl Microvm {
         } else {
             SocketType::Unix
         };
-        let _ = SocketStream::connect_timeout(
+        SocketStream::connect_timeout(
             socket_type,
             sandbox_config.gateway_sockaddr().to_string(),
             Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
-        )?;
+        )
+        .map_err(|e| {
+            let reason: String = format!(
+                "error establishing throw-away connection to gateway socket (addr={}, error={e:?})",
+                sandbox_config.gateway_sockaddr()
+            );
+            error!("{reason}");
+            anyhow::anyhow!(reason)
+        })?;
         debug!(
             "nanvixd established throw-away gateway connection (addr={})",
             sandbox_config.gateway_sockaddr()
