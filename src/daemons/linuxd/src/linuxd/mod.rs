@@ -243,6 +243,10 @@ impl LinuxDaemon {
                                 return Err(Self::log_and_error(ErrorCode::IoErr, reason));
                             },
                         };
+                    trace!(
+                        "linuxd started gateway listener for user VM (vm_id={user_vm_id}, \
+                         addr={gateway_sockaddr})"
+                    );
 
                     // Accept one connection. We use an ephemeral poll, but this step will become
                     // unnecessary when we introduce support for lazily accepting a gateway
@@ -263,6 +267,25 @@ impl LinuxDaemon {
                                 "failed to register gateway listener to poll",
                             )
                         })?;
+
+                    // Accept a connection once from nanvixd, and discard it. This lets nanvixd
+                    // know, reliably, that the gateway is ready to accept connections and it can
+                    // return its address to users without risk of race conditions.
+                    gateway_listener
+                        .accept_timeout(
+                            &mut gateway_poll,
+                            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
+                        )
+                        .map_err(|_| {
+                            Self::log_and_error(
+                                ErrorCode::IoErr,
+                                "error accepting throw-away gateway connection from nanvixd",
+                            )
+                        })?;
+                    trace!("linuxd accepted throw-away gateway connection from nanvixd");
+
+                    // Now accept the real gateway connection. Once we move to lazily initialized
+                    // connection, the next bit of logic will be moved elsewhere.
                     let gateway_stream: Option<SocketStream> = Some(
                         gateway_listener
                             .accept_timeout(

@@ -22,6 +22,7 @@ use ::std::{
 use ::syscomm::{
     SocketListener,
     SocketStream,
+    SocketType,
 };
 use ::tokio::process::{
     Child,
@@ -142,6 +143,24 @@ impl Microvm {
             },
         };
         debug!("nanvixd received connection from the user VM's control-plane socket");
+
+        // Before returning, we must make sure that the gateway listener socket in linuxd is ready
+        // to accept connections. The way we do so, is by actually connecting once to it, and
+        // ignoring the resulting stream.
+        let socket_type: SocketType = if sandbox_config.l2() {
+            SocketType::Tcp
+        } else {
+            SocketType::Unix
+        };
+        let _ = SocketStream::connect_timeout(
+            socket_type,
+            sandbox_config.gateway_sockaddr().to_string(),
+            Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
+        )?;
+        debug!(
+            "nanvixd established throw-away gateway connection (addr={})",
+            sandbox_config.gateway_sockaddr()
+        );
 
         Ok(Self {
             child: Some(child),
