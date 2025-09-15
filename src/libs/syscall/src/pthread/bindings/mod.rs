@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+pub mod pthread_atfork;
 pub mod pthread_attr_destroy;
 pub mod pthread_attr_getstack;
 pub mod pthread_attr_init;
