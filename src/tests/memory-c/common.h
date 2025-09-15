@@ -12,4 +12,10 @@ extern void test_sbrk(void);
 // Tests whether we can map and unmap memory using `mmap()` and `munmap()`.
 extern void test_mmap_munmap(void);
 
+// Tests whether we can allocate and free memory using `malloc()` and `free()`.
+extern void test_malloc_free(void);
+
+// Tests whether we can allocate and free aligned memory using `aligned_alloc()` and `free()`.
+extern void test_aligned_alloc_free(void);
+
 #endif
