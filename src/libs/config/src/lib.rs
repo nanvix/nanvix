@@ -79,6 +79,14 @@ pub mod syscomm {
     /// These races should be in the order of milliseconds.
     ///
     pub const ACCEPT_TIMEOUT_SECS: u64 = 1;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the timeout we should use when connecting to a socket. This timeout is used
+    /// instead of manually retrying in a loop.
+    ///
+    pub const CONNECT_TIMEOUT_SECS: u64 = 2;
 }
 
 //==================================================================================================

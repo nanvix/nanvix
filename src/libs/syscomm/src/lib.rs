@@ -36,6 +36,7 @@ use ::std::{
         Read,
         Write,
     },
+    thread,
     time::{
         Duration,
         Instant,
@@ -48,6 +49,11 @@ use ::std::{
 
 /// Blocking sockets use a per-socket poll structure with only one entry with this token.
 const BLOCKING_THREAD_TOKEN: Token = Token(0);
+
+/// When connecting to a socket stream with a timeout, we may need to sleep for a bit until the
+/// socket is in a state that we can poll on. This happens at the very beginning, and may be in the
+/// critical path, so we want to sleep for very little.
+const CONNECT_TIMEOUT_SLEEP_MICROS: u64 = 250;
 
 //==================================================================================================
 // Imports
@@ -235,6 +241,171 @@ impl SocketStream {
                 let stream: UnixStream = UnixStream::connect(addr)?;
                 Ok(SocketStream::Unix(stream))
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Helper method to work out if a connect error is transient (i.e. benign) or it indicates a
+    /// real issue.
+    ///
+    /// # Arguments
+    ///
+    /// - `typ`: type of socket we are using.
+    /// - `e`: error as returned by `connect`.
+    ///
+    /// # Returns
+    ///
+    /// A boolean indicating whether the error is transient or not.
+    ///
+    fn is_transient_connect_err(typ: SocketType, e: &io::Error) -> bool {
+        use io::ErrorKind::*;
+        match typ {
+            SocketType::Unix => match e.kind() {
+                NotFound                // socket path not created yet (ENOENT).
+                | ConnectionRefused     // file exists but no listener (stale/unlinked).
+                | PermissionDenied      // can be transient due to races with chmod/chown.
+                => true,
+                _ => false,
+            },
+            SocketType::Tcp => match e.kind() {
+                ConnectionRefused      // listener not up yet.
+                | AddrNotAvailable     // iface not ready yet.
+                | NetworkUnreachable   // routing/bridge not ready yet.
+                | HostUnreachable      // L2/L3 not ready yet.
+                | TimedOut             // may be reported immediately.
+                => true,
+                _ => false,
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Connect to a socket and wait for it to be writable with a timeout.
+    ///
+    /// # Arguments
+    ///
+    /// - `typ`: Type of socket.
+    /// - `addr`: Socket address.
+    /// - `timeout`: Timeout to wait for the socket to be ready.
+    ///
+    /// # Returns
+    ///
+    /// The connected, and ready, socket stream or an error if timed-out.
+    ///
+    pub fn connect_timeout(
+        typ: SocketType,
+        addr: String,
+        timeout: Duration,
+    ) -> Result<SocketStream, SocketError> {
+        let deadline: Instant = Instant::now() + timeout;
+
+        // Connect to the socket and guard against transient errors where the socket may not be
+        // ready yet. Note that a successful connect does not mean that the socket is ready to be
+        // written-to or read-from.
+        let mut stream: SocketStream = loop {
+            match SocketStream::connect(typ, addr.clone()) {
+                Ok(stream) => {
+                    break stream;
+                },
+                Err(e) => {
+                    if !Self::is_transient_connect_err(typ, &e) {
+                        let reason: String =
+                            format!("error connecting to socket (addr={addr}, error={e:?})");
+                        error!("{reason}");
+                        return Err(io::Error::other(reason).into());
+                    }
+
+                    // Transient error, wait for a short amount of time. We cannot wait on a poll
+                    // as we don't even have a socket stream.
+                    if Instant::now() >= deadline {
+                        let reason: String =
+                            format!("timed-out calling connect (addr={addr}, error={e:?})");
+                        error!("{reason}");
+                        return Err(io::Error::new(ErrorKind::TimedOut, reason).into());
+                    }
+
+                    thread::sleep(Duration::from_micros(CONNECT_TIMEOUT_SLEEP_MICROS));
+
+                    continue;
+                },
+            }
+        };
+
+        // Register the socket for WRITABLE state, which indicates that CONNECT has completed
+        // successfully.
+        let mut poll: Poll = Poll::new().map_err(|e| {
+            let reason: String = format!("failed to create new poll (error={e:?})");
+            error!("{reason}");
+            SocketError {
+                error: io::Error::other(reason),
+            }
+        })?;
+        {
+            match &mut stream {
+                SocketStream::Tcp(s) => {
+                    poll.registry()
+                        .register(s, BLOCKING_THREAD_TOKEN, Interest::WRITABLE)?
+                },
+                SocketStream::Unix(s) => {
+                    poll.registry()
+                        .register(s, BLOCKING_THREAD_TOKEN, Interest::WRITABLE)?
+                },
+            }
+        }
+
+        let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+        loop {
+            let now: Instant = Instant::now();
+            if now >= deadline {
+                // Timed-out. Cleanup registration before returning.
+                let _ = match &mut stream {
+                    SocketStream::Tcp(s) => poll.registry().deregister(s),
+                    SocketStream::Unix(s) => poll.registry().deregister(s),
+                };
+
+                let reason: String = "connect timed-out waiting for completion".to_string();
+                error!("{reason}");
+                return Err(io::Error::new(ErrorKind::TimedOut, reason).into());
+            }
+
+            events.clear();
+            poll.poll(&mut events, Some(deadline - now))?;
+
+            // If anything became writable, check SO_ERROR to learn the result.
+            if !events.is_empty() {
+                let res: Option<io::Error> = match &stream {
+                    SocketStream::Tcp(s) => s.take_error()?,
+                    SocketStream::Unix(s) => s.take_error()?,
+                };
+                match res {
+                    None => {
+                        // Success.
+                        match &mut stream {
+                            SocketStream::Tcp(s) => poll.registry().deregister(s)?,
+                            SocketStream::Unix(s) => poll.registry().deregister(s)?,
+                        }
+                        return Ok(stream);
+                    },
+                    Some(e) => {
+                        // Error from connect.
+                        let _ = match &mut stream {
+                            SocketStream::Tcp(s) => poll.registry().deregister(s),
+                            SocketStream::Unix(s) => poll.registry().deregister(s),
+                        };
+
+                        let reason: String =
+                            format!("error connecting to stream with timeout (error={e:?})");
+                        error!("{reason}");
+
+                        return Err(io::Error::other(reason).into());
+                    },
+                }
+            }
+            // Otherwise loop until deadline.
         }
     }
 
