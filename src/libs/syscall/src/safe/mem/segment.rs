@@ -20,6 +20,7 @@ use ::sys::{
     kcall,
     kcall::mm::{
         mmap,
+        mprotect,
         munmap,
     },
     mm::{
@@ -187,6 +188,36 @@ impl MemorySegment {
 
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Changes protection of the memory segment.
+    ///
+    /// # Parameters
+    ///
+    /// - `prot`: New protection flags.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns empty. On failure, it returns an `Error` indicating the
+    /// reason for the failure.
+    ///
+    pub fn set_protection(&mut self, prot: AccessPermission) -> Result<(), Error> {
+        ::syslog::trace!(
+            "set_protection(): base={:#x?}, capacity={:?}, prot={:?}",
+            self.base.into_raw_value(),
+            self.capacity,
+            prot
+        );
+
+        protect_range(
+            self.pid,
+            self.base,
+            VirtualAddress::from_raw_value(self.base.into_raw_value() + self.capacity),
+            prot,
+        )
+    }
 }
 
 impl Drop for MemorySegment {
@@ -287,4 +318,37 @@ fn unmap_range(
     }
 
     ret
+}
+
+/// Changes protection of pages in the range [start, end).
+fn protect_range(
+    pid: ProcessIdentifier,
+    start: VirtualAddress,
+    end: VirtualAddress,
+    prot: AccessPermission,
+) -> Result<(), Error> {
+    ::syslog::trace!("protect_range(): start={:X?}, end={:X?}, prot={:?}", start, end, prot);
+
+    debug_assert!(start.is_aligned(PAGE_ALIGNMENT));
+    debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
+    debug_assert!(start < end);
+
+    let start: usize = start.into_raw_value();
+    let end: usize = end.into_raw_value();
+    for vaddr in (start..end).step_by(PAGE_SIZE) {
+        debug_assert!(vaddr != end);
+
+        let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
+        if let Err(error) = mprotect(pid, vaddr, prot) {
+            ::syslog::error!(
+                "protect_range(): failed to change protection of page at {:X?}, skipping \
+                 (error={:?})",
+                vaddr,
+                error
+            );
+            return Err(error);
+        }
+    }
+
+    Ok(())
 }
