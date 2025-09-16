@@ -14,7 +14,6 @@ use ::arch::mem::PAGE_ALIGNMENT;
 use ::spin::MutexGuard;
 use ::sys::{
     error::Error,
-    mm,
     mm::{
         Address,
         VirtualAddress,
@@ -22,7 +21,10 @@ use ::sys::{
 };
 use config::memory_layout::USER_MMAPPED_END_RAW;
 use sys::{
-    config::memory_layout::USER_MMAP_BASE,
+    config::memory_layout::{
+        USER_MMAPPED_END,
+        USER_MMAP_BASE,
+    },
     error::ErrorCode,
 };
 
@@ -53,41 +55,97 @@ use sys::{
 pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     ::syslog::trace!("munmap(): base={base:?}, length={length}");
 
-    // Align up length to page size.
-    let length: usize = mm::align_up(length, PAGE_ALIGNMENT);
-
     // Check if the base address is valid.
-    match base.into_raw_value().checked_add(length) {
-        Some(end_addr) if base >= USER_MMAP_BASE && end_addr <= USER_MMAPPED_END_RAW => {},
-        _ => {
-            let reason: &str = "base address out of bounds";
+    if base < USER_MMAP_BASE || base >= USER_MMAPPED_END {
+        let reason: &str = "invalid base address";
+        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    // Check if base address is page-aligned.
+    if !base.is_aligned(PAGE_ALIGNMENT) {
+        let reason: &str = "base address is not page-aligned";
+        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    // Check if end address is invalid.
+    let end: VirtualAddress = match base.into_raw_value().checked_add(length) {
+        Some(end) if end > USER_MMAPPED_END_RAW => {
+            let reason: &str = "invalid end address";
             syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
+        None => {
+            let reason: &str = "end address overflow";
+            syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+        Some(base_end) => VirtualAddress::from_raw_value(base_end),
+    };
+
+    // Check if length is page-aligned.
+    if length % usize::from(PAGE_ALIGNMENT) != 0 {
+        let reason: &str = "length is not page-aligned";
+        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
     // Lock the segments map.
     let mut segments: MutexGuard<'_, BTreeMap<VirtualAddress, MemorySegment>> =
         MMAP_SEGMENTS.lock();
 
-    // Check if the segment exists.
-    if let Some(segment) = segments.get(&base) {
-        // Check if the segment is large enough.
-        if segment.capacity() < length {
-            let reason: &str = "segment is too small";
+    // Find the segment that contains the base address.
+    // Use BTreeMap's range query to efficiently find the segment containing the base address.
+    let segment_base: Option<VirtualAddress> =
+        segments
+            .range(..=base)
+            .next_back()
+            .and_then(|(seg_base, segment)| {
+                let seg_end: Option<VirtualAddress> = seg_base
+                    .into_raw_value()
+                    .checked_add(segment.capacity())
+                    .map(VirtualAddress::from_raw_value);
+                match seg_end {
+                    Some(seg_end_addr) => {
+                        if base >= *seg_base && end <= seg_end_addr {
+                            Some(*seg_base)
+                        } else {
+                            None
+                        }
+                    },
+                    // Overflow occurred, treat as not found.
+                    None => None,
+                }
+            });
+
+    match segment_base {
+        Some(segment_base) => {
+            let segment: &MemorySegment = &segments[&segment_base];
+
+            // Check for partial mapping.
+            if segment.capacity() != length || segment.base() != base {
+                syslog::warn!(
+                    "munmap(): partial unmapping is not supported (base={base:?}, \
+                     length={length}, segment_base={segment_base:?}, segment_capacity={})",
+                    segment.capacity()
+                );
+
+                // TODO (#992): split the segment and fall through instead of returning.
+                return Ok(());
+            }
+
+            // Remove the segment from the map.
+            debug_assert!(segments.remove(&segment_base).is_some());
+
+            // Segment is unmapped when this scope ends.
+
+            Ok(())
+        },
+        None => {
+            let reason: &str = "segment not found";
             syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        // Remove the segment from the map.
-        segments.remove(&base);
-
-        // Segment is unmapped when this scope ends.
-
-        Ok(())
-    } else {
-        let reason: &str = "segment not found";
-        syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
-        Err(Error::new(ErrorCode::InvalidArgument, reason))
+            Err(Error::new(ErrorCode::InvalidArgument, reason))
+        },
     }
 }
