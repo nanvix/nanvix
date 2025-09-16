@@ -122,6 +122,13 @@ pub fn mprotect(
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             };
 
+            // Check if the segment is large enough.
+            if segment.capacity() < len || base < segment.base() {
+                let reason: &'static str = "segment is too small or base not aligned with segment";
+                ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+
             // Check for partial mapping.
             if segment.capacity() != len || segment.base() != base {
                 ::syslog::warn!(
