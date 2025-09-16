@@ -54,6 +54,22 @@ SECTIONS
 		__TLS_END = .;
 	}
 
+	/* Exception handling frame header */
+	.eh_frame_hdr : ALIGN(4)
+	{
+		PROVIDE(__eh_frame_hdr_start = .);
+		KEEP(*(.eh_frame_hdr))
+		PROVIDE(__eh_frame_hdr_end = .);
+	}
+
+	/* Exception handling frames */
+	.eh_frame : ALIGN(4)
+	{
+		PROVIDE(__eh_frame_start = .);
+		KEEP(*(.eh_frame))
+		PROVIDE(__eh_frame_end = .);
+	}
+
 	/* Discarded. */
 	/DISCARD/ :
 	{
