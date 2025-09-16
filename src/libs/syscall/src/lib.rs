@@ -37,6 +37,9 @@ pub use ::sysalloc;
 
 pub mod errno;
 
+/// Definitions for internet operations.
+pub mod arpa;
+
 /// Format of directory entries
 pub mod dirent;
 
