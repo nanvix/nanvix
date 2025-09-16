@@ -37,21 +37,45 @@ use ::arch::cpu::{
 use ::kvm_bindings::{
     CpuId,
     KVM_MAX_CPUID_ENTRIES,
+    Msrs,
+    Xsave,
+    kvm_clock_data,
+    kvm_debugregs,
     kvm_fpu,
+    kvm_irqchip,
+    kvm_lapic_state,
+    kvm_mp_state,
+    kvm_msr_entry,
+    kvm_pit_state2,
     kvm_regs,
     kvm_sregs,
+    kvm_vcpu_events,
+    kvm_xcrs,
+    kvm_xsave,
 };
 use ::kvm_ioctls::{
+    Cap,
+    Kvm,
     VcpuExit,
     VcpuFd,
+    VmFd,
 };
 use ::serde::{
     Deserialize,
     Serialize,
 };
-use ::std::sync::{
-    Arc,
-    Mutex,
+use ::std::{
+    mem,
+    slice,
+    sync::{
+        Arc,
+        Mutex,
+        MutexGuard,
+    },
+};
+use ::vmm_sys_util::fam::{
+    FamStruct,
+    FamStructWrapper,
 };
 use irqchip::IrqChip;
 use timer::Timer;
@@ -76,7 +100,7 @@ const FP_TAG_WORD_DEFAULT: u8 = 0xff;
 ///
 pub struct VirtualProcessor {
     /// Handle to underlying virtual partition.
-    _partition: Arc<Mutex<VirtualPartition>>,
+    partition: Arc<Mutex<VirtualPartition>>,
     /// Handle to underlying virtual processor.
     fd: VcpuFd,
     /// Handle to underlying interrupt controller.
@@ -94,9 +118,57 @@ pub struct VirtualProcessor {
 ///
 /// Virtual CPU state that can be serialized and saved to disk.
 ///
+/// The virtual CPU is composed of three structs from the `kvm_*` crates:
+/// - `KVM`: A field of `VirtualPartition`.
+/// - `VcpuFd`: A field of `VirtualProcessors`.
+/// - `VmFd`: A field of `VirtualPartition`.
+///
+/// This structure holds the state that can be extracted from `VcpuFd` and `VmFd`, as `KVM` does not
+/// hold state directly. Also, it holds the direct fields of `VirtualProcessor`: `online` and
+/// `exit_status`.
+///
 #[derive(Serialize, Deserialize)]
 pub struct VirtualProcessorState {
-    // TODO: fill struct with relevant state https://github.com/nanvix/nanvix/issues/947
+    // `VirtualProcessor` direct state:
+    /// Whether the processor is online.
+    online: bool,
+    /// Exit status code.
+    exit_status: u16,
+
+    // `VirtualProcessor` indirect state:
+    // VcpuFd state:
+    /// General purpose registers.
+    regs: kvm_regs,
+    /// System registers (segment registers, control registers, etc.).
+    sregs: kvm_sregs,
+    /// FPU/SIMD state. Natively a `kvm_bindings::kvm_fpu`.
+    fpu: Vec<u8>,
+    /// CPUID table. Natively a `kvm_bindings::CpuId`.
+    cpuid: Vec<u8>,
+    /// Local Advanced Programmable Interrupt Controller.
+    lapic: kvm_lapic_state,
+    /// Model-Specific RegisterS. Natively a `kvm_bindings::Msrs`
+    msrs: Vec<u8>,
+    /// MultiProcessing State.
+    mp_state: kvm_mp_state,
+    /// KVM's xsave struct (x86 only). Natively a `kvm_bindings::Xsave`.
+    xsave: Vec<u8>,
+    /// XCRS (x86 only).
+    xcrs: kvm_xcrs,
+    /// Debug registers (x86 only).
+    debugregs: kvm_debugregs,
+    /// Pending exceptions, interrupts, NMIs, and related states.
+    vcpu_events: kvm_vcpu_events,
+    /// TSC frequency in kHz.
+    tsc_khz: u32,
+
+    // VmFd state:
+    /// Interrupt controller.
+    irqchip: kvm_irqchip,
+    /// Timer.
+    pit_state: kvm_pit_state2,
+    /// Timestamp of kvmclock.
+    clock_data: kvm_clock_data,
 }
 
 impl VirtualProcessor {
@@ -132,7 +204,7 @@ impl VirtualProcessor {
         fd.set_fpu(&fpu)?;
 
         Ok(Self {
-            _partition: partition,
+            partition,
             fd,
             _irqchip: irqchip,
             _timer: timer,
@@ -402,14 +474,257 @@ impl VirtualProcessor {
     ///
     /// Captures the current state of the virtual processor.
     ///
+    /// Both `IrqChip` and `Timer` are components of the `VirtualPartition`. They must be saved
+    /// through the `VmFd` API (`get_irq_chip()` and `get_pit2()`). This function extracts state
+    /// from `VcpuFd` and `VmFd`.
+    ///
     /// # Returns
     ///
     /// Upon successful completion, returns the current processor state that can be serialized and
     /// saved to a file. Otherwise, returns an error.
     ///
     pub fn get_state(&self) -> Result<VirtualProcessorState> {
-        // TODO: get virtual processor state https://github.com/nanvix/nanvix/issues/947
-        Ok(VirtualProcessorState {})
+        // Plain getters:
+        let regs: kvm_regs = match self.fd.get_regs() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting kvm_regs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let sregs: kvm_sregs = match self.fd.get_sregs() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting sregs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let fpu: kvm_fpu = match self.fd.get_fpu() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting fpu (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let cpuid = match self.fd.get_cpuid2(KVM_MAX_CPUID_ENTRIES) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting cpuid (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let lapic: kvm_lapic_state = match self.fd.get_lapic() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting lapic (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let mp_state: kvm_mp_state = match self.fd.get_mp_state() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting mp_state (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let xcrs: kvm_xcrs = match self.fd.get_xcrs() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting xcrs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let debugregs: kvm_debugregs = match self.fd.get_debug_regs() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting debugregs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let vcpu_events: kvm_vcpu_events = match self.fd.get_vcpu_events() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting vcpu_events (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let tsc_khz: u32 = match self.fd.get_tsc_khz() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting tsc_khz (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // For the rest of the state, we need the partition's `Kvm` or `VmFd`.
+        let locked_partition: MutexGuard<'_, VirtualPartition> = self
+            .partition
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+
+        // Variable length (FAM):
+        // Get KVM to find out the number of entries in FAMs:
+        let kvm: &Kvm = locked_partition.kvm();
+
+        // Build `Msrs` out of entries.
+        let msr_index_list = match kvm.get_msr_feature_index_list() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting msr_index_list (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let msr_entries: Vec<kvm_msr_entry> = msr_index_list
+            .as_slice()
+            .iter()
+            .map(|idx| kvm_msr_entry {
+                index: *idx,
+                data: 0,
+                ..Default::default()
+            })
+            .collect();
+        let mut msrs: Msrs = match Msrs::from_entries(&msr_entries) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed creating msrs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        match self.fd.get_msrs(&mut msrs) {
+            Ok(nmsrs_read) => {
+                // Sanity check.
+                if nmsrs_read != msr_entries.len() {
+                    let reason: String = format!(
+                        "`nmsrs_read`(={}) is different from `msr_entries.len()`(={})",
+                        nmsrs_read,
+                        msr_entries.len(),
+                    );
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+            },
+            Err(e) => {
+                let reason: String = format!("failed mutating msrs (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // xsave can be either `Xsave` or `kvm_xsave`. Declaring it as `Vec<u8>` fits both.
+        let xsave: Vec<u8> = if kvm.check_extension_int(Cap::Xsave2) > 0 {
+            // Docs: https://docs.rs/kvm-bindings/0.14.0/kvm_bindings/struct.kvm_xsave2.html
+            // KVM_CHECK_EXTENSION(KVM_CAP_XSAVE2) returns the total bytes for the whole structure.
+            let xsave_total_bytes: usize = kvm.check_extension_int(Cap::Xsave2) as usize;
+            // Fam-wrapper type Xsave is a wrapper over kvm_xsave2 (post-5.17) or kvm_xsave.
+            let header_size: usize = mem::size_of::<kvm_bindings::kvm_xsave2>();
+            let fam_entries: usize = xsave_total_bytes.saturating_sub(header_size);
+            // Each Fam entry in kvm_xsave2 is u32 (per bindings).
+            let fam_units: usize = fam_entries.div_ceil(mem::size_of::<u32>());
+            let mut xsave2: Xsave = match Xsave::new(fam_units) {
+                Ok(v) => v,
+                Err(e) => {
+                    let reason: String = format!("failed creating xsave2 (error={e:?})");
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            // SAFETY: This is safe because we've checked the number of elements before allocating.
+            if let Err(e) = unsafe { self.fd.get_xsave2(&mut xsave2) } {
+                let reason: String = format!("failed getting xsave2 (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+            match serialize_fam_struct(&xsave2) {
+                Ok(xsave2) => xsave2,
+                Err(e) => {
+                    let reason: String = format!("failed serializing xsave2 (error={e:?})");
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+        } else {
+            // Older kernel that only supports fixed 4KB kvm_xsave.
+            let small_xsave: kvm_xsave = match self.fd.get_xsave() {
+                Ok(v) => v,
+                Err(e) => {
+                    let reason: String = format!("failed getting small_xsave (error={e:?})");
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            serialize_plain(&small_xsave)
+        };
+
+        // `VmFd` state:
+        let vm: &VmFd = locked_partition.vm();
+        let mut irqchip: kvm_irqchip = kvm_irqchip::default();
+        if let Err(e) = vm.get_irqchip(&mut irqchip) {
+            let reason: String = format!("failed getting irqchip (error={e:?})");
+            error!("get_state(): {reason}");
+            anyhow::bail!(reason)
+        };
+        let pit_state: kvm_pit_state2 = match vm.get_pit2() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting pit_state (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let clock_data: kvm_clock_data = match vm.get_clock() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting clock_data (error={e:?})");
+                error!("get_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        Ok(VirtualProcessorState {
+            online: self.is_online(),
+            exit_status: self.exit_status(),
+            regs,
+            sregs,
+            fpu: serialize_plain(&fpu),
+            cpuid: match serialize_fam_struct(&cpuid) {
+                Ok(cpuid) => cpuid,
+                Err(e) => {
+                    let reason: String = format!("failed serializing cpuid (error={e:?})");
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            },
+            lapic,
+            msrs: match serialize_fam_struct(&msrs) {
+                Ok(msrs) => msrs,
+                Err(e) => {
+                    let reason: String = format!("failed serializing msrs (error={e:?})");
+                    error!("get_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            },
+            mp_state,
+            xsave,
+            xcrs,
+            debugregs,
+            vcpu_events,
+            tsc_khz,
+            irqchip,
+            pit_state,
+            clock_data,
+        })
     }
 
     ///
@@ -429,4 +744,50 @@ impl VirtualProcessor {
         // TODO: set virtual processor state https://github.com/nanvix/nanvix/issues/948
         Ok(())
     }
+}
+
+//==================================================================================================
+// Standalone functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Serializes a `Sized` structure into a vector of bytes.
+///
+/// # Parameters
+///
+/// - `t`: An instance of the T type.
+///
+/// # Returns
+///
+/// A vector of bytes with the same contents as the structure.
+///
+fn serialize_plain<T: Sized>(t: &T) -> Vec<u8> {
+    // We cannot use `transmute`, because "generic parameters may not be used in const operations".
+    // SAFETY: We're casting a `Sized` type to a `&[u8]` of its own length, so the sizes match.
+    unsafe { slice::from_raw_parts((t as *const T) as *const u8, mem::size_of::<T>()).to_vec() }
+}
+
+///
+/// # Description
+///
+/// Serializes a flexible array member struct into a vector of bytes.
+///
+/// # Parameters
+///
+/// - `wrapper`: A `FamStructWrapper` with array entries of the T type.
+///
+/// # Returns
+///
+/// A vector of bytes with the same contents as the original wrapper.
+///
+fn serialize_fam_struct<T: Default + FamStruct>(
+    wrapper: &FamStructWrapper<T>,
+) -> Result<Vec<u8>, bincode::error::EncodeError> {
+    let total_size: usize = mem::size_of_val(wrapper);
+    // SAFETY: We're casting an object to a `&[u8]` of its own length, so the sizes match.
+    let raw_bytes: &[u8] =
+        unsafe { slice::from_raw_parts(wrapper as *const _ as *const u8, total_size) };
+    bincode::serde::encode_to_vec(raw_bytes, bincode::config::standard())
 }
