@@ -40,6 +40,13 @@ use ::libc::{
     sigemptyset,
 };
 use ::std::{
+    ffi::OsStr,
+    fs::File,
+    io::Write,
+    path::{
+        Path,
+        PathBuf,
+    },
     sync::{
         Arc,
         Mutex,
@@ -479,5 +486,79 @@ impl MicroVm {
             .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
             .control_tx
             .send(VcpuControlResponse::Tid(tid))?)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Strips prefixes and suffixes from the executable filepath, and concatenates it with the
+    /// appropriate directory and extensions.
+    ///
+    /// # Parameters
+    ///
+    /// - `filepath`: Path to the executable file.
+    ///
+    /// # Returns
+    ///
+    /// Returns the filepath to the virtual memory snapshot and the kvm snapshot.
+    ///
+    fn make_snapshot_paths(filepath: &str) -> (PathBuf, PathBuf) {
+        let snapshots_dir: &Path = Path::new("snapshots");
+
+        let stem: &OsStr = Path::new(filepath)
+            .file_stem()
+            .unwrap_or(OsStr::new("default"));
+
+        let vmem_filepath: PathBuf = snapshots_dir.join(stem).with_extension("vmem");
+        let kvm_filepath: PathBuf = snapshots_dir.join(stem).with_extension("kvm.json");
+        (vmem_filepath, kvm_filepath)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Saves the virtual memory and the KVM state to files.
+    ///
+    /// # Parameters
+    ///
+    /// - `filepath`: Path to the executable file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn create_snapshot(&self, filepath: &str) -> Result<()> {
+        let (vmem_filepath, kvm_filepath) = Self::make_snapshot_paths(filepath);
+
+        if let Err(e) = self
+            .vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .save_snapshot(&vmem_filepath)
+        {
+            let reason: String = format!("failed creating virtual memory snapshot (error={e:?})");
+            error!("create_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        match self
+            .vcpu
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .get_state()
+        {
+            Ok(kvm_state) => {
+                // NOTE: json is not the ideal format for this. Perhaps use `bincode` instead?
+                let json: String = serde_json::to_string(&kvm_state)?;
+                let mut file: File = File::create(kvm_filepath)?;
+                file.write_all(json.as_bytes())?;
+                Ok(())
+            },
+            Err(e) => {
+                let reason: String = format!("failed getting vcpu state (error={e:?})");
+                error!("create_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
     }
 }
