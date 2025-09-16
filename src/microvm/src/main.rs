@@ -39,7 +39,6 @@ use ::microvm::{
 use ::std::{
     convert::TryInto,
     env,
-    io::ErrorKind,
     process::ExitCode,
     str::FromStr,
     time::Duration,
@@ -55,9 +54,6 @@ use ::user_vm_api::NewUserVm;
 // Constants
 //==================================================================================================
 
-/// Time-out to back-off when linuxd is not ready to accept our connection. This situation is rare
-/// so we can tolerate a sleep, but the sleep needs to be short as it will affect boot time.
-const CONNECT_TIMEOUT_SLEEP_MS: u64 = 1;
 /// Default socket bind type.
 const DEFAULT_SYSTEM_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
 const DEFAULT_CONTROL_PLANE_SOCKET_TYPE: SocketType = SocketType::Unix;
@@ -92,8 +88,12 @@ fn main() -> Result<ExitCode> {
     logging::initialize(args.log_to_file());
 
     let gateway: Option<Gateway> = match &system_vm_addr {
-        Some(addr) => loop {
-            match SocketStream::connect(system_vm_socket_type, addr.clone()) {
+        Some(addr) => {
+            match SocketStream::connect_timeout(
+                system_vm_socket_type,
+                addr.clone(),
+                Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
+            ) {
                 Ok(stream) => {
                     let gateway_socket_type: SocketType = match args.gateway_socket_type() {
                         Some(socket_type) => socket_type,
@@ -108,7 +108,7 @@ fn main() -> Result<ExitCode> {
                         );
                         new_msg.send(&mut blocking_stream)?;
 
-                        break Some(Gateway::new(blocking_stream.set_nonblocking()?));
+                        Some(Gateway::new(blocking_stream.set_nonblocking()?))
                     } else {
                         let reason: String = "configured user VM with system VM but without \
                                               gateway address"
@@ -116,17 +116,6 @@ fn main() -> Result<ExitCode> {
                         error!("main() {reason}");
                         anyhow::bail!(reason);
                     }
-                },
-                // The micro VM is trying to connect before the system VM's listener socket is
-                // responsive.
-                Err(ref e) if e.kind() == ErrorKind::NotFound => {
-                    std::thread::sleep(Duration::from_millis(CONNECT_TIMEOUT_SLEEP_MS));
-                    continue;
-                },
-                // The micro VM is trying to connect to a socket that is not yet bound.
-                Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
-                    std::thread::sleep(Duration::from_millis(CONNECT_TIMEOUT_SLEEP_MS));
-                    continue;
                 },
                 Err(e) => {
                     let reason: String = format!(
