@@ -58,3 +58,26 @@ pub fn munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error
         Err(Error::new(ErrorCode::try_from(result)?, "failed to munmap()"))
     }
 }
+
+//==================================================================================================
+// Change Memory Protection
+//==================================================================================================
+
+pub fn mprotect(
+    pid: ProcessIdentifier,
+    vaddr: VirtualAddress,
+    access: AccessPermission,
+) -> Result<(), Error> {
+    let result: i64 = kcall3!(
+        KcallNumber::MemoryCtrl.into(),
+        pid.try_into()?,
+        vaddr.into_raw_value() as u32,
+        access.into()
+    );
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to mprotect()"))
+    }
+}
