@@ -58,22 +58,6 @@ wait_for_tcp_socket() {
     print_error "Timed-out waiting for TCP socket to be ready at $host:$port"
 }
 
-wait_for_unix_socket() {
-    local path="$1"
-
-    print_info "Waiting for UNIX socket at ${path}..."
-    for i in $(seq 1 $MAX_TRIALS); do
-        if [ -S "${path}" ]; then
-            print_info "UNIX socket available after $(echo "${i} * ${SLEEP_INTERVAL}" | bc -l) ms."
-            return
-        fi
-
-        sleep ${SLEEP_INTERVAL}
-    done
-
-    print_error "Timed-out waiting for UNIX socket at ${path}"
-}
-
 #===================================================================================================
 # Test execution
 #===================================================================================================
@@ -145,7 +129,6 @@ print_info "VM ID: ${VM_ID}"
 print_info "Gateway Socket Address: ${GATEWAY_SOCKADDR}"
 
 # Get output by writing to the gateway socket address.
-wait_for_unix_socket "${GATEWAY_SOCKADDR}"
 PROGRAM_ACTUAL_OUTPUT=$(echo "${PROGRAM_INPUT}" | nc -U -q 0 "${GATEWAY_SOCKADDR}" | tr -d '\0')
 
 # Save program output to a log file.
