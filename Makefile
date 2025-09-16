@@ -33,7 +33,7 @@ export HOST_CPU ?=
 export BUILD_OPT ?= yes
 
 # L2 VM deployment?
-export L2_VM ?= yes
+export L2_VM ?= no
 
 # Log Level
 export LOG_LEVEL ?= warn
