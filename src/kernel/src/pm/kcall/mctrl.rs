@@ -46,17 +46,6 @@ fn do_mctrl(
 }
 
 pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> KcallResult {
-    // Check if the calling process has memory management capabilities.
-    match pm.has_capability(args.pid, Capability::MemoryManagement) {
-        Ok(true) => (),
-        Ok(false) => {
-            let reason: &str = "process does not have memory management capabilities";
-            error!("{reason}");
-            return KcallResult::Error(ErrorCode::PermissionDenied.into());
-        },
-        Err(e) => return KcallResult::Error(e.code.into()),
-    }
-
     // Unpack kernel call arguments.
     let pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
         Ok(pid) => pid,
@@ -65,6 +54,20 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
             return KcallResult::Error(error.code.into());
         },
     };
+
+    // Check if the calling process has memory management capabilities.
+    if pid != args.pid {
+        match pm.has_capability(args.pid, Capability::MemoryManagement) {
+            Ok(true) => (),
+            Ok(false) => {
+                let reason: &str = "process does not have memory management capabilities";
+                error!("{reason}");
+                return KcallResult::Error(ErrorCode::PermissionDenied.into());
+            },
+            Err(e) => return KcallResult::Error(e.code.into()),
+        }
+    }
+
     let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg1 as usize) {
         Ok(vaddr) => vaddr,
         Err(e) => return KcallResult::Error(e.code.into()),
