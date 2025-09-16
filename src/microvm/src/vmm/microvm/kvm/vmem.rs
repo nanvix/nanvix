@@ -16,10 +16,14 @@ use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
+    fs::File,
+    io::Write,
     mem,
+    path::Path,
     ptr::{
         self,
     },
+    slice,
     sync::{
         Arc,
         Mutex,
@@ -45,13 +49,46 @@ pub struct VirtualMemory {
     /// Kernel location and size.
     kernel: Option<(u64, usize)>,
     /// Initial RAM disk location and size.
-    _initrd: Option<(u64, usize)>,
+    initrd: Option<(u64, usize)>,
     /// Control register used to inform the guest about the number of messages ready to be consumed.
     credits: u32,
 }
 
+///
+/// # Description
+///
+/// A structure that represents the header in virtual memory snapshot files.
+///
+#[repr(C)]
+struct SnapshotHeader {
+    /// Memory size (8 bytes): usize
+    memory_size: usize,
+    /// Kernel base (8 bytes): u64
+    kernel_base: u64,
+    /// Kernel size (8 bytes): usize
+    kernel_size: usize,
+    /// Initrd base (8 bytes): u64
+    initrd_base: u64,
+    /// Initrd size (8 bytes): usize
+    initrd_size: usize,
+    /// Credits (4 bytes): u32
+    credits: u32,
+    /// Padding (SNAPSHOT_HEADER_PADDING bytes): zeros
+    padding: [u8; Self::SNAPSHOT_HEADER_PADDING],
+}
+
 unsafe impl Send for VirtualMemory {}
 unsafe impl Sync for VirtualMemory {}
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+const SIZE_OF_HEADER: usize = mem::size_of::<SnapshotHeader>();
+// The virtual memory contents come right after the header. If the header is 64-byte aligned, then
+// the contents of the virtual memory inside the snapshot file are 64-byte aligned. Reading the
+// snapshot file leads to 64-byte aligned data.
+static_assert::assert_eq_size!(SnapshotHeader, 64);
 
 //==================================================================================================
 // Implementations
@@ -102,7 +139,7 @@ impl VirtualMemory {
             ptr,
             size: memory_size,
             kernel: None,
-            _initrd: None,
+            initrd: None,
             credits: 0,
         };
 
@@ -198,7 +235,7 @@ impl VirtualMemory {
             initrd.size()
         };
 
-        self._initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
+        self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size));
 
         Ok((::config::microvm::DEFAULT_INITRD_BASE as u64, initrd_size))
     }
@@ -220,7 +257,7 @@ impl VirtualMemory {
         trace!("write_args(): {args}");
         let args_bytes: &[u8] = args.as_bytes();
 
-        let initrd_end: usize = match self._initrd {
+        let initrd_end: usize = match self.initrd {
             Some((initrd_base, initrd_size)) => initrd_base as usize + initrd_size,
             None => {
                 let reason: String = "initrd not loaded".to_string();
@@ -386,6 +423,96 @@ impl VirtualMemory {
 
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Saves the current state of the virtual memory to a snapshot file.
+    /// The snapshot includes the memory contents and metadata about the kernel and initrd.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn save_snapshot(&self, path: &Path) -> Result<()> {
+        trace!("save_snapshot(): writing to {:?}", path);
+        crate::timer!("vmem_save_snapshot");
+
+        let mut file: File = match File::create(path) {
+            Ok(f) => f,
+            Err(e) => {
+                let reason: String =
+                    format!("failed creating virtual memory snapshot file (error={e:?})");
+                error!("save_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // Kernel metadata (guaranteed to exist)
+        let (kernel_base, kernel_size) = match self.kernel {
+            Some((base, size)) => (base, size),
+            None => {
+                let reason: &str = "kernel not loaded";
+                error!("save_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // Initrd metadata (guaranteed to exist)
+        let (initrd_base, initrd_size) = match self.initrd {
+            Some((base, size)) => (base, size),
+            None => {
+                let reason: &str = "initrd not loaded";
+                error!("save_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        let header = SnapshotHeader::new(
+            self.size,
+            kernel_base,
+            kernel_size,
+            initrd_base,
+            initrd_size,
+            self.credits,
+        );
+
+        if let Err(e) = file.write_all(header.as_bytes()) {
+            let reason: String =
+                format!("failed writing the header to virtual memory snapshot file (error={e:?})");
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
+        if self.ptr as usize % PAGE_SIZE != 0 {
+            let reason: &str = "memory pointer is not aligned to page size";
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+        // SAFETY: The pointer points to the virtual memory, which is `self.size` bytes long. We've
+        // just checked alignment.
+        let memory_slice: &[u8] = unsafe { slice::from_raw_parts(self.ptr, self.size) };
+        // Write the actual memory contents.
+        if let Err(e) = file.write_all(memory_slice) {
+            let reason: String = format!("failed to write memory contents (error={e:?})");
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = file.sync_all() {
+            let reason: String = format!("failed to sync snapshot file (error={e:?})");
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        trace!("save_snapshot(): successfully saved snapshot to {:?}", path);
+        Ok(())
+    }
 }
 
 impl Drop for VirtualMemory {
@@ -396,5 +523,45 @@ impl Drop for VirtualMemory {
                 error!("munmap() failed (ret={ret})");
             }
         }
+    }
+}
+
+impl SnapshotHeader {
+    /// Padding for alignment. This makes the memory contents of the snapshot also aligned.
+    /// Adds up to 64 bytes.
+    const SNAPSHOT_HEADER_PADDING: usize = 20;
+
+    fn new(
+        memory_size: usize,
+        kernel_base: u64,
+        kernel_size: usize,
+        initrd_base: u64,
+        initrd_size: usize,
+        credits: u32,
+    ) -> Self {
+        SnapshotHeader {
+            memory_size,
+            kernel_base,
+            kernel_size,
+            initrd_base,
+            initrd_size,
+            credits,
+            padding: [0u8; Self::SNAPSHOT_HEADER_PADDING],
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Serializes the snapshot header (which has `repr(C)`) as a slice of bytes.
+    ///
+    /// # Returns
+    ///
+    /// A slice of bytes containing the snapshot header.
+    ///
+    fn as_bytes(&self) -> &[u8; SIZE_OF_HEADER] {
+        // SAFETY: Size and alignment are guaranteed by being a `SnapshotHeader` method.
+        // The struct has #[repr(C)].
+        unsafe { mem::transmute::<&SnapshotHeader, &[u8; SIZE_OF_HEADER]>(self) }
     }
 }
