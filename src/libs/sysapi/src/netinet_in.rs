@@ -111,6 +111,15 @@ pub mod ip_option_names {
     pub const IP_RECVORIGDSTADDR: c_int = IP_ORIGDSTADDR;
 }
 
+/// IPv6 socket option names for use with `getsockopt()` and `setsockopt()` at the IPPROTO_IPV6
+/// level.
+pub mod sockopt_ipv6 {
+    use crate::ffi::c_int;
+
+    /// bool: receive hop limit w/dgram
+    pub const IPV6_RECVHOPLIMIT: c_int = 37;
+}
+
 /// Socket creation flags to be used with `socket()`, `socketpair()`, and `accept4()`.
 pub mod socket_flags {
     use crate::ffi::c_int;
