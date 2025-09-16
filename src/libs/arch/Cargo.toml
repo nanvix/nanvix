@@ -33,7 +33,6 @@ rustc-dep-of-std = [
     "error/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
-    "config/rustc-dep-of-std",
 ]
 
 # Machine Types
