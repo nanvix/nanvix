@@ -63,9 +63,11 @@ pub fn mprotect(
 ) -> Result<(), Error> {
     // Check if base address is invalid.
     if base < USER_MMAP_BASE || base >= USER_MMAP_END {
-        let reason: &'static str = "invalid base address";
-        ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
-        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        // POSIX specifies that calling `mprotect()` on an address range that was not previously
+        // mapped with `mmap()` has undefined behavior. However, Linux does allow such an operation
+        // to succeed. To be compatible with Linux, we simply don't change any protection flags.
+        // See: https://www.man7.org/linux/man-pages/man2/mprotect.2.html
+        return Ok(());
     }
 
     // Check if base address is page-aligned.
