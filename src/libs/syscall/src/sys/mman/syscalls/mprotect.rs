@@ -14,12 +14,12 @@ use crate::{
 };
 use ::alloc::collections::BTreeMap;
 use ::arch::mem::PAGE_ALIGNMENT;
-use ::config::memory_layout::USER_MMAPPED_END_RAW;
+use ::config::memory_layout::USER_MMAP_END_RAW;
 use ::spin::MutexGuard;
 use ::sys::{
     config::memory_layout::{
-        USER_MMAPPED_END,
         USER_MMAP_BASE,
+        USER_MMAP_END,
     },
     error::{
         Error,
@@ -62,7 +62,7 @@ pub fn mprotect(
     prot: MemoryMapProtectionFlags,
 ) -> Result<(), Error> {
     // Check if base address is invalid.
-    if base < USER_MMAP_BASE || base >= USER_MMAPPED_END {
+    if base < USER_MMAP_BASE || base >= USER_MMAP_END {
         let reason: &'static str = "invalid base address";
         ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -77,7 +77,7 @@ pub fn mprotect(
 
     // Check if end address is invalid.
     match base.into_raw_value().checked_add(len) {
-        Some(end) if end > USER_MMAPPED_END_RAW => {
+        Some(end) if end > USER_MMAP_END_RAW => {
             let reason: &'static str = "invalid end address";
             ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));

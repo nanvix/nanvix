@@ -19,11 +19,11 @@ use ::sys::{
         VirtualAddress,
     },
 };
-use config::memory_layout::USER_MMAPPED_END_RAW;
+use config::memory_layout::USER_MMAP_END_RAW;
 use sys::{
     config::memory_layout::{
-        USER_MMAPPED_END,
         USER_MMAP_BASE,
+        USER_MMAP_END,
     },
     error::ErrorCode,
 };
@@ -56,7 +56,7 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     ::syslog::trace!("munmap(): base={base:?}, length={length}");
 
     // Check if the base address is valid.
-    if base < USER_MMAP_BASE || base >= USER_MMAPPED_END {
+    if base < USER_MMAP_BASE || base >= USER_MMAP_END {
         let reason: &str = "invalid base address";
         syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -71,7 +71,7 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
 
     // Check if end address is invalid.
     let end: VirtualAddress = match base.into_raw_value().checked_add(length) {
-        Some(end) if end > USER_MMAPPED_END_RAW => {
+        Some(end) if end > USER_MMAP_END_RAW => {
             let reason: &str = "invalid end address";
             syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
