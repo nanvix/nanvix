@@ -7,8 +7,8 @@
 
 use ::arch::mem::PAGE_SIZE;
 use ::config::memory_layout::{
-    USER_MMAPPED_END_RAW,
     USER_MMAP_BASE_RAW,
+    USER_MMAP_END_RAW,
 };
 use ::sys::{
     config::memory_layout::USER_MMAP_BASE,
@@ -152,7 +152,7 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = ((USER_MMAPPED_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
+    let ntimes: usize = ((USER_MMAP_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
 
     for _ in 0..ntimes {
         let vaddr: VirtualAddress = USER_MMAP_BASE;
@@ -200,7 +200,7 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = ((USER_MMAPPED_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
+    let ntimes: usize = ((USER_MMAP_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
 
     for vaddr in (0..ntimes).map(|i| USER_MMAP_BASE_RAW + i * PAGE_SIZE) {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);

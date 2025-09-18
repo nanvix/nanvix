@@ -16,7 +16,7 @@ use crate::{
     },
 };
 use ::arch::mem::PAGE_ALIGNMENT;
-use ::config::memory_layout::USER_MMAPPED_END_RAW;
+use ::config::memory_layout::USER_MMAP_END_RAW;
 use ::spin::MutexGuard;
 use ::sys::{
     error::Error,
@@ -70,7 +70,7 @@ pub fn mmap(length: usize, prot: MemoryMapProtectionFlags) -> Result<VirtualAddr
         match new_mmap_base_raw {
             Some(addr) => {
                 // Check if we have enough space for the new memory segment.
-                if addr >= USER_MMAPPED_END_RAW {
+                if addr >= USER_MMAP_END_RAW {
                     let reason: &str = "not enough space for new memory segment";
                     syslog::error!("mmap(): {reason} (length={length}, prot={prot:?})");
                     return Err(Error::new(ErrorCode::OutOfMemory, reason));
