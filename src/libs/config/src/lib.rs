@@ -186,7 +186,7 @@ pub mod memory_layout {
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_MMAPPED_END_RAW: usize = 0xa000_0000;
+    pub const USER_MMAP_END_RAW: usize = 0xa000_0000;
 
     ///
     /// # Description
@@ -197,7 +197,7 @@ pub mod memory_layout {
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_LIBS_BASE_RAW: usize = USER_MMAPPED_END_RAW;
+    pub const USER_LIBS_BASE_RAW: usize = USER_MMAP_END_RAW;
 
     ///
     /// # Description
