@@ -17,6 +17,7 @@ name = "memd"
 sys = { workspace = true }
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }
+libc_string = { workspace = true }
 syslog = { workspace = true }
 
 [build-dependencies]

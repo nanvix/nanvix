@@ -14,9 +14,10 @@ homepage.workspace = true
 name = "noop-rust-nostd"
 
 [dependencies]
-sys = { workspace = true }
 cfg-if = { workspace = true }
 nvx = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true }
 sysalloc = { workspace = true }
 
 [build-dependencies]

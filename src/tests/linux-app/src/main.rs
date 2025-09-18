@@ -9,6 +9,7 @@
 //==================================================================================================
 
 extern crate alloc;
+extern crate libc_string;
 extern crate nvx;
 
 mod file_system;
