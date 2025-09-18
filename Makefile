@@ -284,7 +284,7 @@ export NANVIXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:8181,127.0.0.
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := posix
-ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog sys
+ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog sys libc_string
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
@@ -892,6 +892,7 @@ test-guest-rlibs:
 	$(HOST_CARGO_TEST_CMD) -p raw-array
 	$(HOST_CARGO_TEST_CMD) -p slab
 	$(HOST_CARGO_TEST_CMD) -p static_assert
+	$(HOST_CARGO_TEST_CMD) -p libc_string
 #	$(HOST_CARGO_TEST_CMD) -p sysalloc
 #	$(HOST_CARGO_TEST_CMD) -p syslog
 
