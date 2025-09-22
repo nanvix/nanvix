@@ -42,10 +42,7 @@ use ::log::{
     debug,
     error,
 };
-use ::microvm::{
-    Gateway,
-    Vmm,
-};
+use ::microvm::Vmm;
 use ::mio::net::UnixStream;
 use ::nanvixd::message::Kill;
 use ::reqwest::header::{
@@ -531,7 +528,7 @@ impl Benchmark {
                 Some(program),
                 None,
                 Some("/dev/null".to_string()),
-                Some(Gateway::new(syscomm::SocketStream::Unix(vmm_stream))),
+                Some(syscomm::SocketStream::Unix(vmm_stream)),
             )? {
                 e if e != 0 => {
                     error!("error running VMM, exited with status: {e}");

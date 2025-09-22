@@ -25,7 +25,6 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use crate::{
-    Gateway,
     io_thread::IoThread,
     memory_thread,
     orchestrator::{
@@ -65,6 +64,7 @@ use ::sys::ipc::{
     Message,
     MessageType,
 };
+use ::syscomm::SocketStream;
 
 //==================================================================================================
 // Structure
@@ -95,7 +95,7 @@ impl Vmm {
     /// - `initrd_filename`: An optional path to the initial RAM disk (initrd) file.
     /// - `initrd_args`: Optional arguments to be passed to the initrd.
     /// - `stderr`: An optional path to a file where the virtual machine's standard error output will be written.
-    /// - `gateway_conn`: An optional connection to the gateway for communication with the virtual machine.
+    /// - `system_vm_stream`: An optional connection to the system VM for communication with the virtual machine.
     ///
     /// # Returns
     ///
@@ -108,7 +108,7 @@ impl Vmm {
         initrd_filename: Option<String>,
         initrd_args: Option<String>,
         stderr: Option<String>,
-        gateway_conn: Option<Gateway>,
+        system_vm_stream: Option<SocketStream>,
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
 
@@ -126,7 +126,7 @@ impl Vmm {
         let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
         // Spawn I/O thread.
-        let io_thread: Option<JoinHandle<Result<()>>> = gateway_conn.map(|conn| {
+        let io_thread: Option<JoinHandle<Result<()>>> = system_vm_stream.map(|conn| {
             IoThread::spawn(
                 conn,
                 io_thread_data_rx,

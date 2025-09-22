@@ -32,10 +32,7 @@ extern crate log;
 
 use self::args::Args;
 use ::anyhow::Result;
-use ::microvm::{
-    Gateway,
-    Vmm,
-};
+use ::microvm::Vmm;
 use ::std::{
     convert::TryInto,
     env,
@@ -87,7 +84,8 @@ fn main() -> Result<ExitCode> {
     // Initialize logger. If this fails, the program will panic.
     logging::initialize(args.log_to_file());
 
-    let gateway: Option<Gateway> = match &system_vm_addr {
+    // Connect to the system VM.
+    let system_vm_stream: Option<SocketStream> = match &system_vm_addr {
         Some(addr) => {
             match SocketStream::connect_timeout(
                 system_vm_socket_type,
@@ -108,7 +106,7 @@ fn main() -> Result<ExitCode> {
                         );
                         new_msg.send(&mut blocking_stream)?;
 
-                        Some(Gateway::new(blocking_stream.set_nonblocking()?))
+                        Some(blocking_stream.set_nonblocking()?)
                     } else {
                         let reason: String = "configured user VM with system VM but without \
                                               gateway address"
@@ -151,8 +149,14 @@ fn main() -> Result<ExitCode> {
     };
 
     // Run virtual machine and check exit status code.
-    match Vmm::spawn(memory_size, &kernel_filename, initrd_filename, initrd_args, stderr, gateway)?
-    {
+    match Vmm::spawn(
+        memory_size,
+        &kernel_filename,
+        initrd_filename,
+        initrd_args,
+        stderr,
+        system_vm_stream,
+    )? {
         exit_status if exit_status != 0 => {
             let exit_code: u8 = match exit_status.try_into() {
                 Ok(code) => code,
