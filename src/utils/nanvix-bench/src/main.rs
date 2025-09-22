@@ -528,6 +528,7 @@ impl Benchmark {
                 None,
                 Some("/dev/null".to_string()),
                 Some(syscomm::SocketStream::Unix(vmm_stream)),
+                None,
             )? {
                 e if e != 0 => {
                     error!("error running VMM, exited with status: {e}");
