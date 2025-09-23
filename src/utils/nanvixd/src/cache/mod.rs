@@ -247,7 +247,7 @@ impl SandboxCache {
             .get(&user_vm_id)
             .ok_or_else(|| anyhow::anyhow!("user VM instance not found in cache"))?;
 
-        self.kill_internal(&tag.clone())
+        self.kill_internal(&tag.clone()).await
     }
 
     ///
@@ -263,23 +263,24 @@ impl SandboxCache {
     ///
     /// A reference to the sandbox.
     ///
-    fn kill_internal(&mut self, tag: &SandboxTag) -> Result<()> {
+    async fn kill_internal(&mut self, tag: &SandboxTag) -> Result<()> {
         let user_vm_id = tag.sandbox_id();
 
         if !self.user_vm_instances.contains_key(tag) {
-            warn!("trying to drop sandbox (tag={tag:?}) which is not in the cache");
+            warn!("trying to kill user VM that is not in the cache (tag={tag:?})");
             return Ok(());
         }
 
-        if let Some(user_vm) = self.user_vm_instances.remove(tag) {
-            if Arc::strong_count(&user_vm) != 1 {
-                warn!(
-                    "trying to drop user VM, but there are dangling references to it this may \
-                     introduce unexpected behaviour"
-                );
+        if let Some(mut user_vm) = self.user_vm_instances.remove(tag) {
+            if let Some(user_vm_mut) = Arc::get_mut(&mut user_vm) {
+                if let Err(e) = user_vm_mut.shutdown().await {
+                    error!("error shutting down user VM (tag={tag:?}, error={e:?})");
+                } else {
+                    debug!("shut down user VM (tag={tag:?})");
+                }
+            } else {
+                error!("error shutting down user VM: cannot get mut (tag={tag:?})");
             }
-
-            // User VM is dropped.
         }
 
         self.sandbox_index.remove(&user_vm_id);
@@ -297,20 +298,32 @@ impl SandboxCache {
     /// On success empty is returned. On failure an error is returned instead.
     ///
     pub async fn cleanup(&mut self) {
-        // TODO: for the time being only linuxd instances support being gracefully shutdown. User
-        // VMs are missing a control-plane socket.
+        // First shutdown all user VMs.
+        for (tag, user_vm_instance) in self.user_vm_instances.iter_mut() {
+            if let Some(user_vm_instance_mut) = Arc::get_mut(user_vm_instance) {
+                debug!("sending shutdown message to user vm (tag={tag:?})");
+                if let Err(e) = user_vm_instance_mut.shutdown().await {
+                    error!("error cleaning-up user vm instance (tag={tag:?}, error={e:?})");
+                } else {
+                    debug!("cleaned-up user vm instance (tag={tag:?})");
+                }
+            } else {
+                error!("error cleaning-up user vm instance: not found (tag={tag:?})");
+            }
+        }
+
+        // Shutdown all linuxd instances.
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
             if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
                 if let Err(e) = linuxd_instance_mut.shutdown().await {
-                    // FIXME: convert to error once linuxd supports a graceful shutdown.
-                    debug!("error cleaning-up linuxd instance for tenant {tenant_id}: {e:?}");
+                    error!(
+                        "error cleaning-up linuxd instance (tenant_id={tenant_id}, error={e:?})"
+                    );
                 } else {
-                    debug!("cleaned-up linuxd instance for tenant {tenant_id}");
+                    debug!("cleaned-up linuxd instance (tenant_id={tenant_id})");
                 }
             } else {
-                error!(
-                    "error cleaning-up linuxd instance for tenant {tenant_id}: instance not found"
-                );
+                error!("error cleaning-up linuxd instance: not found (tenant_id={tenant_id})");
             }
         }
     }
