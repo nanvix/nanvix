@@ -235,92 +235,95 @@ impl VirtualProcessor {
     pub fn run(&mut self) -> Result<VirtualProcessorExitContext> {
         crate::timer!("vcpu_run");
         // Run the virtual processor and parse exit reason.
-        match self.fd.run()? {
-            // Read from an I/O port.
-            VcpuExit::IoIn(port, data) => {
-                Ok(VirtualProcessorExitContext::PmioIn(port, data.to_vec()))
+        match self.fd.run() {
+            Ok(vcpu_exit) => match vcpu_exit {
+                // Read from an I/O port.
+                VcpuExit::IoIn(port, data) => {
+                    Ok(VirtualProcessorExitContext::PmioIn(port, data.to_vec()))
+                },
+                // Write to an I/O port.
+                VcpuExit::IoOut(port, data) => {
+                    let mut value: u32 = 0;
+                    for (i, b) in data.iter().enumerate() {
+                        value |= (*b as u32) << (i * 8);
+                    }
+                    Ok(VirtualProcessorExitContext::PmioOut(port, value, data.len()))
+                },
+                // Read from an MMIO region.
+                VcpuExit::MmioRead(addr, data) => {
+                    // TODO: handle MMIO read.
+                    warn!("run(): mmio read (addr={addr:#010x}, data.len={})", data.len());
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Write to a MMIO region.
+                VcpuExit::MmioWrite(addr, data) => {
+                    // TODO: handle MMIO write.
+                    warn!("run(): mmio write (addr={addr:#010x}, data.len={})", data.len());
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Exception occurred.
+                VcpuExit::Exception => {
+                    // TODO: handle exception.
+                    warn!("run(): exception");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Hypervisor call invoked.
+                VcpuExit::Hypercall(_) => {
+                    // TODO: handle hypercall.
+                    warn!("run(): hypercall");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Debugging event occurred.
+                VcpuExit::Debug(_) => {
+                    // TODO: handle debug.
+                    warn!("run(): debug");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Halt the virtual processor.
+                VcpuExit::Hlt => Ok(VirtualProcessorExitContext::Halt),
+                // Shutdown the virtual processor.
+                VcpuExit::Shutdown => {
+                    // TODO: handle shutdown.
+                    warn!("run(): shutdown");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Fail to run the virtual processor.
+                VcpuExit::FailEntry(reason, cpud) => {
+                    // TODO: handle fail entry.
+                    warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Non-maskable interrupt occurred.
+                VcpuExit::Nmi => {
+                    // TODO: handle NMI.
+                    warn!("run(): nmi");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Internal error occurred.
+                VcpuExit::InternalError => {
+                    // TODO: handle internal error.
+                    warn!("run(): internal error");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Unsupported exit reason.
+                VcpuExit::Unsupported(reason) => {
+                    // TODO: handle unsupported exit reason.
+                    warn!("run(): unsupported exit reason ({reason:?})");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
+                // Unknown exit reason.
+                // NOTE: we do not parse all exit reasons, so it is worthy checking what happened.
+                _ => {
+                    warn!("run(): unknown exit reason");
+                    Ok(VirtualProcessorExitContext::Unknown)
+                },
             },
-            // Write to an I/O port.
-            VcpuExit::IoOut(port, data) => {
-                let mut value: u32 = 0;
-                for (i, b) in data.iter().enumerate() {
-                    value |= (*b as u32) << (i * 8);
-                }
-                Ok(VirtualProcessorExitContext::PmioOut(port, value, data.len()))
-            },
-            // Read from an MMIO region.
-            VcpuExit::MmioRead(addr, data) => {
-                // TODO: handle MMIO read.
-                warn!("run(): mmio read (addr={addr:#010x}, data.len={})", data.len());
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Write to a MMIO region.
-            VcpuExit::MmioWrite(addr, data) => {
-                // TODO: handle MMIO write.
-                warn!("run(): mmio write (addr={addr:#010x}, data.len={})", data.len());
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Exception occurred.
-            VcpuExit::Exception => {
-                // TODO: handle exception.
-                warn!("run(): exception");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Hypervisor call invoked.
-            VcpuExit::Hypercall(_) => {
-                // TODO: handle hypercall.
-                warn!("run(): hypercall");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Debugging event occurred.
-            VcpuExit::Debug(_) => {
-                // TODO: handle debug.
-                warn!("run(): debug");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Halt the virtual processor.
-            VcpuExit::Hlt => Ok(VirtualProcessorExitContext::Halt),
-            // Shutdown the virtual processor.
-            VcpuExit::Shutdown => {
-                // TODO: handle shutdown.
-                warn!("run(): shutdown");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Fail to run the virtual processor.
-            VcpuExit::FailEntry(reason, cpud) => {
-                // TODO: handle fail entry.
-                warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Non-maskable interrupt occurred.
-            VcpuExit::Nmi => {
-                // TODO: handle NMI.
-                warn!("run(): nmi");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Internal error occurred.
-            VcpuExit::InternalError => {
-                // TODO: handle internal error.
-                warn!("run(): internal error");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Virtual processor was interrupted.
-            VcpuExit::Intr => {
+            // vCPU thread was interrupted by a signal from the host.
+            Err(e) if e.errno() == libc::EINTR => {
                 warn!("run(): interrupted");
                 Ok(VirtualProcessorExitContext::Interrupted)
             },
-            // Unsupported exit reason.
-            VcpuExit::Unsupported(reason) => {
-                // TODO: handle unsupported exit reason.
-                warn!("run(): unsupported exit reason ({reason:?})");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
-            // Unknown exit reason.
-            // NOTE: we do not parse all exit reasons, so it is worthy checking what happened.
-            _ => {
-                warn!("run(): unknown exit reason");
-                Ok(VirtualProcessorExitContext::Unknown)
-            },
+            Err(e) => Err(e.into()),
         }
     }
 
