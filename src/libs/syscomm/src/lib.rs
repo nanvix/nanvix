@@ -521,10 +521,7 @@ impl SocketStream {
                     return Err(io::Error::new(ErrorKind::UnexpectedEof, "connection closed").into())
                 },
                 Ok(n) => total_read += n,
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                    // Not ready yet — must wait for next Poll notification
-                    break;
-                },
+                // Propagate error upstream for the caller to process.
                 Err(e) => return Err(e.into()),
             }
         }
