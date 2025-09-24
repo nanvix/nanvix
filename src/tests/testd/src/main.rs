@@ -21,6 +21,7 @@ mod mm;
 // Imports
 //==================================================================================================
 
+extern crate libc_string;
 extern crate nvx;
 
 use ::sys::pm::ProcessIdentifier;

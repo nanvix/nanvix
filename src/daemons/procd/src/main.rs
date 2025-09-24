@@ -8,9 +8,9 @@
 // Imports
 //==================================================================================================
 
-extern crate nvx;
-
 extern crate alloc;
+extern crate libc_string;
+extern crate nvx;
 
 use ::proc::ProcessDaemon;
 use ::sys::error::Error;

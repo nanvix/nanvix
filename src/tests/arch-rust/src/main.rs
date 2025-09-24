@@ -16,6 +16,7 @@ mod sse2;
 //==================================================================================================
 
 // Must come first.
+extern crate libc_string;
 extern crate nvx;
 
 use crate::{

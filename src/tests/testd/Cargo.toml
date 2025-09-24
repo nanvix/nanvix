@@ -15,6 +15,7 @@ name = "testd"
 
 [dependencies]
 arch = { workspace = true }
+libc_string = { workspace = true }
 sys = { workspace = true }
 nvx = { workspace = true }
 proc = { workspace = true, features = ["syscall"] }

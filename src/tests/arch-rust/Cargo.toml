@@ -15,6 +15,7 @@ name = "arch-rust"
 
 [dependencies]
 arch = { workspace = true, features = ["cpuid"] }
+libc_string = { workspace = true }
 sys = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
 sysapi = { workspace = true }
