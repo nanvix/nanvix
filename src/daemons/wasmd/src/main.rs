@@ -31,7 +31,7 @@ mod wasm_binary;
 //==================================================================================================
 
 extern crate alloc;
-
+extern crate libc_string;
 extern crate nvx;
 
 use self::engine::WasmEngine;

@@ -18,6 +18,7 @@
 
 /// Must come first.
 extern crate alloc;
+extern crate libc_string;
 extern crate nvx;
 
 mod safe;

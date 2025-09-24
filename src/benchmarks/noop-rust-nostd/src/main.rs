@@ -10,6 +10,7 @@
 //==================================================================================================
 
 extern crate alloc;
+extern crate libc_string;
 extern crate nvx;
 
 use ::sys::error::Error;
