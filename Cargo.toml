@@ -118,6 +118,7 @@ talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a
 tokio = { version = "1.45.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
+vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "0.51.0", default-features = false }
 
 [profile.dev]

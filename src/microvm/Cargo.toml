@@ -20,6 +20,7 @@ path = "src/main.rs"
 [dependencies]
 arch = { workspace = true, features = ["cpuid"] }
 anyhow = { workspace = true }
+bincode = { workspace = true, features = ["serde"] }
 cfg-if = { workspace = true }
 config = { workspace = true, features = ["microvm"] }
 flexi_logger = { workspace = true }
@@ -27,15 +28,15 @@ hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true }
 syscall = { workspace = true }
 syscomm = { workspace = true }
 user-vm-api = { workspace = true }
+vmm-sys-util = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-kvm-bindings = { workspace = true, features = ["serde"] }
+kvm-bindings = { workspace = true, features = ["fam-wrappers", "serde"] }
 kvm-ioctls = { workspace = true }
 libc = { workspace = true }
 
