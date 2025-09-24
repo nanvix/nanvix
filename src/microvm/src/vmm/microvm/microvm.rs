@@ -42,7 +42,6 @@ use ::libc::{
 use ::std::{
     ffi::OsStr,
     fs::File,
-    io::Write,
     path::{
         Path,
         PathBuf,
@@ -548,11 +547,22 @@ impl MicroVm {
             .get_state()
         {
             Ok(kvm_state) => {
-                // NOTE: json is not the ideal format for this. Perhaps use `bincode` instead?
-                let json: String = serde_json::to_string(&kvm_state)?;
                 let mut file: File = File::create(kvm_filepath)?;
-                file.write_all(json.as_bytes())?;
-                Ok(())
+                match bincode::serde::encode_into_std_write(
+                    kvm_state,
+                    &mut file,
+                    bincode::config::standard(),
+                ) {
+                    Ok(n) => {
+                        trace!("wrote {n} bytes to the snapshot file");
+                        Ok(())
+                    },
+                    Err(e) => {
+                        let reason: String = format!("failed writing vcpu snapshot (error={e:?})");
+                        error!("create_snapshot(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                }
             },
             Err(e) => {
                 let reason: String = format!("failed getting vcpu state (error={e:?})");
