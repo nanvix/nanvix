@@ -28,6 +28,7 @@ RUN apt-get update && \
     bridge-utils \
     build-essential \
     clang-format \
+    cmake \
     codespell \
     cpio \
     curl \
