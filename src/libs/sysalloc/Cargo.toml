@@ -20,7 +20,7 @@ core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
-syslog = { workspace = true }
+syslog = { workspace = true, default-features = true }
 talc = { workspace = true }
 
 [features]

@@ -44,10 +44,6 @@ mod vmm;
 // Imports
 //==================================================================================================
 
-// Must come first.
-#[macro_use]
-extern crate log;
-
 #[cfg(target_os = "linux")]
 extern crate kvm_bindings;
 #[cfg(target_os = "linux")]

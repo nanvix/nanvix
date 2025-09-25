@@ -8,11 +8,11 @@
 use crate::sandbox::tcp_port::TcpPort;
 use ::anyhow::Result;
 use ::linuxd::config::l2_system_vm_guest_ip;
-use ::log::error;
 use ::std::{
     fs,
     path::PathBuf,
 };
+use ::syslog::error;
 use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================

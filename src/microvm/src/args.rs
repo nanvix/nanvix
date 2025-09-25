@@ -19,6 +19,7 @@ use ::std::{
     str::FromStr,
 };
 use ::syscomm::SocketType;
+use ::syslog::error;
 use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================

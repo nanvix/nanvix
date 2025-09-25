@@ -137,6 +137,11 @@ use ::syscall::{
         SymbolicLinkAtResponse,
     },
 };
+use ::syslog::{
+    debug,
+    error,
+    trace,
+};
 use sysapi::fcntl::file_descriptor_flags::{
     FD_CLOEXEC,
     FD_CLOFORK,

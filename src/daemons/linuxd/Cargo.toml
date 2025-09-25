@@ -22,9 +22,7 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
-flexi_logger = { workspace = true }
 libc = { workspace = true }
-log = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
 profiler = { workspace = true }
 signal-hook = { workspace = true }
@@ -32,6 +30,7 @@ sys = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
 user-vm-api = { workspace = true }
 
 [features]

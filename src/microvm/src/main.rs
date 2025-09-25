@@ -20,15 +20,10 @@
 //==================================================================================================
 
 mod args;
-mod logging;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
-
-/// Must come first.
-#[macro_use]
-extern crate log;
 
 use self::args::Args;
 use ::anyhow::Result;
@@ -45,6 +40,7 @@ use ::syscomm::{
     SocketStream,
     SocketType,
 };
+use ::syslog::error;
 use ::user_vm_api::NewUserVm;
 
 //==================================================================================================
@@ -82,7 +78,7 @@ fn main() -> Result<ExitCode> {
     };
 
     // Initialize logger. If this fails, the program will panic.
-    logging::initialize(args.log_to_file());
+    syslog::init(args.log_to_file());
 
     // Connect to the system VM.
     let system_vm_stream: Option<SocketStream> = match &system_vm_addr {

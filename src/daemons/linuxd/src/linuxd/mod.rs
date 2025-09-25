@@ -63,6 +63,12 @@ use ::syscomm::{
     SocketStream,
     SocketType,
 };
+use ::syslog::{
+    error,
+    info,
+    trace,
+    warn,
+};
 use ::user_vm_api::{
     self,
     RawUserVmIdentifier,

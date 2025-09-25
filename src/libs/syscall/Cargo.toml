@@ -29,7 +29,7 @@ goblin = { workspace = true, optional = true, features = [
 nvx = { workspace = true, optional = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
-syslog = { workspace = true, optional = true }
+syslog = { workspace = true, default-features = true, optional = true }
 sysalloc = { workspace = true, optional = true }
 sysapi = { workspace = true }
 type-safe = { workspace = true }

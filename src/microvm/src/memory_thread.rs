@@ -11,6 +11,10 @@
 // Imports
 //==================================================================================================
 
+use crate::orchestrator::{
+    MemoryControlCommand,
+    MemoryControlResponse,
+};
 use ::anyhow::Result;
 use ::std::{
     sync::mpsc::{
@@ -24,10 +28,9 @@ use ::std::{
     },
 };
 use ::sys::ipc::Message;
-
-use crate::orchestrator::{
-    MemoryControlCommand,
-    MemoryControlResponse,
+use ::syslog::{
+    debug,
+    error,
 };
 
 //==================================================================================================

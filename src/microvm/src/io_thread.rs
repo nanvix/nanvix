@@ -26,6 +26,10 @@ use ::std::{
 };
 use ::sys::ipc::Message;
 use ::syscomm::SocketStream;
+use ::syslog::{
+    debug,
+    error,
+};
 
 //==================================================================================================
 // Structure
