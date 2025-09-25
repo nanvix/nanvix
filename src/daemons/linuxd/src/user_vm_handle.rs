@@ -16,6 +16,7 @@ use ::syscomm::{
     BlockingSocketStream,
     SocketStream,
 };
+use ::syslog::error;
 
 //==================================================================================================
 // Structures

@@ -69,6 +69,7 @@ use ::std::{
     io,
     rc::Rc,
 };
+use ::syslog::error;
 use scope::{
     Guard,
     Scope,
@@ -200,7 +201,7 @@ impl Profiler {
             current.borrow().get_pred().as_ref().cloned()
         } else {
             // This should not happen with proper usage.
-            log::error!("Called perftools::profiler::leave() while not in any scope");
+            error!("Called perftools::profiler::leave() while not in any scope");
 
             None
         };
@@ -246,7 +247,7 @@ impl Profiler {
 impl Drop for Profiler {
     fn drop(&mut self) {
         if let Err(e) = self.write(&mut std::io::stderr(), None) {
-            log::error!("Failed to write profile data (error={e})");
+            error!("Failed to write profile data (error={e})");
         }
     }
 }

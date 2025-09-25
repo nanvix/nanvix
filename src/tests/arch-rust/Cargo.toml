@@ -21,7 +21,7 @@ syscall = { workspace = true, features = ["syscall"] }
 sysapi = { workspace = true }
 nvx = { workspace = true }
 config = { workspace = true }
-syslog = { workspace = true }
+syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 cc = { workspace = true }

@@ -12,7 +12,6 @@ use ::bincode::{
     Decode,
     Encode,
 };
-use ::log::error;
 use ::mio::{
     net::{
         TcpListener,
@@ -42,6 +41,7 @@ use ::std::{
         Instant,
     },
 };
+use ::syslog::error;
 
 //==================================================================================================
 // Constants

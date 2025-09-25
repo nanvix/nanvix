@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::benchmark::BenchmarkFlavour;
+use ::syslog::error;
 use anyhow::Result;
-use log::error;
 use std::{
     process,
     str::FromStr,

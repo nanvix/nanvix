@@ -73,6 +73,11 @@ use ::std::{
         MutexGuard,
     },
 };
+use ::syslog::{
+    error,
+    trace,
+    warn,
+};
 use ::vmm_sys_util::fam::{
     FamStruct,
     FamStructWrapper,

@@ -17,13 +17,8 @@ mod args;
 // Imports
 //==================================================================================================
 
-// Must come first.
-#[macro_use]
-extern crate log;
-
 use self::args::Args;
 use ::anyhow::Result;
-use ::flexi_logger::Logger;
 use ::serde_json::{
     json,
     Value,
@@ -33,13 +28,16 @@ use ::std::{
     sync::{
         atomic::AtomicUsize,
         Arc,
-        Once,
     },
     thread,
     time::{
         Duration,
         Instant,
     },
+};
+use ::syslog::{
+    debug,
+    error,
 };
 use ::tokio::{
     io::{
@@ -61,7 +59,7 @@ use ::tokio::{
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging system.
-    initialize();
+    ::syslog::init(false);
 
     // Parse and retrieve command-line arguments.
     let args: Args = Args::parse(env::args().collect())?;
@@ -102,25 +100,6 @@ async fn main() -> Result<()> {
     println!("{nthreads:?},{frequency:?},{timeout:?},{nrequests:?},{p50:?},{p99:?}");
 
     Ok(())
-}
-
-///
-/// # Description
-///
-/// Initializes the logger.
-///
-/// # Note
-///
-/// If the logger cannot be initialized, the function will panic.
-///
-pub fn initialize() {
-    static INIT_LOG: Once = Once::new();
-    INIT_LOG.call_once(|| {
-        Logger::try_with_env_or_str("error")
-            .expect("malformed RUST_LOG environment variable")
-            .start()
-            .expect("failed to initialize logger");
-    });
 }
 
 async fn client(

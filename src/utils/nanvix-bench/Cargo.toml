@@ -13,11 +13,9 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 config = { workspace = true }
-flexi_logger = { workspace = true }
 hwloc = { workspace = true }
 indicatif = { workspace = true }
 libc = { workspace = true }
-log = { workspace = true }
 microvm = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 nanvixd = { workspace = true }
@@ -30,6 +28,7 @@ syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
 
 [features]
 default = []

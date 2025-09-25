@@ -24,6 +24,12 @@ use ::syscall::{
     },
     message::MessagePartitioner,
 };
+use ::syslog::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use sysapi::{
     dirent::{
         dirent_file_type::{

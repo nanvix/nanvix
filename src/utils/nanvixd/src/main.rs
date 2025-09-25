@@ -17,17 +17,12 @@ mod args;
 mod cache;
 mod config;
 mod http;
-mod logging;
 mod message;
 mod sandbox;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
-
-// Must come first.
-#[macro_use]
-extern crate log;
 
 use crate::{
     args::Args,
@@ -38,6 +33,11 @@ use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
 use ::std::sync::Arc;
+use ::syslog::{
+    debug,
+    error,
+    info,
+};
 use ::tokio::{
     net::{
         TcpListener,
@@ -57,7 +57,7 @@ use ::tokio::{
 pub async fn main() -> Result<()> {
     let args: Args = Args::parse(std::env::args().collect())?;
 
-    logging::initialize(args.log_to_file());
+    ::syslog::init(args.log_to_file());
 
     let mut signals: Signal = signal(SignalKind::interrupt())?;
     let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
