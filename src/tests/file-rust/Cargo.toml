@@ -19,7 +19,7 @@ libc_string = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
-syslog = { workspace = true }
+syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 cc = { workspace = true }

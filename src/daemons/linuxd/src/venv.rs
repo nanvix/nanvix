@@ -22,6 +22,11 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
+use ::syslog::{
+    error,
+    info,
+    trace,
+};
 use ::user_vm_api::RawUserVmIdentifier;
 
 ///

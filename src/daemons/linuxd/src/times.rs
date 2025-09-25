@@ -16,6 +16,11 @@ use ::syscall::sys::times::message::{
     TimesRequest,
     TimesResponse,
 };
+use ::syslog::{
+    debug,
+    error,
+    trace,
+};
 
 //==================================================================================================
 // do_times()

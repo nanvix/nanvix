@@ -10,10 +10,6 @@ use crate::sandbox::{
     tag::SandboxTag,
 };
 use ::anyhow::Result;
-use ::log::{
-    debug,
-    error,
-};
 use ::mio::Poll;
 use ::std::{
     process::Stdio,
@@ -23,6 +19,10 @@ use ::syscomm::{
     SocketListener,
     SocketStream,
     SocketType,
+};
+use ::syslog::{
+    debug,
+    error,
 };
 use ::tokio::process::{
     Child,

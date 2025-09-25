@@ -16,12 +16,12 @@ use ::bincode::{
     Decode,
     Encode,
 };
-use ::log::error;
 use ::std::io;
 use ::syscomm::{
     BlockingSocketStream,
     SocketType,
 };
+use ::syslog::error;
 
 //==================================================================================================
 // Types

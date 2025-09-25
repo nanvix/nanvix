@@ -26,6 +26,11 @@ use ::syscomm::{
     SocketListener,
     SocketType,
 };
+use ::syslog::{
+    debug,
+    error,
+    warn,
+};
 use ::tokio::sync::Mutex;
 use ::user_vm_api::RawUserVmIdentifier;
 

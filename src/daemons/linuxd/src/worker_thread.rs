@@ -142,6 +142,11 @@ use ::syscomm::{
     SocketError,
     SocketStream,
 };
+use ::syslog::{
+    debug,
+    error,
+    trace,
+};
 use libc::{
     c_int,
     pthread_kill,

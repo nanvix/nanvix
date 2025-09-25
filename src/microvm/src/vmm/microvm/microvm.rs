@@ -58,6 +58,11 @@ use ::std::{
     },
     time::Instant,
 };
+use ::syslog::{
+    error,
+    trace,
+    warn,
+};
 
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
