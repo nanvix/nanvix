@@ -14,5 +14,5 @@ homepage.workspace = true
 anyhow = { workspace = true }
 bincode = { workspace = true }
 config = { workspace = true }
-log = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
+syslog = { workspace = true, features = ["std"] }

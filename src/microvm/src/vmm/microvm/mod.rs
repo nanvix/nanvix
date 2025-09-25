@@ -65,6 +65,10 @@ use ::sys::ipc::{
     MessageType,
 };
 use ::syscomm::SocketStream;
+use ::syslog::{
+    error,
+    trace,
+};
 
 //==================================================================================================
 // Structure

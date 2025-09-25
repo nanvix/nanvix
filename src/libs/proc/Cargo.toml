@@ -16,7 +16,7 @@ crate-type = ["lib"]
 [dependencies]
 sys = { workspace = true }
 static_assert = { workspace = true }
-syslog = { workspace = true, optional = true }
+syslog = { workspace = true, default-features = true, optional = true }
 
 [build-dependencies]
 cc = { workspace = true }

@@ -16,6 +16,10 @@ use crate::vmm::microvm::{
     },
 };
 use ::anyhow::Result;
+use ::syslog::{
+    error,
+    trace,
+};
 use std::sync::{
     Arc,
     Mutex,

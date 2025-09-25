@@ -12,7 +12,19 @@ use ::flexi_logger::{
 use ::std::sync::Once;
 
 //==================================================================================================
-// Standalone Functions
+// Re-Exports
+//==================================================================================================
+
+pub use ::log::{
+    debug,
+    error,
+    info,
+    trace,
+    warn,
+};
+
+//==================================================================================================
+// Public Standalone Functions
 //==================================================================================================
 
 ///
@@ -28,8 +40,7 @@ use ::std::sync::Once;
 ///
 /// If the logger cannot be initialized, the function will panic.
 ///
-#[allow(clippy::expect_used)]
-pub fn initialize(log_to_file: bool) {
+pub fn init(log_to_file: bool) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
         let logger =

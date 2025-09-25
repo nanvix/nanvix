@@ -14,7 +14,7 @@ crate-type = ["lib"]
 
 [dependencies]
 cfg-if = { workspace = true }
-log = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
 
 [features]
 default = []

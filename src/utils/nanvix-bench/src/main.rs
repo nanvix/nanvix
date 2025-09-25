@@ -32,15 +32,10 @@ use crate::{
     env::get_proj_root,
 };
 use ::anyhow::Result;
-use ::flexi_logger::Logger;
 use ::hwloc::HwLoc;
 use ::indicatif::{
     ProgressBar,
     ProgressStyle,
-};
-use ::log::{
-    debug,
-    error,
 };
 use ::microvm::Vmm;
 use ::mio::net::UnixStream;
@@ -82,6 +77,10 @@ use ::syscomm::{
     BlockingSocketStream,
     SocketStream,
     SocketType,
+};
+use ::syslog::{
+    debug,
+    error,
 };
 use ::user_vm_api::RawUserVmIdentifier;
 
@@ -712,11 +711,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logger, and make sure we print error logs.
-    Logger::try_with_env_or_str("error")
-        .expect("malformed RUST_LOG environment variable")
-        .start()
-        .expect("failed to initialize logger");
+    ::syslog::init(false);
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {

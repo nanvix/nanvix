@@ -61,6 +61,12 @@ use ::sys::ipc::{
     MessageType,
 };
 use ::syscomm::SocketStream;
+use ::syslog::{
+    debug,
+    error,
+    info,
+    trace,
+};
 
 // ==================================================================================================
 // Globals
@@ -157,7 +163,7 @@ impl Vmm {
             match std::fs::read(&initrd_filename) {
                 Ok(bytes) => {
                     let actual_size = bytes.len();
-                    log::debug!("initrd: {} bytes", actual_size);
+                    debug!("initrd: {} bytes", actual_size);
 
                     let kernel_size = std::fs::metadata(kernel_filename)
                         .map(|m| m.len() as usize)
@@ -196,7 +202,7 @@ impl Vmm {
                     // Add the actual initrd data
                     padded_bytes.extend_from_slice(&bytes);
 
-                    log::debug!(
+                    debug!(
                         "initrd with padding: {} bytes total (8 byte header + {} bytes data + {} \
                          bytes padding)",
                         padded_bytes.len(),
@@ -391,7 +397,7 @@ impl Vmm {
                 .create(true)
                 .truncate(true)
                 .open(&vm_stderr)?;
-            log::debug!("stderr: {:?}", file);
+            debug!("stderr: {:?}", file);
             Arc::new(Mutex::new(file))
         } else {
             // Standard error was not set to a file. Fallback to stderr.
@@ -412,7 +418,7 @@ fn add_credit() -> Result<()> {
             vmem.get_shared_mem_mut()
                 .write::<u64>(credits_offset, credit)?;
 
-            log::info!("Adding credit: {}", credit);
+            info!("Adding credit: {}", credit);
             Ok(())
         })
         .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
@@ -434,7 +440,7 @@ fn consume_credit() -> Result<()> {
             vmem.get_shared_mem_mut()
                 .write::<u64>(credits_offset, credit)?;
 
-            log::info!("Consuming credit: {}", credit);
+            info!("Consuming credit: {}", credit);
             Ok(())
         })
         .ok_or(anyhow::anyhow!("VMEM is not initialized"))?

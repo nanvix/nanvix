@@ -32,10 +32,6 @@ mod worker_thread;
 // Imports
 //==================================================================================================
 
-// Must come first.
-#[macro_use]
-extern crate log;
-
 extern crate alloc;
 
 use self::{
@@ -43,14 +39,9 @@ use self::{
     linuxd::LinuxDaemon,
 };
 use ::anyhow::Result;
-use ::flexi_logger::{
-    FileSpec,
-    Logger,
-};
 use ::std::{
     env,
     str::FromStr,
-    sync::Once,
 };
 use ::sys::{
     error::ErrorCode,
@@ -60,13 +51,17 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
+    pm::ThreadIdentifier,
 };
 use ::syscomm::{
     Socket,
     SocketListener,
     SocketType,
 };
-use sys::pm::ThreadIdentifier;
+use ::syslog::{
+    error,
+    info,
+};
 
 //==================================================================================================
 // Constants
@@ -85,7 +80,7 @@ const DEFAULT_USER_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
 pub fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    initialize(args.log_to_file());
+    ::syslog::init(args.log_to_file());
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: String = args.control_plane_sockaddr();
@@ -150,31 +145,6 @@ pub fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-///
-/// # Description
-///
-/// Initializes the logger.
-///
-/// # Note
-///
-/// If the logger cannot be initialized, the function will panic.
-///
-pub fn initialize(logfile: bool) {
-    static INIT_LOG: Once = Once::new();
-    INIT_LOG.call_once(|| {
-        let logger =
-            Logger::try_with_env_or_str("error").expect("malformed RUST_LOG environment variable");
-        if logfile {
-            logger
-                .log_to_file(FileSpec::default())
-                .start()
-                .expect("failed to initialize logger");
-        } else {
-            logger.start().expect("failed to initialize logger");
-        }
-    });
 }
 
 ///

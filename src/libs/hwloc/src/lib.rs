@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use ::syslog::error;
 use anyhow::Result;
 use libc::{
     cpu_set_t,
@@ -12,7 +13,6 @@ use libc::{
     CPU_SET,
     CPU_ZERO,
 };
-use log::error;
 use serde::Deserialize;
 use std::{
     mem,

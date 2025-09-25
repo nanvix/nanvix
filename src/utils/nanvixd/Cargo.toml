@@ -15,14 +15,12 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
-flexi_logger = { workspace = true }
 http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
 hwloc = { workspace = true }
 libc = { workspace = true }
-log = { workspace = true }
 microvm = { workspace = true }
 linuxd = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
@@ -32,5 +30,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 sys = { workspace = true }
 syscomm = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }

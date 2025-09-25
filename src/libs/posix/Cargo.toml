@@ -28,7 +28,7 @@ syscall = { workspace = true, features = [
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
-syslog = { workspace = true, optional = true }
+syslog = { workspace = true, default-features = true, optional = true }
 type-safe = { workspace = true }
 
 [features]
