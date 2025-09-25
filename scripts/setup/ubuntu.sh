@@ -17,6 +17,7 @@ apt-get install -y        \
     bridge-utils          \
     build-essential       \
     clang-format          \
+    cmake                 \
     codespell             \
     cpio                  \
     curl                  \
