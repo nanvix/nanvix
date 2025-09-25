@@ -110,6 +110,8 @@ pub struct Orchestrator {
     resume_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
     // Callback function to create a snapshot.
     create_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
+    // Callback function to load a snapshot.
+    load_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
 }
 
 //==================================================================================================
@@ -225,6 +227,7 @@ impl Orchestrator {
         pause_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
         resume_microvm: Box<dyn Fn() -> Result<()> + Send + 'static>,
         create_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
+        load_snapshot: Box<dyn Fn() -> Result<()> + Send + 'static>,
     ) -> Self {
         Self {
             state: State::PreBoot,
@@ -243,6 +246,7 @@ impl Orchestrator {
             pause_microvm,
             resume_microvm,
             create_snapshot,
+            load_snapshot,
         }
     }
 
@@ -310,7 +314,12 @@ impl Orchestrator {
                 },
                 IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
-                        // TODO: load snapshot https://github.com/nanvix/nanvix/issues/948
+                        if let Err(e) = (self.load_snapshot)() {
+                            let reason: String =
+                                format!("LoadSnapshotAndRun: failed to load snapshot: {e:?}");
+                            error!("handle_command(): {reason}");
+                            anyhow::bail!(reason);
+                        }
                         trace!("State: PreBoot -> Paused");
 
                         // The Linux daemon should send messages to PreBoot VMMs by default,

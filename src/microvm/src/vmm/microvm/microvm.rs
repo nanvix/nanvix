@@ -26,6 +26,7 @@ use crate::{
             VirtualProcessor,
             VirtualProcessorExitContext,
             VirtualProcessorExitReason,
+            VirtualProcessorState,
         },
         vmem::VirtualMemory,
     },
@@ -638,6 +639,76 @@ impl MicroVm {
                 error!("create_snapshot(): {reason}");
                 anyhow::bail!(reason)
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads the virtual memory and the KVM state from files.
+    ///
+    /// # Parameters
+    ///
+    /// - `filepath`: Path to the executable file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn load_snapshot(&self, filepath: &str) -> Result<()> {
+        let (vmem_filepath, kvm_filepath) = Self::make_snapshot_paths(filepath);
+
+        if let Err(e) = self
+            .vmem
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .load_snapshot(&vmem_filepath)
+        {
+            let reason: String = format!("failed loading virtual memory snapshot (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let mut file: File = match File::open(kvm_filepath) {
+            Ok(f) => f,
+            Err(e) => {
+                let reason: String = format!("failed opening vcpu snapshot file (error={e:?})");
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let state: VirtualProcessorState = match bincode::serde::decode_from_std_read::<
+            VirtualProcessorState,
+            _,
+            _,
+        >(&mut file, bincode::config::standard())
+        {
+            Ok(state) => {
+                if let Err(e) = state.validate() {
+                    let reason: String = format!("decoded vcpu snapshot is invalid (error={e:?})");
+                    error!("load_snapshot(): {reason}");
+                    anyhow::bail!(reason)
+                } else {
+                    state
+                }
+            },
+            Err(e) => {
+                let reason: String = format!("failed decoding vcpu snapshot file (error={e:?})");
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        if let Err(e) = self
+            .vcpu
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .set_state(state)
+        {
+            let reason: String = format!("failed setting vcpu state (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        } else {
+            Ok(())
         }
     }
 }

@@ -374,6 +374,7 @@ impl Vmm {
             Box::new(pause_microvm),
             Box::new(resume_microvm),
             Box::new(|| Ok(())), // TODO: create_snapshot https://github.com/nanvix/nanvix/issues/947
+            Box::new(|| Ok(())), // TODO: load_snapshot https://github.com/nanvix/nanvix/issues/948
         );
 
         let mut vmm: Vmm = Self {

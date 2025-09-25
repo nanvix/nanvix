@@ -17,7 +17,10 @@ use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
 use ::std::{
     fs::File,
-    io::Write,
+    io::{
+        Read,
+        Write,
+    },
     mem,
     path::Path,
     ptr::{
@@ -518,6 +521,74 @@ impl VirtualMemory {
         trace!("save_snapshot(): successfully saved snapshot to {:?}", path);
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Loads a virtual memory snapshot from a snapshot file.
+    /// This restores the memory contents and metadata.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn load_snapshot(&mut self, path: &Path) -> Result<()> {
+        trace!("load_snapshot(): reading from {:?}", path);
+        crate::timer!("vmem_load_snapshot");
+
+        let mut file: File = match File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                let reason: String =
+                    format!("failed opening virtual memory snapshot file (error={e:?})");
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // Read the header
+        let mut header_bytes: [u8; SIZE_OF_HEADER] = [0u8; SIZE_OF_HEADER];
+        let header: SnapshotHeader = match file.read_exact(&mut header_bytes) {
+            Ok(()) => SnapshotHeader::from_bytes(&header_bytes),
+            Err(e) => {
+                let reason: String = format!(
+                    "failed reading header from virtual memory snapshot file (error={e:?})"
+                );
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        // Validate that the memory size matches
+        if header.memory_size != self.size {
+            let reason: String =
+                format!("memory size mismatch: expected {}, got {}", self.size, header.memory_size);
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Read the memory contents
+        // SAFETY: We're making a slice of the size of the virtual memory starting at its base.
+        let memory_slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(self.ptr, self.size) };
+        if let Err(e) = file.read_exact(memory_slice) {
+            let reason: String = format!("failed to read memory contents (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+        // TODO: validate header checksum matches the checksum computed off of the memory slice https://github.com/nanvix/nanvix/issues/1014
+
+        // Restore metadata
+        self.kernel = Some((header.kernel_base, header.kernel_size));
+        self.initrd = Some((header.initrd_base, header.initrd_size));
+        self.credits = header.credits;
+
+        trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
+        Ok(())
+    }
 }
 
 impl Drop for VirtualMemory {
@@ -568,5 +639,26 @@ impl SnapshotHeader {
         // SAFETY: Size and alignment are guaranteed by being a `SnapshotHeader` method.
         // The struct has #[repr(C)].
         unsafe { mem::transmute::<&SnapshotHeader, &[u8; SIZE_OF_HEADER]>(self) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Deserializes a snapshot header from a slice of bytes.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: Slice of bytes containing the snapshot header.
+    ///
+    /// # Returns
+    ///
+    /// The type-safe form of the header.
+    ///
+    fn from_bytes(bytes: &[u8; SIZE_OF_HEADER]) -> Self {
+        // SAFETY: Size is guaranteed to match SIZE_OF_HEADER.
+        // The struct has #[repr(C)] so memory layout is guaranteed.
+        // The header is at the beginning of the file, so alignment is guaranteed.
+        unsafe { mem::transmute::<[u8; SIZE_OF_HEADER], SnapshotHeader>(*bytes) }
+        // TODO: #1014 Add a magic number to the header and check it after deserialization.
     }
 }
