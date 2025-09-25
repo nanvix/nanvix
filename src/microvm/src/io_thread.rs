@@ -5,17 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    Gateway,
-    orchestrator::{
-        IoControlCommand,
-        IoControlResponse,
-    },
+use crate::orchestrator::{
+    IoControlCommand,
+    IoControlResponse,
 };
 use ::anyhow::Result;
 use ::std::{
     collections::VecDeque,
     io::ErrorKind,
+    mem,
     sync::mpsc::{
         Receiver,
         Sender,
@@ -27,6 +25,7 @@ use ::std::{
     },
 };
 use ::sys::ipc::Message;
+use ::syscomm::SocketStream;
 
 //==================================================================================================
 // Structure
@@ -38,8 +37,10 @@ use ::sys::ipc::Message;
 /// Private data of the I/O thread.
 ///
 pub struct IoThread {
-    /// Connection to the gateway.
-    gateway: Gateway,
+    /// Connection to the system VM.
+    system_vm_stream: SocketStream,
+    /// Buffer to handle partial reads from the system VM.
+    system_vm_partial_read_buffer: VecDeque<u8>,
     /// Gateway receiver.
     data_rx: Receiver<Message>,
     /// Gateway sender.
@@ -67,7 +68,7 @@ impl IoThread {
     ///
     /// # Parameters
     ///
-    /// - `gateway`: Connection to gateway.
+    /// - `system_vm_stream`: Connection to the system VM.
     /// - `data_rx`: MicroVM receiver.
     /// - `data_tx`: MicroVM sender.
     /// - `control_tx`: Command sender.
@@ -78,7 +79,7 @@ impl IoThread {
     /// A handle to the I/O thread.
     ///
     pub fn spawn(
-        gateway: Gateway,
+        system_vm_stream: SocketStream,
         data_rx: Receiver<Message>,
         data_tx: Sender<Message>,
         control_tx: Sender<IoControlCommand>,
@@ -86,7 +87,7 @@ impl IoThread {
     ) -> JoinHandle<Result<()>> {
         thread::spawn(move || {
             let mut io_thread: IoThread =
-                IoThread::new(gateway, data_rx, data_tx, control_tx, control_rx)?;
+                IoThread::new(system_vm_stream, data_rx, data_tx, control_tx, control_rx)?;
             io_thread.run()?;
             Ok(())
         })
@@ -99,7 +100,7 @@ impl IoThread {
     ///
     /// # Parameters
     ///
-    /// - `gateway`: Connection to gateway.
+    /// - `system_vm_stream`: Connection to the system VM.
     /// - `data_rx`: MicroVM receiver.
     /// - `data_tx`: MicroVM sender.
     /// - `control_tx`: Command sender.
@@ -110,14 +111,15 @@ impl IoThread {
     /// Upon success, a new I/O thread is returned. Otherwise, an error is returned.
     ///
     fn new(
-        gateway: Gateway,
+        system_vm_stream: SocketStream,
         data_rx: Receiver<Message>,
         data_tx: Sender<Message>,
         control_tx: Sender<IoControlCommand>,
         control_rx: Receiver<IoControlResponse>,
     ) -> Result<Self> {
         Ok(Self {
-            gateway,
+            system_vm_stream,
+            system_vm_partial_read_buffer: VecDeque::new(),
             data_rx,
             data_tx,
             incoming: VecDeque::new(),
@@ -139,8 +141,8 @@ impl IoThread {
     fn run(&mut self) -> Result<()> {
         loop {
             self.try_receive_from_microvm()?;
-            self.try_send_to_gateway()?;
-            self.try_receive_from_gateway()?;
+            self.try_send_to_system_vm()?;
+            self.try_receive_from_system_vm()?;
             self.try_send_to_microvm()?;
             self.try_receive_from_vmm_control()?;
         }
@@ -149,30 +151,84 @@ impl IoThread {
     ///
     /// # Description
     ///
-    /// Attempts to receive a message from the gateway.
+    /// Attempts to receive a message from the system VM. We need to be careful to handle partial
+    /// reads properly.
     ///
     /// # Returns
     ///
     /// Upon success, the received message is pushed into the `incoming` queue, and `true` is returned.
     /// Otherwise, if it would block, `false` is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_gateway(&mut self) -> Result<bool> {
-        match self.gateway.try_receive() {
-            Ok(message) => {
-                self.incoming.push_back(message);
-                Ok(true)
-            },
-            Err(e) => {
-                if e.kind() == ErrorKind::WouldBlock {
-                    Ok(false)
-                } else {
-                    let reason: String =
-                        format!("failed to receive message from the gateway (error={e:?})");
-                    error!("try_receive_from_gateway(): {reason}");
-                    anyhow::bail!(reason)
+    fn try_receive_from_system_vm(&mut self) -> Result<bool> {
+        let mut buf: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
+
+        let mut num_filled: usize = 0;
+        if !self.system_vm_partial_read_buffer.is_empty() {
+            // Prepare data in buffer for partial read.
+            self.system_vm_partial_read_buffer.make_contiguous();
+            let partial_bytes: &[u8] = self.system_vm_partial_read_buffer.as_slices().0;
+
+            // We take the minimum at the end just in case, but the partial read should always be
+            // strictly smaller than the message size.
+            let num_partial_read: usize = partial_bytes.len().min(buf.len());
+
+            buf[..num_partial_read].copy_from_slice(&partial_bytes[..num_partial_read]);
+
+            // Clear partial read buffer.
+            self.system_vm_partial_read_buffer.clear();
+            num_filled += num_partial_read;
+        }
+        // Post-condition: partial_read_buffer is empty.
+
+        match self.system_vm_stream.try_read_exact(&mut buf[num_filled..]) {
+            Ok(n) => {
+                // Handle partial reads by copying all we have read to the partial read buffer and
+                // returning a WouldBlock indicating that we need more data.
+                if n + num_filled < buf.len() {
+                    self.system_vm_partial_read_buffer
+                        .extend(&buf[..(n + num_filled)]);
+
+                    // A partial read corresponds to a WouldBlock, so we return false.
+                    return Ok(false);
                 }
             },
-        }
+            // If WouldBlock, return false.
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                // Handle the situation where we may have filled a partial read from a previous
+                // attempt, but then error-ed out with WouldBlock.
+                if num_filled > 0 {
+                    self.system_vm_partial_read_buffer
+                        .extend(&buf[..num_filled]);
+                }
+
+                return Ok(false);
+            },
+            Err(e) => {
+                let reason: String =
+                    format!("failed to receive message from the system VM (error={e:?})");
+                error!("try_receive_from_system_vm(): {reason}");
+
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        let mut message: Message = match Message::try_from_bytes(buf) {
+            Ok(message) => message,
+            Err(e) => {
+                let reason: String =
+                    format!("failed to parse message from system VM (error={e:?})");
+                error!("try_receive_from_system_vm(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+        profiler::timestamp_message!(
+            &mut message.payload,
+            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+        );
+
+        self.incoming.push_back(message);
+        Ok(true)
     }
 
     ///
@@ -210,13 +266,13 @@ impl IoThread {
     ///
     /// # Description
     ///
-    /// Attempts to send a message to the gateway.
+    /// Attempts to send a message to the system VM.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
-    fn try_send_to_gateway(&mut self) -> Result<()> {
+    fn try_send_to_system_vm(&mut self) -> Result<()> {
         match self.outgoing.pop_front() {
             Some(message) => {
                 let mut message_clone: Message = message.clone();
@@ -225,18 +281,17 @@ impl IoThread {
                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
-                match self.gateway.try_send(message_clone) {
-                    Ok(_) => Ok(()),
+                match self.system_vm_stream.write_all(&message_clone.to_bytes()) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                        self.outgoing.push_front(message);
+                        Ok(())
+                    },
                     Err(e) => {
-                        if e.kind() == ErrorKind::WouldBlock {
-                            self.outgoing.push_front(message);
-                            Ok(())
-                        } else {
-                            let reason: String =
-                                format!("failed to send message to the gateway (error={e:?})");
-                            error!("try_send_to_gateway(): {reason}");
-                            anyhow::bail!(reason)
-                        }
+                        let reason: String =
+                            format!("failed to send message to the system VM (error={e:?})");
+                        error!("try_send_to_system_vm(): {reason}");
+                        Err(anyhow::anyhow!(reason))
                     },
                 }
             },
@@ -308,7 +363,7 @@ impl IoThread {
             // Keep looping until `data_rx` is empty, which breaks the loop.
         }
         while !self.outgoing.is_empty() {
-            self.try_send_to_gateway()?;
+            self.try_send_to_system_vm()?;
         }
         Ok(())
     }
@@ -322,8 +377,8 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn flush_linuxd_input(&mut self) -> Result<()> {
-        while self.try_receive_from_gateway()? {
-            // Keep looping until receiving from the gateway would block, which breaks the loop.
+        while self.try_receive_from_system_vm()? {
+            // Keep looping until receiving from the system VM would block, which breaks the loop.
         }
         Ok(())
     }
