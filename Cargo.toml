@@ -33,6 +33,7 @@ members = [
         "src/libs/syscall",
         "src/libs/syscomm",
         "src/libs/syslog",
+        "src/libs/libc_stdlib",
         "src/libs/libc_string",
         "src/libs/sys",
         "src/libs/type-safe",
