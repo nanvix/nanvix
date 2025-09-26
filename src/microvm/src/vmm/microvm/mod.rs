@@ -31,6 +31,7 @@ use crate::{
     io_thread::IoThread,
     memory_thread,
     orchestrator::{
+        self,
         IoControlCommand,
         IoControlResponse,
         MemoryControlCommand,
@@ -46,6 +47,10 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::libc::pthread_self;
+use ::mio::{
+    Poll,
+    Waker,
+};
 use ::std::{
     fs::File,
     io::Write,
@@ -138,31 +143,56 @@ impl Vmm {
         let (vcpu_control_tx, vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
         let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
+        // Create a poll and a waker for the memory thread. We must do this first to break a
+        // circular dependency where:
+        // - I/O thread needs memory thread waker token.
+        // - Memory thread needs clone of micro VM VMEM.
+        // - Micro VM needs output function.
+        // - Output function needs I/O thread waker token.
+        let memory_thread_poll: Poll = Poll::new()?;
+        let memory_thread_waker: Arc<Waker> =
+            Arc::new(Waker::new(memory_thread_poll.registry(), memory_thread::WAKER_TOKEN)?);
+
+        // Similar for the orchestrator that needs to be woken up by either the I/O thread or the
+        // vCPU thread.
+        let orchestrator_poll: Poll = Poll::new()?;
+        let orchestrator_waker: Arc<Waker> =
+            Arc::new(Waker::new(orchestrator_poll.registry(), orchestrator::WAKER_TOKEN)?);
+
         // Spawn I/O thread if we have any external stream to monitor.
-        let io_thread: Option<JoinHandle<Result<()>>> = if io_enabled {
-            Some(IoThread::spawn(
-                system_vm_stream,
-                io_thread_data_rx,
-                io_thread_data_tx,
-                io_thread_control_tx,
-                io_thread_control_rx,
-                control_plane_stream,
-            ))
-        } else {
-            None
-        };
+        let (io_thread, io_thread_waker): (Option<JoinHandle<Result<()>>>, Option<Arc<Waker>>) =
+            if io_enabled {
+                let (io_thread, io_thread_waker): (JoinHandle<Result<()>>, Arc<Waker>) =
+                    IoThread::spawn(
+                        system_vm_stream,
+                        memory_thread_waker.clone(),
+                        io_thread_data_rx,
+                        io_thread_data_tx,
+                        orchestrator_waker.clone(),
+                        io_thread_control_tx,
+                        io_thread_control_rx,
+                        control_plane_stream,
+                    )?;
+                (Some(io_thread), Some(io_thread_waker))
+            } else {
+                (None, None)
+            };
 
         // Input function used for emulating I/O port reads.
         let input: Box<microvm::InputFn> = Self::build_input_fn(vcpu_thread_stdin_rx);
 
         // Output function used for emulating I/O port writes.
-        let output: Box<microvm::OutputFn> =
-            Self::build_output_fn(Self::get_stderr_writer(stderr.clone())?, vcpu_thread_stdout_tx);
+        let output: Box<microvm::OutputFn> = Self::build_output_fn(
+            Self::get_stderr_writer(stderr.clone())?,
+            vcpu_thread_stdout_tx,
+            io_thread_waker.clone(),
+        );
 
         let mut microvm: MicroVm = MicroVm::new(
             memory_size,
             input,
             output,
+            orchestrator_waker.clone(),
             vcpu_thread_control_rx,
             vcpu_thread_control_tx,
         )?;
@@ -197,7 +227,8 @@ impl Vmm {
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let vmem_pause_microvm: Arc<Mutex<VirtualMemory>> = vmem.clone();
         let vmem_resume_microvm: Arc<Mutex<VirtualMemory>> = vmem.clone();
-        let memory_thread: JoinHandle<Result<(), anyhow::Error>> = memory_thread::spawn(
+        let memory_thread: JoinHandle<Result<()>> = memory_thread::spawn(
+            memory_thread_poll,
             memory_thread_data_rx,
             memory_thread_data_tx,
             memory_thread_control_rx,
@@ -242,10 +273,13 @@ impl Vmm {
         let create_snapshot_clone: MicroVm = microvm.clone();
         let filename: String = initrd_filename.unwrap_or("bin/default.elf".to_string());
         let orchestrator = Orchestrator::new(
+            orchestrator_poll,
             io_enabled,
             vcpu_tid,
+            io_thread_waker.clone(),
             io_control_rx,
             io_control_tx,
+            memory_thread_waker.clone(),
             memory_control_rx,
             memory_control_tx,
             vcpu_control_rx,
@@ -382,6 +416,7 @@ impl Vmm {
     fn build_output_fn(
         mut file_writer: Box<dyn Write>,
         queue: Sender<Message>,
+        io_thread_waker: Option<Arc<Waker>>,
     ) -> Box<microvm::OutputFn> {
         // Output function used for emulating I/O port writes.
         let output = move |vm: &Arc<Mutex<VirtualMemory>>, data, size| -> Result<()> {
@@ -431,6 +466,10 @@ impl Vmm {
                     let reason: String = format!("failed to send message: {e:?}");
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
+                }
+
+                if let Some(io_thread_waker) = &io_thread_waker {
+                    io_thread_waker.wake()?;
                 }
 
                 Ok(())

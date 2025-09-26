@@ -39,6 +39,7 @@ use ::libc::{
     sigaction,
     sigemptyset,
 };
+use ::mio::Waker;
 use ::std::{
     ffi::OsStr,
     fs::File,
@@ -101,6 +102,8 @@ pub struct MicroVm {
     vcpu: Arc<Mutex<VirtualProcessor>>,
     // Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     handle: Arc<Mutex<InteriorMicroVmHandle>>,
+    /// Waker token to notify the VMM when we send commands.
+    orchestrator_waker: Arc<Waker>,
 }
 
 ///
@@ -157,6 +160,7 @@ impl MicroVm {
     /// - `memory_size`: Size of the virtual memory of the virtual machine.
     /// - `input`: Input function used for emulating I/O port reads.
     /// - `output`: Output function used for emulating I/O port writes.
+    /// - `orchestrator_waker`: Waker to notify the VMM when we send messages over control_tx.
     /// - `control_rx`: Channel to receive commands from the VMM.
     /// - `control_tx`: Channel to send control responses to the VMM.
     ///
@@ -169,6 +173,7 @@ impl MicroVm {
         memory_size: usize,
         input: Box<InputFn>,
         output: Box<OutputFn>,
+        orchestrator_waker: Arc<Waker>,
         control_rx: Receiver<VcpuControlCommand>,
         control_tx: Sender<VcpuControlResponse>,
     ) -> Result<Self> {
@@ -199,6 +204,7 @@ impl MicroVm {
             vmem,
             vcpu,
             handle: state,
+            orchestrator_waker,
         })
     }
 
@@ -385,6 +391,9 @@ impl MicroVm {
             .control_tx
             .send(VcpuControlResponse::Shutdown)?;
 
+        // Notify the VMM thread to check its message queues.
+        self.orchestrator_waker.wake()?;
+
         Ok(())
     }
 
@@ -442,6 +451,9 @@ impl MicroVm {
                             locked_state
                                 .control_tx
                                 .send(VcpuControlResponse::Shutdown)?;
+
+                            // Notify the VMM thread to check its message queues.
+                            self.orchestrator_waker.wake()?;
 
                             return Ok(exit_status);
                         }
