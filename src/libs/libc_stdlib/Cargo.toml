@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "libc_stdlib"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+sysapi = { workspace = true }
+flexi_logger = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+static_assert = { workspace = true }
+syslog = { workspace = true, default-features = false }
+
+[features]
+default = ["syslog/default"]
+# Enables the use of the Rust Standard Library.
+std = ["syslog/std"]
+
+# Logging feature passthrough (match syslog crate features)
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
