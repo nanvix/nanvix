@@ -47,7 +47,7 @@ use ::syslog::{
 ///
 /// - `data_rx`: Receives data messages from the I/O thread.
 /// - `data_tx`: Sends data messages to the virtual machine's stdin.
-/// - `_control_rx`: Receives control commands from the VMM.
+/// - `control_rx`: Receives control commands from the VMM.
 /// - `_control_tx`: Sends control responses to the VMM.
 /// - `add_credit`: Closure that adds a credit to the virtual machine credit pool.
 ///
@@ -58,7 +58,7 @@ use ::syslog::{
 pub fn spawn<F>(
     data_rx: Receiver<Message>,
     data_tx: Sender<Message>,
-    _control_rx: Receiver<MemoryControlCommand>,
+    control_rx: Receiver<MemoryControlCommand>,
     _control_tx: Sender<MemoryControlResponse>,
     mut add_credit: F,
 ) -> JoinHandle<Result<()>>
@@ -67,6 +67,21 @@ where
 {
     thread::spawn(move || {
         loop {
+            match control_rx.try_recv() {
+                Ok(command) => match command {
+                    MemoryControlCommand::Shutdown => {
+                        debug!("memory_thread(): received shutdown command");
+                        break Ok(());
+                    },
+                },
+                Err(TryRecvError::Disconnected) => {
+                    debug!("memory_thread(): VMM control channel has been disconnected");
+                    break Ok(());
+                },
+                Err(TryRecvError::Empty) => {
+                    // No message available.
+                },
+            }
             match data_rx.try_recv() {
                 Ok(mut msg) => {
                     profiler::timestamp_message!(

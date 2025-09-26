@@ -123,7 +123,7 @@ fn main() -> Result<ExitCode> {
         None => None,
     };
 
-    let _control_plane_socket: Option<SocketStream> = match args.control_plane_addr() {
+    let control_plane_socket: Option<SocketStream> = match args.control_plane_addr() {
         Some(addr) => {
             let control_plane_socket_type: SocketType = match args.control_plane_socket_type() {
                 Some(socket_type) => socket_type,
@@ -152,6 +152,7 @@ fn main() -> Result<ExitCode> {
         initrd_args,
         stderr,
         system_vm_stream,
+        control_plane_socket,
     )? {
         exit_status if exit_status != 0 => {
             let exit_code: u8 = match exit_status.try_into() {

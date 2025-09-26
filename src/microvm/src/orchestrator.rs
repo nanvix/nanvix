@@ -5,8 +5,20 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "hyperlight"))]
+use crate::vmm::INTERRUPT_SIGNAL;
 use ::anyhow::Result;
+#[cfg(not(feature = "hyperlight"))]
+use ::libc::{
+    pthread_kill,
+    pthread_t,
+};
 use ::std::{
+    ops::ControlFlow::{
+        self,
+        Break,
+        Continue,
+    },
     sync::mpsc::{
         Receiver,
         Sender,
@@ -15,7 +27,9 @@ use ::std::{
     time::Instant,
 };
 use ::syslog::{
+    debug,
     error,
+    info,
     trace,
     warn,
 };
@@ -41,6 +55,13 @@ pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 pub struct Orchestrator {
     // The state of the VM.
     state: State,
+    // FIXME (#1009): once the I/O channels are optional, we will be able to infer if io_enabled
+    // from whether the channels are None or not.
+    /// Whether the I/O thread is enabled or not.
+    io_enabled: bool,
+    /// Thread ID of the vCPU thread.
+    #[cfg(not(feature = "hyperlight"))]
+    vcpu_tid: u64,
     // Channel that receives commands from the I/O thread.
     io_control_rx: Receiver<IoControlCommand>,
     // Channel that sends commands to the I/O thread.
@@ -48,7 +69,7 @@ pub struct Orchestrator {
     // Channel that receives commands from the memory thread.
     _memory_control_rx: Receiver<MemoryControlResponse>,
     // Channel that sends commands to the memory thread.
-    _memory_control_tx: Sender<MemoryControlCommand>,
+    memory_control_tx: Sender<MemoryControlCommand>,
     // Channel that receives commands from the vCPU thread.
     vcpu_control_rx: Receiver<VcpuControlResponse>,
     // Channel that sends commands to the vCPU thread.
@@ -94,6 +115,7 @@ pub enum IoControlCommand {
     _CreateSnapshot,
     _ResumeMicroVm,
     LinuxDaemonFlushed,
+    Shutdown,
 }
 
 ///
@@ -107,6 +129,7 @@ pub enum IoControlResponse {
     SnapshotCreated,
     FlushOutput,
     FlushInput,
+    Shutdown,
 }
 
 ///
@@ -115,7 +138,9 @@ pub enum IoControlResponse {
 /// Control plane commands from the VMM to the memory thread.
 ///
 #[derive(PartialEq)]
-pub enum MemoryControlCommand {}
+pub enum MemoryControlCommand {
+    Shutdown,
+}
 
 ///
 /// # Description
@@ -143,6 +168,9 @@ pub enum VcpuControlCommand {
 #[derive(Debug, PartialEq)]
 pub enum VcpuControlResponse {
     Paused,
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
+    Shutdown,
+    #[cfg_attr(feature = "hyperlight", allow(dead_code))]
     Tid(u64),
 }
 
@@ -153,6 +181,8 @@ pub enum VcpuControlResponse {
 impl Orchestrator {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        io_enabled: bool,
+        #[cfg(not(feature = "hyperlight"))] vcpu_tid: u64,
         io_control_rx: Receiver<IoControlCommand>,
         io_control_tx: Sender<IoControlResponse>,
         memory_control_rx: Receiver<MemoryControlResponse>,
@@ -165,10 +195,13 @@ impl Orchestrator {
     ) -> Self {
         Self {
             state: State::PreBoot,
+            io_enabled,
+            #[cfg(not(feature = "hyperlight"))]
+            vcpu_tid,
             io_control_rx,
             io_control_tx,
             _memory_control_rx: memory_control_rx,
-            _memory_control_tx: memory_control_tx,
+            memory_control_tx,
             vcpu_control_rx,
             vcpu_control_tx,
             pause_microvm,
@@ -186,7 +219,27 @@ impl Orchestrator {
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
-    pub fn handle_command(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
+        loop {
+            if self.io_enabled && (self.try_receive_from_io_thread()? == Break(())) {
+                break;
+            }
+            if self.try_receive_from_vcpu()? == Break(()) {
+                break;
+            }
+        }
+
+        // If we break out of the main loop, we need to shutdown the I/O and
+        // the memory thread.
+        debug!("run(): exited run loop, cleaning-up");
+        self.memory_control_tx
+            .send(MemoryControlCommand::Shutdown)?;
+        self.io_control_tx.send(IoControlResponse::Shutdown)?;
+
+        Ok(())
+    }
+
+    fn try_receive_from_io_thread(&mut self) -> Result<ControlFlow<()>> {
         match self.io_control_rx.try_recv() {
             Ok(command) => match command {
                 IoControlCommand::_StartMicroVm => {
@@ -196,7 +249,7 @@ impl Orchestrator {
                         self.state = State::Running;
                         trace!("State: PreBoot -> Running");
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::_LoadSnapshotAndRun => {
                     if self.state == State::PreBoot {
@@ -209,56 +262,56 @@ impl Orchestrator {
                         if let Err(e) = self.resume_protocol() {
                             let reason: String =
                                 format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::_PauseMicroVm => {
                     if self.state == State::Running {
                         if let Err(e) = self.pause_protocol() {
                             let reason: String =
                                 format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::_PauseAndCreateSnapshot => {
                     if self.state == State::Running {
                         if let Err(e) = self.pause_protocol() {
                             let reason: String =
                                 format!("PauseAndCreateSnapshot: failed to pause microvm: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                         if let Err(e) = (self.create_snapshot)() {
                             let reason: String =
                                 format!("PauseAndCreateSnapshot: failed to create snapshot: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                         trace!("Snapshot created");
                         self.io_control_tx
                             .send(IoControlResponse::SnapshotCreated)?;
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::_CreateSnapshot => {
                     if self.state == State::Paused {
                         if let Err(e) = (self.create_snapshot)() {
                             let reason: String =
                                 format!("CreateSnapshot: failed to create snapshot: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                         trace!("Snapshot created");
                         self.io_control_tx
                             .send(IoControlResponse::SnapshotCreated)?;
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::_ResumeMicroVm => {
                     if self.state == State::Paused {
@@ -266,25 +319,76 @@ impl Orchestrator {
                         if let Err(e) = self.resume_protocol() {
                             let reason: String =
                                 format!("ResumeMicroVm: failed to resume microvm: {e:?}");
-                            error!("handle_command(): {reason}");
+                            error!("try_receive_from_io_thread(): {reason}");
                             anyhow::bail!(reason);
                         }
                     }
-                    Ok(())
+                    Ok(Continue(()))
                 },
                 IoControlCommand::LinuxDaemonFlushed => {
                     // NOTE: this will be unreachable once the communication is fully implemented
                     // `LinuxDaemonFlushed` should only be sent in the middle of `pause_protocol`.
                     // In fact, it should already be unreachable, but it cannot be tested ATM.
-                    Ok(())
+                    Ok(Continue(()))
+                },
+                IoControlCommand::Shutdown => {
+                    debug!("try_receive_from_io_thread(): received shutdown command");
+
+                    // After sending an interrupt to the vCPU thread, we continue processing
+                    // messages until we receive a shutdown message from the vCPU thread itself.
+                    cfg_if::cfg_if! {
+                        // FIXME (#1010): there is currently no way for us to actually interrupt
+                        // the hyperlight thread so, instead of waiting for a shutdown message from
+                        // the vCPU itself, we exit here. This may populate the logs with an error
+                        // message during shutdown, but is functionally equivalent.
+                        if #[cfg(feature = "hyperlight")] {
+                            Ok(Break(()))
+                        } else {
+                            // SAFETY: we call pthread_kill on a non-zero TID that we have received from
+                            // the VCPU thread after boot, so this is safe.
+                            let pthread_id: pthread_t = self.vcpu_tid as pthread_t;
+                            unsafe { pthread_kill(pthread_id, INTERRUPT_SIGNAL) };
+
+                            Ok(Continue(()))
+                        }
+                    }
                 },
             },
-            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Empty) => Ok(Continue(())),
             Err(TryRecvError::Disconnected) => {
                 let reason: String =
                     ("disconnected from the input control command channel").to_string();
-                error!("handle_command(): {reason}");
-                anyhow::bail!(reason);
+                error!("try_receive_from_io_thread(): {reason}");
+                Ok(Break(()))
+            },
+        }
+    }
+
+    fn try_receive_from_vcpu(&mut self) -> Result<ControlFlow<()>> {
+        match self.vcpu_control_rx.try_recv() {
+            Ok(VcpuControlResponse::Paused) => {
+                let reason: String =
+                    "paused command should only be received during the pause protocol".to_string();
+                error!("{reason}");
+                Err(anyhow::anyhow!(reason))
+            },
+            Ok(VcpuControlResponse::Shutdown) => {
+                info!("try_receive_from_vcpu(): vCPU shutdown");
+                Ok(Break(()))
+            },
+            Ok(VcpuControlResponse::Tid(_)) => {
+                let reason: String = "The tid is only sent when the vCPU thread is spawned. \
+                                      Sending it in the middle of a pause protocol is against the \
+                                      protocol"
+                    .to_string();
+                error!("{reason}");
+                Err(anyhow::anyhow!(reason))
+            },
+            Err(TryRecvError::Empty) => Ok(Continue(())),
+            Err(TryRecvError::Disconnected) => {
+                let reason: String = "the vmm has disconnected".to_string();
+                error!("try_receive_from_io_thread(): {reason}");
+                Err(anyhow::anyhow!(reason))
             },
         }
     }
@@ -306,11 +410,17 @@ impl Orchestrator {
         let mut counter: usize = 1;
         loop {
             match self.vcpu_control_rx.try_recv() {
-                Ok(VcpuControlResponse::Paused) => break,
-                Ok(VcpuControlResponse::Tid(tid)) => unreachable!(
-                    "The tid is only sent when the vCPU thread is spawned. Sending it in the \
-                     middle of a pause protocol is against the protocol. tid=({tid})"
-                ),
+                Ok(command) => {
+                    if command == VcpuControlResponse::Paused {
+                        break;
+                    } else {
+                        let reason: String = "during the pause protocol we only expect a `Paused` \
+                                              command from the vCPU"
+                            .to_string();
+                        error!("pause_protocol(): {reason}");
+                        anyhow::bail!(reason)
+                    }
+                },
                 Err(TryRecvError::Empty) => (),
                 Err(TryRecvError::Disconnected) => {
                     let reason: String = "the vmm has disconnected".to_string();
