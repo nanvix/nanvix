@@ -15,6 +15,9 @@ mod kvm;
 mod microvm;
 mod pal;
 
+// We need this constant in the orchestrator.
+pub use microvm::INTERRUPT_SIGNAL;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -76,7 +79,7 @@ use ::syslog::{
 
 pub struct Vmm {
     io_thread: Option<JoinHandle<Result<()>>>,
-    _memory_thread: JoinHandle<Result<()>>,
+    memory_thread: JoinHandle<Result<()>>,
     vcpu_thread: JoinHandle<Result<u16>>,
     _microvm: MicroVm,
     orchestrator: Orchestrator,
@@ -100,6 +103,7 @@ impl Vmm {
     /// - `initrd_args`: Optional arguments to be passed to the initrd.
     /// - `stderr`: An optional path to a file where the virtual machine's standard error output will be written.
     /// - `system_vm_stream`: An optional connection to the system VM for communication with the virtual machine.
+    /// - `control_plane_stream`: An optional connection to the nanvixd control-plane.
     ///
     /// # Returns
     ///
@@ -113,8 +117,13 @@ impl Vmm {
         initrd_args: Option<String>,
         stderr: Option<String>,
         system_vm_stream: Option<SocketStream>,
+        control_plane_stream: Option<SocketStream>,
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
+
+        // TODO (#1009): all IO-related channels should be Optional and only be initialized if
+        // io_enabled is true.
+        let io_enabled: bool = system_vm_stream.is_some() || control_plane_stream.is_some();
 
         // io/memory/vcpu_control_rx/tx are channels owned by the VMM and transfer control messages.
         // *_thread_control_rx/tx are channels owned by the threads that transfer control messages.
@@ -129,16 +138,19 @@ impl Vmm {
         let (vcpu_control_tx, vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
         let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
-        // Spawn I/O thread.
-        let io_thread: Option<JoinHandle<Result<()>>> = system_vm_stream.map(|conn| {
-            IoThread::spawn(
-                conn,
+        // Spawn I/O thread if we have any external stream to monitor.
+        let io_thread: Option<JoinHandle<Result<()>>> = if io_enabled {
+            Some(IoThread::spawn(
+                system_vm_stream,
                 io_thread_data_rx,
                 io_thread_data_tx,
                 io_thread_control_tx,
                 io_thread_control_rx,
-            )
-        });
+                control_plane_stream,
+            ))
+        } else {
+            None
+        };
 
         // Input function used for emulating I/O port reads.
         let input: Box<microvm::InputFn> = Self::build_input_fn(vcpu_thread_stdin_rx);
@@ -211,8 +223,11 @@ impl Vmm {
 
         // Wait right after spawning the vCPU thread such that we populate the pthread id holder
         // before actually starting the vCPU.
-        match vcpu_control_rx.recv() {
-            Ok(VcpuControlResponse::Tid(tid)) => trace!("Received vCPU thread tid: {tid}"),
+        let vcpu_tid: u64 = match vcpu_control_rx.recv() {
+            Ok(VcpuControlResponse::Tid(tid)) => {
+                trace!("Received vCPU thread tid: {tid}");
+                tid
+            },
             Ok(response) => unreachable!(
                 "the first message sent on this channel is always a Tid response ( \
                  response={response:?})"
@@ -222,11 +237,13 @@ impl Vmm {
                 error!("spawn(): {reason}");
                 anyhow::bail!(reason)
             },
-        }
+        };
 
         let create_snapshot_clone: MicroVm = microvm.clone();
         let filename: String = initrd_filename.unwrap_or("bin/default.elf".to_string());
         let orchestrator = Orchestrator::new(
+            io_enabled,
+            vcpu_tid,
             io_control_rx,
             io_control_tx,
             memory_control_rx,
@@ -257,16 +274,23 @@ impl Vmm {
 
         let mut vmm: Vmm = Self {
             io_thread,
-            _memory_thread: memory_thread,
+            memory_thread,
             vcpu_thread,
             _microvm: microvm,
             orchestrator,
         };
 
-        if vmm.io_thread.is_some() {
-            while !vmm.vcpu_thread.is_finished() {
-                vmm.orchestrator.handle_command()?;
-            }
+        // Main VMM loop.
+        vmm.orchestrator.run()?;
+
+        // Join all auxiliary threads once the orchestrator has finished running. Do not bail if we
+        // fail to join, as we are already shutting down.
+        if let Err(e) = vmm.memory_thread.join() {
+            error!("spawn(): error joining memory thread (error={e:?})");
+        }
+        if let Some(io_thread) = vmm.io_thread {
+            // FIXME (1004): support graceful shutdown of the IO thread.
+            let _ = io_thread.join();
         }
 
         match vmm.vcpu_thread.join() {

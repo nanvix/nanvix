@@ -41,7 +41,6 @@ use ::hyperlight_host::{
         },
     },
 };
-use ::libc::pthread_self;
 use ::std::{
     fs::File,
     io::Write,
@@ -65,7 +64,6 @@ use ::syslog::{
     debug,
     error,
     info,
-    trace,
 };
 
 // ==================================================================================================
@@ -80,8 +78,10 @@ static VMEM: OnceLock<Arc<Mutex<SandboxMemoryManager<ExclusiveSharedMemory>>>> =
 
 pub struct Vmm {
     io_thread: Option<JoinHandle<Result<()>>>,
-    _memory_thread: JoinHandle<Result<()>>,
-    vcpu_thread: JoinHandle<Result<u16>>,
+    memory_thread: JoinHandle<Result<()>>,
+    // FIXME (#1010): without a mechanism to interrupt a HL sandbox we cannot join() the vCPU
+    // thread handle, so we leave it temporarily unused.
+    _vcpu_thread: JoinHandle<Result<u16>>,
     orchestrator: Orchestrator,
 }
 
@@ -103,6 +103,7 @@ impl Vmm {
     /// - `initrd_args`: Optional arguments to be passed to the initrd.
     /// - `stderr`: An optional path to a file where the virtual machine's standard error output will be written.
     /// - `system_vm_stream`: An optional connection to the system VM for communication with the virtual machine.
+    /// - `control_plane_stream`: An optional connection to the nanvixd control-plane.
     ///
     /// # Returns
     ///
@@ -116,8 +117,13 @@ impl Vmm {
         _initrd_args: Option<String>,
         stderr: Option<String>,
         system_vm_stream: Option<SocketStream>,
+        control_plane_stream: Option<SocketStream>,
     ) -> Result<u16> {
         crate::timer!("vmm_creation");
+
+        // TODO (#1009): all IO-related channels should be Optional and only be initialized if
+        // io_enabled is true.
+        let io_enabled: bool = system_vm_stream.is_some() || control_plane_stream.is_some();
 
         // io/memory/vcpu_control_rx/tx are channels owned by the VMM and transfer control messages.
         // *_thread_control_rx/tx are channels owned by the threads that transfer control messages.
@@ -129,19 +135,22 @@ impl Vmm {
         let (memory_control_tx, memory_thread_control_rx) = mpsc::channel::<MemoryControlCommand>();
         let (memory_thread_control_tx, memory_control_rx) =
             mpsc::channel::<MemoryControlResponse>();
-        let (vcpu_control_tx, vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
+        let (vcpu_control_tx, _vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
         let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
-        // Spawn I/O thread.
-        let io_thread: Option<JoinHandle<Result<()>>> = system_vm_stream.map(|conn| {
-            IoThread::spawn(
-                conn,
+        // Spawn I/O thread if we have any external stream to monitor.
+        let io_thread: Option<JoinHandle<Result<()>>> = if io_enabled {
+            Some(IoThread::spawn(
+                system_vm_stream,
                 io_thread_data_rx,
                 io_thread_data_tx,
                 io_thread_control_tx,
                 io_thread_control_rx,
-            )
-        });
+                control_plane_stream,
+            ))
+        } else {
+            None
+        };
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size = 4 * 1024 * 1024;
@@ -296,16 +305,6 @@ impl Vmm {
         );
 
         let vcpu_thread: JoinHandle<Result<u16>> = std::thread::spawn(move || {
-            // Store the tid so that the caller can send signals to the vCPU thread.
-            // SAFETY: we are calling pthread_self() right after creating the thread so this is
-            // safe.
-            let pthread_id: libc::pthread_t = unsafe { pthread_self() };
-            if let Err(e) = vcpu_thread_control_tx.send(VcpuControlResponse::Tid(pthread_id)) {
-                let reason: String = format!("failed to send the tid (error={e:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!(reason)
-            }
-
             match sandbox.evolve() {
                 Ok(res) => anyhow::bail!("Expected DEFAULT_VMM_SHUTDOWN_CMD, got: {:#?}", res),
                 Err(err) => {
@@ -319,25 +318,15 @@ impl Vmm {
                 },
             }
 
+            // Send shutdown message to VMM thread.
+            vcpu_thread_control_tx.send(VcpuControlResponse::Shutdown)?;
+
             // TODO: return the exit status code when supported.
             Ok(0)
         });
-        // Wait right after spawning the vCPU thread such that we populate the pthread id holder
-        // before actually starting the vCPU.
-        match vcpu_control_rx.recv() {
-            Ok(VcpuControlResponse::Tid(tid)) => trace!("Received vCPU thread tid: {tid}"),
-            Ok(response) => unreachable!(
-                "the first message sent on this channel is always a Tid response ( \
-                 response={response:?})"
-            ),
-            Err(e) => {
-                let reason: String = format!("the vCPU thread has disconnected (error={e:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!(reason)
-            },
-        }
 
         let orchestrator = Orchestrator::new(
+            io_enabled,
             io_control_rx,
             io_control_tx,
             memory_control_rx,
@@ -351,17 +340,27 @@ impl Vmm {
 
         let mut vmm: Vmm = Self {
             io_thread,
-            _memory_thread: memory_thread,
-            vcpu_thread,
+            memory_thread,
+            _vcpu_thread: vcpu_thread,
             orchestrator,
         };
 
-        if vmm.io_thread.is_some() {
-            while !vmm.vcpu_thread.is_finished() {
-                vmm.orchestrator.handle_command()?;
-            }
+        // Main VMM loop.
+        vmm.orchestrator.run()?;
+
+        // Join all auxiliary threads once the orchestrator has finished running. Do not bail if we
+        // fail to join, as we are already shutting down.
+        if let Err(e) = vmm.memory_thread.join() {
+            error!("spawn(): error joining memory thread (error={e:?})");
+        }
+        if let Some(io_thread) = vmm.io_thread {
+            // FIXME (#1004): support graceful shutdown of the IO thread.
+            let _ = io_thread.join();
         }
 
+        /* FIXME (#1010): without a mechanism to interrupt a running hyperlight sandbox, we cannot
+         * reliably join the vCPU thread. Instead, we rely on the JoinHandle being dropped once
+         * the orchestrator has finished running.
         match vmm.vcpu_thread.join() {
             Ok(exit_code) => exit_code,
             Err(e) => {
@@ -370,6 +369,11 @@ impl Vmm {
                 anyhow::bail!(reason)
             },
         }
+        */
+
+        // FIXME (#1010): the vCPU thread already returns 0 always, but we will be able to remove
+        // this line once we can join the vCPU thread.
+        Ok(0)
     }
 
     ///

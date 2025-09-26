@@ -35,9 +35,6 @@ use ::tokio::process::{
 
 pub struct Microvm {
     child: Option<Child>,
-    addr: String,
-    #[allow(dead_code)]
-    // FIXME: the micro VM still does not support processing messages from the control-plane.
     control_plane_stream: SocketStream,
     /// Configuration for this sandbox instance. It includes a RAII handle around the TCP
     /// port used for the gateway of this user VM if linuxd is deployed in an L2 VM.
@@ -172,47 +169,48 @@ impl Microvm {
 
         Ok(Self {
             child: Some(child),
-            addr: sandbox_config.user_vm_sockaddr().to_string(),
             control_plane_stream,
             _config: sandbox_config,
         })
     }
-}
 
-impl Drop for Microvm {
-    fn drop(&mut self) {
+    ///
+    /// # Description
+    ///
+    /// Send a shutdown message to the user VM's control-plane socket so that it can gracefully
+    /// shutdown, and wait until the process dies.
+    ///
+    pub async fn shutdown(&mut self) -> Result<()> {
+        match control_plane_api::send_command(
+            &mut self.control_plane_stream,
+            control_plane_api::Command::Shutdown,
+        ) {
+            Ok(()) => {},
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                debug!("user VM already shut down");
+            },
+            Err(e) => {
+                error!("failed to send shutdown command to user VM (error={e:?})");
+            },
+        };
+
+        // Wait for user VM instance to finish.
         if let Some(mut child) = self.child.take() {
-            match child.id() {
-                Some(pid) => {
-                    let ret_code = unsafe { libc::kill(pid as libc::pid_t, libc::SIGINT) };
-
-                    if ret_code < 0 {
+            match child.wait().await {
+                Ok(exit_status) => {
+                    if !exit_status.success() {
                         error!(
-                            "error sending SIGINT to user VM: {}",
-                            std::io::Error::last_os_error()
+                            "user VM returned with non-zero exit status (code={:?})",
+                            exit_status.code()
                         );
                     }
                 },
-                None => error!("user VM process has no PID"),
-            }
-
-            // Wait for the child to finish in a separate thread to be able to `await` on it.
-            tokio::spawn(async move {
-                if let Err(e) = child.wait().await {
-                    error!("failed to wait for user VM to shut down (error={e:?})");
-                }
-            });
-
-            // Clean-up the per-micro VM socket file.
-            // FIXME: this won't be necessary once all micro VMs share a socket in one linuxd
-            // instance.
-            match std::fs::remove_file(self.addr.clone()) {
-                Ok(_) => {},
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
                 Err(e) => {
-                    error!("error removing micro VM socket (addr={}, error={e:?})", self.addr)
+                    error!("error waiting for user VM (error={e:?})");
                 },
             }
         }
+
+        Ok(())
     }
 }

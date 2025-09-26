@@ -50,6 +50,10 @@ use ::std::{
         Arc,
         Mutex,
         MutexGuard,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
         mpsc::{
             Receiver,
             Sender,
@@ -65,6 +69,18 @@ use ::syslog::{
 };
 
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
+
+//==================================================================================================
+// Global variables
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Global shutdown flag. Safe to read/write from any thread. Writing an AtomicBool is
+/// async-signal-safe, so a signal handler can set it.
+///
+pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 //==================================================================================================
 // Structures
@@ -126,7 +142,9 @@ pub type OutputFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<
 //==================================================================================================
 
 /// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
-extern "C" fn vcpu_thread_signal_handler(_: i32) {}
+extern "C" fn vcpu_thread_signal_handler(_: i32) {
+    SHUTDOWN.store(true, Ordering::SeqCst);
+}
 
 impl MicroVm {
     ///
@@ -346,6 +364,33 @@ impl MicroVm {
     ///
     /// # Description
     ///
+    /// Helper method to poweroff the vCPU with a given exit status, and send a shutdown message to
+    /// the VMM thread.
+    ///
+    /// # Arguments
+    ///
+    /// - `exit_status`: the exit code to set for the vCPU.
+    ///
+    fn poweroff_and_shutdown(&mut self, exit_status: u16) -> Result<()> {
+        // Power-off vCPU.
+        self.vcpu
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .poweroff(exit_status);
+
+        // Send message to VMM thread.
+        self.handle
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
+            .control_tx
+            .send(VcpuControlResponse::Shutdown)?;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Runs the virtual machine.
     ///
     /// # Returns
@@ -392,6 +437,13 @@ impl MicroVm {
                                 .lock()
                                 .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
                                 .poweroff(exit_status);
+
+                            // Send shutdown message to VMM.
+                            locked_state
+                                .control_tx
+                                .send(VcpuControlResponse::Shutdown)?;
+
+                            return Ok(exit_status);
                         }
                         // The Nanvix Daemon requested to pause, this means we need to suspend execution,
                         // but possibly resume it later.
@@ -433,26 +485,26 @@ impl MicroVm {
                     }
                 },
 
-                // The guest requested to halt the virtual processor.
-                VirtualProcessorExitReason::Halt => {
-                    self.vcpu
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                        .poweroff(0);
-                },
-
-                // The guest was interrupted, this means we need to power-off.
-                VirtualProcessorExitReason::Interrupted => {
-                    self.vcpu
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?
-                        .poweroff(0);
+                // The guest was halted or interrupted, this means we need to power-off.
+                VirtualProcessorExitReason::Halt | VirtualProcessorExitReason::Interrupted => {
+                    let exit_status: u16 = 0;
+                    self.poweroff_and_shutdown(exit_status)?;
+                    return Ok(exit_status);
                 },
 
                 // Virtual machine exited due to an unknown reason.
                 VirtualProcessorExitReason::Unknown => {
                     return Err(anyhow::anyhow!("unknown exit reason"));
                 },
+            }
+
+            // Check if we were interrupted while handling a PMIO exit. This check covers
+            // the situation where we have sent an interrupt to the vCPU, but the vCPU
+            // thread was not in KVM_RUN, thus not triggering an -EINTR that we can catch.
+            if SHUTDOWN.load(std::sync::atomic::Ordering::SeqCst) {
+                let exit_status: u16 = 0;
+                self.poweroff_and_shutdown(exit_status)?;
+                return Ok(exit_status);
             }
         }
     }
