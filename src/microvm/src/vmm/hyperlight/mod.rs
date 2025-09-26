@@ -14,6 +14,7 @@ use crate::{
     io_thread::IoThread,
     memory_thread,
     orchestrator::{
+        self,
         IoControlCommand,
         IoControlResponse,
         MemoryControlCommand,
@@ -40,6 +41,10 @@ use ::hyperlight_host::{
             GuestEnvironment,
         },
     },
+};
+use ::mio::{
+    Poll,
+    Waker,
 };
 use ::std::{
     fs::File,
@@ -138,19 +143,41 @@ impl Vmm {
         let (vcpu_control_tx, _vcpu_thread_control_rx) = mpsc::channel::<VcpuControlCommand>();
         let (vcpu_thread_control_tx, vcpu_control_rx) = mpsc::channel::<VcpuControlResponse>();
 
+        // Create a poll and a waker for the memory thread. We must do this first to break a
+        // circular dependency where:
+        // - I/O thread needs memory thread waker token.
+        // - Memory thread needs clone of micro VM VMEM.
+        // - Micro VM needs output function.
+        // - Output function needs I/O thread waker token.
+        let memory_thread_poll: Poll = Poll::new()?;
+        let memory_thread_waker: Arc<Waker> =
+            Arc::new(Waker::new(memory_thread_poll.registry(), memory_thread::WAKER_TOKEN)?);
+
+        // Similar for the orchestrator that needs to be woken up by either the I/O thread or the
+        // vCPU thread.
+        let orchestrator_poll: Poll = Poll::new()?;
+        let orchestrator_waker: Arc<Waker> =
+            Arc::new(Waker::new(orchestrator_poll.registry(), orchestrator::WAKER_TOKEN)?);
+
         // Spawn I/O thread if we have any external stream to monitor.
-        let io_thread: Option<JoinHandle<Result<()>>> = if io_enabled {
-            Some(IoThread::spawn(
-                system_vm_stream,
-                io_thread_data_rx,
-                io_thread_data_tx,
-                io_thread_control_tx,
-                io_thread_control_rx,
-                control_plane_stream,
-            ))
-        } else {
-            None
-        };
+        let (io_thread, io_thread_waker): (Option<JoinHandle<Result<()>>>, Option<Arc<Waker>>) =
+            if io_enabled {
+                let (io_thread, io_thread_waker): (JoinHandle<Result<()>>, Arc<Waker>) =
+                    IoThread::spawn(
+                        system_vm_stream,
+                        memory_thread_waker.clone(),
+                        io_thread_data_rx,
+                        io_thread_data_tx,
+                        orchestrator_waker.clone(),
+                        io_thread_control_tx,
+                        io_thread_control_rx,
+                        control_plane_stream,
+                    )?;
+                (Some(io_thread), Some(io_thread_waker))
+            } else {
+                (None, None)
+            };
+        let io_thread_waker_clone: Option<Arc<Waker>> = io_thread_waker.clone();
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size = 4 * 1024 * 1024;
@@ -271,6 +298,10 @@ impl Vmm {
                 return Err(HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
             }
 
+            if let Some(io_thread_waker) = &io_thread_waker_clone {
+                io_thread_waker.wake()?;
+            }
+
             Ok(data.len() as i32)
         })?;
 
@@ -297,6 +328,7 @@ impl Vmm {
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: JoinHandle<Result<(), anyhow::Error>> = memory_thread::spawn(
+            memory_thread_poll,
             memory_thread_data_rx,
             memory_thread_data_tx,
             memory_thread_control_rx,
@@ -321,14 +353,20 @@ impl Vmm {
             // Send shutdown message to VMM thread.
             vcpu_thread_control_tx.send(VcpuControlResponse::Shutdown)?;
 
+            // Notify VMM thread.
+            orchestrator_waker.wake()?;
+
             // TODO: return the exit status code when supported.
             Ok(0)
         });
 
         let orchestrator = Orchestrator::new(
+            orchestrator_poll,
             io_enabled,
+            io_thread_waker.clone(),
             io_control_rx,
             io_control_tx,
+            memory_thread_waker.clone(),
             memory_control_rx,
             memory_control_tx,
             vcpu_control_rx,

@@ -25,6 +25,7 @@ cfg-if = { workspace = true }
 config = { workspace = true, features = ["microvm"] }
 control-plane-api = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
+mio = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }

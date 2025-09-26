@@ -11,14 +11,29 @@ use crate::orchestrator::{
 };
 use ::anyhow::Result;
 use ::control_plane_api;
+use ::mio::{
+    Events,
+    Interest,
+    Poll,
+    Token,
+    Waker,
+};
 use ::std::{
     collections::VecDeque,
     io::ErrorKind,
     mem,
-    sync::mpsc::{
-        Receiver,
-        Sender,
-        TryRecvError,
+    ops::ControlFlow::{
+        self,
+        Break,
+        Continue,
+    },
+    sync::{
+        Arc,
+        mpsc::{
+            Receiver,
+            Sender,
+            TryRecvError,
+        },
     },
     thread::{
         self,
@@ -33,6 +48,17 @@ use ::syslog::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Token represnting an event notification from the control-plane socket.
+const CONTROL_PLANE_TOKEN: Token = Token(0);
+/// Token represnting an event notification from inbound queues from the VM.
+const WAKER_TOKEN: Token = Token(1);
+/// Token represnting an event notification from the system VM socket.
+const SYSTEM_VM_TOKEN: Token = Token(2);
+
+//==================================================================================================
 // Structure
 //==================================================================================================
 
@@ -42,12 +68,18 @@ use ::syslog::{
 /// Private data of the I/O thread.
 ///
 pub struct IoThread {
+    /// Poll structure to monitor connections and queues.
+    poll: Poll,
+    /// Waker to notify the I/O thread that it has messages to read from its connected queues.
+    waker: Arc<Waker>,
     /// Optional connection to the system VM.
     system_vm_stream: Option<SocketStream>,
     /// Buffer to handle partial reads from the system VM.
     system_vm_partial_read_buffer: VecDeque<u8>,
     /// Optional connection to the external control-plane, nanvixd.
     control_plane_stream: Option<SocketStream>,
+    /// Waker token for the memory thread.
+    memory_thread_waker: Arc<Waker>,
     /// Gateway receiver.
     data_rx: Receiver<Message>,
     /// Gateway sender.
@@ -56,6 +88,8 @@ pub struct IoThread {
     incoming: VecDeque<Message>,
     /// Queue of outgoing messages.
     outgoing: VecDeque<Message>,
+    /// Waker token for the VMM (orchestrator).
+    orchestrator_waker: Arc<Waker>,
     /// Command sender to the VMM.
     control_tx: Sender<IoControlCommand>,
     /// Response receiver from the VMM.
@@ -75,36 +109,48 @@ impl IoThread {
     ///
     /// # Parameters
     ///
-    /// - `system_vm_stream`: Connection to the system VM.
+    /// - `system_vm_stream`: Optional connection to the system VM.
+    /// - `memory_thread_waker`: Waker token to notify the memory thread when we send in data_tx.
     /// - `data_rx`: MicroVM receiver.
     /// - `data_tx`: MicroVM sender.
+    /// - `orchestrator`: Waker token to notify the orchestrator when we send in control_tx.
     /// - `control_tx`: Command sender.
     /// - `control_rx`: Response receiver.
+    /// - `control_plane_stream`: Optional connection to the control-plane.
     ///
     /// # Returns
     ///
     /// A handle to the I/O thread.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         system_vm_stream: Option<SocketStream>,
+        memory_thread_waker: Arc<Waker>,
         data_rx: Receiver<Message>,
         data_tx: Sender<Message>,
+        orchestrator_waker: Arc<Waker>,
         control_tx: Sender<IoControlCommand>,
         control_rx: Receiver<IoControlResponse>,
         control_plane_stream: Option<SocketStream>,
-    ) -> JoinHandle<Result<()>> {
-        thread::spawn(move || {
-            let mut io_thread: IoThread = IoThread::new(
-                system_vm_stream,
-                data_rx,
-                data_tx,
-                control_tx,
-                control_rx,
-                control_plane_stream,
-            )?;
+    ) -> Result<(JoinHandle<Result<()>>, Arc<Waker>)> {
+        let mut io_thread: IoThread = IoThread::new(
+            system_vm_stream,
+            memory_thread_waker,
+            data_rx,
+            data_tx,
+            orchestrator_waker,
+            control_tx,
+            control_rx,
+            control_plane_stream,
+        )?;
+        let io_thread_waker: Arc<Waker> = io_thread.waker();
+
+        let io_thread_handle: JoinHandle<Result<()>> = thread::spawn(move || {
             io_thread.run()?;
             Ok(())
-        })
+        });
+
+        Ok((io_thread_handle, io_thread_waker))
     }
 
     ///
@@ -116,8 +162,10 @@ impl IoThread {
     /// # Parameters
     ///
     /// - `system_vm_stream`: Optional connection to the system VM.
+    /// - `memory_thread_waker`: Waker to notify the memory thread of pending messages in data_tx.
     /// - `data_rx`: MicroVM receiver.
     /// - `data_tx`: MicroVM sender.
+    /// - `memory_thread_waker`: Waker to notify the orchestrator of pending messages in control_tx.
     /// - `control_tx`: Command sender.
     /// - `control_rx`: Response receiver.
     /// - `control_plane_stream`: Optional connection to the control-plane stream.
@@ -126,21 +174,47 @@ impl IoThread {
     ///
     /// Upon success, a new I/O thread is returned. Otherwise, an error is returned.
     ///
+    #[allow(clippy::too_many_arguments)]
     fn new(
-        system_vm_stream: Option<SocketStream>,
+        mut system_vm_stream: Option<SocketStream>,
+        memory_thread_waker: Arc<Waker>,
         data_rx: Receiver<Message>,
         data_tx: Sender<Message>,
+        orchestrator_waker: Arc<Waker>,
         control_tx: Sender<IoControlCommand>,
         control_rx: Receiver<IoControlResponse>,
-        control_plane_stream: Option<SocketStream>,
+        mut control_plane_stream: Option<SocketStream>,
     ) -> Result<Self> {
+        let poll: Poll = Poll::new()?;
+
+        // Register system VM and/or control-plane streams. At least one should be present
+        // otherwise we would not have spawned the I/O thread.
+        if let Some(system_vm_stream) = system_vm_stream.as_mut() {
+            poll.registry()
+                .register(system_vm_stream, SYSTEM_VM_TOKEN, Interest::READABLE)?;
+        }
+        if let Some(control_plane_stream) = control_plane_stream.as_mut() {
+            poll.registry().register(
+                control_plane_stream,
+                CONTROL_PLANE_TOKEN,
+                Interest::READABLE,
+            )?;
+        }
+
+        // Register a waker token such that other components can notify us about pending work.
+        let waker: Arc<Waker> = Arc::new(Waker::new(poll.registry(), WAKER_TOKEN)?);
+
         Ok(Self {
+            poll,
+            waker,
             system_vm_stream,
             system_vm_partial_read_buffer: VecDeque::new(),
+            memory_thread_waker,
             data_rx,
             data_tx,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
+            orchestrator_waker,
             control_tx,
             control_rx,
             control_plane_stream,
@@ -157,13 +231,58 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     fn run(&mut self) -> Result<()> {
+        let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
         loop {
-            self.try_send_to_vmm_control()?;
-            self.try_receive_from_microvm()?;
-            self.try_send_to_system_vm()?;
-            self.try_receive_from_system_vm()?;
-            self.try_send_to_microvm()?;
-            self.try_receive_from_vmm_control()?;
+            self.poll.poll(&mut events, None)?;
+
+            // We must drain each socket/queue until they return WouldBlock in order to not miss
+            // any messages. We surface a WouldBlock or a queue being empty with a Break().
+            for event in events.iter() {
+                match event.token() {
+                    // Prioritize events from the control-plane.
+                    CONTROL_PLANE_TOKEN => {
+                        while self.try_send_to_vmm_control()? != Break(()) {}
+
+                        self.orchestrator_waker.wake()?;
+                    },
+
+                    // There are internal events we need to react to in any of our incoming queues.
+                    WAKER_TOKEN => {
+                        // Try to receive from the I/O thread's control-plane first.
+                        while self.try_receive_from_vmm_control()? != Break(()) {}
+
+                        // Try to receive from the data-plane.
+                        while self.try_receive_from_microvm()? != Break(()) {}
+
+                        // FIXME (#1025): merge try_receive_from_microvm and try_send_to_system_vm
+                        while !self.outgoing.is_empty() {
+                            self.try_send_to_system_vm()?;
+                        }
+                    },
+
+                    SYSTEM_VM_TOKEN => {
+                        while self.try_receive_from_system_vm()? != Break(()) {}
+
+                        // FIXME (#1025): merge try_receive_from_system_vm and try_send_to_microvm
+                        while !self.incoming.is_empty() {
+                            self.try_send_to_microvm()?;
+                        }
+
+                        // Notify the memory thread that it has work to do.
+                        self.memory_thread_waker.wake()?;
+                    },
+
+                    token => {
+                        // This error should not happen, but is not fatal, so we log it and
+                        // continue.
+                        error!(
+                            "run(): I/O thread received notification from unexpected token \
+                             (token={token:?})"
+                        );
+                    },
+                }
+            }
         }
     }
 
@@ -175,10 +294,10 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is pushed into the `incoming` queue, and `true` is returned.
-    /// Otherwise, if it would block, `false` is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `incoming` queue, and `Continue()` is
+    /// returned. Otherwise, if it would block, `Break()` is returned.
     ///
-    fn try_receive_from_system_vm(&mut self) -> Result<bool> {
+    fn try_receive_from_system_vm(&mut self) -> Result<ControlFlow<()>> {
         if let Some(system_vm_stream) = self.system_vm_stream.as_mut() {
             let mut buf: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
 
@@ -208,8 +327,8 @@ impl IoThread {
                         self.system_vm_partial_read_buffer
                             .extend(&buf[..(n + num_filled)]);
 
-                        // A partial read corresponds to a WouldBlock, so we return false.
-                        return Ok(false);
+                        // A partial read corresponds to a WouldBlock, so we break.
+                        return Ok(Break(()));
                     }
                 },
                 // If WouldBlock, return false.
@@ -221,7 +340,7 @@ impl IoThread {
                             .extend(&buf[..num_filled]);
                     }
 
-                    return Ok(false);
+                    return Ok(Break(()));
                 },
                 Err(e) => {
                     let reason: String =
@@ -248,9 +367,9 @@ impl IoThread {
             );
 
             self.incoming.push_back(message);
-            Ok(true)
+            Ok(Continue(()))
         } else {
-            Ok(false)
+            Ok(Break(()))
         }
     }
 
@@ -261,10 +380,10 @@ impl IoThread {
     ///
     /// # Returns
     ///
-    /// Upon success, the received message is pushed into the `outgoing` queue, and `true`is returned.
-    /// Otherwise, if the channel is empty, `false` is returned. Otherwise, an error is returned.
+    /// Upon success, the received message is pushed into the `outgoing` queue, and `Continue()` is
+    /// returned. Otherwise, if the channel is empty, `Break()` is returned.
     ///
-    fn try_receive_from_microvm(&mut self) -> Result<bool> {
+    fn try_receive_from_microvm(&mut self) -> Result<ControlFlow<()>> {
         match self.data_rx.try_recv() {
             Ok(mut message) => {
                 profiler::timestamp_message!(
@@ -273,9 +392,9 @@ impl IoThread {
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
                 self.outgoing.push_back(message);
-                Ok(true)
+                Ok(Continue(()))
             },
-            Err(TryRecvError::Empty) => Ok(false),
+            Err(TryRecvError::Empty) => Ok(Break(())),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the microvm has disconnected".to_string();
                 // When the guest finishes , the vCPU thread will disconnect from this thread. This
@@ -336,13 +455,13 @@ impl IoThread {
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
-    fn try_send_to_vmm_control(&mut self) -> Result<()> {
+    fn try_send_to_vmm_control(&mut self) -> Result<ControlFlow<()>> {
         if let Some(control_plane_stream) = self.control_plane_stream.as_mut() {
             let cmd: control_plane_api::Command =
                 match control_plane_api::try_read_command(control_plane_stream) {
                     Ok(cmd) => cmd,
                     // If we would block, return and do nothing.
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => return Ok(()),
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => return Ok(Break(())),
                     Err(e) => {
                         let reason: String = format!(
                             "try_send_to_vmm_control(): failed reading command from control-plane \
@@ -360,7 +479,7 @@ impl IoThread {
             }
         }
 
-        Ok(())
+        Ok(Continue(()))
     }
 
     ///
@@ -397,19 +516,26 @@ impl IoThread {
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
-    fn try_receive_from_vmm_control(&mut self) -> Result<()> {
+    fn try_receive_from_vmm_control(&mut self) -> Result<ControlFlow<()>> {
         match self.control_rx.try_recv() {
             Ok(response) => match response {
-                IoControlResponse::FlushOutput => self.flush_microvm_output(),
-                IoControlResponse::FlushInput => self.flush_linuxd_input(),
+                IoControlResponse::FlushOutput => {
+                    self.flush_microvm_output()?;
+                    Ok(Continue(()))
+                },
+                IoControlResponse::FlushInput => {
+                    self.flush_linuxd_input()?;
+                    Ok(Continue(()))
+                },
                 IoControlResponse::Shutdown => {
                     // TODO (#1004): Break() out of the main loop here.
                     let reason: String = "IO thread shutting down".to_string();
                     anyhow::bail!(reason)
                 },
-                _ => Ok(()), // TODO: forward to linuxd or nanvixd https://github.com/nanvix/nanvix/issues/945
+                // TODO: forward to linuxd or nanvixd https://github.com/nanvix/nanvix/issues/945
+                _ => Ok(Continue(())),
             },
-            Err(TryRecvError::Empty) => Ok(()),
+            Err(TryRecvError::Empty) => Ok(Break(())),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the vmm has disconnected".to_string();
                 // When the guest finishes , the vCPU thread will disconnect from this thread. This
@@ -428,7 +554,7 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn flush_microvm_output(&mut self) -> Result<()> {
-        while self.try_receive_from_microvm()? {
+        while self.try_receive_from_microvm()? != Break(()) {
             // Keep looping until `data_rx` is empty, which breaks the loop.
         }
         while !self.outgoing.is_empty() {
@@ -446,9 +572,23 @@ impl IoThread {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     fn flush_linuxd_input(&mut self) -> Result<()> {
-        while self.try_receive_from_system_vm()? {
+        while self.try_receive_from_system_vm()? != Break(()) {
             // Keep looping until receiving from the system VM would block, which breaks the loop.
         }
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the waker token to notify the I/O thread that there is an event that it must react to.
+    /// An event normally means that a message has been pushed to one of its monitored queues.
+    ///
+    /// # Returns
+    ///
+    /// Return a handle to the waker object.
+    ///
+    fn waker(&self) -> Arc<Waker> {
+        self.waker.clone()
     }
 }
