@@ -25,7 +25,7 @@ std = ["dep:log", "dep:flexi_logger"]
 # Enables this crate to be used as a dependency of the Rust standard library.
 rustc-dep-of-std = [
     "core",
-    "trace",
+    "warn",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "sys/rustc-dep-of-std",
