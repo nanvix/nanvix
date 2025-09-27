@@ -19,6 +19,10 @@
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
+#[cfg(any(feature = "rustc-dep-of-std", feature = "staticlib"))]
+#[allow(unused_extern_crates)]
+extern crate libc_stdlib;
+
 #[cfg(feature = "rustc-dep-of-std")]
 #[allow(unused_extern_crates)]
 extern crate nvx;
@@ -72,9 +76,6 @@ pub mod sched;
 
 /// Signals.
 pub mod signal;
-
-/// Standard library definitions.
-pub mod stdlib;
 
 /// System-specific headers.
 pub mod sys;
