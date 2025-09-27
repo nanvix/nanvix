@@ -26,6 +26,7 @@ goblin = { workspace = true, optional = true, features = [
     "mach32",
     "mach64",
 ] }
+libc_stdlib = { workspace = true, optional = true }
 nvx = { workspace = true, optional = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
@@ -40,7 +41,7 @@ compiler_builtins = { version = "0.1", optional = true }
 [features]
 default = ["syscall", "dlfcn", "sbrk"]
 # Enable this, if this library is to be used as a static library.
-staticlib = []
+staticlib = ["dep:libc_stdlib"]
 syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall"]
 std = []
 dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
@@ -49,6 +50,7 @@ rustc-dep-of-std = [
     "alloc",
     "sigaction",
     "sbrk",
+    "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "config/rustc-dep-of-std",

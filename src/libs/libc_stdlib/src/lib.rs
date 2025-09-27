@@ -41,6 +41,7 @@ mod realloc;
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
 use ::sysapi::{

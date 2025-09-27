@@ -14,6 +14,9 @@ crate-type = ["lib"]
 
 [dependencies]
 sysapi = { workspace = true }
+alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+compiler_builtins = { version = "0.1", optional = true }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 flexi_logger = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 static_assert = { workspace = true }
@@ -23,6 +26,16 @@ syslog = { workspace = true, default-features = false }
 default = ["syslog/default"]
 # Enables the use of the Rust Standard Library.
 std = ["syslog/std"]
+
+# Enables this crate to be used as a dependency of the Rust standard library.
+rustc-dep-of-std = [
+    "alloc",
+    "core",
+    "compiler_builtins/rustc-dep-of-std",
+    "static_assert/rustc-dep-of-std",
+    "sysapi/rustc-dep-of-std",
+    "syslog/rustc-dep-of-std",
+]
 
 # Logging feature passthrough (match syslog crate features)
 trace = ["syslog/trace"]
