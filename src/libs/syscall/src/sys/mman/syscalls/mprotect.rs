@@ -78,7 +78,7 @@ pub fn mprotect(
     }
 
     // Check if end address is invalid.
-    match base.into_raw_value().checked_add(len) {
+    let end: VirtualAddress = match base.into_raw_value().checked_add(len) {
         Some(end) if end > USER_MMAP_END_RAW => {
             let reason: &'static str = "invalid end address";
             ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
@@ -89,8 +89,8 @@ pub fn mprotect(
             ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         },
-        Some(_valid_base_addr) => (),
-    }
+        Some(end) => VirtualAddress::from_raw_value(end),
+    };
 
     // Check if length is page-aligned.
     if len % usize::from(PAGE_ALIGNMENT) != 0 {
@@ -104,14 +104,27 @@ pub fn mprotect(
         MMAP_SEGMENTS.lock();
 
     // Find the segment that contains the base address.
-    let segment_base: Option<VirtualAddress> = segments
-        .iter()
-        .find(|(_, segment)| {
-            let seg_base: VirtualAddress = segment.base();
-            let seg_end: VirtualAddress = seg_base + segment.capacity();
-            base >= seg_base && (base + len) <= seg_end
-        })
-        .map(|(seg_base, _)| *seg_base);
+    let segment_base: Option<VirtualAddress> =
+        segments
+            .range(..=base)
+            .next_back()
+            .and_then(|(seg_base, segment)| {
+                let seg_end: Option<VirtualAddress> = seg_base
+                    .into_raw_value()
+                    .checked_add(segment.capacity())
+                    .map(VirtualAddress::from_raw_value);
+                match seg_end {
+                    Some(seg_end_addr) => {
+                        if base >= *seg_base && end <= seg_end_addr {
+                            Some(*seg_base)
+                        } else {
+                            None
+                        }
+                    },
+                    // Overflow occurred, treat as not found.
+                    None => None,
+                }
+            });
 
     match segment_base {
         Some(segment_base) => {
