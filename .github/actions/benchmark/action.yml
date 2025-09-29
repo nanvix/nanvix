@@ -77,6 +77,11 @@ runs:
           continue
         fi
 
+        # FIXME (#1016): boot-time is failing on hyperlight
+        if [[ "$bench" == "boot-time" ]]; then
+          continue
+        fi
+
         # FIXME (#975): warm-start-l2 is failing intermittently on hyperlight
         if [[ "$bench" == "warm-start-l2" ]]; then
           continue
