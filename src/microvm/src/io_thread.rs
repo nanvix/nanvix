@@ -465,10 +465,14 @@ impl IoThread {
                     Err(e) => {
                         let reason: String = format!(
                             "try_send_to_vmm_control(): failed reading command from control-plane \
-                             (error={e:?})"
+                             will shutdown (error={e:?})"
                         );
                         error!("{reason}");
-                        return Err(anyhow::anyhow!(reason));
+
+                        // If we encounter an error, shutdown the I/O thread.
+                        // FIXME (1004): when we support graceful shutdown of the I/O thread, this
+                        // should instead be properly propagated as an error.
+                        control_plane_api::NanvixdCommand::Shutdown
                     },
                 };
             // Translate nanvixd control-plane commands to internal VMM control commands.
