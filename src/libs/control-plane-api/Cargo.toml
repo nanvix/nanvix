@@ -12,5 +12,9 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+bincode = { workspace = true, features = ["serde"] }
+config = { workspace = true }
 num_enum = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 syscomm = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
