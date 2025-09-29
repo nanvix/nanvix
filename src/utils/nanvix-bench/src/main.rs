@@ -532,6 +532,12 @@ impl Benchmark {
         let (input_stream, vmm_stream) = UnixStream::pair()?;
         let mut input_stream = syscomm::SocketStream::Unix(input_stream);
 
+        // Initialize control-plane stream.
+        let (control_plane_stream, vmm_control_plane_stream): (UnixStream, UnixStream) =
+            UnixStream::pair()?;
+        let mut control_plane_stream: SocketStream =
+            syscomm::SocketStream::Unix(control_plane_stream);
+
         // Spawn the VMM in a separate thread.
         let program = self.flavour.get_program();
         let vmm_handle = std::thread::spawn(move || -> Result<()> {
@@ -542,7 +548,7 @@ impl Benchmark {
                 None,
                 Some("/dev/null".to_string()),
                 Some(syscomm::SocketStream::Unix(vmm_stream)),
-                None,
+                Some(syscomm::SocketStream::Unix(vmm_control_plane_stream)),
             )? {
                 e if e != 0 => {
                     error!("error running VMM, exited with status: {e}");
@@ -635,11 +641,13 @@ impl Benchmark {
             pb.inc(1);
         }
 
-        // Drop the connection to send an EoF to the application code, which
-        // will then gracefully shut down.
-        drop(input_stream);
+        // Send shutdown command to the VMM.
+        control_plane_api::send_command(
+            &mut control_plane_stream,
+            control_plane_api::Command::Shutdown,
+        )?;
 
-        // Wait for the VMM to exit after we drop the connection.
+        // Wait for the VMM to exit after we send the shutdown command.
         match vmm_handle.join() {
             Ok(_) => {},
             Err(_) => return Err(anyhow::anyhow!("Error running VMM")),
