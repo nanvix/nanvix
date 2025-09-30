@@ -56,7 +56,7 @@ DOCKER_IMAGE_TOOLCHAIN_PATH="/opt/nanvix"
 Z_CACHE_FILE=".z.cache"
 
 # Default toolchain directory for setup.
-DEFAULT_LOCAL_TOOLCHAIN_DIR="${HOME}/toolchain"
+DEFAULT_LOCAL_TOOLCHAIN_DIR="${PWD}/toolchain"
 
 #==================================================================================================
 # Global Variables
