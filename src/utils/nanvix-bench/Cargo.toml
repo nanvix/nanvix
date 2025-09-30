@@ -13,6 +13,7 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 config = { workspace = true }
+control-plane-api = { workspace = true }
 hwloc = { workspace = true }
 indicatif = { workspace = true }
 libc = { workspace = true }

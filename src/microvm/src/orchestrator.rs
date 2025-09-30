@@ -13,16 +13,25 @@ use ::libc::{
     pthread_kill,
     pthread_t,
 };
+use ::mio::{
+    Events,
+    Poll,
+    Token,
+    Waker,
+};
 use ::std::{
     ops::ControlFlow::{
         self,
         Break,
         Continue,
     },
-    sync::mpsc::{
-        Receiver,
-        Sender,
-        TryRecvError,
+    sync::{
+        Arc,
+        mpsc::{
+            Receiver,
+            Sender,
+            TryRecvError,
+        },
     },
     time::Instant,
 };
@@ -41,9 +50,24 @@ use ::syslog::{
 // This value was chosen so it catches issues without polluting the logs with too many warnings.
 pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 
+/// Token represnting an event notification from inbound queues from the VM.
+pub const WAKER_TOKEN: Token = Token(0);
+
 //==================================================================================================
 // Structure
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Auxiliary enum to disambiguate when we are breaking out of a function because there are no more
+/// messages to read, or because we need to shutdown.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BreakReason {
+    Empty,
+    Shutdown,
+}
 
 ///
 /// # Description
@@ -55,6 +79,8 @@ pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 pub struct Orchestrator {
     // The state of the VM.
     state: State,
+    /// Poll structure to monitor incoming queues.
+    poll: Poll,
     // FIXME (#1009): once the I/O channels are optional, we will be able to infer if io_enabled
     // from whether the channels are None or not.
     /// Whether the I/O thread is enabled or not.
@@ -62,10 +88,14 @@ pub struct Orchestrator {
     /// Thread ID of the vCPU thread.
     #[cfg(not(feature = "hyperlight"))]
     vcpu_tid: u64,
+    /// Waker token for the I/O thread.
+    io_thread_waker: Option<Arc<Waker>>,
     // Channel that receives commands from the I/O thread.
     io_control_rx: Receiver<IoControlCommand>,
     // Channel that sends commands to the I/O thread.
     io_control_tx: Sender<IoControlResponse>,
+    /// Waker token for the memory thread.
+    memory_thread_waker: Arc<Waker>,
     // Channel that receives commands from the memory thread.
     _memory_control_rx: Receiver<MemoryControlResponse>,
     // Channel that sends commands to the memory thread.
@@ -181,10 +211,13 @@ pub enum VcpuControlResponse {
 impl Orchestrator {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        poll: Poll,
         io_enabled: bool,
         #[cfg(not(feature = "hyperlight"))] vcpu_tid: u64,
+        io_thread_waker: Option<Arc<Waker>>,
         io_control_rx: Receiver<IoControlCommand>,
         io_control_tx: Sender<IoControlResponse>,
+        memory_thread_waker: Arc<Waker>,
         memory_control_rx: Receiver<MemoryControlResponse>,
         memory_control_tx: Sender<MemoryControlCommand>,
         vcpu_control_rx: Receiver<VcpuControlResponse>,
@@ -195,11 +228,14 @@ impl Orchestrator {
     ) -> Self {
         Self {
             state: State::PreBoot,
+            poll,
             io_enabled,
             #[cfg(not(feature = "hyperlight"))]
             vcpu_tid,
+            io_thread_waker,
             io_control_rx,
             io_control_tx,
+            memory_thread_waker,
             _memory_control_rx: memory_control_rx,
             memory_control_tx,
             vcpu_control_rx,
@@ -213,19 +249,35 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to handle a command from the control input.
+    /// Runs the main orchestrator loop.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     pub fn run(&mut self) -> Result<()> {
-        loop {
-            if self.io_enabled && (self.try_receive_from_io_thread()? == Break(())) {
-                break;
+        let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+        'main_loop: loop {
+            self.poll.poll(&mut events, None)?;
+
+            // We must drain each socket/queue until they return WouldBlock in order to not miss
+            // any messages. We surface a WouldBlock or a queue being empty with a Break().
+            if self.io_enabled {
+                'io_recv_loop: loop {
+                    match self.try_receive_from_io_thread()? {
+                        Continue(()) => {},
+                        Break(BreakReason::Empty) => break 'io_recv_loop,
+                        Break(BreakReason::Shutdown) => break 'main_loop,
+                    }
+                }
             }
-            if self.try_receive_from_vcpu()? == Break(()) {
-                break;
+            'vcpu_recv_loop: loop {
+                match self.try_receive_from_vcpu()? {
+                    Continue(()) => {},
+                    Break(BreakReason::Empty) => break 'vcpu_recv_loop,
+                    Break(BreakReason::Shutdown) => break 'main_loop,
+                }
             }
         }
 
@@ -234,12 +286,17 @@ impl Orchestrator {
         debug!("run(): exited run loop, cleaning-up");
         self.memory_control_tx
             .send(MemoryControlCommand::Shutdown)?;
+        self.memory_thread_waker.wake()?;
+
         self.io_control_tx.send(IoControlResponse::Shutdown)?;
+        if let Some(io_thread_waker) = &self.io_thread_waker {
+            io_thread_waker.wake()?;
+        }
 
         Ok(())
     }
 
-    fn try_receive_from_io_thread(&mut self) -> Result<ControlFlow<()>> {
+    fn try_receive_from_io_thread(&mut self) -> Result<ControlFlow<BreakReason, ()>> {
         match self.io_control_rx.try_recv() {
             Ok(command) => match command {
                 IoControlCommand::_StartMicroVm => {
@@ -342,7 +399,7 @@ impl Orchestrator {
                         // the vCPU itself, we exit here. This may populate the logs with an error
                         // message during shutdown, but is functionally equivalent.
                         if #[cfg(feature = "hyperlight")] {
-                            Ok(Break(()))
+                            Ok(Break(BreakReason::Shutdown))
                         } else {
                             // SAFETY: we call pthread_kill on a non-zero TID that we have received from
                             // the VCPU thread after boot, so this is safe.
@@ -354,17 +411,17 @@ impl Orchestrator {
                     }
                 },
             },
-            Err(TryRecvError::Empty) => Ok(Continue(())),
+            Err(TryRecvError::Empty) => Ok(Break(BreakReason::Empty)),
             Err(TryRecvError::Disconnected) => {
                 let reason: String =
                     ("disconnected from the input control command channel").to_string();
                 error!("try_receive_from_io_thread(): {reason}");
-                Ok(Break(()))
+                Ok(Break(BreakReason::Shutdown))
             },
         }
     }
 
-    fn try_receive_from_vcpu(&mut self) -> Result<ControlFlow<()>> {
+    fn try_receive_from_vcpu(&mut self) -> Result<ControlFlow<BreakReason, ()>> {
         match self.vcpu_control_rx.try_recv() {
             Ok(VcpuControlResponse::Paused) => {
                 let reason: String =
@@ -374,7 +431,7 @@ impl Orchestrator {
             },
             Ok(VcpuControlResponse::Shutdown) => {
                 info!("try_receive_from_vcpu(): vCPU shutdown");
-                Ok(Break(()))
+                Ok(Break(BreakReason::Shutdown))
             },
             Ok(VcpuControlResponse::Tid(_)) => {
                 let reason: String = "The tid is only sent when the vCPU thread is spawned. \
@@ -384,7 +441,7 @@ impl Orchestrator {
                 error!("{reason}");
                 Err(anyhow::anyhow!(reason))
             },
-            Err(TryRecvError::Empty) => Ok(Continue(())),
+            Err(TryRecvError::Empty) => Ok(Break(BreakReason::Empty)),
             Err(TryRecvError::Disconnected) => {
                 let reason: String = "the vmm has disconnected".to_string();
                 error!("try_receive_from_io_thread(): {reason}");
