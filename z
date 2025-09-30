@@ -56,7 +56,10 @@ DOCKER_IMAGE_TOOLCHAIN_PATH="/opt/nanvix"
 Z_CACHE_FILE=".z.cache"
 
 # Default toolchain directory for setup.
-DEFAULT_LOCAL_TOOLCHAIN_DIR="${HOME}/toolchain"
+DEFAULT_LOCAL_TOOLCHAIN_DIR="${PWD}/toolchain"
+
+# Location of ubuntu setup script.
+UBUNTU_SETUP_SCRIPT="${REPO_ROOT_DIR}/scripts/setup/ubuntu.sh"
 
 #==================================================================================================
 # Global Variables
@@ -315,6 +318,109 @@ check_filesystem_support() {
     esac
 }
 
+#
+# Description
+#
+#   Checks whether the currently selected toolchain (Docker image or local installation)
+#   matches the Nanvix version required by the workspace. The Nanvix version is read
+#   from the root `Cargo.toml` (via `get_cargo_toml_version`). The expected toolchain
+#   version string format is:
+#     - Docker image tag:   vMAJOR.MINOR.x (e.g., v1.2.x)
+#     - Local version file: nanvix-toolchain-vMAJOR.MINOR.x (single line in TOOLCHAIN_DIR/version)
+#
+#   Behavior:
+#     - When building with Docker (`BUILD_WITH_DOCKER=true`):
+#         * Verifies Docker is installed.
+#         * Verifies the expected image (derived from current Nanvix version) is present locally.
+#         * Validates the derived tag matches the MAJOR.MINOR.x pattern expected.
+#     - When building with the local toolchain:
+#         * Ensures the version file exists and is readable.
+#         * Compares its contents to the expected version string.
+#
+#   On mismatch or missing artifacts, an error is printed and the function returns non-zero.
+#   On success, returns zero.
+#
+# Usage Example
+#   if ! check_toolchain; then
+#       exit 1
+#   fi
+#
+check_toolchain() {
+    local current_version
+    current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH") || {
+        print_error "Failed to determine current Nanvix version."
+        return 1
+    }
+
+    local expected_tag
+    expected_tag="${current_version%.*}.x"
+
+    if ${BUILD_WITH_DOCKER}; then
+        # Docker-based toolchain validation.
+        check_docker_installed
+
+        local image_name
+        image_name=$(get_docker_image_name "${current_version}")
+
+        # Check image availability.
+        if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
+            print_error "Required Docker toolchain image '${image_name}' not found. Run './z setup --with-docker' to fetch it."
+            return 1
+        fi
+
+        # Expected image tag extracted from the computed image name.
+        local image_tag
+        image_tag="${image_name##*:v}"
+
+        # Sanity check on tag consistency (defensive; should always match expected_tag).
+        if [[ "${image_tag}" != "${expected_tag}" ]]; then
+            print_error "Docker toolchain version mismatch (found tag '${image_tag}', expected '${expected_tag}'). Run './z setup --with-docker' to update the toolchain image."
+            return 1
+        fi
+
+        print_info "Docker toolchain version '${image_tag}' matches expected '${expected_tag}'."
+    else
+        # Local toolchain validation.
+        local version_file
+        version_file="${TOOLCHAIN_DIR}/version"
+        local expected_version_string
+        expected_version_string="nanvix-toolchain-v${expected_tag}"
+
+        # Check if version file exists (follows symbolic links).
+        if [[ ! -e "${version_file}" ]]; then
+            print_error "Toolchain version file '${version_file}' not found. Run './z setup' to build the local toolchain."
+            return 1
+        fi
+
+        # Check if version file is readable (follows symbolic links).
+        if [[ ! -r "${version_file}" ]]; then
+            print_error "Toolchain version file '${version_file}' is not readable."
+            return 1
+        fi
+
+        local found_version
+        if ! read -r found_version < "${version_file}"; then
+            print_error "Failed to read toolchain version file '${version_file}'."
+            return 1
+        fi
+        found_version="$(echo "${found_version}" | tr -d '[:space:]')"
+
+        if [[ -z "${found_version}" ]]; then
+            print_error "Toolchain version file '${version_file}' is empty. Run './z setup' to (re)install the toolchain."
+            return 1
+        fi
+
+        if [[ "${found_version}" != "${expected_version_string}" ]]; then
+            print_error "Local toolchain version mismatch (found '${found_version}', expected '${expected_version_string}'). Run './z setup' to update the toolchain."
+            return 1
+        fi
+
+        print_info "Local toolchain version '${found_version}' matches expected '${expected_version_string}'."
+    fi
+
+    return 0
+}
+
 #==================================================================================================
 # Main Script
 #==================================================================================================
@@ -416,6 +522,11 @@ main() {
                 fi
             fi
 
+            # Validate toolchain compatibility before building.
+            if ! check_toolchain; then
+                print_error "Toolchain version check failed. Aborting build."
+                exit 1
+            fi
 
             # Build Nanvix.
             if ${BUILD_WITH_DOCKER}; then
@@ -465,6 +576,15 @@ main() {
         "${CMD_NAME_SETUP}")
             # Setup the Nanvix development environment.
             print_info "Setting up Nanvix development environment..."
+
+            # Run ubuntu setup script if it exists.
+            if [[ -f "${UBUNTU_SETUP_SCRIPT}" ]]; then
+                print_info "Installing development dependencies..."
+                if ! sudo "${UBUNTU_SETUP_SCRIPT}"; then
+                    print_error "Failed to install development dependencies."
+                    exit 1
+                fi
+            fi
 
             # If Docker is requested, download the Docker image.
             if ${BUILD_WITH_DOCKER}; then
