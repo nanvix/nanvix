@@ -25,6 +25,9 @@ pub use crate::{
 /// Memory management operations.
 pub mod mman;
 
+/// Synchronous I/O multiplexing.
+pub mod select;
+
 /// Sockets.
 pub mod socket;
 
