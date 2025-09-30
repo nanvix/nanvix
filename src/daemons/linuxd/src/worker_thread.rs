@@ -21,6 +21,7 @@ use crate::{
         RequestAssemblerTrait,
     },
     socket,
+    sys_select,
     times,
     unistd,
     user_vm_handle::UserVmHandle,
@@ -85,6 +86,7 @@ use ::syscall::{
     message::LinuxDaemonMessagePart,
     poll::message::PollRequest,
     sys::{
+        select::message::SelectRequest,
         socket::message::{
             AcceptSocketRequest,
             BindSocketRequest,
@@ -347,6 +349,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::PartialWriteRequest
                                 | LinuxDaemonMessageHeader::ReceiveSocketRequest
                                 | LinuxDaemonMessageHeader::SeekRequest
+                                | LinuxDaemonMessageHeader::SelectRequest
                                 | LinuxDaemonMessageHeader::SendSocketRequest
                                 | LinuxDaemonMessageHeader::ShutdownSocketRequest
                                 | LinuxDaemonMessageHeader::TimesRequest
@@ -578,6 +581,10 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
                 unistd::do_lseek(source, request)
+            },
+            LinuxDaemonMessageHeader::SelectRequest => {
+                let request: SelectRequest = SelectRequest::from_bytes(message.payload);
+                sys_select::do_select(source, request)
             },
             LinuxDaemonMessageHeader::SendSocketRequest => {
                 let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
