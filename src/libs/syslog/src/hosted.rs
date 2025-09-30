@@ -35,19 +35,20 @@ pub use ::log::{
 /// # Parameters
 ///
 /// - `log_to_file`: Log to file?
+/// - `log_dir`: Directory to write log files to (if `log_to_file` is true).
 ///
 /// # Note
 ///
 /// If the logger cannot be initialized, the function will panic.
 ///
-pub fn init(log_to_file: bool) {
+pub fn init(log_to_file: bool, log_dir: String) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
         let logger =
             Logger::try_with_env_or_str("error").expect("malformed RUST_LOG environment variable");
         if log_to_file {
             logger
-                .log_to_file(FileSpec::default())
+                .log_to_file(FileSpec::default().directory(log_dir))
                 .start()
                 .expect("failed to initialize logger");
         } else {

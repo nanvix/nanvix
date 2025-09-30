@@ -150,6 +150,7 @@ impl HttpClient {
             args.hwloc().clone(),
             args.binary_directory(),
             args.toolchain_binary_directory(),
+            args.log_directory(),
             args.l2(),
             // Pass ownership of the L2 gateway port, if L2 deployment enabled.
             gateway_l2_port,
