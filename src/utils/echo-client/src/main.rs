@@ -59,7 +59,7 @@ use ::tokio::{
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging system.
-    ::syslog::init(false);
+    ::syslog::init(false, String::new());
 
     // Parse and retrieve command-line arguments.
     let args: Args = Args::parse(env::args().collect())?;

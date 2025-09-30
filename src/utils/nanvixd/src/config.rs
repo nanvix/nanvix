@@ -33,6 +33,13 @@ pub const DEFAULT_BIN_DIRECTORY: &str = "./bin";
 ///
 pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
 
+///
+/// # Description
+///
+/// Default directory for logs
+///
+pub const DEFAULT_LOG_DIRECTORY: &str = "./logs";
+
 /// Suffix for Unix sockets.
 #[cfg(debug_assertions)]
 const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";

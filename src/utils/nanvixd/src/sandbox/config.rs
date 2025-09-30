@@ -29,6 +29,8 @@ pub struct SandboxConfig {
     binary_directory: String,
     /// Path to the toolchain binary directory.
     toolchain_binary_directory: String,
+    /// Directory for log files.
+    log_directory: String,
     /// Flag to deploy linuxd in an L2 VM.
     l2: bool,
     /// TCP port for the gateway in the L2 VM if L2 deployment enabled.
@@ -58,6 +60,7 @@ impl SandboxConfig {
     /// - `hwloc`: Hardware locality configuration.
     /// - `binary_directory`: Path to the binary directory.
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
+    /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd in an L2 VM.
     /// - `gateway_l2_port`: Port for the gateway in the L2 VM.
     ///
@@ -76,6 +79,7 @@ impl SandboxConfig {
         hwloc: Option<HwLoc>,
         binary_directory: &str,
         toolchain_binary_directory: &str,
+        log_directory: &str,
         l2: bool,
         gateway_l2_port: Option<TcpPort>,
     ) -> Self {
@@ -89,6 +93,7 @@ impl SandboxConfig {
             hwloc,
             binary_directory: binary_directory.to_string(),
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
+            log_directory: log_directory.to_string(),
             l2,
             _gateway_l2_port: gateway_l2_port,
         }
@@ -209,6 +214,16 @@ impl SandboxConfig {
     ///
     pub fn toolchain_binary_directory(&self) -> &str {
         &self.toolchain_binary_directory
+    }
+
+    /// Returns the log directory.
+    ///
+    /// # Returns
+    ///
+    /// The path to the log directory.
+    ///
+    pub fn log_directory(&self) -> &str {
+        &self.log_directory
     }
 
     ///

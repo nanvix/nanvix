@@ -58,6 +58,8 @@ pub struct Args {
     gateway_socket_type: Option<SocketType>,
     /// Log to file?
     log_to_file: bool,
+    /// Log directory.
+    log_directory: String,
 }
 
 //==================================================================================================
@@ -93,6 +95,10 @@ impl Args {
     pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
     /// Log to file.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
+    /// Log directory
+    pub const OPT_LOGDIR: &'static str = "-log-dir";
+    /// Log directory.
+    const DEFAULT_LOG_DIRECTORY: &'static str = "./logs";
 
     ///
     /// # Description
@@ -118,6 +124,7 @@ impl Args {
         let mut gateway_addr: Option<String> = None;
         let mut gateway_socket_type: Option<SocketType> = None;
         let mut log_to_file: bool = false;
+        let mut log_directory: Option<String> = None;
 
         // Parse command-line arguments.
         let mut i: usize = 1;
@@ -240,6 +247,11 @@ impl Args {
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
                 },
+                // Set log directory
+                Self::OPT_LOGDIR if i + 1 < args.len() => {
+                    log_directory = Some(args[i + 1].clone());
+                    i += 1;
+                },
                 // Invalid argument.
                 _ => {
                     Self::usage();
@@ -270,6 +282,51 @@ impl Args {
             anyhow::bail!("invalid memory size");
         }
 
+        // Check if log file directory was set if logging to file is enabled. Set the default directory if not.
+        let log_directory: String = match (log_to_file, log_directory) {
+            (true, Some(path)) => path,
+            // default to log dir relative to the CWD, make the directory path absolute
+            (true, None) => {
+                let mut abs_path = std::env::current_dir().map_err(|e| {
+                    anyhow::anyhow!("failed to get current directory (error={:?})", e)
+                })?;
+                abs_path.push(Self::DEFAULT_LOG_DIRECTORY);
+                abs_path.to_str().map(|s| s.to_string()).ok_or_else(|| {
+                    anyhow::anyhow!("failed to convert log directory path to string")
+                })?
+            },
+            (false, _) => String::new(),
+        };
+
+        // Validate that the path to the log file exists if logging to file is enabled.
+        // If it does not exist, try to create it.
+        if log_to_file {
+            let path = std::path::Path::new(&log_directory);
+            if !path.exists() {
+                std::fs::create_dir_all(path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed to create log file directory (path={}, error={:?})",
+                        path.display(),
+                        e
+                    )
+                })?;
+            }
+            // check if we can create and write a file in the directory
+            let test_file_path = path.join("test.log");
+            match std::fs::File::create(&test_file_path) {
+                Ok(_) => {
+                    std::fs::remove_file(&test_file_path).ok(); // clean up the test file
+                },
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to create log file (path={}, error={:?})",
+                        test_file_path.display(),
+                        e
+                    ));
+                },
+            }
+        }
+
         Ok(Self {
             user_vm_id,
             kernel_filename,
@@ -284,6 +341,7 @@ impl Args {
             gateway_addr,
             gateway_socket_type,
             log_to_file,
+            log_directory,
         })
     }
 
@@ -295,7 +353,8 @@ impl Args {
     pub fn usage() {
         eprintln!(
             "Usage: {} {} <id> {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} \
-             <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{}] [{} <args>]",
+             <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
+             <args>]",
             env::args().next().unwrap_or("microvm".to_string()),
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -306,6 +365,7 @@ impl Args {
             Self::OPT_CONTROL_PLANE_SOCKADDR,
             Self::OPT_GATEWAY_SOCKADDR,
             Self::OPT_LOGFILE,
+            Self::OPT_LOGDIR,
             Self::OPT_INITRD_ARGS,
         );
     }
@@ -487,5 +547,17 @@ impl Args {
     ///
     pub fn log_to_file(&self) -> bool {
         self.log_to_file
+    }
+    ///
+    /// # Description
+    ///
+    /// Returns the log directory.
+    ///
+    /// # Returns
+    ///
+    /// The log directory.
+    ///
+    pub fn log_directory(&self) -> String {
+        self.log_directory.clone()
     }
 }
