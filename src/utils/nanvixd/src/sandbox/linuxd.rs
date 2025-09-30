@@ -120,6 +120,7 @@ impl LinuxDaemon {
         hwloc: Option<HwLoc>,
         binary_directory: &str,
         toolchain_binary_directory: &str,
+        log_directory: &str,
         control_plane_listener: &mut SocketListener,
         control_plane_poll: &mut Poll,
         l2: bool,
@@ -153,6 +154,8 @@ impl LinuxDaemon {
             vec![
                 format!("{}/linuxd.elf", binary_directory),
                 args::Args::OPT_LOGFILE.to_string(),
+                args::Args::OPT_LOGDIR.to_string(),
+                log_directory.to_string(),
                 args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
                 control_plane_sockaddr.to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),

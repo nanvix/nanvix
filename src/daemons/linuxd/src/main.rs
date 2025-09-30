@@ -81,7 +81,7 @@ const DEFAULT_USER_VM_SOCKET_TYPE: SocketType = SocketType::Unix;
 pub fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    ::syslog::init(args.log_to_file());
+    ::syslog::init(args.log_to_file(), args.log_file_dir());
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: String = args.control_plane_sockaddr();

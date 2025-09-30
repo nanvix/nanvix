@@ -78,7 +78,7 @@ fn main() -> Result<ExitCode> {
     };
 
     // Initialize logger. If this fails, the program will panic.
-    syslog::init(args.log_to_file());
+    syslog::init(args.log_to_file(), args.log_directory());
 
     // Connect to the system VM.
     let system_vm_stream: Option<SocketStream> = match &system_vm_addr {

@@ -55,6 +55,8 @@ impl Microvm {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", sandbox_config.binary_directory()),
             ::microvm::args::Args::OPT_LOGFILE.to_string(),
+            ::microvm::args::Args::OPT_LOGDIR.to_string(),
+            sandbox_config.log_directory().to_string(),
             ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
             sandbox_tag.sandbox_id().to_string(),
             ::microvm::args::Args::OPT_KERNEL.to_string(),
