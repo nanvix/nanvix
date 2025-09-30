@@ -11,10 +11,11 @@ This guide will help you set up your development environment to build and run Na
   - [4. Setup KVM](#4-setup-kvm)
   - [5. Setup Docker (Optional)](#5-setup-docker-optional)
   - [6. Setup SCCACHE (Optional)](#6-setup-sccache-optional)
-- [Setting Up Development Tools](#setting-up-development-tools)
+- [Setting Up Development Tools for the First Time](#setting-up-development-tools-for-the-first-time)
   - [Option 1: Build Development Tools Locally (Preferred Method)](#option-1-build-development-tools-locally-preferred-method)
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
+- [Updating Your Development Tools](#updating-your-development-tools)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
@@ -101,7 +102,7 @@ source ~/.bashrc
 
 ---
 
-## Setting Up Development Tools
+## Setting Up Development Tools for the First Time
 
 > ⚠️ **Note:** This process may take some time to complete.
 
@@ -169,6 +170,16 @@ To build a Docker image with the required tools:
 # Ensure you are in the project's root directory.
 docker build --no-cache -t nanvix/toolchain ./scripts/setup/
 ```
+
+## Updating Your Development Tools
+
+When a new major release of Nanvix is available, you must update your development tools to ensure
+compatibility. Follow these steps to update your environment:
+
+1. **Update system dependencies**: [Re-install dependencies for development tools](#3-install-dependencies-for-development-tools).
+2. **Rebuild development tools**: [Re-build the development tools](#option-1-build-development-tools-locally-preferred-method).
+
+> **Note:** This update process is only required for major releases, not for minor updates or patches.
 
 ## Setup Your IDE (Optional)
 
