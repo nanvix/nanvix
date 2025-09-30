@@ -98,6 +98,7 @@ int main(int argc, const char *argv[])
     test_create_unlink();   // tests open() and unlink().
     test_write_read();      // tests open(), close() and unlink.
     test_poll();            // tests open(), close(), write(), read(), poll() and unlink().
+    test_select();          // tests open(), close(), write(), read(), select() and unlink().
     test_posix_fadvise();   // requires open(), close() and unlink().
     test_lseek();           // requires open(), close(), read(), write() and unlink().
     test_posix_fallocate(); // requires open(), close(), lseek and unlink().

@@ -11,9 +11,6 @@ pub mod ioctl;
 /// Definitions for resource operations.
 pub mod resource;
 
-/// Synchronous I/O multiplexing.
-pub mod select;
-
 /// File status.
 pub mod stat;
 
