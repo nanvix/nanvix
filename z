@@ -58,6 +58,9 @@ Z_CACHE_FILE=".z.cache"
 # Default toolchain directory for setup.
 DEFAULT_LOCAL_TOOLCHAIN_DIR="${PWD}/toolchain"
 
+# Location of ubuntu setup script.
+UBUNTU_SETUP_SCRIPT="${REPO_ROOT_DIR}/scripts/setup/ubuntu.sh"
+
 #==================================================================================================
 # Global Variables
 #==================================================================================================
@@ -573,6 +576,15 @@ main() {
         "${CMD_NAME_SETUP}")
             # Setup the Nanvix development environment.
             print_info "Setting up Nanvix development environment..."
+
+            # Run ubuntu setup script if it exists.
+            if [[ -f "${UBUNTU_SETUP_SCRIPT}" ]]; then
+                print_info "Installing development dependencies..."
+                if ! sudo "${UBUNTU_SETUP_SCRIPT}"; then
+                    print_error "Failed to install development dependencies."
+                    exit 1
+                fi
+            fi
 
             # If Docker is requested, download the Docker image.
             if ${BUILD_WITH_DOCKER}; then
