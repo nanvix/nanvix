@@ -57,10 +57,18 @@ pub mod syscomm {
     ///
     /// # Description
     ///
+    /// Provides the maximum length of a message we receive. We set a limit to
+    /// prevent a malformed payload to trigger unbounded allocations in linuxd.
+    ///
+    pub const MAX_MESSAGE_LEN: usize = 128 * 1024 * 1024;
+
+    ///
+    /// # Description
+    ///
     /// Provides the maximum length of a message we receive in linuxd. We set a limit to
     /// prevent a malformed payload to trigger unbounded allocations in linuxd.
     ///
-    pub const MAX_LINUXD_MESSAGE_LEN: usize = 128 * 1024 * 1024;
+    pub const MAX_LINUXD_MESSAGE_LEN: usize = MAX_MESSAGE_LEN;
 
     ///
     /// # Description
