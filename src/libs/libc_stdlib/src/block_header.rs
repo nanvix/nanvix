@@ -299,4 +299,31 @@ impl BlockHeader {
         let aligned_header_addr: usize = unaligned_header_addr & !(BLOCK_HEADER_ALIGNMENT - 1);
         aligned_header_addr as *mut BlockHeader
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the usable (requested) size of an allocated block given a user pointer.
+    ///
+    /// # Parameters
+    ///
+    /// - `user_ptr`: Pointer previously returned to the caller by an allocation function.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the number of bytes that were originally requested for the
+    /// allocation (the logical usable size). If the caller requested a reallocation that shrunk
+    /// the block, the returned value reflects the new (smaller) size. Behavior is undefined if
+    /// `user_ptr` was not allocated by this allocator.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `user_ptr` originates from a successful call to one of the
+    /// allocation routines backed by this allocator and that it has not been freed yet.
+    ///
+    pub(crate) unsafe fn usable_size(user_ptr: *mut u8) -> usize {
+        debug_assert!(!user_ptr.is_null(), "usable_size(): null user pointer");
+        let header: &mut BlockHeader = Self::get_mut_ref(user_ptr);
+        header.requested_alloc_size
+    }
 }

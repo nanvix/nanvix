@@ -72,6 +72,7 @@ int main(int argc, const char *argv[])
     test_mmap_munmap();
     test_malloc_free();
     test_aligned_alloc_free();
+    test_malloc_usable_size();
 
     // Write magic string to signal that the test passed.
     {
