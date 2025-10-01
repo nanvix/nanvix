@@ -71,6 +71,9 @@ SQLITE_COMMIT := f477aef20dc2e9d7832a3899368ebc66c2d097a0
 ZLIB_REPOSITORY := https://github.com/nanvix/zlib
 ZLIB_COMMIT := fe7fae43935133eedf20a1d1e4dafe397d42a9c5
 
+QUICKJS_REPOSITORY := https://github.com/nanvix/quickjs
+QUICKJS_COMMIT := a52a0298bd3fdca027300a6ecf4c89c05b8c949c
+
 #===================================================================================================
 # Directories
 #===================================================================================================
@@ -568,11 +571,11 @@ run-nanvixd-tests: | \
 
 ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
 
-all-opt: init all-openblas all-openssl all-python all-sqlite all-zlib
+all-opt: init all-openblas all-openssl all-python all-quickjs all-sqlite all-zlib
 
-clean-opt: clean-openblas clean-openssl clean-python clean-sqlite clean-zlib
+clean-opt: clean-openblas clean-openssl clean-python clean-quickjs clean-sqlite clean-zlib
 
-init-opt: init-openblas init-openssl init-python init-sqlite init-zlib
+init-opt: init-openblas init-openssl init-python init-quickjs init-sqlite init-zlib
 
 else
 
@@ -744,6 +747,38 @@ endif
 init-zlib: init-repo
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
+endif
+
+#===================================================================================================
+# Build Rules for QuickJS
+#===================================================================================================
+
+QUICKJS_LIB := $(SYSROOT_DIR)/lib/libquickjs.a
+
+all-quickjs: $(QUICKJS_LIB)
+
+$(QUICKJS_LIB): init-repo install
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@if [ ! -f $@ ]; then \
+		echo "Building QuickJS (missing) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs; \
+	elif [ $@ -ot $(LIBPOSIX) ]; then \
+		echo "Building QuickJS (outdated) ..."; \
+		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs; \
+	else \
+		echo "QuickJS up-to-date!"; \
+	fi
+endif
+
+clean-quickjs:
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
+	$(RM_CMD) $(QUICKJS_LIB)
+endif
+
+init-quickjs: init-repo
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
 endif
 
 #===================================================================================================
