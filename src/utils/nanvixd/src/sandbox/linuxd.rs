@@ -17,7 +17,6 @@ use ::linuxd::{
     args,
     config::restore_gate_sockaddr_builder,
 };
-use ::mio::Poll;
 use ::std::{
     process::Stdio,
     time::Duration,
@@ -117,7 +116,7 @@ impl LinuxDaemon {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    pub async fn spawn(
         control_plane_sockaddr: &str,
         user_vm_sockaddr: &str,
         hwloc: Option<HwLoc>,
@@ -125,7 +124,6 @@ impl LinuxDaemon {
         toolchain_binary_directory: &str,
         log_directory: &str,
         control_plane_listener: &mut SocketListener,
-        control_plane_poll: &mut Poll,
         l2: bool,
         tmp_directory: String,
     ) -> Result<Self> {
@@ -195,12 +193,14 @@ impl LinuxDaemon {
 
         // After linuxd has started, accept the incoming connection and return the stream for
         // further use.
-        let control_plane_stream: SocketStream = match control_plane_listener.accept_timeout(
-            control_plane_poll,
+        let control_plane_stream: SocketStream = match timeout(
             Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-        ) {
-            Ok(stream) => stream,
-            Err(e) => {
+            ::syscomm::r#async::accept(control_plane_listener),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(e)) => {
                 // If linuxd has not accepted the control-plane connection, it means that
                 // something went wrong during start-up. We kill the process ignoring errors,
                 // and return an error.
@@ -211,7 +211,18 @@ impl LinuxDaemon {
                 // Use a SIGKILL because the process is already faulty.
                 Self::send_sigkill_to_child(&child);
 
-                return Err(anyhow::anyhow!("{reason}"));
+                anyhow::bail!("{reason}")
+            },
+            Err(e) => {
+                let reason: String = format!(
+                    "timed-out waiting for linuxd to connect to control-plane (error={e:?})"
+                );
+                error!("{reason}");
+
+                // Use a SIGKILL because the process is already faulty.
+                Self::send_sigkill_to_child(&child);
+
+                anyhow::bail!("{reason}")
             },
         };
         debug!("nanvixd received connection from linuxd's control-plane socket");
