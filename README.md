@@ -23,6 +23,7 @@ Nanvix is a microkernel-based research operating system.
 - [x] `Python v3.12.3`
 - [x] `Libstdc++ v3`
 - [x] `Newlib v4.4.0`
+- [x] `QuickJS`
 
 ### Libraries
 
