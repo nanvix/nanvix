@@ -19,7 +19,7 @@ flexi_logger = { workspace = true, optional = true }
 sys = { workspace = true, features = ["kcall"], optional = true }
 
 [features]
-default = ["dep:cfg-if", "dep:sys"]
+default = ["dep:cfg-if", "dep:sys", "warn"]
 # Enables the use of the Rust standard library.
 std = ["dep:log", "dep:flexi_logger"]
 # Enables this crate to be used as a dependency of the Rust standard library.
