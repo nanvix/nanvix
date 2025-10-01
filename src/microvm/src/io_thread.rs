@@ -457,8 +457,8 @@ impl IoThread {
     ///
     fn try_send_to_vmm_control(&mut self) -> Result<ControlFlow<()>> {
         if let Some(control_plane_stream) = self.control_plane_stream.as_mut() {
-            let cmd: control_plane_api::Command =
-                match control_plane_api::try_read_command(control_plane_stream) {
+            let cmd: control_plane_api::NanvixdCommand =
+                match control_plane_api::recv_command(control_plane_stream) {
                     Ok(cmd) => cmd,
                     // If we would block, return and do nothing.
                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => return Ok(Break(())),
@@ -477,7 +477,7 @@ impl IoThread {
                 };
             // Translate nanvixd control-plane commands to internal VMM control commands.
             match cmd {
-                control_plane_api::Command::Shutdown => {
+                control_plane_api::NanvixdCommand::Shutdown => {
                     self.control_tx.send(IoControlCommand::Shutdown)?;
                 },
             }
