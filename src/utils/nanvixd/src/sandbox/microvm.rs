@@ -185,7 +185,7 @@ impl Microvm {
     pub async fn shutdown(&mut self) -> Result<()> {
         match control_plane_api::send_command(
             &mut self.control_plane_stream,
-            control_plane_api::Command::Shutdown,
+            &control_plane_api::NanvixdCommand::Shutdown,
         ) {
             Ok(()) => {},
             Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
