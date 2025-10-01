@@ -11,7 +11,6 @@
 // Lints
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
-#![forbid(clippy::cast_possible_truncation)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
 #![forbid(clippy::char_lit_as_u8)]
@@ -24,6 +23,14 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
+// The following lints need to be handled case-by-case depending on the target pointer width.
+#![cfg_attr(target_pointer_width = "32", expect(clippy::cast_possible_truncation))]
+#![cfg_attr(
+    not(target_pointer_width = "32"),
+    forbid(clippy::cast_possible_truncation)
+)]
+// Features
+#![feature(stmt_expr_attributes)] // Used in `malloc_usable_size()`.
 
 //==================================================================================================
 // Modules
@@ -34,6 +41,7 @@ mod block_header;
 mod calloc;
 mod free;
 mod malloc;
+mod malloc_usable_size;
 mod posix_memalign;
 mod realloc;
 
@@ -57,6 +65,7 @@ pub use aligned_alloc::aligned_alloc;
 pub use calloc::calloc;
 pub use free::free;
 pub use malloc::malloc;
+pub use malloc_usable_size::malloc_usable_size;
 pub use posix_memalign::posix_memalign;
 pub use realloc::realloc;
 
