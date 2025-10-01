@@ -26,6 +26,9 @@ pub mod arpa;
 /// Dynamic linking.
 pub mod dlfcn;
 
+/// Dummy implementations.
+pub mod dummy;
+
 /// System error numbers.
 pub mod errno;
 
