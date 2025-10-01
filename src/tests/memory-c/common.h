@@ -18,4 +18,7 @@ extern void test_malloc_free(void);
 // Tests whether we can allocate and free aligned memory using `aligned_alloc()` and `free()`.
 extern void test_aligned_alloc_free(void);
 
+// Tests whether we can query the usable size of allocated blocks using `malloc_usable_size()`.
+extern void test_malloc_usable_size(void);
+
 #endif
