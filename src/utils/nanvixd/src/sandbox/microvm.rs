@@ -10,7 +10,6 @@ use crate::sandbox::{
     tag::SandboxTag,
 };
 use ::anyhow::Result;
-use ::mio::Poll;
 use ::std::{
     process::Stdio,
     time::Duration,
@@ -53,7 +52,6 @@ impl Microvm {
         sandbox_tag: SandboxTag,
         sandbox_config: SandboxConfig,
         control_plane_listener: &mut SocketListener,
-        control_plane_poll: &mut Poll,
     ) -> Result<Self> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/microvm.elf", sandbox_config.binary_directory()),
@@ -122,12 +120,14 @@ impl Microvm {
         // After the user VM has started, accept the incoming connection for the control-plane.
         // Post-condition: once the connection has been accepted, the user VM has been able to
         // connect to the system VM (if an address is provided).
-        let control_plane_stream: SocketStream = match control_plane_listener.accept_timeout(
-            control_plane_poll,
+        let control_plane_stream: SocketStream = match timeout(
             Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-        ) {
-            Ok(stream) => stream,
-            Err(e) => {
+            ::syscomm::r#async::accept(control_plane_listener),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(e)) => {
                 // If the user VM has not accepted the control-plane connection, it means that
                 // something went wrong during start-up. We kill the process ignoring errors,
                 // and return an error.
@@ -135,11 +135,18 @@ impl Microvm {
                     format!("error connecting control-plane to user VM (error={e:?})");
                 error!("{reason}");
 
-                // Use a SIGKILL because the process is already faulty.
-                if let Some(pid) = child.id() {
-                    debug!("killing user VM instance (pid={pid:?})");
-                    let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
-                }
+                Self::send_sigkill_to_child(child);
+
+                return Err(anyhow::anyhow!("{reason}"));
+            },
+            Err(e) => {
+                let reason: String = format!(
+                    "timed-out waiting for user VM to connect the control-plane stream \
+                     (error={e:?})"
+                );
+                error!("{reason}");
+
+                Self::send_sigkill_to_child(child);
 
                 return Err(anyhow::anyhow!("{reason}"));
             },
