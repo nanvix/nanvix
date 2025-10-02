@@ -548,6 +548,8 @@ main() {
             ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
             cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
             write_cache "${cache_args[@]}"
+
+            print_success "Build complete."
             ;;
 
         "${CMD_NAME_CLEANUP}")
@@ -571,6 +573,8 @@ main() {
                 rm -f "${Z_CACHE_FILE}"
                 print_success "Cache file removed."
             fi
+
+            print_success "Cleanup complete."
             ;;
 
         "${CMD_NAME_SETUP}")
@@ -655,7 +659,7 @@ main() {
                 fi
             fi
 
-            print_success "Nanvix development environment setup completed successfully."
+            print_success "Setup complete."
             ;;
 
         "${CMD_NAME_HELP}")
