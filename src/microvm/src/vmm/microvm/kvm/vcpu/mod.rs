@@ -745,8 +745,15 @@ impl VirtualProcessor {
     ///
     /// Upon successful completion, returns empty. Otherwise, returns an error.
     ///
-    pub fn _set_state(&mut self, _state: VirtualProcessorState) -> Result<()> {
+    pub fn set_state(&mut self, _state: VirtualProcessorState) -> Result<()> {
         // TODO: set virtual processor state https://github.com/nanvix/nanvix/issues/948
+        Ok(())
+    }
+}
+
+impl VirtualProcessorState {
+    pub fn validate(&self) -> Result<()> {
+        // TODO: ensure state is safe to resume running.
         Ok(())
     }
 }
