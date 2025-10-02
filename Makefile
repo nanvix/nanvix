@@ -72,7 +72,7 @@ ZLIB_REPOSITORY := https://github.com/nanvix/zlib
 ZLIB_COMMIT := fe7fae43935133eedf20a1d1e4dafe397d42a9c5
 
 QUICKJS_REPOSITORY := https://github.com/nanvix/quickjs
-QUICKJS_COMMIT := a52a0298bd3fdca027300a6ecf4c89c05b8c949c
+QUICKJS_COMMIT := c97574796f4563cd3e89bcbf5b6774ab9d8ed15d
 
 #===================================================================================================
 # Directories
