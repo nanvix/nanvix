@@ -36,7 +36,8 @@ CARGO_TOML_FILE_PATH="${REPO_ROOT_DIR}/Cargo.toml"
 
 # Command names.
 CMD_NAME_BUILD="build"
-CMD_NAME_CLEANUP="cleanup"
+CMD_NAME_CLEAN="clean"
+CMD_NAME_DISTCLEAN="distclean"
 CMD_NAME_SETUP="setup"
 CMD_NAME_HELP="help"
 
@@ -91,15 +92,17 @@ Utility for building Nanvix.
 Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
   ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
-  ./z ${CMD_NAME_CLEANUP} [${OPT_NAME_WITH_DOCKER}]
+  ./z ${CMD_NAME_CLEAN} [${OPT_NAME_WITH_DOCKER}]
+  ./z ${CMD_NAME_DISTCLEAN} [${OPT_NAME_WITH_DOCKER}]
   ./z ${CMD_NAME_SETUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_TOOLCHAIN_DIR} <path>]
   ./z ${CMD_NAME_HELP}
 
 Commands
-  build    Builds Nanvix.
-  cleanup  Cleans up build artifacts.
-  setup    Sets up the Nanvix development environment.
-  help     Prints the help information.
+  build     Builds Nanvix.
+  clean     Removes build artifacts (quick clean).
+  distclean Removes everything (full clean).
+  setup     Sets up the Nanvix development environment.
+  help      Prints the help information.
 
 Options
   ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the local toolchain.
@@ -552,18 +555,41 @@ main() {
             print_success "Build complete."
             ;;
 
-        "${CMD_NAME_CLEANUP}")
-            # Cleanup build artifacts.
+        "${CMD_NAME_CLEAN}")
             if ${BUILD_WITH_DOCKER}; then
-                print_info "Cleaning up with Docker..."
-                if ! eval "$(build_docker_command distclean)"; then
-                    print_error "Cleanup failed with Docker."
+                print_info "Running quick cleanup with Docker..."
+                if ! eval "$(build_docker_command clean)"; then
+                    print_error "Quick clean failed with Docker."
                     exit 1
                 fi
             else
-                print_info "Cleaning up with local toolchain..."
+                print_info "Running quick cleanup with local toolchain..."
+                if ! make clean; then
+                    print_error "Quick clean failed."
+                    exit 1
+                fi
+            fi
+
+            # Remove cache file (same behavior as legacy 'cleanup').
+            if [[ -f "${Z_CACHE_FILE}" ]]; then
+                rm -f "${Z_CACHE_FILE}"
+                print_success "Cache file removed."
+            fi
+
+            print_success "Quick clean complete."
+            ;;
+
+        "${CMD_NAME_DISTCLEAN}")
+            if ${BUILD_WITH_DOCKER}; then
+                print_info "Running full cleanup with Docker..."
+                if ! eval "$(build_docker_command distclean)"; then
+                    print_error "Full cleanup failed with Docker."
+                    exit 1
+                fi
+            else
+                print_info "Running full cleanup with local toolchain..."
                 if ! make distclean; then
-                    print_error "Cleanup failed."
+                    print_error "Full cleanup failed."
                     exit 1
                 fi
             fi
@@ -574,7 +600,7 @@ main() {
                 print_success "Cache file removed."
             fi
 
-            print_success "Cleanup complete."
+            print_success "Full cleanup complete."
             ;;
 
         "${CMD_NAME_SETUP}")
