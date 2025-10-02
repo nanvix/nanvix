@@ -228,16 +228,6 @@ export WASM_BUILD_MODE := dev-wasm
 endif
 
 #===================================================================================================
-# JavaScript Toolchain Configuration
-#===================================================================================================
-
-# Tools
-export JAVY ?= $(HOME)/.cargo/bin/javy
-
-# Javy compiler options.
-export JAVY_FLAGS := -J simd-json-builtins=n -C dynamic=no -C source-compression=y
-
-#===================================================================================================
 # Commands
 #===================================================================================================
 
@@ -400,7 +390,6 @@ help:
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
-	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
 	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
@@ -412,7 +401,6 @@ help:
 	@echo "  LOG_LEVEL    trace, debug, info, warn, error"
 	@echo "  PROFILER     yes, no"
 	@echo "  BUILD_OPT    yes, no"
-	@echo "  JAVY         path to javy executable"
 	@echo "  L2_VM        yes, no"
 
 # Fixes code linting issues.
@@ -550,13 +538,11 @@ run-nanvixd-tests: | \
 	test-echo-c \
 	test-echo-cpp \
 	test-echo-rust-nostd \
-	test-echo-wasm-js \
 	test-echo-wasm-rust \
 	test-file-c \
 	test-file-rust \
 	test-hello-c \
 	test-hello-cpp \
-	test-hello-js \
 	test-hello-wasm \
 	test-linux-app \
 	test-memory-c \
@@ -1279,7 +1265,5 @@ endif
 endif
 endef
 
-$(eval $(call WASM_TEST_RULE,echo-wasm-js,'','["hello world!"]','hello world!'))
 $(eval $(call WASM_TEST_RULE,echo-wasm-rust,'','["hello world!"]','hello world!'))
-$(eval $(call WASM_TEST_RULE,hello-js,'','[]','Hello$(comma) world from JavaScript!'))
 $(eval $(call WASM_TEST_RULE,hello-wasm,'','[]','Hello$(comma) world!'))
