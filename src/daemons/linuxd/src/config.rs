@@ -12,6 +12,13 @@
 ///
 const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
 
+///
+/// # Description
+///
+/// Default directory for logs
+///
+pub(crate) const DEFAULT_LOG_DIRECTORY: &str = "./logs";
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

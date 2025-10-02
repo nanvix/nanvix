@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::config;
 use ::anyhow::Result;
 
 //==================================================================================================
@@ -27,6 +28,8 @@ pub struct Args {
     user_vm_bind_sockaddr_type: Option<String>,
     /// Log to file?
     log_to_file: bool,
+    /// Log file directory.
+    log_directory: String,
     /// Deployed in an L2 VM?
     l2: bool,
 }
@@ -48,6 +51,8 @@ impl Args {
     pub const OPT_USER_VM_BIND_SOCKET_TYPE: &'static str = "-user-vm-bind-socket-type";
     /// Command-line option for log redirecting.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
+    /// Command-line option for setting the log file directory.
+    pub const OPT_LOGDIR: &'static str = "-log-dir";
     /// Command-line option for signaling deployment in an L2 VM.
     pub const OPT_L2: &'static str = "-l2";
 
@@ -80,6 +85,7 @@ impl Args {
         let mut user_vm_bind_sockaddr: String = String::new();
         let mut user_vm_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
+        let mut log_directory: Option<String> = None;
         let mut l2: bool = false;
 
         let mut i: usize = 1;
@@ -108,6 +114,10 @@ impl Args {
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
                 },
+                Self::OPT_LOGDIR => {
+                    i += 1;
+                    log_directory = Some(args[i].clone());
+                },
                 Self::OPT_L2 => {
                     l2 = true;
                 },
@@ -129,12 +139,58 @@ impl Args {
             return Err(anyhow::anyhow!("user VM bind socket address not set"));
         }
 
+        // Check if log file directory was set if logging to file is enabled. Set the default directory if not.
+        let log_directory: String = match (log_to_file, log_directory) {
+            (true, Some(path)) => path,
+            // default to log dir relative to the CWD, make the directory path absolute
+            (true, None) => {
+                let mut abs_path = std::env::current_dir().map_err(|e| {
+                    anyhow::anyhow!("failed to get current directory (error={:?})", e)
+                })?;
+                abs_path.push(config::DEFAULT_LOG_DIRECTORY);
+                abs_path.to_str().map(|s| s.to_string()).ok_or_else(|| {
+                    anyhow::anyhow!("failed to convert log directory path to string")
+                })?
+            },
+            (false, _) => String::new(),
+        };
+
+        // Validate that the path to the log file exists if logging to file is enabled.
+        // If it does not exist, try to create it.
+        if log_to_file {
+            let path = std::path::Path::new(&log_directory);
+            if !path.exists() {
+                std::fs::create_dir_all(path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed to create log file directory (path={}, error={:?})",
+                        path.display(),
+                        e
+                    )
+                })?;
+            }
+            // check if we can create and write a file in the directory
+            let test_file_path = path.join("test.log");
+            match std::fs::File::create(&test_file_path) {
+                Ok(_) => {
+                    std::fs::remove_file(&test_file_path).ok(); // clean up the test file
+                },
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to create log file (path={}, error={:?})",
+                        test_file_path.display(),
+                        e
+                    ));
+                },
+            }
+        }
+
         Ok(Self {
             control_plane_sockaddr,
             control_plane_sockaddr_type,
             user_vm_bind_sockaddr,
             user_vm_bind_sockaddr_type,
             log_to_file,
+            log_directory,
             l2,
         })
     }
@@ -150,14 +206,16 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} \
-             <user-vm-sockaddr> {} <user-vm-socktype>",
+            "Usage: {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} \
+             <user-vm-sockaddr> {} <user-vm-socktype> {} {} <log-file-dir> {}",
             program_name,
-            Self::OPT_LOGFILE,
             Self::OPT_CONTROL_PLANE_SOCKADDR,
             Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             Self::OPT_USER_VM_BIND_SOCKADDR,
             Self::OPT_USER_VM_BIND_SOCKET_TYPE,
+            Self::OPT_LOGFILE,
+            Self::OPT_LOGDIR,
+            Self::OPT_L2
         );
     }
 
@@ -224,6 +282,18 @@ impl Args {
     ///
     pub fn log_to_file(&self) -> bool {
         self.log_to_file
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the log file directory.
+    /// # Returns
+    ///
+    /// The log file directory.
+    ///
+    pub fn log_file_dir(&self) -> String {
+        self.log_directory.clone()
     }
 
     ///
