@@ -20,6 +20,10 @@
 
 set -euo pipefail
 
+#===================================================================================================
+# Script Arguments
+#===================================================================================================
+
 if [[ $# -ne 6 ]]; then
     echo "Usage: $0 <rule> <toolchain_dir> <sysroot_dir> <repository_url> <commit_id> <dirname>" >&2
     exit 1
@@ -32,8 +36,20 @@ REPOSITORY=$4
 COMMIT=$5
 DIRNAME=$6
 
+#===================================================================================================
+# Global Variables
+#===================================================================================================
+
+NANVIX_HOME="$(git rev-parse --show-toplevel)"
 CONTRIB_DIR="${SYSROOT_DIR}/src"
 REPOSITORY_HOME="${CONTRIB_DIR}/${DIRNAME}"
+
+#===================================================================================================
+# Imports
+#===================================================================================================
+
+source "${NANVIX_HOME}/scripts/common/logging.sh"
+source "${NANVIX_HOME}/scripts/common/utils.sh"
 
 #===================================================================================================
 # Functions
@@ -60,7 +76,9 @@ do_build() {
 do_clean() {
     if [[ -d "${REPOSITORY_HOME}" ]]; then
         cd "${REPOSITORY_HOME}" || exit 1
-        ./z clean
+        ./z clean || {
+            print_warning "Failed to clean optional dependency in ${REPOSITORY_HOME}"
+        }
     fi
 }
 
