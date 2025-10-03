@@ -228,16 +228,6 @@ export WASM_BUILD_MODE := dev-wasm
 endif
 
 #===================================================================================================
-# JavaScript Toolchain Configuration
-#===================================================================================================
-
-# Tools
-export JAVY ?= $(HOME)/.cargo/bin/javy
-
-# Javy compiler options.
-export JAVY_FLAGS := -J simd-json-builtins=n -C dynamic=no -C source-compression=y
-
-#===================================================================================================
 # Commands
 #===================================================================================================
 
@@ -400,7 +390,6 @@ help:
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
-	@echo "  JAVY             Javy compiler location (default: $(JAVY)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
 	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
@@ -412,7 +401,6 @@ help:
 	@echo "  LOG_LEVEL    trace, debug, info, warn, error"
 	@echo "  PROFILER     yes, no"
 	@echo "  BUILD_OPT    yes, no"
-	@echo "  JAVY         path to javy executable"
 	@echo "  L2_VM        yes, no"
 
 # Fixes code linting issues.
@@ -550,19 +538,19 @@ run-nanvixd-tests: | \
 	test-echo-c \
 	test-echo-cpp \
 	test-echo-rust-nostd \
-	test-echo-wasm-js \
 	test-echo-wasm-rust \
 	test-file-c \
 	test-file-rust \
 	test-hello-c \
 	test-hello-cpp \
-	test-hello-js \
 	test-hello-wasm \
 	test-linux-app \
 	test-memory-c \
 	test-misc-c \
 	test-network-c \
 	test-python3 \
+	test-qjs \
+	test-quickjs \
 	test-arch-rust \
 	test-thread-c
 
@@ -1279,7 +1267,38 @@ endif
 endif
 endef
 
-$(eval $(call WASM_TEST_RULE,echo-wasm-js,'','["hello world!"]','hello world!'))
 $(eval $(call WASM_TEST_RULE,echo-wasm-rust,'','["hello world!"]','hello world!'))
-$(eval $(call WASM_TEST_RULE,hello-js,'','[]','Hello$(comma) world from JavaScript!'))
 $(eval $(call WASM_TEST_RULE,hello-wasm,'','[]','Hello$(comma) world!'))
+
+#===================================================================================================
+# Rules for QuickJS Tests
+#===================================================================================================
+
+QUICKJS_BINARY := $(SYSROOT_DIR)/bin/qjs
+
+define QUICKJS_TEST_RULE
+test-quickjs-$(1): all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@echo "Running test $(1)..."
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(QUICKJS_BINARY) "--std $(SOURCES_DIR)/tests/quickjs/$(1).js" $(2) $(3) $(TIMEOUT)
+endif
+endef
+
+$(eval $(call QUICKJS_TEST_RULE,test_bigint,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_builtin,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_closure,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_cyclic_import,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_language,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_loop,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_std,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_worker,'','ok'))
+
+test-quickjs: \
+	test-quickjs-test_bigint \
+	test-quickjs-test_builtin \
+	test-quickjs-test_closure \
+	test-quickjs-test_cyclic_import \
+	test-quickjs-test_language \
+	test-quickjs-test_loop \
+	test-quickjs-test_std \
+	test-quickjs-test_worker

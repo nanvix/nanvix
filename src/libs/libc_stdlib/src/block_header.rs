@@ -22,7 +22,6 @@ use ::core::{
 };
 use ::syslog::{
     error,
-    trace,
     warn,
 };
 
@@ -80,8 +79,6 @@ impl BlockHeader {
     ///  This function is unsafe because it interacts with the global memory allocator.
     ///
     pub(crate) unsafe fn alloc(size: usize, alignment: Option<usize>) -> *mut u8 {
-        trace!("alloc(): size={size:?}, alignment={alignment:?}");
-
         // Assert pre-conditions.
         debug_assert!(size > 0, "alloc(): zero-size allocation");
         #[cfg(debug_assertions)]
@@ -160,8 +157,6 @@ impl BlockHeader {
     /// This function is unsafe because it interacts with the global memory allocator.
     ///
     pub(crate) unsafe fn realloc(user_ptr: *mut u8, new_size: usize) -> *mut u8 {
-        trace!("realloc(): user_ptr={user_ptr:?}, new_size={new_size:?}");
-
         // Assert pre-conditions.
         debug_assert!(!user_ptr.is_null(), "realloc(): null user pointer");
         debug_assert!(new_size > 0, "realloc(): zero-size reallocation");
@@ -207,8 +202,6 @@ impl BlockHeader {
     /// On success, this function returns `Ok(())`. On failure, it returns `Err(())`.
     ///
     pub(crate) unsafe fn free(user_ptr: *mut u8) -> Result<(), ()> {
-        trace!("free(): user_ptr={user_ptr:?}");
-
         // Assert pre-conditions.
         debug_assert!(!user_ptr.is_null(), "free(): null user pointer");
 
