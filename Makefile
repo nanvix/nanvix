@@ -350,6 +350,7 @@ distclean: clean
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
+	$(FORCE_RM_CMD) $(SYSROOT_DIR)
 
 # Installs build artifacts.
 install: all-nanvix
