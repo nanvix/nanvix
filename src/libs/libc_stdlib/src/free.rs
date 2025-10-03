@@ -7,7 +7,6 @@
 
 use crate::block_header::BlockHeader;
 use ::sysapi::ffi::c_void;
-use ::syslog::trace;
 
 //==================================================================================================
 // Standalone Functions
@@ -33,8 +32,6 @@ use ::syslog::trace;
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn free(ptr: *mut c_void) {
-    trace!("free(): ptr={ptr:?}");
-
     // Check for null pointer deallocation.
     if ptr.is_null() {
         return;
