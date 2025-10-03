@@ -71,7 +71,6 @@ const fn bincode_cfg() -> impl bincode::config::Config {
         .with_little_endian()
 }
 
-
 ///
 /// # Description
 ///
@@ -102,22 +101,25 @@ impl WireCommand for NanvixdCommand {
 /// In case of success, returns nothing. Otherwise, returns an error.
 ///
 pub fn send_command<T: WireCommand>(stream: &mut SocketStream, msg: &T) -> Result<(), SocketError> {
-    let payload: Vec<u8> = bincode::serde::encode_to_vec(msg, bincode_cfg())
-        .map_err(|e| {
-            let reason: String = format!("failed to encode control-plane command (error={e:?})");
-            error!("{reason}");
-            Error::new(ErrorKind::InvalidData, reason)
-        })?;
-
+    let payload: Vec<u8> = bincode::serde::encode_to_vec(msg, bincode_cfg()).map_err(|e| {
+        let reason: String = format!("failed to encode control-plane command (error={e:?})");
+        error!("{reason}");
+        Error::new(ErrorKind::InvalidData, reason)
+    })?;
 
     if payload.len() > u32::MAX as usize {
-        let reason: String = format!("payload length exceeds maximum allowed size (length={}, max={})", payload.len(), u32::MAX);
+        let reason: String = format!(
+            "payload length exceeds maximum allowed size (length={}, max={})",
+            payload.len(),
+            u32::MAX
+        );
         error!("{reason}");
         return Err(Error::new(ErrorKind::InvalidData, reason).into());
     }
     let len: [u8; 4] = u32::try_from(payload.len())
         .map_err(|_| {
-            let reason: String = format!("error parsing payload length to u32 (len={})", payload.len());
+            let reason: String =
+                format!("error parsing payload length to u32 (len={})", payload.len());
             error!("{reason}");
             Error::new(ErrorKind::InvalidData, reason)
         })?
@@ -152,14 +154,18 @@ pub fn recv_command<T: WireCommand>(stream: &mut SocketStream) -> Result<T, Sock
     let num_read: usize = stream.try_read_exact(&mut source_bytes)?;
     debug_assert_eq!(num_read, 1);
 
-    let source: Source = Source::try_from(source_bytes[0])
-        .map_err(|_| {
-            let reason: String = format!("error parsing source in control-plane command (bytes={source_bytes:?})");
-            error!("{reason}");
-            SocketError::from(Error::new(ErrorKind::InvalidData, reason))
-        })?;
+    let source: Source = Source::try_from(source_bytes[0]).map_err(|_| {
+        let reason: String =
+            format!("error parsing source in control-plane command (bytes={source_bytes:?})");
+        error!("{reason}");
+        SocketError::from(Error::new(ErrorKind::InvalidData, reason))
+    })?;
     if source != T::SOURCE {
-        let reason: String = format!("unexpected control-plane command source (got={}, expected={})", source as u8, T::SOURCE as u8);
+        let reason: String = format!(
+            "unexpected control-plane command source (got={}, expected={})",
+            source as u8,
+            T::SOURCE as u8
+        );
         error!("{reason}");
         return Err(Error::new(ErrorKind::InvalidData, reason).into());
     }

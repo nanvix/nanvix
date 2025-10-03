@@ -92,7 +92,7 @@ impl NewUserVm {
     /// The gateway socket type.
     ///
     pub fn gateway_socket_type(&self) -> SocketType {
-        self.gateway_socket_type.clone()
+        self.gateway_socket_type
     }
 
     ///
