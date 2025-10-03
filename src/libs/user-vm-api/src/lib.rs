@@ -119,7 +119,7 @@ impl NewUserVm {
             })?;
 
         // Check if serialized message is too large.
-        if payload.is_empty() || payload.len() > ::config::syscomm::MAX_LINUXD_MESSAGE_LEN {
+        if payload.is_empty() || payload.len() > ::config::syscomm::MAX_MESSAGE_LEN {
             let reason: String = format!("invalid message length (length={})", payload.len());
             error!("send(): {reason}");
             return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
@@ -154,7 +154,7 @@ impl NewUserVm {
         let len: usize = u32::from_be_bytes(len_buf) as usize;
 
         // Check if message has an invalid size.
-        if len == 0 || len > ::config::syscomm::MAX_LINUXD_MESSAGE_LEN {
+        if len == 0 || len > ::config::syscomm::MAX_MESSAGE_LEN {
             let reason: String = format!("invalid message length (length={len})");
             error!("recv(): {reason}");
             return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
