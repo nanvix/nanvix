@@ -615,7 +615,9 @@ impl BlockingSocketStream {
     ///
     /// # Description
     ///
-    /// Blocking read implementation.
+    /// Blocking read implementation. We need to be careful to always drain the stream before
+    /// calling poll, as otherwise we may call poll again when we still have data available to be
+    /// read.
     ///
     /// # Parameters
     ///
@@ -626,33 +628,35 @@ impl BlockingSocketStream {
     /// The number of bytes read into the buffer.
     ///
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut do_read = |stream: &mut dyn Read, poll: &mut Poll| -> io::Result<usize> {
+            let mut total: usize = 0;
+            let mut events: Events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
+
+            loop {
+                // Try to read without polling until the stream WouldBlock.
+                match stream.read(&mut buf[total..]) {
+                    Ok(0) => return Ok(total),
+                    Ok(n) => {
+                        total += n;
+                        if total == buf.len() {
+                            return Ok(total);
+                        }
+
+                        // Keep looping until we drain the stream.
+                        continue;
+                    },
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        // If we need to block, call poll.
+                        poll.poll(&mut events, None)?;
+                    },
+                    Err(e) => return Err(e),
+                }
+            }
+        };
+
         match self {
-            BlockingSocketStream::Tcp(stream, poll) => {
-                let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
-
-                // Even after a poll wake-up the socket may still return WouldBlock.
-                loop {
-                    poll.poll(&mut events, None)?;
-                    match stream.read(buf) {
-                        Ok(n) => return Ok(n),
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
-            },
-            BlockingSocketStream::Unix(stream, poll) => {
-                let mut events = Events::with_capacity(config::syscomm::MAX_NUM_POLL_EVENTS);
-
-                // Even after a poll wake-up the socket may still return WouldBlock.
-                loop {
-                    poll.poll(&mut events, None)?;
-                    match stream.read(buf) {
-                        Ok(n) => return Ok(n),
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
-            },
+            BlockingSocketStream::Tcp(stream, poll) => do_read(stream, poll),
+            BlockingSocketStream::Unix(stream, poll) => do_read(stream, poll),
         }
     }
 
