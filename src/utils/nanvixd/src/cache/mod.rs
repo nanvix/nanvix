@@ -299,8 +299,11 @@ impl SandboxCache {
     /// On success empty is returned. On failure an error is returned instead.
     ///
     pub async fn cleanup(&mut self) {
+        debug!("cleaning up sandbox cache");
+
         // First shutdown all user VMs.
         for (tag, user_vm_instance) in self.user_vm_instances.iter_mut() {
+            debug!("cleaning user vm instance (tag={tag:?})");
             if let Some(user_vm_instance_mut) = Arc::get_mut(user_vm_instance) {
                 debug!("sending shutdown message to user vm (tag={tag:?})");
                 if let Err(e) = user_vm_instance_mut.shutdown().await {
@@ -315,6 +318,7 @@ impl SandboxCache {
 
         // Shutdown all linuxd instances.
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
+            debug!("cleaning linuxd instance (tenant_id={tenant_id:?})");
             if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
                 if let Err(e) = linuxd_instance_mut.shutdown().await {
                     error!(
