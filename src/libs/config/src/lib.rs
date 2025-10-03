@@ -65,14 +65,6 @@ pub mod syscomm {
     ///
     /// # Description
     ///
-    /// Provides the maximum length of a message we receive in linuxd. We set a limit to
-    /// prevent a malformed payload to trigger unbounded allocations in linuxd.
-    ///
-    pub const MAX_LINUXD_MESSAGE_LEN: usize = MAX_MESSAGE_LEN;
-
-    ///
-    /// # Description
-    ///
     /// Provides the maximum number of poll events we can buffer. We set the limit to 128 as, for
     /// the time being, it is unlikely we will have more than 128 connections being activated at
     /// the same time.
