@@ -644,7 +644,7 @@ impl Benchmark {
         // Send shutdown command to the VMM.
         control_plane_api::send_command(
             &mut control_plane_stream,
-            control_plane_api::Command::Shutdown,
+            &control_plane_api::NanvixdCommand::Shutdown,
         )?;
 
         // Wait for the VMM to exit after we send the shutdown command.

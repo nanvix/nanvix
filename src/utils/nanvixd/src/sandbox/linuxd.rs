@@ -32,9 +32,12 @@ use ::syslog::{
     debug,
     error,
 };
-use ::tokio::process::{
-    Child,
-    Command,
+use ::tokio::{
+    process::{
+        Child,
+        Command,
+    },
+    time::timeout,
 };
 
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
@@ -106,7 +109,7 @@ impl LinuxDaemon {
         Ok(stream.write_all(&RESTORE_GATE_BYTES)?)
     }
 
-    fn send_sigkill_to_child(child: Child) {
+    fn send_sigkill_to_child(child: &Child) {
         if let Some(pid) = child.id() {
             debug!("killing linuxd instance (pid={pid:?})");
             let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
@@ -184,7 +187,7 @@ impl LinuxDaemon {
                 error!("{reason}");
 
                 // Use a SIGKILL because the process is already faulty.
-                Self::send_sigkill_to_child(child);
+                Self::send_sigkill_to_child(&child);
 
                 return Err(anyhow::anyhow!("{reason}"));
             }
@@ -206,7 +209,7 @@ impl LinuxDaemon {
                 error!("{reason}");
 
                 // Use a SIGKILL because the process is already faulty.
-                Self::send_sigkill_to_child(child);
+                Self::send_sigkill_to_child(&child);
 
                 return Err(anyhow::anyhow!("{reason}"));
             },
@@ -223,7 +226,7 @@ impl LinuxDaemon {
     pub async fn shutdown(&mut self) -> Result<()> {
         match control_plane_api::send_command(
             &mut self.control_plane_stream,
-            control_plane_api::Command::Shutdown,
+            &control_plane_api::NanvixdCommand::Shutdown,
         ) {
             Ok(()) => {},
             Err(e) => {
@@ -232,26 +235,26 @@ impl LinuxDaemon {
         };
 
         // Wait for linuxd instance to finish.
-        match self.child.wait().await {
-            Ok(exit_status) => {
+        match timeout(Duration::from_secs(5), self.child.wait()).await {
+            Ok(Ok(exit_status)) => {
                 if !exit_status.success() {
-                    let reason: String = format!(
-                        "linuxd returned with non-zero exit status: {:?}",
+                    error!(
+                        "linuxd returned with non-zero exit status (status={:?})",
                         exit_status.code()
                     );
-                    error!("{reason}");
-
-                    Err(anyhow::anyhow!(reason))
-                } else {
-                    Ok(())
+                    Self::send_sigkill_to_child(&self.child);
                 }
             },
+            Ok(Err(e)) => {
+                error!("error waiting for linuxd: {e:?}");
+                Self::send_sigkill_to_child(&self.child);
+            },
             Err(e) => {
-                let reason: String = format!("error waiting for linuxd: {e:?}");
-                error!("{reason}");
-
-                Err(anyhow::anyhow!(reason))
+                error!("timed-out waiting for linuxd (error={e:?})");
+                Self::send_sigkill_to_child(&self.child);
             },
         }
+
+        Ok(())
     }
 }

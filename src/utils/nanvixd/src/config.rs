@@ -13,6 +13,7 @@ use ::std::{
     path::PathBuf,
 };
 use ::syslog::error;
+use ::tokio::time::Duration;
 use ::user_vm_api::RawUserVmIdentifier;
 
 //==================================================================================================
@@ -56,6 +57,19 @@ pub const HTTP_HEADER_MESSAGE_TYPE: &str = "X-NVX-Message-Type";
 /// On Linux, this is defined in `<linux/un.h>`.
 /// TODO: replace this with `libc::UNIX_PATH_MAX` when it becomes available.
 const UNIX_PATH_MAX: usize = 108;
+
+///
+/// # Description
+///
+/// We use control-plane messages to synchronize the graceful shutdown of different components.
+/// However, if components are faulty or hang, nanvixd cannot block. Instead, we wait for this
+/// timeout and revert to non-graceful shutdowns if the timeout is met.
+///
+/// This constant is only used when building nanvixd as a binary, so we need to allow(dead_code)
+/// for when we build nanvixd as a library.
+///
+#[allow(dead_code)]
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 //==================================================================================================
 // Standalone Functions

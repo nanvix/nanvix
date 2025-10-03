@@ -453,8 +453,8 @@ impl LinuxDaemon {
                 match event.token() {
                     // Process control-plane messages before anything else.
                     CONTROL_PLANE_TOKEN => {
-                        let cmd: control_plane_api::Command =
-                            match control_plane_api::try_read_command(&mut control_plane_stream) {
+                        let cmd: control_plane_api::NanvixdCommand =
+                            match control_plane_api::recv_command(&mut control_plane_stream) {
                                 Ok(cmd) => cmd,
                                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
                                 Err(e) => {
@@ -468,7 +468,7 @@ impl LinuxDaemon {
                                 },
                             };
                         match cmd {
-                            control_plane_api::Command::Shutdown => {
+                            control_plane_api::NanvixdCommand::Shutdown => {
                                 info!("linuxd received shutdown message from control-plane");
 
                                 // Close all existing connections to user VMs.

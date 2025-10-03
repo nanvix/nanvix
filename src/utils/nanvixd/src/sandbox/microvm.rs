@@ -24,9 +24,12 @@ use ::syslog::{
     debug,
     error,
 };
-use ::tokio::process::{
-    Child,
-    Command,
+use ::tokio::{
+    process::{
+        Child,
+        Command,
+    },
+    time::timeout,
 };
 
 //==================================================================================================
@@ -179,13 +182,30 @@ impl Microvm {
     ///
     /// # Description
     ///
+    /// Helper method to send a SIGKILL to the user VM process in case it is faulty and we need to
+    /// clean-up.
+    ///
+    /// # Arguments
+    ///
+    /// - `child`: the user VM process handle.
+    ///
+    fn send_sigkill_to_child(child: Child) {
+        if let Some(pid) = child.id() {
+            debug!("killing linuxd instance (pid={pid:?})");
+            let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Send a shutdown message to the user VM's control-plane socket so that it can gracefully
     /// shutdown, and wait until the process dies.
     ///
     pub async fn shutdown(&mut self) -> Result<()> {
         match control_plane_api::send_command(
             &mut self.control_plane_stream,
-            control_plane_api::Command::Shutdown,
+            &control_plane_api::NanvixdCommand::Shutdown,
         ) {
             Ok(()) => {},
             Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
@@ -198,8 +218,8 @@ impl Microvm {
 
         // Wait for user VM instance to finish.
         if let Some(mut child) = self.child.take() {
-            match child.wait().await {
-                Ok(exit_status) => {
+            match timeout(Duration::from_secs(5), child.wait()).await {
+                Ok(Ok(exit_status)) => {
                     if !exit_status.success() {
                         error!(
                             "user VM returned with non-zero exit status (code={:?})",
@@ -207,8 +227,15 @@ impl Microvm {
                         );
                     }
                 },
-                Err(e) => {
+                // If we encounter any errors while waiting for the user VM to gracefully shutdown,
+                // make sure we kill the underlying instance.
+                Ok(Err(e)) => {
                     error!("error waiting for user VM (error={e:?})");
+                    Self::send_sigkill_to_child(child);
+                },
+                Err(e) => {
+                    error!("timed-out waiting for user VM (error={e:?})");
+                    Self::send_sigkill_to_child(child);
                 },
             }
         }
