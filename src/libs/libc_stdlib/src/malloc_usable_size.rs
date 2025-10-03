@@ -10,7 +10,6 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::trace;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,8 +54,6 @@ use ::syslog::trace;
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn malloc_usable_size(ptr: *mut c_void) -> c_size_t {
-    trace!("malloc_usable_size(ptr={:?})", ptr);
-
     // Check for null pointer.
     if ptr.is_null() {
         return 0;

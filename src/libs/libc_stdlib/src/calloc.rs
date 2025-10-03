@@ -18,10 +18,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::{
-    error,
-    trace,
-};
+use ::syslog::error;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,8 +52,6 @@ use ::syslog::{
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn calloc(nmemb: c_size_t, size: c_size_t) -> *mut c_void {
-    trace!("calloc(): nmemb={nmemb:?}, size={size:?}");
-
     // Check for zero-size allocation.
     if nmemb == 0 || size == 0 {
         // Zero-size allocations have implementation-defined behavior,
