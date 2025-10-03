@@ -52,6 +52,7 @@ use ::kvm_bindings::{
     kvm_vcpu_events,
     kvm_xcrs,
     kvm_xsave,
+    kvm_xsave2,
 };
 use ::kvm_ioctls::{
     Cap,
@@ -745,8 +746,266 @@ impl VirtualProcessor {
     ///
     /// Upon successful completion, returns empty. Otherwise, returns an error.
     ///
-    pub fn set_state(&mut self, _state: VirtualProcessorState) -> Result<()> {
-        // TODO: set virtual processor state https://github.com/nanvix/nanvix/issues/948
+    pub fn set_state(&mut self, state: VirtualProcessorState) -> Result<()> {
+        // Restore direct state fields.
+        self.online = state.online;
+        self.exit_status = state.exit_status;
+
+        // Restore VcpuFd:
+        // Plain setters.
+        if let Err(e) = self.fd.set_regs(&state.regs) {
+            let reason: String = format!("failed setting regs (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_sregs(&state.sregs) {
+            let reason: String = format!("failed setting sregs (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_lapic(&state.lapic) {
+            let reason: String = format!("failed setting lapic (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
+            let reason: String = format!("failed setting mp_state (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
+            let reason: String = format!("failed setting xcrs (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
+            let reason: String = format!("failed setting debugregs (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
+            let reason: String = format!("failed setting vcpu_events (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
+            let reason: String = format!("failed setting tsc_khz (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Cast and set FPU state.
+        if state.fpu.len() != mem::size_of::<kvm_fpu>() {
+            let reason: String = format!(
+                "invalid fpu blob size (got={}, expected={})",
+                state.fpu.len(),
+                mem::size_of::<kvm_fpu>()
+            );
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+        // SAFETY: We just checked the length, and it is aligned inside the struct, so it's safe.
+        let fpu: &kvm_fpu = unsafe { &*(state.fpu.as_ptr() as *const kvm_fpu) };
+        if let Err(e) = self.fd.set_fpu(fpu) {
+            let reason: String = format!("failed setting fpu (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // CPUID (variable-length Fam struct saved as bytes).
+        {
+            let cpuid_bytes: &Vec<u8> = &state.cpuid;
+            // We must have at least the header present.
+            let header_size: usize = mem::size_of::<kvm_bindings::kvm_cpuid2>();
+            if cpuid_bytes.len() < header_size {
+                let reason: String = format!(
+                    "invalid cpuid blob size (got={}, need at least={})",
+                    cpuid_bytes.len(),
+                    header_size
+                );
+                error!("set_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+
+            // SAFETY: It's safe to read the header because we checked the size above.
+            let cpuid_hdr: &kvm_bindings::kvm_cpuid2 =
+                unsafe { &*(cpuid_bytes.as_ptr() as *const kvm_bindings::kvm_cpuid2) };
+            let entries: usize = cpuid_hdr.nent as usize;
+            let expected: usize =
+                header_size + entries * mem::size_of::<kvm_bindings::kvm_cpuid_entry2>();
+            if cpuid_bytes.len() != expected {
+                let reason: String = format!(
+                    "invalid cpuid blob size (got={}, expected={})",
+                    cpuid_bytes.len(),
+                    expected
+                );
+                error!("set_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+
+            // SAFETY: We've validated the full buffer length matches the Fam struct layout.
+            let cpuid_ref: &CpuId = unsafe { &*(cpuid_bytes.as_ptr() as *const CpuId) };
+            if let Err(e) = self.fd.set_cpuid2(cpuid_ref) {
+                let reason: String = format!("failed setting cpuid (error={e:?})");
+                error!("set_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+        }
+
+        // MSRs (variable-length Fam struct saved as bytes).
+        {
+            let msrs_bytes: &Vec<u8> = &state.msrs;
+            let header_size: usize = mem::size_of::<kvm_bindings::kvm_msrs>();
+            if msrs_bytes.len() < header_size {
+                let reason: String = format!(
+                    "invalid msrs blob size (got={}, need at least={})",
+                    msrs_bytes.len(),
+                    header_size
+                );
+                error!("set_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+
+            // SAFETY: It's safe to read the header because we checked the size above.
+            let msrs_hdr: &kvm_bindings::kvm_msrs =
+                unsafe { &*(msrs_bytes.as_ptr() as *const kvm_bindings::kvm_msrs) };
+            let nmsrs: usize = msrs_hdr.nmsrs as usize;
+            let expected: usize =
+                header_size + nmsrs * mem::size_of::<kvm_bindings::kvm_msr_entry>();
+            if msrs_bytes.len() != expected {
+                let reason: String = format!(
+                    "invalid msrs blob size (got={}, expected={})",
+                    msrs_bytes.len(),
+                    expected
+                );
+                error!("set_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+
+            // SAFETY: We've validated the full buffer length matches the Fam struct layout.
+            let msrs_ref: &Msrs = unsafe { &*(msrs_bytes.as_ptr() as *const Msrs) };
+            match self.fd.set_msrs(msrs_ref) {
+                Ok(written) => {
+                    if written != nmsrs {
+                        let reason: String = format!(
+                            "failed setting msrs: only {} of {} entries written",
+                            written, nmsrs
+                        );
+                        error!("set_state(): {reason}");
+                        anyhow::bail!(reason)
+                    }
+                },
+                Err(e) => {
+                    let reason: String = format!("failed setting msrs (error={e:?})");
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+        }
+
+        // Get the partition to check KVM capabilities and get the VmFd.
+        let locked_partition: MutexGuard<'_, VirtualPartition> = self
+            .partition
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to acquire lock {e:?}"))?;
+
+        // XSAVE: either small kvm_xsave or kvm_xsave2 fam struct.
+        {
+            let xsave_bytes: &Vec<u8> = &state.xsave;
+            let small_size: usize = mem::size_of::<kvm_xsave>();
+            if xsave_bytes.len() == small_size {
+                // SAFETY: We just checked the length, and it is aligned inside the struct, so it's safe.
+                let xs_ref: &kvm_xsave = unsafe { &*(xsave_bytes.as_ptr() as *const kvm_xsave) };
+                // SAFETY: This is safe because the length matches `kvm_xsave` (4096 bytes).
+                if let Err(e) = unsafe { self.fd.set_xsave(xs_ref) } {
+                    let reason: String = format!("failed setting xsave (error={e:?})");
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+            } else {
+                // Xsave Fam struct.
+                let header_size: usize = mem::size_of::<kvm_bindings::kvm_xsave2>();
+                if xsave_bytes.len() < header_size {
+                    let reason: String = format!(
+                        "invalid xsave blob size (got={}, need at least={})",
+                        xsave_bytes.len(),
+                        header_size
+                    );
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+
+                // SAFETY: We just checked the length, and it is aligned inside the struct, so it's safe.
+                let xsave2_header: &kvm_xsave2 =
+                    unsafe { &*(xsave_bytes.as_ptr() as *const kvm_xsave2) };
+                // Read the header to obtain the variable length field. The kvm_xsave2 header
+                // exposes a `len` field (number of u32 units following the header).
+                let expected: usize = header_size + xsave2_header.len * mem::size_of::<u32>();
+                if xsave_bytes.len() != expected {
+                    let reason: String = format!(
+                        "invalid xsave2 blob size (got={}, expected={})",
+                        xsave_bytes.len(),
+                        expected
+                    );
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+
+                // SAFETY: We've validated the full buffer length matches the Fam struct layout.
+                let xsave_ref: &Xsave = unsafe { &*(xsave_bytes.as_ptr() as *const Xsave) };
+                // Get KVM to check that the Xsave length in the snapshot matches the current KVM's.
+                let kvm: &Kvm = locked_partition.kvm();
+                let curr_exposed_capability: usize = kvm.check_extension_int(Cap::Xsave2) as usize;
+                if xsave_bytes.len() != curr_exposed_capability {
+                    let reason: String = format!(
+                        "xsave2 blob size doesn't match current kvm's capabilities (got={}, \
+                         expected={})",
+                        xsave_bytes.len(),
+                        curr_exposed_capability
+                    );
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+                // SAFETY: We've just checked that the length matches the current KVM's capabilities,
+                // so this is safe.
+                if let Err(e) = unsafe { self.fd.set_xsave2(xsave_ref) } {
+                    let reason: String = format!("failed setting xsave2 (error={e:?})");
+                    error!("set_state(): {reason}");
+                    anyhow::bail!(reason)
+                }
+            }
+        }
+
+        // Restore VmFd state
+        let vm: &VmFd = locked_partition.vm();
+
+        if let Err(e) = vm.set_irqchip(&state.irqchip) {
+            let reason = format!("failed setting irqchip (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = vm.set_pit2(&state.pit_state) {
+            let reason = format!("failed setting pit_state (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = vm.set_clock(&state.clock_data) {
+            let reason = format!("failed setting clock_data (error={e:?})");
+            error!("set_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        trace!("set_state(): virtual processor state restored successfully");
+
         Ok(())
     }
 }
