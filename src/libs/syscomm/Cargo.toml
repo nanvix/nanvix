@@ -10,9 +10,14 @@ authors.workspace = true
 description = "System Communication Library"
 homepage.workspace = true
 
+[features]
+default = []
+async = ["dep:tokio"]
+
 [dependencies]
 anyhow = { workspace = true }
 bincode = { workspace = true }
 config = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
 syslog = { workspace = true, features = ["std"] }
+tokio = { workspace = true, optional = true, features = ["macros", "net", "rt", "time"] }

@@ -2,6 +2,13 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+#[cfg(feature = "async")]
+pub mod r#async;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -34,6 +41,10 @@ use ::std::{
         ErrorKind,
         Read,
         Write,
+    },
+    os::fd::{
+        AsRawFd,
+        RawFd,
     },
     thread,
     time::{
@@ -214,6 +225,15 @@ impl mio::event::Source for SocketListener {
         match self {
             SocketListener::Tcp(listener) => listener.deregister(registry),
             SocketListener::Unix { listener, path: _ } => listener.deregister(registry),
+        }
+    }
+}
+
+impl AsRawFd for SocketListener {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            SocketListener::Tcp(listener) => listener.as_raw_fd(),
+            SocketListener::Unix { listener, path: _ } => listener.as_raw_fd(),
         }
     }
 }
@@ -574,6 +594,15 @@ impl mio::event::Source for SocketStream {
         match self {
             SocketStream::Tcp(stream) => stream.deregister(registry),
             SocketStream::Unix(stream) => stream.deregister(registry),
+        }
+    }
+}
+
+impl AsRawFd for SocketStream {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            SocketStream::Tcp(stream) => stream.as_raw_fd(),
+            SocketStream::Unix(stream) => stream.as_raw_fd(),
         }
     }
 }
