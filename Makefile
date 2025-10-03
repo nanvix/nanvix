@@ -549,6 +549,8 @@ run-nanvixd-tests: | \
 	test-misc-c \
 	test-network-c \
 	test-python3 \
+	test-qjs \
+	test-quickjs \
 	test-arch-rust \
 	test-thread-c
 
@@ -1267,3 +1269,36 @@ endef
 
 $(eval $(call WASM_TEST_RULE,echo-wasm-rust,'','["hello world!"]','hello world!'))
 $(eval $(call WASM_TEST_RULE,hello-wasm,'','[]','Hello$(comma) world!'))
+
+#===================================================================================================
+# Rules for QuickJS Tests
+#===================================================================================================
+
+QUICKJS_BINARY := $(SYSROOT_DIR)/bin/qjs
+
+define QUICKJS_TEST_RULE
+test-quickjs-$(1): all
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@echo "Running test $(1)..."
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(QUICKJS_BINARY) "--std $(SOURCES_DIR)/tests/quickjs/$(1).js" $(2) $(3) $(TIMEOUT)
+endif
+endef
+
+$(eval $(call QUICKJS_TEST_RULE,test_bigint,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_builtin,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_closure,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_cyclic_import,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_language,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_loop,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_std,'','ok'))
+$(eval $(call QUICKJS_TEST_RULE,test_worker,'','ok'))
+
+test-quickjs: \
+	test-quickjs-test_bigint \
+	test-quickjs-test_builtin \
+	test-quickjs-test_closure \
+	test-quickjs-test_cyclic_import \
+	test-quickjs-test_language \
+	test-quickjs-test_loop \
+	test-quickjs-test_std \
+	test-quickjs-test_worker
