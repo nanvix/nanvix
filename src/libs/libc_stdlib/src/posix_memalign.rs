@@ -17,10 +17,7 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
 };
-use ::syslog::{
-    error,
-    trace,
-};
+use ::syslog::error;
 
 //==================================================================================================
 // Standalone Functions
@@ -61,8 +58,6 @@ pub unsafe extern "C" fn posix_memalign(
     alignment: c_size_t,
     size: c_size_t,
 ) -> c_int {
-    trace!("posix_memalign(): memptr={memptr:?}, alignment={alignment:?}, size={size:?}");
-
     // Check if `memptr` is null.
     if memptr.is_null() {
         error!("posix_memalign(): null storage (alignment={alignment:?}, size={size:?})");
