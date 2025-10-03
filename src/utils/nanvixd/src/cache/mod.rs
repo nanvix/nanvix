@@ -12,11 +12,6 @@ use crate::sandbox::{
     tag::SandboxTag,
 };
 use ::anyhow::Result;
-use ::mio::{
-    Interest,
-    Poll,
-    Token,
-};
 use ::std::{
     collections::HashMap,
     sync::Arc,
@@ -33,14 +28,6 @@ use ::syslog::{
 };
 use ::tokio::sync::Mutex;
 use ::user_vm_api::RawUserVmIdentifier;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// This is the token we use to register the control-plane listener socket in the poll structure.
-/// Right now, we only keep this socket in the poll.
-const CONTROL_PLANE_LISTENER_TOKEN: Token = Token(0);
 
 //==================================================================================================
 // Structures
@@ -62,8 +49,6 @@ pub struct SandboxCache {
     /// Listener socket on the control-plane address. Right now each different linuxd and user VM
     /// instances have their own control-plane socket.
     control_plane_listener: Option<SocketListener>,
-    /// Poll structure to support accepting connections into the control-plane with a timeout.
-    control_plane_poll: Option<Poll>,
 }
 
 impl SandboxCache {
@@ -86,7 +71,6 @@ impl SandboxCache {
             linuxd_instances: HashMap::new(),
             sandbox_index: HashMap::new(),
             control_plane_listener: None,
-            control_plane_poll: None,
         }))
     }
 
@@ -125,7 +109,7 @@ impl SandboxCache {
                         SocketType::Unix
                     };
 
-                    let mut control_plane_listener: SocketListener = match Socket::bind(
+                    let control_plane_listener: SocketListener = match Socket::bind(
                         control_plane_socket_type,
                         control_plane_sockaddr.to_string(),
                     ) {
@@ -141,29 +125,7 @@ impl SandboxCache {
                         },
                     };
 
-                    // Add control-plane socket to a poll structure so that we can accept
-                    // connections with a timeout.
-                    let poll: Poll = Poll::new().map_err(|e| {
-                        let reason: String =
-                            format!("failed to create control-plane poll (error={e:?})");
-                        error!("{reason}");
-                        anyhow::anyhow!("{reason}")
-                    })?;
-                    poll.registry()
-                        .register(
-                            &mut control_plane_listener,
-                            CONTROL_PLANE_LISTENER_TOKEN,
-                            Interest::READABLE,
-                        )
-                        .map_err(|e| {
-                            let reason: String =
-                                format!("failed to create control-plane poll (error={e:?})");
-                            error!("{reason}");
-                            anyhow::anyhow!("{reason}")
-                        })?;
-
                     self.control_plane_listener = Some(control_plane_listener);
-                    self.control_plane_poll = Some(poll);
                 }
 
                 let control_plane_listener: &mut SocketListener = self
@@ -171,29 +133,26 @@ impl SandboxCache {
                     .as_mut()
                     .ok_or_else(|| anyhow::anyhow!("control-plane listener is none"))?;
 
-                let control_plane_poll: &mut Poll = self
-                    .control_plane_poll
-                    .as_mut()
-                    .ok_or_else(|| anyhow::anyhow!("control-plane poll is none"))?;
-
                 debug!("creating sandbox {tag:?}");
                 if !self.linuxd_instances.contains_key(tag.tenant_id()) {
                     // If this is the first user VM we deploy for this tenant, we first need to
                     // deploy an instance of linuxd.
                     self.linuxd_instances.insert(
                         tag.tenant_id().to_string(),
-                        Arc::new(LinuxDaemon::spawn(
-                            sandbox_config.control_plane_sockaddr(),
-                            sandbox_config.user_vm_sockaddr(),
-                            sandbox_config.hwloc(),
-                            sandbox_config.binary_directory(),
-                            sandbox_config.toolchain_binary_directory(),
-                            sandbox_config.log_directory(),
-                            control_plane_listener,
-                            control_plane_poll,
-                            sandbox_config.l2(),
-                            tmp_directory.clone(),
-                        )?),
+                        Arc::new(
+                            LinuxDaemon::spawn(
+                                sandbox_config.control_plane_sockaddr(),
+                                sandbox_config.user_vm_sockaddr(),
+                                sandbox_config.hwloc(),
+                                sandbox_config.binary_directory(),
+                                sandbox_config.toolchain_binary_directory(),
+                                sandbox_config.log_directory(),
+                                control_plane_listener,
+                                sandbox_config.l2(),
+                                tmp_directory.clone(),
+                            )
+                            .await?,
+                        ),
                     );
                 }
 
@@ -207,7 +166,6 @@ impl SandboxCache {
                             // allocated, to the user VM so that we bind their lifetimes.
                             sandbox_config,
                             control_plane_listener,
-                            control_plane_poll,
                         )
                         .await?,
                     ),
