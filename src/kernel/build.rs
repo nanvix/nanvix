@@ -12,13 +12,62 @@
 //==================================================================================================
 
 use ::std::{
+    collections::HashMap,
     env,
-    path::Path,
+    fs,
+    path::{
+        Path,
+        PathBuf,
+    },
     process::{
         Command,
         ExitStatus,
     },
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default path for `kernel_config.toml` file.
+const DEFAULT_KERNEL_CONFIG_PATH: &str = "build/kernel_config.toml";
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Helper method to load a TOML file from a file path, and store it in a HashMap. This is a very
+/// simple parser that only supports single-level TOMLs (i.e. no-nesting).
+///
+/// # Arguments
+///
+/// - `toml_path`: Path to the TOML file to load.
+///
+/// # Returns
+///
+/// A hash-map with the key-values in the TOML file.
+///
+fn load_toml(toml_path: &Path) -> HashMap<String, String> {
+    let toml_content: String = fs::read_to_string(toml_path).expect("Failed to read TOML file");
+
+    // Parse the config into a map
+    let mut config: HashMap<String, String> = HashMap::new();
+    for line in toml_content.lines() {
+        let line: &str = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            let key: &str = key.trim();
+            let value: &str = value.trim().trim_matches('"');
+            config.insert(key.to_string(), value.to_string());
+        }
+    }
+    config
+}
 
 //==================================================================================================
 // Main Function
@@ -36,42 +85,75 @@ fn main() {
     };
 
     //==============================================================================================
+    // Read Kernel Configuration
+    //==============================================================================================
+
+    // Get CARGO_MANIFEST_DIR to find workspace root
+    let manifest_dir: String = match env::var("CARGO_MANIFEST_DIR") {
+        Ok(manifest_dir) => manifest_dir,
+        Err(_) => panic!("failed to get CARGO_MANIFEST_DIR environment variable"),
+    };
+    let workspace_dir: PathBuf = Path::new(&manifest_dir)
+        .ancestors()
+        .nth(2) // kernel is 2 levels deep: workspace/src/kernel
+        .expect("Failed to find workspace root")
+        .to_path_buf();
+
+    // Read kernel configuration
+    let kernel_config_path: PathBuf = workspace_dir.join(DEFAULT_KERNEL_CONFIG_PATH);
+    let kernel_config: HashMap<String, String> = load_toml(&kernel_config_path);
+
+    // Extract kstack_size from config
+    let kstack_size: usize = match kernel_config.get("kstack_size") {
+        Some(size_str) => size_str
+            .parse::<usize>()
+            .expect("Failed to parse kstack_size"),
+        None => panic!("kstack_size not found in kernel_config.toml"),
+    };
+
+    // Tell Cargo to rerun build script if config changes
+    println!("cargo::rerun-if-changed={}", kernel_config_path.display());
+
+    //==============================================================================================
     // Configure Toolchain
     //==============================================================================================
 
     let cc: String = "gcc".to_string();
 
-    let mut cflags: Vec<&str> = vec![
-        "-nostdlib",
-        "-ffreestanding",
-        "-march=pentiumpro",
-        "-Wa,-march=pentiumpro",
-        "-Wstack-usage=4096",
-        "-Wall",
-        "-m32",
-        "-Wextra",
-        "-Werror",
+    let mut cflags: Vec<String> = vec![
+        "-nostdlib".to_string(),
+        "-ffreestanding".to_string(),
+        "-march=pentiumpro".to_string(),
+        "-Wa,-march=pentiumpro".to_string(),
+        "-Wstack-usage=4096".to_string(),
+        "-Wall".to_string(),
+        "-m32".to_string(),
+        "-Wextra".to_string(),
+        "-Werror".to_string(),
     ];
+
+    // Add KSTACK_SIZE define from config
+    cflags.push(format!("-DKSTACK_SIZE={}", kstack_size));
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            cflags.push("-O0");
-            cflags.push("-g");
+            cflags.push("-O0".to_string());
+            cflags.push("-g".to_string());
         } else {
-            cflags.push("-O3");
+            cflags.push("-O3".to_string());
         }
     }
 
     // Check for microvm feature
     cfg_if::cfg_if! {
         if #[cfg(feature = "microvm")] {
-            cflags.push("-D__microvm__");
+            cflags.push("-D__microvm__".to_string());
         }
         else if #[cfg(feature = "hyperlight")] {
-            cflags.push("-D__hyperlight__");
+            cflags.push("-D__hyperlight__".to_string());
         }
         else {
-            cflags.push("-D__pc__");
+            cflags.push("-D__pc__".to_string());
         }
     }
 
@@ -107,7 +189,7 @@ fn main() {
             format!("{}/{}.o", out_dir, Path::new(asm).file_stem().unwrap().to_str().unwrap());
 
         let status: ExitStatus = Command::new(cc.clone())
-            .args(&cflags)
+            .args(cflags.iter().map(|s| s.as_str()).collect::<Vec<&str>>())
             .args(["-c", asm, "-o", &obj])
             .status()
             .unwrap();
