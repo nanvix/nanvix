@@ -13,9 +13,6 @@
 /* Kernel Red Zone Size */
 #define KREDZONE_SIZE 128
 
-/* Kernel stack size. */
-#define KSTACK_SIZE (8 * PAGE_SIZE)
-
 /* Multiboot2 magic constant */
 #define MBOOT2_HEADER_MAGIC 0xe85250d6
 
@@ -198,7 +195,7 @@ _do_ap_start:
  * kstack                                                                     *
  *----------------------------------------------------------------------------*/
 
-.align  PAGE_SIZE
+.align PAGE_SIZE
 .space KSTACK_SIZE
 .globl kstack
 kstack:

@@ -76,6 +76,8 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE % PAGE_ALIGNMENT as usize == 0);
+// Ensure that the kernel stack size is at least one page.
+::static_assert::assert_eq!(config::kernel::KSTACK_SIZE >= mem::PAGE_SIZE);
 // Ensure that the kernel stack size fits in a single page table.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel base address is aligned to a page boundary.
