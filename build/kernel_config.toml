@@ -14,7 +14,6 @@ kpool_size = 4194304
 # Notes:
 # - This size should be a multiple of a page size.
 # - This size cannot exceed the size of a page table.
-# - When changing this, boot code should also be updated.
 kstack_size = 32768
 
 # Timer frequency (in Hz)
