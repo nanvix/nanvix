@@ -394,7 +394,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
-    ::syslog::error!("truncate(): not implemented");
+    ::syslog::debug!("truncate(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -420,7 +420,7 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
 pub unsafe extern "C" fn umask(mask: u16) -> u16 {
     ::syslog::trace!("umask(): mask={mask:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/597.
-    ::syslog::error!("umask(): not implemented");
+    ::syslog::debug!("umask(): not implemented");
     0
 }
 

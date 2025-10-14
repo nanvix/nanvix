@@ -24,7 +24,7 @@ use ::sysapi::{
 pub extern "C" fn setgroups(size: c_size_t, list: *const gid_t) -> c_int {
     ::syslog::trace!("setgroups(): size={size}, list={list:p}");
     // TODO: https://github.com/nanvix/nanvix/issues/523
-    ::syslog::error!("setgroups(): not implemented");
+    ::syslog::debug!("setgroups(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

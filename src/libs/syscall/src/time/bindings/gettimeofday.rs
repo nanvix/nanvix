@@ -21,6 +21,6 @@ use ::sysapi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gettimeofday(_tp: *mut timeval, _tz: *mut c_void) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/317
-    ::syslog::warn!("gettimeofday(): not implemented");
+    ::syslog::debug!("gettimeofday(): not implemented");
     0
 }

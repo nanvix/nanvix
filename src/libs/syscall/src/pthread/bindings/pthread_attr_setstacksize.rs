@@ -22,6 +22,6 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
     _stacksize: usize,
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/488
-    ::syslog::warn!("pthread_attr_setstacksize(): not implemented");
+    ::syslog::debug!("pthread_attr_setstacksize(): not implemented");
     0
 }

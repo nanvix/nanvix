@@ -44,7 +44,7 @@ use ::sysapi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn freeaddrinfo(res: *mut addrinfo) {
     ::syslog::trace!("freeaddrinfo(): res={res:?}");
-    ::syslog::error!("freeaddrinfo(): not implemented");
+    ::syslog::debug!("freeaddrinfo(): not implemented");
 }
 
 ///
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn getaddrinfo(
     ::syslog::trace!(
         "getaddrinfo(): node={node:?}, service={service:?}, hints={hints:?}, res={res:?}"
     );
-    ::syslog::error!("getaddrinfo(): not implemented");
+    ::syslog::debug!("getaddrinfo(): not implemented");
     ErrorCode::InvalidSysCall.get()
 }
 
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn gethostbyaddr(
     type_: c_int,
 ) -> *mut c_void {
     ::syslog::trace!("gethostbyaddr(): addr={addr:?}, len={len:?}, type_={type_:?}");
-    ::syslog::error!("gethostbyaddr(): not implemented");
+    ::syslog::debug!("gethostbyaddr(): not implemented");
     ::core::ptr::null_mut()
 }
 
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn gethostbyaddr(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
     ::syslog::trace!("gethostbyname(): name={name:?}");
-    ::syslog::error!("gethostbyname(): not implemented");
+    ::syslog::debug!("gethostbyname(): not implemented");
     ::core::ptr::null_mut()
 }
 
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn gethostbyname(name: *const c_char) -> *mut c_void {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getprotobyname(name: *const c_char) -> *mut c_void {
     ::syslog::trace!("getprotobyname(): name={name:?}");
-    ::syslog::error!("getprotobyname(): not implemented");
+    ::syslog::debug!("getprotobyname(): not implemented");
     ::core::ptr::null_mut()
 }
 
@@ -198,7 +198,7 @@ pub unsafe extern "C" fn getprotobyname(name: *const c_char) -> *mut c_void {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getservbyname(name: *const c_char, proto: *const c_char) -> *mut c_void {
     ::syslog::trace!("getservbyname(): name={name:?}, proto={proto:?}");
-    ::syslog::error!("getservbyname(): not implemented");
+    ::syslog::debug!("getservbyname(): not implemented");
     ::core::ptr::null_mut()
 }
 
@@ -226,7 +226,7 @@ pub unsafe extern "C" fn getservbyname(name: *const c_char, proto: *const c_char
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getservbyport(port: c_int, proto: *const c_char) -> *mut c_void {
     ::syslog::trace!("getservbyport(): port={port:?}, proto={proto:?}");
-    ::syslog::error!("getservbyport(): not implemented");
+    ::syslog::debug!("getservbyport(): not implemented");
     ::core::ptr::null_mut()
 }
 
@@ -271,7 +271,7 @@ pub unsafe extern "C" fn getnameinfo(
         "getnameinfo(): sa={sa:?}, salen={salen:?}, host={host:?}, hostlen={hostlen:?}, \
          serv={serv:?}, servlen={servlen:?}, flags={flags:?}"
     );
-    ::syslog::error!("getnameinfo(): not implemented");
+    ::syslog::debug!("getnameinfo(): not implemented");
     ErrorCode::InvalidSysCall.get()
 }
 
@@ -297,7 +297,7 @@ pub unsafe extern "C" fn getnameinfo(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gai_strerror(errcode: c_int) -> *const c_char {
     ::syslog::trace!("gai_strerror(): errcode={errcode:?}");
-    ::syslog::error!("gai_strerror(): not implemented");
+    ::syslog::debug!("gai_strerror(): not implemented");
     ::core::ptr::null()
 }
 
@@ -319,6 +319,6 @@ pub unsafe extern "C" fn gai_strerror(errcode: c_int) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __h_errno() -> *mut c_int {
     ::syslog::trace!("__h_errno()");
-    ::syslog::error!("__h_errno(): not implemented");
+    ::syslog::debug!("__h_errno(): not implemented");
     ::core::ptr::null_mut()
 }

@@ -18,6 +18,6 @@ use ::sysapi::ffi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sem_post(_sem: *mut c_void) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/723
-    ::syslog::warn!("sem_post(): not implemented");
+    ::syslog::debug!("sem_post(): not implemented");
     0
 }

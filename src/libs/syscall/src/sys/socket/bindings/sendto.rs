@@ -82,7 +82,7 @@ pub unsafe extern "C" fn sendto(
          sockaddr={sockaddr:?}, addrlen={addrlen:?}"
     );
     // TODO: https://github.com/nanvix/nanvix/issues/589
-    ::syslog::error!("sendto(): not implemented");
+    ::syslog::debug!("sendto(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

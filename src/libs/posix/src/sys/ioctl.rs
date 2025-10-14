@@ -13,7 +13,7 @@ mod bindings {
     #[unsafe(no_mangle)]
     pub extern "C" fn ioctl(_fd: c_int, _request: c_int, _arg: *mut c_int) -> c_int {
         // TODO: https://github.com/nanvix/nanvix/issues/351
-        ::syslog::error!("ioctl(): not implemented, ignoring");
+        ::syslog::debug!("ioctl(): not implemented, ignoring");
         0
     }
 }
