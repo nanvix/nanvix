@@ -152,7 +152,7 @@ function run_microvm
 	local image=$1   # Image.
 	local timeout=$2 # Timeout for test mode.
 
-	local microvm="$NANVIX_HOME/bin/microvm.elf"
+	local microvm="$NANVIX_HOME/bin/uservm.elf"
 	local kernel="$NANVIX_HOME/bin/kernel.elf"
 	local memsize
 	memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)

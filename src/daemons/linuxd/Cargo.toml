@@ -23,8 +23,8 @@ anyhow = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 libc = { workspace = true }
-mio = { workspace = true, features = ["net", "os-poll"] }
 profiler = { workspace = true }
+rand = { workspace = true }
 signal-hook = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
@@ -32,6 +32,7 @@ sysapi = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 
 [features]

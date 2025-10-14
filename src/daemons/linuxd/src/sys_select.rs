@@ -17,6 +17,7 @@ use ::sys::{
 };
 use ::sysapi::sys_select::{
     fd_set,
+    FdSetError,
     FD_SETSIZE,
 };
 use ::syscall::sys::select::message::{
@@ -159,8 +160,8 @@ impl TryFrom<&fd_set> for LibcFdSet {
                     }
                 },
                 Ok(false) => {},
-                Err(()) => {
-                    error!("LibcFdSet::try_from(): invalid fd while reading (fd={fd:?})");
+                Err(FdSetError::FileDescriptorOutOfRange) => {
+                    error!("LibcFdSet::try_from(): fd out of range while reading (fd={fd:?})");
                 },
             }
         }
@@ -181,8 +182,8 @@ impl TryFrom<LibcFdSet> for fd_set {
             let is_set =
                 unsafe { libc::FD_ISSET(fd as libc::c_int, &value.0 as *const libc::fd_set) };
             if is_set {
-                if let Err(()) = fd_set.set_bit(fd) {
-                    error!("fd_set::try_from(): invalid fd while setting (fd={fd:?})");
+                if let Err(FdSetError::FileDescriptorOutOfRange) = fd_set.set_bit(fd) {
+                    error!("fd_set::try_from(): fd out of range while setting (fd={fd:?})");
                 }
             }
         }

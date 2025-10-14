@@ -312,7 +312,6 @@ def test(
         timeout (int, optional): Timeout. Defaults to None.
         features (List[str], optional): List of feature toggles. Defaults to None.
     """
-
     make(
         "run-unit-tests",
         machine,
@@ -324,29 +323,6 @@ def test(
         timeout,
         features=features,
     )
-
-    make(
-        "run",
-        machine,
-        arch,
-        release,
-        toolchain_dir,
-        log_level,
-        verbose,
-        timeout,
-        features=features,
-    )
-
-    # Check if last line of "test-stdout.log" contains the magic string.
-    with open("run-stdout.log", "r") as file:
-        lines = file.readlines()
-        last_line = lines[-1]
-
-        # Check if last line contains the magic string.
-        if MAGIC_STRING not in last_line:
-            print("last line:", last_line)
-            print("Test failed.")
-            exit(1)
 
     # Check if nanvixd tests are supported.
     if has_nanvixd_tests(machine):
@@ -361,6 +337,29 @@ def test(
             timeout,
             features=features,
         )
+    else:
+        make(
+            "run",
+            machine,
+            arch,
+            release,
+            toolchain_dir,
+            log_level,
+            verbose,
+            timeout,
+            features=features,
+        )
+
+        # Check if last line of "test-stdout.log" contains the magic string.
+        with open("run-stdout.log", "r") as file:
+            lines = file.readlines()
+            last_line = lines[-1]
+
+            # Check if last line contains the magic string.
+            if MAGIC_STRING not in last_line:
+                print("last line:", last_line)
+                print("Test failed.")
+                exit(1)
 
 
 def has_nanvixd_tests(machine: str) -> bool:

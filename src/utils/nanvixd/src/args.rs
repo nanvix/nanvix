@@ -7,6 +7,7 @@
 
 use crate::config;
 use ::anyhow::Result;
+use ::config::syscomm::DEFAULT_SOCKET_TYPE_STR;
 use ::hwloc::HwLoc;
 use ::std::{
     fs::File,
@@ -17,7 +18,7 @@ use ::std::{
 // Structures
 //==================================================================================================
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Args {
     http_sockaddr: String,
     tmp_directory: String,
@@ -31,6 +32,9 @@ pub struct Args {
     log_directory: String,
     // Whether linuxd must be deployed in an L2 VM or not.
     l2: bool,
+    control_plane_socket_type: Option<String>,
+    gateway_socket_type: Option<String>,
+    system_vm_socket_type: Option<String>,
 }
 
 //==================================================================================================
@@ -48,6 +52,9 @@ impl Args {
     pub const OPT_LOG_TO_FILE: &'static str = "--log-to-file";
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
     pub const OPT_L2: &'static str = "-l2";
+    pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
+    pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
+    pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
 
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: String = String::new();
@@ -60,6 +67,9 @@ impl Args {
         let mut log_to_file: bool = false;
         let mut log_directory: String = config::DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
+        let mut control_plane_socket_type: Option<String> = None;
+        let mut gateway_socket_type: Option<String> = None;
+        let mut system_vm_socket_type: Option<String> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -103,6 +113,18 @@ impl Args {
                 Self::OPT_L2 => {
                     l2 = true;
                 },
+                Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
+                    i += 1;
+                    control_plane_socket_type = Some(args[i].clone());
+                },
+                Self::OPT_GATEWAY_SOCKET_TYPE => {
+                    i += 1;
+                    gateway_socket_type = Some(args[i].clone());
+                },
+                Self::OPT_SYSTEM_VM_SOCKET_TYPE => {
+                    i += 1;
+                    system_vm_socket_type = Some(args[i].clone());
+                },
                 Self::OPT_LOG_TO_FILE => {
                     log_to_file = true;
                 },
@@ -128,13 +150,19 @@ impl Args {
             log_to_file,
             log_directory,
             l2,
+            control_plane_socket_type,
+            gateway_socket_type,
+            system_vm_socket_type,
         })
     }
 
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] [{} \
-             <toolchain_bin_dir>] [{} <hwloc.json>] [{} [{} <log_dir>]] [{}]",
+            concat!(
+                "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] ",
+                "[{} <toolchain_bin_dir>] [{} <hwloc.json>] [{} [{} <log_dir>]] ",
+                "[{} <socket_type>] [{} <socket_type>] [{} <socket_type>] [{}]"
+            ),
             program_name,
             Self::OPT_HTTP_SOCKADDR,
             Self::OPT_CONSOLE_FILE,
@@ -144,6 +172,9 @@ impl Args {
             Self::OPT_HWLOC,
             Self::OPT_LOG_TO_FILE,
             Self::OPT_LOG_DIRECTORY,
+            Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
+            Self::OPT_GATEWAY_SOCKET_TYPE,
+            Self::OPT_SYSTEM_VM_SOCKET_TYPE,
             Self::OPT_L2
         );
     }
@@ -182,5 +213,26 @@ impl Args {
 
     pub fn log_directory(&self) -> &str {
         &self.log_directory
+    }
+
+    pub fn control_plane_socket_type(&self) -> &str {
+        match self.control_plane_socket_type.as_deref() {
+            Some(socket_type) => socket_type,
+            None => DEFAULT_SOCKET_TYPE_STR,
+        }
+    }
+
+    pub fn gateway_socket_type(&self) -> &str {
+        match self.gateway_socket_type.as_deref() {
+            Some(socket_type) => socket_type,
+            None => DEFAULT_SOCKET_TYPE_STR,
+        }
+    }
+
+    pub fn system_vm_socket_type(&self) -> &str {
+        match self.system_vm_socket_type.as_deref() {
+            Some(socket_type) => socket_type,
+            None => DEFAULT_SOCKET_TYPE_STR,
+        }
     }
 }

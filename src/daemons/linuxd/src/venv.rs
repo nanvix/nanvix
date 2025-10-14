@@ -5,14 +5,8 @@
 // Imports
 //==================================================================================================
 
-use ::std::{
-    collections::BTreeMap,
-    sync::mpsc::{
-        channel,
-        Receiver,
-        Sender,
-    },
-};
+use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
+use ::std::collections::BTreeMap;
 use ::sys::{
     error::{
         Error,
@@ -27,7 +21,12 @@ use ::syslog::{
     info,
     trace,
 };
-use ::user_vm_api::RawUserVmIdentifier;
+use ::tokio::sync::mpsc::{
+    channel,
+    Receiver,
+    Sender,
+};
+use ::user_vm_api::UserVmIdentifier;
 
 ///
 /// # Description
@@ -120,6 +119,12 @@ impl PartialEq for VirtualEnvironment {
 
 impl Eq for VirtualEnvironment {}
 
+impl Default for VirtualEnviromentDirectory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VirtualEnviromentDirectory {
     pub fn new() -> Self {
         Self {
@@ -144,7 +149,7 @@ impl VirtualEnviromentDirectory {
     /// second 32 bits. On error an error is returned.
     ///
     fn get_gtid(
-        uvmid: RawUserVmIdentifier,
+        uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<GlobalThreadIdentifier, Error> {
         let tid: u32 = match u32::try_from(tid) {
@@ -156,7 +161,8 @@ impl VirtualEnviromentDirectory {
             },
         };
 
-        let key: u64 = ((uvmid as u64) << 32) | (tid as u64);
+        let user_vm_value: u32 = uvmid.into();
+        let key: u64 = (u64::from(user_vm_value) << 32) | u64::from(tid);
         Ok(key)
     }
 
@@ -177,7 +183,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn join(
         &mut self,
-        uvmid: RawUserVmIdentifier,
+        uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
         mut envid: VirtualEnvironmentIdentifier,
     ) -> Result<(VirtualEnvironmentIdentifier, Sender<VenvCommand>, Receiver<VenvCommand>), Error>
@@ -200,7 +206,7 @@ impl VirtualEnviromentDirectory {
         }
 
         let (channel_tx, channel_rx): (Sender<VenvCommand>, Receiver<VenvCommand>) =
-            channel::<VenvCommand>();
+            channel::<VenvCommand>(DEFAULT_CHANNEL_CAPACITY);
 
         // Thread requested to join a new environment.
         envid = self.next_env;
@@ -229,7 +235,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn leave(
         &mut self,
-        uvmid: RawUserVmIdentifier,
+        uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<VirtualEnvironmentIdentifier, Error> {
         trace!("leave(): uvmid={uvmid} tid={tid:?}");
@@ -266,7 +272,7 @@ impl VirtualEnviromentDirectory {
     ///
     pub fn get(
         &self,
-        uvmid: RawUserVmIdentifier,
+        uvmid: UserVmIdentifier,
         tid: ThreadIdentifier,
     ) -> Option<&VirtualEnvironment> {
         let gtid: GlobalThreadIdentifier = match Self::get_gtid(uvmid, tid) {

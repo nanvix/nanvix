@@ -3,7 +3,7 @@
 
 [workspace]
 resolver = "2"
-default-members = ["src/microvm"]
+default-members = ["src/uservm"]
 members = [
         "src/benchmarks/echo-rust-nostd",
         "src/benchmarks/echo-wasm-rust",
@@ -38,11 +38,11 @@ members = [
         "src/libs/sys",
         "src/libs/type-safe",
         "src/libs/user-vm-api",
-        "src/microvm",
         "src/tests/arch-rust",
         "src/tests/file-rust",
         "src/tests/linux-app",
         "src/tests/testd",
+        "src/uservm",
         "src/user/hello-rust-nostd",
         "src/user/hello-wasm",
         "src/utils/echo-client",
@@ -89,8 +89,6 @@ kvm-ioctls = "0.24.0"
 libc = "0.2.172"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.27"
-microvm = { path = "src/microvm", default-features = false }
-mio = { version = "1.0.4", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
@@ -119,6 +117,7 @@ syslog = { path = "src/libs/syslog", default-features = false }
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 tokio = { version = "1.45.1", default-features = false }
 type-safe = { path = "src/libs/type-safe", default-features = false }
+uservm = { path = "src/uservm", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "0.51.0", default-features = false }

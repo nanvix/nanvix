@@ -5,30 +5,38 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::{
-    config::SandboxConfig,
-    tag::SandboxTag,
+use crate::{
+    config::CLEANUP_TIMEOUT,
+    sandbox::{
+        config::SandboxConfig,
+        tag::SandboxTag,
+    },
 };
 use ::anyhow::Result;
-use ::std::{
-    process::Stdio,
-    time::Duration,
+use ::control_plane_api::{
+    NanvixdCommand,
+    NanvixdControlMessage,
 };
+use ::std::process::Stdio;
 use ::syscomm::{
     SocketListener,
     SocketStream,
-    SocketType,
+    WriteAll,
 };
 use ::syslog::{
     debug,
     error,
+    trace,
 };
 use ::tokio::{
     process::{
         Child,
         Command,
     },
-    time::timeout,
+    time::{
+        timeout,
+        Duration,
+    },
 };
 
 //==================================================================================================
@@ -53,41 +61,51 @@ impl Microvm {
         sandbox_config: SandboxConfig,
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
+        trace!("spawn(): sandbox_tag={sandbox_tag:?}, sandbox_config={sandbox_config:?}");
+
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/microvm.elf", sandbox_config.binary_directory()),
-            ::microvm::args::Args::OPT_LOGFILE.to_string(),
-            ::microvm::args::Args::OPT_LOGDIR.to_string(),
+            format!("{}/uservm.elf", sandbox_config.binary_directory()),
+            ::uservm::args::Args::OPT_LOGFILE.to_string(),
+            ::uservm::args::Args::OPT_LOGDIR.to_string(),
             sandbox_config.log_directory().to_string(),
-            ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
+            ::uservm::args::Args::OPT_USER_VM_ID.to_string(),
             sandbox_tag.sandbox_id().to_string(),
-            ::microvm::args::Args::OPT_KERNEL.to_string(),
+            ::uservm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/kernel.elf", sandbox_config.binary_directory()),
-            ::microvm::args::Args::OPT_INITRD.to_string(),
+            ::uservm::args::Args::OPT_INITRD.to_string(),
             sandbox_config.program().to_string(),
-            ::microvm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
+            ::uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
             sandbox_config.user_vm_sockaddr().to_string(),
-            ::microvm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
+            ::uservm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string(),
+            sandbox_config.system_vm_sockaddr_type().to_string(),
+            ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             sandbox_config.control_plane_sockaddr().to_string(),
-            ::microvm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
+            ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
+            sandbox_config.control_plane_sockaddr_type().to_string(),
+            ::uservm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
             sandbox_config.gateway_sockaddr().to_string(),
+            ::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string(),
+            sandbox_config.gateway_sockaddr_type().to_string(),
         ];
 
+        debug!("spawning microvm (program={:?} args={:?})", sandbox_config.program(), user_vm_args,);
+
         if sandbox_config.l2() {
-            user_vm_args.push(::microvm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
             user_vm_args.push("tcp".to_string());
-            user_vm_args.push(::microvm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string());
             user_vm_args.push("tcp".to_string());
-            user_vm_args.push(::microvm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string());
             user_vm_args.push("tcp".to_string());
         }
 
         if let Some(program_args) = sandbox_config.program_args() {
-            user_vm_args.push(::microvm::args::Args::OPT_INITRD_ARGS.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
         }
 
         if let Some(stderr_file) = sandbox_config.console_file() {
-            user_vm_args.push(::microvm::args::Args::OPT_STDERR.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_STDERR.to_string());
             user_vm_args.push(stderr_file.to_string());
         }
 
@@ -122,7 +140,7 @@ impl Microvm {
         // connect to the system VM (if an address is provided).
         let control_plane_stream: SocketStream = match timeout(
             Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            ::syscomm::r#async::accept(control_plane_listener),
+            control_plane_listener.accept(),
         )
         .await
         {
@@ -152,32 +170,6 @@ impl Microvm {
             },
         };
         debug!("nanvixd received connection from the user VM's control-plane socket");
-
-        // Before returning, we must make sure that the gateway listener socket in linuxd is ready
-        // to accept connections. The way we do so, is by actually connecting once to it, and
-        // ignoring the resulting stream.
-        let socket_type: SocketType = if sandbox_config.l2() {
-            SocketType::Tcp
-        } else {
-            SocketType::Unix
-        };
-        SocketStream::connect_timeout(
-            socket_type,
-            sandbox_config.gateway_sockaddr().to_string(),
-            Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
-        )
-        .map_err(|e| {
-            let reason: String = format!(
-                "error establishing throw-away connection to gateway socket (addr={}, error={e:?})",
-                sandbox_config.gateway_sockaddr()
-            );
-            error!("{reason}");
-            anyhow::anyhow!(reason)
-        })?;
-        debug!(
-            "nanvixd established throw-away gateway connection (addr={})",
-            sandbox_config.gateway_sockaddr()
-        );
 
         Ok(Self {
             child: Some(child),
@@ -210,22 +202,15 @@ impl Microvm {
     /// shutdown, and wait until the process dies.
     ///
     pub async fn shutdown(&mut self) -> Result<()> {
-        match control_plane_api::send_command(
-            &mut self.control_plane_stream,
-            &control_plane_api::NanvixdCommand::Shutdown,
-        ) {
-            Ok(()) => {},
-            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                debug!("user VM already shut down");
-            },
-            Err(e) => {
-                error!("failed to send shutdown command to user VM (error={e:?})");
-            },
-        };
+        let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
+        let mut msg_bytes: [u8; std::mem::size_of::<NanvixdControlMessage>()] =
+            [0u8; std::mem::size_of::<NanvixdControlMessage>()];
+        msg.to_bytes(&mut msg_bytes);
+        self.control_plane_stream.write_all(&msg_bytes).await?;
 
         // Wait for user VM instance to finish.
         if let Some(mut child) = self.child.take() {
-            match timeout(Duration::from_secs(5), child.wait()).await {
+            match timeout(CLEANUP_TIMEOUT, child.wait()).await {
                 Ok(Ok(exit_status)) => {
                     if !exit_status.success() {
                         error!(
