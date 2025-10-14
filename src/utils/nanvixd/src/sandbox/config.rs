@@ -13,10 +13,16 @@ use hwloc::HwLoc;
 pub struct SandboxConfig {
     /// Socket address for the control plane nanvixd <-> linuxd.
     control_plane_sockaddr: String,
+    /// Socket type for the control plane nanvixd <-> linuxd communication.
+    control_plane_socket_type: String,
     /// Socket address to interact with the user VM stdin/stdout client <-> linuxd.
     gateway_sockaddr: String,
+    /// Socket type to interact with the user VM stdin/stdout client <-> linuxd.
+    gateway_socket_type: String,
     /// Socket address for the linuxd <-> user VM communication.
     user_vm_sockaddr: String,
+    /// Socket type for the linuxd <-> user VM communication.
+    system_vm_socket_type: String,
     /// Path to the program to run.
     program: String,
     /// Argv for the program to run.
@@ -52,8 +58,11 @@ impl SandboxConfig {
     /// # Parameters
     ///
     /// - `control_plane_sockaddr`: Socket address for the control plane.
+    /// - `control_plane_socket_type`: Socket type for the control plane.
     /// - `gateway_sockaddr`: Socket address for the gateway.
+    /// - `gateway_socket_type`: Socket type for the gateway.
     /// - `user_vm_sockaddr`: Socket address for the user VM.
+    /// - `system_vm_socket_type`: Socket type for the user VM to linuxd channel.
     /// - `program`: Path to the program to run.
     /// - `program_args`: Arguments for the program.
     /// - `console_file`: File for console output.
@@ -71,8 +80,11 @@ impl SandboxConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         control_plane_sockaddr: &str,
+        control_plane_socket_type: &str,
         gateway_sockaddr: &str,
+        gateway_socket_type: &str,
         user_vm_sockaddr: &str,
+        system_vm_socket_type: &str,
         program: &str,
         program_args: Option<String>,
         console_file: Option<String>,
@@ -85,8 +97,11 @@ impl SandboxConfig {
     ) -> Self {
         Self {
             control_plane_sockaddr: control_plane_sockaddr.to_string(),
+            control_plane_socket_type: control_plane_socket_type.to_string(),
             gateway_sockaddr: gateway_sockaddr.to_string(),
+            gateway_socket_type: gateway_socket_type.to_string(),
             user_vm_sockaddr: user_vm_sockaddr.to_string(),
+            system_vm_socket_type: system_vm_socket_type.to_string(),
             program: program.to_string(),
             program_args,
             console_file,
@@ -115,6 +130,19 @@ impl SandboxConfig {
     ///
     /// # Description
     ///
+    /// Returns the socket type for the control plane.
+    ///
+    /// # Returns
+    ///
+    /// The socket type for the control plane.
+    ///
+    pub fn control_plane_sockaddr_type(&self) -> &str {
+        &self.control_plane_socket_type
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the socket address for linuxd's gateway socket.
     ///
     /// # Returns
@@ -123,6 +151,19 @@ impl SandboxConfig {
     ///
     pub fn gateway_sockaddr(&self) -> &str {
         &self.gateway_sockaddr
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket type for linuxd's gateway socket.
+    ///
+    /// # Returns
+    ///
+    /// The socket type for linuxd's gateway.
+    ///
+    pub fn gateway_sockaddr_type(&self) -> &str {
+        &self.gateway_socket_type
     }
 
     ///
@@ -162,6 +203,19 @@ impl SandboxConfig {
     ///
     pub fn user_vm_sockaddr(&self) -> &str {
         &self.user_vm_sockaddr
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket type for the user VM communication.
+    ///
+    /// # Returns
+    ///
+    /// The socket type for the user VM communication.
+    ///
+    pub fn system_vm_sockaddr_type(&self) -> &str {
+        &self.system_vm_socket_type
     }
 
     ///

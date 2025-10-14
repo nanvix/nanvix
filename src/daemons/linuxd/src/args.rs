@@ -7,6 +7,7 @@
 
 use crate::config;
 use ::anyhow::Result;
+use ::config::syscomm::DEFAULT_SOCKET_TYPE_STR;
 
 //==================================================================================================
 // Structures
@@ -129,14 +130,19 @@ impl Args {
             i += 1;
         }
 
-        // Check if server socket address was set.
+        // Mandatory arguments validation.
         if control_plane_sockaddr.is_empty() {
-            return Err(anyhow::anyhow!("control-plane socket address not set"));
+            return Err(anyhow::anyhow!(
+                "control-plane socket address not set (use {})",
+                Self::OPT_CONTROL_PLANE_SOCKADDR
+            ));
         }
 
-        // Check if server socket address was set.
         if user_vm_bind_sockaddr.is_empty() {
-            return Err(anyhow::anyhow!("user VM bind socket address not set"));
+            return Err(anyhow::anyhow!(
+                "user VM bind socket address not set (use {})",
+                Self::OPT_USER_VM_BIND_SOCKADDR
+            ));
         }
 
         // Check if log file directory was set if logging to file is enabled. Set the default directory if not.
@@ -228,8 +234,8 @@ impl Args {
     ///
     /// The socket address of the bind socket.
     ///
-    pub fn control_plane_sockaddr(&self) -> String {
-        self.control_plane_sockaddr.to_string()
+    pub fn control_plane_sockaddr(&self) -> &str {
+        &self.control_plane_sockaddr
     }
 
     ///
@@ -241,8 +247,10 @@ impl Args {
     ///
     /// The socket address of the bind socket.
     ///
-    pub fn control_plane_socket_type(&self) -> Option<String> {
-        self.control_plane_sockaddr_type.clone()
+    pub fn control_plane_socket_type(&self) -> &str {
+        self.control_plane_sockaddr_type
+            .as_deref()
+            .unwrap_or(DEFAULT_SOCKET_TYPE_STR)
     }
 
     ///
@@ -254,8 +262,8 @@ impl Args {
     ///
     /// The socket address of the bind socket.
     ///
-    pub fn user_vm_bind_sockaddr(&self) -> String {
-        self.user_vm_bind_sockaddr.to_string()
+    pub fn user_vm_bind_sockaddr(&self) -> &str {
+        &self.user_vm_bind_sockaddr
     }
 
     ///
@@ -267,8 +275,10 @@ impl Args {
     ///
     /// The socket address type of the bind socket.
     ///
-    pub fn user_vm_bind_socket_type(&self) -> Option<String> {
-        self.user_vm_bind_sockaddr_type.clone()
+    pub fn user_vm_bind_socket_type(&self) -> &str {
+        self.user_vm_bind_sockaddr_type
+            .as_deref()
+            .unwrap_or(DEFAULT_SOCKET_TYPE_STR)
     }
 
     ///

@@ -209,10 +209,10 @@ export WASMD_CARGO_FEATURES :=
 export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
 export HOST_CARGO_FEATURES := --no-default-features
 export HOST_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
-export MICROVM_CARGO_FEATURES := --no-default-features
-export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
-export MICROVM_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
-export MICROVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
+export USERVM_CARGO_FEATURES := --no-default-features
+export USERVM_CARGO_FEATURES += $(if $(filter yes,$(PROFILER)),--features profiler,)
+export USERVM_CARGO_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),--features timestamp-messages,)
+export USERVM_CARGO_FEATURES += $(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
@@ -256,8 +256,9 @@ export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86
 export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 clean
 export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 check --message-format=json
 export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy
-export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 test --no-default-features --features=std
+export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 test --no-default-features
 export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
+export USERVM_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 test $(USERVM_CARGO_FEATURES)
 
 # Utility Commands
 export RM_CMD := rm -f
@@ -309,8 +310,8 @@ all-nanvix: \
 	all-kernel \
 	all-wasm-binaries \
 	all-host-binaries \
-	all-microvm \
-	all-snapshot
+	all-snapshot \
+	all-uservm
 
 # Performs local initialization.
 init: init-repo init-opt
@@ -329,9 +330,9 @@ clean: \
 	clean-kernel \
 	clean-wasm-binaries \
 	clean-host-binaries \
-	clean-microvm \
 	clean-opt \
 	clean-snapshot \
+	clean-uservm \
 	image-clean
 
 distclean: clean
@@ -424,7 +425,7 @@ rust-lint-check: \
 	rust-lint-check-wasm-binaries \
 	rust-lint-check-host-binaries \
 	rust-lint-check-host-rlibs \
-	rust-lint-check-microvm
+	rust-lint-check-uservm
 
 # Fixes code linting issues.
 rust-lint: \
@@ -436,7 +437,7 @@ rust-lint: \
 	rust-lint-wasm-binaries \
 	rust-lint-host-binaries \
 	rust-lint-host-rlibs \
-	rust-lint-microvm
+	rust-lint-uservm
 
 # Fixes spelling errors in source code and documentation.
 spellcheck-fix:
@@ -466,7 +467,7 @@ rust-format: \
 	format-host-binaries \
 	format-host-rlibs \
 	format-kernel \
-	format-microvm \
+	format-uservm \
 	format-wasmd \
 	format-wasm-binaries
 
@@ -478,7 +479,7 @@ rust-format-check: \
 	format-check-host-binaries \
 	format-check-host-rlibs \
 	format-check-kernel \
-	format-check-microvm \
+	format-check-uservm \
 	format-check-wasmd \
 	format-check-wasm-binaries
 
@@ -527,10 +528,11 @@ check: \
 	check-wasm-binaries \
 	check-host-binaries \
 	check-host-rlibs \
-	check-microvm
+	check-uservm
 
 run-unit-tests: all-nanvix \
-	test-guest-rlibs
+	test-guest-rlibs \
+	test-host-rlibs
 
 run-nanvixd-tests: | \
 	init-repo \
@@ -778,8 +780,6 @@ endif
 run: image
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
-else
-	sudo -E $(BINARIES_DIR)/microvm.elf -user-vm-id 1 -kernel $(BINARIES_DIR)/kernel.elf -initrd $(IMAGE) 2>&1
 endif
 
 # Runs system in debug mode.
@@ -906,19 +906,19 @@ rust-lint-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-guest-r
 rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-check-guest-rlib-$(target))
 
 test-guest-rlibs:
-	$(HOST_CARGO_TEST_CMD) -p arch
-	$(HOST_CARGO_TEST_CMD) -p bitmap
-	$(HOST_CARGO_TEST_CMD) -p config
-	$(HOST_CARGO_TEST_CMD) -p elf
-	$(HOST_CARGO_TEST_CMD) -p error
-	$(HOST_CARGO_TEST_CMD) -p type-safe
-	$(HOST_CARGO_TEST_CMD) -p proc
-	$(HOST_CARGO_TEST_CMD) -p raw-array
-	$(HOST_CARGO_TEST_CMD) -p slab
-	$(HOST_CARGO_TEST_CMD) -p static_assert
-	$(HOST_CARGO_TEST_CMD) -p libc_string
-#	$(HOST_CARGO_TEST_CMD) -p sysalloc
-#	$(HOST_CARGO_TEST_CMD) -p syslog
+	$(HOST_CARGO_TEST_CMD) --features=std -p arch
+	$(HOST_CARGO_TEST_CMD) --features=std -p bitmap
+	$(HOST_CARGO_TEST_CMD) --features=std -p config
+	$(HOST_CARGO_TEST_CMD) --features=std -p elf
+	$(HOST_CARGO_TEST_CMD) --features=std -p error
+	$(HOST_CARGO_TEST_CMD) --features=std -p type-safe
+	$(HOST_CARGO_TEST_CMD) --features=std -p proc
+	$(HOST_CARGO_TEST_CMD) --features=std -p raw-array
+	$(HOST_CARGO_TEST_CMD) --features=std -p slab
+	$(HOST_CARGO_TEST_CMD) --features=std -p static_assert
+	$(HOST_CARGO_TEST_CMD) --features=std -p libc_string
+#	$(HOST_CARGO_TEST_CMD) --features=std -p sysalloc
+#	$(HOST_CARGO_TEST_CMD) --features=std -p syslog
 
 #===================================================================================================
 # Build Rules for Guest Binaries
@@ -1177,31 +1177,34 @@ rust-lint-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-host-bi
 rust-lint-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-check-host-binaries-$(target))
 
 #===================================================================================================
-# Build Rules for Microvm Binary
+# Build Rules for UserVM
 #===================================================================================================
 
-all-microvm: init
-	$(HOST_CARGO_BUILD_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/microvm $(BINARIES_DIR)/microvm.elf
+all-uservm: init
+	$(HOST_CARGO_BUILD_CMD) $(USERVM_CARGO_FEATURES) -p uservm
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm $(BINARIES_DIR)/uservm.elf
 
-check-microvm:
-	$(HOST_CARGO_CHECK_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+check-uservm:
+	$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 
-format-microvm:
-	$(HOST_CARGO_FMT_CMD) -p microvm
+format-uservm:
+	$(HOST_CARGO_FMT_CMD) -p uservm
 
-format-check-microvm:
-	$(HOST_CARGO_FMT_CMD) -p microvm --check
+format-check-uservm:
+	$(HOST_CARGO_FMT_CMD) -p uservm --check
 
-clean-microvm:
-	$(HOST_CARGO_CLEAN_CMD) -p microvm
-	$(RM_CMD) $(BINARIES_DIR)/microvm.elf
+clean-uservm:
+	$(HOST_CARGO_CLEAN_CMD) -p uservm
+	$(RM_CMD) $(BINARIES_DIR)/uservm.elf
 
-rust-lint-microvm:
-	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm --fix --allow-dirty
+rust-lint-uservm:
+	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty
 
-rust-lint-check-microvm:
-	$(HOST_CARGO_CLIPPY_CMD) $(MICROVM_CARGO_FEATURES) -p microvm
+rust-lint-check-uservm:
+	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm
+
+test-uservm:
+	$(USERVM_CARGO_TEST_CMD) -p uservm
 
 #===================================================================================================
 # Rules for Running System Level Tests Using Nanvix Daemon

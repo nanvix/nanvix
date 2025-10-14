@@ -40,6 +40,27 @@ const FD_SET_WORD_BITS: usize = c_ulong::BITS as usize;
 const FD_SET_WORD_COUNT: usize = FD_SETSIZE.div_ceil(FD_SET_WORD_BITS);
 
 //==================================================================================================
+// Enumerations
+//==================================================================================================
+
+/// Errors that can occur when operating on an [`fd_set`].
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum FdSetError {
+    /// File descriptor index is outside the tracked range.
+    FileDescriptorOutOfRange,
+}
+
+impl ::core::fmt::Display for FdSetError {
+    fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        match self {
+            Self::FileDescriptorOutOfRange => {
+                formatter.write_str("file descriptor index is out of range")
+            },
+        }
+    }
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -88,11 +109,12 @@ impl fd_set {
     /// # Returns
     ///
     /// This function returns `Ok(true)` if the file descriptor is set, `Ok(false)` if it is not
-    /// set, or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
+    /// set, or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of range
+    /// (`fd >= FD_SETSIZE`).
     ///
-    pub fn is_set(&self, fd: usize) -> Result<bool, ()> {
+    pub fn is_set(&self, fd: usize) -> Result<bool, FdSetError> {
         if fd >= FD_SETSIZE {
-            return Err(());
+            return Err(FdSetError::FileDescriptorOutOfRange);
         }
         let (word_index, mask): (usize, c_ulong) = Self::bit_position(fd);
         // SAFETY: Access through raw pointer to avoid creating an unaligned reference to a packed field.
@@ -114,13 +136,14 @@ impl fd_set {
     /// # Returns
     ///
     /// This function returns `Ok(true)` if the file descriptor is set, `Ok(false)` if it is not
-    /// set, or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
+    /// set, or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of range
+    /// (`fd >= FD_SETSIZE`).
     ///
     /// # Safety
     ///
     /// The caller must ensure that `fd_set` points to a valid `fd_set` structure.
     ///
-    pub unsafe fn is_set_raw(fd_set: *const fd_set, fd: usize) -> Result<bool, ()> {
+    pub unsafe fn is_set_raw(fd_set: *const fd_set, fd: usize) -> Result<bool, FdSetError> {
         // SAFETY: Caller must ensure that `fd_set` is a valid pointer.
         unsafe { (*fd_set).is_set(fd) }
     }
@@ -136,10 +159,11 @@ impl fd_set {
     ///
     /// # Return Value
     ///
-    /// Returns `Ok(())` on success or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
-    pub fn set_bit(&mut self, fd: usize) -> Result<(), ()> {
+    /// Returns `Ok(())` on success or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of
+    /// range (`fd >= FD_SETSIZE`).
+    pub fn set_bit(&mut self, fd: usize) -> Result<(), FdSetError> {
         if fd >= FD_SETSIZE {
-            return Err(());
+            return Err(FdSetError::FileDescriptorOutOfRange);
         }
         let (word_index, mask): (usize, c_ulong) = Self::bit_position(fd);
         let base: *mut c_ulong = ::core::ptr::addr_of_mut!(self.fds_bits) as *mut c_ulong;
@@ -166,8 +190,9 @@ impl fd_set {
     ///
     /// # Return Value
     ///
-    /// Returns `Ok(())` on success or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
-    pub unsafe fn set_bit_raw(fd_set: *mut fd_set, fd: usize) -> Result<(), ()> {
+    /// Returns `Ok(())` on success or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of
+    /// range (`fd >= FD_SETSIZE`).
+    pub unsafe fn set_bit_raw(fd_set: *mut fd_set, fd: usize) -> Result<(), FdSetError> {
         // SAFETY: Caller must ensure that `fd_set` is a valid pointer.
         unsafe { (*fd_set).set_bit(fd) }
     }
@@ -183,10 +208,11 @@ impl fd_set {
     ///
     /// # Return Value
     ///
-    /// Returns `Ok(())` on success or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
-    pub fn clear_bit(&mut self, fd: usize) -> Result<(), ()> {
+    /// Returns `Ok(())` on success or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of
+    /// range (`fd >= FD_SETSIZE`).
+    pub fn clear_bit(&mut self, fd: usize) -> Result<(), FdSetError> {
         if fd >= FD_SETSIZE {
-            return Err(());
+            return Err(FdSetError::FileDescriptorOutOfRange);
         }
         let (word_index, mask): (usize, c_ulong) = Self::bit_position(fd);
         let base: *mut c_ulong = ::core::ptr::addr_of_mut!(self.fds_bits) as *mut c_ulong;
@@ -213,8 +239,9 @@ impl fd_set {
     ///
     /// # Return Value
     ///
-    /// Returns `Ok(())` on success or `Err(())` if `fd` is out of range (`fd >= FD_SETSIZE`).
-    pub unsafe fn clear_bit_raw(fd_set: *mut fd_set, fd: usize) -> Result<(), ()> {
+    /// Returns `Ok(())` on success or `Err(FdSetError::FileDescriptorOutOfRange)` if `fd` is out of
+    /// range (`fd >= FD_SETSIZE`).
+    pub unsafe fn clear_bit_raw(fd_set: *mut fd_set, fd: usize) -> Result<(), FdSetError> {
         // SAFETY: Caller must ensure that `fd_set` is a valid pointer.
         unsafe { (*fd_set).clear_bit(fd) }
     }
