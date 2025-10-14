@@ -45,7 +45,7 @@ pub unsafe extern "C" fn pthread_condattr_setclock(
     clock_id: clockid_t,
 ) -> c_int {
     // TODO (#500): implement pthread_condattr_setclock
-    ::syslog::warn!(
+    ::syslog::debug!(
         "pthread_condattr_setclock(): not implemented (attr={attr:?}, clock_id={clock_id:?})"
     );
     ErrorCode::InvalidSysCall.get()

@@ -308,7 +308,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 #[unsafe(no_mangle)]
 pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/502
-    ::syslog::error!("pthread_detach(): not implemented");
+    ::syslog::debug!("pthread_detach(): not implemented");
     ErrorCode::OperationNotSupported.get()
 }
 
@@ -397,7 +397,7 @@ pub unsafe extern "C" fn pthread_once(
         init_routine
     );
     // TODO: https://github.com/nanvix/nanvix/issues/513
-    ::syslog::error!("pthread_once(): not implemented");
+    ::syslog::debug!("pthread_once(): not implemented");
     0
 }
 

@@ -20,7 +20,7 @@ use ::sysapi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getrlimit(_resource: c_int, _rlim: *mut rlimit) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/459
-    ::syslog::error!("getrlimit(): not implemented");
+    ::syslog::debug!("getrlimit(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn getrlimit(_resource: c_int, _rlim: *mut rlimit) -> c_in
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn setrlimit(_resource: c_int, _rlim: *const rlimit) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/469
-    ::syslog::error!("setrlimit(): not implemented");
+    ::syslog::debug!("setrlimit(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

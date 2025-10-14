@@ -53,7 +53,7 @@ pub unsafe extern "C" fn chroot(path: *const c_char) -> c_int {
     ::syslog::trace!("chroot(): path={path:?}");
 
     // TODO: https://github.com/nanvix/nanvix/issues/517
-    ::syslog::error!("chroot(): not implemented");
+    ::syslog::debug!("chroot(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

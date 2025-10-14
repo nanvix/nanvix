@@ -46,7 +46,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn inet_addr(cp: *const c_char) -> in_addr_t {
     ::syslog::trace!("inet_addr(): cp={cp:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/594.
-    ::syslog::error!("inet_addr(): not implemented");
+    ::syslog::debug!("inet_addr(): not implemented");
     in_addr_t::MAX
 }
 
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn inet_addr(cp: *const c_char) -> in_addr_t {
 pub unsafe extern "C" fn inet_ntoa(in_addr: in_addr_t) -> *const c_char {
     ::syslog::trace!("inet_ntoa(): in_addr={in_addr:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/595.
-    ::syslog::error!("inet_ntoa(): not implemented");
+    ::syslog::debug!("inet_ntoa(): not implemented");
     core::ptr::null()
 }
 
@@ -110,7 +110,7 @@ pub unsafe extern "C" fn inet_ntop(
 ) -> *const c_char {
     ::syslog::trace!("inet_ntop(): af={af:?}, src={src:?}, dst={dst:?}, size={size:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/592.
-    ::syslog::error!("inet_ntop(): not implemented");
+    ::syslog::debug!("inet_ntop(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null()
 }
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn inet_ntop(
 pub unsafe extern "C" fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int {
     ::syslog::trace!("inet_pton(): af={af:?}, src={src:?}, dst={dst:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/593.
-    ::syslog::error!("inet_pton(): not implemented");
+    ::syslog::debug!("inet_pton(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

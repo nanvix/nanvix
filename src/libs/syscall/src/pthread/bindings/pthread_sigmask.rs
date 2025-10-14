@@ -23,6 +23,6 @@ pub unsafe extern "C" fn pthread_sigmask(
     _oldset: *mut c_void,
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/717
-    ::syslog::warn!("pthread_sigmask(): not implemented");
+    ::syslog::debug!("pthread_sigmask(): not implemented");
     0
 }

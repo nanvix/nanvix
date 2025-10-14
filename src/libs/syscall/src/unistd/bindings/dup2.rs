@@ -52,7 +52,7 @@ use ::sysapi::ffi::c_int;
 pub unsafe extern "C" fn dup2(oldfd: c_int, newfd: c_int) -> c_int {
     ::syslog::trace!("dup2(): oldfd={oldfd:?}, newfd={newfd:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/354
-    ::syslog::error!("dup2(): not implemented");
+    ::syslog::debug!("dup2(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

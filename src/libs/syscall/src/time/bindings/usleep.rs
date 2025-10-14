@@ -15,6 +15,6 @@ use ::sysapi::ffi::c_int;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn usleep(_usec: u32) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/476
-    ::syslog::warn!("usleep(): not implemented");
+    ::syslog::debug!("usleep(): not implemented");
     0
 }

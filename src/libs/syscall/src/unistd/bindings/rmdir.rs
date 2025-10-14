@@ -21,7 +21,7 @@ use ::sysapi::ffi::{
 pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
     ::syslog::trace!("rmdir(): path={path:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/348
-    ::syslog::error!("rmdir(): not implemented");
+    ::syslog::debug!("rmdir(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

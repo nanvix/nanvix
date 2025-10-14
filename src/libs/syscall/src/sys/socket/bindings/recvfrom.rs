@@ -81,7 +81,7 @@ pub unsafe extern "C" fn recvfrom(
          sockaddr={sockaddr:?}, addrlen={addrlen:?}"
     );
     // TODO: https://github.com/nanvix/nanvix/issues/590
-    ::syslog::error!("recvfrom(): not implemented");
+    ::syslog::debug!("recvfrom(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
