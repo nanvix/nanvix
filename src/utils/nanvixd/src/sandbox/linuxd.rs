@@ -11,32 +11,38 @@ use crate::config::{
     get_clh_snapshot_path,
 };
 use ::anyhow::Result;
-use ::control_plane_api;
+use ::control_plane_api::{
+    NanvixdCommand,
+    NanvixdControlMessage,
+};
 use ::hwloc::HwLoc;
 use ::linuxd::{
     args,
     config::restore_gate_sockaddr_builder,
 };
-use ::std::{
-    process::Stdio,
-    time::Duration,
-};
+use ::std::process::Stdio;
 use ::syscomm::{
-    BlockingSocketStream,
+    ReadExact,
     SocketListener,
     SocketStream,
     SocketType,
+    UnboundSocket,
+    WriteAll,
 };
 use ::syslog::{
     debug,
     error,
+    trace,
 };
 use ::tokio::{
     process::{
         Child,
         Command,
     },
-    time::timeout,
+    time::{
+        timeout,
+        Duration,
+    },
 };
 
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
@@ -63,7 +69,7 @@ impl LinuxDaemon {
     /// First we need to actually resume the VM's execution using cloud-hypervisor's API socket.
     /// Then we need to "unlock" linuxd from a pre-snapshot gate that we use to control exactly
     /// when the VM is snapshotted.
-    fn resume_l2_vm(clh_api_socket_path: String) -> Result<()> {
+    async fn resume_l2_vm(clh_api_socket_path: String) -> Result<()> {
         let resume_req: &str = concat!(
             "PUT /api/v1/vm.resume HTTP/1.1\r\n",
             "Host: localhost\r\n",
@@ -72,12 +78,22 @@ impl LinuxDaemon {
             "\r\n",
         );
 
-        let mut clh_api_socket: BlockingSocketStream = match SocketStream::connect_timeout(
-            SocketType::Unix,
-            clh_api_socket_path.clone(),
+        let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
+        let mut clh_api_socket: SocketStream = match timeout(
             Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
-        ) {
-            Ok(stream) => stream.set_blocking()?,
+            unbound_socket.connect(clh_api_socket_path.clone()),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(e)) => {
+                let reason: String = format!(
+                    "error connecting to CLH API socket (addr={}, error={e:?})",
+                    clh_api_socket_path
+                );
+                error!("{reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
             Err(e) => {
                 let reason: String = format!("error connecting to CLH API socket (error={e:?})");
                 error!("{reason}");
@@ -89,23 +105,29 @@ impl LinuxDaemon {
         // TODO: this request/response flow takes a considerable portion of the restore process
         // (almost half). We should investigate why is this the case, and whether it is a
         // fundamental limitation.
-        if let Err(e) = clh_api_socket.write_all(resume_req.as_bytes()) {
+        if let Err(e) = clh_api_socket.write_all(resume_req.as_bytes()).await {
             error!("failed to write resume request to CLH API socket (error={e:?})");
             return Err(e.into());
         }
 
         // Wait for at least one byte of the reply, otherwise cloud-hypervisor hangs.
         let mut buf: [u8; 1] = [0u8; 1];
-        if let Err(e) = clh_api_socket.read(&mut buf) {
+        if let Err(e) = clh_api_socket.read_exact(&mut buf).await {
             error!("failed to read resume response from CLH API socket (error={e:?})");
             return Err(e.into());
         }
 
         // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
-        let mut stream: BlockingSocketStream =
-            SocketStream::connect(SocketType::Tcp, restore_gate_sockaddr_builder())?
-                .set_blocking()?;
-        Ok(stream.write_all(&RESTORE_GATE_BYTES)?)
+        let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
+        let mut stream: SocketStream = unbound_socket
+            .connect(restore_gate_sockaddr_builder())
+            .await?;
+        if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
+            error!("failed to write restore gate bytes (error={e:?})");
+            return Err(e.into());
+        }
+
+        Ok(())
     }
 
     fn send_sigkill_to_child(child: &Child) {
@@ -163,6 +185,7 @@ impl LinuxDaemon {
                 user_vm_sockaddr.to_string(),
             ]
         };
+        trace!("linuxd args: {:?}", linuxd_args);
         if let Some(hwloc) = hwloc {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
@@ -180,7 +203,7 @@ impl LinuxDaemon {
             .spawn()?;
 
         if l2 {
-            if let Err(e) = Self::resume_l2_vm(clh_api_socket_path) {
+            if let Err(e) = Self::resume_l2_vm(clh_api_socket_path).await {
                 let reason: String = format!("error resuming L2 VM (error={e:?})");
                 error!("{reason}");
 
@@ -195,7 +218,7 @@ impl LinuxDaemon {
         // further use.
         let control_plane_stream: SocketStream = match timeout(
             Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            ::syscomm::r#async::accept(control_plane_listener),
+            control_plane_listener.accept(),
         )
         .await
         {
@@ -235,18 +258,19 @@ impl LinuxDaemon {
 
     /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
     pub async fn shutdown(&mut self) -> Result<()> {
-        match control_plane_api::send_command(
-            &mut self.control_plane_stream,
-            &control_plane_api::NanvixdCommand::Shutdown,
-        ) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("failed to send shutdown command to linuxd (error={e:?})");
-            },
-        };
+        let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
+        let mut msg_bytes: [u8; size_of::<NanvixdControlMessage>()] =
+            [0u8; size_of::<NanvixdControlMessage>()];
+        msg.to_bytes(&mut msg_bytes);
+        self.control_plane_stream.write_all(&msg_bytes).await?;
 
         // Wait for linuxd instance to finish.
-        match timeout(Duration::from_secs(5), self.child.wait()).await {
+        match timeout(
+            Duration::from_secs(::config::syscomm::SHUTDOWN_TIMEOUT_SECS),
+            self.child.wait(),
+        )
+        .await
+        {
             Ok(Ok(exit_status)) => {
                 if !exit_status.success() {
                     error!(

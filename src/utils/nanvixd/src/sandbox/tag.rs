@@ -10,7 +10,7 @@ use ::std::{
     self,
     hash::Hash,
 };
-use ::user_vm_api::RawUserVmIdentifier;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 
@@ -18,13 +18,13 @@ use ::user_vm_api::RawUserVmIdentifier;
 pub struct SandboxTag {
     tenant_id: String,
     app_name: String,
-    sandbox_id: RawUserVmIdentifier,
+    sandbox_id: UserVmIdentifier,
 }
 
 impl SandboxTag {
     pub fn new(tenant_id: &str, app_name: &str) -> Self {
         let mut rng: rand::rngs::ThreadRng = rand::rng();
-        let sandbox_id: u32 = rng.random();
+        let sandbox_id: UserVmIdentifier = UserVmIdentifier::new(rng.random());
 
         Self {
             tenant_id: tenant_id.to_string(),
@@ -37,7 +37,7 @@ impl SandboxTag {
         &self.tenant_id
     }
 
-    pub fn sandbox_id(&self) -> RawUserVmIdentifier {
+    pub fn sandbox_id(&self) -> UserVmIdentifier {
         self.sandbox_id
     }
 }

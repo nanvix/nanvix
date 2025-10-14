@@ -29,7 +29,6 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::std::{
-    collections::VecDeque,
     io::ErrorKind,
     mem,
     ptr,
@@ -38,17 +37,10 @@ use ::std::{
             AtomicUsize,
             Ordering,
         },
-        mpsc::{
-            Receiver,
-            Sender,
-        },
         Arc,
-        Mutex,
-        MutexGuard,
     },
     thread::{
         self,
-        JoinHandle,
         ThreadId,
     },
 };
@@ -140,14 +132,29 @@ use ::syscall::{
     LINUXD,
 };
 use ::syscomm::{
-    BlockingSocketStream,
-    SocketError,
-    SocketStream,
+    SocketStreamReader,
+    SocketStreamWriter,
+    WriteAll,
 };
 use ::syslog::{
     debug,
     error,
     trace,
+};
+use ::tokio::{
+    runtime::Handle,
+    sync::{
+        mpsc::{
+            Receiver,
+            Sender,
+        },
+        Mutex,
+        MutexGuard,
+    },
+    task::{
+        self,
+        JoinHandle,
+    },
 };
 use libc::{
     c_int,
@@ -204,13 +211,14 @@ impl WorkerThreadHandle {
 
     /// Spawn an interruptible worker thread.
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    pub fn spawn_worker_thread(
         id: ThreadIdentifier,
         channel_rx: Receiver<VenvCommand>,
         channel_tx: Sender<VenvCommand>,
         uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) -> Result<Self, Error> {
+        trace!("spawning workker thread (id={id:?})");
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid.
         let pthread_id_holder = Arc::new(AtomicUsize::new(0));
@@ -218,7 +226,7 @@ impl WorkerThreadHandle {
         // Make copies to return as part of the thread handle.
         let pthread_id_holder_clone = pthread_id_holder.clone();
 
-        let join_handle = thread::spawn(move || {
+        let join_handle = task::spawn_blocking(move || {
             Self::install_signal_handler();
 
             let pthread_id = unsafe { pthread_self() };
@@ -256,28 +264,39 @@ impl WorkerThreadHandle {
     }
 
     fn handle_message(
-        channel_rx: Receiver<VenvCommand>,
+        mut channel_rx: Receiver<VenvCommand>,
         uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
-        let uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>> = uvm_handle.get_user_vm_stream();
-        let gw_stream: Option<Arc<Mutex<BlockingSocketStream>>> = uvm_handle.get_gw_vm_stream();
+        let uvm_stream: Arc<Mutex<SocketStreamWriter>> = uvm_handle.get_user_vm_writer();
+
+        let (gateway_reader, gateway_writer) =
+            match Handle::current().block_on(uvm_handle.get_gateway_vm_stream()) {
+                Ok((reader, writer)) => (reader, writer),
+                Err(e) => {
+                    error!(
+                        "handle_message(): failed to connect to gateway socket \
+                         (worker_tid={worker_tid:?}, error={e:?})"
+                    );
+                    return;
+                },
+            };
 
         loop {
-            let message: Message = match channel_rx.recv() {
-                Ok(VenvCommand::Work(message)) => message,
-                Ok(VenvCommand::Shutdown) => {
+            let message: Message = match channel_rx.blocking_recv() {
+                Some(VenvCommand::Work(message)) => message,
+                Some(VenvCommand::Shutdown) => {
                     debug!(
                         "handle_message(): thread received shutdown message \
                          (worker_tid={worker_tid:?})"
                     );
                     break;
                 },
-                Err(error) => {
+                None => {
                     error!(
                         "handle_message(): failed to receive message from channel, stopping \
-                         (worker_tid={worker_tid:?}, error={error:?})"
+                         (worker_tid={worker_tid:?})"
                     );
                     break;
                 },
@@ -307,7 +326,8 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::ReadRequest
                                 | LinuxDaemonMessageHeader::WriteRequest => {
                                     match Self::handle_special_messages(
-                                        gw_stream.clone(),
+                                        gateway_reader.clone(),
+                                        gateway_writer.clone(),
                                         source,
                                         message,
                                     ) {
@@ -434,7 +454,9 @@ impl WorkerThreadHandle {
 
                                 _ => Self::do_error(source, ErrorCode::InvalidMessage),
                             };
-                            match Self::send(uvm_stream.clone(), message) {
+                            match Handle::current()
+                                .block_on(Self::send(uvm_stream.clone(), message))
+                            {
                                 Ok(()) => {},
                                 Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
                                     debug!("user vm stream closed, worker thread exiting");
@@ -459,7 +481,8 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
-        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
+        gateway_reader: Arc<Mutex<SocketStreamReader>>,
+        gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
@@ -470,11 +493,11 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(gw_stream, source, request)
+                Self::handle_read_request(gateway_reader, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(gw_stream, source, request)
+                Self::handle_write_request(gateway_writer, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -617,7 +640,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_request_messages(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -696,7 +719,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_response_messages(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -718,46 +741,13 @@ impl WorkerThreadHandle {
         }
     }
 
-    // Send a message to the TCP stream.
-    fn send(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+    async fn send(
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         message: Message,
-    ) -> Result<(), SocketError> {
-        let bytes = message.to_bytes();
-
-        loop {
-            let mut guard: MutexGuard<'_, (SocketStream, VecDeque<u8>)> = match uvm_stream.lock() {
-                Ok(guard) => guard,
-                Err(e) => {
-                    error!("error acquiring lock on user VM stream (error={e:?})");
-                    return Err(std::io::Error::other("error acquiring lock").into());
-                },
-            };
-            let (locked_uvm_stream, _): &mut (SocketStream, VecDeque<u8>) = &mut guard;
-
-            match locked_uvm_stream.write_all(&bytes) {
-                Ok(()) => break Ok(()),
-                Err(e) => {
-                    match e.kind() {
-                        ErrorKind::WouldBlock => {
-                            // The stream is not ready to write, retry.
-                            continue;
-                        },
-                        ErrorKind::BrokenPipe => {
-                            // Depending on where the worker thread is interrupted, we may get to a
-                            // point where we are trying to send a response, but the user VM has
-                            // already closed its stream.
-                            break Err(e);
-                        },
-                        error_kind => {
-                            unimplemented!(
-                                "handle: failed to write message (error={error_kind:?})"
-                            );
-                        },
-                    }
-                },
-            }
-        }
+    ) -> Result<(), std::io::Error> {
+        let mut guard: MutexGuard<'_, SocketStreamWriter> = uvm_stream.lock().await;
+        guard.write_all(&message.to_bytes()).await?;
+        Ok(())
     }
 
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
@@ -789,23 +779,13 @@ impl WorkerThreadHandle {
     }
 
     fn handle_write_request(
-        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
+        gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
-            let gw_stream = if let Some(gw_stream) = gw_stream {
-                gw_stream
-            } else {
-                error!(
-                    "handle_write_request(): trying to write to stdout without a gateway \
-                     configured"
-                );
-                return Ok(build_error(source, ErrorCode::InvalidArgument));
-            };
-
             // Check if write size is invalid.
             if request.count == 0 {
                 // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
@@ -815,20 +795,27 @@ impl WorkerThreadHandle {
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
 
-                if let Ok(mut locked_gw_stream) = gw_stream.lock() {
-                    match locked_gw_stream.write_all(&request.buffer[..count]) {
-                        Ok(()) => {},
+                let mut locked_gateway_writer = gateway_writer.blocking_lock();
+                let mut total_written: usize = 0;
+
+                while total_written < count {
+                    let write_slice: &[u8] = &request.buffer[total_written..count];
+                    match Handle::current().block_on(locked_gateway_writer.write(write_slice)) {
+                        Ok(0) => {
+                            error!("failed to write to gateway socket (written={total_written})");
+                            return Ok(build_error(source, ErrorCode::IoErr));
+                        },
+                        Ok(n) => {
+                            total_written += n;
+                        },
                         Err(e) if e.kind() == ErrorKind::Interrupted => {
-                            return Err(WorkerThreadError::Interrupted)
+                            return Err(WorkerThreadError::Interrupted);
                         },
                         Err(e) => {
                             error!("failed to write to gateway socket (error={e:?})");
                             return Ok(build_error(source, ErrorCode::IoErr));
                         },
                     }
-                } else {
-                    error!("gateway stream mutex poisoned");
-                    return Ok(build_error(source, ErrorCode::IoErr));
                 }
 
                 // We don't wait for the IO thread to confirm that the write was correct, as writes
@@ -843,44 +830,26 @@ impl WorkerThreadHandle {
     }
 
     fn handle_read_request(
-        gw_stream: Option<Arc<Mutex<BlockingSocketStream>>>,
+        gateway_reader: Arc<Mutex<SocketStreamReader>>,
         source: ThreadIdentifier,
         request: ReadRequest,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            let gw_stream = if let Some(gw_stream) = gw_stream {
-                gw_stream
-            } else {
-                error!(
-                    "handle_read_request(): process tried to read from stdin but no gateway found"
-                );
-                return Ok(ReadResponse::eof(source));
-            };
-
             let response: Result<Message, WorkerThreadError> = {
-                // Take the lock (handle poison however you prefer)
-                let mut locked_gw_stream: MutexGuard<'_, BlockingSocketStream> =
-                    match gw_stream.lock() {
-                        Ok(g) => g,
-                        Err(e) => {
-                            error!("gateway stream mutex poisoned (error={e:?})");
-                            return Ok(ReadResponse::eof(source));
-                        },
-                    };
+                // Take the lock.
+                let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
+                    gateway_reader.blocking_lock();
 
-                // Read from the gateway thread.
+                // Read from the gateway.
                 let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                     [0u8; ReadResponse::BUFFER_SIZE];
                 // Blocking read from the gateway socket to make sure we can be interrupted if
                 // necessary.
-                match locked_gw_stream.read(&mut response_buf) {
+                match Handle::current().block_on(locked_gateway_reader.read(&mut response_buf)) {
                     Ok(0) => {
-                        error!(
-                            "handle_read_request(): error receiving request response from gateway \
-                             STDIN: EOF"
-                        );
+                        debug!("handle_read_request(): eof");
                         Ok(ReadResponse::eof(source))
                     },
                     Ok(n) => {
@@ -907,14 +876,16 @@ impl WorkerThreadHandle {
     }
 
     fn handle_fstat_request(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
         let messages: Vec<Message> = fcntl::do_fstat(source, request)?;
+        trace!("handle_fstat_request(): obtained {} messages", messages.len());
         for message in messages {
-            if let Err(e) = Self::send(uvm_stream.clone(), message) {
+            trace!("handle_fstat_request(): sending message: {message:?}");
+            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -923,12 +894,12 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getcwd_request(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(source)?;
         for message in messages {
-            if let Err(e) = Self::send(uvm_stream.clone(), message) {
+            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -937,7 +908,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getdents_request(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -946,7 +917,7 @@ impl WorkerThreadHandle {
 
         let messages: Vec<Message> = dirent::do_getdents(source, request)?;
         for message in messages {
-            if let Err(e) = Self::send(uvm_stream.clone(), message) {
+            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -955,7 +926,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_long_request<T>(
-        uvm_stream: Arc<Mutex<(SocketStream, VecDeque<u8>)>>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
@@ -968,12 +939,14 @@ impl WorkerThreadHandle {
         trace!("handle_long_request(): source={source:?}, part={part:?}");
 
         let result: Result<Option<Vec<Message>>, WorkerThreadError> =
-            assembler.lock().unwrap().process_message::<T>(source, part);
+            assembler.blocking_lock().process_message::<T>(source, part);
 
         match result {
             Ok(Some(messages)) => {
                 for message in messages {
-                    if let Err(e) = Self::send(uvm_stream.clone(), message) {
+                    if let Err(e) =
+                        Handle::current().block_on(Self::send(uvm_stream.clone(), message))
+                    {
                         error!("failed to send message (error={e:?})");
                     }
                 }
@@ -985,9 +958,10 @@ impl WorkerThreadHandle {
             Err(WorkerThreadError::Error(e)) => {
                 error!("failed to process request (error={e:?})");
                 // TODO: proper error code conversion.
-                if let Err(e) =
-                    Self::send(uvm_stream.clone(), Self::do_error(source, ErrorCode::IoErr))
-                {
+                if let Err(e) = Handle::current().block_on(Self::send(
+                    uvm_stream.clone(),
+                    Self::do_error(source, ErrorCode::IoErr),
+                )) {
                     error!("failed to send error message (error={e:?})");
                 }
 

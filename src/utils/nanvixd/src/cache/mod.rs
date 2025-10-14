@@ -12,22 +12,28 @@ use crate::sandbox::{
     tag::SandboxTag,
 };
 use ::anyhow::Result;
+use ::config::syscomm::CONNECT_TIMEOUT_SECS;
 use ::std::{
     collections::HashMap,
+    str::FromStr,
     sync::Arc,
 };
 use ::syscomm::{
-    Socket,
     SocketListener,
     SocketType,
+    UnboundSocket,
 };
 use ::syslog::{
     debug,
     error,
+    trace,
     warn,
 };
-use ::tokio::sync::Mutex;
-use ::user_vm_api::RawUserVmIdentifier;
+use ::tokio::{
+    sync::Mutex,
+    time::Instant,
+};
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
@@ -43,7 +49,7 @@ pub struct SandboxCache {
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
     // Auxiliary index structures.
     /// Reverse index mapping a sandbox ID to a sandbox tag.
-    sandbox_index: HashMap<RawUserVmIdentifier, SandboxTag>,
+    sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
 
     // Control-plane members.
     /// Listener socket on the control-plane address. Right now each different linuxd and user VM
@@ -95,24 +101,32 @@ impl SandboxCache {
         config: Option<SandboxConfig>,
         tmp_directory: String,
     ) -> Result<Arc<Microvm>> {
+        trace!("get(): {tag:?}, {config:?}, {tmp_directory:?}");
+
         if !self.user_vm_instances.contains_key(tag) {
             // Cache miss.
             if let Some(sandbox_config) = config {
                 // Start control-plane listener socket lazily.
                 if self.control_plane_listener.is_none() {
                     let control_plane_sockaddr: &str = sandbox_config.control_plane_sockaddr();
-                    // The control-plane socket type depends on whether we are deploying linuxd in
-                    // an L2 VM or not.
-                    let control_plane_socket_type: SocketType = if sandbox_config.l2() {
-                        SocketType::Tcp
-                    } else {
-                        SocketType::Unix
-                    };
+                    let control_plane_socket_type: SocketType =
+                        match sandbox_config.control_plane_sockaddr_type().parse() {
+                            Ok(socket_type) => socket_type,
+                            Err(e) => {
+                                error!(
+                                    "invalid control-plane socket type (value={} error={e:?})",
+                                    sandbox_config.control_plane_sockaddr_type()
+                                );
+                                return Err(::anyhow::anyhow!("invalid control-plane socket type"));
+                            },
+                        };
 
-                    let control_plane_listener: SocketListener = match Socket::bind(
-                        control_plane_socket_type,
-                        control_plane_sockaddr.to_string(),
-                    ) {
+                    let unbound_socket: UnboundSocket =
+                        UnboundSocket::new(control_plane_socket_type);
+                    let control_plane_listener: SocketListener = match unbound_socket
+                        .bind(control_plane_sockaddr.to_string())
+                        .await
+                    {
                         Ok(listener) => listener,
                         Err(e) => {
                             error!(
@@ -156,6 +170,11 @@ impl SandboxCache {
                     );
                 }
 
+                let gateway_sockaddr: String = sandbox_config.gateway_sockaddr().to_string();
+                let unbound_gateway_socket: UnboundSocket = UnboundSocket::new(
+                    SocketType::from_str(sandbox_config.gateway_sockaddr_type())?,
+                );
+
                 // Spawn the user VM that will connect to the linuxd instance.
                 self.user_vm_instances.insert(
                     tag.clone(),
@@ -170,6 +189,40 @@ impl SandboxCache {
                         .await?,
                     ),
                 );
+
+                // Attempt to connect to the gateway socket.
+                let now: Instant = Instant::now();
+                loop {
+                    match unbound_gateway_socket
+                        .clone()
+                        .connect(gateway_sockaddr.clone())
+                        .await
+                    {
+                        Ok(_stream) => {
+                            // Connection successful.
+                            break;
+                        },
+                        Err(_e) => {
+                            // Connection failed. Sleep a bit and retry.
+                            if now.elapsed().as_secs() > CONNECT_TIMEOUT_SECS {
+                                let reason: String = format!(
+                                    "failed to connect to gateway socket \
+                                     (address={gateway_sockaddr})"
+                                );
+                                error!("get(): {reason}");
+                                return Err(anyhow::anyhow!("{reason}"));
+                            }
+                            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                        },
+                    }
+                }
+
+                debug!(
+                    "gateway socket file appeared after {:?} (path={:?})",
+                    now.elapsed(),
+                    &gateway_sockaddr
+                );
+
                 self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
             } else {
                 let reason: String =
@@ -200,7 +253,7 @@ impl SandboxCache {
     ///
     /// A reference to the sandbox.
     ///
-    pub async fn kill(&mut self, user_vm_id: RawUserVmIdentifier) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
         let tag = self
             .sandbox_index
             .get(&user_vm_id)

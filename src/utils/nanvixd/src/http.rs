@@ -45,6 +45,7 @@ use ::std::{
 use ::syslog::{
     debug,
     error,
+    trace,
 };
 use ::tokio::sync::Mutex;
 
@@ -101,6 +102,8 @@ impl HttpClient {
         args: Arc<Args>,
         message: &message::New,
     ) -> Result<message::NewResponse> {
+        trace!("serve_new(): {args:?}, {message:?}");
+
         let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
         let tmp_directory: &str = args.tmp_directory();
         let in_l2: bool = args.l2();
@@ -140,10 +143,17 @@ impl HttpClient {
             _ => Some(message.program_args.clone()),
         };
 
+        let control_plane_socket_type: &str = args.control_plane_socket_type();
+        let gateway_socket_type: &str = args.gateway_socket_type();
+        let system_vm_socket_type: &str = args.system_vm_socket_type();
+
         let config: SandboxConfig = SandboxConfig::new(
             &control_plane_sockaddr,
+            control_plane_socket_type,
             &gateway_sockaddr,
+            gateway_socket_type,
             &user_vm_sockaddr,
+            system_vm_socket_type,
             &message.program,
             program_args.clone(),
             args.console_file().clone(),

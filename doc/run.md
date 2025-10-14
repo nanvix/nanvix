@@ -9,9 +9,9 @@ This document provides instructions on how to run Nanvix.
 - [Running Nanvix with `nanvixd` (Preferred Method)](#running-nanvix-with-nanvixd-preferred-method)
   - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
   - [Step 2: Run an Application](#step-2-run-an-application)
-- [Running Nanvix Components Manually (Hyperlight and MicroVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-microvm-machines-only)
+- [Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-uservm-machines-only)
   - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
-  - [Step 2: Run the MicroVM](#step-2-run-the-microvm)
+  - [Step 2: Run the UserVM](#step-2-run-the-uservm)
   - [Redirecting Standard Error (Optional)](#redirecting-standard-error-optional)
 - [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
 
@@ -86,7 +86,7 @@ curl \
 
 To gracefully shutdown nanvixd, you can just press `Ctrl-C` in its terminal.
 
-## Running Nanvix Components Manually (Hyperlight and MicroVM Machines Only)
+## Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)
 
 This instructions show you how to run each Nanvix component individually. They require faking some control-plane components that would otherwise be provided by nanvixd.
 
@@ -108,12 +108,12 @@ all `-x-addr` flags have a corresponding `-x-socket-type` flag to switch between
 
 To enable logging, consider prepending the above command with `RUST_LOG=debug` or `RUST_LOG=trace`.
 
-### Step 2: Run the MicroVM
+### Step 2: Run the UserVM
 
-Open another terminal to run the MicroVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
+Open another terminal to run the UserVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
 
 ```bash
-./bin/microvm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-gateway-addr /tmp/gw.sock] [-initrd-args <args>]
+./bin/uservm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-gateway-addr /tmp/gw.sock] [-initrd-args <args>]
 ```
 
 The `-gateway-addr` argument is optional, and should only be used if you want to connect to the VM's stdin/stdout. If you do set it, you next need to open a netcat session to connect to it:
@@ -132,7 +132,7 @@ echo "Hello world!" | nc -U -q 0 "/tmp/gw-bind.socket" | tr -d '\0'
 
 ### Redirecting Standard Error (Optional)
 
-Redirecting the standard error of the MicroVM to another terminal can be useful for debugging.
+Redirecting the standard error of the UserVM to another terminal can be useful for debugging.
 
 1. Open a new terminal and get its tty path:
 
@@ -141,11 +141,11 @@ Redirecting the standard error of the MicroVM to another terminal can be useful 
     /dev/pts/5
     ```
 
-2. Run the MicroVM with the `-stderr` option, specifying the tty path:
+2. Run the UserVM with the `-stderr` option, specifying the tty path:
 
     ```bash
     # Assuming /dev/pts/5 is the tty of the new terminal.
-    RUST_LOG=trace ./bin/microvm.elf -user-vm-id 1 -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
+    RUST_LOG=trace ./bin/uservm.elf -user-vm-id 1 -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
     ```
 
 ## Running Nanvix Through the Build System
