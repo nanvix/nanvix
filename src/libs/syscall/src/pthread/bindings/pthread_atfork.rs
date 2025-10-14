@@ -21,7 +21,7 @@ pub unsafe extern "C" fn pthread_atfork(
     child: Option<extern "C" fn()>,
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/483
-    ::syslog::warn!(
+    ::syslog::debug!(
         "pthread_atfork(): not implemented (prepare={prepare:?}, parent={parent:?}, \
          child={child:?})"
     );

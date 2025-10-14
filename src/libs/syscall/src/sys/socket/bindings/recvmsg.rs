@@ -64,7 +64,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> c_ssize_t {
     ::syslog::trace!("recvmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/600
-    ::syslog::error!("recvmsg(): not implemented");
+    ::syslog::debug!("recvmsg(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

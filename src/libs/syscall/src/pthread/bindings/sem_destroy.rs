@@ -19,6 +19,6 @@ use ::sysapi::ffi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sem_destroy(_sem: *mut c_void) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/722
-    ::syslog::warn!("sem_destroy(): not implemented");
+    ::syslog::debug!("sem_destroy(): not implemented");
     0
 }

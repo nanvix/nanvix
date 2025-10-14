@@ -19,6 +19,6 @@ use ::sysapi::ffi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sem_init(_sem: *mut c_void, _pshared: c_int, _value: u32) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/721
-    ::syslog::warn!("sem_init(): not implemented");
+    ::syslog::debug!("sem_init(): not implemented");
     0
 }

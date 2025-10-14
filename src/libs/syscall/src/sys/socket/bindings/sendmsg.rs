@@ -63,7 +63,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
     ::syslog::trace!("sendmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/599.
-    ::syslog::error!("sendmsg(): not implemented");
+    ::syslog::debug!("sendmsg(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

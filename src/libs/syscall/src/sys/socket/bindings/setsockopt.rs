@@ -70,7 +70,7 @@ pub unsafe extern "C" fn setsockopt(
          optval={optval:?}, optlen={optlen:?}"
     );
     // TODO: https://github.com/nanvix/nanvix/issues/471
-    ::syslog::error!("setsockopt(): not implemented");
+    ::syslog::debug!("setsockopt(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
