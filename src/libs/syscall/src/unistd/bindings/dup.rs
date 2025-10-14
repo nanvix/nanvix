@@ -48,7 +48,7 @@ use ::sysapi::ffi::c_int;
 pub unsafe extern "C" fn dup(fd: c_int) -> c_int {
     ::syslog::trace!("dup(): fd={fd:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/587
-    ::syslog::error!("dup(): not implemented");
+    ::syslog::debug!("dup(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

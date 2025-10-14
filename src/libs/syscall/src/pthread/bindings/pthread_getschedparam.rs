@@ -23,6 +23,6 @@ pub unsafe extern "C" fn pthread_getschedparam(
     _param: *mut sched_param,
 ) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/725
-    ::syslog::warn!("pthread_getschedparam(): not implemented");
+    ::syslog::debug!("pthread_getschedparam(): not implemented");
     0
 }

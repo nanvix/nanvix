@@ -16,7 +16,7 @@ use ::sysapi::sys_types::pid_t;
 #[unsafe(no_mangle)]
 pub extern "C" fn fork() -> pid_t {
     // TODO: https://github.com/nanvix/nanvix/issues/321
-    ::syslog::error!("fork(): not implemented");
+    ::syslog::debug!("fork(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

@@ -19,6 +19,6 @@ use ::sysapi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pthread_kill(_thread: pthread_t, _sig: c_int) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/716
-    ::syslog::warn!("pthread_kill(): not implemented");
+    ::syslog::debug!("pthread_kill(): not implemented");
     0
 }

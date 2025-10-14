@@ -18,7 +18,7 @@ pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
     ::syslog::trace!("sleep(): seconds={seconds:?}");
 
     // TODO: https://github.com/nanvix/nanvix/issues/453
-    ::syslog::error!("sleep(): not implemented");
+    ::syslog::debug!("sleep(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

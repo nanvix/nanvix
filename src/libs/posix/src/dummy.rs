@@ -47,7 +47,7 @@ use ::sysapi::ffi::{
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn popen(command: *const c_char, mode: *const c_char) -> *mut c_void {
     ::syslog::trace!("popen(): command={command:?}, mode={mode:?}");
-    ::syslog::error!("popen(): not implemented");
+    ::syslog::debug!("popen(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
 }
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn popen(command: *const c_char, mode: *const c_char) -> *
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
     ::syslog::trace!("pclose(): stream={stream:?}");
-    ::syslog::error!("pclose(): not implemented");
+    ::syslog::debug!("pclose(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
     ::syslog::trace!("tcgetattr(): fd={fd}, termios_p={termios_p:?}");
-    ::syslog::error!("tcgetattr(): not implemented");
+    ::syslog::debug!("tcgetattr(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn tcsetattr(
     ::syslog::trace!(
         "tcsetattr(): fd={fd}, optional_actions={optional_actions}, termios_p={termios_p:?}"
     );
-    ::syslog::error!("tcsetattr(): not implemented");
+    ::syslog::debug!("tcsetattr(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -195,7 +195,7 @@ pub unsafe extern "C" fn tcsetattr(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
     ::syslog::trace!("execvp(): file={file:?}, argv={argv:?}");
-    ::syslog::error!("execvp(): not implemented");
+    ::syslog::debug!("execvp(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }
@@ -233,7 +233,7 @@ pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_char) -> *mut c_char {
     ::syslog::trace!("realpath(): path={path:?}, resolved_path={resolved_path:?}");
-    ::syslog::error!("realpath(): not implemented");
+    ::syslog::debug!("realpath(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
 }
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn ftw(
     nopenfd: c_int,
 ) -> c_int {
     ::syslog::trace!("ftw(): dirpath={dirpath:?}, fn_cb={:?}, nopenfd={nopenfd}", fn_cb);
-    ::syslog::error!("ftw(): not implemented");
+    ::syslog::debug!("ftw(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

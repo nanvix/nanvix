@@ -78,7 +78,7 @@ pub unsafe extern "C" fn execve(
 ) -> c_int {
     ::syslog::trace!("execve(): path={path:?}, argv={argv:?}, envp={envp:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/320
-    ::syslog::error!("execve(): not implemented");
+    ::syslog::debug!("execve(): not implemented");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

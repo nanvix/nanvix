@@ -43,6 +43,6 @@ pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_
     }
 
     // TODO: implement this function.
-    ::syslog::warn!("pthread_setcancelstate(): not supported, ignoring");
+    ::syslog::debug!("pthread_setcancelstate(): not supported, ignoring");
     0
 }
