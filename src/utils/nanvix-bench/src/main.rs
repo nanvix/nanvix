@@ -32,13 +32,12 @@ use crate::{
     env::get_proj_root,
 };
 use ::anyhow::Result;
+use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::hwloc::HwLoc;
 use ::indicatif::{
     ProgressBar,
     ProgressStyle,
 };
-use ::microvm::Vmm;
-use ::mio::net::UnixStream;
 use ::nanvixd::message::Kill;
 use ::reqwest::header::{
     CONTENT_TYPE,
@@ -55,7 +54,6 @@ use ::std::{
         Command,
         Stdio,
     },
-    thread,
     time::{
         Duration,
         Instant,
@@ -74,15 +72,30 @@ use ::syscall::{
     },
 };
 use ::syscomm::{
-    BlockingSocketStream,
+    ReadExact,
     SocketStream,
     SocketType,
+    UnboundSocket,
+    WriteAll,
 };
 use ::syslog::{
     debug,
     error,
 };
-use ::user_vm_api::RawUserVmIdentifier;
+use ::tokio::{
+    sync::mpsc,
+    task::JoinHandle,
+    time::sleep,
+};
+use ::user_vm_api::UserVmIdentifier;
+use ::uservm::{
+    UserVm,
+    UserVmArgs,
+    orchestrator::{
+        IoControlCommand,
+        IoControlResponse,
+    },
+};
 
 //==================================================================================================
 // Constants
@@ -166,16 +179,16 @@ impl Benchmark {
     /// nanvixd.
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/bin/microvm.elf", get_proj_root()),
-            ::microvm::args::Args::OPT_USER_VM_ID.to_string(),
+            format!("{}/bin/uservm.elf", get_proj_root()),
+            ::uservm::args::Args::OPT_USER_VM_ID.to_string(),
             "1".to_string(),
-            ::microvm::args::Args::OPT_KERNEL.to_string(),
+            ::uservm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
-            ::microvm::args::Args::OPT_INITRD.to_string(),
+            ::uservm::args::Args::OPT_INITRD.to_string(),
             self.flavour.get_program(),
         ];
         if let Some(gateway_addr) = gateway_addr {
-            user_vm_args.push(::microvm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
+            user_vm_args.push(::uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
             user_vm_args.push(gateway_addr);
         }
         if let Some(hwloc) = self.hwloc.clone() {
@@ -228,7 +241,7 @@ impl Benchmark {
         payload: nanvixd::message::New,
         headers: HeaderMap,
         l2: bool,
-    ) -> Result<(RawUserVmIdentifier, BlockingSocketStream)> {
+    ) -> Result<(UserVmIdentifier, SocketStream)> {
         let response: nanvixd::message::NewResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
@@ -250,19 +263,21 @@ impl Benchmark {
             SocketType::Unix
         };
         let gateway_stream: SocketStream = loop {
-            match SocketStream::connect(gateway_socktype, response.gateway_sockaddr.clone()) {
+            let unbound_socket: UnboundSocket = UnboundSocket::new(gateway_socktype);
+            match unbound_socket
+                .connect(response.gateway_sockaddr.clone())
+                .await
+            {
                 Ok(stream) => break stream,
                 Err(_) => continue,
             };
         };
 
-        let blocking_gateway_stream: BlockingSocketStream = gateway_stream.set_blocking()?;
-
-        Ok((response.user_vm_id, blocking_gateway_stream))
+        Ok((response.user_vm_id, gateway_stream))
     }
 
     /// Kill the Nano VM via POST request to nanvixd.
-    pub async fn kill(&mut self, user_vm_id: RawUserVmIdentifier) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
         let mut kill_msg_headers = HeaderMap::new();
         kill_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
         kill_msg_headers.insert(
@@ -332,25 +347,71 @@ impl Benchmark {
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            // Start the clock
-            let start = Instant::now();
+            let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
+                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+            let stdout_drain: JoinHandle<()> =
+                ::tokio::spawn(
+                    async move { while vcpu_thread_stdout_rx.recv().await.is_some() {} },
+                );
 
-            // Run the VMM to completion.
-            match Vmm::spawn(
-                config::kernel::MEMORY_SIZE,
-                format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
-                Some(self.flavour.get_program()),
-                None,
-                None,
-                None,
-                None,
-            )? {
-                e if e != 0 => {
-                    error!("error running VMM, exited with status: {e}");
-                    return Err(anyhow::anyhow!("VMM error"));
+            let (io_control_command_tx, io_control_rx) =
+                mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+            let (io_control_tx, mut io_control_response_rx) =
+                mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+            let io_response_drain: JoinHandle<()> =
+                ::tokio::spawn(
+                    async move { while io_control_response_rx.recv().await.is_some() {} },
+                );
+
+            let (io_thread_data_tx, memory_thread_data_rx) =
+                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+
+            let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
+            let initrd_filename: String = self.flavour.get_program();
+
+            let start = Instant::now();
+            let user_vm_handle = UserVm::spawn(UserVmArgs {
+                memory_size: config::kernel::MEMORY_SIZE,
+                kernel_filename,
+                initrd_filename: Some(initrd_filename),
+                initrd_args: None,
+                stderr: Some("/dev/null".to_string()),
+                vcpu_thread_stdout_tx,
+                memory_thread_data_rx,
+                io_control_rx,
+                io_control_tx,
+            });
+
+            let join_result = user_vm_handle.await;
+
+            drop(io_thread_data_tx);
+            drop(io_control_command_tx);
+
+            if let Err(error) = stdout_drain.await {
+                error!("error draining user VM stdout channel: {error:?}");
+            }
+            if let Err(error) = io_response_drain.await {
+                error!("error draining user VM control channel: {error:?}");
+            }
+
+            match join_result {
+                Ok(Ok(exit_status)) => {
+                    if exit_status != 0 {
+                        let reason: String =
+                            format!("error running user VM, exit-status={exit_status}");
+                        error!("{reason}");
+                        return Err(anyhow::anyhow!(reason));
+                    }
+                    debug!("User VM: done running");
                 },
-                _ => {
-                    debug!("VMM: done running");
+                Ok(Err(error)) => {
+                    error!("error running user VM: {error:?}");
+                    return Err(error);
+                },
+                Err(error) => {
+                    let reason: String = format!("error joining user VM task: {error:?}");
+                    error!("{reason}");
+                    return Err(anyhow::anyhow!(reason));
                 },
             }
 
@@ -359,7 +420,7 @@ impl Benchmark {
             pb.inc(1);
 
             // Need to give some time to clean-up
-            thread::sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION));
+            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
         }
 
         pb.finish();
@@ -403,11 +464,15 @@ impl Benchmark {
             self.setup(l2);
 
             // Start the clock.
-            let start = Instant::now();
-            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
-            gateway_stream.write_all(&payload)?;
-            gateway_stream.read_exact(&mut response_payload)?;
-            latencies.push(start.elapsed().as_micros());
+            let user_vm_id = {
+                let start = Instant::now();
+                let (user_vm_id, mut gateway_stream) =
+                    self.start(new_msg, new_msg_headers, l2).await?;
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut response_payload).await?;
+                latencies.push(start.elapsed().as_micros());
+                user_vm_id
+            };
 
             // Sanity-check the message to make sure is the same we sent.
             if response_payload != payload {
@@ -426,9 +491,9 @@ impl Benchmark {
 
             // Need to give some time to clean-up (a bit longer for L2 benchmarks).
             if l2 {
-                thread::sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION));
+                sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
             } else {
-                thread::sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION));
+                sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
             }
         }
 
@@ -468,26 +533,30 @@ impl Benchmark {
         self.setup(l2);
 
         // Start User VM.
-        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
-
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
-        for _ in 0..self.iterations {
-            let mut response_payload = [0u8; DATA_SIZE as usize];
+        let user_vm_id = {
+            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
 
-            let start = Instant::now();
-            gateway_stream.write_all(&payload)?;
-            gateway_stream.read_exact(&mut response_payload)?;
-            latencies.push(start.elapsed().as_micros());
+            for _ in 0..self.iterations {
+                let mut response_payload = [0u8; DATA_SIZE as usize];
 
-            // Sanity-check the message to make sure is the same we sent.
-            if response_payload != payload {
-                error!("received payload does not match sent payload!");
-                error!(" - sent: {payload:?}");
-                error!(" - got: {response_payload:?}");
+                let start = Instant::now();
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut response_payload).await?;
+                latencies.push(start.elapsed().as_micros());
+
+                // Sanity-check the message to make sure is the same we sent.
+                if response_payload != payload {
+                    error!("received payload does not match sent payload!");
+                    error!(" - sent: {payload:?}");
+                    error!(" - got: {response_payload:?}");
+                }
+
+                pb.inc(1);
+                sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
             }
-
-            pb.inc(1);
-        }
+            user_vm_id
+        };
 
         // Kill the user VM.
         self.kill(user_vm_id).await?;
@@ -508,7 +577,7 @@ impl Benchmark {
     /// In this micro-benchmark we measure the time for a message to travel
     /// all the way from the VMM to the guest application and back. To achieve
     /// this, we connect the user VM to a gateway that emulates linuxd.
-    pub fn run_warm_start_vmm(&mut self) -> Result<()> {
+    pub async fn run_warm_start_vmm(&mut self) -> Result<()> {
         // Display a progress bar.
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -527,68 +596,41 @@ impl Benchmark {
         payload.extend_from_slice(&data);
         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         response_buf[..payload.len()].copy_from_slice(&payload);
+        let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
+            mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+        let (io_thread_data_tx, memory_thread_data_rx) =
+            mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+        let (io_control_command_tx, io_control_rx) =
+            mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+        let (io_control_tx, mut io_control_response_rx) =
+            mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
 
-        // Initialize a UNIX pair that is directly connected to the VMM.
-        let (input_stream, vmm_stream) = UnixStream::pair()?;
-        let mut input_stream = syscomm::SocketStream::Unix(input_stream);
+        let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
+        let program: String = self.flavour.get_program();
 
-        // Initialize control-plane stream.
-        let (control_plane_stream, vmm_control_plane_stream): (UnixStream, UnixStream) =
-            UnixStream::pair()?;
-        let mut control_plane_stream: SocketStream =
-            syscomm::SocketStream::Unix(control_plane_stream);
-
-        // Spawn the VMM in a separate thread.
-        let program = self.flavour.get_program();
-        let vmm_handle = std::thread::spawn(move || -> Result<()> {
-            match Vmm::spawn(
-                config::kernel::MEMORY_SIZE,
-                format!("{}/bin/kernel.elf", get_proj_root()).as_str(),
-                Some(program),
-                None,
-                Some("/dev/null".to_string()),
-                Some(syscomm::SocketStream::Unix(vmm_stream)),
-                Some(syscomm::SocketStream::Unix(vmm_control_plane_stream)),
-            )? {
-                e if e != 0 => {
-                    error!("error running VMM, exited with status: {e}");
-                    Err(anyhow::anyhow!("VMM error"))
-                },
-                _ => {
-                    debug!("VMM: done running");
-                    Ok(())
-                },
-            }
+        let user_vm_handle = UserVm::spawn(UserVmArgs {
+            memory_size: config::kernel::MEMORY_SIZE,
+            kernel_filename,
+            initrd_filename: Some(program),
+            initrd_args: None,
+            stderr: Some("/dev/null".to_string()),
+            vcpu_thread_stdout_tx,
+            memory_thread_data_rx,
+            io_control_rx,
+            io_control_tx,
         });
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            // Before starting the timer, we need to receive the ReadRequest from the user VM.
-            let mut buf: [u8; config::kernel::IPC_MESSAGE_SIZE] =
-                [0u8; config::kernel::IPC_MESSAGE_SIZE];
-
-            // Explicitly spin-loop when receiving to isolate the overheads of the VMM.
-            let mut num_read = 0;
-            loop {
-                match input_stream.try_read_exact(&mut buf[num_read..]) {
-                    Ok(n) => {
-                        num_read += n;
-                        if num_read == buf.len() {
-                            break;
-                        }
-                    },
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "error reading from input VMM stream (error={e:?})"
-                        ));
-                    },
-                }
-            }
-
-            let ipc_read_message: Message = match Message::try_from_bytes(buf) {
-                Ok(message) => message,
-                Err(_) => return Err(anyhow::anyhow!("Error parsing buffer to IPC Read message")),
+            let ipc_read_message: Message = match vcpu_thread_stdout_rx.recv().await {
+                Some(message) => message,
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          ReadRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
             };
             let linuxd_message: LinuxDaemonMessage =
                 match LinuxDaemonMessage::try_from_bytes(ipc_read_message.payload) {
@@ -609,48 +651,70 @@ impl Benchmark {
 
             // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
             let start = Instant::now();
-            input_stream.write_all(&read_response.to_bytes())?;
+            io_thread_data_tx.send(read_response).await?;
 
-            // Explicitly spin-loop when receiving to isolate the overheads of the VMM.
-            let mut num_read = 0;
-            loop {
-                match input_stream.try_read_exact(&mut buf[num_read..]) {
-                    Ok(n) => {
-                        num_read += n;
-                        if num_read == buf.len() {
-                            break;
-                        }
-                    },
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                    Err(e) => {
-                        let reason: String =
-                            format!("error reading from input VMM stream (error={e:?})");
-                        return Err(anyhow::anyhow!(reason));
-                    },
-                }
-            }
+            let _write_request: Message = match vcpu_thread_stdout_rx.recv().await {
+                Some(message) => message,
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          WriteRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
 
             latencies.push(start.elapsed().as_micros());
 
             // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
             let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
-            input_stream.write_all(&write_response.to_bytes())?;
+            io_thread_data_tx.send(write_response).await?;
 
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
 
             pb.inc(1);
         }
 
-        // Send shutdown command to the VMM.
-        control_plane_api::send_command(
-            &mut control_plane_stream,
-            &control_plane_api::NanvixdCommand::Shutdown,
-        )?;
+        io_control_command_tx
+            .send(IoControlCommand::Shutdown)
+            .await?;
+        if let Some(response) = io_control_response_rx.recv().await {
+            if response != IoControlResponse::Shutdown {
+                let reason: String =
+                    format!("unexpected control response received during shutdown: {response:?}");
+                error!("run_warm_start_vmm(): {reason}");
+                anyhow::bail!(reason);
+            }
+        } else {
+            let reason: String = "I/O control response channel closed before receiving shutdown \
+                                  acknowledgment"
+                .to_string();
+            error!("run_warm_start_vmm(): {reason}");
+            anyhow::bail!(reason);
+        }
 
-        // Wait for the VMM to exit after we send the shutdown command.
-        match vmm_handle.join() {
-            Ok(_) => {},
-            Err(_) => return Err(anyhow::anyhow!("Error running VMM")),
+        drop(io_thread_data_tx);
+        drop(io_control_command_tx);
+
+        match user_vm_handle.await {
+            Ok(Ok(exit_status)) => {
+                if exit_status != 0 {
+                    let reason: String =
+                        format!("error running user VM, exit-status={exit_status}");
+                    error!("{reason}");
+                    return Err(anyhow::anyhow!(reason));
+                }
+                debug!("User VM: done running");
+            },
+            Ok(Err(error)) => {
+                error!("error running user VM: {error:?}");
+                return Err(error);
+            },
+            Err(error) => {
+                let reason: String = format!("error joining user VM task: {error:?}");
+                error!("{reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
         }
 
         pb.finish();
@@ -688,7 +752,7 @@ impl Benchmark {
         // Before running this experiment, we need to wait for the nano VM to
         // fully boot, as otherwise the boot time will tamper the hot-path
         // measurements.
-        thread::sleep(Duration::from_millis(200));
+        tokio::sleep(Duration::from_millis(200));
 
         // Add initial timestamp
         profiler::timestamp_message!(&mut data, 0);
@@ -883,7 +947,7 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_warm_start_vmm()
+                benchmark.run_warm_start_vmm().await
             }
         },
     };

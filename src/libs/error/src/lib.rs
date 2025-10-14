@@ -469,6 +469,30 @@ impl From<ErrorCode> for u32 {
     }
 }
 
+impl From<ErrorCode> for i32 {
+    fn from(errno: ErrorCode) -> Self {
+        errno as i32
+    }
+}
+
+impl From<ErrorCode> for i64 {
+    fn from(errno: ErrorCode) -> Self {
+        errno as i64
+    }
+}
+
+impl From<ErrorCode> for i16 {
+    fn from(errno: ErrorCode) -> Self {
+        errno as i16
+    }
+}
+
+impl From<ErrorCode> for u16 {
+    fn from(errno: ErrorCode) -> Self {
+        errno as u16
+    }
+}
+
 impl TryFrom<i64> for ErrorCode {
     type Error = Error;
 

@@ -17,8 +17,6 @@ control-plane-api = { workspace = true }
 hwloc = { workspace = true }
 indicatif = { workspace = true }
 libc = { workspace = true }
-microvm = { workspace = true }
-mio = { workspace = true, features = ["net"] }
 nanvixd = { workspace = true }
 profiler = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
@@ -30,6 +28,7 @@ syscomm = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
+uservm = { workspace = true }
 
 [features]
 default = []

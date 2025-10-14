@@ -14,7 +14,7 @@ use ::std::{
 };
 use ::syslog::error;
 use ::tokio::time::Duration;
-use ::user_vm_api::RawUserVmIdentifier;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -68,8 +68,7 @@ const UNIX_PATH_MAX: usize = 108;
 /// This constant is only used when building nanvixd as a binary, so we need to allow(dead_code)
 /// for when we build nanvixd as a library.
 ///
-#[allow(dead_code)]
-const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
 //==================================================================================================
 // Standalone Functions
@@ -172,13 +171,14 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Res
 pub fn gateway_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
-    sandbox_id: RawUserVmIdentifier,
+    sandbox_id: UserVmIdentifier,
     l2_port: &Option<TcpPort>,
 ) -> Result<String> {
     if let Some(l2_port) = l2_port {
         return Ok(format!("{}:{:?}", l2_system_vm_guest_ip(), l2_port));
     }
 
+    let sandbox_id: u32 = sandbox_id.into();
     let unix_socket_name: String =
         format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
 

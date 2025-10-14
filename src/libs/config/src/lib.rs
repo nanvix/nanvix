@@ -87,6 +87,27 @@ pub mod syscomm {
     /// instead of manually retrying in a loop.
     ///
     pub const CONNECT_TIMEOUT_SECS: u64 = 60;
+
+    ///
+    /// # Description
+    ///
+    /// Provides the timeout we should use when waiting for Linuxd to shutdown.
+    ///
+    pub const SHUTDOWN_TIMEOUT_SECS: u64 = 60;
+
+    ///
+    /// # Description
+    ///
+    /// Default socket type.
+    ///
+    pub const DEFAULT_SOCKET_TYPE_STR: &str = "unix";
+
+    ///
+    /// # Description
+    ///
+    /// Default bounded channel capacity used for cross-thread communication primitives.
+    ///
+    pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 }
 
 //==================================================================================================
