@@ -1210,32 +1210,21 @@ test-uservm:
 # Rules for Running System Level Tests Using Nanvix Daemon
 #===================================================================================================
 
-# List of supported functions in hyperlight.
-HYPERLIGHT_WHITELIST := echo-c echo-cpp echo-rust-nostd hello-c hello-cpp
-
 comma:=,
 
 define TEST_RULE
 test-$(2): all
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@echo "Running test $(2)..."
-ifeq ($(MACHINE),hyperlight)
-	@if echo "$(HYPERLIGHT_WHITELIST)" | grep -wq "$(2)"; then \
-		if [ `stat -c%s "$(1)/$(2)$(3)"` -gt 16777216 ]; then \
-			echo "\033[31mWarning: $(1)/$(2)$(3) exceeds 16 MB, skipping test.\033[0m"; \
+	@if [ ! -f "$(1)/$(2)$(3)" ]; then \
+		echo "\033[31mWarning: $(1)/$(2)$(3) missing, skipping test.\033[0m"; \
 		else \
+		echo "Running test $(2)..." ; \
 			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT); \
-		fi; \
-	else \
-		echo "\033[31mWarning: Skipping $(2) on hyperlight (not supported).\033[0m"; \
 	fi
-else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT)
-endif
 endif
 endef
 
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','["hello world!"]','hello world!'))
+$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','hello world!','hello world!'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'','["hello world!"]','hello world!'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'','["hello world!"]','hello world!'))
 $(eval $(call TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','[]','Hello$(comma) world from C!'))
@@ -1257,15 +1246,7 @@ test-$(1): all
 ifeq ($(shell basename $(WASM_BINARY)),$(1).wasm)
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@echo "Running test $(1)..."
-ifeq ($(MACHINE),hyperlight)
-	if [ `stat -c%s "bin/wasmd.elf"` -gt 16777216 ]; then \
-		echo "\033[31mWarning: bin/wasmd.elf exceeds 16 MB, skipping test!\033[0m"; \
-	else \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT); \
-	fi
-else
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT)
-endif
+	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT);
 endif
 endif
 endef

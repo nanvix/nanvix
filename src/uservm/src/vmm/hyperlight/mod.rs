@@ -17,33 +17,36 @@ use crate::{
 use ::anyhow::Result;
 use ::core::convert::TryFrom;
 use ::hyperlight_host::{
-    HyperlightError,
-    UninitializedSandbox,
-    sandbox::SandboxConfiguration,
-};
-use ::std::{
-    io::Write,
-    sync::Arc,
-};
-use hyperlight_host::{
     GuestBinary,
+    HyperlightError,
+    MultiUseSandbox,
+    UninitializedSandbox,
     mem::{
         memory_region::MemoryRegionFlags,
         mgr::SandboxMemoryManager,
         shared_mem::ExclusiveSharedMemory,
     },
-    sandbox::uninitialized::{
-        GuestBlob,
-        GuestEnvironment,
+    sandbox::{
+        SandboxConfiguration,
+        uninitialized::{
+            GuestBlob,
+            GuestEnvironment,
+        },
     },
 };
-use std::sync::OnceLock;
-use syslog::{
+use ::std::{
+    io::Write,
+    sync::{
+        Arc,
+        OnceLock,
+    },
+};
+use ::sys::error::ErrorCode;
+use ::syslog::{
     debug,
     error,
 };
-
-use tokio::{
+use ::tokio::{
     runtime::Handle,
     sync::{
         Mutex,
@@ -291,22 +294,42 @@ impl Vmm {
                 .take()
                 .ok_or_else(|| anyhow::anyhow!("sandbox already evolved"))?
         };
-        match uninit.evolve() {
-            Ok(res) => anyhow::bail!("Expected DEFAULT_VMM_SHUTDOWN_CMD, got: {:#?}", res),
-            Err(err) => {
+
+        // Run the sandbox.
+        let result: Result<MultiUseSandbox, HyperlightError> = uninit.evolve();
+
+        // Communicate shutdown to orchestrator.
+        if let Err(error) = self
+            .inner
+            .blocking_lock()
+            .control_tx
+            .blocking_send(VcpuControlResponse::Shutdown)
+        {
+            error!("run(): failed to notify vmm thread (error={error:?})");
+            // Don't bail as we are shutting down anyway.
+        }
+
+        // Parse result.
+        match result {
+            Ok(_multiuse_sandbox) => {
+                error!("run(): vmm exited");
+                Ok(ErrorCode::ConnectionAborted.into())
+            },
+            Err(error) => {
                 // note: this is a bit of a hack to check for the shutdown command.
-                if !err
+                if !error
                     .to_string()
                     .contains(&::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD.to_string())
                 {
-                    anyhow::bail!("Failed to run VMM: {}", err);
+                    error!("run(): vmm aborted (error={error:?})");
+                    Ok(ErrorCode::ConnectionReset.into())
+                } else {
+                    // FIXME (#1010): the vCPU thread already returns 0 always, but we will be able to remove
+                    // this line once we can join the vCPU thread.
+                    Ok(0)
                 }
             },
         }
-
-        // FIXME (#1010): the vCPU thread already returns 0 always, but we will be able to remove
-        // this line once we can join the vCPU thread.
-        Ok(0)
     }
 
     ///
