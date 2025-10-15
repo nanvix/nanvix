@@ -10,6 +10,7 @@
 #include "common.h"
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
@@ -34,7 +35,7 @@ int main(int argc, const char *argv[])
     assert(argc == 1);
     assert(argv[0] != NULL);
     assert(argv[1] == NULL);
-    // TODO: assert that argv[0] is the name of the executable.
+    assert(strcmp(argv[0], "misc-c.elf") == 0);
 
     test_getuid();
     test_getgid();
