@@ -588,7 +588,7 @@ OPENBLAS_LIB := $(SYSROOT_DIR)/lib/libopenblas.a
 all-openblas: $(OPENBLAS_LIB)
 
 $(OPENBLAS_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building OpenBLAS (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
@@ -601,13 +601,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-openblas: clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
 	$(RM_CMD) $(OPENBLAS_LIB)
 endif
 
 init-openblas: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
 endif
 
@@ -621,7 +621,7 @@ OPENSSL_LIB := $(SYSROOT_DIR)/lib/libssl.a
 all-openssl: $(OPENSSL_LIB)
 
 $(OPENSSL_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building OpenSSL (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
@@ -634,13 +634,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-openssl:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
 	$(RM_CMD) $(OPENSSL_LIB) $(CRYPTO_LIB)
 endif
 
 init-openssl: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
 endif
 
@@ -653,7 +653,7 @@ PYTHON_LIB := $(SYSROOT_DIR)/lib/libpython3.12.a
 all-python: $(PYTHON_LIB)
 
 $(PYTHON_LIB): init-repo install all-openssl all-sqlite all-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building Python (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
@@ -666,13 +666,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-python: clean-sqlite clean-openssl clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
 	$(RM_CMD) $(PYTHON_LIB)
 endif
 
 init-python: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
 endif
 
@@ -685,7 +685,7 @@ SQLITE_LIB := $(SYSROOT_DIR)/lib/libsqlite3.a
 all-sqlite: $(SQLITE_LIB)
 
 $(SQLITE_LIB): init-repo install all-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building SQLite (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
@@ -698,13 +698,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-sqlite: clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
 	$(RM_CMD) $(SQLITE_LIB)
 endif
 
 init-sqlite: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
 endif
 
@@ -717,7 +717,7 @@ ZLIB_LIB := $(SYSROOT_DIR)/lib/libz.a
 all-zlib: $(ZLIB_LIB)
 
 $(ZLIB_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building ZLib (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
@@ -730,13 +730,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-zlib:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
 	$(RM_CMD) $(ZLIB_LIB)
 endif
 
 init-zlib: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
 endif
 
