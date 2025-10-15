@@ -10,17 +10,48 @@ import itertools
 import argparse
 
 # ======================================================================
+# Constants
+# ======================================================================
+
+PERCENTILES = ["p50", "p95", "p99"]
+ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
+
+# ======================================================================
 # Standalone Functions
 # ======================================================================
 
 
-def read_metrics(file_path):
-    try:
-        with open(file_path, "r") as f:
-            lines = f.readlines()
-            return [int(line.split(" ")[1]) for line in lines]
-    except Exception:
-        return ["NA", "NA", "NA"]
+# Helper function to decide if the benchmark is part of the round-trip-latency
+# benchmarks or not. We have multiple tables for this benchmark to capture the
+# different percentiles for all message sizes.
+def is_round_trip_latency_bench(benchmark):
+    return benchmark.startswith(ROUND_TRIP_LATENCY_BENCH)
+
+
+def read_metrics(benchmark, file_path):
+    if not is_round_trip_latency_bench(benchmark):
+        try:
+            with open(file_path, "r") as f:
+                lines = f.readlines()
+                return [int(line.split(" ")[1]) for line in lines]
+        except Exception:
+            return ["NA", "NA", "NA"]
+    else:
+        percentile = benchmark[-3:]
+        # The benchmark results are formatted like:
+        # size:\tp50\tp95\tp90
+        # so the index for each percentile is 1 + their index in PERCENTILES.
+        line_idx = PERCENTILES.index(percentile) + 1
+        try:
+            print(file_path)
+            with open(file_path, "r") as f:
+                lines = f.readlines()
+                lines = [line.strip() for line in lines]
+                print(lines[0])
+                print(lines[0].split("\t"))
+                return [int(line.split("\t")[line_idx]) for line in lines]
+        except Exception:
+            return ["NA", "NA", "NA", "NA", "NA", "NA"]
 
 
 def make_header(benchmark, table_width):
@@ -63,7 +94,7 @@ def generate_tables(dev_dir, target_dir, benchmarks, machines, archs):
         machine_header_parts = [f" {'':^{first_col_width-2}} "]
         for machine, arch in groups:
             machine_name = f"{machine} ({arch})"
-            # Each machine spans 3 sub-columns of 12 chars + 2 separators = 38 chars
+            # Each machine spans 3 sub-columns + 2 separators
             machine_span = sub_col_width * 3 + 2
             machine_header_parts.append(f"{machine_name:^{machine_span}}")
         machine_header_line = "|" + "|".join(machine_header_parts) + "|"
@@ -82,23 +113,32 @@ def generate_tables(dev_dir, target_dir, benchmarks, machines, archs):
         sub_header_line = "|" + "|".join(sub_header_parts) + "|"
         table_lines.append(sub_header_line)
 
-        # Data rows (p50, p95, p99)
-        percentiles = ["p50", "p95", "p99"]
+        print("tmp val", is_round_trip_latency_bench(benchmark))
+        if not is_round_trip_latency_bench(benchmark):
+            # Data rows (p50, p95, p99)
+            print(f"FOO: {benchmark}")
+            rows = PERCENTILES
+        else:
+            # We should consider parsing these values from the results file.
+            rows = ["32 B", "64 B", "128 B", "256 B", "512 B", "1 KiB", "4 KiB"]
 
-        for p_idx, percentile in enumerate(percentiles):
-            row_parts = [f" {percentile:^{first_col_width-2}} "]
+        for row_idx, row_label in enumerate(rows):
+            row_parts = [f" {row_label:^{first_col_width-2}} "]
 
             for machine, arch in groups:
                 bench_name = benchmark.replace("-", "_")
+                if is_round_trip_latency_bench(benchmark):
+                    bench_name = bench_name[:-4]
+
                 filename = f"bench_{bench_name}_{machine}_{arch}.txt"
                 dev_path = os.path.join(dev_dir, filename)
                 tgt_path = os.path.join(target_dir, filename)
 
-                dev_vals = read_metrics(dev_path)
-                tgt_vals = read_metrics(tgt_path)
+                dev_vals = read_metrics(benchmark, dev_path)
+                tgt_vals = read_metrics(benchmark, tgt_path)
 
-                dev_val = dev_vals[p_idx] if p_idx < len(dev_vals) else "NA"
-                tgt_val = tgt_vals[p_idx] if p_idx < len(tgt_vals) else "NA"
+                dev_val = dev_vals[row_idx] if row_idx < len(dev_vals) else "NA"
+                tgt_val = tgt_vals[row_idx] if row_idx < len(tgt_vals) else "NA"
 
                 # Calculate delta
                 if tgt_val == "NA" or dev_val == "NA":
@@ -169,6 +209,13 @@ if __name__ == "__main__":
     benchmarks = args.benchmarks.split(",")
     machines = args.machine_types.split(",")
     archs = args.archs.split(",")
+
+    # For the round-trip-latency benchmark we generate three tables, one for
+    # p50, one for p95, and one for p99.
+    if ROUND_TRIP_LATENCY_BENCH in benchmarks:
+        benchmarks.remove(ROUND_TRIP_LATENCY_BENCH)
+        for percentile in PERCENTILES:
+            benchmarks.append(f"{ROUND_TRIP_LATENCY_BENCH}-{percentile}")
 
     bench_summary = generate_tables(
         args.dev_dir, args.target_dir, benchmarks, machines, archs
