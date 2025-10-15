@@ -32,13 +32,17 @@ use crate::{
         platform::{
             bootinfo::BootInfo,
             madt::MadtInfo,
+            peb::ProcessEnvironmentBlock,
         },
     },
     kmod::KernelModule,
 };
 use ::alloc::{
     collections::linked_list::LinkedList,
-    string::ToString,
+    string::{
+        String,
+        ToString,
+    },
 };
 use ::arch::{
     mem,
@@ -56,10 +60,6 @@ use ::sys::{
         Address,
         VirtualAddress,
     },
-};
-use peb::{
-    ProcessEnvironmentBlock,
-    GUEST_HANDLE,
 };
 
 //==================================================================================================
@@ -239,81 +239,40 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 
     let peb_base: usize =
         unsafe { ::sys::mm::align_up(&__KERNEL_END as *const u8 as usize, PAGE_ALIGNMENT) };
+    let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
     unsafe {
-        ProcessEnvironmentBlock::init(peb_base as *mut HyperlightPEB)?;
+        ProcessEnvironmentBlock::init(peb_ptr)?;
         ProcessEnvironmentBlock::set_guest_function_dispatch_ptr(0xdeadbeef)?;
     };
 
     // Read actual size and relocate only that amount
-    let (initrd_base, initrd_size) = unsafe {
-        match GUEST_HANDLE.peb() {
-            Some(peb_ptr) => {
-                let current_data_start = (*peb_ptr).init_data.ptr as usize;
-                let total_size = (*peb_ptr).init_data.size as usize;
+    let (initrd_base, initrd_size, (cmdline_len, cmdline)) = unsafe {
+        let current_data_start = (*peb_ptr).init_data.ptr as usize;
+        let total_size = (*peb_ptr).init_data.size as usize;
 
-                // Read the actual initrd size from the first INITRD_SIZE_BYTES bytes
-                let size_bytes = core::slice::from_raw_parts(
-                    current_data_start as *const u8,
-                    ::config::hyperlight::INITRD_SIZE_BYTES,
-                );
-                let actual_initrd_size = u64::from_le_bytes([
-                    size_bytes[0],
-                    size_bytes[1],
-                    size_bytes[2],
-                    size_bytes[3],
-                    size_bytes[4],
-                    size_bytes[5],
-                    size_bytes[6],
-                    size_bytes[7],
-                ]) as usize;
+        let (initrd_base, actual_initrd_size, initrd_cmdline) =
+            parse_initrd_image(current_data_start, total_size)?;
 
-                // The actual initrd data starts after the INITRD_SIZE_BYTES-byte header
-                let current_initrd_start =
-                    current_data_start + ::config::hyperlight::INITRD_SIZE_BYTES;
-
-                debug!(
-                    "initrd: found at 0x{current_initrd_start:08x}, actual size: \
-                     {actual_initrd_size} bytes (total allocation: {total_size} bytes)"
-                );
-
-                if current_initrd_start != ::config::hyperlight::DEFAULT_INITRD_BASE {
-                    let src_ptr = current_initrd_start as *const u8;
-                    let dst_ptr = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
-
-                    core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
-
-                    debug!(
-                        "initrd relocated from {current_initrd_start:#010x} to {:#010x}",
-                        ::config::hyperlight::DEFAULT_INITRD_BASE
-                    );
-
-                    (::config::hyperlight::DEFAULT_INITRD_BASE, actual_initrd_size)
-                } else {
-                    (current_initrd_start, actual_initrd_size)
-                }
-            },
-            None => {
-                error!("PEB not initialized");
-                return Err(Error::new(ErrorCode::NoSuchDevice, "PEB not initialized"));
-            },
-        }
+        (initrd_base, actual_initrd_size, initrd_cmdline)
     };
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
     // Register initrd as a kernel module.
-    if initrd_size != 0 {
-        info!("initrd_base={:#010x}, initrd_size={:#010x}", initrd_base, initrd_size);
 
-        // Add kernel module to the list of kernel modules.
-        let module: KernelModule = KernelModule::new(
-            PhysicalAddress::from_raw_value(initrd_base)?,
-            initrd_size,
-            "initrd".to_string(),
-        );
-        kernel_modules.push_back(module);
-    }
+    info!(
+        "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
+        initrd_base,
+        initrd_size,
+        cmdline_len,
+        cmdline.as_str()
+    );
+
+    // Add kernel module to the list of kernel modules.
+    let module: KernelModule =
+        KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
+    kernel_modules.push_back(module);
 
     Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
 }
@@ -444,4 +403,204 @@ pub fn init(
         #[cfg(feature = "pit")]
         _pit: register_pit(ioports)?,
     })
+}
+
+///
+/// # Description
+///
+/// Parses the initrd image and relocates it to the default initrd base address if needed.
+///
+/// # Parameters
+///
+/// - `init_data_start`: Address where the init data blob begins.
+/// - `total_allocation_size`: Total allocation size for the init data blob.
+///
+/// # Return Value
+///
+/// On success, this function returns a tuple containing:
+/// - The base address of the initrd payload.
+/// - The actual size of the initrd payload.
+/// - A tuple with the length of the command line and the command line string.
+///
+/// Otherwise, it returns an error.
+///
+/// # Safety
+///
+/// This function is unsafe because it performs unchecked pointer arithmetic and dereferences raw
+/// pointers. Callers must ensure that the provided memory ranges are valid and mapped.
+///
+unsafe fn parse_initrd_image(
+    init_data_start: usize,
+    total_allocation_size: usize,
+) -> Result<(usize, usize, (u8, String)), Error> {
+    // Check if allocation is too small to hold the initrd header.
+    if total_allocation_size < ::config::hyperlight::INITRD_SIZE_BYTES {
+        let reason: &str = "insufficient initrd allocation size";
+        error!("parse_initrd_image(): {reason} (total_allocation_size={total_allocation_size})");
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    // Read actual size and relocate only that amount
+    let initrd_header: &[u8] = core::slice::from_raw_parts(
+        init_data_start as *const u8,
+        ::config::hyperlight::INITRD_SIZE_BYTES,
+    );
+    let actual_initrd_size: usize = u64::from_le_bytes([
+        initrd_header[0],
+        initrd_header[1],
+        initrd_header[2],
+        initrd_header[3],
+        initrd_header[4],
+        initrd_header[5],
+        initrd_header[6],
+        initrd_header[7],
+    ]) as usize;
+
+    // Compute offsets and check for overflows.
+    let payload_offset: usize = ::config::hyperlight::INITRD_SIZE_BYTES;
+    let current_initrd_start: usize = match init_data_start.checked_add(payload_offset) {
+        Some(value) => value,
+        None => {
+            let reason: &str = "initrd payload address overflow";
+            error!("parse_initrd_image(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+
+    // Check if actual size is valid.
+    let required_allocation: usize = match payload_offset.checked_add(actual_initrd_size) {
+        Some(value) => value,
+        None => {
+            let reason: &str = "initrd required allocation size overflow";
+            error!("parse_initrd_image(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+
+    // Check if allocation is too small to hold the actual initrd payload.
+    if total_allocation_size < required_allocation {
+        let reason: &str = "initrd payload truncated";
+        error!(
+            "parse_initrd_image(): {reason} (total_allocation_size={total_allocation_size}, \
+             required_allocation={required_allocation})"
+        );
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    debug!(
+        "parse_initrd_image(): initrd found at 0x{current_initrd_start:08x}, actual size: \
+         {actual_initrd_size} bytes (total allocation: {total_allocation_size} bytes)"
+    );
+
+    // Read initrd command line.
+    let initrd_cmdline: (u8, String) =
+        read_initrd_cmdline(current_initrd_start, actual_initrd_size, total_allocation_size)?;
+
+    // Relocate initrd to default base address if needed.
+    let initrd_base: usize = if current_initrd_start != ::config::hyperlight::DEFAULT_INITRD_BASE {
+        let src_ptr: *const u8 = current_initrd_start as *const u8;
+        let dst_ptr: *mut u8 = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
+        core::ptr::copy(src_ptr, dst_ptr, actual_initrd_size);
+
+        debug!(
+            "parse_initrd_image(): initrd relocated from {current_initrd_start:#010x} to {:#010x}",
+            ::config::hyperlight::DEFAULT_INITRD_BASE
+        );
+        ::config::hyperlight::DEFAULT_INITRD_BASE
+    } else {
+        current_initrd_start
+    };
+
+    Ok((initrd_base, actual_initrd_size, initrd_cmdline))
+}
+
+///
+/// # Description
+///
+/// Reads the initrd command line from the initrd payload if present.
+///
+/// # Parameters
+///
+/// - `initrd_start`: Address where the initrd payload begins.
+/// - `initrd_size`: Size of the initrd payload.
+/// - `total_allocation_size`: Total allocation size that includes the initrd and any extra data.
+///
+/// # Returns
+///
+/// On success, this function returns a tuple containing the length of the command line and the
+/// command line string. Otherwise, it returns an error.
+///
+/// # Safety
+///
+/// This function is unsafe because it performs unchecked pointer arithmetic and dereferences raw
+/// pointers. Callers must ensure that the provided ranges are valid and mapped.
+///
+unsafe fn read_initrd_cmdline(
+    initrd_start: usize,
+    initrd_size: usize,
+    total_allocation_size: usize,
+) -> Result<(u8, String), Error> {
+    let args_section_size: usize =
+        total_allocation_size.saturating_sub(::config::hyperlight::INITRD_SIZE_BYTES + initrd_size);
+
+    // Check if initrd arguments section is missing.
+    if args_section_size == 0 {
+        let reason: &str = "initrd arguments section missing";
+        error!("read_initrd_cmdline(): {reason}");
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    // Compute offset to arguments length byte and check for overflows.
+    let args_len_offset: usize = match initrd_start.checked_add(initrd_size) {
+        Some(offset) => offset,
+        None => {
+            let reason: &str = "initrd arguments address overflow";
+            error!("read_initrd_cmdline(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+
+    // Compute offset to arguments payload and check for overflows.
+    let args_bytes_offset: usize = match args_len_offset.checked_add(1) {
+        Some(offset) => offset,
+        None => {
+            let reason: &str = "initrd arguments payload address overflow";
+            error!("read_initrd_cmdline(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+
+    // Check if arguments length byte is missing.
+    if args_section_size < 1 {
+        let reason: &str = "initrd arguments length byte missing";
+        error!("read_initrd_cmdline(): {reason}");
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    let args_len: u8 = *(args_len_offset as *const u8);
+    let args_payload_size: usize = usize::from(args_len);
+
+    if args_section_size < 1 + args_payload_size {
+        let reason: &str = "initrd arguments truncated";
+        error!(
+            "read_initrd_cmdline(): {reason} (args_section_size={args_section_size}, \
+             args_len={args_len})"
+        );
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    let args_bytes: &[u8] =
+        core::slice::from_raw_parts(args_bytes_offset as *const u8, args_payload_size);
+
+    // Convert arguments to UTF-8 string and check for errors.
+    let args_str: &str = match core::str::from_utf8(args_bytes) {
+        Ok(value) => value,
+        Err(_) => {
+            let reason: &str = "invalid UTF-8 in initrd arguments";
+            error!("read_initrd_cmdline(): {reason}");
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        },
+    };
+
+    Ok((args_len, args_str.to_string()))
 }

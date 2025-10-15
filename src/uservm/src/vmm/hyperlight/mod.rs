@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::arch::mem::PAGE_SIZE;
 use ::core::convert::TryFrom;
 use ::hyperlight_host::{
     GuestBinary,
@@ -36,6 +37,7 @@ use ::hyperlight_host::{
 };
 use ::std::{
     io::Write,
+    path::Path,
     sync::{
         Arc,
         OnceLock,
@@ -106,11 +108,11 @@ impl Vmm {
         let stack_size: usize = 4 * 1024;
         let memory_size: usize = args.memory_size;
 
-        let guest_env: GuestEnvironment = if let Some(ref initrd_filename) = args.initrd_filename {
+        let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {
             match std::fs::read(initrd_filename) {
                 Ok(bytes) => {
-                    let actual_size: usize = bytes.len();
-                    debug!("initrd: {} bytes", actual_size);
+                    let initrd_size: usize = bytes.len();
+                    debug!("initrd: {} bytes", initrd_size);
 
                     let kernel_metadata: ::std::fs::Metadata =
                         std::fs::metadata(&args.kernel_filename).map_err(|e| {
@@ -129,40 +131,54 @@ impl Vmm {
                             anyhow::anyhow!(reason)
                         })?;
 
-                    let initrd_bytes: Vec<u8> = std::fs::read(initrd_filename)?;
-                    let initrd_size: usize = initrd_bytes.len();
+                    let initrd_args_bytes: Vec<u8> =
+                        Self::build_args_bytes(initrd_filename, &args.initrd_args)?;
 
                     // PEB, I/O buffers, host fxn defs, guard pages, etc.
-                    let reserved_pages: usize = 11 * 4096;
+                    let reserved_pages: usize = 11 * PAGE_SIZE;
 
-                    let used_memory: usize =
-                        kernel_size + initrd_size + (heap_size + stack_size) + reserved_pages;
+                    let required_memory: usize = kernel_size
+                        + initrd_size
+                        + (heap_size + stack_size)
+                        + reserved_pages
+                        + ::config::hyperlight::INITRD_SIZE_BYTES
+                        + initrd_args_bytes.len();
 
-                    if memory_size <= used_memory {
-                        return Err(anyhow::anyhow!(
-                            "Not enough memory ({} bytes used, {} bytes total)",
-                            used_memory,
-                            memory_size
-                        ));
+                    // Check if required memory exceeds memory size.
+                    if memory_size <= required_memory {
+                        let reason: &str = "not enough memory";
+                        error!(
+                            "new(): {reason} ({required_memory} bytes required, {memory_size} \
+                             bytes total)"
+                        );
+                        return Err(anyhow::anyhow!(reason));
                     }
 
-                    let padding_size: usize = memory_size - used_memory;
+                    let padding_size: usize = memory_size - required_memory;
 
                     // Create a new vector with size header + original data + padding
-                    let mut padded_bytes: Vec<u8> =
-                        Vec::with_capacity(::config::hyperlight::INITRD_SIZE_BYTES + actual_size);
+                    let mut padded_bytes: Vec<u8> = Vec::with_capacity(
+                        ::config::hyperlight::INITRD_SIZE_BYTES
+                            + initrd_size
+                            + initrd_args_bytes.len(),
+                    );
 
                     // Write the actual size as first INITRD_SIZE_BYTES-bytes (little-endian)
-                    padded_bytes.extend_from_slice(&(actual_size as u64).to_le_bytes());
+                    padded_bytes.extend_from_slice(&(initrd_size as u64).to_le_bytes());
 
                     // Add the actual initrd data
                     padded_bytes.extend_from_slice(&bytes);
 
+                    // Append length-prefixed initrd arguments so the guest can consume them.
+                    padded_bytes.extend_from_slice(&initrd_args_bytes);
+
                     debug!(
-                        "initrd with padding: {} bytes total (8 byte header + {} bytes data + {} \
-                         bytes padding)",
+                        "initrd blob: {} bytes total ({} byte header + {} bytes data + 1 byte \
+                         args length + {} bytes args payload), extra memory: {} bytes",
                         padded_bytes.len(),
-                        actual_size,
+                        ::config::hyperlight::INITRD_SIZE_BYTES,
+                        initrd_size,
+                        initrd_args_bytes.len(),
                         padding_size
                     );
 
@@ -374,5 +390,52 @@ impl Vmm {
             format!("create_snapshot(): not implemented for filepath={}", filepath);
         error!("{}", reason);
         Err(anyhow::anyhow!(reason))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Encodes the program name and arguments into a byte vector suitable for passing to the guest.
+    /// The first byte of the vector indicates the length of the arguments, followed by the program
+    /// name and arguments as a null-terminated string.
+    ///
+    /// # Parameters
+    ///
+    /// - `program_name`: The name of the program to be executed.
+    /// - `program_args`: An optional string containing the arguments to be passed to the program.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns a vector of bytes representing the encoded arguments.
+    /// On failure, it returns an error.
+    ///
+    fn build_args_bytes(program_name: &String, program_args: &Option<String>) -> Result<Vec<u8>> {
+        // Extract filename.
+        let mut args_string: String = Path::new(program_name)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| program_name.to_string());
+
+        // Push arguments.
+        if let Some(program_args) = program_args {
+            if !program_args.is_empty() {
+                args_string.push(' ');
+                args_string.push_str(program_args);
+            }
+        }
+
+        // Encode length-prefixed arguments.
+        let args_bytes: Vec<u8> = args_string.into_bytes();
+        let args_len: u8 = match u8::try_from(args_bytes.len()) {
+            Ok(value) => value,
+            Err(_) => {
+                let reason: String =
+                    format!("initrd arguments too long (len={})", args_bytes.len());
+                error!("build_args_bytes(): {}", reason);
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        Ok([&[args_len], &args_bytes[..]].concat())
     }
 }
