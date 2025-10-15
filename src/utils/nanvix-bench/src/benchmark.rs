@@ -22,6 +22,7 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartL2,
+    RoundTripLatency,
     WarmStart,
     WarmStartL2,
     WarmStartVMM,
@@ -34,6 +35,9 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::RoundTripLatency => {
+                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+            },
             BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStartVMM => {
@@ -52,6 +56,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
+            BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
@@ -69,6 +74,7 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
+            "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
