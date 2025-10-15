@@ -749,7 +749,7 @@ QUICKJS_LIB := $(SYSROOT_DIR)/lib/libquickjs.a
 all-quickjs: $(QUICKJS_LIB)
 
 $(QUICKJS_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@if [ ! -f $@ ]; then \
 		echo "Building QuickJS (missing) ..."; \
 		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs; \
@@ -762,13 +762,13 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 endif
 
 clean-quickjs:
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
 	$(RM_CMD) $(QUICKJS_LIB)
 endif
 
 init-quickjs: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
 endif
 
@@ -1262,9 +1262,11 @@ QUICKJS_BINARY := $(SYSROOT_DIR)/bin/qjs
 
 define QUICKJS_TEST_RULE
 test-quickjs-$(1): all
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
-	@echo "Running test $(1)..."
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(QUICKJS_BINARY) "--std $(SOURCES_DIR)/tests/quickjs/$(1).js" $(2) $(3) $(TIMEOUT)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	@if [ -f "$(QUICKJS_BINARY)" ]; then \
+		echo "Running test $(1)..."; \
+		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(QUICKJS_BINARY) "--std $(SOURCES_DIR)/tests/quickjs/$(1).js" $(2) $(3) $(TIMEOUT); \
+	fi
 endif
 endef
 
