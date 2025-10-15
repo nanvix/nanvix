@@ -570,7 +570,7 @@ unsafe fn read_initrd_cmdline(
         },
     };
 
-    // Check if arguments length byte is missing>
+    // Check if arguments length byte is missing.
     if args_section_size < 1 {
         let reason: &str = "initrd arguments length byte missing";
         error!("read_initrd_cmdline(): {reason}");
