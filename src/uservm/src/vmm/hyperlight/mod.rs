@@ -61,8 +61,11 @@ use ::tokio::{
 // Globals
 // ==================================================================================================
 
-pub static VMEM: OnceLock<Arc<Mutex<SandboxMemoryManager<ExclusiveSharedMemory>>>> =
-    OnceLock::new();
+/// Global handle to the guest information, used to enable access from the input handler.
+pub static GUEST: OnceLock<Arc<Mutex<Guest>>> = OnceLock::new();
+
+/// Global handle to the virtual memory manager, used to enable access from the input handler.
+pub static VMEM: OnceLock<Arc<Mutex<VirtualMemory>>> = OnceLock::new();
 
 //==================================================================================================
 // Types
@@ -101,7 +104,7 @@ struct InnerVmm {
 
 impl Vmm {
     pub fn new(args: MicroVmArgs) -> Result<Self> {
-        let guest: Guest = Guest;
+        let guest: Guest = Guest::default();
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size: usize = 4 * 1024 * 1024;
@@ -235,8 +238,17 @@ impl Vmm {
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory {
             manager: manager.clone(),
         }));
-        VMEM.set(Arc::new(Mutex::new(manager))).map_err(|_| {
-            anyhow::anyhow!("Failed to set VMEM: already initialized or not available")
+        VMEM.set(vmem.clone()).map_err(|_| {
+            let reason: &str = "Failed to initialize vmem handle (already initialized)";
+            error!("new(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
+        GUEST.set(guest.clone()).map_err(|_| {
+            let reason: &str = "Failed to initialize guest handle (already initialized)";
+            error!("new(): {reason}");
+            anyhow::anyhow!(reason)
         })?;
 
         // Create a closure that takes a String and writes it to stderr.
@@ -267,7 +279,7 @@ impl Vmm {
         Ok(Self {
             vmem,
             sandbox: Arc::new(Mutex::new(Some(sandbox))),
-            guest: Arc::new(Mutex::new(guest)),
+            guest,
             inner: Arc::new(Mutex::new(InnerVmm {
                 control_tx: args.control_tx,
             })),
