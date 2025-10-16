@@ -182,6 +182,12 @@ static PERF_VMBUS_READ: AtomicUsize = AtomicUsize::new(0);
 /// Number of times that `vmbus_write` was called.
 static PERF_VMBUS_WRITE: AtomicUsize = AtomicUsize::new(0);
 
+/// Number of IKC messages sent.
+static PERF_IKC_MESSAGES_SENT: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of IKC messages received.
+static PERF_IKC_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -457,6 +463,8 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("- Ticks: {:?}", pm::ticks());
     info!("- No. Times VMBus Read Was Called: {:?}", PERF_VMBUS_READ.load(Ordering::Relaxed));
     info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
+    info!("- No. IKC Messages Sent: {:?}", PERF_IKC_MESSAGES_SENT.load(Ordering::Relaxed));
+    info!("- No. IKC Messages Received: {:?}", PERF_IKC_MESSAGES_RECEIVED.load(Ordering::Relaxed));
 
     trace!("the system will shutdown now!");
     kernel_magic_string(status);
