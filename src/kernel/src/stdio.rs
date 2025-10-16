@@ -5,8 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::platform;
-use ::core::mem;
+use crate::{
+    hal::platform,
+    PERF_IKC_MESSAGES_RECEIVED,
+    PERF_IKC_MESSAGES_SENT,
+};
+use ::core::{
+    mem,
+    sync::atomic::Ordering,
+};
 use ::sys::{
     error::{
         Error,
@@ -51,6 +58,8 @@ pub fn write(message: Message) -> Result<(), Error> {
         // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
         platform::vmbus_write(&bytes as *const u8);
     }
+
+    PERF_IKC_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
 
     Ok(())
 }
@@ -101,6 +110,8 @@ pub fn read() -> Result<Option<Message>, Error> {
         // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
         platform::vmbus_read(&mut message as *mut u8);
     };
+
+    PERF_IKC_MESSAGES_RECEIVED.fetch_add(1, Ordering::Relaxed);
 
     // Convert message to Message struct.
     match Message::try_from_bytes(message) {
