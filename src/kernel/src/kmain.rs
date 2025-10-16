@@ -153,34 +153,34 @@ mod startup {
 static mut CORES_ONLINE: AtomicUsize = AtomicUsize::new(1);
 
 /// Performance counter for the number of times the kernel was idle.
-pub static PERF_SCHED_KERNEL_IDLE: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_KERNEL_IDLE: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of soft context switches that occurred.
-pub static PERF_SCHED_SOFT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_SOFT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of involuntary context switches that occurred.
-pub static PERF_SCHED_HARD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_HARD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of context switches that  were triggered by `exit`.
-pub static PERF_SCHED_EXIT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_EXIT_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of context switches that were triggered by `exit_thread`.
-pub static PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of context switches that were triggered by `sleep`.
-pub static PERF_SCHED_SLEEP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_SLEEP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of context switches that were triggered by `giveup`.
-pub static PERF_SCHED_GIVEUP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_GIVEUP_CONTEXT_SWITCHES: AtomicUsize = AtomicUsize::new(0);
 
 /// Performance counter for the number of times `wakeup` was called.
-pub static PERF_SCHED_WAKEUP: AtomicUsize = AtomicUsize::new(0);
+static PERF_SCHED_WAKEUP: AtomicUsize = AtomicUsize::new(0);
 
 /// Number of times that `vmbus_read` was called.
-pub static PERF_VMBUS_READ: AtomicUsize = AtomicUsize::new(0);
+static PERF_VMBUS_READ: AtomicUsize = AtomicUsize::new(0);
 
 /// Number of times that `vmbus_write` was called.
-pub static PERF_VMBUS_WRITE: AtomicUsize = AtomicUsize::new(0);
+static PERF_VMBUS_WRITE: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // Standalone Functions
