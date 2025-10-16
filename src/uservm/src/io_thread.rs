@@ -5,16 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::orchestrator::{
-    IoControlCommand,
-    IoControlResponse,
+use crate::{
+    IO_THREAD_NUM_MESSAGES_RECEIVED,
+    orchestrator::{
+        IoControlCommand,
+        IoControlResponse,
+    },
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
-use ::std::mem;
+use ::std::{
+    mem,
+    sync::atomic::Ordering,
+};
 use ::sys::ipc::Message;
 use ::syscomm::{
     SocketStream,
@@ -153,6 +159,8 @@ impl IoThread {
                                 buf.fill(0);
                                 buf_len = 0;
 
+                                on_message_received_from_system_vm();
+
                                 // Push message to incoming queue.
                                 data_tx.send(message).await?;
                             }
@@ -253,4 +261,17 @@ impl IoThread {
             }
         }
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Handler to be called whenever a message is received from the system VM.
+///
+fn on_message_received_from_system_vm() {
+    IO_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
 }
