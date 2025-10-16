@@ -33,10 +33,10 @@ use ::sys::{
 };
 use ::sysapi::{
     ffi::{
-        c_char,
         c_int,
         c_uchar,
     },
+    limits::NAME_MAX,
     sys_types::{
         c_size_t,
         ino_t,
@@ -65,9 +65,8 @@ pub struct GetDirectoryEntriesRequest {
 ::static_assert::assert_eq_size!(GetDirectoryEntriesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl GetDirectoryEntriesRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
-        - core::mem::size_of::<c_int>()
-        - core::mem::size_of::<u32>();
+    pub const PADDING_SIZE: usize =
+        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<u32>();
 
     /// Maximum number of entries in the request.
     pub const MAX_ENTRIES: usize = MAX_ENTRIES;
@@ -126,7 +125,12 @@ impl GetDirectoryEntriesResponse {
     /// Maximum number of entries in the response.
     pub const MAX_ENTRIES: usize = MAX_ENTRIES;
     /// Maximum size of message.
-    pub const MAX_SIZE: usize = Self::MAX_ENTRIES * mem::size_of::<posix_dent>();
+    pub const MAX_SIZE: usize = Self::MAX_ENTRIES
+        * (mem::size_of::<ino_t>() // d_ino
+            + mem::size_of::<reclen_t>() // d_reclen
+            + mem::size_of::<c_uchar>() // d_type
+            + mem::size_of::<u32>() // d_name length
+            + (NAME_MAX + 1) * mem::size_of::<c_uchar>()); // d_name
 
     pub fn new(entries: Vec<posix_dent>) -> Self {
         GetDirectoryEntriesResponse { entries }
@@ -159,6 +163,9 @@ impl MessageSerializer for GetDirectoryEntriesResponse {
             bytes.extend_from_slice(d_name);
         }
 
+        // The serialized message that we build must not exceed the maximum size that we claim.
+        debug_assert!(bytes.len() <= Self::MAX_SIZE, "serialized message is too large");
+
         bytes
     }
 }
@@ -187,7 +194,7 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid length of entries"))?,
         ) as usize;
-        offset += mem::size_of::<usize>();
+        offset += mem::size_of::<u32>();
 
         for _ in 0..count {
             let mut entry: posix_dent = posix_dent::default();
@@ -222,7 +229,7 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
             }
 
             entry.d_name[..d_name_len].copy_from_slice(&bytes[offset..offset + d_name_len]);
-            offset += d_name_len * mem::size_of::<c_char>();
+            offset += d_name_len * mem::size_of::<c_uchar>();
 
             entries.push(entry);
         }
