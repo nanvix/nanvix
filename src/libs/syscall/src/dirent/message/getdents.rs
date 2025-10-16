@@ -33,7 +33,6 @@ use ::sys::{
 };
 use ::sysapi::{
     ffi::{
-        c_char,
         c_int,
         c_uchar,
     },
@@ -187,7 +186,7 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
                 .try_into()
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid length of entries"))?,
         ) as usize;
-        offset += mem::size_of::<usize>();
+        offset += mem::size_of::<u32>();
 
         for _ in 0..count {
             let mut entry: posix_dent = posix_dent::default();
@@ -222,7 +221,7 @@ impl MessageDeserializer for GetDirectoryEntriesResponse {
             }
 
             entry.d_name[..d_name_len].copy_from_slice(&bytes[offset..offset + d_name_len]);
-            offset += d_name_len * mem::size_of::<c_char>();
+            offset += d_name_len * mem::size_of::<c_uchar>();
 
             entries.push(entry);
         }
