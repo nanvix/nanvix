@@ -15,8 +15,14 @@ use ::sys::{
 //  Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Mailbox.
+///
 #[derive(Default)]
 pub struct Mailbox {
+    /// Buffered messages.
     buffer: LinkedList<Message>,
 }
 
@@ -25,12 +31,35 @@ pub struct Mailbox {
 //==================================================================================================
 
 impl Mailbox {
+    ///
+    /// # Description
+    ///
+    /// Posts a message into the mailbox.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: Message to be sent.
+    ///
     pub fn send(&mut self, message: Message) {
         self.buffer.push_back(message);
     }
 
+    ///
+    /// # Description
+    ///
+    /// Attempts to consume a message addressed to the given thread or its process.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Target thread identifier.
+    ///
+    /// # Returns
+    ///
+    /// If a message that was addressed to the given thread or its process was found,
+    /// it is returned. Otherwise, no message is returned instead.
+    ///
     pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<Message> {
-        // Locate the first message that the given thread received.
+        // Search for a message that is addressed to the thread.
         let message_index = self
             .buffer
             .iter()
@@ -41,7 +70,7 @@ impl Mailbox {
             return Some(self.buffer.remove(index));
         }
 
-        // Locate the first message that the current thread received.
+        // Locate the first message that is addressed to the process.
         let message_index = self
             .buffer
             .iter()
