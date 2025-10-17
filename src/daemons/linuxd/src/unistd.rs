@@ -309,9 +309,15 @@ pub fn do_getcwd(tid: ThreadIdentifier) -> Result<Vec<Message>, WorkerThreadErro
             return Err(WorkerThreadError::Interrupted);
         }
 
-        debug!("libc::getcwd(): errno={tid:?}");
-        let error: ErrorCode =
-            ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+        error!("libc::getcwd(): errno={errno:?}");
+        let error: ErrorCode = match ErrorCode::try_from(errno) {
+            Ok(error) => error,
+            Err(_) => {
+                let reason: &str = "unknown error code";
+                warn!("do_getcwd(): {reason} (errno={errno:?})");
+                ErrorCode::ValueOutOfRange
+            },
+        };
         Ok(vec![crate::build_error(tid, error)])
     }
 }
