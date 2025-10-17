@@ -13,21 +13,15 @@ inputs:
     description: "Log level"
     required: true
     default: "trace"
+  machine-type:
+    description: "Machine type"
+    required: true
+    default: "qemu-pc"
 
 runs:
   using: "composite"
   steps:
-  - name: "Test (qemu-pc)"
+  - name: "Test (${{ inputs.machine-type }})"
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=qemu-pc --${{ inputs.release }} --test
-    shell: bash
-
-  - name: "Test (microvm)"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --test
-    shell: bash
-
-  - name: "Test (hyperlight)"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --test
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --test
     shell: bash
