@@ -13,21 +13,15 @@ inputs:
     description: "Log level"
     required: true
     default: "trace"
+  machine-type:
+    description: "Machine type"
+    required: true
+    default: "qemu-pc"
 
 runs:
   using: "composite"
   steps:
-  - name: "Spellcheck (qemu-pc)"
+  - name: "Spellcheck (${{ inputs.machine-type }})"
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=qemu-pc --${{ inputs.release }} --spellcheck
-    shell: bash
-
-  - name: "Spellcheck (microvm)"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=microvm --${{ inputs.release }} --spellcheck
-    shell: bash
-
-  - name: "Spellcheck (hyperlight)"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=hyperlight --${{ inputs.release }} --spellcheck
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --spellcheck
     shell: bash

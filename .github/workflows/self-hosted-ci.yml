@@ -39,7 +39,7 @@ jobs:
     strategy:
       matrix:
         build-type: [debug, release]
-        arch: [X64]
+        machine-type: [qemu-pc, microvm, hyperlight]
     runs-on: [self-hosted, Linux, X64]
 
     # Only run the CI for:
@@ -66,33 +66,38 @@ jobs:
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
 
     - name: "Lint"
       uses: ./.github/actions/lint
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
     - name: "Spellcheck"
       uses: ./.github/actions/spellcheck
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
     - name: "Build"
       uses: ./.github/actions/build
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
     - name: "Test"
       uses: ./.github/actions/test
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
 
     - name: "Upload logs in case of failures"
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.arch }}
+        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
         # Overwrite to limit the amount of storage we use.
         overwrite: 'true'
         path: |
