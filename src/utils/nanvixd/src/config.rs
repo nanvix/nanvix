@@ -8,13 +8,15 @@
 use crate::sandbox::tcp_port::TcpPort;
 use ::anyhow::Result;
 use ::linuxd::config::l2_system_vm_guest_ip;
+use ::syslog::error;
+use ::tokio::time::Duration;
+use ::user_vm_api::UserVmIdentifier;
+
+#[cfg(not(feature = "single-process"))]
 use ::std::{
     fs,
     path::PathBuf,
 };
-use ::syslog::error;
-use ::tokio::time::Duration;
-use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -205,6 +207,7 @@ pub fn gateway_sockaddr_builder(
 ///
 /// The absolute path to the source code root.
 ///
+#[cfg(not(feature = "single-process"))]
 fn get_proj_root() -> String {
     format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
 }
@@ -227,6 +230,7 @@ fn get_proj_root() -> String {
 ///
 /// The absolute path to cloud-hypervisor's binary directory.
 ///
+#[cfg(not(feature = "single-process"))]
 pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
     let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
     Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
@@ -241,6 +245,7 @@ pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 ///
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
+#[cfg(not(feature = "single-process"))]
 pub fn get_clh_snapshot_path() -> String {
     format!("{}/images/{}", get_proj_root(), config::linuxd::SNAPSHOT_NAME)
 }
@@ -258,6 +263,7 @@ pub fn get_clh_snapshot_path() -> String {
 ///
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
+#[cfg(not(feature = "single-process"))]
 pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
     format!("{tmp_dir}/nanvixd-clh.{UNIX_SOCKET_SUFFIX}")
 }
