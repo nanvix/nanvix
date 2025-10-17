@@ -35,6 +35,9 @@ export BUILD_OPT ?= yes
 # L2 VM deployment?
 export L2_VM ?= no
 
+# Single-process deployment?
+export SINGLE_PROCESS ?= no
+
 # Log Level
 export LOG_LEVEL ?= warn
 
@@ -290,7 +293,7 @@ ALL_GUEST_BINARIES +=  $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler syscomm user-vm-api
-ALL_HOST_UTILS := echo-client nanvix-bench nanvixd
+ALL_HOST_UTILS := echo-client nanvix-bench
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(MICROVM) $(ALL_HOST_DAEMONS)
 
@@ -308,6 +311,7 @@ all-nanvix: \
 	all-guest-binaries \
 	all-wasmd \
 	all-kernel \
+	all-nanvixd \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-snapshot \
@@ -328,6 +332,7 @@ clean: \
 	clean-guest-binaries \
 	clean-wasmd \
 	clean-kernel \
+	clean-nanvixd \
 	clean-wasm-binaries \
 	clean-host-binaries \
 	clean-opt \
@@ -418,6 +423,7 @@ lint-check: \
 # Runs clippy.
 rust-lint-check: \
 	rust-lint-check-kernel \
+	rust-lint-check-nanvixd \
 	rust-lint-check-guest-binaries \
 	rust-lint-check-guest-rlibs \
 	rust-lint-check-guest-staticlibs \
@@ -430,6 +436,7 @@ rust-lint-check: \
 # Fixes code linting issues.
 rust-lint: \
 	rust-lint-kernel \
+	rust-lint-nanvixd \
 	rust-lint-guest-binaries \
 	rust-lint-guest-rlibs \
 	rust-lint-guest-staticlibs \
@@ -521,6 +528,7 @@ clang-format:
 
 check: \
 	check-kernel \
+	check-nanvixd \
 	check-guest-binaries \
 	check-guest-rlibs \
 	check-guest-staticlibs \
@@ -1116,24 +1124,46 @@ rust-lint-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-che
 test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target))
 
 #===================================================================================================
+# Build Rules for Nanvix Daemon
+#===================================================================================================
+
+NANVIXD_CARGO_FEATURES=$(if $(filter yes,$(SINGLE_PROCESS)),--features=single-process,)
+NANVIXD_CARGO_FEATURES+=$(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
+
+all-nanvixd: init
+	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd $(BINARIES_DIR)/nanvixd.elf
+
+check-nanvixd:
+	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+
+format-nanvixd:
+	$(HOST_CARGO_FMT_CMD) -p nanvixd
+
+format-check-nanvixd:
+	$(HOST_CARGO_FMT_CMD) -p nanvixd --check
+
+clean-nanvixd:
+	$(HOST_CARGO_CLEAN_CMD) -p nanvixd
+	$(RM_CMD) $(BINARIES_DIR)/nanvixd.elf
+
+rust-lint-nanvixd:
+	$(HOST_CARGO_CLIPPY_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd --fix --allow-dirty
+
+rust-lint-check-nanvixd:
+	$(HOST_CARGO_CLIPPY_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+
+#===================================================================================================
 # Build Rules for Host Binaries
 #===================================================================================================
 
 define HOST_BINARY_RULES
 all-host-binaries-$(1): init
-ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_BUILD_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-else
-	$(HOST_CARGO_BUILD_CMD) -p $(1)
-endif
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
 
 check-host-binaries-$(1):
-ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CHECK_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-else
-	$(HOST_CARGO_CHECK_CMD) -p $(1)
-endif
 
 format-host-binaries-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1)
@@ -1146,18 +1176,10 @@ clean-host-binaries-$(1):
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-host-binaries-$(1):
-ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1) --fix --allow-dirty
-else
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
-endif
 
 rust-lint-check-host-binaries-$(1):
-ifeq ($(filter $(1),linuxd nanvix-bench),$(1))
 	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-else
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
-endif
 endef
 
 $(foreach target,$(ALL_HOST_BINARIES),$(eval $(call HOST_BINARY_RULES,$(target))))
