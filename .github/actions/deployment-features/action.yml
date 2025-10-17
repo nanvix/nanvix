@@ -1,0 +1,34 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Resolve Deployment Features"
+description: "Compute feature flags for a given deployment type"
+
+inputs:
+  deployment-type:
+    description: "Deployment type"
+    required: true
+
+outputs:
+  features-arg:
+    description: "Feature flag argument for scripts/ci.py"
+    value: ${{ steps.compute.outputs.features-arg }}
+
+runs:
+  using: "composite"
+  steps:
+  - id: compute
+    shell: bash
+    run: |
+      case "${{ inputs.deployment-type }}" in
+        single-process)
+          echo "features-arg=--features SINGLE_PROCESS=yes" >> "$GITHUB_OUTPUT"
+          ;;
+        multi-process)
+          echo "features-arg=--features SINGLE_PROCESS=no" >> "$GITHUB_OUTPUT"
+          ;;
+        *)
+          echo "invalid deployment type: ${{ inputs.deployment-type }}" >&2
+          exit 1
+          ;;
+      esac

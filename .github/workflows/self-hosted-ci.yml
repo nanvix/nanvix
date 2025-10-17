@@ -40,6 +40,10 @@ jobs:
       matrix:
         build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
+        deployment-type: [single-process, multi-process]
+        exclude:
+          - machine-type: qemu-pc
+            deployment-type: single-process
     runs-on: [self-hosted, Linux, X64]
 
     # Only run the CI for:
@@ -67,6 +71,7 @@ jobs:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
     - name: "Lint"
       uses: ./.github/actions/lint
@@ -74,24 +79,28 @@ jobs:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
     - name: "Spellcheck"
       uses: ./.github/actions/spellcheck
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
     - name: "Build"
       uses: ./.github/actions/build
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
     - name: "Test"
       uses: ./.github/actions/test
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
     - name: "Upload logs in case of failures"
       if: failure()

@@ -17,11 +17,19 @@ inputs:
     description: "Machine type"
     required: true
     default: "qemu-pc"
+  deployment-type:
+    description: "Deployment type"
+    required: true
+    default: "single-process"
 
 runs:
   using: "composite"
   steps:
+  - id: deployment
+    uses: ./.github/actions/deployment-features
+    with:
+      deployment-type: "${{ inputs.deployment-type }}"
   - name: "format (${{ inputs.machine-type }})"
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --format
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --format ${{ steps.deployment.outputs.features-arg }}
     shell: bash
