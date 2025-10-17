@@ -143,9 +143,15 @@ pub fn do_getdents(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            error!("libc::getdents(): errno={}", { errno });
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::getdents(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_getdents(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             return Ok(vec![crate::build_error(tid, error)]);
         },
         // Success.
