@@ -11,9 +11,12 @@
 // Imports
 //==================================================================================================
 
-use crate::orchestrator::{
-    MemoryControlCommand,
-    MemoryControlResponse,
+use crate::{
+    MEM_THREAD_NUM_MESSAGES_RECEIVED,
+    orchestrator::{
+        MemoryControlCommand,
+        MemoryControlResponse,
+    },
 };
 use ::anyhow::{
     Error,
@@ -22,6 +25,7 @@ use ::anyhow::{
 use ::std::{
     marker::Send,
     pin::Pin,
+    sync::atomic::Ordering,
 };
 use ::sys::ipc::Message;
 use ::syslog::{
@@ -127,6 +131,8 @@ impl MemoryThread {
                     msg = data_rx.recv() => {
                         match msg {
                             Some(msg) => {
+                                on_message_received_from_io_thread();
+
                                 if let Err(e) = data_tx.send(msg).await {
                                     error!("spawn(): failed to send message: {e}");
                                     continue;
@@ -151,6 +157,41 @@ impl MemoryThread {
                 debug!("spawn(): exited normally");
             }
         })
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Handler to be called whenever a message is received from the I/O thread.
+///
+fn on_message_received_from_io_thread() {
+    MEM_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
+
+    // Sanity check that no messages are lost.
+    #[cfg(debug_assertions)]
+    {
+        // The following check is not atomic, but since the two counters are monotonically
+        // increasing AND they are strictly updated one after another, it should be sufficient to
+        // detect message losses.
+
+        let cached_mem_thread_num_messages_received =
+            MEM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+
+        let cached_io_thread_num_messages_received =
+            crate::IO_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+
+        debug_assert!(
+            cached_mem_thread_num_messages_received <= cached_io_thread_num_messages_received,
+            "memory thread has received more messages than the i/o thread (
+                                        {} > {})",
+            cached_mem_thread_num_messages_received,
+            cached_io_thread_num_messages_received
+        );
     }
 }
 
