@@ -79,7 +79,13 @@ use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::std::{
     fs::File,
     io::Write,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{
+            AtomicUsize,
+            Ordering,
+        },
+    },
 };
 use ::sys::ipc::{
     Message,
@@ -101,6 +107,22 @@ use ::tokio::{
     },
     task::JoinHandle,
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Tracks the number of messages received by the I/O thread.
+static IO_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
+
+/// Tracks the number of messages received by the memory thread.
+static MEM_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
+
+/// Tracks the number of messages received by the VMM thread.
+static VMM_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
+
+/// Tracks the number of times the input function has been called.
+static VMM_THREAD_NUM_INPUT_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
 // VmmArgs
@@ -380,6 +402,7 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                       size|
           -> Result<()> {
         use std::mem;
+        on_input_function_called();
 
         // Check for invalid operand size.
         if size != mem::size_of::<u32>() {
@@ -390,6 +413,7 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
 
         match input_queue.blocking_recv() {
             Some(mut msg) => {
+                on_message_received_from_memory_thread();
                 msg.message_type = MessageType::Ikc;
                 let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                 let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
@@ -409,8 +433,10 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
 
     #[cfg(feature = "hyperlight")]
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
+        on_input_function_called();
         match input_queue.blocking_recv() {
             Some(mut msg) => {
+                on_message_received_from_memory_thread();
                 msg.message_type = MessageType::Ikc;
                 // Acquire lock on guest information.
                 let mut locked_guest: MutexGuard<'_, Guest> = crate::vmm::GUEST
@@ -541,6 +567,69 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
     };
 
     Box::new(output)
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Handler to be called whenever the input function is called.
+///
+fn on_input_function_called() {
+    VMM_THREAD_NUM_INPUT_CALLS.fetch_add(1, Ordering::SeqCst);
+
+    // Sanity check that no messages are lost.
+    #[cfg(debug_assertions)]
+    {
+        // The following check is not atomic, but since the two counters are monotonically
+        // increasing AND they are strictly updated one after another, it should be sufficient to
+        // detect message losses.
+
+        let cached_mem_thread_num_messages_received: usize =
+            MEM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+        let cached_vmm_thread_num_input_calls: usize =
+            VMM_THREAD_NUM_INPUT_CALLS.load(Ordering::SeqCst);
+
+        debug_assert!(
+            cached_vmm_thread_num_input_calls <= cached_mem_thread_num_messages_received,
+            "vmm thread has called the input function more times than the memory thread has \
+             received messages ({} > {})",
+            cached_vmm_thread_num_input_calls,
+            cached_mem_thread_num_messages_received
+        );
+    }
+}
+
+///
+/// # Description
+///
+/// Handler to be called whenever a message is received from the memory thread.
+///
+fn on_message_received_from_memory_thread() {
+    VMM_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
+
+    // Sanity check that no messages are lost.
+    #[cfg(debug_assertions)]
+    {
+        // The following check is not atomic, but since the two counters are monotonically
+        // increasing AND they are strictly updated one after another, it should be sufficient to
+        // detect message losses.
+
+        let cached_vmm_thread_num_input_calls: usize =
+            VMM_THREAD_NUM_INPUT_CALLS.load(Ordering::SeqCst);
+        let cached_vmm_thread_num_messages_received: usize =
+            VMM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+
+        debug_assert!(
+            cached_vmm_thread_num_messages_received <= cached_vmm_thread_num_input_calls,
+            "vmm thread has received more messages than it has called the input function ({} > {})",
+            cached_vmm_thread_num_messages_received,
+            cached_vmm_thread_num_input_calls
+        );
+    }
 }
 
 //==================================================================================================
