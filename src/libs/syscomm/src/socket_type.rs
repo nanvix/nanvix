@@ -33,13 +33,21 @@ pub enum SocketType {
 // Implementations
 //==================================================================================================
 
+impl SocketType {
+    /// String representation for TCP sockets.
+    pub const TCP_STR: &'static str = "tcp";
+
+    /// String representation for Unix sockets.
+    pub const UNIX_STR: &'static str = "unix";
+}
+
 impl FromStr for SocketType {
     type Err = io::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "tcp" => Ok(SocketType::Tcp),
-            "unix" => Ok(SocketType::Unix),
+            Self::TCP_STR => Ok(SocketType::Tcp),
+            Self::UNIX_STR => Ok(SocketType::Unix),
             typ => {
                 let reason: String = format!("unknown socket type '{typ}'");
                 error!("from_str(): {reason}");
