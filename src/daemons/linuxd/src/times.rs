@@ -20,6 +20,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 
 //==================================================================================================
@@ -51,7 +52,14 @@ pub fn do_times(
             }
 
             error!("libc::clock_getres(): errno={errno:?}");
-            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_times(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(crate::build_error(tid, error))
         },
         elapsed => {

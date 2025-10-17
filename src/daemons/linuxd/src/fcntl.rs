@@ -141,6 +141,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 use sysapi::fcntl::file_descriptor_flags::{
     FD_CLOEXEC,
@@ -195,9 +196,15 @@ pub fn do_openat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::openat(): errno={errno:?}");
-            let error: ErrorCode = ErrorCode::try_from(errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
+            error!("libc::openat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_openat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -241,8 +248,15 @@ pub fn do_unlinkat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::unlinkat(): errno={errno:?}");
-            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            error!("libc::unlinkat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_unlinkat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -299,7 +313,15 @@ pub fn do_renameat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            let error: ErrorCode = ErrorCode::try_from(errno).expect("unknown error code {error}");
+            error!("libc::renameat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_renameat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -391,9 +413,15 @@ pub fn do_fstat_at(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::fstatat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::fstatat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_fstat_at(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -420,15 +448,20 @@ pub fn do_posix_fallocate(
             Ok(FileSpaceControlResponse::build(tid, 0))
         },
         errno => {
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
-
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::posix_fallocate(): errno={errno:?}");
+            error!("libc::posix_fallocate(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_posix_fallocate(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(crate::build_error(tid, error))
         },
     }
@@ -467,9 +500,15 @@ pub fn do_posix_fadvise(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::posix_fadvise(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::posix_fadvise(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_posix_fadvise(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(crate::build_error(tid, error))
         },
     }
@@ -551,9 +590,15 @@ pub fn do_fstat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::fstatat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::fstatat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_fstat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -599,9 +644,15 @@ pub fn do_symlinkat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::symlinkat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::symlinkat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_symlinkat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -659,9 +710,15 @@ pub fn do_readlinkat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::readlinkat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::readlinkat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_readlinkat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -708,9 +765,15 @@ pub fn do_mkdirat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::mkdirat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::mkdirat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_mkdirat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -770,9 +833,15 @@ pub fn do_utimensat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::utimensat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::utimensat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_utimensat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -815,9 +884,15 @@ pub fn do_futimens(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::futimens(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::futimens(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_futimens(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(crate::build_error(tid, error))
         },
     }
@@ -920,8 +995,14 @@ pub fn do_fcntl(
                 }
 
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
-                let error: ErrorCode = ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                let error: ErrorCode = match ErrorCode::try_from(errno) {
+                    Ok(error) => error,
+                    Err(_) => {
+                        let reason: &str = "unknown error code";
+                        warn!("do_fcntl(): {reason} (errno={errno:?})");
+                        ErrorCode::ValueOutOfRange
+                    },
+                };
                 Ok(crate::build_error(tid, error))
             }
         },
@@ -941,8 +1022,14 @@ pub fn do_fcntl(
                 }
 
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
-                let error: ErrorCode = ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                let error: ErrorCode = match ErrorCode::try_from(errno) {
+                    Ok(error) => error,
+                    Err(_) => {
+                        let reason: &str = "unknown error code";
+                        warn!("do_fcntl(): {reason} (errno={errno:?})");
+                        ErrorCode::ValueOutOfRange
+                    },
+                };
                 Ok(crate::build_error(tid, error))
             }
         },
@@ -986,8 +1073,14 @@ pub fn do_fcntl(
                 }
 
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
-                let error: ErrorCode = ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                let error: ErrorCode = match ErrorCode::try_from(errno) {
+                    Ok(error) => error,
+                    Err(_) => {
+                        let reason: &str = "unknown error code";
+                        warn!("do_fcntl(): {reason} (errno={errno:?})");
+                        ErrorCode::ValueOutOfRange
+                    },
+                };
                 Ok(crate::build_error(tid, error))
             }
         },
@@ -1017,8 +1110,14 @@ pub fn do_fcntl(
                 }
 
                 error!("libc::fcntl(): errno={errno:?} (cmd={cmd:#x?}, arg={libc_arg})");
-                let error: ErrorCode = ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("unknown error code {errno}"));
+                let error: ErrorCode = match ErrorCode::try_from(errno) {
+                    Ok(error) => error,
+                    Err(_) => {
+                        let reason: &str = "unknown error code";
+                        warn!("do_fcntl(): {reason} (errno={errno:?})");
+                        ErrorCode::ValueOutOfRange
+                    },
+                };
                 Ok(crate::build_error(tid, error))
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should return
@@ -1080,9 +1179,15 @@ pub fn do_fchownat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::fchownat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::fchownat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_fchownat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
@@ -1167,9 +1272,15 @@ pub fn do_fchmodat(
                 return Err(WorkerThreadError::Interrupted);
             }
 
-            debug!("libc::fchmodat(): errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(errno).unwrap_or_else(|_| panic!("unknown error code {errno}"));
+            error!("libc::fchmodat(): errno={errno:?}");
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_fchmodat(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }
