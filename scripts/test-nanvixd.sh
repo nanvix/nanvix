@@ -74,7 +74,7 @@ mkdir -p "${LOGS_DIR}"
 
 # Run nanvixd.
 CONSOLE_FILE_NAME="${LOGS_DIR}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
-RUST_LOG=trace setsid timeout -s SIGINT --preserve-status --foreground "${TIMEOUT}" \
+RUST_LOG=trace,hyperlight_host=none setsid timeout -s SIGINT --preserve-status --foreground "${TIMEOUT}" \
     ./bin/nanvixd.elf \
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_DIR}/bin" \
