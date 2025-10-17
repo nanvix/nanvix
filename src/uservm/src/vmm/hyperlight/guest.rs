@@ -5,63 +5,94 @@
 // Imports
 //==================================================================================================
 
-use crate::vmm::{
-    VMEM,
-    VirtualMemory,
-};
+use crate::vmm::VirtualMemory;
 use ::anyhow::Result;
 use ::hyperlight_host::mem::{
     mgr::SandboxMemoryManager,
     shared_mem::ExclusiveSharedMemory,
 };
-use ::syslog::info;
+use ::syslog::error;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Information about the guest running inside the virtual machine.
+///
 #[derive(Default)]
-pub struct Guest;
+pub struct Guest {
+    /// Credits counter, account the number of messages that the VM can consume.
+    credits: u64,
+}
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl Guest {
-    // Adds a credit to the virtual machine's credit pool.
+    ///
+    /// # Description
+    ///
+    /// Increments the credit register by one.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory manager of the virtual machine.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns an empty tuple. Otherwise, it returns an error.
+    ///
     pub fn add_credit(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
         let manager: &mut SandboxMemoryManager<ExclusiveSharedMemory> = &mut vmem.manager;
+
+        // Increment credits, checking for overflow.
+        self.credits = self.credits.checked_add(1).ok_or_else(|| {
+            let reason: &'static str = "credit overflow";
+            error!("add_credit(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
         let credits_offset: usize = manager.get_guest_credits_offset();
-        let mut credit: u64 = manager.get_shared_mem_mut().read::<u64>(credits_offset)?;
-        credit += 1_u64;
         manager
             .get_shared_mem_mut()
-            .write::<u64>(credits_offset, credit)?;
+            .write::<u64>(credits_offset, self.credits)?;
 
-        info!("Adding credit: {}", credit);
         Ok(())
     }
 
-    // Consumes a credit from the virtual machine's credit pool.
-    pub fn consume_credit() -> Result<()> {
-        VMEM.get()
-            .map(|vmem| vmem.blocking_lock())
-            .map(|mut vmem| -> Result<()> {
-                let credits_offset: usize = vmem.get_guest_credits_offset();
-                let mut credit: u64 = vmem.get_shared_mem_mut().read::<u64>(credits_offset)?;
+    ///
+    /// # Description
+    ///
+    /// Decrements the credit register by one.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory manager of the virtual machine.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns an empty tuple. Otherwise, it returns an error.
+    ///
+    pub fn consume_credit(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
+        let manager: &mut SandboxMemoryManager<ExclusiveSharedMemory> = &mut vmem.manager;
 
-                if credit == 0_u64 {
-                    return Err(anyhow::anyhow!("No credit available to consume"));
-                }
+        // Decrement credits, checking for underflow.
+        self.credits = self.credits.checked_sub(1).ok_or_else(|| {
+            let reason: &'static str = "credit underflow";
+            error!("consume_credit(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
 
-                credit -= 1_u64;
-                vmem.get_shared_mem_mut()
-                    .write::<u64>(credits_offset, credit)?;
+        let credits_offset: usize = manager.get_guest_credits_offset();
+        manager
+            .get_shared_mem_mut()
+            .write::<u64>(credits_offset, self.credits)?;
 
-                info!("Consuming credit: {}", credit);
-                Ok(())
-            })
-            .ok_or(anyhow::anyhow!("VMEM is not initialized"))?
+        Ok(())
     }
 
     ///
