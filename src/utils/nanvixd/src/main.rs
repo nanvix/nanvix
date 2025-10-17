@@ -59,6 +59,11 @@ pub async fn main() -> Result<()> {
 
     ::syslog::init(args.log_to_file(), args.log_directory().to_string());
 
+    #[cfg(feature = "single-process")]
+    info!("nanvixd {} single-process mode", env!("CARGO_PKG_VERSION"));
+    #[cfg(not(feature = "single-process"))]
+    info!("nanvixd {} multi-process mode", env!("CARGO_PKG_VERSION"));
+
     let mut signals: Signal = signal(SignalKind::interrupt())?;
     let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
     let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new();
