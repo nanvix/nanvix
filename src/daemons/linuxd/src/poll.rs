@@ -41,6 +41,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 
 //==================================================================================================
@@ -120,8 +121,14 @@ pub fn do_poll(
             }
 
             error!("poll(): errno={errno:?}");
-            let error: ErrorCode = ErrorCode::try_from(errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_poll(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(vec![crate::build_error(tid, error)])
         },
     }

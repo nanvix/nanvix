@@ -72,6 +72,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 
 //==================================================================================================
@@ -108,8 +109,14 @@ pub fn do_socket(
             }
 
             error!("libc::socket(): failed with errno={errno:?}");
-            let error: ErrorCode = ErrorCode::try_from(errno)
-                .unwrap_or_else(|_| panic!("unknown error code {errno:?}"));
+            let error: ErrorCode = match ErrorCode::try_from(errno) {
+                Ok(error) => error,
+                Err(_) => {
+                    let reason: &str = "unknown error code";
+                    warn!("do_socket(): {reason} (errno={errno:?})");
+                    ErrorCode::ValueOutOfRange
+                },
+            };
             Ok(crate::build_error(tid, error))
         },
         sockfd => {
