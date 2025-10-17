@@ -319,7 +319,7 @@ pub fn init(
         "peb",
         VirtualAddress::from_raw_value(peb_base),
         PEB_SIZE,
-        MemoryRegionType::Reserved,
+        MemoryRegionType::Mmio,
         AccessPermission::RDWR,
     )?;
     memory_regions.push_back(peb);

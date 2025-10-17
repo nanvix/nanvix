@@ -411,8 +411,28 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
         match input_queue.blocking_recv() {
             Some(mut msg) => {
-                Guest::consume_credit()?;
                 msg.message_type = MessageType::Ikc;
+                // Acquire lock on guest information.
+                let mut locked_guest: MutexGuard<'_, Guest> = crate::vmm::GUEST
+                    .get()
+                    .ok_or_else(|| {
+                        let reason: &str = "guest handle not initialized";
+                        error!("input(): {reason}");
+                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                    })?
+                    .blocking_lock();
+
+                // Acquire lock on virtual memory manager.
+                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = crate::vmm::VMEM
+                    .get()
+                    .ok_or_else(|| {
+                        let reason: &str = "vmem handle not initialized";
+                        error!("input(): {reason}");
+                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                    })?
+                    .blocking_lock();
+
+                locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(msg.to_bytes().to_vec())
             },
 

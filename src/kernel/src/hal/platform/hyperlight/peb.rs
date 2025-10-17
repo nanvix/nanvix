@@ -97,7 +97,13 @@ impl ProcessEnvironmentBlock {
     /// This function is unsafe because it dereferences a raw pointer.
     pub unsafe fn get_credits() -> Result<u64, Error> {
         match GUEST_HANDLE.peb() {
-            Some(peb_ptr) => Ok((*peb_ptr).credits_value),
+            Some(peb_ptr) => {
+                // Credits_value is updated asynchronously by the host;
+                // so we use a volatile read to avoid reading stale data.
+                Ok(::core::ptr::read_volatile::<u64>(::core::ptr::addr_of!(
+                    (*peb_ptr).credits_value
+                )))
+            },
             None => {
                 let reason: &'static str = "get_credits: peb not initialized";
                 error!("{reason}");
