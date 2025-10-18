@@ -1,14 +1,18 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+GUEST_STATICLIB_FEATURES := staticlib $(LOG_LEVEL)
+GUEST_STATICLIB_FEATURES := $(strip $(GUEST_STATICLIB_FEATURES))
+GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$(GUEST_STATICLIB_FEATURES)")
+
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1): init
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
 
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
 
 format-guest-staticlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -21,10 +25,10 @@ clean-guest-staticlib-$(1):
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
 rust-lint-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty
 
 rust-lint-check-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
