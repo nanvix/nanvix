@@ -538,13 +538,13 @@ check: \
 # Runs system in release mode.
 run: image
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
+	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 endif
 
 # Runs system in debug mode.
 debug: image
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/run.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
+	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
 #===================================================================================================
