@@ -840,7 +840,6 @@ all-guest-staticlib-$(1): init
 check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
 	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-#	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 format-guest-staticlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -854,11 +853,9 @@ clean-guest-staticlib-$(1):
 
 rust-lint-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL) --fix --allow-dirty
-#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
 
 rust-lint-check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
@@ -884,7 +881,6 @@ rust-lint-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust
 define GUEST_RLIB_RULES
 check-guest-rlib-$(1):
 	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-#	$(HOST_CARGO_CHECK_CMD) -p $(1) --no-default-features --features=std --all-targets
 
 format-guest-rlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -894,11 +890,9 @@ format-check-guest-rlib-$(1):
 
 rust-lint-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
-#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
 
 rust-lint-check-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
-#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets
 endef
 
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
@@ -925,8 +919,7 @@ test-guest-rlibs:
 	$(HOST_CARGO_TEST_CMD) --features=std -p slab
 	$(HOST_CARGO_TEST_CMD) --features=std -p static_assert
 	$(HOST_CARGO_TEST_CMD) --features=std -p libc_string
-#	$(HOST_CARGO_TEST_CMD) --features=std -p sysalloc
-#	$(HOST_CARGO_TEST_CMD) --features=std -p syslog
+	$(HOST_CARGO_TEST_CMD) --features=std -p syslog
 
 #===================================================================================================
 # Build Rules for Guest Binaries
@@ -952,7 +945,6 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 
 rust-lint-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL) --fix --allow-dirty
-#	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --no-default-features --features=std --all-targets --fix --allow-dirty
 
 rust-lint-check-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
