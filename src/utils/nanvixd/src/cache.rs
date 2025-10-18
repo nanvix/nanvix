@@ -8,8 +8,8 @@
 use crate::sandbox::{
     config::SandboxConfig,
     linuxd::LinuxDaemon,
-    microvm::Microvm,
     tag::SandboxTag,
+    uservm::Microvm,
 };
 use ::anyhow::Result;
 use ::config::syscomm::CONNECT_TIMEOUT_SECS;
