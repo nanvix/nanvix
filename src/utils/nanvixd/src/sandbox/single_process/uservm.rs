@@ -55,7 +55,7 @@ use ::uservm::{
         IoControlCommand,
         IoControlResponse,
     },
-    UserVm,
+    UserVm as EmbeddedUserVm,
     UserVmArgs,
 };
 
@@ -66,9 +66,9 @@ use ::uservm::{
 ///
 /// # Description
 ///
-/// Handle to a running MicroVM instance.
+/// Handle to a running User VM instance.
 ///
-pub struct Microvm {
+pub struct UserVm {
     /// Underlying task.
     ///
     task: Mutex<Option<JoinHandle<Result<ExitCode>>>>,
@@ -82,11 +82,11 @@ pub struct Microvm {
 // Implementations
 //==================================================================================================
 
-impl Microvm {
+impl UserVm {
     ///
     /// # Description
     ///
-    /// Spawns a new MicroVM instance as a task in the current process.
+    /// Spawns a new User VM instance as a task in the current process.
     ///
     /// # Parameters
     ///
@@ -97,7 +97,7 @@ impl Microvm {
     /// # Return Value
     ///
     /// On success this function returns a future that, when resolved, yields a handle to the
-    /// spawned MicroVM instance. On failure, this function returns an error object instead.
+    /// spawned User VM instance. On failure, this function returns an error object instead.
     ///
     pub async fn spawn(
         sandbox_tag: SandboxTag,
@@ -226,7 +226,7 @@ impl Microvm {
             )?;
 
             // Spawn VMM thread.
-            let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
+            let vmm_handle: JoinHandle<Result<u16>> = EmbeddedUserVm::spawn(UserVmArgs {
                 memory_size: ::config::kernel::MEMORY_SIZE,
                 kernel_filename,
                 initrd_filename: Some(initrd_filename.clone()),
@@ -307,11 +307,11 @@ impl Microvm {
     ///
     /// # Description
     ///
-    /// Shuts down the MicroVM instance.
+    /// Shuts down the User VM instance.
     ///
     /// # Return Value
     ///
-    /// On success this function returns a future that, when resolved, indicates that the MicroVM
+    /// On success this function returns a future that, when resolved, indicates that the User VM
     /// has been shutdown. On failure, this function returns an error object instead.
     ///
     pub async fn shutdown(&mut self) -> Result<()> {
