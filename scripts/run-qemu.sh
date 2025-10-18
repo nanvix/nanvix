@@ -146,33 +146,6 @@ function run_qemu
 
 #===================================================================================================
 
-# Runs a binary in MicroVm.
-function run_microvm
-{
-	local image=$1   # Image.
-	local timeout=$2 # Timeout for test mode.
-
-	local microvm="$NANVIX_HOME/bin/uservm.elf"
-	local kernel="$NANVIX_HOME/bin/kernel.elf"
-	local memsize
-	memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
-
-	# Base command.
-	cmd="$microvm -kernel $kernel -initrd $image -memory ${memsize}M"
-
-	# Run.
-	if [ -n "$timeout" ];
-	then
-		cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
-	fi
-
-	echo "Running: $cmd"
-
-	eval "$cmd"
-}
-
-#===================================================================================================
-
 # No debug mode.
 if [ -z "$MODE" ];
 then
@@ -196,9 +169,6 @@ case "$TARGET" in
 		case "$MACHINE" in
 			"qemu-baremetal" | "qemu-baremetal-smp" | "qemu-pc" | "qemu-pc-smp" | "qemu-isapc")
 				run_qemu "i386" "$MACHINE" "$IMAGE" "$MODE" "$TIMEOUT"
-				;;
-			"microvm")
-				run_microvm "$IMAGE" "$TIMEOUT"
 				;;
 			*)
 				echo "Unsupported machine: $MACHINE"
