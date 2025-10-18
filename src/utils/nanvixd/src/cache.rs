@@ -9,7 +9,7 @@ use crate::sandbox::{
     config::SandboxConfig,
     linuxd::LinuxDaemon,
     tag::SandboxTag,
-    uservm::Microvm,
+    uservm::UserVm,
 };
 use ::anyhow::Result;
 use ::config::syscomm::CONNECT_TIMEOUT_SECS;
@@ -43,7 +43,7 @@ use ::user_vm_api::UserVmIdentifier;
 pub struct SandboxCache {
     // Members holding the state of the cache.
     /// Main table of sandboxes managed by this nanvixd instance.
-    user_vm_instances: HashMap<SandboxTag, Arc<Microvm>>,
+    user_vm_instances: HashMap<SandboxTag, Arc<UserVm>>,
     /// Table containing linuxd instances. The key is the tenant id as, for the moment, we deploy
     /// only one linuxd instance per tenant.
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
@@ -100,7 +100,7 @@ impl SandboxCache {
         tag: &SandboxTag,
         config: Option<SandboxConfig>,
         tmp_directory: String,
-    ) -> Result<Arc<Microvm>> {
+    ) -> Result<Arc<UserVm>> {
         trace!("get(): {tag:?}, {config:?}, {tmp_directory:?}");
 
         if !self.user_vm_instances.contains_key(tag) {
@@ -179,7 +179,7 @@ impl SandboxCache {
                 self.user_vm_instances.insert(
                     tag.clone(),
                     Arc::new(
-                        Microvm::spawn(
+                        UserVm::spawn(
                             tag.clone(),
                             // Pass ownership of the sandbox config, including the TCP port if
                             // allocated, to the user VM so that we bind their lifetimes.
