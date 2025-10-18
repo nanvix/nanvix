@@ -25,6 +25,7 @@ talc = { workspace = true }
 
 [features]
 default = []
+std = []
 staticlib = []
 rustc-dep-of-std = [
     "alloc",
