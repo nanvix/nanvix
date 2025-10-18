@@ -43,7 +43,7 @@ use ::tokio::{
 // Structures
 //==================================================================================================
 
-pub struct Microvm {
+pub struct UserVm {
     child: Option<Child>,
     control_plane_stream: SocketStream,
     /// Configuration for this sandbox instance. It includes a RAII handle around the TCP
@@ -55,7 +55,7 @@ pub struct Microvm {
 // Implementations
 //==================================================================================================
 
-impl Microvm {
+impl UserVm {
     pub async fn spawn(
         sandbox_tag: SandboxTag,
         sandbox_config: SandboxConfig,
@@ -88,7 +88,7 @@ impl Microvm {
             sandbox_config.gateway_sockaddr_type().to_string(),
         ];
 
-        debug!("spawning microvm (program={:?} args={:?})", sandbox_config.program(), user_vm_args,);
+        debug!("spawning uservm (program={:?} args={:?})", sandbox_config.program(), user_vm_args,);
 
         if sandbox_config.l2() {
             user_vm_args.push(::uservm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
@@ -126,7 +126,7 @@ impl Microvm {
             .spawn()?;
 
         debug!(
-            "spawning microvm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?} l2={}",
+            "spawning uservm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?} l2={}",
             child.id(),
             sandbox_config.program(),
             sandbox_config.program_args(),
