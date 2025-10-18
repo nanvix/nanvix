@@ -395,6 +395,7 @@ help:
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
+	@echo "  SINGLE_PROCESS   Enable single-process deployment (default: $(SINGLE_PROCESS))"
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
