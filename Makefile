@@ -282,6 +282,7 @@ export NANVIXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:8181,127.0.0.
 
 ALL_GUEST_STATIC_LIBS := posix
 ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog sys libc_stdlib libc_string
+ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error type-safe proc raw-array slab static_assert libc_string syslog
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
@@ -539,248 +540,6 @@ check: \
 	check-host-rlibs \
 	check-uservm
 
-run-unit-tests: all-nanvix \
-	test-guest-rlibs \
-	test-host-rlibs
-
-run-nanvixd-tests: | \
-	init-repo \
-	test-dlfcn-c \
-	test-echo-c \
-	test-echo-cpp \
-	test-echo-rust-nostd \
-	test-echo-wasm-rust \
-	test-file-c \
-	test-file-rust \
-	test-hello-c \
-	test-hello-cpp \
-	test-hello-wasm \
-	test-linux-app \
-	test-memory-c \
-	test-misc-c \
-	test-network-c \
-	test-python3 \
-	test-qjs \
-	test-quickjs \
-	test-arch-rust \
-	test-thread-c
-
-#===================================================================================================
-# Build Rules for Optional Software
-#===================================================================================================
-
-ifneq ($(strip $(filter yes,$(BUILD_OPT))),)
-
-all-opt: init all-openblas all-openssl all-python all-quickjs all-sqlite all-zlib
-
-clean-opt: clean-openblas clean-openssl clean-python clean-quickjs clean-sqlite clean-zlib
-
-init-opt: init-openblas init-openssl init-python init-quickjs init-sqlite init-zlib
-
-else
-
-all-opt:
-	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
-clean-opt:
-	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
-init-opt:
-	@echo "\033[31mOptional software build disabled. Set BUILD_OPT=yes to build optional software.\033[0m"
-
-endif
-
-#===================================================================================================
-# Build Rules for OpenBLAS
-#===================================================================================================
-
-OPENBLAS_LIB := $(SYSROOT_DIR)/lib/libopenblas.a
-
-all-openblas: $(OPENBLAS_LIB)
-
-$(OPENBLAS_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building OpenBLAS (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building OpenBLAS (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas; \
-	else \
-		echo "OpenBLAS up-to-date!"; \
-	fi
-endif
-
-clean-openblas: clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
-	$(RM_CMD) $(OPENBLAS_LIB)
-endif
-
-init-openblas: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENBLAS_REPOSITORY) $(OPENBLAS_COMMIT) openblas
-endif
-
-#===================================================================================================
-# Build Rules for OpenSSL
-#===================================================================================================
-
-CRYPTO_LIB := $(SYSROOT_DIR)/lib/libcrypto.a
-OPENSSL_LIB := $(SYSROOT_DIR)/lib/libssl.a
-
-all-openssl: $(OPENSSL_LIB)
-
-$(OPENSSL_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building OpenSSL (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building OpenSSL (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl; \
-	else \
-		echo "OpenSSL up-to-date!"; \
-	fi
-endif
-
-clean-openssl:
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
-	$(RM_CMD) $(OPENSSL_LIB) $(CRYPTO_LIB)
-endif
-
-init-openssl: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(OPENSSL_REPOSITORY) $(OPENSSL_COMMIT) openssl
-endif
-
-#===================================================================================================
-# Build Rules for Python
-#===================================================================================================
-
-PYTHON_LIB := $(SYSROOT_DIR)/lib/libpython3.12.a
-
-all-python: $(PYTHON_LIB)
-
-$(PYTHON_LIB): init-repo install all-openssl all-sqlite all-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building Python (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building Python (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython; \
-	else \
-		echo "Python up-to-date!"; \
-	fi
-endif
-
-clean-python: clean-sqlite clean-openssl clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
-	$(RM_CMD) $(PYTHON_LIB)
-endif
-
-init-python: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(PYTHON_REPOSITORY) $(PYTHON_COMMIT) cpython
-endif
-
-#===================================================================================================
-# Build Rules for Sqlite
-#===================================================================================================
-
-SQLITE_LIB := $(SYSROOT_DIR)/lib/libsqlite3.a
-
-all-sqlite: $(SQLITE_LIB)
-
-$(SQLITE_LIB): init-repo install all-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building SQLite (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building SQLite (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite; \
-	else \
-		echo "SQLite up-to-date!"; \
-	fi
-endif
-
-clean-sqlite: clean-zlib
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
-	$(RM_CMD) $(SQLITE_LIB)
-endif
-
-init-sqlite: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(SQLITE_REPOSITORY) $(SQLITE_COMMIT) sqlite
-endif
-
-#===================================================================================================
-# Build Rules for Zlib
-#===================================================================================================
-
-ZLIB_LIB := $(SYSROOT_DIR)/lib/libz.a
-
-all-zlib: $(ZLIB_LIB)
-
-$(ZLIB_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building ZLib (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building ZLib (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib; \
-	else \
-		echo "ZLib up-to-date!"; \
-	fi
-endif
-
-clean-zlib:
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
-	$(RM_CMD) $(ZLIB_LIB)
-endif
-
-init-zlib: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(ZLIB_REPOSITORY) $(ZLIB_COMMIT) zlib
-endif
-
-#===================================================================================================
-# Build Rules for QuickJS
-#===================================================================================================
-
-QUICKJS_LIB := $(SYSROOT_DIR)/lib/libquickjs.a
-
-all-quickjs: $(QUICKJS_LIB)
-
-$(QUICKJS_LIB): init-repo install
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f $@ ]; then \
-		echo "Building QuickJS (missing) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs; \
-	elif [ $@ -ot $(LIBPOSIX) ]; then \
-		echo "Building QuickJS (outdated) ..."; \
-		bash $(SCRIPTS_DIR)/build-opt.sh build $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs; \
-	else \
-		echo "QuickJS up-to-date!"; \
-	fi
-endif
-
-clean-quickjs:
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh clean $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
-	$(RM_CMD) $(QUICKJS_LIB)
-endif
-
-init-quickjs: init-repo
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	bash $(SCRIPTS_DIR)/build-opt.sh init $(TOOLCHAIN_DIR) $(SYSROOT_DIR) $(QUICKJS_REPOSITORY) $(QUICKJS_COMMIT) quickjs
-endif
-
 #===================================================================================================
 # Build Rules for Running and Debugging
 #===================================================================================================
@@ -815,491 +574,83 @@ ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 endif
 
 #===================================================================================================
+# Build Rules for Running Tests
+#===================================================================================================
+
+run-unit-tests: all-nanvix \
+	test-guest-rlibs \
+	test-host-rlibs
+
+include build/make/test.mk
+
+#===================================================================================================
+# Build Rules for Optional Software
+#===================================================================================================
+
+include build/make/optional.mk
+
+#===================================================================================================
 # Build Rules for L2 System VM Snapshot
 #===================================================================================================
 
-# The snapshots for the L2 VM need linuxd.elf to be built first.
-all-snapshot: all-host-binaries
-# Snapshots are only generated for microvm/hyperlight machines when L2_VM is enabled.
-ifneq (,$(and $(filter yes,$(L2_VM)),$(filter $(MACHINE),microvm hyperlight)))
-	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
-	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh $(TOOLCHAIN_DIR)
-endif
-
-clean-snapshot:
-	$(FORCE_RM_CMD) $(SNAPSHOT_DIR)
+include build/make/snapshot.mk
 
 #===================================================================================================
-# Build Rules for Guest Static Libraries
+# Build Rules for Generic Guest Static Libraries
 #===================================================================================================
 
-define GUEST_STATICLIB_RULES
-all-guest-staticlib-$(1): init
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$(1).a $(LIBRARIES_DIR)/lib$(1).a
-
-check-guest-staticlib-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-
-format-guest-staticlib-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1)
-
-format-check-guest-staticlib-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
-
-clean-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
-
-rust-lint-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL) --fix --allow-dirty
-
-rust-lint-check-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=staticlib --features=$(LOG_LEVEL)
-endef
-
-$(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
-
-all-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),all-guest-staticlib-$(target))
-
-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-staticlib-$(target))
-
-format-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-guest-staticlib-$(target))
-
-format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-check-guest-staticlib-$(target))
-
-clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
-
-rust-lint-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-guest-staticlib-$(target))
-
-rust-lint-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-check-guest-staticlib-$(target))
+include build/make/generic-guest-staticlibs.mk
 
 #===================================================================================================
 # Build Rules for Guest Rust Libraries
 #===================================================================================================
 
-define GUEST_RLIB_RULES
-check-guest-rlib-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1)
-
-format-guest-rlib-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1)
-
-format-check-guest-rlib-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
-
-rust-lint-guest-rlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
-
-rust-lint-check-guest-rlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
-endef
-
-$(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
-
-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
-
-format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(target))
-
-format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
-
-rust-lint-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-guest-rlib-$(target))
-
-rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-check-guest-rlib-$(target))
-
-test-guest-rlibs:
-	$(HOST_CARGO_TEST_CMD) --features=std -p arch
-	$(HOST_CARGO_TEST_CMD) --features=std -p bitmap
-	$(HOST_CARGO_TEST_CMD) --features=std -p config
-	$(HOST_CARGO_TEST_CMD) --features=std -p elf
-	$(HOST_CARGO_TEST_CMD) --features=std -p error
-	$(HOST_CARGO_TEST_CMD) --features=std -p type-safe
-	$(HOST_CARGO_TEST_CMD) --features=std -p proc
-	$(HOST_CARGO_TEST_CMD) --features=std -p raw-array
-	$(HOST_CARGO_TEST_CMD) --features=std -p slab
-	$(HOST_CARGO_TEST_CMD) --features=std -p static_assert
-	$(HOST_CARGO_TEST_CMD) --features=std -p libc_string
-	$(HOST_CARGO_TEST_CMD) --features=std -p syslog
+include build/make/generic-guest-rlibs.mk
 
 #===================================================================================================
-# Build Rules for Guest Binaries
+# Build Rules for Generic Guest Binaries
 #===================================================================================================
 
-define GUEST_BINARY_RULES
-all-guest-binaries-$(1): init all-guest-staticlibs
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=$(LOG_LEVEL)
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
+include build/make/generic-guest-binaries.mk
 
-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
+#===================================================================================================
+# Build Rules for WASM Daemon Binary
+#===================================================================================================
 
-format-guest-binaries-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1)
-
-format-check-guest-binaries-$(1):
-	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
-
-clean-guest-binaries-$(1): clean-guest-staticlibs
-	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
-
-rust-lint-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL) --fix --allow-dirty
-
-rust-lint-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
-endef
-
-$(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
-
-all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
-	$(MAKE) -C $(SOURCES_DIR)/benchmarks all
-	$(MAKE) -C $(SOURCES_DIR)/user all
-	$(MAKE) -C $(SOURCES_DIR)/tests all
-
-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
-
-format-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-guest-binaries-$(target))
-
-format-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-check-guest-binaries-$(target))
-
-clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
-	$(MAKE) -C $(SOURCES_DIR)/benchmarks clean
-	$(MAKE) -C $(SOURCES_DIR)/user clean
-	$(MAKE) -C $(SOURCES_DIR)/tests clean
-
-rust-lint-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-guest-binaries-$(target))
-
-rust-lint-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-check-guest-binaries-$(target))
-
-all-wasmd: all-wasm-binaries all-guest-binaries
-	@echo "WASM_BINARY=$(WASM_BINARY)"
-ifneq ($(WASM_BINARY),)
-	$(eval export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY)))
-	$(eval export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY)))
-	$(eval export NANVIX_WASM_BINARY_ARGS := =$(WASM_BINARY_ARGS))
-	$(eval export WASMD_CARGO_FEATURES := --features wasm_binary)
-endif
-	@echo "NANVIX_WASM_BINARY=$(NANVIX_WASM_BINARY)"
-	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
-	@echo "NANVIX_WASM_BINARY_ARGS=$(NANVIX_WASM_BINARY_ARGS)"
-	$(GUEST_CARGO_BUILD_CMD) $(WASMD_CARGO_FEATURES) -p wasmd
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/wasmd.elf $(BINARIES_DIR)/wasmd.elf
-
-check-wasmd:
-	$(GUEST_CARGO_CHECK_CMD) -p wasmd
-
-format-wasmd:
-	$(GUEST_CARGO_FMT_CMD) -p wasmd
-
-format-check-wasmd:
-	$(GUEST_CARGO_FMT_CMD) -p wasmd --check
-
-clean-wasmd: clean-wasm-binaries clean-guest-binaries
-	$(GUEST_CARGO_CLEAN_CMD) -p wasmd
-	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
-
-rust-lint-wasmd:
-	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd --fix --allow-dirty
-
-rust-lint-check-wasmd:
-	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd
+include build/make/wasmd.mk
 
 #===================================================================================================
 # Build Rules for Kernel Binary
 #===================================================================================================
 
-all-kernel: init
-	$(KERNEL_CARGO_BUILD_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-kernel/$(BUILD_MODE)/kernel.elf $(BINARIES_DIR)/kernel.elf
-
-check-kernel:
-	$(KERNEL_CARGO_CHECK_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
-
-format-kernel:
-	$(KERNEL_CARGO_FMT_CMD) -p kernel
-
-format-check-kernel:
-	$(KERNEL_CARGO_FMT_CMD) -p kernel --check
-
-clean-kernel:
-	$(KERNEL_CARGO_CLEAN_CMD) -p kernel
-	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
-
-rust-lint-kernel:
-	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel --fix --allow-dirty
-
-rust-lint-check-kernel:
-	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) --features $(LOG_LEVEL) -p kernel
+include build/make/kernel.mk
 
 #===================================================================================================
-# Build Rules for WASM Binaries
+# Build Rules for Generic WASM Binaries
 #===================================================================================================
 
-define WASM_BINARY_RULES
-all-wasm-binaries-$(1): init
-	$(WASM_CARGO_BUILD_CMD) -p $(1)
-	$(CP_CMD) $(OBJECTS_DIR)/wasm32-wasip1/$(WASM_BUILD_MODE)/$(1).wasm $(BINARIES_DIR)/$(1).wasm
-
-check-wasm-binaries-$(1):
-	$(WASM_CARGO_CHECK_CMD) -p $(1)
-
-format-wasm-binaries-$(1):
-	$(WASM_CARGO_FMT_CMD) -p $(1)
-
-format-check-wasm-binaries-$(1):
-	$(WASM_CARGO_FMT_CMD) -p $(1) --check
-
-clean-wasm-binaries-$(1):
-	$(WASM_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
-
-rust-lint-wasm-binaries-$(1):
-	$(WASM_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
-
-rust-lint-check-wasm-binaries-$(1):
-	$(WASM_CARGO_CLIPPY_CMD) -p $(1)
-endef
-
-$(foreach target,$(ALL_WASM_BINARIES),$(eval $(call WASM_BINARY_RULES,$(target))))
-
-all-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),all-wasm-binaries-$(target))
-
-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),check-wasm-binaries-$(target))
-
-format-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-wasm-binaries-$(target))
-
-format-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),format-check-wasm-binaries-$(target))
-
-clean-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),clean-wasm-binaries-$(target))
-
-rust-lint-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),rust-lint-wasm-binaries-$(target))
-
-rust-lint-check-wasm-binaries: $(foreach target,$(ALL_WASM_BINARIES),rust-lint-check-wasm-binaries-$(target))
+include build/make/generic-wasm-binaries.mk
 
 #===================================================================================================
-# Build Rules for Host Rust Libraries
+# Build Rules for Generic Host Rust Libraries
 #===================================================================================================
 
-define HOST_RLIB_RULES
-check-host-rlib-$(1):
-	$(HOST_CARGO_CHECK_CMD) -p $(1)
-
-format-host-rlib-$(1):
-	$(HOST_CARGO_FMT_CMD) -p $(1)
-
-format-check-host-rlib-$(1):
-	$(HOST_CARGO_FMT_CMD) -p $(1) --check
-
-rust-lint-host-rlib-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
-
-rust-lint-check-host-rlib-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
-
-test-host-rlib-$(1):
-	$(HOST_CARGO_TEST_CMD) -p $(1)
-endef
-
-$(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target))))
-
-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),check-host-rlib-$(target))
-
-format-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-host-rlib-$(target))
-
-format-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),format-check-host-rlib-$(target))
-
-rust-lint-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-host-rlib-$(target))
-
-rust-lint-check-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),rust-lint-check-host-rlib-$(target))
-
-test-host-rlibs: $(foreach target,$(ALL_HOST_RUST_LIBS),test-host-rlib-$(target))
+include build/make/generic-host-rlibs.mk
 
 #===================================================================================================
 # Build Rules for Nanvix Daemon
 #===================================================================================================
 
-NANVIXD_CARGO_FEATURES=$(if $(filter yes,$(SINGLE_PROCESS)),--features=single-process,)
-NANVIXD_CARGO_FEATURES+=$(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
-
-all-nanvixd: init
-	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd $(BINARIES_DIR)/nanvixd.elf
-
-check-nanvixd:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
-
-format-nanvixd:
-	$(HOST_CARGO_FMT_CMD) -p nanvixd
-
-format-check-nanvixd:
-	$(HOST_CARGO_FMT_CMD) -p nanvixd --check
-
-clean-nanvixd:
-	$(HOST_CARGO_CLEAN_CMD) -p nanvixd
-	$(RM_CMD) $(BINARIES_DIR)/nanvixd.elf
-
-rust-lint-nanvixd:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd --fix --allow-dirty
-
-rust-lint-check-nanvixd:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+include build/make/nanvixd.mk
 
 #===================================================================================================
-# Build Rules for Host Binaries
+# Build Rules for Generic Host Binaries
 #===================================================================================================
 
-define HOST_BINARY_RULES
-all-host-binaries-$(1): init
-	$(HOST_CARGO_BUILD_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
-
-check-host-binaries-$(1):
-	$(HOST_CARGO_CHECK_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-
-format-host-binaries-$(1):
-	$(HOST_CARGO_FMT_CMD) -p $(1)
-
-format-check-host-binaries-$(1):
-	$(HOST_CARGO_FMT_CMD) -p $(1) --check
-
-clean-host-binaries-$(1):
-	$(HOST_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
-
-rust-lint-host-binaries-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1) --fix --allow-dirty
-
-rust-lint-check-host-binaries-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) $(HOST_CARGO_FEATURES) -p $(1)
-endef
-
-$(foreach target,$(ALL_HOST_BINARIES),$(eval $(call HOST_BINARY_RULES,$(target))))
-
-all-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),all-host-binaries-$(target))
-
-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),check-host-binaries-$(target))
-
-format-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-host-binaries-$(target))
-
-format-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),format-check-host-binaries-$(target))
-
-clean-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),clean-host-binaries-$(target))
-
-rust-lint-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-host-binaries-$(target))
-
-rust-lint-check-host-binaries: $(foreach target,$(ALL_HOST_BINARIES),rust-lint-check-host-binaries-$(target))
+include build/make/generic-host-binaries.mk
 
 #===================================================================================================
 # Build Rules for UserVM
 #===================================================================================================
 
-all-uservm: init
-	$(HOST_CARGO_BUILD_CMD) $(USERVM_CARGO_FEATURES) -p uservm
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm $(BINARIES_DIR)/uservm.elf
-
-check-uservm:
-	$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
-
-format-uservm:
-	$(HOST_CARGO_FMT_CMD) -p uservm
-
-format-check-uservm:
-	$(HOST_CARGO_FMT_CMD) -p uservm --check
-
-clean-uservm:
-	$(HOST_CARGO_CLEAN_CMD) -p uservm
-	$(RM_CMD) $(BINARIES_DIR)/uservm.elf
-
-rust-lint-uservm:
-	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty
-
-rust-lint-check-uservm:
-	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm
-
-test-uservm:
-	$(USERVM_CARGO_TEST_CMD) -p uservm
-
-#===================================================================================================
-# Rules for Running System Level Tests Using Nanvix Daemon
-#===================================================================================================
-
-comma:=,
-
-define TEST_RULE
-test-$(2): all
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ ! -f "$(1)/$(2)$(3)" ]; then \
-		echo "\033[31mWarning: $(1)/$(2)$(3) missing, skipping test.\033[0m"; \
-		else \
-		echo "Running test $(2)..." ; \
-			$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(1)/$(2)$(3) $(4) $(5) $(6) $(TIMEOUT); \
-	fi
-endif
-endef
-
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-c,.elf,'','hello world!','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-cpp,.elf,'','["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),echo-rust-nostd,.elf,'','["hello world!"]','hello world!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-c,.elf,'','[]','Hello$(comma) world from C!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),hello-cpp,.elf,'','[]','Hello$(comma) world from C++!'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),memory-c,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(BINARIES_DIR),arch-rust,.elf,'','[]','ok'))
-$(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)/user/hello-python/__main__.py','','Hello$(comma) from Python!'))
-$(eval $(call TEST_RULE,$(SYSROOT_DIR)/bin,qjs,,'$(SOURCES_DIR)/user/hello-js/index.js','','Hello$(comma) world from JavaScript!'))
-
-define WASM_TEST_RULE
-test-$(1): all
-ifeq ($(shell basename $(WASM_BINARY)),$(1).wasm)
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@echo "Running test $(1)..."
-	$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) bin/wasmd.elf $(2) $(3) $(4) $(TIMEOUT);
-endif
-endif
-endef
-
-$(eval $(call WASM_TEST_RULE,echo-wasm-rust,'','["hello world!"]','hello world!'))
-$(eval $(call WASM_TEST_RULE,hello-wasm,'','[]','Hello$(comma) world!'))
-
-#===================================================================================================
-# Rules for QuickJS Tests
-#===================================================================================================
-
-QUICKJS_BINARY := $(SYSROOT_DIR)/bin/qjs
-
-define QUICKJS_TEST_RULE
-test-quickjs-$(1): all
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@if [ -f "$(QUICKJS_BINARY)" ]; then \
-		echo "Running test $(1)..."; \
-		$(SCRIPTS_DIR)/test-nanvixd.sh $(NANVIXD_SOCKADDR) $(QUICKJS_BINARY) "--std $(SOURCES_DIR)/tests/quickjs/$(1).js" $(2) $(3) $(TIMEOUT); \
-	fi
-endif
-endef
-
-$(eval $(call QUICKJS_TEST_RULE,test_bigint,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_builtin,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_closure,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_cyclic_import,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_language,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_loop,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_std,'','ok'))
-$(eval $(call QUICKJS_TEST_RULE,test_worker,'','ok'))
-
-test-quickjs: \
-	test-quickjs-test_bigint \
-	test-quickjs-test_builtin \
-	test-quickjs-test_closure \
-	test-quickjs-test_cyclic_import \
-	test-quickjs-test_language \
-	test-quickjs-test_loop \
-	test-quickjs-test_std \
-	test-quickjs-test_worker
+include build/make/uservm.mk
