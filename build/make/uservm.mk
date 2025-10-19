@@ -1,6 +1,13 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+USERVM_FEATURES :=
+USERVM_FEATURES += $(if $(filter yes,$(PROFILER)),profiler,)
+USERVM_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
+USERVM_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+USERVM_FEATURES := $(strip $(USERVM_FEATURES))
+USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)")
+
 all-uservm: init
 	$(HOST_CARGO_BUILD_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm $(BINARIES_DIR)/uservm.elf
@@ -25,4 +32,4 @@ rust-lint-check-uservm:
 	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 
 test-uservm:
-	$(USERVM_CARGO_TEST_CMD) -p uservm
+	$(HOST_CARGO_TEST_CMD) $(USERVM_CARGO_FEATURES) -p uservm

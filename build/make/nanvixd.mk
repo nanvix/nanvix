@@ -1,8 +1,11 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-NANVIXD_CARGO_FEATURES=$(if $(filter yes,$(SINGLE_PROCESS)),--features=single-process,)
-NANVIXD_CARGO_FEATURES+=$(if $(filter hyperlight,$(MACHINE)),--features hyperlight,)
+NANVIXD_FEATURES :=
+NANVIXD_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
+NANVIXD_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
+NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
