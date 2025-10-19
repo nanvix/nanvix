@@ -17,7 +17,10 @@ use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
-use ::std::process::Stdio;
+use ::std::{
+    mem,
+    process::Stdio,
+};
 use ::syscomm::{
     SocketListener,
     SocketStream,
@@ -27,6 +30,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::tokio::{
     process::{
@@ -198,40 +202,49 @@ impl UserVm {
     ///
     /// # Description
     ///
-    /// Send a shutdown message to the user VM's control-plane socket so that it can gracefully
-    /// shutdown, and wait until the process dies.
+    /// Shuts down the User VM instance.
     ///
-    pub async fn shutdown(&mut self) -> Result<()> {
-        let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
-        let mut msg_bytes: [u8; std::mem::size_of::<NanvixdControlMessage>()] =
-            [0u8; std::mem::size_of::<NanvixdControlMessage>()];
-        msg.to_bytes(&mut msg_bytes);
-        self.control_plane_stream.write_all(&msg_bytes).await?;
+    pub async fn shutdown(&mut self) {
+        trace!("shutdown()");
+
+        // Prepare shutdown message.
+        let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
+            let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
+            let mut msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] =
+                [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+            msg.to_bytes(&mut msg_bytes);
+            msg_bytes
+        };
+
+        // Send shutdown command to User VM.
+        if let Err(e) = self.control_plane_stream.write_all(&msg_bytes).await {
+            warn!("shutdown(): failed to send shutdown command to embedded user VM (error={e:?})");
+        }
 
         // Wait for user VM instance to finish.
         if let Some(mut child) = self.child.take() {
             match timeout(CLEANUP_TIMEOUT, child.wait()).await {
                 Ok(Ok(exit_status)) => {
                     if !exit_status.success() {
-                        error!(
-                            "user VM returned with non-zero exit status (code={:?})",
+                        warn!(
+                            "shutdown(): user VM returned with non-zero exit status (code={:?})",
                             exit_status.code()
                         );
                     }
                 },
                 // If we encounter any errors while waiting for the user VM to gracefully shutdown,
                 // make sure we kill the underlying instance.
-                Ok(Err(e)) => {
-                    error!("error waiting for user VM (error={e:?})");
+                Ok(Err(error)) => {
+                    warn!("shutdown(): user VM terminated with error (error={error:?})");
                     Self::send_sigkill_to_child(child);
                 },
-                Err(e) => {
-                    error!("timed-out waiting for user VM (error={e:?})");
+                Err(elapsed) => {
+                    warn!(
+                        "shutdown(): timed-out waiting for user VM to shutdown (error={elapsed:?})"
+                    );
                     Self::send_sigkill_to_child(child);
                 },
             }
         }
-
-        Ok(())
     }
 }
