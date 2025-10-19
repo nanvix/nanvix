@@ -18,7 +18,7 @@ export SCRIPT_DIR=${SCRIPT_DIR}
 export NANVIX_HOME=${NANVIX_HOME:-$(git rev-parse --show-toplevel)}
 
 # Target configuration
-MEMSIZE=$(grep 'memory_size' $SCRIPT_DIR/../build/kernel_config.toml | awk -F'=' '{print $2}' | tr -d ' ')
+MEMSIZE=$(grep 'memory_size' "${SCRIPT_DIR}/../build/kernel_config.toml" | awk -F'=' '{print $2}' | tr -d ' ')
 echo ">>> Memory Size: $MEMSIZE"
 
 # Check if MEMSIZE is invalid.
@@ -49,7 +49,7 @@ function usage
 function check_args
 {
 	# Missing binary?
-	if [ -z $IMAGE ];
+	if [ -z "$IMAGE" ];
 	then
 		echo "$SCRIPT_NAME: missing image"
 		usage
@@ -72,7 +72,7 @@ function run_qemu
 	local cmd=""
 
 	# Check if the target is unsupported.
-	if [ $target != "i386" ]; then
+	if [ "$target" != "i386" ]; then
 		echo "Unsupported target: $target"
 		exit 1
 	fi
@@ -110,7 +110,7 @@ function run_qemu
 	esac
 
 	# Select QEMU from path, if available.
-	if [ ! -z "$(command -v qemu-system-$target)" ];
+	if command -v "qemu-system-$target" >/dev/null 2>&1;
 	then
 		qemu_cmd="qemu-system-$target"
 	else
@@ -129,13 +129,13 @@ function run_qemu
 	cmd="$qemu_cmd -cdrom $image"
 
 	# Run.
-	if [ $mode == "--debug" ];
+	if [ "$mode" = "--debug" ];
 	then
 		cmd="$cmd -gdb tcp::$GDB_PORT -S"
 		$cmd
 	else
 
-		if [ ! -z $timeout ];
+	if [ -n "$timeout" ];
 		then
 			cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
 		fi
@@ -146,35 +146,8 @@ function run_qemu
 
 #===================================================================================================
 
-# Runs a binary in MicroVm.
-function run_microvm
-{
-	local image=$1   # Image.
-	local timeout=$2 # Timeout for test mode.
-
-	local microvm="$NANVIX_HOME/bin/uservm.elf"
-	local kernel="$NANVIX_HOME/bin/kernel.elf"
-	local memsize
-	memsize=$(echo "$MEMSIZE / 1024 / 1024" | bc)
-
-	# Base command.
-	cmd="$microvm -kernel $kernel -initrd $image -memory ${memsize}M"
-
-	# Run.
-	if [ ! -z $timeout ];
-	then
-		cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
-	fi
-
-	echo "Running: $cmd"
-
-	eval "$cmd"
-}
-
-#===================================================================================================
-
 # No debug mode.
-if [ -z $MODE ];
+if [ -z "$MODE" ];
 then
 	MODE="--no-debug"
 fi
@@ -195,10 +168,7 @@ case "$TARGET" in
 		check_args
 		case "$MACHINE" in
 			"qemu-baremetal" | "qemu-baremetal-smp" | "qemu-pc" | "qemu-pc-smp" | "qemu-isapc")
-				run_qemu "i386" $MACHINE $IMAGE $MODE $TIMEOUT
-				;;
-			"microvm")
-				run_microvm $IMAGE $TIMEOUT
+				run_qemu "i386" "$MACHINE" "$IMAGE" "$MODE" "$TIMEOUT"
 				;;
 			*)
 				echo "Unsupported machine: $MACHINE"
