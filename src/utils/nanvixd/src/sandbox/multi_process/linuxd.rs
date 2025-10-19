@@ -20,7 +20,10 @@ use ::linuxd::{
     args,
     config::restore_gate_sockaddr_builder,
 };
-use ::std::process::Stdio;
+use ::std::{
+    mem,
+    process::Stdio,
+};
 use ::syscomm::{
     ReadExact,
     SocketListener,
@@ -33,6 +36,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::tokio::{
     process::{
@@ -256,13 +260,27 @@ impl LinuxDaemon {
         })
     }
 
-    /// Send a shutdown message to linuxd so that it can clean-up its internal resources.
-    pub async fn shutdown(&mut self) -> Result<()> {
-        let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
-        let mut msg_bytes: [u8; size_of::<NanvixdControlMessage>()] =
-            [0u8; size_of::<NanvixdControlMessage>()];
-        msg.to_bytes(&mut msg_bytes);
-        self.control_plane_stream.write_all(&msg_bytes).await?;
+    ///
+    /// # Description
+    ///
+    /// Shuts down the Linux Daemon instance.
+    ///
+    pub async fn shutdown(&mut self) {
+        trace!("shutdown()");
+
+        // Prepare shutdown message.
+        let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
+            let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
+            let mut msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] =
+                [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+            msg.to_bytes(&mut msg_bytes);
+            msg_bytes
+        };
+
+        // Send shutdown command to Linux Daemon.
+        if let Err(error) = self.control_plane_stream.write_all(&msg_bytes).await {
+            warn!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
+        }
 
         // Wait for linuxd instance to finish.
         match timeout(
@@ -273,23 +291,20 @@ impl LinuxDaemon {
         {
             Ok(Ok(exit_status)) => {
                 if !exit_status.success() {
-                    error!(
-                        "linuxd returned with non-zero exit status (status={:?})",
+                    warn!(
+                        "shutdown(): linuxd returned with non-zero exit status (status={:?})",
                         exit_status.code()
                     );
-                    Self::send_sigkill_to_child(&self.child);
                 }
             },
-            Ok(Err(e)) => {
-                error!("error waiting for linuxd: {e:?}");
+            Ok(Err(error)) => {
+                warn!("shutdown(): error waiting for linuxd (error={error:?})");
                 Self::send_sigkill_to_child(&self.child);
             },
-            Err(e) => {
-                error!("timed-out waiting for linuxd (error={e:?})");
+            Err(elapsed) => {
+                warn!("shutdown(): timed-out waiting for linuxd (error={elapsed:?})");
                 Self::send_sigkill_to_child(&self.child);
             },
         }
-
-        Ok(())
     }
 }
