@@ -97,7 +97,7 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 export SCCACHE       ?= $(shell which sccache 2>/dev/null)
 
 #===================================================================================================
-# Libraries and Binaries
+# Artifacts
 #===================================================================================================
 
 # File format for executables.
@@ -107,8 +107,16 @@ export EXEC_FORMAT := elf
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
-export LIBNVX := $(LIBRARIES_DIR)/libnvx.a
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+
+# Binaries.
+KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
+LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
+NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
+USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
+
+# Scripts
+RUN_NANVIXD_SCRIPT := $(SCRIPTS_DIR)/run-nanvixd.sh
 
 #===================================================================================================
 # Nanvix Variables
@@ -346,8 +354,14 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/bin
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
-	@cp -r ${BINARIES_DIR}/* ${SYSROOT_DIR}/bin/
-	@cp -r ${LIBRARIES_DIR}/* ${SYSROOT_DIR}/lib/
+	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
+	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
+ifneq ($(SINGLE_PROCESS),yes)
+	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
+	@cp ${USERVM} ${SYSROOT_DIR}/bin/
+endif
+	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
+	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 
