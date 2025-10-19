@@ -323,13 +323,7 @@ impl SandboxCache {
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
             debug!("cleaning linuxd instance (tenant_id={tenant_id:?})");
             if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
-                if let Err(e) = linuxd_instance_mut.shutdown().await {
-                    error!(
-                        "error cleaning-up linuxd instance (tenant_id={tenant_id}, error={e:?})"
-                    );
-                } else {
-                    debug!("cleaned-up linuxd instance (tenant_id={tenant_id})");
-                }
+                linuxd_instance_mut.shutdown().await;
             } else {
                 error!("error cleaning-up linuxd instance: not found (tenant_id={tenant_id})");
             }
