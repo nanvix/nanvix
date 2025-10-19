@@ -309,12 +309,7 @@ impl UserVm {
     ///
     /// Shuts down the User VM instance.
     ///
-    /// # Return Value
-    ///
-    /// On success this function returns a future that, when resolved, indicates that the User VM
-    /// has been shutdown. On failure, this function returns an error object instead.
-    ///
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) {
         trace!("shutdown()");
 
         // Prepare shutdown message.
@@ -328,43 +323,37 @@ impl UserVm {
 
         // Send shutdown command to User VM.
         if let Err(e) = self.control_plane_stream.write_all(&msg_bytes).await {
-            let reason: String =
-                format!("failed to send shutdown command to embedded user VM (error={e:?})");
-            error!("shutdown(): {reason}");
-            return Err(anyhow::anyhow!("{reason}"));
+            warn!("shutdown(): failed to send shutdown command to embedded user VM (error={e:?})");
         }
 
         // Wait for User VM to finish.
-        // NOTE: Don't bail out if we fail to keep same behavior as multi-process implementation.
         if let Some(task) = self.task.lock().await.take() {
             match timeout(crate::config::CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(exit_status)) => {
                         if exit_status != ExitCode::SUCCESS {
-                            error!(
+                            warn!(
                                 "shutdown(): user VM returned with non-zero exit status \
                                  (code={exit_status:?})",
                             );
                         }
                     },
                     Ok(Err(error)) => {
-                        error!(
+                        warn!(
                             "shutdown(): embedded user VM terminated with error (error={error:?})"
                         );
                     },
                     Err(join_error) => {
-                        error!("shutdown(): embedded user VM task panicked (error={join_error:?})");
+                        warn!("shutdown(): embedded user VM task panicked (error={join_error:?})");
                     },
                 },
                 Err(elapsed) => {
-                    error!(
+                    warn!(
                         "shutdown(): timed-out waiting for embedded user VM to shutdown \
                          (error={elapsed:?})"
                     );
                 },
             }
         }
-
-        Ok(())
     }
 }

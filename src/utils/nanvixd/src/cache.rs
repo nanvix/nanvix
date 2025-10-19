@@ -285,11 +285,7 @@ impl SandboxCache {
 
         if let Some(mut user_vm) = self.user_vm_instances.remove(tag) {
             if let Some(user_vm_mut) = Arc::get_mut(&mut user_vm) {
-                if let Err(e) = user_vm_mut.shutdown().await {
-                    error!("error shutting down user VM (tag={tag:?}, error={e:?})");
-                } else {
-                    debug!("shut down user VM (tag={tag:?})");
-                }
+                user_vm_mut.shutdown().await;
             } else {
                 error!("error shutting down user VM: cannot get mut (tag={tag:?})");
             }
@@ -317,11 +313,7 @@ impl SandboxCache {
             debug!("cleaning user vm instance (tag={tag:?})");
             if let Some(user_vm_instance_mut) = Arc::get_mut(user_vm_instance) {
                 debug!("sending shutdown message to user vm (tag={tag:?})");
-                if let Err(e) = user_vm_instance_mut.shutdown().await {
-                    error!("error cleaning-up user vm instance (tag={tag:?}, error={e:?})");
-                } else {
-                    debug!("cleaned-up user vm instance (tag={tag:?})");
-                }
+                user_vm_instance_mut.shutdown().await;
             } else {
                 error!("error cleaning-up user vm instance: not found (tag={tag:?})");
             }
