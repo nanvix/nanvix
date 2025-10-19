@@ -97,6 +97,15 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 export SCCACHE       ?= $(shell which sccache 2>/dev/null)
 
 #===================================================================================================
+# Release Artifact Configuration
+#===================================================================================================
+
+RELEASE_DEPLOYMENT_MODE := $(if $(filter yes,$(SINGLE_PROCESS)),single_process,multi_process)
+RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
+RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
+RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
+
+#===================================================================================================
 # Artifacts
 #===================================================================================================
 
@@ -365,6 +374,11 @@ endif
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 
+release: install
+	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
+	@$(RM_CMD) ${RELEASE_ARCHIVE}
+	@tar -cjf ${RELEASE_ARCHIVE} -C ${SYSROOT_DIR} .
+
 # Shows available make targets and build parameters.
 help:
 	@echo ""
@@ -379,6 +393,7 @@ help:
 	@echo "  format          Fix code formatting issues automatically"
 	@echo "  format-check    Check code formatting without fixing"
 	@echo "  install         Install build artifacts in the sysroot directory"
+	@echo "  release         Create release archive from the sysroot directory"
 	@echo "  lint            Fix code linting issues automatically"
 	@echo "  lint-check      Check for linting issues without fixing"
 	@echo "  spellcheck      Check for spelling errors in source code and documentation"
