@@ -179,12 +179,7 @@ impl LinuxDaemon {
     ///
     /// Shuts down the Linux Daemon instance.
     ///
-    /// # Return Value
-    ///
-    /// On success this function returns a future that, when resolved, indicates that the Linux
-    /// Daemon has been shutdown. On failure, this function returns an error object instead.
-    ///
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) {
         trace!("shutdown()");
 
         // Prepare shutdown message.
@@ -198,14 +193,10 @@ impl LinuxDaemon {
 
         // Send shutdown command to Linux Daemon.
         if let Err(error) = self.control_plane_stream.write_all(&msg_bytes).await {
-            let reason: String =
-                format!("failed to send shutdown command to linuxd (error={error:?})");
-            error!("shutdown(): {reason}");
-            return Err(anyhow::anyhow!(reason));
+            warn!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
         }
 
         // Wait for the Linux Daemon to finish.
-        // NOTE: Don't bail out if we fail to keep same behavior as multi-process implementation.
         if let Some(linuxd_task) = self.linuxd_task.lock().await.take() {
             match timeout(
                 Duration::from_secs(::config::syscomm::SHUTDOWN_TIMEOUT_SECS),
@@ -216,21 +207,19 @@ impl LinuxDaemon {
                 Ok(join_result) => match join_result {
                     Ok(Ok(())) => {},
                     Ok(Err(error)) => {
-                        error!("shutdown(): linuxd terminated with error (error={error:?})");
+                        warn!("shutdown(): linuxd terminated with error (error={error:?})");
                     },
                     Err(join_error) => {
-                        error!("shutdown(): linuxd task panicked (error={join_error:?})");
+                        warn!("shutdown(): failed to join linuxd task (error={join_error:?})");
                     },
                 },
                 Err(elapsed) => {
-                    error!(
+                    warn!(
                         "shutdown(): timed-out waiting for linuxd to shutdown \
                          (elapsed={elapsed:?})"
                     );
                 },
             }
         }
-
-        Ok(())
     }
 }
