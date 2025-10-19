@@ -1,6 +1,11 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+HOST_FEATURES :=
+HOST_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
+HOST_FEATURES := $(strip $(HOST_FEATURES))
+HOST_CARGO_FEATURES := $(if $(HOST_FEATURES),--features "$(HOST_FEATURES)")
+
 define HOST_BINARY_RULES
 all-host-binaries-$(1): init
 	$(HOST_CARGO_BUILD_CMD) $(HOST_CARGO_FEATURES) -p $(1)

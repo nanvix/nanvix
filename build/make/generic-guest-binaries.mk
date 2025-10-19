@@ -1,13 +1,17 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+GUEST_BINARY_FEATURES := $(LOG_LEVEL)
+GUEST_BINARY_FEATURES := $(strip $(GUEST_BINARY_FEATURES))
+GUEST_BINARY_CARGO_FEATURES := $(if $(GUEST_BINARY_FEATURES),--features "$(GUEST_BINARY_FEATURES)")
+
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): init all-guest-staticlibs
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
 
 format-guest-binaries-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -20,10 +24,10 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty
 
 rust-lint-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --features=$(LOG_LEVEL)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
 endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
