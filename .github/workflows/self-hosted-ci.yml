@@ -108,6 +108,52 @@ jobs:
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
 
+    - id: release-archive
+      name: "Create Release Archive"
+      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' }}
+      run: |
+        single_process="no"
+        if [[ "${{ matrix.deployment-type }}" == "single-process" ]]; then
+          single_process="yes"
+        fi
+
+        # Ensure a clean build.
+        ./z distclean
+
+        # Build the release archive.
+        ./z build -- \
+          MACHINE="${{ matrix.machine-type }}" \
+          SINGLE_PROCESS="${single_process}" \
+          RELEASE="yes" \
+          BUILD_OPT="yes" \
+          LOG_LEVEL="error" \
+          release
+
+        archive_path=$(ls -1t nanvix-*.tar.bz2 2>/dev/null | head -n 1)
+        if [[ -z "${archive_path}" ]]; then
+          echo "No release archive found." >&2
+          exit 1
+        fi
+
+        echo "archive-path=${archive_path}" >> "${GITHUB_OUTPUT}"
+      shell: bash
+
+    - name: "Update Latest Release"
+      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' }}
+      uses: ncipollo/release-action@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: latest
+        name: Latest
+        draft: false
+        prerelease: false
+        allowUpdates: true
+        makeLatest: true
+        removeArtifacts: true
+        artifacts: ${{ steps.release-archive.outputs.archive-path }}
+        artifactContentType: application/x-bzip2
+        body: Automated release update for ${{ matrix.machine-type }} (${{ matrix.deployment-type }}) ${{ matrix.build-type }} build.
+
     - name: "Upload logs in case of failures"
       if: failure()
       uses: actions/upload-artifact@v4
