@@ -37,7 +37,6 @@ default = ["microvm"]
 # Machine Types
 hyperlight = [
     "arch/hyperlight",
-    "putb",
     "puts",
     "stdio",
     "acpi",
