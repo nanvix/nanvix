@@ -121,8 +121,9 @@ jobs:
         ./z distclean
 
         # Build the release archive.
-        ./z build -- \
-          TOOLCHAIN_DIR=$HOME/toolchain \
+        ./z build \
+          --toolchain-dir $HOME/toolchain \
+          -- \
           MACHINE="${{ matrix.machine-type }}" \
           SINGLE_PROCESS="${single_process}" \
           RELEASE="yes" \
