@@ -122,6 +122,7 @@ jobs:
 
         # Build the release archive.
         ./z build -- \
+          TOOLCHAIN_DIR=$HOME/toolchain \
           MACHINE="${{ matrix.machine-type }}" \
           SINGLE_PROCESS="${single_process}" \
           RELEASE="yes" \
@@ -135,24 +136,24 @@ jobs:
           exit 1
         fi
 
-        echo "archive-path=${archive_path}" >> "${GITHUB_OUTPUT}"
+        machine="${{ matrix.machine-type }}"
+        deployment="${{ matrix.deployment-type }}"
+        build_type="${{ matrix.build-type }}"
+        run_id="${GITHUB_RUN_ID}"
+
+        archive_name="nanvix-${machine}-${deployment}-${build_type}-${run_id}.tar.bz2"
+        mv "${archive_path}" "${archive_name}"
+
+        echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
       shell: bash
 
-    - name: "Update Latest Release"
+    - name: "Upload Release Artifact"
       if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' }}
-      uses: ncipollo/release-action@v1
+      uses: actions/upload-artifact@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: latest
-        name: Latest
-        draft: false
-        prerelease: false
-        allowUpdates: true
-        makeLatest: true
-        removeArtifacts: true
-        artifacts: ${{ steps.release-archive.outputs.archive-path }}
-        artifactContentType: application/x-bzip2
-        body: Automated release update for ${{ matrix.machine-type }} (${{ matrix.deployment-type }}) ${{ matrix.build-type }} build.
+        name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+        path: ${{ steps.release-archive.outputs.archive-path }}
+        overwrite: true
 
     - name: "Upload logs in case of failures"
       if: failure()
@@ -166,3 +167,31 @@ jobs:
           **/*.log
           **/*.out
           **/*.err
+
+  publish-latest:
+    name: "Publish Latest Release"
+    needs: ci
+    if: ${{ github.ref == 'refs/heads/dev' }}
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+    - name: "Download release artifacts"
+      uses: actions/download-artifact@v4
+      with:
+        pattern: release-*
+        path: release-artifacts
+
+    - name: "Update Latest Release"
+      uses: ncipollo/release-action@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: latest
+        name: Latest
+        draft: false
+        prerelease: false
+        allowUpdates: true
+        makeLatest: true
+        removeArtifacts: true
+        artifacts: release-artifacts/**/*.tar.bz2
+        artifactContentType: application/x-bzip2
+        body: Automated release update for ${{ github.run_id }}.
