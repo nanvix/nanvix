@@ -86,6 +86,13 @@ pub const CONTROL_PLANE_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 pub const GATEWAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
+///
+/// # Description
+///
+/// Provides the timeout we should use when waiting for Linuxd to shutdown.
+///
+pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

@@ -10,6 +10,7 @@ use crate::config::{
     get_clh_bin_dir,
     get_clh_snapshot_path,
     CONTROL_PLANE_ACCEPT_TIMEOUT,
+    SHUTDOWN_TIMEOUT,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -48,10 +49,7 @@ use ::tokio::{
         Child,
         Command,
     },
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
@@ -307,12 +305,7 @@ impl LinuxDaemon {
         }
 
         // Wait for linuxd instance to finish.
-        match timeout(
-            Duration::from_secs(::config::syscomm::SHUTDOWN_TIMEOUT_SECS),
-            self.child.wait(),
-        )
-        .await
-        {
+        match timeout(SHUTDOWN_TIMEOUT, self.child.wait()).await {
             Ok(Ok(exit_status)) => {
                 if !exit_status.success() {
                     warn!(
