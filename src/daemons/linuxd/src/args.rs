@@ -7,7 +7,7 @@
 
 use crate::config;
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_SOCKET_TYPE_STR;
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures
@@ -250,7 +250,7 @@ impl Args {
     pub fn control_plane_socket_type(&self) -> &str {
         self.control_plane_sockaddr_type
             .as_deref()
-            .unwrap_or(DEFAULT_SOCKET_TYPE_STR)
+            .unwrap_or(SocketType::UNIX_STR)
     }
 
     ///
@@ -278,7 +278,7 @@ impl Args {
     pub fn user_vm_bind_socket_type(&self) -> &str {
         self.user_vm_bind_sockaddr_type
             .as_deref()
-            .unwrap_or(DEFAULT_SOCKET_TYPE_STR)
+            .unwrap_or(SocketType::UNIX_STR)
     }
 
     ///

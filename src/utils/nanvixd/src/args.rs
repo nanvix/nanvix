@@ -7,7 +7,6 @@
 
 use crate::config;
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_SOCKET_TYPE_STR;
 use ::hwloc::HwLoc;
 use ::std::{
     fs::File,
@@ -237,23 +236,20 @@ impl Args {
     }
 
     pub fn control_plane_socket_type(&self) -> &str {
-        match self.control_plane_socket_type.as_deref() {
-            Some(socket_type) => socket_type,
-            None => DEFAULT_SOCKET_TYPE_STR,
-        }
+        self.control_plane_socket_type
+            .as_deref()
+            .unwrap_or(SocketType::UNIX_STR)
     }
 
     pub fn gateway_socket_type(&self) -> &str {
-        match self.gateway_socket_type.as_deref() {
-            Some(socket_type) => socket_type,
-            None => DEFAULT_SOCKET_TYPE_STR,
-        }
+        self.gateway_socket_type
+            .as_deref()
+            .unwrap_or(SocketType::UNIX_STR)
     }
 
     pub fn system_vm_socket_type(&self) -> &str {
-        match self.system_vm_socket_type.as_deref() {
-            Some(socket_type) => socket_type,
-            None => DEFAULT_SOCKET_TYPE_STR,
-        }
+        self.system_vm_socket_type
+            .as_deref()
+            .unwrap_or(SocketType::UNIX_STR)
     }
 }
