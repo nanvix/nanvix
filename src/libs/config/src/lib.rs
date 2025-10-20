@@ -56,13 +56,6 @@ pub mod syscomm {
     ///
     /// # Description
     ///
-    /// Provides the timeout we should use when waiting for Linuxd to shutdown.
-    ///
-    pub const SHUTDOWN_TIMEOUT_SECS: u64 = 60;
-
-    ///
-    /// # Description
-    ///
     /// Default socket type.
     ///
     pub const DEFAULT_SOCKET_TYPE_STR: &str = "unix";

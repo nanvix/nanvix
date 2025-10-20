@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::config::CONTROL_PLANE_ACCEPT_TIMEOUT;
+use crate::config::{
+    CONTROL_PLANE_ACCEPT_TIMEOUT,
+    SHUTDOWN_TIMEOUT,
+};
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
@@ -30,10 +33,7 @@ use ::syslog::{
 use ::tokio::{
     sync::Mutex,
     task::JoinHandle,
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 
 //==================================================================================================
@@ -195,12 +195,7 @@ impl LinuxDaemon {
 
         // Wait for the Linux Daemon to finish.
         if let Some(linuxd_task) = self.linuxd_task.lock().await.take() {
-            match timeout(
-                Duration::from_secs(::config::syscomm::SHUTDOWN_TIMEOUT_SECS),
-                linuxd_task,
-            )
-            .await
-            {
+            match timeout(SHUTDOWN_TIMEOUT, linuxd_task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(())) => {},
                     Ok(Err(error)) => {
