@@ -496,6 +496,7 @@ rust-format: \
 	format-host-binaries \
 	format-host-rlibs \
 	format-kernel \
+	format-nanvixd \
 	format-uservm \
 	format-wasmd \
 	format-wasm-binaries
@@ -508,6 +509,7 @@ rust-format-check: \
 	format-check-host-binaries \
 	format-check-host-rlibs \
 	format-check-kernel \
+	format-check-nanvixd \
 	format-check-uservm \
 	format-check-wasmd \
 	format-check-wasm-binaries
