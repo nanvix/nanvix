@@ -5,9 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::{
-    config::SandboxConfig,
-    tag::SandboxTag,
+use crate::{
+    config::CONTROL_PLANE_ACCEPT_TIMEOUT,
+    sandbox::{
+        config::SandboxConfig,
+        tag::SandboxTag,
+    },
 };
 use ::anyhow::Result;
 use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
@@ -40,10 +43,7 @@ use ::tokio::{
         Mutex,
     },
     task::JoinHandle,
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 use ::user_vm_api::{
     NewUserVm,
@@ -272,30 +272,27 @@ impl UserVm {
         });
 
         // Wait for the User VM task to connect to the control-plane socket.
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(error)) => {
-                uservm_task.abort();
-                let reason: String =
-                    format!("error connecting control-plane to embedded user VM (error={error:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-            Err(elapsed) => {
-                uservm_task.abort();
-                let reason: String = format!(
-                    "timed-out waiting for embedded user VM to connect the control-plane stream \
-                     (error={elapsed:?})"
-                );
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-        };
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(error)) => {
+                    uservm_task.abort();
+                    let reason: String = format!(
+                        "error connecting control-plane to embedded user VM (error={error:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+                Err(elapsed) => {
+                    uservm_task.abort();
+                    let reason: String = format!(
+                        "timed-out waiting for embedded user VM to connect the control-plane \
+                         stream (error={elapsed:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+            };
 
         Ok(Self {
             task: Mutex::new(Some(uservm_task)),

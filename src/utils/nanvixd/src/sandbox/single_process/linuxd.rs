@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::config::CONTROL_PLANE_ACCEPT_TIMEOUT;
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
@@ -141,30 +142,26 @@ impl LinuxDaemon {
         });
 
         // Wait for the linuxd to connect to the control-plane socket.
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(error)) => {
-                linuxd_task.abort();
-                let reason: String =
-                    format!("error connecting control-plane to linuxd (error={error:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-            Err(elapsed) => {
-                linuxd_task.abort();
-                let reason: String = format!(
-                    "timed-out waiting for linuxd to connect the control-plane stream \
-                     (elapsed={elapsed:?})"
-                );
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-        };
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(error)) => {
+                    linuxd_task.abort();
+                    let reason: String =
+                        format!("error connecting control-plane to linuxd (error={error:?})");
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+                Err(elapsed) => {
+                    linuxd_task.abort();
+                    let reason: String = format!(
+                        "timed-out waiting for linuxd to connect the control-plane stream \
+                         (elapsed={elapsed:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+            };
 
         debug!("spawn(): nanvixd received connection from linuxd control-plane socket");
 

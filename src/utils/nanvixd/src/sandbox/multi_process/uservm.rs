@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    config::CLEANUP_TIMEOUT,
+    config::{
+        CLEANUP_TIMEOUT,
+        CONTROL_PLANE_ACCEPT_TIMEOUT,
+    },
     sandbox::{
         config::SandboxConfig,
         tag::SandboxTag,
@@ -37,10 +40,7 @@ use ::tokio::{
         Child,
         Command,
     },
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 
 //==================================================================================================
@@ -142,37 +142,33 @@ impl UserVm {
         // After the user VM has started, accept the incoming connection for the control-plane.
         // Post-condition: once the connection has been accepted, the user VM has been able to
         // connect to the system VM (if an address is provided).
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                // If the user VM has not accepted the control-plane connection, it means that
-                // something went wrong during start-up. We kill the process ignoring errors,
-                // and return an error.
-                let reason: String =
-                    format!("error connecting control-plane to user VM (error={e:?})");
-                error!("{reason}");
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
+                    // If the user VM has not accepted the control-plane connection, it means that
+                    // something went wrong during start-up. We kill the process ignoring errors,
+                    // and return an error.
+                    let reason: String =
+                        format!("error connecting control-plane to user VM (error={e:?})");
+                    error!("{reason}");
 
-                Self::send_sigkill_to_child(child);
+                    Self::send_sigkill_to_child(child);
 
-                return Err(anyhow::anyhow!("{reason}"));
-            },
-            Err(e) => {
-                let reason: String = format!(
-                    "timed-out waiting for user VM to connect the control-plane stream \
-                     (error={e:?})"
-                );
-                error!("{reason}");
+                    return Err(anyhow::anyhow!("{reason}"));
+                },
+                Err(e) => {
+                    let reason: String = format!(
+                        "timed-out waiting for user VM to connect the control-plane stream \
+                         (error={e:?})"
+                    );
+                    error!("{reason}");
 
-                Self::send_sigkill_to_child(child);
+                    Self::send_sigkill_to_child(child);
 
-                return Err(anyhow::anyhow!("{reason}"));
-            },
-        };
+                    return Err(anyhow::anyhow!("{reason}"));
+                },
+            };
         debug!("nanvixd received connection from the user VM's control-plane socket");
 
         Ok(Self {
