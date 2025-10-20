@@ -86,6 +86,7 @@ use ::std::{
             Ordering,
         },
     },
+    time::Duration,
 };
 use ::sys::ipc::{
     Message,
@@ -107,6 +108,24 @@ use ::tokio::{
     },
     task::JoinHandle,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Timeout for connecting to System VM.
+///
+pub const SYSTEM_VM_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+
+///
+/// # Description
+///
+/// Timeout for connecting to control-plane.
+///
+pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 //==================================================================================================
 // Global Variables

@@ -56,14 +56,6 @@ pub mod syscomm {
     ///
     /// # Description
     ///
-    /// Provides the timeout we should use when connecting to a socket. This timeout is used
-    /// instead of manually retrying in a loop.
-    ///
-    pub const CONNECT_TIMEOUT_SECS: u64 = 60;
-
-    ///
-    /// # Description
-    ///
     /// Provides the timeout we should use when waiting for Linuxd to shutdown.
     ///
     pub const SHUTDOWN_TIMEOUT_SECS: u64 = 60;

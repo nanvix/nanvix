@@ -79,6 +79,13 @@ pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 pub const CONTROL_PLANE_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 
+///
+/// # Description
+///
+/// Timeout for connecting to gateway.
+///
+pub const GATEWAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
