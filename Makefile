@@ -97,7 +97,16 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 export SCCACHE       ?= $(shell which sccache 2>/dev/null)
 
 #===================================================================================================
-# Libraries and Binaries
+# Release Artifact Configuration
+#===================================================================================================
+
+RELEASE_DEPLOYMENT_MODE := $(if $(filter yes,$(SINGLE_PROCESS)),single_process,multi_process)
+RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
+RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
+RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
+
+#===================================================================================================
+# Artifacts
 #===================================================================================================
 
 # File format for executables.
@@ -107,8 +116,16 @@ export EXEC_FORMAT := elf
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
-export LIBNVX := $(LIBRARIES_DIR)/libnvx.a
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+
+# Binaries.
+KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
+LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
+NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
+USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
+
+# Scripts
+RUN_NANVIXD_SCRIPT := $(SCRIPTS_DIR)/run-nanvixd.sh
 
 #===================================================================================================
 # Nanvix Variables
@@ -346,10 +363,21 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/bin
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
-	@cp -r ${BINARIES_DIR}/* ${SYSROOT_DIR}/bin/
-	@cp -r ${LIBRARIES_DIR}/* ${SYSROOT_DIR}/lib/
+	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
+	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
+ifneq ($(SINGLE_PROCESS),yes)
+	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
+	@cp ${USERVM} ${SYSROOT_DIR}/bin/
+endif
+	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
+	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
+
+release: install
+	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
+	@$(RM_CMD) ${RELEASE_ARCHIVE}
+	@tar -cjf ${RELEASE_ARCHIVE} -C ${SYSROOT_DIR} .
 
 # Shows available make targets and build parameters.
 help:
@@ -365,6 +393,7 @@ help:
 	@echo "  format          Fix code formatting issues automatically"
 	@echo "  format-check    Check code formatting without fixing"
 	@echo "  install         Install build artifacts in the sysroot directory"
+	@echo "  release         Create release archive from the sysroot directory"
 	@echo "  lint            Fix code linting issues automatically"
 	@echo "  lint-check      Check for linting issues without fixing"
 	@echo "  spellcheck      Check for spelling errors in source code and documentation"
