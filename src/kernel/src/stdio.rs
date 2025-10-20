@@ -115,15 +115,7 @@ pub fn read() -> Result<Option<Message>, Error> {
 
     // Convert message to Message struct.
     match Message::try_from_bytes(message) {
-        Ok(message) => {
-            // Check if message is empty.
-            if { message.message_type } == MessageType::Empty {
-                Ok(None)
-            } else {
-                // NOTE: trace command after reading the first byte, to avoid flooding the log.
-                Ok(Some(message))
-            }
-        },
+        Ok(message) => Ok(Some(message)),
         // No message available.
         Err(e) if e.code == ErrorCode::NoMessageAvailable => Ok(None),
         Err(e) => {
