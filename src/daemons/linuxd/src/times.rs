@@ -48,6 +48,7 @@ pub fn do_times(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_times(): worker thread interrupted while blocked on times()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
