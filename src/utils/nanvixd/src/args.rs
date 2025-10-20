@@ -13,6 +13,7 @@ use ::std::{
     fs::File,
     io::BufReader,
 };
+use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures
@@ -138,6 +139,26 @@ impl Args {
             }
 
             i += 1;
+        }
+
+        // If we deploy linuxd in an L2 VM, we need to make sure that all socket types are set to
+        // TCP.
+        if l2 {
+            if control_plane_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+                anyhow::bail!("control-plane must use a tcp socket in l2 deployments");
+            }
+
+            if gateway_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+                anyhow::bail!("gateway must use a tcp socket in l2 deployments");
+            }
+
+            if system_vm_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+                anyhow::bail!("system vm must use a tcp socket in l2 deployments");
+            }
+
+            control_plane_socket_type = Some(SocketType::TCP_STR.to_string());
+            gateway_socket_type = Some(SocketType::TCP_STR.to_string());
+            system_vm_socket_type = Some(SocketType::TCP_STR.to_string());
         }
 
         Ok(Self {
