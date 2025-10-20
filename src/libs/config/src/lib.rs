@@ -53,12 +53,6 @@ pub mod system {
 //==================================================================================================
 
 pub mod syscomm {
-    ///
-    /// # Description
-    ///
-    /// Default socket type.
-    ///
-    pub const DEFAULT_SOCKET_TYPE_STR: &str = "unix";
 
     ///
     /// # Description
