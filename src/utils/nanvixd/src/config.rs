@@ -265,5 +265,5 @@ pub fn get_clh_snapshot_path() -> String {
 ///
 #[cfg(not(feature = "single-process"))]
 pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
-    format!("{tmp_dir}/nanvixd-clh.{UNIX_SOCKET_SUFFIX}")
+    format!("{tmp_dir}/nanvixd-clh{UNIX_SOCKET_SUFFIX}")
 }
