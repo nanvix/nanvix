@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
+use crate::WORKER_THREAD_CHANNEL_CAPACITY;
 use ::std::collections::BTreeMap;
 use ::sys::{
     error::{
@@ -206,7 +206,7 @@ impl VirtualEnviromentDirectory {
         }
 
         let (channel_tx, channel_rx): (Sender<VenvCommand>, Receiver<VenvCommand>) =
-            channel::<VenvCommand>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<VenvCommand>(WORKER_THREAD_CHANNEL_CAPACITY);
 
         // Thread requested to join a new environment.
         envid = self.next_env;

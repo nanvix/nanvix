@@ -17,7 +17,6 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::std::{
     convert::TryInto,
     env,
@@ -46,6 +45,7 @@ use ::user_vm_api::{
     NewUserVm,
 };
 use ::uservm::{
+    CHANNEL_CAPACITY,
     CONTROL_PLANE_CONNECT_TIMEOUT,
     SYSTEM_VM_CONNECT_TIMEOUT,
     UserVm,
@@ -77,14 +77,11 @@ pub async fn main() -> Result<ExitCode> {
     syslog::init(args.log_to_file(), args.log_directory());
 
     // Only the I/O thread channels are required here; the VMM creates its own internally.
-    let (vcpu_thread_stdout_tx, io_thread_data_rx) =
-        mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
-    let (io_thread_data_tx, memory_thread_data_rx) =
-        mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
-    let (io_thread_control_tx, io_control_rx) =
-        mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+    let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
     let (io_control_tx, io_thread_control_rx) =
-        mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+        mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);

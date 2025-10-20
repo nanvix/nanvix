@@ -75,7 +75,6 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::std::{
     fs::File,
     io::Write,
@@ -126,6 +125,13 @@ pub const SYSTEM_VM_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Timeout for connecting to control-plane.
 ///
 pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+
+///
+/// # Description
+///
+/// Maximum number messages that can be queued in a channel.
+///
+pub const CHANNEL_CAPACITY: usize = 1024;
 
 //==================================================================================================
 // Global Variables
@@ -202,23 +208,23 @@ impl UserVm {
     async fn run(args: UserVmArgs) -> Result<u16> {
         trace!("spawn()");
         let (memory_thread_data_tx, vcpu_thread_stdin_rx): (Sender<Message>, Receiver<Message>) =
-            mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+            mpsc::channel::<Message>(CHANNEL_CAPACITY);
         let (memory_control_tx, memory_thread_control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
-        ) = mpsc::channel::<MemoryControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+        ) = mpsc::channel::<MemoryControlCommand>(CHANNEL_CAPACITY);
         let (memory_thread_control_tx, memory_control_rx): (
             Sender<MemoryControlResponse>,
             Receiver<MemoryControlResponse>,
-        ) = mpsc::channel::<MemoryControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+        ) = mpsc::channel::<MemoryControlResponse>(CHANNEL_CAPACITY);
         let (vcpu_control_tx, vcpu_thread_control_rx): (
             Sender<VcpuControlCommand>,
             Receiver<VcpuControlCommand>,
-        ) = mpsc::channel::<VcpuControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+        ) = mpsc::channel::<VcpuControlCommand>(CHANNEL_CAPACITY);
         let (vcpu_thread_control_tx, mut vcpu_control_rx): (
             Sender<VcpuControlResponse>,
             Receiver<VcpuControlResponse>,
-        ) = mpsc::channel::<VcpuControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+        ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
         let vmm_stderr_fn: Box<dyn Write + Send> = get_stderr_writer(args.stderr.clone())?;
 
