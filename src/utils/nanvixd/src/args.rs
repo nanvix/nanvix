@@ -176,6 +176,15 @@ impl Args {
         })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Prints program usage.
+    ///
+    /// # Parameters
+    ///
+    /// - `program_name`: Name of the program.
+    ///
     pub fn usage(program_name: &str) {
         println!(
             concat!(
@@ -199,54 +208,162 @@ impl Args {
         );
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the HTTP socket address.
+    ///
+    /// # Returns
+    ///
+    /// The HTTP socket address.
+    ///
     pub fn http_sockaddr(&self) -> &str {
         &self.http_sockaddr
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the temporary directory path.
+    ///
+    /// # Returns
+    ///
+    /// The temporary directory path.
+    ///
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the binary directory path.
+    ///
+    /// # Returns
+    ///
+    /// The binary directory path.
+    ///
     pub fn binary_directory(&self) -> &str {
         &self.binary_directory
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the toolchain binary directory path.
+    ///
+    /// # Returns
+    ///
+    /// The toolchain binary directory path.
+    ///
     pub fn toolchain_binary_directory(&self) -> &str {
         &self.toolchain_binary_directory
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the console file path.
+    ///
+    /// # Returns
+    ///
+    /// The console file path.
+    ///
     pub fn console_file(&self) -> Option<String> {
         self.console_file.clone()
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the hwloc topology.
+    ///
+    /// # Returns
+    ///
+    /// The hwloc topology.
+    ///
     pub fn hwloc(&self) -> Option<HwLoc> {
         self.hwloc.clone()
     }
 
+    ///
+    /// # Description
+    ///
+    /// Indicates whether linuxd must be deployed in an L2 VM or not.
+    ///
+    /// # Returns
+    ///
+    /// `true` if linuxd must be deployed in an L2 VM; `false` otherwise.
+    ///
     pub fn l2(&self) -> bool {
         self.l2
     }
 
+    ///
+    /// # Description
+    ///
+    /// Indicates whether to log to a file instead of stdout/stderr.
+    ///
+    /// # Returns
+    ///
+    /// `true` if logging to a file; `false` otherwise.
+    ///
     pub fn log_to_file(&self) -> bool {
         self.log_to_file
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the log directory.
+    ///
+    /// # Returns
+    ///
+    /// The log directory.
+    ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the control plane socket type.
+    ///
+    /// # Returns
+    ///
+    /// The control plane socket type.
+    ///
     pub fn control_plane_socket_type(&self) -> &str {
         self.control_plane_socket_type
             .as_deref()
             .unwrap_or(SocketType::UNIX_STR)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the gateway socket type.
+    ///
+    /// # Returns
+    ///
+    /// The gateway socket type.
+    ///
     pub fn gateway_socket_type(&self) -> &str {
         self.gateway_socket_type
             .as_deref()
             .unwrap_or(SocketType::UNIX_STR)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the system VM socket type.
+    ///
+    /// # Returns
+    ///
+    /// The system VM socket type.
+    ///
     pub fn system_vm_socket_type(&self) -> &str {
         self.system_vm_socket_type
             .as_deref()
