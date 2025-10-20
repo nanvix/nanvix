@@ -13,7 +13,6 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
@@ -57,6 +56,7 @@ use ::uservm::{
     },
     UserVm as EmbeddedUserVm,
     UserVmArgs,
+    CHANNEL_CAPACITY,
 };
 
 //==================================================================================================
@@ -137,13 +137,13 @@ impl UserVm {
         // Spawn the User VM as a new task.
         let uservm_task: JoinHandle<Result<ExitCode>> = ::tokio::spawn(async move {
             let (vcpu_thread_stdout_tx, io_thread_data_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
             let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
             let (io_thread_control_tx, io_control_rx) =
-                mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
             let (io_control_tx, io_thread_control_rx) =
-                mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
             // Connect to the control-plane socket.
             let control_plane_stream: SocketStream =
