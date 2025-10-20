@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::std::time::Duration;
+
+//==================================================================================================
 // Constants
 //==================================================================================================
 
@@ -18,6 +24,13 @@ const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
 /// Default directory for logs
 ///
 pub(crate) const DEFAULT_LOG_DIRECTORY: &str = "./logs";
+
+///
+/// # Description
+///
+/// Timeout for connecting to control-plane.
+///
+pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 //==================================================================================================
 // Standalone Functions

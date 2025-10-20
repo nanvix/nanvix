@@ -17,16 +17,12 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use ::anyhow::Result;
-use ::config::syscomm::{
-    CONNECT_TIMEOUT_SECS,
-    DEFAULT_CHANNEL_CAPACITY,
-};
+use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::std::{
     convert::TryInto,
     env,
     process::ExitCode,
     str::FromStr,
-    time::Duration,
 };
 use ::sys::ipc::Message;
 use ::syscomm::{
@@ -50,6 +46,8 @@ use ::user_vm_api::{
     NewUserVm,
 };
 use ::uservm::{
+    CONTROL_PLANE_CONNECT_TIMEOUT,
+    SYSTEM_VM_CONNECT_TIMEOUT,
     UserVm,
     UserVmArgs,
     args::{
@@ -91,7 +89,7 @@ pub async fn main() -> Result<ExitCode> {
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
     let control_plane_stream: SocketStream = match timeout(
-        Duration::from_secs(CONNECT_TIMEOUT_SECS),
+        CONTROL_PLANE_CONNECT_TIMEOUT,
         unbound_socket.connect(args.control_plane_addr().to_string()),
     )
     .await
@@ -125,7 +123,7 @@ pub async fn main() -> Result<ExitCode> {
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.system_vm_socket_type())?);
     let system_vm_stream: SocketStream = match timeout(
-        Duration::from_secs(CONNECT_TIMEOUT_SECS),
+        SYSTEM_VM_CONNECT_TIMEOUT,
         unbound_socket.connect(args.system_vm_addr().to_string()),
     )
     .await

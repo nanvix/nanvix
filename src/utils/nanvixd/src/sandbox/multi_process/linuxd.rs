@@ -19,7 +19,10 @@ use ::control_plane_api::{
 use ::hwloc::HwLoc;
 use ::linuxd::{
     args,
-    config::restore_gate_sockaddr_builder,
+    config::{
+        restore_gate_sockaddr_builder,
+        CONTROL_PLANE_CONNECT_TIMEOUT,
+    },
 };
 use ::std::{
     io::ErrorKind,
@@ -106,7 +109,7 @@ impl LinuxDaemon {
                         e.kind(),
                         ErrorKind::NotFound | ErrorKind::ConnectionRefused | ErrorKind::WouldBlock
                     ) {
-                        if now.elapsed().as_secs() > config::syscomm::CONNECT_TIMEOUT_SECS {
+                        if now.elapsed().as_secs() > CONTROL_PLANE_CONNECT_TIMEOUT.as_secs() {
                             let reason: String = format!(
                                 "error connecting to CLH API socket (addr={}, error=timed-out)",
                                 clh_api_socket_path
