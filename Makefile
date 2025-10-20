@@ -85,7 +85,7 @@ export ROOT_DIR      := $(CURDIR)
 export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
-export IMAGE_DIR     := $(BUILD_DIR)/iso
+export IMAGE_DIR     := $(ROOT_DIR)/image
 export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
@@ -111,7 +111,6 @@ RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MOD
 
 # File format for executables.
 export EXEC_FORMAT := elf
-
 # Libraries
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
@@ -126,6 +125,7 @@ USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
 # Scripts
 RUN_NANVIXD_SCRIPT := $(SCRIPTS_DIR)/run-nanvixd.sh
+GRUB_CFG_SCRIPT := $(BUILD_DIR)/iso/boot/grub/grub.cfg
 
 #===================================================================================================
 # Nanvix Variables
@@ -585,6 +585,8 @@ endif
 # Builds the system image.
 image: all-nanvix
 ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	$(MKDIR_CMD) $(IMAGE_DIR)/boot/grub
+	$(CP_CMD) $(GRUB_CFG_SCRIPT) $(IMAGE_DIR)/boot/grub/
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
 	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
 endif
