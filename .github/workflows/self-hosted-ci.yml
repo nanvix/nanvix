@@ -118,7 +118,7 @@ jobs:
         fi
 
         # Ensure a clean build.
-        ./z distclean
+        git clean -fdx
 
         # Build the release archive.
         ./z build \

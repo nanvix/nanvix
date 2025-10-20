@@ -374,10 +374,10 @@ endif
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 
-release: install
+release: all install
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
 	@$(RM_CMD) ${RELEASE_ARCHIVE}
-	@tar -cjf ${RELEASE_ARCHIVE} -C ${SYSROOT_DIR} .
+	@tar -cjf ${RELEASE_ARCHIVE} --exclude=./src -C ${SYSROOT_DIR} .
 
 # Shows available make targets and build parameters.
 help:
