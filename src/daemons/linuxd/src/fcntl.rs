@@ -193,6 +193,7 @@ pub fn do_openat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_openat(): worker thread interrupted while blocked on openat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -245,6 +246,7 @@ pub fn do_unlinkat(
         errno => {
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_unlinkat(): worker thread interrupted while blocked on unlinkat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -310,6 +312,7 @@ pub fn do_renameat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_renameat(): worker thread interrupted while blocked on renameat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -410,6 +413,7 @@ pub fn do_fstat_at(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fstat_at(): worker thread interrupted while blocked on fstatat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -450,6 +454,10 @@ pub fn do_posix_fallocate(
         errno => {
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!(
+                    "do_posix_fallocate(): worker thread interrupted while blocked on \
+                     posix_fallocate()"
+                );
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -497,6 +505,10 @@ pub fn do_posix_fadvise(
         errno => {
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!(
+                    "do_posix_fadvise(): worker thread interrupted while blocked on \
+                     posix_fadvise()"
+                );
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -587,6 +599,7 @@ pub fn do_fstat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fstat(): worker thread interrupted while blocked on fstat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -641,6 +654,7 @@ pub fn do_symlinkat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_symlinkat(): worker thread interrupted while blocked on symlinkat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -707,6 +721,7 @@ pub fn do_readlinkat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_readlinkat(): worker thread interrupted while blocked on readlinkat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -762,6 +777,7 @@ pub fn do_mkdirat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_mkdirat(): worker thread interrupted while blocked on mkdirat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -830,6 +846,7 @@ pub fn do_utimensat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_utimensat(): worker thread interrupted while blocked on utimensat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -881,6 +898,7 @@ pub fn do_futimens(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_futimens(): worker thread interrupted while blocked on futimens()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -991,6 +1009,7 @@ pub fn do_fcntl(
 
                 // Check if the thread has been interrupted.
                 if errno == libc::EINTR {
+                    error!("do_fcntl(): worker thread interrupted while blocked on fcntl()");
                     return Err(WorkerThreadError::Interrupted);
                 }
 
@@ -1018,6 +1037,7 @@ pub fn do_fcntl(
 
                 // Check if the thread has been interrupted.
                 if errno == libc::EINTR {
+                    error!("do_fcntl(): worker thread interrupted while blocked on fcntl()");
                     return Err(WorkerThreadError::Interrupted);
                 }
 
@@ -1069,6 +1089,7 @@ pub fn do_fcntl(
 
                 // Check if the thread has been interrupted.
                 if errno == libc::EINTR {
+                    error!("do_fcntl(): worker thread interrupted while blocked on fcntl()");
                     return Err(WorkerThreadError::Interrupted);
                 }
 
@@ -1106,6 +1127,7 @@ pub fn do_fcntl(
 
                 // Check if the thread has been interrupted.
                 if errno == libc::EINTR {
+                    error!("do_fcntl(): worker thread interrupted while blocked on fcntl()");
                     return Err(WorkerThreadError::Interrupted);
                 }
 
@@ -1176,6 +1198,7 @@ pub fn do_fchownat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fchownat(): worker thread interrupted while blocked on fchownat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -1214,6 +1237,7 @@ pub fn do_fchmod(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fchmod(): worker thread interrupted while blocked on fchmod()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -1269,6 +1293,7 @@ pub fn do_fchmodat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fchmodat(): worker thread interrupted while blocked on fchmodat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
