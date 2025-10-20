@@ -72,6 +72,13 @@ const UNIX_PATH_MAX: usize = 108;
 ///
 pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
+///
+/// # Description
+///
+/// Timeout for accepting connections on the control plane.
+///
+pub const CONTROL_PLANE_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

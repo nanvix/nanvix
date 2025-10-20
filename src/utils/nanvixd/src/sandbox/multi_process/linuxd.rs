@@ -9,6 +9,7 @@ use crate::config::{
     get_clh_api_socket_path,
     get_clh_bin_dir,
     get_clh_snapshot_path,
+    CONTROL_PLANE_ACCEPT_TIMEOUT,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -244,38 +245,34 @@ impl LinuxDaemon {
 
         // After linuxd has started, accept the incoming connection and return the stream for
         // further use.
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                // If linuxd has not accepted the control-plane connection, it means that
-                // something went wrong during start-up. We kill the process ignoring errors,
-                // and return an error.
-                let reason: String =
-                    format!("error connecting control-plane to linuxd (error={e:?})");
-                error!("{reason}");
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
+                    // If linuxd has not accepted the control-plane connection, it means that
+                    // something went wrong during start-up. We kill the process ignoring errors,
+                    // and return an error.
+                    let reason: String =
+                        format!("error connecting control-plane to linuxd (error={e:?})");
+                    error!("{reason}");
 
-                // Use a SIGKILL because the process is already faulty.
-                Self::send_sigkill_to_child(&child);
+                    // Use a SIGKILL because the process is already faulty.
+                    Self::send_sigkill_to_child(&child);
 
-                anyhow::bail!("{reason}")
-            },
-            Err(e) => {
-                let reason: String = format!(
-                    "timed-out waiting for linuxd to connect to control-plane (error={e:?})"
-                );
-                error!("{reason}");
+                    anyhow::bail!("{reason}")
+                },
+                Err(e) => {
+                    let reason: String = format!(
+                        "timed-out waiting for linuxd to connect to control-plane (error={e:?})"
+                    );
+                    error!("{reason}");
 
-                // Use a SIGKILL because the process is already faulty.
-                Self::send_sigkill_to_child(&child);
+                    // Use a SIGKILL because the process is already faulty.
+                    Self::send_sigkill_to_child(&child);
 
-                anyhow::bail!("{reason}")
-            },
-        };
+                    anyhow::bail!("{reason}")
+                },
+            };
         debug!("nanvixd received connection from linuxd's control-plane socket");
 
         Ok(Self {

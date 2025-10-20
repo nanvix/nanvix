@@ -53,16 +53,6 @@ pub mod system {
 //==================================================================================================
 
 pub mod syscomm {
-
-    ///
-    /// # Description
-    ///
-    /// Provides the timeout we should use when accepting a connection. This timeout is used when
-    /// manually accepting connections, and it is needed to account for races between both ends.
-    /// These races should be in the order of milliseconds.
-    ///
-    pub const ACCEPT_TIMEOUT_SECS: u64 = 60;
-
     ///
     /// # Description
     ///
