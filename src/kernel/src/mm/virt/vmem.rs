@@ -97,6 +97,24 @@ unsafe extern "C" {
     ///
     /// # Description
     ///
+    /// Performs a physical memory copy.
+    ///
+    /// # Parameters
+    ///
+    /// - `dst`: Destination address.
+    /// - `src`: Source address.
+    /// - `size`: Number of bytes to copy.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs physical memory copying and may lead to
+    /// undefined behavior if the destination or source memory regions are invalid.
+    ///
+    fn __phys_memcpy32(dst: *mut u8, src: *const u8, size: usize);
+
+    ///
+    /// # Description
+    ///
     /// This function disables paging and fills the memory region with the provided value.
     ///
     /// # Parameters
@@ -800,11 +818,15 @@ impl Vmem {
                 // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
                 // - Both regions lie in physical memory.
                 unsafe {
-                    __phys_memcpy(
-                        dst_phys_addr_raw as *mut u8,
-                        src_phys_addr_raw as *const u8,
-                        copy_size,
-                    )
+                    let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                    let src: *const u8 = src.into_raw_value() as *const u8;
+                    let phys_memcpy_fn: unsafe extern "C" fn(*mut u8, *const u8, usize) =
+                        if copy_size.is_multiple_of(::core::mem::size_of::<u32>()) {
+                            __phys_memcpy32
+                        } else {
+                            __phys_memcpy
+                        };
+                    phys_memcpy_fn(dst, src, copy_size)
                 };
             }
 
