@@ -84,24 +84,18 @@ pub fn read() -> Result<Option<Message>, Error> {
             let credits: u32 = unsafe {
                 core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32)
             };
-
-            // No message available.
-            if credits == 0 {
-                return Ok(None);
-            }
         }
         else if #[cfg(feature = "hyperlight")] {
-            use crate::hal::platform::hyperlight::peb::ProcessEnvironmentBlock;
             // Read credits register.
             let credits: u64 = unsafe {
-                ProcessEnvironmentBlock::get_credits()?
+                crate::hal::platform::hyperlight::peb::ProcessEnvironmentBlock::get_credits()?
             };
-
-            // No message available.
-            if credits == 0 {
-                return Ok(None);
-            }
         }
+    }
+
+    // No message available.
+    if credits == 0 {
+        return Ok(None);
     }
 
     // Read message from the kernel's standard input.
