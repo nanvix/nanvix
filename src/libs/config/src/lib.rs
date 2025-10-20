@@ -57,23 +57,6 @@ pub mod syscomm {
     ///
     /// # Description
     ///
-    /// Provides the maximum length of a message we receive. We set a limit to
-    /// prevent a malformed payload to trigger unbounded allocations in linuxd.
-    ///
-    pub const MAX_MESSAGE_LEN: usize = 128 * 1024 * 1024;
-
-    ///
-    /// # Description
-    ///
-    /// Provides the maximum number of poll events we can buffer. We set the limit to 128 as, for
-    /// the time being, it is unlikely we will have more than 128 connections being activated at
-    /// the same time.
-    ///
-    pub const MAX_NUM_POLL_EVENTS: usize = 128;
-
-    ///
-    /// # Description
-    ///
     /// Provides the timeout we should use when accepting a connection. This timeout is used when
     /// manually accepting connections, and it is needed to account for races between both ends.
     /// These races should be in the order of milliseconds.
