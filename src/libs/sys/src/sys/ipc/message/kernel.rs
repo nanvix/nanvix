@@ -193,7 +193,7 @@ impl Message {
 impl Default for Message {
     fn default() -> Self {
         Self {
-            message_type: MessageType::Empty,
+            message_type: MessageType::Ikc,
             source: MessageSender::KERNEL,
             destination: MessageReceiver::KERNEL,
             status: 0,

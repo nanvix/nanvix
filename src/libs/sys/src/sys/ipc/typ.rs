@@ -26,8 +26,6 @@ use ::core::{
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MessageType {
-    /// The message is empty.
-    Empty,
     /// The message encodes information about an interrupt that occurred.
     Interrupt,
     /// The message encodes information about an exception that occurred.
@@ -60,7 +58,6 @@ impl MessageType {
     ///
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         match self {
-            MessageType::Empty => [0],
             MessageType::Interrupt => [1],
             MessageType::Exception => [2],
             MessageType::Ipc => [3],
@@ -85,7 +82,6 @@ impl MessageType {
     ///
     pub fn try_from_bytes(bytes: [u8; Self::SIZE]) -> Result<Self, Error> {
         match bytes {
-            [0] => Ok(MessageType::Empty),
             [1] => Ok(MessageType::Interrupt),
             [2] => Ok(MessageType::Exception),
             [3] => Ok(MessageType::Ipc),
@@ -99,7 +95,6 @@ impl MessageType {
 impl fmt::Debug for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MessageType::Empty => write!(f, "empty"),
             MessageType::Interrupt => write!(f, "interrupt"),
             MessageType::Exception => write!(f, "exception"),
             MessageType::Ipc => write!(f, "inter-process communication"),
