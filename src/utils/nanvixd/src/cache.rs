@@ -5,14 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::{
-    config::SandboxConfig,
-    linuxd::LinuxDaemon,
-    tag::SandboxTag,
-    uservm::UserVm,
+use crate::{
+    config::GATEWAY_CONNECT_TIMEOUT,
+    sandbox::{
+        config::SandboxConfig,
+        linuxd::LinuxDaemon,
+        tag::SandboxTag,
+        uservm::UserVm,
+    },
 };
 use ::anyhow::Result;
-use ::config::syscomm::CONNECT_TIMEOUT_SECS;
 use ::std::{
     collections::HashMap,
     str::FromStr,
@@ -204,7 +206,7 @@ impl SandboxCache {
                         },
                         Err(_e) => {
                             // Connection failed. Sleep a bit and retry.
-                            if now.elapsed().as_secs() > CONNECT_TIMEOUT_SECS {
+                            if now.elapsed().as_secs() > GATEWAY_CONNECT_TIMEOUT.as_secs() {
                                 let reason: String = format!(
                                     "failed to connect to gateway socket \
                                      (address={gateway_sockaddr})"
