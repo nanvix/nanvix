@@ -309,7 +309,6 @@ impl WorkerThreadHandle {
             };
 
             match message.message_type {
-                sys::ipc::MessageType::Empty => panic!("received empty message"),
                 sys::ipc::MessageType::Interrupt => panic!("received interrupt message"),
                 sys::ipc::MessageType::Exception => panic!("received exception message"),
                 sys::ipc::MessageType::Ipc => panic!("received IPC message"),
