@@ -314,7 +314,7 @@ impl Benchmark {
             };
 
             if ret_code < 0 {
-                error!("error sending SIGINT to nano VM: {}", std::io::Error::last_os_error());
+                error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
             }
 
             if let Some(nanvixd) = self.nanvixd.as_mut() {
@@ -1069,8 +1069,14 @@ async fn main() -> Result<()> {
         },
     };
     match result {
-        Ok(_) => {},
-        Err(e) => error!("error running benchmark {}: {e:?}", args.benchmark()),
+        Ok(()) => {},
+        Err(e) => {
+            error!("error running benchmark {}: {e:?}", args.benchmark());
+
+            // In case of an error, re-run the clean up to prevent having dangling processes. Note
+            // that the clean up is idempotent.
+            benchmark.cleanup();
+        },
     }
 
     Ok(())
