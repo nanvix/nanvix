@@ -41,7 +41,7 @@ done
 # Do a clean build if requested.
 if ${CLEAN}; then
     if [ -d ${INITRAMFS_DIR} ]; then
-        print_warn "removing initramfs from ${INITRAMFS_DIR}"
+        print_warning "removing initramfs from ${INITRAMFS_DIR}"
         rm -rf ${INITRAMFS_DIR}
     fi
 fi
@@ -101,7 +101,7 @@ echo "[init] Nanvix L2 System VM init wrapper started!"
 
 # We must bind to the same IP, as it is the only one available in the guest.
 echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
-/usr/bin/linuxd.elf \
+RUST_LOG=${LOG_LEVEL:-warn} /usr/bin/linuxd.elf \
     -control-plane-addr ${CONTROL_PLANE_SOCKADDR} \
     -control-plane-socket-type tcp \
     -user-vm-bind-addr ${USER_VM_SOCKADDR} \

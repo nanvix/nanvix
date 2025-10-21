@@ -21,6 +21,7 @@ use ::linuxd::{
     config::restore_gate_sockaddr_builder,
 };
 use ::std::{
+    io::ErrorKind,
     mem,
     process::Stdio,
 };
@@ -82,27 +83,50 @@ impl LinuxDaemon {
             "\r\n",
         );
 
-        let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
-        let mut clh_api_socket: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::CONNECT_TIMEOUT_SECS),
-            unbound_socket.connect(clh_api_socket_path.clone()),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                let reason: String = format!(
-                    "error connecting to CLH API socket (addr={}, error={e:?})",
-                    clh_api_socket_path
-                );
-                error!("{reason}");
-                return Err(anyhow::anyhow!(reason));
-            },
-            Err(e) => {
-                let reason: String = format!("error connecting to CLH API socket (error={e:?})");
-                error!("{reason}");
-                return Err(anyhow::anyhow!(reason));
-            },
+        let unbound_clh_api_socket: UnboundSocket = UnboundSocket::new(SocketType::Unix);
+        let now: tokio::time::Instant = tokio::time::Instant::now();
+        let mut clh_api_socket: SocketStream = loop {
+            match unbound_clh_api_socket
+                .clone()
+                .connect(clh_api_socket_path.clone())
+                .await
+            {
+                Ok(stream) => {
+                    debug!(
+                        "clh API socket appeared after {:?} (path={:?})",
+                        now.elapsed(),
+                        &clh_api_socket_path
+                    );
+                    break stream;
+                },
+                Err(e) => {
+                    // Tolerate transient connection errors.
+                    if matches!(
+                        e.kind(),
+                        ErrorKind::NotFound | ErrorKind::ConnectionRefused | ErrorKind::WouldBlock
+                    ) {
+                        if now.elapsed().as_secs() > config::syscomm::CONNECT_TIMEOUT_SECS {
+                            let reason: String = format!(
+                                "error connecting to CLH API socket (addr={}, error=timed-out)",
+                                clh_api_socket_path
+                            );
+                            error!("{reason}");
+                            return Err(anyhow::anyhow!(reason));
+                        } else {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                            continue;
+                        }
+                    }
+
+                    // Bail on fatal errors.
+                    let reason: String = format!(
+                        "error connecting to CLH API socket (addr={}, error={e:?})",
+                        clh_api_socket_path
+                    );
+                    error!("{reason}");
+                    return Err(anyhow::anyhow!(reason));
+                },
+            }
         };
 
         // Write HTTP request.

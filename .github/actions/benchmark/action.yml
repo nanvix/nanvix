@@ -24,7 +24,7 @@ runs:
     shell: bash
   - name: Build (MicroVM)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build --sccache=${SCCACHE}
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build --sccache=${SCCACHE} --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
@@ -34,16 +34,6 @@ runs:
       )
 
       for bench in "${benchmarks[@]}"; do
-        # FIXME (#975): warm-start-l2 is failing intermittently on MicroVM
-        if [[ "$bench" == "warm-start-l2" ]]; then
-          continue
-        fi
-
-        # FIXME (#937): cold-start-l2 is failing intermittently on MicroVM
-        if [[ "$bench" == "cold-start-l2" ]]; then
-          continue
-        fi
-
         echo "Running benchmark: ${bench} (Microvm)"
         bench_underscore=${bench//-/_}
         ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench} -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:|[0-9])' > bench_${bench_underscore}_microvm_${{ inputs.arch }}.txt
@@ -62,7 +52,7 @@ runs:
     shell: bash
   - name: Build (Hyperlight)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build --sccache=${SCCACHE}
+      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build --sccache=${SCCACHE} --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
@@ -79,16 +69,6 @@ runs:
 
         # FIXME (#1016): boot-time is failing on hyperlight
         if [[ "$bench" == "boot-time" ]]; then
-          continue
-        fi
-
-        # FIXME (#975): warm-start-l2 is failing intermittently on hyperlight
-        if [[ "$bench" == "warm-start-l2" ]]; then
-          continue
-        fi
-
-        # FIXME (#926): cold-start-l2 fails on hyperlight
-        if [[ "$bench" == "cold-start-l2" ]]; then
           continue
         fi
 
