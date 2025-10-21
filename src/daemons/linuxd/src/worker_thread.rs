@@ -867,6 +867,7 @@ impl WorkerThreadHandle {
                 error!("handle_write_request(): trying to write zero bytes to STDOUT");
                 Ok(build_error(source, ErrorCode::InvalidArgument))
             } else {
+                // Label: linuxd::worker_thread::handle_write_request()
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
 
@@ -913,7 +914,13 @@ impl WorkerThreadHandle {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
         // Check if reading from gateway.
         if request.fd == STDIN_FILENO {
-            let response: Result<Message, WorkerThreadError> = {
+            // We need a mutable message to be able to timestamp it during profiling of the data
+            // path. The profiler macro is designed to silence this warnings when compiled without
+            // the timestamp-messages macro. However, in this case we need to unwrap the message
+            // before timestamping, wrapping the macro itself in a #[cfg()]. This means we need to
+            // manually silence the warning.
+            #[allow(unused_mut)]
+            let mut response: Result<Message, WorkerThreadError> = {
                 // Take the lock.
                 let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
                     gateway_reader.blocking_lock();
@@ -943,6 +950,16 @@ impl WorkerThreadHandle {
                     },
                 }
             };
+
+            #[cfg(feature = "timestamp-messages")]
+            if let Ok(read_response) = &mut response {
+                // Label: linuxd::worker_thread::handle_read_request()
+                profiler::timestamp_message!(
+                    &mut read_response.payload,
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
+            }
 
             response
         } else {
