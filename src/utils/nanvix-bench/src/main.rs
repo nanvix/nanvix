@@ -32,7 +32,6 @@ use crate::{
     env::get_proj_root,
 };
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::hwloc::HwLoc;
 use ::indicatif::{
     ProgressBar,
@@ -123,6 +122,13 @@ const CLEANUP_SLEEP_DURATION: u64 = 10;
 /// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
 ///
 const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
+
+///
+/// # Description
+///
+/// Maximum number messages that can be queued in a channel.
+///
+pub const CHANNEL_CAPACITY: usize = 1024;
 
 //==================================================================================================
 
@@ -350,23 +356,23 @@ impl Benchmark {
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
             let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
             let stdout_drain: JoinHandle<()> =
                 ::tokio::spawn(
                     async move { while vcpu_thread_stdout_rx.recv().await.is_some() {} },
                 );
 
             let (io_control_command_tx, io_control_rx) =
-                mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
             let (io_control_tx, mut io_control_response_rx) =
-                mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
             let io_response_drain: JoinHandle<()> =
                 ::tokio::spawn(
                     async move { while io_control_response_rx.recv().await.is_some() {} },
                 );
 
             let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
 
             let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
             let initrd_filename: String = self.flavour.get_program();
@@ -700,13 +706,12 @@ impl Benchmark {
         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         response_buf[..payload.len()].copy_from_slice(&payload);
         let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-            mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
-        let (io_thread_data_tx, memory_thread_data_rx) =
-            mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+            mpsc::channel::<Message>(CHANNEL_CAPACITY);
+        let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
         let (io_control_command_tx, io_control_rx) =
-            mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+            mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
         let (io_control_tx, mut io_control_response_rx) =
-            mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+            mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
         let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
         let program: String = self.flavour.get_program();

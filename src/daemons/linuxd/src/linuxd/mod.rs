@@ -12,7 +12,10 @@ mod assemble;
 //==================================================================================================
 
 use crate::{
-    config::restore_gate_sockaddr_builder,
+    config::{
+        restore_gate_sockaddr_builder,
+        CONTROL_PLANE_CONNECT_TIMEOUT,
+    },
     message::RequestAssembler,
     user_vm_handle::UserVmHandle,
     venv::{
@@ -22,7 +25,6 @@ use crate::{
     worker_thread::WorkerThreadHandle,
 };
 use ::anyhow::Result;
-use ::config::syscomm::CONNECT_TIMEOUT_SECS;
 use ::control_plane_api::{
     self,
     NanvixdControlMessage,
@@ -36,7 +38,6 @@ use ::std::{
     io::ErrorKind,
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 use ::sys::{
     error::{
@@ -139,7 +140,7 @@ impl LinuxDaemon {
 
         let unbound_socket: UnboundSocket = UnboundSocket::new(self.control_plane_sockaddr_type);
         match timeout(
-            Duration::from_secs(CONNECT_TIMEOUT_SECS),
+            CONTROL_PLANE_CONNECT_TIMEOUT,
             unbound_socket.connect(self.control_plane_sockaddr.clone()),
         )
         .await

@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use crate::config::{
+    CONTROL_PLANE_ACCEPT_TIMEOUT,
+    SHUTDOWN_TIMEOUT,
+};
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
@@ -29,10 +33,7 @@ use ::syslog::{
 use ::tokio::{
     sync::Mutex,
     task::JoinHandle,
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 
 //==================================================================================================
@@ -141,30 +142,26 @@ impl LinuxDaemon {
         });
 
         // Wait for the linuxd to connect to the control-plane socket.
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(error)) => {
-                linuxd_task.abort();
-                let reason: String =
-                    format!("error connecting control-plane to linuxd (error={error:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-            Err(elapsed) => {
-                linuxd_task.abort();
-                let reason: String = format!(
-                    "timed-out waiting for linuxd to connect the control-plane stream \
-                     (elapsed={elapsed:?})"
-                );
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-        };
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(error)) => {
+                    linuxd_task.abort();
+                    let reason: String =
+                        format!("error connecting control-plane to linuxd (error={error:?})");
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+                Err(elapsed) => {
+                    linuxd_task.abort();
+                    let reason: String = format!(
+                        "timed-out waiting for linuxd to connect the control-plane stream \
+                         (elapsed={elapsed:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+            };
 
         debug!("spawn(): nanvixd received connection from linuxd control-plane socket");
 
@@ -198,12 +195,7 @@ impl LinuxDaemon {
 
         // Wait for the Linux Daemon to finish.
         if let Some(linuxd_task) = self.linuxd_task.lock().await.take() {
-            match timeout(
-                Duration::from_secs(::config::syscomm::SHUTDOWN_TIMEOUT_SECS),
-                linuxd_task,
-            )
-            .await
-            {
+            match timeout(SHUTDOWN_TIMEOUT, linuxd_task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(())) => {},
                     Ok(Err(error)) => {

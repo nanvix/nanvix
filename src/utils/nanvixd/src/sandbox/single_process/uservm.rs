@@ -5,12 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::{
-    config::SandboxConfig,
-    tag::SandboxTag,
+use crate::{
+    config::CONTROL_PLANE_ACCEPT_TIMEOUT,
+    sandbox::{
+        config::SandboxConfig,
+        tag::SandboxTag,
+    },
 };
 use ::anyhow::Result;
-use ::config::syscomm::DEFAULT_CHANNEL_CAPACITY;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
@@ -40,10 +42,7 @@ use ::tokio::{
         Mutex,
     },
     task::JoinHandle,
-    time::{
-        timeout,
-        Duration,
-    },
+    time::timeout,
 };
 use ::user_vm_api::{
     NewUserVm,
@@ -57,6 +56,7 @@ use ::uservm::{
     },
     UserVm as EmbeddedUserVm,
     UserVmArgs,
+    CHANNEL_CAPACITY,
 };
 
 //==================================================================================================
@@ -137,13 +137,13 @@ impl UserVm {
         // Spawn the User VM as a new task.
         let uservm_task: JoinHandle<Result<ExitCode>> = ::tokio::spawn(async move {
             let (vcpu_thread_stdout_tx, io_thread_data_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
             let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<Message>(CHANNEL_CAPACITY);
             let (io_thread_control_tx, io_control_rx) =
-                mpsc::channel::<IoControlCommand>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
             let (io_control_tx, io_thread_control_rx) =
-                mpsc::channel::<IoControlResponse>(DEFAULT_CHANNEL_CAPACITY);
+                mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
             // Connect to the control-plane socket.
             let control_plane_stream: SocketStream =
@@ -272,30 +272,27 @@ impl UserVm {
         });
 
         // Wait for the User VM task to connect to the control-plane socket.
-        let control_plane_stream: SocketStream = match timeout(
-            Duration::from_secs(config::syscomm::ACCEPT_TIMEOUT_SECS),
-            control_plane_listener.accept(),
-        )
-        .await
-        {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(error)) => {
-                uservm_task.abort();
-                let reason: String =
-                    format!("error connecting control-plane to embedded user VM (error={error:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-            Err(elapsed) => {
-                uservm_task.abort();
-                let reason: String = format!(
-                    "timed-out waiting for embedded user VM to connect the control-plane stream \
-                     (error={elapsed:?})"
-                );
-                error!("spawn(): {reason}");
-                anyhow::bail!("{reason}");
-            },
-        };
+        let control_plane_stream: SocketStream =
+            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(error)) => {
+                    uservm_task.abort();
+                    let reason: String = format!(
+                        "error connecting control-plane to embedded user VM (error={error:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+                Err(elapsed) => {
+                    uservm_task.abort();
+                    let reason: String = format!(
+                        "timed-out waiting for embedded user VM to connect the control-plane \
+                         stream (error={elapsed:?})"
+                    );
+                    error!("spawn(): {reason}");
+                    anyhow::bail!("{reason}");
+                },
+            };
 
         Ok(Self {
             task: Mutex::new(Some(uservm_task)),
