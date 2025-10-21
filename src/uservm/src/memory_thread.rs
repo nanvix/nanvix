@@ -130,7 +130,13 @@ impl MemoryThread {
                     }
                     msg = data_rx.recv() => {
                         match msg {
-                            Some(msg) => {
+                            Some(mut msg) => {
+                                // Label: uservm::memory_thread::data_rx::recv()
+                                profiler::timestamp_message!(&mut msg.payload,
+                                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                                );
+
                                 on_message_received_from_io_thread();
 
                                 if let Err(e) = data_tx.send(msg).await {
