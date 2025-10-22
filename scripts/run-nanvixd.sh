@@ -484,6 +484,7 @@ main() {
         --log-to-file \
         -log-dir "${logs_dir}" \
         -tmp-dir "${TMP_DIR}" \
+        "$([ "$L2_VM" = "yes" ] && echo "-l2")" \
         -console-file "${console_file_name}" &
     NANVIXD_PID=$!
     trap 'cleanup' EXIT
@@ -523,10 +524,20 @@ main() {
     fi
 
     # Connect to VM.
-    nc -v -U -q 0 "${gateway_sockaddr}" || {
-        echo "Error: Unable to connect VM at ${gateway_sockaddr}." 1>&2
-        return 1
-    }
+    if [[ "${L2_VM}" == "yes" ]]; then
+        gateway_host=${gateway_sockaddr%:*}
+        gateway_port=${gateway_sockaddr#*:}
+
+        nc -v -q 0 "${gateway_host}" "${gateway_port}" || {
+            echo "Error: Unable to connect VM at ${gateway_sockaddr} (L2)." 1>&2
+            return 1
+        }
+    else
+        nc -v -U -q 0 "${gateway_sockaddr}" || {
+            echo "Error: Unable to connect VM at ${gateway_sockaddr}." 1>&2
+            return 1
+        }
+    fi
 
     # Kill the user VM.
     local kill_exit_code
