@@ -50,6 +50,7 @@ RUN_COMMAND=("${NANVIX_HOME}/scripts/run-nanvixd.sh"
     "--app-name" "${APP_NAME}"
     "--nanvixd-sockaddr" "${NANVIXD_SOCKADDR}"
     "--toolchain-bin-dir" "${TOOLCHAIN_DIR}/bin"
+    "--log-level" "${LOG_LEVEL}"
     "--"
     "${PROGRAM_NAME}"
 )

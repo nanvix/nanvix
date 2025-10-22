@@ -55,7 +55,7 @@ use ::tokio::{
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    let args: Args = Args::parse(std::env::args().collect())?;
+    let args: Args = Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?;
 
     ::syslog::init(args.log_to_file(), args.log_directory().to_string());
 
