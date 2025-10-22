@@ -117,6 +117,7 @@ pub fn do_poll(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_poll(): worker thread interrupted while blocked on poll()");
                 return Err(WorkerThreadError::Interrupted);
             }
 

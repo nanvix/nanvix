@@ -105,6 +105,7 @@ pub fn do_socket(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_socket(): worker thread interrupted while blocked on socket()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -160,6 +161,7 @@ pub fn do_socketpair(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_socketpair(): worker thread interrupted while blocked on socketpair()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -204,6 +206,7 @@ pub fn do_bind(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_bind(): worker thread interrupted while blocked on bind()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -252,6 +255,7 @@ pub fn do_connect(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_connect(): worker thread interrupted while blocked on connect()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -284,6 +288,7 @@ pub fn do_listen(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_listen(): worker thread interrupted while blocked on listen()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -318,6 +323,9 @@ pub fn do_getpeername(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!(
+                    "do_getpeername(): worker thread interrupted while blocked on getpeername()"
+                );
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -359,6 +367,9 @@ pub fn do_getsockname(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!(
+                    "do_getsockname(): worker thread interrupted while blocked on getsockname()"
+                );
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -401,6 +412,7 @@ pub fn do_accept(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_accept(): worker thread interrupted while blocked on accept()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -454,6 +466,7 @@ pub fn do_recv(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_recv(): worker thread interrupted while blocked on recv()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -487,6 +500,7 @@ pub fn do_shutdown(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_shutdown(): worker thread interrupted while blocked on shutdown()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -533,6 +547,7 @@ pub fn do_send(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_send(): worker thread interrupted while blocked on send()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
