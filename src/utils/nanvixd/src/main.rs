@@ -55,7 +55,8 @@ use ::tokio::{
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    let args: Args = Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?;
+    let args: Arc<Args> =
+        Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
     ::syslog::init(args.log_to_file(), args.log_directory().to_string());
 
@@ -74,16 +75,27 @@ pub async fn main() -> Result<()> {
                 match result {
                     Ok((stream, sockaddr)) => {
                         debug!("accepted connection from {sockaddr:?}");
-                        let args: Arc<Args> = Arc::new(args.clone());
-                        let sandboxe_cache: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
-                        tokio::spawn(async move {
-                            let client =
-                                HttpClient::new(sandboxe_cache, args);
+                        let sandbox_cache_clone: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
+                        let args_clone: Arc<Args> = args.clone();
+                        // In single-process mode, handle connections sequentially.
+                        #[cfg(feature = "single-process")]
+                        {
+                            let client: HttpClient = HttpClient::new(sandbox_cache_clone, args_clone);
                             let io: TokioIo<TcpStream> = TokioIo::new(stream);
                             if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                 error!("failed to serve connection (error={e:?})");
                             }
-                        });
+                        }
+                        #[cfg(not(feature = "single-process"))]
+                        {
+                            tokio::spawn(async move {
+                                    let client: HttpClient = HttpClient::new(sandbox_cache_clone, args_clone);
+                                let io: TokioIo<TcpStream> = TokioIo::new(stream);
+                                if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
+                                    error!("failed to serve connection (error={e:?})");
+                                }
+                            });
+                        }
                     },
                     Err(e) => {
                         error!("failed to accept connection ({e:?})");
