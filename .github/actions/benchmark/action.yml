@@ -36,13 +36,21 @@ runs:
         --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
+    id: run-microvm-benchmarks
     run: |
       # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
       mapfile -t benchmarks < <(
         printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
       )
 
+      must_run_echo_breakdown=false
+
       for bench in "${benchmarks[@]}"; do
+        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          must_run_echo_breakdown=true
+          continue
+        fi
+
         python3 ./scripts/benchmark.py \
           run \
           --benchmark ${bench} \
@@ -53,7 +61,44 @@ runs:
           --tmp-dir ${TMPDIR_MICROVM} \
           --output-dir $(pwd)
       done
+
+      echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
     shell: bash
+  - name: Run the echo-breakdown benchmarks (Microvm, require re-compilation)
+    if: steps.run-microvm-benchmarks.outputs.must_run_echo_breakdown == 'true'
+    shell: bash
+    run: |
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+
+      # Re-compile.
+      python3 scripts/ci.py \
+        --toolchain-dir=$HOME/toolchain \
+        --target-arch=x86 \
+        --log-level=panic \
+        --target-machine=microvm \
+        --release \
+        --without-opt \
+        --build \
+        --sccache=${SCCACHE} \
+        --features L2_VM=yes,TIMESTAMP_MSG=yes
+
+      # Run only the specific benchmarks.
+      for bench in "${benchmarks[@]}"; do
+        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          python3 ./scripts/benchmark.py \
+            run \
+            --benchmark ${bench} \
+            --machine-type microvm \
+            --hwloc $HOME/hwloc.json \
+            --iterations 1000 \
+            --toolchain-bin-dir $HOME/toolchain/bin \
+            --tmp-dir ${TMPDIR_MICROVM} \
+            --output-dir $(pwd)
+        fi
+      done
   - name: Clean-up temporary directory
     if: always()
     run: rm -rf ${TMPDIR_MICROVM}
@@ -79,11 +124,14 @@ runs:
         --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
+    id: run-hyperlight-benchmarks
     run: |
       # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
       mapfile -t benchmarks < <(
         printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
       )
+
+      must_run_echo_breakdown=false
 
       for bench in "${benchmarks[@]}"; do
         # FIXME (#709): warm-start-vmm is stuck on hyperlight
@@ -93,6 +141,11 @@ runs:
 
         # FIXME (#1016): boot-time is failing on hyperlight
         if [[ "$bench" == "boot-time" ]]; then
+          continue
+        fi
+
+        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          must_run_echo_breakdown=true
           continue
         fi
 
@@ -106,7 +159,44 @@ runs:
           --tmp-dir ${TMPDIR_HL} \
           --output-dir $(pwd)
       done
+
+      echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
     shell: bash
+  - name: Run the echo-breakdown benchmarks (Hyperlight, require re-compilation)
+    if: steps.run-hyperlight-benchmarks.outputs.must_run_echo_breakdown == 'true'
+    shell: bash
+    run: |
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+
+      # Re-compile.
+      python3 scripts/ci.py \
+        --toolchain-dir=$HOME/toolchain \
+        --target-arch=x86 \
+        --log-level=panic \
+        --target-machine=hyperlight \
+        --release \
+        --without-opt \
+        --build \
+        --sccache=${SCCACHE} \
+        --features L2_VM=yes,TIMESTAMP_MSG=yes
+
+      # Run only the specific benchmarks.
+      for bench in "${benchmarks[@]}"; do
+        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          python3 ./scripts/benchmark.py \
+            run \
+            --benchmark ${bench} \
+            --machine-type hyperlight \
+            --hwloc $HOME/hwloc.json \
+            --iterations 1000 \
+            --toolchain-bin-dir $HOME/toolchain/bin \
+            --tmp-dir ${TMPDIR_HL} \
+            --output-dir $(pwd)
+        fi
+      done
   - name: Clean-up temporary directory
     if: always()
     run: rm -rf ${TMPDIR_HL}

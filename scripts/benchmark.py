@@ -32,6 +32,8 @@ L2_SUFFIX = "-l2"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
 COLD_START_L2_BENCH = COLD_START_BENCH + L2_SUFFIX
+ECHO_BREAKDOWN_BENCH = "echo-breakdown"
+ECHO_BREAKDOWN_L2_BENCH = ECHO_BREAKDOWN_BENCH + L2_SUFFIX
 ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 WARM_START_BENCH = "warm-start"
 WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
@@ -111,6 +113,9 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
             print(f"ERROR: did not collect expected sizes in '{benchmark}'")
             print(f"ERROR: expected: {ROUND_TRIP_SIZES} - got: {actual_sizes}")
             raise ValueError("Not expected values.")
+
+    elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
+        filtered_stdout = raw_stdout
 
     return filtered_stdout
 
@@ -330,8 +335,8 @@ def ci_summary(args):
     machines = args.machine_types.split(",")
     archs = args.archs.split(",")
 
+    # General-purpose benchmarks that we put in similar tables.
     bench_summary = "```"
-
     for benchmark in benchmarks:
         if benchmark in [
             BOOT_TIME_BENCH,
@@ -354,11 +359,43 @@ def ci_summary(args):
                     archs,
                     percentile,
                 )
+        elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
+            # We handle the echo-breakdown benchmarks separately.
+            continue
         else:
             print(f"ERROR: unrecognized benchmark '{benchmark}'")
             raise ValueError("Unrecognized benchmark")
-
     bench_summary += "```" + "\n"
+
+    # Echo breakdown benchmarks that we put in a collapsed section.
+    echo_breakdown_summary = None
+    echo_breakdown_benchmarks = [ECHO_BREAKDOWN_BENCH, ECHO_BREAKDOWN_L2_BENCH]
+    filtered_benchmarks = list(
+        filter(lambda b: b in echo_breakdown_benchmarks, benchmarks)
+    )
+    if len(filtered_benchmarks) > 0:
+        # For the echo-breakdown benchmarks we dump whatever the benchmark
+        # outputs in a collapsed section.
+        echo_breakdown_summary = (
+            "<details>\n<summary>Data-Path Breakdown</summary>\n\n```"
+        )
+        table_width = 91
+
+        for benchmark in filtered_benchmarks:
+            for machine, arch in list(itertools.product(machines, archs)):
+                echo_breakdown_summary += "\n" + make_header(
+                    f"{benchmark} {machine}", table_width
+                )
+
+                file_name = gen_filename_for_benchmark(benchmark, machine, arch)
+                with open(os.path.join(args.target_dir, file_name), "r") as fh:
+                    echo_breakdown_summary += fh.read()
+                echo_breakdown_summary += "=" * table_width + "\n"
+
+        echo_breakdown_summary += "\n```\n</details>\n"
+
+    if echo_breakdown_summary is not None:
+        bench_summary += "\n" + echo_breakdown_summary
 
     with open(args.output_file, "w") as fh:
         fh.write(bench_summary)
