@@ -24,7 +24,16 @@ runs:
     shell: bash
   - name: Build (MicroVM)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=microvm --release --without-opt --build --sccache=${SCCACHE} --features L2_VM=yes
+      python3 scripts/ci.py \
+        --toolchain-dir=$HOME/toolchain \
+        --target-arch=x86 \
+        --log-level=panic \
+        --target-machine=microvm \
+        --release \
+        --without-opt \
+        --build \
+        --sccache=${SCCACHE} \
+        --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (MicroVM)
     run: |
@@ -34,9 +43,15 @@ runs:
       )
 
       for bench in "${benchmarks[@]}"; do
-        echo "Running benchmark: ${bench} (Microvm)"
-        bench_underscore=${bench//-/_}
-        ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_MICROVM} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench} -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:|[0-9])' > bench_${bench_underscore}_microvm_${{ inputs.arch }}.txt
+        python3 ./scripts/benchmark.py \
+          run \
+          --benchmark ${bench} \
+          --machine-type microvm \
+          --hwloc $HOME/hwloc.json \
+          --iterations 1000 \
+          --toolchain-bin-dir $HOME/toolchain/bin \
+          --tmp-dir ${TMPDIR_MICROVM} \
+          --output-dir $(pwd)
       done
     shell: bash
   - name: Clean-up temporary directory
@@ -52,7 +67,16 @@ runs:
     shell: bash
   - name: Build (Hyperlight)
     run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=panic --target-machine=hyperlight --release --without-opt --build --sccache=${SCCACHE} --features L2_VM=yes
+      python3 scripts/ci.py \
+        --toolchain-dir=$HOME/toolchain \
+        --target-arch=x86 \
+        --log-level=panic \
+        --target-machine=hyperlight \
+        --release \
+        --without-opt \
+        --build \
+        --sccache=${SCCACHE} \
+        --features L2_VM=yes
     shell: bash
   - name: Run micro-benchmarks (Hyperlight)
     run: |
@@ -72,9 +96,15 @@ runs:
           continue
         fi
 
-        echo "Running benchmark: ${bench} (Hyperlight)"
-        bench_underscore=${bench//-/_}
-        ./bin/nanvix-bench.elf -tmp-dir ${TMPDIR_HL} -toolchain-bin-dir $HOME/toolchain/bin -benchmark ${bench}  -hwloc $HOME/hwloc.json -iterations 1000 | grep -E '^(p50:|p95:|p99:|[0-9])' > bench_${bench_underscore}_hyperlight_${{ inputs.arch }}.txt
+        python3 ./scripts/benchmark.py \
+          run \
+          --benchmark ${bench} \
+          --machine-type hyperlight \
+          --hwloc $HOME/hwloc.json \
+          --iterations 1000 \
+          --toolchain-bin-dir $HOME/toolchain/bin \
+          --tmp-dir ${TMPDIR_HL} \
+          --output-dir $(pwd)
       done
     shell: bash
   - name: Clean-up temporary directory
@@ -92,7 +122,8 @@ runs:
       )
       comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
 
-      python3 ./scripts/ci_bench_summary.py \
+      python3 ./scripts/benchmark.py \
+        ci-summary \
         --dev-dir $HOME/ubench-results-dev \
         --target-dir $(pwd) \
         --benchmarks ${comma_separated_benchmarks} \
@@ -146,15 +177,22 @@ runs:
   - name: Run only on dev branch
     if: github.ref_name == 'dev'
     run: |
-      mkdir -p $HOME/ubench-results-dev
+      target_dir=$HOME/ubench-results-dev
+      mkdir -p ${target_dir}
 
-      for machine in microvm hyperlight; do
-        for benchmark in boot_time cold_start warm_start warm_start_vmm; do
-          for arch in X64; do
-            file_name="bench_${benchmark}_${machine}_${arch}.txt"
-            # Do not fail if file does not exist, but still log an error.
-            cp ${file_name} $HOME/ubench-results-dev/${file_name} || true
-          done
-        done
-      done
+      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+      mapfile -t benchmarks < <(
+        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+      )
+      comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
+      comma_separated_machines=microvm,hyperlight
+      comma_separated_archs=X64
+
+      python3 ./scripts/benchmark.py \
+        copy-results \
+        --benchmarks ${comma_separated_benchmarks} \
+        --machine-types ${comma_separated_machines} \
+        --archs ${comma_separated_archs} \
+        --source-dir $(pwd) \
+        --target-dir ${target_dir}
     shell: bash
