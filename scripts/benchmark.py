@@ -411,7 +411,8 @@ def copy_results(args):
         filename = gen_filename_for_benchmark(benchmark, machine, arch)
         cmd = f"cp {args.source_dir}/{filename} {args.target_dir}/{filename}"
         print(cmd)
-        subprocess.run(cmd, shell=True, check=True)
+        # Tolerate failures in the cp command, indicating a missing benchmark.
+        subprocess.run(cmd, shell=True, check=False)
 
 
 if __name__ == "__main__":
