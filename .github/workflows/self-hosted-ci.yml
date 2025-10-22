@@ -40,10 +40,12 @@ jobs:
       matrix:
         build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [single-process, multi-process, l2]
         exclude:
           - machine-type: qemu-pc
             deployment-type: single-process
+          - machine-type: qemu-pc
+            deployment-type: l2
     runs-on: [self-hosted, Linux, X64]
 
     # Only run the CI for:
@@ -110,7 +112,7 @@ jobs:
 
     - id: release-archive
       name: "Create Release Archive"
-      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' }}
+      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' &&  matrix.deployment-type != 'l2' }}
       run: |
         single_process="no"
         if [[ "${{ matrix.deployment-type }}" == "single-process" ]]; then
@@ -149,7 +151,7 @@ jobs:
       shell: bash
 
     - name: "Upload Release Artifact"
-      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' }}
+      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' && matrix.deployment-type != 'l2' }}
       uses: actions/upload-artifact@v4
       with:
         name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
