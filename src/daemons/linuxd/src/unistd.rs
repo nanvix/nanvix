@@ -111,6 +111,7 @@ pub fn do_chdir(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_chdir(): worker thread interrupted while blocked on chdir()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -144,6 +145,7 @@ pub fn do_close(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_close(): worker thread interrupted while blocked on close()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -184,6 +186,7 @@ pub fn do_faccessat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_faccessat(): worker thread interrupted while blocked on faccessat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -217,6 +220,7 @@ pub fn do_fdatasync(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fdatasync(): worker thread interrupted while blocked on fdatasync()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -306,6 +310,7 @@ pub fn do_getcwd(tid: ThreadIdentifier) -> Result<Vec<Message>, WorkerThreadErro
 
         // Check if the thread has been interrupted.
         if errno == libc::EINTR {
+            error!("do_getcwd(): worker thread interrupted while blocked on getcwd()");
             return Err(WorkerThreadError::Interrupted);
         }
 
@@ -342,6 +347,7 @@ pub fn do_fsync(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fsync(): worker thread interrupted while blocked on fsync()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -377,6 +383,7 @@ pub fn do_lseek(tid: ThreadIdentifier, request: SeekRequest) -> Result<Message, 
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_lseek(): worker thread interrupted while blocked on lseek()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -411,6 +418,7 @@ pub fn do_ftruncate(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_ftruncate(): worker thread interrupted while blocked on ftruncate()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -451,6 +459,7 @@ pub fn do_write(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_write(): worker thread interrupted while blocked on write()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -488,6 +497,7 @@ pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, W
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_read(): worker thread interrupted while blocked on read()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -529,6 +539,7 @@ pub fn do_pwrite(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_pwrite(): worker thread interrupted while blocked on pwrite()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -570,6 +581,7 @@ pub fn do_pread(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_pread(): worker thread interrupted while blocked on pread()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -616,6 +628,7 @@ pub fn do_linkat(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_linkat(): worker thread interrupted while blocked on linkat()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -650,6 +663,7 @@ pub fn do_fchdir(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fchdir(): worker thread interrupted while blocked on fchdir()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -685,6 +699,7 @@ pub fn do_fchown(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_fchown(): worker thread interrupted while blocked on fchown()");
                 return Err(WorkerThreadError::Interrupted);
             }
 
@@ -721,6 +736,7 @@ pub fn do_pipe(tid: ThreadIdentifier) -> Result<Message, WorkerThreadError> {
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_pipe(): worker thread interrupted while blocked on pipe()");
                 return Err(WorkerThreadError::Interrupted);
             }
 

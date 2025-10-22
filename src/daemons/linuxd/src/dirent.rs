@@ -140,6 +140,7 @@ pub fn do_getdents(
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
+                error!("do_getdents(): worker thread interrupted while blocked on getdents()");
                 return Err(WorkerThreadError::Interrupted);
             }
 

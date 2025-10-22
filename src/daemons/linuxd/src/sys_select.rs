@@ -126,6 +126,7 @@ pub fn do_select(
     } else {
         let errno: libc::c_int = unsafe { *libc::__errno_location() };
         if errno == libc::EINTR {
+            error!("do_select(): worker thread interrupted while blocked on select()");
             return Err(WorkerThreadError::Interrupted);
         }
         error!("select(): errno={errno:?}");
