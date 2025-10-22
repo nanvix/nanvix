@@ -307,6 +307,7 @@
 .global __leave_kernel
 .global __leave_kernel_to_user_mode
 .global __phys_memcpy
+.global __phys_memcpy32
 .global __phys_memset
 
 /*----------------------------------------------------------------------------*
@@ -570,6 +571,58 @@ __phys_memcpy:
     popf
 
 __phys_memcpy.done:
+
+    popl %edi
+    popl %esi
+
+    ret
+
+/*----------------------------------------------------------------------------*
+ * __phys_memcpy32()                                                          *
+ *----------------------------------------------------------------------------*/
+
+/*
+ * Physical memory copy (32-bit word at a time).
+ */
+__phys_memcpy32:
+    pushl %esi
+    pushl %edi
+
+    /* Get parameters. */
+    movl 12(%esp), %edi /* dest */
+    movl 16(%esp), %esi /* src */
+    movl 20(%esp), %ecx /* size in bytes */
+
+    /* Convert size in bytes to number of 32-bit words. */
+    shrl $2, %ecx
+
+    /* If copy size is zero, skip copying. */
+    test %ecx, %ecx
+    jz __phys_memcpy32.done
+
+    /* Preserve flags before paging is disabled. */
+    pushf
+    popl %edx
+
+    /* Disable paging. */
+    movl %cr0, %eax
+    andl $0x80000000 - 1, %eax
+    movl %eax, %cr0
+
+    /* Use rep movsl while paging is temporarily disabled. */
+    cld
+    rep movsl
+
+    /* Re-enable paging. */
+    movl %cr0, %eax
+    orl $0x80000000, %eax
+    movl %eax, %cr0
+
+    /* Restore flags now that paging is enabled again. */
+    pushl %edx
+    popf
+
+__phys_memcpy32.done:
 
     popl %edi
     popl %esi
