@@ -29,6 +29,7 @@ profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }
 sys = { workspace = true }
+syscall = { workspace = true }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
@@ -43,3 +44,4 @@ libc = { workspace = true }
 [features]
 default = []
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
+timestamp-messages = []

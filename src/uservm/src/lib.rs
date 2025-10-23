@@ -414,6 +414,9 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
     Ok(file_writer)
 }
 
+///
+/// # Description
+///
 /// Builds an input callback that delivers messages from the Linux daemon to the virtual machine.
 ///
 /// # Parameters
@@ -424,6 +427,7 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 /// # Returns
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
+///
 pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
     // Input function used for emulating I/O port reads.
     #[cfg(not(feature = "hyperlight"))]
@@ -444,10 +448,25 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
 
         match input_queue.blocking_recv() {
             Some(mut msg) => {
+                // Label: uservm::lib::vm_input::vm_exit()
+                profiler::timestamp_message!(
+                    &mut msg.payload,
+                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
+
                 on_message_received_from_memory_thread();
                 msg.message_type = MessageType::Ikc;
                 let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                 let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
+
+                // Label: uservm::lib::vm_input::vm_write_bytes()
+                profiler::timestamp_message!(
+                    &mut msg.payload,
+                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
+
                 locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                 locked_guest.consume_credit(&mut locked_vm)?;
             },
@@ -467,6 +486,13 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
         on_input_function_called();
         match input_queue.blocking_recv() {
             Some(mut msg) => {
+                // Label: uservm::lib::vm_input::vm_exit()
+                profiler::timestamp_message!(
+                    &mut msg.payload,
+                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
+
                 on_message_received_from_memory_thread();
                 msg.message_type = MessageType::Ikc;
                 // Acquire lock on guest information.
@@ -488,6 +514,13 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
                     })?
                     .blocking_lock();
+
+                // Label: uservm::lib::vm_input::vm_write_bytes()
+                profiler::timestamp_message!(
+                    &mut msg.payload,
+                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                );
 
                 locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(msg.to_bytes().to_vec())
@@ -529,7 +562,7 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
         trace!("output(): reading message from user VM");
         vm.blocking_lock().read_bytes(data as u64, &mut bytes)?;
 
-        let message: Message = match Message::try_from_bytes(bytes) {
+        let mut message: Message = match Message::try_from_bytes(bytes) {
             Ok(message) => message,
             Err(err) => {
                 let reason: String = format!("failed to parse message: {err:?}");
@@ -537,6 +570,13 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
                 anyhow::bail!(reason);
             },
         };
+
+        // Label: uservm::lib::vm_output::send()
+        profiler::timestamp_message!(
+            &mut message.payload,
+            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+        );
 
         trace!("output(): forwarding message to system VM");
         if let Err(e) = queue.blocking_send(message) {
@@ -569,7 +609,7 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
             },
         };
 
-        let message: Message = match Message::try_from_bytes(payload) {
+        let mut message: Message = match Message::try_from_bytes(payload) {
             Ok(message) => message,
             Err(err) => {
                 let reason: String = format!("failed to parse message: {:?}", err);
@@ -579,6 +619,13 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
                 )));
             },
         };
+
+        // Label: uservm::lib::vm_output::send()
+        profiler::timestamp_message!(
+            &mut message.payload,
+            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+        );
 
         if let Err(e) = queue.blocking_send(message) {
             let reason: String = format!("failed to send message: {:?}", e);
