@@ -5,7 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
+};
+use ::std::sync::Arc;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -49,6 +56,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_poll(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: PollRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -71,7 +79,7 @@ pub fn do_poll(
     let timeout: libc::c_int = request.timeout;
 
     debug!("libc::poll(): nfds={nfds:?}, timeout={timeout:?}");
-    match unsafe { libc::poll(fds.as_mut_ptr(), nfds, timeout) } {
+    match unsafe { handle_poll(&syscall_table, fds.as_mut_ptr(), nfds, timeout) } {
         nready if nready >= 0 => {
             debug!("poll(): nready={nready:?}");
 
@@ -190,5 +198,27 @@ impl LibcPollFd {
             events: libc_events,
             revents: 0, // revents is not used in the request
         })
+    }
+}
+
+//==================================================================================================
+// System Call Wrappers
+//==================================================================================================
+
+/// Handler for `libc::poll()`.
+unsafe fn handle_poll(
+    syscall_table: &SystemCallRouteTable,
+    fds: *mut libc::pollfd,
+    nfds: libc::nfds_t,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_poll.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_poll.syscall_fn)(fds, nfds, timeout)
+        },
     }
 }

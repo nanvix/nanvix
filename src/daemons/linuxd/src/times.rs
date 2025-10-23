@@ -5,7 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
+};
+use ::std::sync::Arc;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -28,6 +35,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_times(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     _request: TimesRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -42,7 +50,7 @@ pub fn do_times(
 
     debug!("libc::times(): buffer={:p}", &libc_buffer as *const libc::tms);
 
-    match unsafe { libc::times(&mut libc_buffer as *mut libc::tms) } {
+    match unsafe { handle_times(&syscall_table, &mut libc_buffer as *mut libc::tms) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -83,5 +91,20 @@ pub fn do_times(
 
             Ok(TimesResponse::build(tid, elapsed, nanvix_buffer))
         },
+    }
+}
+
+//==================================================================================================
+// System Call Wrappers
+//==================================================================================================
+
+/// Handler for `libc::times()`.
+unsafe fn handle_times(syscall_table: &SystemCallRouteTable, buf: *mut libc::tms) -> libc::clock_t {
+    match syscall_table.syscall_times.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_times.syscall_fn)(buf) },
     }
 }

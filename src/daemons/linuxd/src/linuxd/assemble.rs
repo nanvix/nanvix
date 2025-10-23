@@ -12,9 +12,11 @@ use crate::{
         RequestAssemblerTrait,
         RequestAssemblerType,
     },
+    syscalls::SystemCallRouteTable,
     unistd,
 };
 use ::anyhow::Result;
+use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -87,10 +89,11 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_fstat_at(source, request)
+        fcntl::do_fstat_at(syscall_table, source, request)
     }
 }
 
@@ -127,10 +130,11 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_symlinkat(source, request)
+        fcntl::do_symlinkat(syscall_table, source, request)
     }
 }
 
@@ -167,10 +171,11 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        unistd::do_linkat(source, request)
+        unistd::do_linkat(syscall_table, source, request)
     }
 }
 
@@ -207,10 +212,11 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_readlinkat(source, request)
+        fcntl::do_readlinkat(syscall_table, source, request)
     }
 }
 
@@ -249,10 +255,11 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_mkdirat(source, request)
+        fcntl::do_mkdirat(syscall_table, source, request)
     }
 }
 
@@ -295,10 +302,11 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_utimensat(source, request)
+        fcntl::do_utimensat(syscall_table, source, request)
     }
 }
 
@@ -335,10 +343,11 @@ impl RequestAssemblerTrait for FileChownAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_fchownat(source, request)
+        fcntl::do_fchownat(syscall_table, source, request)
     }
 }
 
@@ -375,10 +384,11 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_fchmodat(source, request)
+        fcntl::do_fchmodat(syscall_table, source, request)
     }
 }
 
@@ -415,10 +425,11 @@ impl RequestAssemblerTrait for OpenAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_openat(source, request)
+        fcntl::do_openat(syscall_table, source, request)
     }
 }
 
@@ -455,10 +466,11 @@ impl RequestAssemblerTrait for RenameAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_renameat(source, request)
+        fcntl::do_renameat(syscall_table, source, request)
     }
 }
 
@@ -495,10 +507,11 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        fcntl::do_unlinkat(source, request)
+        fcntl::do_unlinkat(syscall_table, source, request)
     }
 }
 
@@ -537,10 +550,11 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        unistd::do_chdir(source, request)
+        unistd::do_chdir(syscall_table, source, request)
     }
 }
 
@@ -577,10 +591,11 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        unistd::do_faccessat(source, request)
+        unistd::do_faccessat(syscall_table, source, request)
     }
 }
 
@@ -617,9 +632,10 @@ impl RequestAssemblerTrait for PollRequest {
     }
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        crate::poll::do_poll(source, request)
+        crate::poll::do_poll(syscall_table, source, request)
     }
 }
