@@ -148,13 +148,19 @@ impl IoThread {
 
                             if buf_len == buf.len() {
                                 // Convert bytes to message.
-                                let message: Message =
+                                let mut message: Message =
                                     Message::try_from_bytes(buf).map_err(|e| {
                                         let reason: String =
                                             format!("failed to decode message from system VM: {e:?}");
                                         error!("{reason}");
                                         anyhow::Error::msg(reason)
                                     })?;
+
+                                // Label: uservm::io_thread::system_vm::read()
+                                profiler::timestamp_message!(&mut message.payload,
+                                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                                );
 
                                 buf.fill(0);
                                 buf_len = 0;
@@ -177,7 +183,13 @@ impl IoThread {
                 result = data_rx.recv() => {
                     trace!("forwarding message to system VM");
                     match result {
-                        Some(msg) => {
+                        Some(mut msg) => {
+                            // Label: uservm::io_thread::system_vm::write()
+                            profiler::timestamp_message!(&mut msg.payload,
+                                std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                    + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                            );
+
                             let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.to_bytes();
                             system_vm_tx.write_all(&bytes).await.map_err(|e| {
                                 let reason: String = format!("failed writing message to system VM socket: {e}");
