@@ -185,6 +185,12 @@ pub struct UserVm;
 impl UserVm {
     /// Launches a user virtual machine on a Tokio task and returns a handle to its completion.
     pub fn spawn(args: UserVmArgs) -> JoinHandle<Result<u16>> {
+        // Reset counters of previous runs.
+        IO_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
+        MEM_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
+        VMM_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
+        VMM_THREAD_NUM_INPUT_CALLS.store(0, Ordering::SeqCst);
+
         tokio::spawn(async move { UserVm::run(args).await })
     }
 
