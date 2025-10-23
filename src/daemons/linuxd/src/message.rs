@@ -7,7 +7,7 @@
 
 use crate::{
     error::WorkerThreadError,
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
 };
 use ::alloc::collections::BTreeMap;
 use ::std::sync::Arc;
@@ -34,7 +34,7 @@ pub struct RequestAssembler {
 impl RequestAssembler {
     pub fn process_message<T: RequestAssemblerTrait>(
         &mut self,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
@@ -50,7 +50,7 @@ impl RequestAssembler {
 
     fn process_message_internal<T: RequestAssemblerTrait>(
         &mut self,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
@@ -88,7 +88,7 @@ impl RequestAssembler {
 
     fn process_request<T: RequestAssemblerTrait>(
         &mut self,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
     ) -> Result<Vec<Message>, WorkerThreadError> {
         let assembler: RequestAssemblerType = self
@@ -137,7 +137,7 @@ where
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError>;

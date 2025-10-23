@@ -22,7 +22,7 @@ use crate::{
     },
     socket,
     sys_select,
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
     times,
     unistd,
     user_vm_handle::UserVmHandle,
@@ -218,7 +218,7 @@ impl WorkerThreadHandle {
         channel_tx: Sender<VenvCommand>,
         uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
     ) -> Result<Self, Error> {
         trace!("spawning workker thread (id={id:?})");
         // We use an atomic to pass the id of the created thread back to the caller context. We
@@ -268,7 +268,7 @@ impl WorkerThreadHandle {
     fn handle_message(
         mut channel_rx: Receiver<VenvCommand>,
         uvm_handle: UserVmHandle,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
@@ -490,7 +490,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
@@ -518,7 +518,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_short_request_messages(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
@@ -653,7 +653,7 @@ impl WorkerThreadHandle {
     fn handle_long_request_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -792,7 +792,7 @@ impl WorkerThreadHandle {
 
     fn handle_long_response_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -834,7 +834,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_close_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: CloseRequest,
     ) -> Result<Message, WorkerThreadError> {
@@ -853,7 +853,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_write_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
@@ -906,7 +906,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_read_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         source: ThreadIdentifier,
         request: ReadRequest,
@@ -969,7 +969,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_fstat_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -989,7 +989,7 @@ impl WorkerThreadHandle {
 
     fn handle_getcwd_request(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(syscall_table, source)?;
@@ -1003,7 +1003,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getdents_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -1024,7 +1024,7 @@ impl WorkerThreadHandle {
     fn handle_long_request<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError>

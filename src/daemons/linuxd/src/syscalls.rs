@@ -1311,145 +1311,156 @@ pub unsafe fn default_times(buf: *mut libc::tms) -> libc::clock_t {
     libc::times(buf)
 }
 
-pub enum SystemCallAction<F> {
+///
+/// # Description
+///
+/// Action to take on a system call.
+pub enum SyscallAction<F> {
+    /// Block system call.
     Block,
+    /// Forward system call to underlying provider.
     Forward(F),
 }
 
-pub struct SystemCallRouteTable {
+///
+/// # Description
+///
+/// System call routing table.
+///
+pub struct SyscallTable {
     // unistd.rs system calls.
-    pub syscall_chdir: SystemCallAction<ChdirFn>,
-    pub syscall_close: SystemCallAction<CloseFn>,
-    pub syscall_faccessat: SystemCallAction<FaccessatFn>,
-    pub syscall_fdatasync: SystemCallAction<FdatasyncFn>,
-    pub syscall_fchdir: SystemCallAction<FchdirFn>,
-    pub syscall_fchown: SystemCallAction<FchownFn>,
-    pub syscall_fsync: SystemCallAction<FsyncFn>,
-    pub syscall_ftruncate: SystemCallAction<FtruncateFn>,
-    pub syscall_getcwd: SystemCallAction<GetcwdFn>,
-    pub syscall_getegid: SystemCallAction<GetegidFn>,
-    pub syscall_geteuid: SystemCallAction<GeteuidFn>,
-    pub syscall_getgid: SystemCallAction<GetgidFn>,
-    pub syscall_getuid: SystemCallAction<GetuidFn>,
-    pub syscall_linkat: SystemCallAction<LinkatFn>,
-    pub syscall_lseek: SystemCallAction<LseekFn>,
-    pub syscall_pipe: SystemCallAction<PipeFn>,
-    pub syscall_pread: SystemCallAction<PreadFn>,
-    pub syscall_pwrite: SystemCallAction<PwriteFn>,
-    pub syscall_read: SystemCallAction<ReadFn>,
-    pub syscall_write: SystemCallAction<WriteFn>,
+    pub syscall_chdir: SyscallAction<ChdirFn>,
+    pub syscall_close: SyscallAction<CloseFn>,
+    pub syscall_faccessat: SyscallAction<FaccessatFn>,
+    pub syscall_fdatasync: SyscallAction<FdatasyncFn>,
+    pub syscall_fchdir: SyscallAction<FchdirFn>,
+    pub syscall_fchown: SyscallAction<FchownFn>,
+    pub syscall_fsync: SyscallAction<FsyncFn>,
+    pub syscall_ftruncate: SyscallAction<FtruncateFn>,
+    pub syscall_getcwd: SyscallAction<GetcwdFn>,
+    pub syscall_getegid: SyscallAction<GetegidFn>,
+    pub syscall_geteuid: SyscallAction<GeteuidFn>,
+    pub syscall_getgid: SyscallAction<GetgidFn>,
+    pub syscall_getuid: SyscallAction<GetuidFn>,
+    pub syscall_linkat: SyscallAction<LinkatFn>,
+    pub syscall_lseek: SyscallAction<LseekFn>,
+    pub syscall_pipe: SyscallAction<PipeFn>,
+    pub syscall_pread: SyscallAction<PreadFn>,
+    pub syscall_pwrite: SyscallAction<PwriteFn>,
+    pub syscall_read: SyscallAction<ReadFn>,
+    pub syscall_write: SyscallAction<WriteFn>,
 
     // fcntl.rs system calls.
-    pub syscall_fchmod: SystemCallAction<FchmodFn>,
-    pub syscall_fchmodat: SystemCallAction<FchmodatFn>,
-    pub syscall_fchownat: SystemCallAction<FchownatFn>,
-    pub syscall_fcntl: SystemCallAction<FcntlFn>,
-    pub syscall_fstat: SystemCallAction<FstatFn>,
-    pub syscall_fstatat: SystemCallAction<FstatatFn>,
-    pub syscall_futimens: SystemCallAction<FutimensFn>,
-    pub syscall_mkdirat: SystemCallAction<MkdiratFn>,
-    pub syscall_openat: SystemCallAction<OpenatFn>,
-    pub syscall_posix_fadvise: SystemCallAction<PosixFadviseFn>,
-    pub syscall_posix_fallocate: SystemCallAction<PosixFallocateFn>,
-    pub syscall_readlinkat: SystemCallAction<ReadlinkatFn>,
-    pub syscall_renameat: SystemCallAction<RenameatFn>,
-    pub syscall_symlinkat: SystemCallAction<SymlinkatFn>,
-    pub syscall_unlinkat: SystemCallAction<UnlinkatFn>,
-    pub syscall_utimensat: SystemCallAction<UtimensatFn>,
+    pub syscall_fchmod: SyscallAction<FchmodFn>,
+    pub syscall_fchmodat: SyscallAction<FchmodatFn>,
+    pub syscall_fchownat: SyscallAction<FchownatFn>,
+    pub syscall_fcntl: SyscallAction<FcntlFn>,
+    pub syscall_fstat: SyscallAction<FstatFn>,
+    pub syscall_fstatat: SyscallAction<FstatatFn>,
+    pub syscall_futimens: SyscallAction<FutimensFn>,
+    pub syscall_mkdirat: SyscallAction<MkdiratFn>,
+    pub syscall_openat: SyscallAction<OpenatFn>,
+    pub syscall_posix_fadvise: SyscallAction<PosixFadviseFn>,
+    pub syscall_posix_fallocate: SyscallAction<PosixFallocateFn>,
+    pub syscall_readlinkat: SyscallAction<ReadlinkatFn>,
+    pub syscall_renameat: SyscallAction<RenameatFn>,
+    pub syscall_symlinkat: SyscallAction<SymlinkatFn>,
+    pub syscall_unlinkat: SyscallAction<UnlinkatFn>,
+    pub syscall_utimensat: SyscallAction<UtimensatFn>,
 
     // dirent.rs system calls.
-    pub syscall_getdents: SystemCallAction<GetdentsFn>,
+    pub syscall_getdents: SyscallAction<GetdentsFn>,
 
     // socket.rs system calls.
-    pub syscall_accept: SystemCallAction<AcceptFn>,
-    pub syscall_bind: SystemCallAction<BindFn>,
-    pub syscall_connect: SystemCallAction<ConnectFn>,
-    pub syscall_getpeername: SystemCallAction<GetpeernameFn>,
-    pub syscall_getsockname: SystemCallAction<GetsocknameFn>,
-    pub syscall_listen: SystemCallAction<ListenFn>,
-    pub syscall_recv: SystemCallAction<RecvFn>,
-    pub syscall_send: SystemCallAction<SendFn>,
-    pub syscall_shutdown: SystemCallAction<ShutdownFn>,
-    pub syscall_socket: SystemCallAction<SocketFn>,
-    pub syscall_socketpair: SystemCallAction<SocketpairFn>,
+    pub syscall_accept: SyscallAction<AcceptFn>,
+    pub syscall_bind: SyscallAction<BindFn>,
+    pub syscall_connect: SyscallAction<ConnectFn>,
+    pub syscall_getpeername: SyscallAction<GetpeernameFn>,
+    pub syscall_getsockname: SyscallAction<GetsocknameFn>,
+    pub syscall_listen: SyscallAction<ListenFn>,
+    pub syscall_recv: SyscallAction<RecvFn>,
+    pub syscall_send: SyscallAction<SendFn>,
+    pub syscall_shutdown: SyscallAction<ShutdownFn>,
+    pub syscall_socket: SyscallAction<SocketFn>,
+    pub syscall_socketpair: SyscallAction<SocketpairFn>,
 
     // poll.rs system calls.
-    pub syscall_poll: SystemCallAction<PollFn>,
+    pub syscall_poll: SyscallAction<PollFn>,
 
     // sys_select.rs system calls.
-    pub syscall_select: SystemCallAction<SelectFn>,
+    pub syscall_select: SyscallAction<SelectFn>,
 
     // times.rs system calls.
-    pub syscall_times: SystemCallAction<TimesFn>,
+    pub syscall_times: SyscallAction<TimesFn>,
 }
 
-impl Default for SystemCallRouteTable {
+impl Default for SyscallTable {
     fn default() -> Self {
         Self {
             // unistd.rs system calls.
-            syscall_chdir: SystemCallAction::Forward(default_chdir),
-            syscall_close: SystemCallAction::Forward(default_close),
-            syscall_faccessat: SystemCallAction::Forward(default_faccessat),
-            syscall_fdatasync: SystemCallAction::Forward(default_fdatasync),
-            syscall_fchdir: SystemCallAction::Forward(default_fchdir),
-            syscall_fchown: SystemCallAction::Forward(default_fchown),
-            syscall_fsync: SystemCallAction::Forward(default_fsync),
-            syscall_ftruncate: SystemCallAction::Forward(default_ftruncate),
-            syscall_getcwd: SystemCallAction::Forward(default_getcwd),
-            syscall_getegid: SystemCallAction::Forward(default_getegid),
-            syscall_geteuid: SystemCallAction::Forward(default_geteuid),
-            syscall_getgid: SystemCallAction::Forward(default_getgid),
-            syscall_getuid: SystemCallAction::Forward(default_getuid),
-            syscall_linkat: SystemCallAction::Forward(default_linkat),
-            syscall_lseek: SystemCallAction::Forward(default_lseek),
-            syscall_pipe: SystemCallAction::Forward(default_pipe),
-            syscall_pread: SystemCallAction::Forward(default_pread),
-            syscall_pwrite: SystemCallAction::Forward(default_pwrite),
-            syscall_read: SystemCallAction::Forward(default_read),
-            syscall_write: SystemCallAction::Forward(default_write),
+            syscall_chdir: SyscallAction::Forward(default_chdir),
+            syscall_close: SyscallAction::Forward(default_close),
+            syscall_faccessat: SyscallAction::Forward(default_faccessat),
+            syscall_fdatasync: SyscallAction::Forward(default_fdatasync),
+            syscall_fchdir: SyscallAction::Forward(default_fchdir),
+            syscall_fchown: SyscallAction::Forward(default_fchown),
+            syscall_fsync: SyscallAction::Forward(default_fsync),
+            syscall_ftruncate: SyscallAction::Forward(default_ftruncate),
+            syscall_getcwd: SyscallAction::Forward(default_getcwd),
+            syscall_getegid: SyscallAction::Forward(default_getegid),
+            syscall_geteuid: SyscallAction::Forward(default_geteuid),
+            syscall_getgid: SyscallAction::Forward(default_getgid),
+            syscall_getuid: SyscallAction::Forward(default_getuid),
+            syscall_linkat: SyscallAction::Forward(default_linkat),
+            syscall_lseek: SyscallAction::Forward(default_lseek),
+            syscall_pipe: SyscallAction::Forward(default_pipe),
+            syscall_pread: SyscallAction::Forward(default_pread),
+            syscall_pwrite: SyscallAction::Forward(default_pwrite),
+            syscall_read: SyscallAction::Forward(default_read),
+            syscall_write: SyscallAction::Forward(default_write),
 
             // fcntl.rs system calls.
-            syscall_fchmod: SystemCallAction::Forward(default_fchmod),
-            syscall_fchmodat: SystemCallAction::Forward(default_fchmodat),
-            syscall_fchownat: SystemCallAction::Forward(default_fchownat),
-            syscall_fcntl: SystemCallAction::Forward(default_fcntl),
-            syscall_fstat: SystemCallAction::Forward(default_fstat),
-            syscall_fstatat: SystemCallAction::Forward(default_fstatat),
-            syscall_futimens: SystemCallAction::Forward(default_futimens),
-            syscall_mkdirat: SystemCallAction::Forward(default_mkdirat),
-            syscall_openat: SystemCallAction::Forward(default_openat),
-            syscall_posix_fadvise: SystemCallAction::Forward(default_posix_fadvise),
-            syscall_posix_fallocate: SystemCallAction::Forward(default_posix_fallocate),
-            syscall_readlinkat: SystemCallAction::Forward(default_readlinkat),
-            syscall_renameat: SystemCallAction::Forward(default_renameat),
-            syscall_symlinkat: SystemCallAction::Forward(default_symlinkat),
-            syscall_unlinkat: SystemCallAction::Forward(default_unlinkat),
-            syscall_utimensat: SystemCallAction::Forward(default_utimensat),
+            syscall_fchmod: SyscallAction::Forward(default_fchmod),
+            syscall_fchmodat: SyscallAction::Forward(default_fchmodat),
+            syscall_fchownat: SyscallAction::Forward(default_fchownat),
+            syscall_fcntl: SyscallAction::Forward(default_fcntl),
+            syscall_fstat: SyscallAction::Forward(default_fstat),
+            syscall_fstatat: SyscallAction::Forward(default_fstatat),
+            syscall_futimens: SyscallAction::Forward(default_futimens),
+            syscall_mkdirat: SyscallAction::Forward(default_mkdirat),
+            syscall_openat: SyscallAction::Forward(default_openat),
+            syscall_posix_fadvise: SyscallAction::Forward(default_posix_fadvise),
+            syscall_posix_fallocate: SyscallAction::Forward(default_posix_fallocate),
+            syscall_readlinkat: SyscallAction::Forward(default_readlinkat),
+            syscall_renameat: SyscallAction::Forward(default_renameat),
+            syscall_symlinkat: SyscallAction::Forward(default_symlinkat),
+            syscall_unlinkat: SyscallAction::Forward(default_unlinkat),
+            syscall_utimensat: SyscallAction::Forward(default_utimensat),
 
             // dirent.rs system calls.
-            syscall_getdents: SystemCallAction::Forward(default_getdents),
+            syscall_getdents: SyscallAction::Forward(default_getdents),
 
             // socket.rs system calls.
-            syscall_accept: SystemCallAction::Forward(default_accept),
-            syscall_bind: SystemCallAction::Forward(default_bind),
-            syscall_connect: SystemCallAction::Forward(default_connect),
-            syscall_getpeername: SystemCallAction::Forward(default_getpeername),
-            syscall_getsockname: SystemCallAction::Forward(default_getsockname),
-            syscall_listen: SystemCallAction::Forward(default_listen),
-            syscall_recv: SystemCallAction::Forward(default_recv),
-            syscall_send: SystemCallAction::Forward(default_send),
-            syscall_shutdown: SystemCallAction::Forward(default_shutdown),
-            syscall_socket: SystemCallAction::Forward(default_socket),
-            syscall_socketpair: SystemCallAction::Forward(default_socketpair),
+            syscall_accept: SyscallAction::Forward(default_accept),
+            syscall_bind: SyscallAction::Forward(default_bind),
+            syscall_connect: SyscallAction::Forward(default_connect),
+            syscall_getpeername: SyscallAction::Forward(default_getpeername),
+            syscall_getsockname: SyscallAction::Forward(default_getsockname),
+            syscall_listen: SyscallAction::Forward(default_listen),
+            syscall_recv: SyscallAction::Forward(default_recv),
+            syscall_send: SyscallAction::Forward(default_send),
+            syscall_shutdown: SyscallAction::Forward(default_shutdown),
+            syscall_socket: SyscallAction::Forward(default_socket),
+            syscall_socketpair: SyscallAction::Forward(default_socketpair),
 
             // poll.rs system calls.
-            syscall_poll: SystemCallAction::Forward(default_poll),
+            syscall_poll: SyscallAction::Forward(default_poll),
 
             // sys_select.rs system calls.
-            syscall_select: SystemCallAction::Forward(default_select),
+            syscall_select: SyscallAction::Forward(default_select),
 
             // times.rs system calls.
-            syscall_times: SystemCallAction::Forward(default_times),
+            syscall_times: SyscallAction::Forward(default_times),
         }
     }
 }
