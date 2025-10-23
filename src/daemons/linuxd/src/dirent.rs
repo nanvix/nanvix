@@ -240,13 +240,11 @@ unsafe fn handle_getdents(
     dirp: *mut u8,
     count: libc::size_t,
 ) -> libc::c_long {
-    match syscall_table.syscall_getdents.action {
+    match &syscall_table.syscall_getdents {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_getdents.syscall_fn)(fd, dirp, count)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, dirp, count) },
     }
 }

@@ -100,11 +100,11 @@ pub fn do_times(
 
 /// Handler for `libc::times()`.
 unsafe fn handle_times(syscall_table: &SystemCallRouteTable, buf: *mut libc::tms) -> libc::clock_t {
-    match syscall_table.syscall_times.action {
+    match &syscall_table.syscall_times {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe { (syscall_table.syscall_times.syscall_fn)(buf) },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(buf) },
     }
 }
