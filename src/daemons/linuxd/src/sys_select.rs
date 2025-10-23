@@ -5,11 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
+};
 use ::core::{
     cmp,
     ptr,
 };
+use ::std::sync::Arc;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -42,6 +49,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_select(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: SelectRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -91,7 +99,8 @@ pub fn do_select(
 
     // SAFETY: All pointers either null or point to valid local storage; nfds validated.
     let nready: libc::c_int = unsafe {
-        libc::select(
+        handle_select(
+            &syscall_table,
             nfds_c_int,
             read_ptr
                 .as_mut()
@@ -190,5 +199,28 @@ impl TryFrom<LibcFdSet> for fd_set {
         }
 
         Ok(fd_set)
+    }
+}
+
+//==================================================================================================
+// Wrapper Functions
+//==================================================================================================
+
+unsafe fn handle_select(
+    syscall_table: &SystemCallRouteTable,
+    nfds: libc::c_int,
+    readfds: *mut libc::fd_set,
+    writefds: *mut libc::fd_set,
+    errorfds: *mut libc::fd_set,
+    timeout: *mut libc::timeval,
+) -> libc::c_int {
+    match syscall_table.syscall_select.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_select.syscall_fn)(nfds, readfds, writefds, errorfds, timeout)
+        },
     }
 }

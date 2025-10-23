@@ -8,12 +8,17 @@
 use crate::{
     error::WorkerThreadError,
     fcntl::LibcAtFlags,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
 };
 use ::alloc::ffi::CString;
 use ::core::{
     ffi,
     ffi::CStr,
 };
+use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -87,6 +92,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_chdir(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: ChangeDirectoryRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -101,7 +107,7 @@ pub fn do_chdir(
     };
 
     debug!("libc::chdir(): path={path:?}");
-    match unsafe { libc::chdir(path.as_ptr()) } {
+    match unsafe { handle_chdir(&syscall_table, path.as_ptr()) } {
         0 => {
             debug!("do_chdir(): chdir() succeeded");
             Ok(vec![ChangeDirectoryResponse::build(tid)])
@@ -130,6 +136,7 @@ pub fn do_chdir(
 //==================================================================================================
 
 pub fn do_close(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: CloseRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -138,7 +145,7 @@ pub fn do_close(
     let fd: i32 = request.fd;
 
     debug!("libc::close(): fd={fd:?}");
-    match unsafe { libc::close(fd) } {
+    match unsafe { handle_close(&syscall_table, fd) } {
         ret if ret == 0 => Ok(CloseResponse::build(tid, ret)),
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -160,6 +167,7 @@ pub fn do_close(
 //==================================================================================================
 
 pub fn do_faccessat(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileAccessAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -179,7 +187,9 @@ pub fn do_faccessat(
         dirfd.inner(),
         flag.inner()
     );
-    match unsafe { libc::faccessat(dirfd.inner(), path.as_ptr(), amode, flag.inner()) } {
+    match unsafe {
+        handle_faccessat(&syscall_table, dirfd.inner(), path.as_ptr(), amode, flag.inner())
+    } {
         0 => Ok(vec![FileAccessAtResponse::build(tid)]),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -205,6 +215,7 @@ pub fn do_faccessat(
 //==================================================================================================
 
 pub fn do_fdatasync(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileDataSyncRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -213,7 +224,7 @@ pub fn do_fdatasync(
     let fd: i32 = request.fd;
 
     debug!("libc::fdatasync(): fd={fd:?}");
-    match unsafe { libc::fdatasync(fd) } {
+    match unsafe { handle_fdatasync(&syscall_table, fd) } {
         ret if ret == 0 => Ok(FileDataSyncResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -239,25 +250,26 @@ pub fn do_fdatasync(
 //==================================================================================================
 
 pub fn do_getids(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     _request: GetIdsRequest,
 ) -> Result<Message, WorkerThreadError> {
     trace!("getids(): tid={tid:?}");
 
     // Get user ID.
-    let uid: libc::uid_t = unsafe { libc::getuid() };
+    let uid: libc::uid_t = unsafe { handle_getuid(&syscall_table) };
     debug!("libc::getuid(): uid={uid:?}");
 
     // Get effective user ID.
-    let euid: libc::uid_t = unsafe { libc::geteuid() };
+    let euid: libc::uid_t = unsafe { handle_geteuid(&syscall_table) };
     debug!("libc::geteuid(): euid={euid:?}");
 
     // Get group ID.
-    let gid: libc::gid_t = unsafe { libc::getgid() };
+    let gid: libc::gid_t = unsafe { handle_getgid(&syscall_table) };
     debug!("libc::getgid(): gid={gid:?}");
 
     // Get effective group ID.
-    let egid: libc::gid_t = unsafe { libc::getegid() };
+    let egid: libc::gid_t = unsafe { handle_getegid(&syscall_table) };
     debug!("libc::getegid(): egid={egid:?}");
 
     // Build response.
@@ -268,14 +280,20 @@ pub fn do_getids(
 // do_getcwd
 //==================================================================================================
 
-pub fn do_getcwd(tid: ThreadIdentifier) -> Result<Vec<Message>, WorkerThreadError> {
+pub fn do_getcwd(
+    syscall_table: Arc<SystemCallRouteTable>,
+    tid: ThreadIdentifier,
+) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("getcwd(): tid={tid:?}");
 
     let mut buf: Vec<u8> = Vec::with_capacity(PATH_MAX as libc::size_t);
 
     // Get current working directory and check for errors.
     debug!("libc::getcwd(): buf={:p}, size={:?}", buf.as_mut_ptr(), buf.capacity());
-    if unsafe { !libc::getcwd(buf.as_mut_ptr() as *mut libc::c_char, buf.capacity()).is_null() } {
+    if unsafe {
+        !handle_getcwd(&syscall_table, buf.as_mut_ptr() as *mut libc::c_char, buf.capacity())
+            .is_null()
+    } {
         // Build response and check for errors.
         let response: GetCurrentWorkingDirectoryResponse =
             match unsafe { CStr::from_ptr(buf.as_ptr() as *const libc::c_char).to_str() } {
@@ -332,6 +350,7 @@ pub fn do_getcwd(tid: ThreadIdentifier) -> Result<Vec<Message>, WorkerThreadErro
 //==================================================================================================
 
 pub fn do_fsync(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileSyncRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -340,7 +359,7 @@ pub fn do_fsync(
     let fd: i32 = request.fd;
 
     debug!("libc::fsync(): fd={fd:?}");
-    match unsafe { libc::fsync(fd) } {
+    match unsafe { handle_fsync(&syscall_table, fd) } {
         ret if ret == 0 => Ok(FileSyncResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -365,7 +384,11 @@ pub fn do_fsync(
 // do_lseek
 //==================================================================================================
 
-pub fn do_lseek(tid: ThreadIdentifier, request: SeekRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_lseek(
+    syscall_table: Arc<SystemCallRouteTable>,
+    tid: ThreadIdentifier,
+    request: SeekRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("lseek(): tid={tid:?}, request={request:?}");
 
     let fd: i32 = request.fd;
@@ -376,7 +399,7 @@ pub fn do_lseek(tid: ThreadIdentifier, request: SeekRequest) -> Result<Message, 
     };
 
     debug!("libc::lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence.inner());
-    match unsafe { libc::lseek(fd, offset, whence.inner()) } {
+    match unsafe { handle_lseek(&syscall_table, fd, offset, whence.inner()) } {
         ret if ret >= 0 => Ok(SeekResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -402,6 +425,7 @@ pub fn do_lseek(tid: ThreadIdentifier, request: SeekRequest) -> Result<Message, 
 //==================================================================================================
 
 pub fn do_ftruncate(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileTruncateRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -411,7 +435,7 @@ pub fn do_ftruncate(
     let length: off_t = request.length;
 
     debug!("libc::ftruncate(): fd={fd:?}, length={length:?}");
-    match unsafe { libc::ftruncate(fd, length) } {
+    match unsafe { handle_ftruncate(&syscall_table, fd, length) } {
         ret if ret == 0 => Ok(FileTruncateResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -437,6 +461,7 @@ pub fn do_ftruncate(
 //==================================================================================================
 
 pub fn do_write(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: WriteRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -452,7 +477,7 @@ pub fn do_write(
     let buffer: &[u8] = &request.buffer[..count];
 
     debug!("libc::write(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { libc::write(fd, buffer.as_ptr() as *const _, count) } {
+    match unsafe { handle_write(&syscall_table, fd, buffer.as_ptr() as *const _, count) } {
         ret if ret >= 0 => Ok(WriteResponse::build(tid, ret as i32)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -477,7 +502,11 @@ pub fn do_write(
 // do_read
 //==================================================================================================
 
-pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, WorkerThreadError> {
+pub fn do_read(
+    syscall_table: Arc<SystemCallRouteTable>,
+    tid: ThreadIdentifier,
+    request: ReadRequest,
+) -> Result<Message, WorkerThreadError> {
     trace!("read(): tid={tid:?}, request={request:?}");
 
     // Check if count is invalid.
@@ -490,7 +519,7 @@ pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, W
     let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0; ReadResponse::BUFFER_SIZE];
 
     debug!("libc::read(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { libc::read(fd, buffer.as_mut_ptr() as *mut _, count) } {
+    match unsafe { handle_read(&syscall_table, fd, buffer.as_mut_ptr() as *mut _, count) } {
         ret if ret >= 0 => Ok(ReadResponse::build(tid, ret as i32, buffer)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -516,6 +545,7 @@ pub fn do_read(tid: ThreadIdentifier, request: ReadRequest) -> Result<Message, W
 //==================================================================================================
 
 pub fn do_pwrite(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: PartialWriteRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -532,7 +562,7 @@ pub fn do_pwrite(
     let buffer: &[u8] = &request.buffer[..count];
 
     debug!("libc::pwrite(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
-    match unsafe { libc::pwrite(fd, buffer.as_ptr() as *const _, count, offset) } {
+    match unsafe { handle_pwrite(&syscall_table, fd, buffer.as_ptr() as *const _, count, offset) } {
         ret if ret >= 0 => Ok(PartialWriteResponse::build(tid, ret as c_ssize_t)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -558,6 +588,7 @@ pub fn do_pwrite(
 //==================================================================================================
 
 pub fn do_pread(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: PartialReadRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -574,7 +605,8 @@ pub fn do_pread(
     let mut buffer: [u8; PartialReadResponse::BUFFER_SIZE] = [0; PartialReadResponse::BUFFER_SIZE];
 
     debug!("libc::pread(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
-    match unsafe { libc::pread(fd, buffer.as_mut_ptr() as *mut _, count, offset) } {
+    match unsafe { handle_pread(&syscall_table, fd, buffer.as_mut_ptr() as *mut _, count, offset) }
+    {
         ret if ret >= 0 => Ok(PartialReadResponse::build(tid, ret as c_ssize_t, buffer)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -600,6 +632,7 @@ pub fn do_pread(
 //==================================================================================================
 
 pub fn do_linkat(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: LinkAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -621,7 +654,9 @@ pub fn do_linkat(
         "libc::linkat(): olddirfd={olddirfd:?}, oldpath={oldpath:?}, newdirfd={newdirfd:?}, \
          newpath={newpath:?}, flags={flags:?}",
     );
-    match unsafe { libc::linkat(olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags) } {
+    match unsafe {
+        handle_linkat(&syscall_table, olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags)
+    } {
         ret if ret == 0 => Ok(vec![LinkAtResponse::build(tid, ret)]),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -648,6 +683,7 @@ pub fn do_linkat(
 
 /// Changes the current working directory.
 pub fn do_fchdir(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileChdirRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -656,7 +692,7 @@ pub fn do_fchdir(
     let fd: i32 = request.fd;
 
     debug!("libc::fchdir(): fd={fd:?}");
-    match unsafe { libc::fchdir(fd) } {
+    match unsafe { handle_fchdir(&syscall_table, fd) } {
         0 => Ok(FileChdirResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -682,6 +718,7 @@ pub fn do_fchdir(
 //==================================================================================================
 
 pub fn do_fchown(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: FileChownRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -692,7 +729,7 @@ pub fn do_fchown(
     let group: u32 = request.group;
 
     debug!("libc::fchown(): fd={fd:?}, owner={owner:?}, group={group:?}");
-    match unsafe { libc::fchown(fd, owner, group) } {
+    match unsafe { handle_fchown(&syscall_table, fd, owner, group) } {
         0 => Ok(FileChownResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -717,13 +754,16 @@ pub fn do_fchown(
 // do_pipe
 //==================================================================================================
 
-pub fn do_pipe(tid: ThreadIdentifier) -> Result<Message, WorkerThreadError> {
+pub fn do_pipe(
+    syscall_table: Arc<SystemCallRouteTable>,
+    tid: ThreadIdentifier,
+) -> Result<Message, WorkerThreadError> {
     trace!("pipe(): tid={tid:?}");
 
     let mut fds: [i32; 2] = [0; 2];
 
     debug!("libc::pipe(): fds={fds:?}");
-    match unsafe { libc::pipe(fds.as_mut_ptr()) } {
+    match unsafe { handle_pipe(&syscall_table, fds.as_mut_ptr()) } {
         0 => {
             let read_fd: i32 = fds[0];
             let write_fd: i32 = fds[1];
@@ -772,5 +812,296 @@ impl TryFrom<i32> for LibcSeek {
             SEEK_DATA => Ok(LibcSeek(libc::SEEK_DATA)),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid whence")),
         }
+    }
+}
+
+//==================================================================================================
+// System Call Wrappers
+//==================================================================================================
+
+/// Handler for `libc::chdir()`.
+unsafe fn handle_chdir(
+    syscall_table: &SystemCallRouteTable,
+    path: *const libc::c_char,
+) -> libc::c_int {
+    match syscall_table.syscall_chdir.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_chdir.syscall_fn)(path) },
+    }
+}
+
+/// Handler for `libc::close()`.
+unsafe fn handle_close(syscall_table: &SystemCallRouteTable, fd: libc::c_int) -> libc::c_int {
+    match syscall_table.syscall_close.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_close.syscall_fn)(fd) },
+    }
+}
+
+/// Handler for `libc::faccessat()`.
+unsafe fn handle_faccessat(
+    syscall_table: &SystemCallRouteTable,
+    dirfd: libc::c_int,
+    pathname: *const libc::c_char,
+    mode: libc::c_int,
+    flags: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_faccessat.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_faccessat.syscall_fn)(dirfd, pathname, mode, flags)
+        },
+    }
+}
+
+/// Handler for `libc::fdatasync()`.
+unsafe fn handle_fdatasync(syscall_table: &SystemCallRouteTable, fd: libc::c_int) -> libc::c_int {
+    match syscall_table.syscall_fdatasync.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_fdatasync.syscall_fn)(fd) },
+    }
+}
+
+/// Handler for `libc::getuid()`.
+unsafe fn handle_getuid(syscall_table: &SystemCallRouteTable) -> libc::uid_t {
+    match syscall_table.syscall_getuid.action {
+        SystemCallAction::Block => 0,
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_getuid.syscall_fn)() },
+    }
+}
+
+/// Handler for `libc::geteuid()`.
+unsafe fn handle_geteuid(syscall_table: &SystemCallRouteTable) -> libc::uid_t {
+    match syscall_table.syscall_geteuid.action {
+        SystemCallAction::Block => 0,
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_geteuid.syscall_fn)() },
+    }
+}
+
+/// Handler for `libc::getgid()`.
+unsafe fn handle_getgid(syscall_table: &SystemCallRouteTable) -> libc::gid_t {
+    match syscall_table.syscall_getgid.action {
+        SystemCallAction::Block => 0,
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_getgid.syscall_fn)() },
+    }
+}
+
+/// Handler for `libc::getegid()`.
+unsafe fn handle_getegid(syscall_table: &SystemCallRouteTable) -> libc::gid_t {
+    match syscall_table.syscall_getegid.action {
+        SystemCallAction::Block => 0,
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_getegid.syscall_fn)() },
+    }
+}
+
+/// Handler for `libc::getcwd()`.
+unsafe fn handle_getcwd(
+    syscall_table: &SystemCallRouteTable,
+    buf: *mut libc::c_char,
+    size: libc::size_t,
+) -> *mut libc::c_char {
+    match syscall_table.syscall_getcwd.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            ::core::ptr::null_mut()
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_getcwd.syscall_fn)(buf, size)
+        },
+    }
+}
+
+/// Handler for `libc::fsync()`.
+unsafe fn handle_fsync(syscall_table: &SystemCallRouteTable, fd: libc::c_int) -> libc::c_int {
+    match syscall_table.syscall_fsync.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_fsync.syscall_fn)(fd) },
+    }
+}
+
+/// Handler for `libc::lseek()`.
+unsafe fn handle_lseek(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    offset: libc::off_t,
+    whence: libc::c_int,
+) -> libc::off_t {
+    match syscall_table.syscall_lseek.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_lseek.syscall_fn)(fd, offset, whence)
+        },
+    }
+}
+
+/// Handler for `libc::ftruncate()`.
+unsafe fn handle_ftruncate(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    length: libc::off_t,
+) -> libc::c_int {
+    match syscall_table.syscall_ftruncate.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_ftruncate.syscall_fn)(fd, length)
+        },
+    }
+}
+
+/// Handler for `libc::write()`.
+unsafe fn handle_write(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    match syscall_table.syscall_write.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_write.syscall_fn)(fd, buf, count)
+        },
+    }
+}
+
+/// Handler for `libc::read()`.
+unsafe fn handle_read(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    match syscall_table.syscall_read.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_read.syscall_fn)(fd, buf, count)
+        },
+    }
+}
+
+/// Handler for `libc::pwrite()`.
+unsafe fn handle_pwrite(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match syscall_table.syscall_pwrite.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_pwrite.syscall_fn)(fd, buf, count, offset)
+        },
+    }
+}
+
+/// Handler for `libc::pread()`.
+unsafe fn handle_pread(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match syscall_table.syscall_pread.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_pread.syscall_fn)(fd, buf, count, offset)
+        },
+    }
+}
+
+/// Handler for `libc::linkat()`.
+unsafe fn handle_linkat(
+    syscall_table: &SystemCallRouteTable,
+    olddirfd: libc::c_int,
+    oldpath: *const libc::c_char,
+    newdirfd: libc::c_int,
+    newpath: *const libc::c_char,
+    flags: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_linkat.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_linkat.syscall_fn)(olddirfd, oldpath, newdirfd, newpath, flags)
+        },
+    }
+}
+
+/// Handler for `libc::fchdir()`.
+unsafe fn handle_fchdir(syscall_table: &SystemCallRouteTable, fd: libc::c_int) -> libc::c_int {
+    match syscall_table.syscall_fchdir.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_fchdir.syscall_fn)(fd) },
+    }
+}
+
+/// Handler for `libc::fchown()`.
+unsafe fn handle_fchown(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    owner: libc::uid_t,
+    group: libc::gid_t,
+) -> libc::c_int {
+    match syscall_table.syscall_fchown.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_fchown.syscall_fn)(fd, owner, group)
+        },
+    }
+}
+
+/// Handler for `libc::pipe()`.
+unsafe fn handle_pipe(
+    syscall_table: &SystemCallRouteTable,
+    pipefd: *mut libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_pipe.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe { (syscall_table.syscall_pipe.syscall_fn)(pipefd) },
     }
 }

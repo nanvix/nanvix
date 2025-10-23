@@ -5,11 +5,18 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
+};
 use ::core::{
     cmp,
     mem,
 };
+use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -80,6 +87,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_socket(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: CreateSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -99,7 +107,9 @@ pub fn do_socket(
         domain.inner(),
         typ.inner(),
     );
-    match unsafe { libc::socket(domain.inner() as i32, typ.inner(), protocol.inner()) } {
+    match unsafe {
+        handle_socket(&syscall_table, domain.inner() as i32, typ.inner(), protocol.inner())
+    } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -132,6 +142,7 @@ pub fn do_socket(
 //==================================================================================================
 
 pub fn do_socketpair(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: CreateSocketPairRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -154,7 +165,13 @@ pub fn do_socketpair(
         typ.inner(),
     );
     match unsafe {
-        libc::socketpair(domain.inner() as i32, typ.inner(), protocol.inner(), sv.as_mut_ptr())
+        handle_socketpair(
+            &syscall_table,
+            domain.inner() as i32,
+            typ.inner(),
+            protocol.inner(),
+            sv.as_mut_ptr(),
+        )
     } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -182,6 +199,7 @@ pub fn do_socketpair(
 //==================================================================================================
 
 pub fn do_bind(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: BindSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -200,7 +218,9 @@ pub fn do_bind(
         sockaddr.inner().sa_family,
         sockaddr.inner().sa_data,
     );
-    match unsafe { libc::bind(sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen) } {
+    match unsafe {
+        handle_bind(&syscall_table, sockfd, &sockaddr.inner() as *const libc::sockaddr, socklen)
+    } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -224,6 +244,7 @@ pub fn do_bind(
 //==================================================================================================
 
 pub fn do_connect(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: ConnectSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -244,7 +265,8 @@ pub fn do_connect(
     );
 
     match unsafe {
-        libc::connect(
+        handle_connect(
+            &syscall_table,
             sockfd,
             &sockaddr.inner() as *const libc::sockaddr,
             socklen as libc::socklen_t,
@@ -273,6 +295,7 @@ pub fn do_connect(
 //==================================================================================================
 
 pub fn do_listen(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: ListenSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -282,7 +305,7 @@ pub fn do_listen(
     let backlog: i32 = request.backlog;
 
     debug!("libc::listen(): sockfd={sockfd:?}, backlog={backlog:?}");
-    match unsafe { libc::listen(sockfd, backlog) } {
+    match unsafe { handle_listen(&syscall_table, sockfd, backlog) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -306,6 +329,7 @@ pub fn do_listen(
 //==================================================================================================
 
 pub fn do_getpeername(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: GetPeerNameRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -317,7 +341,7 @@ pub fn do_getpeername(
         core::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
 
     debug!("libc::getpeername(): sockfd={sockfd:?}");
-    match unsafe { libc::getpeername(sockfd, &mut address, &mut address_len) } {
+    match unsafe { handle_getpeername(&syscall_table, sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
@@ -350,6 +374,7 @@ pub fn do_getpeername(
 //==================================================================================================
 
 pub fn do_getsockname(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: GetSockNameRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -361,7 +386,7 @@ pub fn do_getsockname(
         core::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
 
     debug!("libc::getsockname(): sockfd={sockfd:?}");
-    match unsafe { libc::getsockname(sockfd, &mut address, &mut address_len) } {
+    match unsafe { handle_getsockname(&syscall_table, sockfd, &mut address, &mut address_len) } {
         -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
@@ -395,6 +420,7 @@ pub fn do_getsockname(
 //==================================================================================================
 
 pub fn do_accept(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: AcceptSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -406,9 +432,9 @@ pub fn do_accept(
         core::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
 
     debug!("libc::accept(): sockfd={sockfd:?}");
-    match unsafe { libc::accept(sockfd, &mut address, &mut address_len) } {
+    match unsafe { handle_accept(&syscall_table, sockfd, &mut address, &mut address_len) } {
         -1 => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
@@ -437,6 +463,7 @@ pub fn do_accept(
 //==================================================================================================
 
 pub fn do_recv(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: ReceiveSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -453,16 +480,22 @@ pub fn do_recv(
     let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
         [0; ReceiveSocketResponse::BUFFER_SIZE];
 
-    debug!("libc::recv(): sockfd={sockfd:?}, flags={:?}", flags.inner());
+    debug!("libc::recv(): sockfd={sockfd:?}, len={recv_len:?}, flags={:?}", flags.inner());
     match unsafe {
-        libc::recv(sockfd, buffer.as_mut_ptr() as *mut libc::c_void, recv_len, flags.inner())
+        handle_recv(
+            &syscall_table,
+            sockfd,
+            buffer.as_mut_ptr() as *mut libc::c_void,
+            recv_len,
+            flags.inner(),
+        )
     } {
         count if count >= 0 => {
             debug!("libc::recv(): count={count:?}");
             Ok(ReceiveSocketResponse::build(tid, count as c_size_t, buffer))
         },
         -1 => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
@@ -484,6 +517,7 @@ pub fn do_recv(
 //==================================================================================================
 
 pub fn do_shutdown(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: ShutdownSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -493,10 +527,10 @@ pub fn do_shutdown(
     let how: LibcShutdownReason = LibcShutdownReason::from(request.how);
 
     debug!("libc::shutdown(): sockfd={sockfd:?}, how={:?}", how.inner());
-    match unsafe { libc::shutdown(sockfd, how.inner()) } {
+    match unsafe { handle_shutdown(&syscall_table, sockfd, how.inner()) } {
         0 => Ok(ShutdownSocketResponse::build(tid)),
         -1 => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
@@ -518,6 +552,7 @@ pub fn do_shutdown(
 //==================================================================================================
 
 pub fn do_send(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: SendSocketRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -533,17 +568,23 @@ pub fn do_send(
 
     debug!(
         "libc::send(): sockfd={sockfd:?}, count={count:?}, flags={:?}, buffer={buffer:?}",
-        flags.inner(),
+        flags.inner()
     );
     match unsafe {
-        libc::send(sockfd, buffer.as_ptr() as *const libc::c_void, count as usize, flags.inner())
+        handle_send(
+            &syscall_table,
+            sockfd,
+            buffer.as_ptr() as *const libc::c_void,
+            count as usize,
+            flags.inner(),
+        )
     } {
         count if count >= 0 => {
             debug!("libc::send(): count={count:?}");
             Ok(SendSocketResponse::build(tid, count as c_ssize_t))
         },
         -1 => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
             // Check if the thread has been interrupted.
             if errno == libc::EINTR {
@@ -700,5 +741,208 @@ impl LibcMessageFlags {
         }
 
         Ok(Self(libc_flags))
+    }
+}
+
+//==================================================================================================
+// System Call Wrappers
+//==================================================================================================
+
+/// Handler for `libc::socket()`.
+unsafe fn handle_socket(
+    syscall_table: &SystemCallRouteTable,
+    domain: libc::c_int,
+    type_: libc::c_int,
+    protocol: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_socket.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_socket.syscall_fn)(domain, type_, protocol)
+        },
+    }
+}
+
+/// Handler for `libc::socketpair()`.
+unsafe fn handle_socketpair(
+    syscall_table: &SystemCallRouteTable,
+    domain: libc::c_int,
+    type_: libc::c_int,
+    protocol: libc::c_int,
+    sv: *mut libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_socketpair.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_socketpair.syscall_fn)(domain, type_, protocol, sv)
+        },
+    }
+}
+
+/// Handler for `libc::bind()`.
+unsafe fn handle_bind(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: libc::socklen_t,
+) -> libc::c_int {
+    match syscall_table.syscall_bind.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_bind.syscall_fn)(sockfd, addr, addrlen)
+        },
+    }
+}
+
+/// Handler for `libc::connect()`.
+unsafe fn handle_connect(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: libc::socklen_t,
+) -> libc::c_int {
+    match syscall_table.syscall_connect.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_connect.syscall_fn)(sockfd, addr, addrlen)
+        },
+    }
+}
+
+/// Handler for `libc::listen()`.
+unsafe fn handle_listen(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    backlog: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_listen.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_listen.syscall_fn)(sockfd, backlog)
+        },
+    }
+}
+
+/// Handler for `libc::getpeername()`.
+unsafe fn handle_getpeername(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut libc::socklen_t,
+) -> libc::c_int {
+    match syscall_table.syscall_getpeername.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_getpeername.syscall_fn)(sockfd, addr, addrlen)
+        },
+    }
+}
+
+/// Handler for `libc::getsockname()`.
+unsafe fn handle_getsockname(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut libc::socklen_t,
+) -> libc::c_int {
+    match syscall_table.syscall_getsockname.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_getsockname.syscall_fn)(sockfd, addr, addrlen)
+        },
+    }
+}
+
+/// Handler for `libc::accept()`.
+unsafe fn handle_accept(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut libc::socklen_t,
+) -> libc::c_int {
+    match syscall_table.syscall_accept.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_accept.syscall_fn)(sockfd, addr, addrlen)
+        },
+    }
+}
+
+/// Handler for `libc::recv()`.
+unsafe fn handle_recv(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    buf: *mut libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    match syscall_table.syscall_recv.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_recv.syscall_fn)(sockfd, buf, len, flags)
+        },
+    }
+}
+
+/// Handler for `libc::send()`.
+unsafe fn handle_send(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    buf: *const libc::c_void,
+    len: libc::size_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    match syscall_table.syscall_send.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_send.syscall_fn)(sockfd, buf, len, flags)
+        },
+    }
+}
+
+/// Handler for `libc::shutdown()`.
+unsafe fn handle_shutdown(
+    syscall_table: &SystemCallRouteTable,
+    sockfd: libc::c_int,
+    how: libc::c_int,
+) -> libc::c_int {
+    match syscall_table.syscall_shutdown.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_shutdown.syscall_fn)(sockfd, how)
+        },
     }
 }

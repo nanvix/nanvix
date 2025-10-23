@@ -5,13 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::{
+        SystemCallAction,
+        SystemCallRouteTable,
+    },
+};
 use ::alloc::vec::Vec;
 use ::core::{
     cmp,
     mem,
 };
-use ::std::ffi::CStr;
+use ::std::{
+    ffi::CStr,
+    sync::Arc,
+};
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -110,6 +119,7 @@ impl linux_dirent {
 
 /// Handles a getdents() system call request.
 pub fn do_getdents(
+    syscall_table: Arc<SystemCallRouteTable>,
     tid: ThreadIdentifier,
     request: GetDirectoryEntriesRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -133,7 +143,7 @@ pub fn do_getdents(
     debug!("libc::getdents(): fd={}, buf={:#x?}, bufsize={}", { request.fd }, rawbuf.as_ptr(), {
         bufsize
     });
-    match unsafe { libc::syscall(libc::SYS_getdents, request.fd, rawbuf.as_mut_ptr(), bufsize) } {
+    match unsafe { handle_getdents(&syscall_table, request.fd, rawbuf.as_mut_ptr(), bufsize) } {
         // Failed.
         -1 => {
             let errno = unsafe { *libc::__errno_location() };
@@ -215,6 +225,28 @@ pub fn do_getdents(
         Err(error) => {
             warn!("do_getdents(): failed to build response (error={error:?})");
             Ok(vec![crate::build_error(tid, error.code)])
+        },
+    }
+}
+
+//==================================================================================================
+// System Call Wrappers
+//==================================================================================================
+
+/// Handler for `getdents()` system call.
+unsafe fn handle_getdents(
+    syscall_table: &SystemCallRouteTable,
+    fd: libc::c_int,
+    dirp: *mut u8,
+    count: libc::size_t,
+) -> libc::c_long {
+    match syscall_table.syscall_getdents.action {
+        SystemCallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SystemCallAction::Forward => unsafe {
+            (syscall_table.syscall_getdents.syscall_fn)(fd, dirp, count)
         },
     }
 }

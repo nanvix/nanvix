@@ -22,6 +22,7 @@ use crate::{
     },
     socket,
     sys_select,
+    syscalls::SystemCallRouteTable,
     times,
     unistd,
     user_vm_handle::UserVmHandle,
@@ -217,6 +218,7 @@ impl WorkerThreadHandle {
         channel_tx: Sender<VenvCommand>,
         uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
+        syscall_table: Arc<SystemCallRouteTable>,
     ) -> Result<Self, Error> {
         trace!("spawning workker thread (id={id:?})");
         // We use an atomic to pass the id of the created thread back to the caller context. We
@@ -232,7 +234,7 @@ impl WorkerThreadHandle {
             let pthread_id = unsafe { pthread_self() };
             pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
 
-            Self::handle_message(channel_rx, uvm_handle, assembler);
+            Self::handle_message(channel_rx, uvm_handle, syscall_table, assembler);
 
             trace!("thread shutting down after receiving interrupt (pthread_id={pthread_id})");
         });
@@ -266,6 +268,7 @@ impl WorkerThreadHandle {
     fn handle_message(
         mut channel_rx: Receiver<VenvCommand>,
         uvm_handle: UserVmHandle,
+        syscall_table: Arc<SystemCallRouteTable>,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
@@ -325,6 +328,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::ReadRequest
                                 | LinuxDaemonMessageHeader::WriteRequest => {
                                     match Self::handle_special_messages(
+                                        syscall_table.clone(),
                                         gateway_reader.clone(),
                                         gateway_writer.clone(),
                                         source,
@@ -374,7 +378,11 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::TimesRequest
                                 | LinuxDaemonMessageHeader::PipeRequest
                                 | LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
-                                    match Self::handle_short_request_messages(source, message) {
+                                    match Self::handle_short_request_messages(
+                                        syscall_table.clone(),
+                                        source,
+                                        message,
+                                    ) {
                                         Ok(message) => message,
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
@@ -397,6 +405,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
                                     match Self::handle_long_response_messages(
                                         uvm_stream.clone(),
+                                        syscall_table.clone(),
                                         source,
                                         message,
                                     ) {
@@ -434,6 +443,7 @@ impl WorkerThreadHandle {
                                     match Self::handle_long_request_messages(
                                         uvm_stream.clone(),
                                         assembler.clone(),
+                                        syscall_table.clone(),
                                         source,
                                         message,
                                     ) {
@@ -480,6 +490,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
+        syscall_table: Arc<SystemCallRouteTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
@@ -488,15 +499,15 @@ impl WorkerThreadHandle {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
                 let request: CloseRequest = CloseRequest::from_bytes(message.payload);
-                Self::handle_close_request(source, request)
+                Self::handle_close_request(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(gateway_reader, source, request)
+                Self::handle_read_request(syscall_table, gateway_reader, source, request)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(gateway_writer, source, request)
+                Self::handle_write_request(syscall_table, gateway_writer, source, request)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -507,128 +518,129 @@ impl WorkerThreadHandle {
     }
 
     fn handle_short_request_messages(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::AcceptSocketRequest => {
                 let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(message.payload);
-                socket::do_accept(source, request)
+                socket::do_accept(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::BindSocketRequest => {
                 let request: BindSocketRequest = BindSocketRequest::from_bytes(message.payload);
-                socket::do_bind(source, request)
+                socket::do_bind(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ConnectSocketRequest => {
                 let request: ConnectSocketRequest =
                     ConnectSocketRequest::from_bytes(message.payload);
-                socket::do_connect(source, request)
+                socket::do_connect(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::CreateSocketPairRequest => {
                 let request: CreateSocketPairRequest =
                     CreateSocketPairRequest::from_bytes(message.payload);
-                socket::do_socketpair(source, request)
+                socket::do_socketpair(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::CreateSocketRequest => {
                 let request: CreateSocketRequest = CreateSocketRequest::from_bytes(message.payload);
-                socket::do_socket(source, request)
+                socket::do_socket(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileAdvisoryInformationRequest => {
                 let request: FileAdvisoryInformationRequest =
                     FileAdvisoryInformationRequest::from_bytes(message.payload);
-                fcntl::do_posix_fadvise(source, request)
+                fcntl::do_posix_fadvise(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileChdirRequest => {
                 let request: FileChdirRequest = FileChdirRequest::from_bytes(message.payload);
-                unistd::do_fchdir(source, request)
+                unistd::do_fchdir(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileChmodRequest => {
                 let request: FileChmodRequest = FileChmodRequest::from_bytes(message.payload);
-                fcntl::do_fchmod(source, request)
+                fcntl::do_fchmod(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileChownRequest => {
                 let request: FileChownRequest = FileChownRequest::from_bytes(message.payload);
-                unistd::do_fchown(source, request)
+                unistd::do_fchown(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileControlRequest => {
                 let request: FileControlRequest = FileControlRequest::from_bytes(message.payload);
-                fcntl::do_fcntl(source, request)
+                fcntl::do_fcntl(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileDataSyncRequest => {
                 let request: FileDataSyncRequest = FileDataSyncRequest::from_bytes(message.payload);
-                unistd::do_fdatasync(source, request)
+                unistd::do_fdatasync(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileSpaceControlRequest => {
                 let request: FileSpaceControlRequest =
                     FileSpaceControlRequest::from_bytes(message.payload);
-                fcntl::do_posix_fallocate(source, request)
+                fcntl::do_posix_fallocate(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileSyncRequest => {
                 let request: FileSyncRequest = FileSyncRequest::from_bytes(message.payload);
-                unistd::do_fsync(source, request)
+                unistd::do_fsync(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileTruncateRequest => {
                 let request: FileTruncateRequest = FileTruncateRequest::from_bytes(message.payload);
-                unistd::do_ftruncate(source, request)
+                unistd::do_ftruncate(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::GetIdsRequest => {
                 let request: GetIdsRequest = GetIdsRequest::from_bytes(message.payload);
-                unistd::do_getids(source, request)
+                unistd::do_getids(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::GetPeerNameRequest => {
                 let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(message.payload);
-                socket::do_getpeername(source, request)
+                socket::do_getpeername(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::GetSockNameRequest => {
                 let request: GetSockNameRequest = GetSockNameRequest::from_bytes(message.payload);
-                socket::do_getsockname(source, request)
+                socket::do_getsockname(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ListenSocketRequest => {
                 let request: ListenSocketRequest = ListenSocketRequest::from_bytes(message.payload);
-                socket::do_listen(source, request)
+                socket::do_listen(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::PartialReadRequest => {
                 let request: PartialReadRequest = PartialReadRequest::from_bytes(message.payload);
-                unistd::do_pread(source, request)
+                unistd::do_pread(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::PartialWriteRequest => {
                 let request: PartialWriteRequest = PartialWriteRequest::from_bytes(message.payload);
-                unistd::do_pwrite(source, request)
+                unistd::do_pwrite(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ReceiveSocketRequest => {
                 let request: ReceiveSocketRequest =
                     ReceiveSocketRequest::from_bytes(message.payload);
-                socket::do_recv(source, request)
+                socket::do_recv(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
-                unistd::do_lseek(source, request)
+                unistd::do_lseek(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::SelectRequest => {
                 let request: SelectRequest = SelectRequest::from_bytes(message.payload);
-                sys_select::do_select(source, request)
+                sys_select::do_select(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::SendSocketRequest => {
                 let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
-                socket::do_send(source, request)
+                socket::do_send(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ShutdownSocketRequest => {
                 let request: ShutdownSocketRequest =
                     ShutdownSocketRequest::from_bytes(message.payload);
-                socket::do_shutdown(source, request)
+                socket::do_shutdown(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::TimesRequest => {
                 let request: TimesRequest = TimesRequest::from_bytes(message.payload);
-                times::do_times(source, request)
+                times::do_times(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
                     UpdateFileAccessTimeRequest::from_bytes(message.payload);
-                fcntl::do_futimens(source, request)
+                fcntl::do_futimens(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::PipeRequest => {
                 let _request = PipeRequest::from_bytes(message.payload);
-                unistd::do_pipe(source)
+                unistd::do_pipe(syscall_table, source)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -641,74 +653,135 @@ impl WorkerThreadHandle {
     fn handle_long_request_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
                 Self::handle_long_request::<ChangeDirectoryRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
                 Self::handle_long_request::<FileAccessAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                 Self::handle_long_request::<FileStatAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
                 Self::handle_long_request::<SymbolicLinkAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::LinkAtRequestPart => {
-                Self::handle_long_request::<LinkAtRequest>(uvm_stream, assembler, source, &message)
+                Self::handle_long_request::<LinkAtRequest>(
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
+                )
             },
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
                 Self::handle_long_request::<ReadLinkAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
                 Self::handle_long_request::<MakeDirectoryAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
                 Self::handle_long_request::<UpdateFileAccessTimeAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::FileChownAtRequestPart => {
                 Self::handle_long_request::<FileChownAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
                 Self::handle_long_request::<FileChmodAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
-                Self::handle_long_request::<OpenAtRequest>(uvm_stream, assembler, source, &message)
+                Self::handle_long_request::<OpenAtRequest>(
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
+                )
             },
             LinuxDaemonMessageHeader::RenameAtRequestPart => {
                 Self::handle_long_request::<RenameAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
             LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
                 Self::handle_long_request::<UnlinkAtRequest>(
-                    uvm_stream, assembler, source, &message,
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
                 )
             },
-            LinuxDaemonMessageHeader::PollRequestPart => {
-                Self::handle_long_request::<PollRequest>(uvm_stream, assembler, source, &message)
-            },
+            LinuxDaemonMessageHeader::PollRequestPart => Self::handle_long_request::<PollRequest>(
+                uvm_stream,
+                assembler,
+                syscall_table,
+                source,
+                &message,
+            ),
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -719,18 +792,19 @@ impl WorkerThreadHandle {
 
     fn handle_long_response_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::FileStatRequest => {
-                Self::handle_fstat_request(uvm_stream, source, message)
+                Self::handle_fstat_request(syscall_table, uvm_stream, source, message)
             },
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
-                Self::handle_getcwd_request(uvm_stream, source)
+                Self::handle_getcwd_request(uvm_stream, syscall_table, source)
             },
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                Self::handle_getdents_request(uvm_stream, source, message)
+                Self::handle_getdents_request(syscall_table, uvm_stream, source, message)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -760,6 +834,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_close_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: CloseRequest,
     ) -> Result<Message, WorkerThreadError> {
@@ -773,11 +848,12 @@ impl WorkerThreadHandle {
                 Ok(CloseResponse::build(source, 0))
             },
             // Closing other file descriptors.
-            _ => unistd::do_close(source, request),
+            _ => unistd::do_close(syscall_table, source, request),
         }
     }
 
     fn handle_write_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
@@ -824,11 +900,12 @@ impl WorkerThreadHandle {
             }
         } else {
             // Write to other file descriptor.
-            unistd::do_write(source, request)
+            unistd::do_write(syscall_table, source, request)
         }
     }
 
     fn handle_read_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         source: ThreadIdentifier,
         request: ReadRequest,
@@ -870,17 +947,18 @@ impl WorkerThreadHandle {
             response
         } else {
             // Read from other file descriptor.
-            unistd::do_read(source, request)
+            unistd::do_read(syscall_table, source, request)
         }
     }
 
     fn handle_fstat_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         let request: FileStatRequest = FileStatRequest::from_bytes(message.payload);
-        let messages: Vec<Message> = fcntl::do_fstat(source, request)?;
+        let messages: Vec<Message> = fcntl::do_fstat(syscall_table, source, request)?;
         trace!("handle_fstat_request(): obtained {} messages", messages.len());
         for message in messages {
             trace!("handle_fstat_request(): sending message: {message:?}");
@@ -894,9 +972,10 @@ impl WorkerThreadHandle {
 
     fn handle_getcwd_request(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
-        let messages: Vec<Message> = unistd::do_getcwd(source)?;
+        let messages: Vec<Message> = unistd::do_getcwd(syscall_table, source)?;
         for message in messages {
             if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
                 error!("failed to send message (error={e:?})");
@@ -907,6 +986,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getdents_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -914,7 +994,7 @@ impl WorkerThreadHandle {
         let request: GetDirectoryEntriesRequest =
             GetDirectoryEntriesRequest::from_bytes(message.payload);
 
-        let messages: Vec<Message> = dirent::do_getdents(source, request)?;
+        let messages: Vec<Message> = dirent::do_getdents(syscall_table, source, request)?;
         for message in messages {
             if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
                 error!("failed to send message (error={e:?})");
@@ -927,6 +1007,7 @@ impl WorkerThreadHandle {
     fn handle_long_request<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError>
@@ -937,8 +1018,9 @@ impl WorkerThreadHandle {
 
         trace!("handle_long_request(): source={source:?}, part={part:?}");
 
-        let result: Result<Option<Vec<Message>>, WorkerThreadError> =
-            assembler.blocking_lock().process_message::<T>(source, part);
+        let result: Result<Option<Vec<Message>>, WorkerThreadError> = assembler
+            .blocking_lock()
+            .process_message::<T>(syscall_table, source, part);
 
         match result {
             Ok(Some(messages)) => {
