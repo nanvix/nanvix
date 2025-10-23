@@ -191,6 +191,9 @@ impl Vmm {
     pub fn new(args: MicroVmArgs) -> Result<Self> {
         trace!("new(): args={:?}", args);
 
+        // Reset shutdown flag from any previous runs.
+        SHUTDOWN.store(false, Ordering::SeqCst);
+
         let mut kvm: Kvm = Kvm::new()?;
         let mut vm: VmFd = kvm.create_vm()?;
 
