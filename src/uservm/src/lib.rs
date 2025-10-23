@@ -496,24 +496,22 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                 on_message_received_from_memory_thread();
                 msg.message_type = MessageType::Ikc;
                 // Acquire lock on guest information.
-                let mut locked_guest: MutexGuard<'_, Guest> = crate::vmm::GUEST
-                    .get()
+                let guest_handle: Arc<Mutex<Guest>> = crate::vmm::try_get_guest_handle()
                     .ok_or_else(|| {
                         let reason: &str = "guest handle not initialized";
                         error!("input(): {reason}");
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?
-                    .blocking_lock();
+                    })?;
+                let mut locked_guest: MutexGuard<'_, Guest> = guest_handle.blocking_lock();
 
                 // Acquire lock on virtual memory manager.
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = crate::vmm::VMEM
-                    .get()
+                let vmem_handle: Arc<Mutex<VirtualMemory>> = crate::vmm::try_get_vmem_handle()
                     .ok_or_else(|| {
                         let reason: &str = "vmem handle not initialized";
                         error!("input(): {reason}");
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?
-                    .blocking_lock();
+                    })?;
+                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_handle.blocking_lock();
 
                 // Label: uservm::lib::vm_input::vm_write_bytes()
                 profiler::timestamp_message!(
