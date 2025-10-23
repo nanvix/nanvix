@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-QUICKJS_LIB := $(SYSROOT_DIR)/lib/libquickjs.a
+QUICKJS_LIB := $(SYSROOT_DIR)/lib/quickjs/libquickjs.a
 
 all-quickjs: $(QUICKJS_LIB)
 
