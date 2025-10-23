@@ -5,8 +5,12 @@
 // Imports
 //==================================================================================================
 
-use crate::error::WorkerThreadError;
+use crate::{
+    error::WorkerThreadError,
+    syscalls::SystemCallRouteTable,
+};
 use ::alloc::collections::BTreeMap;
+use ::std::sync::Arc;
 use ::sys::{
     error::Error,
     ipc::Message,
@@ -30,10 +34,11 @@ pub struct RequestAssembler {
 impl RequestAssembler {
     pub fn process_message<T: RequestAssemblerTrait>(
         &mut self,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
-        match self.process_message_internal::<T>(source, part) {
+        match self.process_message_internal::<T>(syscall_table, source, part) {
             Ok(messages) => Ok(messages),
             Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
             Err(WorkerThreadError::Error(e)) => {
@@ -45,6 +50,7 @@ impl RequestAssembler {
 
     fn process_message_internal<T: RequestAssemblerTrait>(
         &mut self,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
     ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
@@ -61,7 +67,7 @@ impl RequestAssembler {
             return Ok(None);
         }
 
-        match self.process_request::<T>(source) {
+        match self.process_request::<T>(syscall_table, source) {
             Ok(messages) => Ok(Some(messages)),
             Err(e) => Err(e),
         }
@@ -82,6 +88,7 @@ impl RequestAssembler {
 
     fn process_request<T: RequestAssemblerTrait>(
         &mut self,
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
     ) -> Result<Vec<Message>, WorkerThreadError> {
         let assembler: RequestAssemblerType = self
@@ -91,7 +98,7 @@ impl RequestAssembler {
 
         let parts: Vec<LinuxDaemonMessagePart> = T::take_parts(assembler);
         let request: T = T::from_parts(&parts)?;
-        T::process_request(source, request)
+        T::process_request(syscall_table, source, request)
     }
 }
 
@@ -130,6 +137,7 @@ where
     fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
 
     fn process_request(
+        syscall_table: Arc<SystemCallRouteTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError>;

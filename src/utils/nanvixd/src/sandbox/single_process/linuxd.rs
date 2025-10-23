@@ -15,8 +15,14 @@ use ::control_plane_api::{
     NanvixdControlMessage,
 };
 use ::hwloc::HwLoc;
-use ::linuxd::LinuxDaemon as EmbeddedLinuxd;
-use ::std::mem;
+use ::linuxd::{
+    syscalls::SystemCallRouteTable,
+    LinuxDaemon as EmbeddedLinuxd,
+};
+use ::std::{
+    mem,
+    sync::Arc,
+};
 use ::syscomm::{
     SocketListener,
     SocketStream,
@@ -64,6 +70,7 @@ impl LinuxDaemon {
     ///
     /// # Parameters
     ///
+    /// - `syscall_table`: Optional system call routing table.
     /// - `control_plane_sockaddr`: Control-plane socket address.
     /// - `user_vm_sockaddr`: User-VM socket address.
     /// - `hwloc`: Optional CPU affinity settings (ignored)
@@ -81,6 +88,7 @@ impl LinuxDaemon {
     ///
     #[allow(clippy::too_many_arguments)]
     pub async fn spawn(
+        syscall_table: Option<Arc<SystemCallRouteTable>>,
         control_plane_sockaddr: &str,
         user_vm_sockaddr: &str,
         hwloc: Option<HwLoc>,
@@ -122,6 +130,7 @@ impl LinuxDaemon {
 
         // Create a new Linux Daemon instance.
         let linuxd: EmbeddedLinuxd = EmbeddedLinuxd::init(
+            syscall_table.unwrap_or_default(),
             control_plane_sockaddr,
             SocketType::UNIX_STR,
             user_vm_listener,
