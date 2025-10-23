@@ -60,22 +60,22 @@ endif
 #===================================================================================================
 
 OPENBLAS_REPOSITORY := https://github.com/nanvix/OpenBLAS
-OPENBLAS_COMMIT := d3c27df6553ed0f2d383d4202591a3c7f5c1d64d
+OPENBLAS_COMMIT := 3230819ef84ab9340c61e0b1ae0917ec436000a4
 
 OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
-OPENSSL_COMMIT := a715a4bdface4259d469f261415278aaf5397d76
+OPENSSL_COMMIT := a94f3958e16321bab0b9b2b68b89ee7c59734c13
 
 PYTHON_REPOSITORY := https://github.com/nanvix/cpython
-PYTHON_COMMIT := 7158004b255e8b848562b7f537a9e3c44188997e
+PYTHON_COMMIT := faed6d55cb7e6332021bb9e5727f1337154aa801
 
 SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
-SQLITE_COMMIT := f477aef20dc2e9d7832a3899368ebc66c2d097a0
+SQLITE_COMMIT := 6a29fea94d2514ac56b1bcbddf18c62361362431
 
 ZLIB_REPOSITORY := https://github.com/nanvix/zlib
-ZLIB_COMMIT := fe7fae43935133eedf20a1d1e4dafe397d42a9c5
+ZLIB_COMMIT := 5166ca8c8b563b55fb3e8e2e0b157e36a3bbdcf6
 
 QUICKJS_REPOSITORY := https://github.com/nanvix/quickjs
-QUICKJS_COMMIT := c97574796f4563cd3e89bcbf5b6774ab9d8ed15d
+QUICKJS_COMMIT := efaa09fa2a28f6884185c27e74b3a731936058b5
 
 #===================================================================================================
 # Directories
