@@ -1,6 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+mod global_handles;
 pub mod guest;
 
 //==================================================================================================
@@ -12,6 +13,7 @@ use crate::{
     vmm::{
         MicroVmArgs,
         guest::Guest,
+        hyperlight::global_handles::GlobalRegistration,
     },
 };
 use ::anyhow::Result;
@@ -38,10 +40,7 @@ use ::hyperlight_host::{
 use ::std::{
     io::Write,
     path::Path,
-    sync::{
-        Arc,
-        OnceLock,
-    },
+    sync::Arc,
 };
 use ::sys::error::ErrorCode;
 use ::syslog::{
@@ -57,15 +56,14 @@ use ::tokio::{
     task,
 };
 
-// ==================================================================================================
-// Globals
-// ==================================================================================================
+//==================================================================================================
+// Exports
+//==================================================================================================
 
-/// Global handle to the guest information, used to enable access from the input handler.
-pub static GUEST: OnceLock<Arc<Mutex<Guest>>> = OnceLock::new();
-
-/// Global handle to the virtual memory manager, used to enable access from the input handler.
-pub static VMEM: OnceLock<Arc<Mutex<VirtualMemory>>> = OnceLock::new();
+pub(crate) use self::global_handles::{
+    try_get_guest_handle,
+    try_get_vmem_handle,
+};
 
 //==================================================================================================
 // Types
@@ -92,6 +90,7 @@ pub struct Vmm {
     // Wrapped in Option so we can move the UninitializedSandbox out (evolve consumes self).
     sandbox: Arc<Mutex<Option<UninitializedSandbox>>>,
     vmem: Arc<Mutex<VirtualMemory>>,
+    _global_registration: Arc<GlobalRegistration>,
 }
 
 struct InnerVmm {
@@ -238,18 +237,10 @@ impl Vmm {
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory {
             manager: manager.clone(),
         }));
-        VMEM.set(vmem.clone()).map_err(|_| {
-            let reason: &str = "Failed to initialize vmem handle (already initialized)";
-            error!("new(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
 
         let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
-        GUEST.set(guest.clone()).map_err(|_| {
-            let reason: &str = "Failed to initialize guest handle (already initialized)";
-            error!("new(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
+        let global_registration: Arc<GlobalRegistration> =
+            GlobalRegistration::register(guest.clone(), vmem.clone())?;
 
         // Create a closure that takes a String and writes it to stderr.
         // NOTE: underlying writer implements `Write` and requires mutable access.
@@ -283,6 +274,7 @@ impl Vmm {
             inner: Arc::new(Mutex::new(InnerVmm {
                 control_tx: args.control_tx,
             })),
+            _global_registration: global_registration,
         })
     }
 
