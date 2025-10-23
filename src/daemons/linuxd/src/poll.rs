@@ -8,8 +8,8 @@
 use crate::{
     error::WorkerThreadError,
     syscalls::{
-        SystemCallAction,
-        SystemCallRouteTable,
+        SyscallAction,
+        SyscallTable,
     },
 };
 use ::std::sync::Arc;
@@ -56,7 +56,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_poll(
-    syscall_table: Arc<SystemCallRouteTable>,
+    syscall_table: Arc<SyscallTable>,
     tid: ThreadIdentifier,
     request: PollRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -207,16 +207,16 @@ impl LibcPollFd {
 
 /// Handler for `libc::poll()`.
 unsafe fn handle_poll(
-    syscall_table: &SystemCallRouteTable,
+    syscall_table: &SyscallTable,
     fds: *mut libc::pollfd,
     nfds: libc::nfds_t,
     timeout: libc::c_int,
 ) -> libc::c_int {
     match &syscall_table.syscall_poll {
-        SystemCallAction::Block => {
+        SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fds, nfds, timeout) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fds, nfds, timeout) },
     }
 }

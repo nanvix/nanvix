@@ -23,7 +23,7 @@ use ::linuxd::{
     args,
     args::Args,
     linuxd::LinuxDaemon,
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
 };
 use ::std::{
     env,
@@ -75,7 +75,7 @@ pub async fn main() -> Result<()> {
     info!("Listening to user VMs on: {user_vm_sockaddr:?}");
 
     let linuxd: LinuxDaemon = match LinuxDaemon::init(
-        Arc::new(SystemCallRouteTable::default()),
+        Arc::new(SyscallTable::default()),
         control_plane_sockaddr,
         args.control_plane_socket_type(),
         user_vm_listener,

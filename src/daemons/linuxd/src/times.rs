@@ -8,8 +8,8 @@
 use crate::{
     error::WorkerThreadError,
     syscalls::{
-        SystemCallAction,
-        SystemCallRouteTable,
+        SyscallAction,
+        SyscallTable,
     },
 };
 use ::std::sync::Arc;
@@ -35,7 +35,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_times(
-    syscall_table: Arc<SystemCallRouteTable>,
+    syscall_table: Arc<SyscallTable>,
     tid: ThreadIdentifier,
     _request: TimesRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -99,12 +99,12 @@ pub fn do_times(
 //==================================================================================================
 
 /// Handler for `libc::times()`.
-unsafe fn handle_times(syscall_table: &SystemCallRouteTable, buf: *mut libc::tms) -> libc::clock_t {
+unsafe fn handle_times(syscall_table: &SyscallTable, buf: *mut libc::tms) -> libc::clock_t {
     match &syscall_table.syscall_times {
-        SystemCallAction::Block => {
+        SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(buf) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(buf) },
     }
 }

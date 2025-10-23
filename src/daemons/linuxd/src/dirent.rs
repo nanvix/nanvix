@@ -8,8 +8,8 @@
 use crate::{
     error::WorkerThreadError,
     syscalls::{
-        SystemCallAction,
-        SystemCallRouteTable,
+        SyscallAction,
+        SyscallTable,
     },
 };
 use ::alloc::vec::Vec;
@@ -119,7 +119,7 @@ impl linux_dirent {
 
 /// Handles a getdents() system call request.
 pub fn do_getdents(
-    syscall_table: Arc<SystemCallRouteTable>,
+    syscall_table: Arc<SyscallTable>,
     tid: ThreadIdentifier,
     request: GetDirectoryEntriesRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -235,16 +235,16 @@ pub fn do_getdents(
 
 /// Handler for `getdents()` system call.
 unsafe fn handle_getdents(
-    syscall_table: &SystemCallRouteTable,
+    syscall_table: &SyscallTable,
     fd: libc::c_int,
     dirp: *mut u8,
     count: libc::size_t,
 ) -> libc::c_long {
     match &syscall_table.syscall_getdents {
-        SystemCallAction::Block => {
+        SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, dirp, count) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, dirp, count) },
     }
 }

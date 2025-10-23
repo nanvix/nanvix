@@ -17,7 +17,7 @@ use crate::{
         CONTROL_PLANE_CONNECT_TIMEOUT,
     },
     message::RequestAssembler,
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
     user_vm_handle::UserVmHandle,
     venv::{
         VenvCommand,
@@ -89,7 +89,7 @@ use ::user_vm_api::{
 //==================================================================================================
 
 pub struct LinuxDaemon {
-    syscall_table: Arc<SystemCallRouteTable>,
+    syscall_table: Arc<SyscallTable>,
     assembler: Arc<Mutex<RequestAssembler>>,
     control_plane_sockaddr: String,
     control_plane_sockaddr_type: SocketType,
@@ -104,7 +104,7 @@ pub struct LinuxDaemon {
 
 impl LinuxDaemon {
     pub fn init(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         control_plane_sockaddr: &str,
         control_plane_sockaddr_type: &str,
         user_vm_listener: SocketListener,

@@ -12,7 +12,7 @@ use crate::{
         RequestAssemblerTrait,
         RequestAssemblerType,
     },
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
     unistd,
 };
 use ::anyhow::Result;
@@ -89,7 +89,7 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -130,7 +130,7 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -171,7 +171,7 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -212,7 +212,7 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -255,7 +255,7 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -302,7 +302,7 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -343,7 +343,7 @@ impl RequestAssemblerTrait for FileChownAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -384,7 +384,7 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -425,7 +425,7 @@ impl RequestAssemblerTrait for OpenAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -466,7 +466,7 @@ impl RequestAssemblerTrait for RenameAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -507,7 +507,7 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -550,7 +550,7 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -591,7 +591,7 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -632,7 +632,7 @@ impl RequestAssemblerTrait for PollRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {

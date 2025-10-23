@@ -16,7 +16,7 @@ use ::control_plane_api::{
 };
 use ::hwloc::HwLoc;
 use ::linuxd::{
-    syscalls::SystemCallRouteTable,
+    syscalls::SyscallTable,
     LinuxDaemon as EmbeddedLinuxd,
 };
 use ::std::{
@@ -88,7 +88,7 @@ impl LinuxDaemon {
     ///
     #[allow(clippy::too_many_arguments)]
     pub async fn spawn(
-        syscall_table: Option<Arc<SystemCallRouteTable>>,
+        syscall_table: Option<Arc<SyscallTable>>,
         control_plane_sockaddr: &str,
         user_vm_sockaddr: &str,
         hwloc: Option<HwLoc>,
