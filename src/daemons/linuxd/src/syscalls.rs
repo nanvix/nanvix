@@ -52,12 +52,10 @@ pub type LseekFn = unsafe fn(libc::c_int, libc::off_t, libc::c_int) -> libc::off
 pub type FtruncateFn = unsafe fn(libc::c_int, libc::off_t) -> libc::c_int;
 
 /// Type alias for `write()` system call function.
-pub type WriteFn =
-    unsafe extern "C" fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t;
+pub type WriteFn = unsafe fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t;
 
 /// Type alias for `read()` system call function.
-pub type ReadFn =
-    unsafe extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t;
+pub type ReadFn = unsafe fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t;
 
 /// Type alias for `pwrite()` system call function.
 pub type PwriteFn =
@@ -96,12 +94,10 @@ pub type SocketpairFn =
     unsafe fn(libc::c_int, libc::c_int, libc::c_int, *mut libc::c_int) -> libc::c_int;
 
 /// Type alias for `bind()` system call function.
-pub type BindFn =
-    unsafe extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
+pub type BindFn = unsafe fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `connect()` system call function.
-pub type ConnectFn =
-    unsafe extern "C" fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
+pub type ConnectFn = unsafe fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `listen()` system call function.
 pub type ListenFn = unsafe fn(libc::c_int, libc::c_int) -> libc::c_int;
@@ -364,7 +360,7 @@ pub unsafe fn default_ftruncate(fd: libc::c_int, length: libc::off_t) -> libc::c
 ///
 /// Upon successful completion, the number of bytes written is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_write(
+pub unsafe fn default_write(
     fd: libc::c_int,
     buf: *const libc::c_void,
     count: libc::size_t,
@@ -387,7 +383,7 @@ pub unsafe extern "C" fn default_write(
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_read(
+pub unsafe fn default_read(
     fd: libc::c_int,
     buf: *mut libc::c_void,
     count: libc::size_t,
@@ -534,8 +530,7 @@ pub type OpenatFn =
     unsafe fn(libc::c_int, *const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int;
 
 /// Type alias for `unlinkat()` system call function.
-pub type UnlinkatFn =
-    unsafe extern "C" fn(libc::c_int, *const libc::c_char, libc::c_int) -> libc::c_int;
+pub type UnlinkatFn = unsafe fn(libc::c_int, *const libc::c_char, libc::c_int) -> libc::c_int;
 
 /// Type alias for `renameat()` system call function.
 pub type RenameatFn =
@@ -550,7 +545,7 @@ pub type PosixFallocateFn = unsafe fn(libc::c_int, libc::off_t, libc::off_t) -> 
 
 /// Type alias for `posix_fadvise()` system call function.
 pub type PosixFadviseFn =
-    unsafe extern "C" fn(libc::c_int, libc::off_t, libc::off_t, libc::c_int) -> libc::c_int;
+    unsafe fn(libc::c_int, libc::off_t, libc::off_t, libc::c_int) -> libc::c_int;
 
 /// Type alias for `fstat()` system call function.
 pub type FstatFn = unsafe fn(libc::c_int, *mut libc::stat) -> libc::c_int;
@@ -564,8 +559,7 @@ pub type ReadlinkatFn =
     unsafe fn(libc::c_int, *const libc::c_char, *mut libc::c_char, libc::size_t) -> libc::ssize_t;
 
 /// Type alias for `mkdirat()` system call function.
-pub type MkdiratFn =
-    unsafe extern "C" fn(libc::c_int, *const libc::c_char, libc::mode_t) -> libc::c_int;
+pub type MkdiratFn = unsafe fn(libc::c_int, *const libc::c_char, libc::mode_t) -> libc::c_int;
 
 /// Type alias for `utimensat()` system call function.
 pub type UtimensatFn =
@@ -637,7 +631,7 @@ pub unsafe fn default_openat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_unlinkat(
+pub unsafe fn default_unlinkat(
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     flags: libc::c_int,
@@ -734,7 +728,7 @@ pub unsafe fn default_posix_fallocate(
 ///
 /// Upon successful completion, zero is returned. Otherwise, an error number is returned.
 ///
-pub unsafe extern "C" fn default_posix_fadvise(
+pub unsafe fn default_posix_fadvise(
     fd: libc::c_int,
     offset: libc::off_t,
     len: libc::off_t,
@@ -824,7 +818,7 @@ pub unsafe fn default_readlinkat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_mkdirat(
+pub unsafe fn default_mkdirat(
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::mode_t,
@@ -1058,7 +1052,7 @@ pub unsafe fn default_socketpair(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_bind(
+pub unsafe fn default_bind(
     sockfd: libc::c_int,
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
@@ -1081,7 +1075,7 @@ pub unsafe extern "C" fn default_bind(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe extern "C" fn default_connect(
+pub unsafe fn default_connect(
     sockfd: libc::c_int,
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
@@ -1478,11 +1472,11 @@ impl Default for SystemCallRouteTable {
             },
             syscall_read: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_read as ReadFn),
+                syscall_fn: Arc::new(default_read),
             },
             syscall_write: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_write as WriteFn),
+                syscall_fn: Arc::new(default_write),
             },
 
             // fcntl.rs system calls.
