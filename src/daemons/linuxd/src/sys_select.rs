@@ -214,7 +214,7 @@ unsafe fn handle_select(
     errorfds: *mut libc::fd_set,
     timeout: *mut libc::timeval,
 ) -> libc::c_int {
-    match &syscall_table.syscall_select {
+    match &syscall_table.select {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1

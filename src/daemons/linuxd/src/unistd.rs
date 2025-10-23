@@ -821,7 +821,7 @@ impl TryFrom<i32> for LibcSeek {
 
 /// Handler for `libc::chdir()`.
 unsafe fn handle_chdir(syscall_table: &SyscallTable, path: *const libc::c_char) -> libc::c_int {
-    match &syscall_table.syscall_chdir {
+    match &syscall_table.chdir {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -832,7 +832,7 @@ unsafe fn handle_chdir(syscall_table: &SyscallTable, path: *const libc::c_char) 
 
 /// Handler for `libc::close()`.
 unsafe fn handle_close(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
-    match &syscall_table.syscall_close {
+    match &syscall_table.close {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -849,7 +849,7 @@ unsafe fn handle_faccessat(
     mode: libc::c_int,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_faccessat {
+    match &syscall_table.faccessat {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -860,7 +860,7 @@ unsafe fn handle_faccessat(
 
 /// Handler for `libc::fdatasync()`.
 unsafe fn handle_fdatasync(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
-    match &syscall_table.syscall_fdatasync {
+    match &syscall_table.fdatasync {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -871,7 +871,7 @@ unsafe fn handle_fdatasync(syscall_table: &SyscallTable, fd: libc::c_int) -> lib
 
 /// Handler for `libc::getuid()`.
 unsafe fn handle_getuid(syscall_table: &SyscallTable) -> libc::uid_t {
-    match &syscall_table.syscall_getuid {
+    match &syscall_table.getuid {
         SyscallAction::Block => 0,
         SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
     }
@@ -879,7 +879,7 @@ unsafe fn handle_getuid(syscall_table: &SyscallTable) -> libc::uid_t {
 
 /// Handler for `libc::geteuid()`.
 unsafe fn handle_geteuid(syscall_table: &SyscallTable) -> libc::uid_t {
-    match &syscall_table.syscall_geteuid {
+    match &syscall_table.geteuid {
         SyscallAction::Block => 0,
         SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
     }
@@ -887,7 +887,7 @@ unsafe fn handle_geteuid(syscall_table: &SyscallTable) -> libc::uid_t {
 
 /// Handler for `libc::getgid()`.
 unsafe fn handle_getgid(syscall_table: &SyscallTable) -> libc::gid_t {
-    match &syscall_table.syscall_getgid {
+    match &syscall_table.getgid {
         SyscallAction::Block => 0,
         SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
     }
@@ -895,7 +895,7 @@ unsafe fn handle_getgid(syscall_table: &SyscallTable) -> libc::gid_t {
 
 /// Handler for `libc::getegid()`.
 unsafe fn handle_getegid(syscall_table: &SyscallTable) -> libc::gid_t {
-    match &syscall_table.syscall_getegid {
+    match &syscall_table.getegid {
         SyscallAction::Block => 0,
         SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
     }
@@ -907,7 +907,7 @@ unsafe fn handle_getcwd(
     buf: *mut libc::c_char,
     size: libc::size_t,
 ) -> *mut libc::c_char {
-    match &syscall_table.syscall_getcwd {
+    match &syscall_table.getcwd {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             ::core::ptr::null_mut()
@@ -918,7 +918,7 @@ unsafe fn handle_getcwd(
 
 /// Handler for `libc::fsync()`.
 unsafe fn handle_fsync(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
-    match &syscall_table.syscall_fsync {
+    match &syscall_table.fsync {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -934,7 +934,7 @@ unsafe fn handle_lseek(
     offset: libc::off_t,
     whence: libc::c_int,
 ) -> libc::off_t {
-    match &syscall_table.syscall_lseek {
+    match &syscall_table.lseek {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -949,7 +949,7 @@ unsafe fn handle_ftruncate(
     fd: libc::c_int,
     length: libc::off_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_ftruncate {
+    match &syscall_table.ftruncate {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -965,7 +965,7 @@ unsafe fn handle_write(
     buf: *const libc::c_void,
     count: libc::size_t,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_write {
+    match &syscall_table.write {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -981,7 +981,7 @@ unsafe fn handle_read(
     buf: *mut libc::c_void,
     count: libc::size_t,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_read {
+    match &syscall_table.read {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -998,7 +998,7 @@ unsafe fn handle_pwrite(
     count: libc::size_t,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_pwrite {
+    match &syscall_table.pwrite {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -1015,7 +1015,7 @@ unsafe fn handle_pread(
     count: libc::size_t,
     offset: libc::off_t,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_pread {
+    match &syscall_table.pread {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -1033,7 +1033,7 @@ unsafe fn handle_linkat(
     newpath: *const libc::c_char,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_linkat {
+    match &syscall_table.linkat {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -1046,7 +1046,7 @@ unsafe fn handle_linkat(
 
 /// Handler for `libc::fchdir()`.
 unsafe fn handle_fchdir(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
-    match &syscall_table.syscall_fchdir {
+    match &syscall_table.fchdir {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -1062,7 +1062,7 @@ unsafe fn handle_fchown(
     owner: libc::uid_t,
     group: libc::gid_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_fchown {
+    match &syscall_table.fchown {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -1073,7 +1073,7 @@ unsafe fn handle_fchown(
 
 /// Handler for `libc::pipe()`.
 unsafe fn handle_pipe(syscall_table: &SyscallTable, pipefd: *mut libc::c_int) -> libc::c_int {
-    match &syscall_table.syscall_pipe {
+    match &syscall_table.pipe {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1

@@ -212,7 +212,7 @@ unsafe fn handle_poll(
     nfds: libc::nfds_t,
     timeout: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_poll {
+    match &syscall_table.poll {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
