@@ -214,13 +214,13 @@ unsafe fn handle_select(
     errorfds: *mut libc::fd_set,
     timeout: *mut libc::timeval,
 ) -> libc::c_int {
-    match syscall_table.syscall_select.action {
+    match &syscall_table.syscall_select {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_select.syscall_fn)(nfds, readfds, writefds, errorfds, timeout)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(nfds, readfds, writefds, errorfds, timeout)
         },
     }
 }

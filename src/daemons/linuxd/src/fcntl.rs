@@ -1810,13 +1810,13 @@ unsafe fn handle_openat(
     flags: libc::c_int,
     mode: libc::mode_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_openat.action {
+    match &syscall_table.syscall_openat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_openat.syscall_fn)(dirfd, pathname, flags, mode)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(dirfd, pathname, flags, mode)
         },
     }
 }
@@ -1828,14 +1828,12 @@ unsafe fn handle_unlinkat(
     pathname: *const libc::c_char,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_unlinkat.action {
+    match &syscall_table.syscall_unlinkat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_unlinkat.syscall_fn)(dirfd, pathname, flags)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, flags) },
     }
 }
 
@@ -1847,13 +1845,13 @@ unsafe fn handle_renameat(
     newdirfd: libc::c_int,
     newpath: *const libc::c_char,
 ) -> libc::c_int {
-    match syscall_table.syscall_renameat.action {
+    match &syscall_table.syscall_renameat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_renameat.syscall_fn)(olddirfd, oldpath, newdirfd, newpath)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(olddirfd, oldpath, newdirfd, newpath)
         },
     }
 }
@@ -1866,14 +1864,12 @@ unsafe fn handle_fstatat(
     buf: *mut libc::stat,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_fstatat.action {
+    match &syscall_table.syscall_fstatat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_fstatat.syscall_fn)(dirfd, pathname, buf, flags)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, buf, flags) },
     }
 }
 
@@ -1884,14 +1880,12 @@ unsafe fn handle_posix_fallocate(
     offset: off_t,
     len: off_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_posix_fallocate.action {
+    match &syscall_table.syscall_posix_fallocate {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_posix_fallocate.syscall_fn)(fd, offset, len)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, offset, len) },
     }
 }
 
@@ -1903,14 +1897,12 @@ unsafe fn handle_posix_fadvise(
     len: off_t,
     advice: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_posix_fadvise.action {
+    match &syscall_table.syscall_posix_fadvise {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_posix_fadvise.syscall_fn)(fd, offset, len, advice)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, offset, len, advice) },
     }
 }
 
@@ -1920,12 +1912,12 @@ unsafe fn handle_fstat(
     fd: libc::c_int,
     buf: *mut libc::stat,
 ) -> libc::c_int {
-    match syscall_table.syscall_fstat.action {
+    match &syscall_table.syscall_fstat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe { (syscall_table.syscall_fstat.syscall_fn)(fd, buf) },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf) },
     }
 }
 
@@ -1936,14 +1928,12 @@ unsafe fn handle_symlinkat(
     newdirfd: libc::c_int,
     linkpath: *const libc::c_char,
 ) -> libc::c_int {
-    match syscall_table.syscall_symlinkat.action {
+    match &syscall_table.syscall_symlinkat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_symlinkat.syscall_fn)(target, newdirfd, linkpath)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(target, newdirfd, linkpath) },
     }
 }
 
@@ -1955,13 +1945,13 @@ unsafe fn handle_readlinkat(
     buf: *mut libc::c_char,
     bufsiz: libc::size_t,
 ) -> libc::ssize_t {
-    match syscall_table.syscall_readlinkat.action {
+    match &syscall_table.syscall_readlinkat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_readlinkat.syscall_fn)(dirfd, pathname, buf, bufsiz)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(dirfd, pathname, buf, bufsiz)
         },
     }
 }
@@ -1973,14 +1963,12 @@ unsafe fn handle_mkdirat(
     pathname: *const libc::c_char,
     mode: libc::mode_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_mkdirat.action {
+    match &syscall_table.syscall_mkdirat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_mkdirat.syscall_fn)(dirfd, pathname, mode)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, mode) },
     }
 }
 
@@ -1992,13 +1980,13 @@ unsafe fn handle_utimensat(
     times: *const libc::timespec,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_utimensat.action {
+    match &syscall_table.syscall_utimensat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_utimensat.syscall_fn)(dirfd, pathname, times, flags)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(dirfd, pathname, times, flags)
         },
     }
 }
@@ -2009,14 +1997,12 @@ unsafe fn handle_futimens(
     fd: libc::c_int,
     times: *const libc::timespec,
 ) -> libc::c_int {
-    match syscall_table.syscall_futimens.action {
+    match &syscall_table.syscall_futimens {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_futimens.syscall_fn)(fd, times)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, times) },
     }
 }
 
@@ -2027,14 +2013,12 @@ unsafe fn handle_fcntl(
     cmd: libc::c_int,
     arg: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_fcntl.action {
+    match &syscall_table.syscall_fcntl {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_fcntl.syscall_fn)(fd, cmd, arg)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, cmd, arg) },
     }
 }
 
@@ -2047,13 +2031,13 @@ unsafe fn handle_fchownat(
     group: libc::gid_t,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_fchownat.action {
+    match &syscall_table.syscall_fchownat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_fchownat.syscall_fn)(dirfd, pathname, owner, group, flags)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(dirfd, pathname, owner, group, flags)
         },
     }
 }
@@ -2064,12 +2048,12 @@ unsafe fn handle_fchmod(
     fd: libc::c_int,
     mode: libc::mode_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_fchmod.action {
+    match &syscall_table.syscall_fchmod {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe { (syscall_table.syscall_fchmod.syscall_fn)(fd, mode) },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, mode) },
     }
 }
 
@@ -2081,13 +2065,13 @@ unsafe fn handle_fchmodat(
     mode: libc::mode_t,
     flags: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_fchmodat.action {
+    match &syscall_table.syscall_fchmodat {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_fchmodat.syscall_fn)(dirfd, pathname, mode, flags)
+        SystemCallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(dirfd, pathname, mode, flags)
         },
     }
 }

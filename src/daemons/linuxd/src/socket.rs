@@ -755,14 +755,12 @@ unsafe fn handle_socket(
     type_: libc::c_int,
     protocol: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_socket.action {
+    match &syscall_table.syscall_socket {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_socket.syscall_fn)(domain, type_, protocol)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(domain, type_, protocol) },
     }
 }
 
@@ -774,14 +772,12 @@ unsafe fn handle_socketpair(
     protocol: libc::c_int,
     sv: *mut libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_socketpair.action {
+    match &syscall_table.syscall_socketpair {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_socketpair.syscall_fn)(domain, type_, protocol, sv)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(domain, type_, protocol, sv) },
     }
 }
 
@@ -792,14 +788,12 @@ unsafe fn handle_bind(
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_bind.action {
+    match &syscall_table.syscall_bind {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_bind.syscall_fn)(sockfd, addr, addrlen)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, addr, addrlen) },
     }
 }
 
@@ -810,14 +804,12 @@ unsafe fn handle_connect(
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_connect.action {
+    match &syscall_table.syscall_connect {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_connect.syscall_fn)(sockfd, addr, addrlen)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, addr, addrlen) },
     }
 }
 
@@ -827,14 +819,12 @@ unsafe fn handle_listen(
     sockfd: libc::c_int,
     backlog: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_listen.action {
+    match &syscall_table.syscall_listen {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_listen.syscall_fn)(sockfd, backlog)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, backlog) },
     }
 }
 
@@ -845,14 +835,12 @@ unsafe fn handle_getpeername(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_getpeername.action {
+    match &syscall_table.syscall_getpeername {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_getpeername.syscall_fn)(sockfd, addr, addrlen)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, addr, addrlen) },
     }
 }
 
@@ -863,14 +851,12 @@ unsafe fn handle_getsockname(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_getsockname.action {
+    match &syscall_table.syscall_getsockname {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_getsockname.syscall_fn)(sockfd, addr, addrlen)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, addr, addrlen) },
     }
 }
 
@@ -881,14 +867,12 @@ unsafe fn handle_accept(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match syscall_table.syscall_accept.action {
+    match &syscall_table.syscall_accept {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_accept.syscall_fn)(sockfd, addr, addrlen)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, addr, addrlen) },
     }
 }
 
@@ -900,14 +884,12 @@ unsafe fn handle_recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    match syscall_table.syscall_recv.action {
+    match &syscall_table.syscall_recv {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_recv.syscall_fn)(sockfd, buf, len, flags)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, buf, len, flags) },
     }
 }
 
@@ -919,14 +901,12 @@ unsafe fn handle_send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    match syscall_table.syscall_send.action {
+    match &syscall_table.syscall_send {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_send.syscall_fn)(sockfd, buf, len, flags)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, buf, len, flags) },
     }
 }
 
@@ -936,13 +916,11 @@ unsafe fn handle_shutdown(
     sockfd: libc::c_int,
     how: libc::c_int,
 ) -> libc::c_int {
-    match syscall_table.syscall_shutdown.action {
+    match &syscall_table.syscall_shutdown {
         SystemCallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_shutdown.syscall_fn)(sockfd, how)
-        },
+        SystemCallAction::Forward(syscall_fn) => unsafe { syscall_fn(sockfd, how) },
     }
 }
