@@ -755,7 +755,7 @@ unsafe fn handle_socket(
     type_: libc::c_int,
     protocol: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_socket {
+    match &syscall_table.socket {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -772,7 +772,7 @@ unsafe fn handle_socketpair(
     protocol: libc::c_int,
     sv: *mut libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_socketpair {
+    match &syscall_table.socketpair {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -788,7 +788,7 @@ unsafe fn handle_bind(
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_bind {
+    match &syscall_table.bind {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -804,7 +804,7 @@ unsafe fn handle_connect(
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_connect {
+    match &syscall_table.connect {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -819,7 +819,7 @@ unsafe fn handle_listen(
     sockfd: libc::c_int,
     backlog: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_listen {
+    match &syscall_table.listen {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -835,7 +835,7 @@ unsafe fn handle_getpeername(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_getpeername {
+    match &syscall_table.getpeername {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -851,7 +851,7 @@ unsafe fn handle_getsockname(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_getsockname {
+    match &syscall_table.getsockname {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -867,7 +867,7 @@ unsafe fn handle_accept(
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
 ) -> libc::c_int {
-    match &syscall_table.syscall_accept {
+    match &syscall_table.accept {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -884,7 +884,7 @@ unsafe fn handle_recv(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_recv {
+    match &syscall_table.recv {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -901,7 +901,7 @@ unsafe fn handle_send(
     len: libc::size_t,
     flags: libc::c_int,
 ) -> libc::ssize_t {
-    match &syscall_table.syscall_send {
+    match &syscall_table.send {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
@@ -916,7 +916,7 @@ unsafe fn handle_shutdown(
     sockfd: libc::c_int,
     how: libc::c_int,
 ) -> libc::c_int {
-    match &syscall_table.syscall_shutdown {
+    match &syscall_table.shutdown {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
