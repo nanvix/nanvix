@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Imports
-//==================================================================================================
-
-use ::std::sync::Arc;
-
-//==================================================================================================
 // Function Type Aliases
 //==================================================================================================
 
@@ -1324,7 +1318,7 @@ pub enum SystemCallAction {
 
 pub struct SystemCallRouteTableEntry<F> {
     pub action: SystemCallAction,
-    pub syscall_fn: Arc<F>,
+    pub syscall_fn: F,
 }
 
 pub struct SystemCallRouteTable {
@@ -1400,219 +1394,219 @@ impl Default for SystemCallRouteTable {
             // unistd.rs system calls.
             syscall_chdir: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_chdir),
+                syscall_fn: default_chdir,
             },
             syscall_close: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_close),
+                syscall_fn: default_close,
             },
             syscall_faccessat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_faccessat),
+                syscall_fn: default_faccessat,
             },
             syscall_fdatasync: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fdatasync),
+                syscall_fn: default_fdatasync,
             },
             syscall_fchdir: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fchdir),
+                syscall_fn: default_fchdir,
             },
             syscall_fchown: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fchown),
+                syscall_fn: default_fchown,
             },
             syscall_fsync: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fsync),
+                syscall_fn: default_fsync,
             },
             syscall_ftruncate: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_ftruncate),
+                syscall_fn: default_ftruncate,
             },
             syscall_getcwd: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getcwd),
+                syscall_fn: default_getcwd,
             },
             syscall_getegid: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getegid),
+                syscall_fn: default_getegid,
             },
             syscall_geteuid: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_geteuid),
+                syscall_fn: default_geteuid,
             },
             syscall_getgid: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getgid),
+                syscall_fn: default_getgid,
             },
             syscall_getuid: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getuid),
+                syscall_fn: default_getuid,
             },
             syscall_linkat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_linkat),
+                syscall_fn: default_linkat,
             },
             syscall_lseek: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_lseek),
+                syscall_fn: default_lseek,
             },
             syscall_pipe: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_pipe),
+                syscall_fn: default_pipe,
             },
             syscall_pread: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_pread),
+                syscall_fn: default_pread,
             },
             syscall_pwrite: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_pwrite),
+                syscall_fn: default_pwrite,
             },
             syscall_read: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_read),
+                syscall_fn: default_read,
             },
             syscall_write: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_write),
+                syscall_fn: default_write,
             },
 
             // fcntl.rs system calls.
             syscall_fchmod: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fchmod),
+                syscall_fn: default_fchmod,
             },
             syscall_fchmodat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fchmodat),
+                syscall_fn: default_fchmodat,
             },
             syscall_fchownat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fchownat),
+                syscall_fn: default_fchownat,
             },
             syscall_fcntl: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fcntl),
+                syscall_fn: default_fcntl,
             },
             syscall_fstat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fstat),
+                syscall_fn: default_fstat,
             },
             syscall_fstatat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_fstatat),
+                syscall_fn: default_fstatat,
             },
             syscall_futimens: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_futimens),
+                syscall_fn: default_futimens,
             },
             syscall_mkdirat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_mkdirat),
+                syscall_fn: default_mkdirat,
             },
             syscall_openat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_openat),
+                syscall_fn: default_openat,
             },
             syscall_posix_fadvise: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_posix_fadvise),
+                syscall_fn: default_posix_fadvise,
             },
             syscall_posix_fallocate: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_posix_fallocate),
+                syscall_fn: default_posix_fallocate,
             },
             syscall_readlinkat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_readlinkat),
+                syscall_fn: default_readlinkat,
             },
             syscall_renameat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_renameat),
+                syscall_fn: default_renameat,
             },
             syscall_symlinkat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_symlinkat),
+                syscall_fn: default_symlinkat,
             },
             syscall_unlinkat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_unlinkat),
+                syscall_fn: default_unlinkat,
             },
             syscall_utimensat: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_utimensat),
+                syscall_fn: default_utimensat,
             },
 
             // dirent.rs system calls.
             syscall_getdents: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getdents),
+                syscall_fn: default_getdents,
             },
 
             // socket.rs system calls.
             syscall_accept: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_accept),
+                syscall_fn: default_accept,
             },
             syscall_bind: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_bind),
+                syscall_fn: default_bind,
             },
             syscall_connect: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_connect),
+                syscall_fn: default_connect,
             },
             syscall_getpeername: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getpeername),
+                syscall_fn: default_getpeername,
             },
             syscall_getsockname: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_getsockname),
+                syscall_fn: default_getsockname,
             },
             syscall_listen: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_listen),
+                syscall_fn: default_listen,
             },
             syscall_recv: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_recv),
+                syscall_fn: default_recv,
             },
             syscall_send: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_send),
+                syscall_fn: default_send,
             },
             syscall_shutdown: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_shutdown),
+                syscall_fn: default_shutdown,
             },
             syscall_socket: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_socket),
+                syscall_fn: default_socket,
             },
             syscall_socketpair: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_socketpair),
+                syscall_fn: default_socketpair,
             },
 
             // poll.rs system calls.
             syscall_poll: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_poll),
+                syscall_fn: default_poll,
             },
 
             // sys_select.rs system calls.
             syscall_select: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_select),
+                syscall_fn: default_select,
             },
 
             // times.rs system calls.
             syscall_times: SystemCallRouteTableEntry {
                 action: SystemCallAction::Forward,
-                syscall_fn: Arc::new(default_times),
+                syscall_fn: default_times,
             },
         }
     }
