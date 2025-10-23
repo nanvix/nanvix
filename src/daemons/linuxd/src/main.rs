@@ -22,8 +22,8 @@ use ::anyhow::Result;
 use ::linuxd::{
     args,
     args::Args,
-    linuxd::LinuxDaemon,
     syscalls::SyscallTable,
+    LinuxDaemon,
 };
 use ::std::{
     env,

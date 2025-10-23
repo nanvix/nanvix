@@ -7,7 +7,7 @@
 
 use crate::{
     error::WorkerThreadError,
-    fcntl::LibcAtFlags,
+    linux::fcntl::LibcAtFlags,
     syscalls::{
         SyscallAction,
         SyscallTable,

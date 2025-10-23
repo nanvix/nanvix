@@ -7,13 +7,15 @@
 
 use crate::{
     error::WorkerThreadError,
-    fcntl,
+    linux::{
+        fcntl,
+        unistd,
+    },
     message::{
         RequestAssemblerTrait,
         RequestAssemblerType,
     },
     syscalls::SyscallTable,
-    unistd,
 };
 use ::anyhow::Result;
 use ::std::sync::Arc;
@@ -636,6 +638,6 @@ impl RequestAssemblerTrait for PollRequest {
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
-        crate::poll::do_poll(syscall_table, source, request)
+        crate::linux::poll::do_poll(syscall_table, source, request)
     }
 }
