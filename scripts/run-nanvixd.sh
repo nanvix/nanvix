@@ -65,6 +65,8 @@ PROGRAM_ARGS=()
 usage() {
     local fd="${1:-1}"
 
+    # Quoting file descriptors is not supported on all POSIX shells.
+    # shellcheck disable=SC2086
     cat <<EOF >&${fd}
 Usage: $(basename "$0") [OPTIONS --] PROGRAM_NAME [ARG1 ARG2 ...]
 
