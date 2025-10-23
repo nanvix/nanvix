@@ -36,6 +36,7 @@ pub mod message;
 pub mod poll;
 pub mod socket;
 pub mod sys_select;
+pub mod syscalls;
 pub mod time;
 pub mod times;
 pub mod unistd;

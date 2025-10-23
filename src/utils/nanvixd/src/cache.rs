@@ -157,6 +157,8 @@ impl SandboxCache {
                         tag.tenant_id().to_string(),
                         Arc::new(
                             LinuxDaemon::spawn(
+                                #[cfg(feature = "single-process")]
+                                None,
                                 sandbox_config.control_plane_sockaddr(),
                                 sandbox_config.user_vm_sockaddr(),
                                 sandbox_config.hwloc(),
