@@ -195,7 +195,7 @@ impl LinuxDaemon {
                 Ok(socket)
             },
             Ok(Err(_error)) => {
-                let reason: &str = "failed connect to control-plane";
+                let reason: &str = "failed to connect to control-plane";
                 error!("accept_control_plane_connection(): {reason}");
                 Err(Error::new(ErrorCode::TryAgain, reason))
             },
