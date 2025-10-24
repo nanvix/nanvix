@@ -489,8 +489,8 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                 // Label: uservm::lib::vm_input::vm_exit()
                 profiler::timestamp_message!(
                     &mut msg.payload,
-                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
                 on_message_received_from_memory_thread();
@@ -516,8 +516,8 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                 // Label: uservm::lib::vm_input::vm_write_bytes()
                 profiler::timestamp_message!(
                     &mut msg.payload,
-                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
                 locked_guest.consume_credit(&mut locked_vmem)?;

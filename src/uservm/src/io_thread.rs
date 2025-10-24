@@ -159,7 +159,7 @@ impl IoThread {
                                 // Label: uservm::io_thread::system_vm::read()
                                 profiler::timestamp_message!(&mut message.payload,
                                     std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                                 );
 
                                 buf.fill(0);
