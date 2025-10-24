@@ -272,10 +272,7 @@ impl Benchmark {
         };
         let gateway_stream: SocketStream = loop {
             let unbound_socket: UnboundSocket = UnboundSocket::new(gateway_socktype);
-            match unbound_socket
-                .connect(response.gateway_sockaddr.clone())
-                .await
-            {
+            match unbound_socket.connect(&response.gateway_sockaddr).await {
                 Ok(stream) => break stream,
                 Err(_) => continue,
             };

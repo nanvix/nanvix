@@ -61,17 +61,16 @@ pub async fn main() -> Result<()> {
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.user_vm_bind_socket_type())?);
-    let user_vm_listener: SocketListener =
-        match unbound_socket.bind(user_vm_sockaddr.to_string()).await {
-            Ok(listener) => listener,
-            Err(e) => {
-                error!(
-                    "failed to bind to user VM socket address (address={}, error={e:?})",
-                    user_vm_sockaddr
-                );
-                anyhow::bail!("failed to bind to user VM socket address");
-            },
-        };
+    let user_vm_listener: SocketListener = match unbound_socket.bind(user_vm_sockaddr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            error!(
+                "failed to bind to user VM socket address (address={}, error={e:?})",
+                user_vm_sockaddr
+            );
+            anyhow::bail!("failed to bind to user VM socket address");
+        },
+    };
     info!("Listening to user VMs on: {user_vm_sockaddr:?}");
 
     let linuxd: LinuxDaemon = match LinuxDaemon::init(

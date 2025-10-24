@@ -7,7 +7,7 @@ version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Orchestration Daemon for the Nanvix"
+description = "Orchestration Daemon for Nanvix"
 homepage.workspace = true
 
 [dependencies]

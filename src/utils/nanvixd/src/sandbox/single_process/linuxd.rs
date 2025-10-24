@@ -1,28 +1,30 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Linux Daemon management for single-process mode.
+//!
+//! This module provides functionality to spawn and manage Linux Daemon instances as async
+//! tasks within the same process. This mode is primarily used for testing and development,
+//! avoiding the overhead of process creation and simplifying debugging.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::config::{
-    CONTROL_PLANE_ACCEPT_TIMEOUT,
-    SHUTDOWN_TIMEOUT,
+use crate::{
+    config::{
+        CONTROL_PLANE_ACCEPT_TIMEOUT,
+        SHUTDOWN_TIMEOUT,
+    },
+    sandbox::LinuxDaemonArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
-use ::hwloc::HwLoc;
-use ::linuxd::{
-    syscalls::SyscallTable,
-    LinuxDaemon as EmbeddedLinuxd,
-};
-use ::std::{
-    mem,
-    sync::Arc,
-};
+use ::linuxd::LinuxDaemon as EmbeddedLinuxd;
+use ::std::mem;
 use ::syscomm::{
     SocketListener,
     SocketStream,
@@ -70,47 +72,31 @@ impl LinuxDaemon {
     ///
     /// # Parameters
     ///
-    /// - `syscall_table`: Optional system call routing table.
-    /// - `control_plane_sockaddr`: Control-plane socket address.
-    /// - `user_vm_sockaddr`: User-VM socket address.
-    /// - `hwloc`: Optional CPU affinity settings (ignored)
-    /// - `binary_directory`: Directory containing toolchain binaries (not used).
-    /// - `toolchain_binary_directory`: Directory containing toolchain binaries (not used).
-    /// - `log_directory`: Directory to store logs (not used).
+    /// - `args`: Linux Daemon arguments.
     /// - `control_plane_listener`: Control-plane socket listener.
-    /// - `l2`: Whether to spawn the Linux Daemon in L2 mode (not supported).
-    /// - `tmp_directory`: Temporary directory (not used).
     ///
-    /// # Return Value
+    /// # Returns
     ///
-    /// On success, this function returns a future that, when resolve yields a handle to the spawned
-    /// Linux Daemon instance. On failure, this function returns an error object instead.
+    /// On success, this function returns a handle to the spawned Linux Daemon instance. On failure,
+    /// this function returns an error object instead.
     ///
-    #[allow(clippy::too_many_arguments)]
     pub async fn spawn(
-        syscall_table: Option<Arc<SyscallTable>>,
-        control_plane_sockaddr: &str,
-        user_vm_sockaddr: &str,
-        hwloc: Option<HwLoc>,
-        _binary_directory: &str,
-        _toolchain_binary_directory: &str,
-        _log_directory: &str,
+        args: &LinuxDaemonArgs,
         control_plane_listener: &mut SocketListener,
-        l2: bool,
-        _tmp_directory: String,
     ) -> Result<Self> {
         trace!(
-            "spawn(): control_plane_sockaddr={control_plane_sockaddr}, \
-             user_vm_sockaddr={user_vm_sockaddr}"
+            "spawn(): control_plane_socket_address={:?}, user_vm_sockaddr={:?}",
+            args.control_plane_socket_info(),
+            args.system_vm_socket_info()
         );
 
         // Check if CPU affinity settings were provided.
-        if let Some(hwloc) = hwloc {
+        if let Some(hwloc) = args.hwloc() {
             warn!("spawn(): single-process mode ignores hwloc affinity settings (hwloc={hwloc:?})");
         }
 
         // Check if L2 mode was requested.
-        if l2 {
+        if args.l2() {
             let reason: &str = "single-process mode does not support L2 deployments";
             error!("spawn(): {reason}");
             anyhow::bail!("{reason}");
@@ -118,23 +104,23 @@ impl LinuxDaemon {
 
         // Create a socket to listen for user VM connections.
         let user_vm_listener: SocketListener = UnboundSocket::new(SocketType::Unix)
-            .bind(user_vm_sockaddr.to_string())
+            .bind(&args.system_vm_socket_info().0)
             .await
             .map_err(|e| {
                 error!(
-                    "spawn(): failed to bind linuxd user VM listener (address={user_vm_sockaddr}, \
-                     error={e:?})"
+                    "spawn(): failed to bind linuxd user VM listener (address={}, error={e:?})",
+                    args.system_vm_socket_info().0
                 );
                 anyhow::anyhow!("failed to bind linuxd user VM listener")
             })?;
 
         // Create a new Linux Daemon instance.
         let linuxd: EmbeddedLinuxd = EmbeddedLinuxd::init(
-            syscall_table.unwrap_or_default(),
-            control_plane_sockaddr,
-            SocketType::UNIX_STR,
+            args.syscall_table().cloned().unwrap_or_default(),
+            &args.control_plane_socket_info().0,
+            args.control_plane_socket_info().1.to_str(),
             user_vm_listener,
-            l2,
+            args.l2(),
         )
         .map_err(|e| {
             error!("spawn(): failed to initialize linuxd (error={e:?})");
