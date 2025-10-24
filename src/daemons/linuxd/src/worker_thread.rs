@@ -13,18 +13,20 @@
 
 use crate::{
     build_error,
-    dirent,
     error::WorkerThreadError,
-    fcntl,
+    linux::{
+        dirent,
+        fcntl,
+        sys_select,
+        sys_socket,
+        sys_times,
+        unistd,
+    },
     message::{
         RequestAssembler,
         RequestAssemblerTrait,
     },
-    socket,
-    sys_select,
-    syscalls::SystemCallRouteTable,
-    times,
-    unistd,
+    syscalls::SyscallTable,
     user_vm_handle::UserVmHandle,
     venv::VenvCommand,
 };
@@ -218,9 +220,9 @@ impl WorkerThreadHandle {
         channel_tx: Sender<VenvCommand>,
         uvm_handle: UserVmHandle,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
     ) -> Result<Self, Error> {
-        trace!("spawning workker thread (id={id:?})");
+        trace!("spawning worker thread (id={id:?})");
         // We use an atomic to pass the id of the created thread back to the caller context. We
         // need this because std::thread's JoinHandle does not expose the tid.
         let pthread_id_holder = Arc::new(AtomicUsize::new(0));
@@ -268,7 +270,7 @@ impl WorkerThreadHandle {
     fn handle_message(
         mut channel_rx: Receiver<VenvCommand>,
         uvm_handle: UserVmHandle,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         assembler: Arc<Mutex<RequestAssembler>>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
@@ -490,7 +492,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_special_messages(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
@@ -518,32 +520,32 @@ impl WorkerThreadHandle {
     }
 
     fn handle_short_request_messages(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<Message, WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::AcceptSocketRequest => {
                 let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(message.payload);
-                socket::do_accept(syscall_table, source, request)
+                sys_socket::do_accept(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::BindSocketRequest => {
                 let request: BindSocketRequest = BindSocketRequest::from_bytes(message.payload);
-                socket::do_bind(syscall_table, source, request)
+                sys_socket::do_bind(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ConnectSocketRequest => {
                 let request: ConnectSocketRequest =
                     ConnectSocketRequest::from_bytes(message.payload);
-                socket::do_connect(syscall_table, source, request)
+                sys_socket::do_connect(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::CreateSocketPairRequest => {
                 let request: CreateSocketPairRequest =
                     CreateSocketPairRequest::from_bytes(message.payload);
-                socket::do_socketpair(syscall_table, source, request)
+                sys_socket::do_socketpair(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::CreateSocketRequest => {
                 let request: CreateSocketRequest = CreateSocketRequest::from_bytes(message.payload);
-                socket::do_socket(syscall_table, source, request)
+                sys_socket::do_socket(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::FileAdvisoryInformationRequest => {
                 let request: FileAdvisoryInformationRequest =
@@ -589,15 +591,15 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::GetPeerNameRequest => {
                 let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(message.payload);
-                socket::do_getpeername(syscall_table, source, request)
+                sys_socket::do_getpeername(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::GetSockNameRequest => {
                 let request: GetSockNameRequest = GetSockNameRequest::from_bytes(message.payload);
-                socket::do_getsockname(syscall_table, source, request)
+                sys_socket::do_getsockname(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ListenSocketRequest => {
                 let request: ListenSocketRequest = ListenSocketRequest::from_bytes(message.payload);
-                socket::do_listen(syscall_table, source, request)
+                sys_socket::do_listen(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::PartialReadRequest => {
                 let request: PartialReadRequest = PartialReadRequest::from_bytes(message.payload);
@@ -610,7 +612,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::ReceiveSocketRequest => {
                 let request: ReceiveSocketRequest =
                     ReceiveSocketRequest::from_bytes(message.payload);
-                socket::do_recv(syscall_table, source, request)
+                sys_socket::do_recv(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
@@ -622,16 +624,16 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::SendSocketRequest => {
                 let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
-                socket::do_send(syscall_table, source, request)
+                sys_socket::do_send(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::ShutdownSocketRequest => {
                 let request: ShutdownSocketRequest =
                     ShutdownSocketRequest::from_bytes(message.payload);
-                socket::do_shutdown(syscall_table, source, request)
+                sys_socket::do_shutdown(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::TimesRequest => {
                 let request: TimesRequest = TimesRequest::from_bytes(message.payload);
-                times::do_times(syscall_table, source, request)
+                sys_times::do_times(syscall_table, source, request)
             },
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
@@ -653,7 +655,7 @@ impl WorkerThreadHandle {
     fn handle_long_request_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -792,7 +794,7 @@ impl WorkerThreadHandle {
 
     fn handle_long_response_messages(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -834,7 +836,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_close_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         request: CloseRequest,
     ) -> Result<Message, WorkerThreadError> {
@@ -853,7 +855,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_write_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         mut request: WriteRequest,
@@ -906,7 +908,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_read_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         source: ThreadIdentifier,
         request: ReadRequest,
@@ -969,7 +971,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_fstat_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -989,7 +991,7 @@ impl WorkerThreadHandle {
 
     fn handle_getcwd_request(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(syscall_table, source)?;
@@ -1003,7 +1005,7 @@ impl WorkerThreadHandle {
     }
 
     fn handle_getdents_request(
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
@@ -1024,7 +1026,7 @@ impl WorkerThreadHandle {
     fn handle_long_request<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
-        syscall_table: Arc<SystemCallRouteTable>,
+        syscall_table: Arc<SyscallTable>,
         source: ThreadIdentifier,
         message: &LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError>

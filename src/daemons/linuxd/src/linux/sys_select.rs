@@ -8,8 +8,8 @@
 use crate::{
     error::WorkerThreadError,
     syscalls::{
-        SystemCallAction,
-        SystemCallRouteTable,
+        SyscallAction,
+        SyscallTable,
     },
 };
 use ::core::{
@@ -49,7 +49,7 @@ use ::syslog::{
 //==================================================================================================
 
 pub fn do_select(
-    syscall_table: Arc<SystemCallRouteTable>,
+    syscall_table: Arc<SyscallTable>,
     tid: ThreadIdentifier,
     request: SelectRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -207,20 +207,20 @@ impl TryFrom<LibcFdSet> for fd_set {
 //==================================================================================================
 
 unsafe fn handle_select(
-    syscall_table: &SystemCallRouteTable,
+    syscall_table: &SyscallTable,
     nfds: libc::c_int,
     readfds: *mut libc::fd_set,
     writefds: *mut libc::fd_set,
     errorfds: *mut libc::fd_set,
     timeout: *mut libc::timeval,
 ) -> libc::c_int {
-    match syscall_table.syscall_select.action {
-        SystemCallAction::Block => {
+    match &syscall_table.select {
+        SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SystemCallAction::Forward => unsafe {
-            (syscall_table.syscall_select.syscall_fn)(nfds, readfds, writefds, errorfds, timeout)
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(nfds, readfds, writefds, errorfds, timeout)
         },
     }
 }
