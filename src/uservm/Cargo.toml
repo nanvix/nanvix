@@ -44,4 +44,4 @@ libc = { workspace = true }
 [features]
 default = []
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
-timestamp-messages = []
+timestamp-messages = ["profiler/timestamp-messages"]
