@@ -20,8 +20,10 @@ readonly MAX_TRIALS=100
 readonly SLEEP_INTERVAL=0.1
 readonly TMP_DIR_BASE_PATH="/tmp/nanvixd"
 readonly DEFAULT_TOOLCHAIN_BIN_DIR="${PWD}/toolchain/bin"
+readonly DEFAULT_BIN_DIR="${PWD}/bin"
 readonly DEFAULT_LOG_LEVEL="warn"
 readonly OPTION_APP_NAME="--app-name"
+readonly OPTION_BIN_DIR="--bin-dir"
 readonly OPTION_HELP="--help"
 readonly OPTION_LOG_LEVEL="--log-level"
 readonly OPTION_NANVIXD_SOCKADDR="--nanvixd-sockaddr"
@@ -37,6 +39,7 @@ TENANT_ID="${DEFAULT_TENANT_ID}"
 APP_NAME="${DEFAULT_APP_NAME}"
 NANVIXD_SOCKADDR="${DEFAULT_NANVIXD_SOCKADDR}"
 TOOLCHAIN_BIN_DIR="${DEFAULT_TOOLCHAIN_BIN_DIR}"
+BIN_DIR="${DEFAULT_BIN_DIR}"
 LOG_LEVEL="${DEFAULT_LOG_LEVEL}"
 
 # Derived nanvixd endpoint components.
@@ -65,11 +68,14 @@ PROGRAM_ARGS=()
 usage() {
     local fd="${1:-1}"
 
+    # Quoting file descriptors is not supported on all POSIX shells.
+    # shellcheck disable=SC2086
     cat <<EOF >&${fd}
 Usage: $(basename "$0") [OPTIONS --] PROGRAM_NAME [ARG1 ARG2 ...]
 
 Options:
     ${OPTION_APP_NAME} STR          Specify the application name (default: ${DEFAULT_APP_NAME})
+    ${OPTION_BIN_DIR} STR           Specify the bin directory (default: ${DEFAULT_BIN_DIR})
     ${OPTION_HELP}                  Show this help message and exit.
     ${OPTION_LOG_LEVEL} STR         Specify the log level (default: ${DEFAULT_LOG_LEVEL})
     ${OPTION_NANVIXD_SOCKADDR} STR  Specify the nanvixd HTTP socket address (default: ${DEFAULT_NANVIXD_SOCKADDR})
@@ -141,6 +147,15 @@ parse_arguments() {
                 [ $# -eq 0 ] && die "Missing value for ${OPTION_APP_NAME}."
                 [[ "$1" == -* ]] && die "Missing value for ${OPTION_APP_NAME}."
                 APP_NAME="$1"
+                shift
+                continue
+                ;;
+            "${OPTION_BIN_DIR}")
+                options_seen=1
+                shift
+                [ $# -eq 0 ] && die "Missing value for ${OPTION_BIN_DIR}."
+                [[ "$1" == -* ]] && die "Missing value for ${OPTION_BIN_DIR}."
+                BIN_DIR="$1"
                 shift
                 continue
                 ;;
@@ -453,11 +468,18 @@ main() {
         program_args=${program_args% }
     fi
 
+    # Check if nanvixd binary exists.
     local nanvixd_binary_path
-    nanvixd_binary_path=$(find "." -type f -name "${NANVIXD_BINARY_NAME}" -print -quit)
-    if [ -z "${nanvixd_binary_path}" ]; then
-        echo "Error: Unable to find nanvixd binary in current directory." 1>&2
-        return 1
+    nanvixd_binary_path="${BIN_DIR}/${NANVIXD_BINARY_NAME}"
+    if [ ! -f "${nanvixd_binary_path}" ]; then
+        # Search for nanvixd binary in current directory. Skip 'sysroot-*' directories, which may contain
+        # stale versions of the binary when running this script from the source tree.
+        echo "Warning: nanvixd binary not found at ${nanvixd_binary_path}. Searching in current directory..." 1>&2
+        nanvixd_binary_path=$(find "." -type f -name "${NANVIXD_BINARY_NAME}" -not -path "./sysroot-*" -print -quit)
+        if [ -z "${nanvixd_binary_path}" ]; then
+            echo "Error: Unable to find nanvixd binary in current directory." 1>&2
+            return 1
+        fi
     fi
 
     # Create temporary directory.
