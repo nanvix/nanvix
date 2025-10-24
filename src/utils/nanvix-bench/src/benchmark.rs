@@ -22,11 +22,12 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartL2,
+    EchoBreakdown,
+    EchoBreakdownL2,
     RoundTripLatency,
     WarmStart,
     WarmStartL2,
     WarmStartVMM,
-    EchoBreakdown,
 }
 
 impl BenchmarkFlavour {
@@ -35,15 +36,15 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
+                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+            },
             BenchmarkFlavour::RoundTripLatency => {
                 format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
             },
             BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::WarmStartVMM => {
-                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
-            },
-            BenchmarkFlavour::EchoBreakdown => {
                 format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
             },
         }
@@ -56,11 +57,12 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
+            BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
+            BenchmarkFlavour::EchoBreakdownL2 => "echo-breakdown-l2",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
-            BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
         };
         write!(f, "{}", s)
     }
@@ -74,11 +76,12 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
+            "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
+            "echo-breakdown-l2" => Ok(BenchmarkFlavour::EchoBreakdownL2),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
-            "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             _ => Err(format!("Invalid benchmark type: {}", s)),
         }
     }
