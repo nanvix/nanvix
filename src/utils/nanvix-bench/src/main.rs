@@ -855,8 +855,7 @@ impl Benchmark {
             "uservm::lib::vm_output::send()",                // 6
             "uservm::io_thread::system_vm::write()",         // 7
             "linuxd::worker_thread::handle_write_request()", // 8
-            "linuxd::gw_stdout_thread::send()",              // 9
-            "nanvix-bench::read_exact()",                    // 10
+            "nanvix-bench::read_exact()",                    // 9
         ];
 
         let header_size = 1;
@@ -874,7 +873,7 @@ impl Benchmark {
         }
 
         // Display a progress bar.
-        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
@@ -884,8 +883,8 @@ impl Benchmark {
         pb.set_message("Benchmark progress:");
 
         for iter in 0..self.iterations {
-            let mut data = vec![0u8; data_size];
-            let mut response = vec![0u8; data_size];
+            let mut data: Vec<u8> = vec![0u8; data_size];
+            let mut response: Vec<u8> = vec![0u8; data_size];
 
             // Add initial timestamp
             // Label: nanvix-bench::write_all()
@@ -901,19 +900,22 @@ impl Benchmark {
             // Process results.
             let mut first_timestamp: Option<u16> = None;
             let mut last_timestamp: Option<u16> = None;
-            let num_stamps = response[0] as usize;
+            let num_stamps: usize = response[0] as usize;
             if num_stamps != steps.len() {
-                return Err(anyhow::anyhow!("have not collected enough timestamps!"));
+                return Err(anyhow::anyhow!(
+                    "not enough timestamps (got={num_stamps}, expected={})",
+                    steps.len()
+                ));
             }
             for (step_idx, chunk) in (0..num_stamps).zip(response[header_size..].chunks_exact(2)) {
-                let timestamp = u16::from_le_bytes([chunk[0], chunk[1]]);
+                let timestamp: u16 = u16::from_le_bytes([chunk[0], chunk[1]]);
 
                 if first_timestamp.is_none() {
                     first_timestamp = Some(timestamp);
                 }
 
                 if let Some(last) = last_timestamp {
-                    let delta = timestamp.wrapping_sub(last);
+                    let delta: u16 = timestamp.wrapping_sub(last);
                     latencies[step_idx][iter] = delta;
                 }
 
@@ -938,9 +940,9 @@ impl Benchmark {
         // Print results
         for step_idx in 0..(steps.len() + 1) {
             if step_idx < steps.len() {
-                print!("{step_idx:<2} | {:<40}", steps[step_idx]);
+                print!("{step_idx:<2} | {:<48}", steps[step_idx]);
             } else {
-                print!("{step_idx:<2} | {:<40}", "Total");
+                print!("{step_idx:<2} | {:<48}", "Total");
             }
 
             if step_idx == 0 {
@@ -1077,6 +1079,21 @@ async fn main() -> Result<()> {
             #[cfg(feature = "timestamp-messages")]
             {
                 benchmark.run_echo_breakdown(false).await
+            }
+        },
+        BenchmarkFlavour::EchoBreakdownL2 => {
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                error!(
+                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
+                     TIMESTAMP_MSG=yes"
+                );
+                return Ok(());
+            }
+
+            #[cfg(feature = "timestamp-messages")]
+            {
+                benchmark.run_echo_breakdown(true).await
             }
         },
         BenchmarkFlavour::RoundTripLatency => {
