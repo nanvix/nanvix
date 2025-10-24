@@ -1,48 +1,69 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Sandbox configuration structures and utilities.
+//!
+//! This module defines the configuration structure for sandboxed execution environments.
+//! It includes socket information, file paths, hardware topology settings, and optional
+//! parameters for control plane and Linux Daemon initialization.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
 use crate::sandbox::tcp_port::TcpPort;
-use hwloc::HwLoc;
+use ::linuxd::syscalls::SyscallTable;
+use ::std::sync::Arc;
+use ::syscomm::SocketType;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-/// Packs configuration for a sandbox.
-#[derive(Debug)]
+///
+/// # Description
+///
+/// Configuration for a sandbox.
+///
+/// This structure contains all parameters needed to configure and initialize a sandboxed
+/// execution environment, including socket information, file paths, hardware topology,
+/// and optional control plane configuration for when components are initialized separately.
+///
 pub struct SandboxConfig {
-    /// Socket address for the control plane nanvixd <-> linuxd.
-    control_plane_sockaddr: String,
-    /// Socket type for the control plane nanvixd <-> linuxd communication.
-    control_plane_socket_type: String,
-    /// Socket address to interact with the user VM stdin/stdout client <-> linuxd.
-    gateway_sockaddr: String,
-    /// Socket type to interact with the user VM stdin/stdout client <-> linuxd.
-    gateway_socket_type: String,
-    /// Socket address for the linuxd <-> user VM communication.
-    user_vm_sockaddr: String,
-    /// Socket type for the linuxd <-> user VM communication.
-    system_vm_socket_type: String,
-    /// Path to the program to run.
-    program: String,
-    /// Argv for the program to run.
-    program_args: Option<String>,
-    /// File for console output.
+    /// Unique identifier for the User VM.
+    uservm_id: UserVmIdentifier,
+    /// Information on gateway socket (address, socket type, optional L2 TCP port).
+    gateway_socket_info: (String, SocketType, Option<TcpPort>),
+    /// Information on System VM socket (address, socket type).
+    system_vm_socket_info: (String, SocketType),
+    /// Optional file path for redirecting console output.
     console_file: Option<String>,
-    /// Hardware locality configuration.
-    hwloc: Option<HwLoc>,
-    /// Path to the binary directory.
+    /// Optional hardware locality configuration for CPU affinity and topology information.
+    hwloc: Option<hwloc::HwLoc>,
+    /// Path to the binary directory containing Nanvix binaries.
     binary_directory: String,
-    /// Path to the toolchain binary directory.
-    toolchain_binary_directory: String,
-    /// Directory for log files.
+    /// Directory path for writing log files.
     log_directory: String,
-    /// Flag to deploy linuxd in an L2 VM.
-    l2: bool,
-    /// TCP port for the gateway in the L2 VM if L2 deployment enabled.
-    // The value is never read, but we keep it around to trigger a port
-    // release upon drop.
-    _gateway_l2_port: Option<TcpPort>,
+    /// Optional system call table for overriding default system call behavior.
+    syscall_table: Option<Arc<SyscallTable>>,
+
+    /// Optional information on control plane socket (address, socket type).
+    /// This must be provided if the control plane socket is not already initialized before
+    /// sandbox initialization. If both socket and info are provided, the existing socket is used.
+    control_plane_socket_info: Option<(String, SocketType)>,
+
+    /// Optional path to the toolchain binary directory containing cloud-hypervisor and other tools.
+    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
+    toolchain_binary_directory: Option<String>,
+
+    /// Optional path to the temporary directory for Unix sockets and transient files.
+    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
+    tmp_directory: Option<String>,
+
+    /// Optional flag to deploy the Linux Daemon inside an L2 VM (using cloud-hypervisor).
+    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
+    l2: Option<bool>,
 }
 
 //==================================================================================================
@@ -53,25 +74,22 @@ impl SandboxConfig {
     ///
     /// # Description
     ///
-    /// Creates a new sandbox configuration.
+    /// Creates a new sandbox configuration with the specified parameters.
     ///
     /// # Parameters
     ///
-    /// - `control_plane_sockaddr`: Socket address for the control plane.
-    /// - `control_plane_socket_type`: Socket type for the control plane.
-    /// - `gateway_sockaddr`: Socket address for the gateway.
-    /// - `gateway_socket_type`: Socket type for the gateway.
-    /// - `user_vm_sockaddr`: Socket address for the user VM.
-    /// - `system_vm_socket_type`: Socket type for the user VM to linuxd channel.
-    /// - `program`: Path to the program to run.
-    /// - `program_args`: Arguments for the program.
-    /// - `console_file`: File for console output.
-    /// - `hwloc`: Hardware locality configuration.
+    /// - `uservm_id`: Unique identifier for the User VM.
+    /// - `gateway_socket_info`: Information on gateway socket (address, socket type, optional L2 TCP port).
+    /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
+    /// - `console_file`: Optional file path for redirecting console output.
+    /// - `hwloc`: Optional hardware locality configuration.
     /// - `binary_directory`: Path to the binary directory.
-    /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `log_directory`: Path to the log directory.
-    /// - `l2`: Flag to deploy linuxd in an L2 VM.
-    /// - `gateway_l2_port`: Port for the gateway in the L2 VM.
+    /// - `syscall_table`: Optional system call table for overriding default system call behavior.
+    /// - `control_plane_socket_info`: Optional information on control plane socket (address, socket type).
+    /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
+    /// - `tmp_directory`: Optional path to the temporary directory.
+    /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
     ///
     /// # Returns
     ///
@@ -79,153 +97,82 @@ impl SandboxConfig {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        control_plane_sockaddr: &str,
-        control_plane_socket_type: &str,
-        gateway_sockaddr: &str,
-        gateway_socket_type: &str,
-        user_vm_sockaddr: &str,
-        system_vm_socket_type: &str,
-        program: &str,
-        program_args: Option<String>,
+        uservm_id: UserVmIdentifier,
+        gateway_socket_info: (String, SocketType, Option<TcpPort>),
+        system_vm_socket_info: (String, SocketType),
         console_file: Option<String>,
-        hwloc: Option<HwLoc>,
-        binary_directory: &str,
-        toolchain_binary_directory: &str,
-        log_directory: &str,
-        l2: bool,
-        gateway_l2_port: Option<TcpPort>,
+        hwloc: Option<hwloc::HwLoc>,
+        binary_directory: String,
+        log_directory: String,
+        syscall_table: Option<Arc<SyscallTable>>,
+        control_plane_socket_info: Option<(String, SocketType)>,
+        toolchain_binary_directory: Option<String>,
+        tmp_directory: Option<String>,
+        l2: Option<bool>,
     ) -> Self {
         Self {
-            control_plane_sockaddr: control_plane_sockaddr.to_string(),
-            control_plane_socket_type: control_plane_socket_type.to_string(),
-            gateway_sockaddr: gateway_sockaddr.to_string(),
-            gateway_socket_type: gateway_socket_type.to_string(),
-            user_vm_sockaddr: user_vm_sockaddr.to_string(),
-            system_vm_socket_type: system_vm_socket_type.to_string(),
-            program: program.to_string(),
-            program_args,
+            uservm_id,
+            gateway_socket_info,
+            system_vm_socket_info,
             console_file,
             hwloc,
-            binary_directory: binary_directory.to_string(),
-            toolchain_binary_directory: toolchain_binary_directory.to_string(),
-            log_directory: log_directory.to_string(),
+            binary_directory,
+            log_directory,
+            syscall_table,
+            control_plane_socket_info,
+            toolchain_binary_directory,
+            tmp_directory,
             l2,
-            _gateway_l2_port: gateway_l2_port,
         }
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket address for the control plane.
+    /// Returns the unique identifier for the User VM.
     ///
     /// # Returns
     ///
-    /// The socket address for the control plane.
+    /// The User VM identifier.
     ///
-    pub fn control_plane_sockaddr(&self) -> &str {
-        &self.control_plane_sockaddr
+    pub fn uservm_id(&self) -> UserVmIdentifier {
+        self.uservm_id
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket type for the control plane.
+    /// Returns the gateway socket information.
     ///
     /// # Returns
     ///
-    /// The socket type for the control plane.
+    /// A reference to the gateway socket information tuple.
     ///
-    pub fn control_plane_sockaddr_type(&self) -> &str {
-        &self.control_plane_socket_type
+    pub fn gateway_socket_info(&self) -> &(String, SocketType, Option<TcpPort>) {
+        &self.gateway_socket_info
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket address for linuxd's gateway socket.
+    /// Returns the system VM socket information.
     ///
     /// # Returns
     ///
-    /// The socket address for linuxd's gateway.
+    /// A reference to the system VM socket information tuple.
     ///
-    pub fn gateway_sockaddr(&self) -> &str {
-        &self.gateway_sockaddr
+    pub fn system_vm_socket_info(&self) -> &(String, SocketType) {
+        &self.system_vm_socket_info
     }
 
     ///
     /// # Description
     ///
-    /// Returns the socket type for linuxd's gateway socket.
+    /// Returns the optional file path for console output redirection.
     ///
     /// # Returns
     ///
-    /// The socket type for linuxd's gateway.
-    ///
-    pub fn gateway_sockaddr_type(&self) -> &str {
-        &self.gateway_socket_type
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the file path of the sandbox's program.
-    ///
-    /// # Returns
-    ///
-    /// The file path of the main program.
-    ///
-    pub fn program(&self) -> &str {
-        &self.program
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the argv of the sandbox's program.
-    ///
-    /// # Returns
-    ///
-    /// The argv of the main program.
-    ///
-    pub fn program_args(&self) -> Option<&str> {
-        self.program_args.as_deref()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the socket address for the user VM to linuxd communication.
-    ///
-    /// # Returns
-    ///
-    /// The socket address for the user VM.
-    ///
-    pub fn user_vm_sockaddr(&self) -> &str {
-        &self.user_vm_sockaddr
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the socket type for the user VM communication.
-    ///
-    /// # Returns
-    ///
-    /// The socket type for the user VM communication.
-    ///
-    pub fn system_vm_sockaddr_type(&self) -> &str {
-        &self.system_vm_socket_type
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the file for console output.
-    ///
-    /// # Returns
-    ///
-    /// The file for console output.
+    /// An optional reference to the console file path.
     ///
     pub fn console_file(&self) -> Option<&str> {
         self.console_file.as_deref()
@@ -234,13 +181,13 @@ impl SandboxConfig {
     ///
     /// # Description
     ///
-    /// Returns the hardware locality configuration.
+    /// Returns the hardware locality configuration if available.
     ///
     /// # Returns
     ///
-    /// The hardware locality configuration.
+    /// An optional clone of the hardware locality configuration.
     ///
-    pub fn hwloc(&self) -> Option<HwLoc> {
+    pub fn hwloc(&self) -> Option<hwloc::HwLoc> {
         self.hwloc.clone()
     }
 
@@ -260,16 +207,6 @@ impl SandboxConfig {
     ///
     /// # Description
     ///
-    /// Returns the path to the toolchain binary directory.
-    ///
-    /// # Returns
-    ///
-    /// The path to the toolchain binary directory.
-    ///
-    pub fn toolchain_binary_directory(&self) -> &str {
-        &self.toolchain_binary_directory
-    }
-
     /// Returns the log directory.
     ///
     /// # Returns
@@ -281,13 +218,82 @@ impl SandboxConfig {
     }
 
     ///
-    /// Returns the l2 flag.
+    /// # Description
+    ///
+    /// Returns the optional system call table.
     ///
     /// # Returns
     ///
-    /// The flag to enable deployment in an L2 VM.
+    /// An optional clone of the system call table.
     ///
-    pub fn l2(&self) -> bool {
+    pub fn syscall_table(&self) -> Option<Arc<SyscallTable>> {
+        self.syscall_table.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional control plane socket information.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the control plane socket information tuple.
+    ///
+    pub fn control_plane_socket_info(&self) -> Option<&(String, SocketType)> {
+        self.control_plane_socket_info.as_ref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional path to the toolchain binary directory.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the toolchain binary directory path.
+    ///
+    pub fn toolchain_binary_directory(&self) -> Option<&str> {
+        self.toolchain_binary_directory.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional path to the temporary directory.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the temporary directory path.
+    ///
+    pub fn tmp_directory(&self) -> Option<&str> {
+        self.tmp_directory.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional flag indicating whether the Linux Daemon should be deployed inside an L2 VM.
+    ///
+    /// # Returns
+    ///
+    /// An optional boolean flag for L2 VM deployment.
+    ///
+    pub fn l2(&self) -> Option<bool> {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Consumes the configuration and returns the gateway socket information tuple.
+    ///
+    /// This method is useful when ownership of the TcpPort is needed.
+    ///
+    /// # Returns
+    ///
+    /// The gateway socket information tuple.
+    ///
+    pub fn into_gateway_socket_info(self) -> (String, SocketType, Option<TcpPort>) {
+        self.gateway_socket_info
     }
 }

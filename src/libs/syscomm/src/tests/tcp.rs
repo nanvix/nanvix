@@ -25,7 +25,7 @@ use ::tokio::task::JoinHandle;
 #[tokio::test]
 async fn tcp_socket_read_exact_write_all_success() {
     let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
-        .bind("127.0.0.1:0".to_string())
+        .bind("127.0.0.1:0")
         .await
         .expect("bind failed");
 
@@ -51,7 +51,7 @@ async fn tcp_socket_read_exact_write_all_success() {
     };
 
     let mut client: SocketStream = UnboundSocket::new(SocketType::Tcp)
-        .connect(connect_target)
+        .connect(&connect_target)
         .await
         .expect("connect failed");
 
@@ -72,7 +72,7 @@ async fn tcp_socket_read_exact_write_all_success() {
 #[tokio::test]
 async fn tcp_socket_read_write_success() {
     let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
-        .bind("127.0.0.1:0".to_string())
+        .bind("127.0.0.1:0")
         .await
         .expect("bind failed");
 
@@ -112,7 +112,7 @@ async fn tcp_socket_read_write_success() {
     };
 
     let mut client: SocketStream = UnboundSocket::new(SocketType::Tcp)
-        .connect(connect_target)
+        .connect(&connect_target)
         .await
         .expect("connect failed");
 
@@ -145,7 +145,7 @@ async fn tcp_socket_read_write_success() {
 #[tokio::test]
 async fn tcp_socket_bind_invalid_address() {
     let res: ::std::io::Result<SocketListener> = UnboundSocket::new(SocketType::Tcp)
-        .bind("invalid:address".to_string())
+        .bind("invalid:address")
         .await;
     assert!(res.is_err());
 }
@@ -153,7 +153,7 @@ async fn tcp_socket_bind_invalid_address() {
 #[tokio::test]
 async fn tcp_socket_connect_invalid_address() {
     let res: ::std::io::Result<SocketStream> = UnboundSocket::new(SocketType::Tcp)
-        .connect("127.0.0.1:99999".to_string())
+        .connect("127.0.0.1:99999")
         .await;
     assert!(res.is_err());
 }

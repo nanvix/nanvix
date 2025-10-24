@@ -35,7 +35,7 @@ async fn unix_socket_read_exact_write_all_success() {
     let path: String = path.to_string_lossy().to_string();
 
     let listener: SocketListener = UnboundSocket::new(SocketType::Unix)
-        .bind(path.clone())
+        .bind(&path)
         .await
         .expect("unix bind failed");
 
@@ -48,7 +48,7 @@ async fn unix_socket_read_exact_write_all_success() {
     });
 
     let mut client: SocketStream = UnboundSocket::new(SocketType::Unix)
-        .connect(path.clone())
+        .connect(&path)
         .await
         .expect("unix connect failed");
 
@@ -75,7 +75,7 @@ async fn unix_socket_read_write() {
     let path: String = path.to_string_lossy().to_string();
 
     let listener: SocketListener = UnboundSocket::new(SocketType::Unix)
-        .bind(path.clone())
+        .bind(&path)
         .await
         .expect("unix bind failed");
 
@@ -102,7 +102,7 @@ async fn unix_socket_read_write() {
     });
 
     let mut client: SocketStream = UnboundSocket::new(SocketType::Unix)
-        .connect(path.clone())
+        .connect(&path)
         .await
         .expect("unix connect failed");
 
@@ -135,7 +135,7 @@ async fn unix_socket_read_write() {
 #[tokio::test]
 async fn unix_connect_missing() {
     let res: ::std::io::Result<SocketStream> = UnboundSocket::new(SocketType::Unix)
-        .connect("/nonexistent/path.sock".to_string())
+        .connect("/nonexistent/path.sock")
         .await;
     assert!(res.is_err());
 }

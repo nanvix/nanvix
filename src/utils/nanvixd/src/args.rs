@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Command-line argument parsing for Nanvix Daemon.
+//!
+//! This module provides functionality to parse and validate command-line arguments passed to
+//! the Nanvix Daemon. It handles various configuration options including network settings,
+//! directory paths, hardware topology, and deployment modes.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -21,34 +27,38 @@ use ::syscomm::SocketType;
 ///
 /// # Description
 ///
-/// Stores parsed command-line arguments supplied to nanvixd.
+/// Stores parsed command-line arguments for nanvixd.
+///
+/// This structure holds all configuration parameters provided via command-line arguments,
+/// including network settings, directory paths, hardware topology information, socket types,
+/// and deployment mode flags.
 ///
 #[derive(Debug, Clone)]
 pub struct Args {
-    /// HTTP server socket address.
+    /// HTTP server socket address (host:port).
     http_sockaddr: String,
-    /// Directory for temporary files.
+    /// Directory path for temporary files and Unix sockets.
     tmp_directory: String,
-    /// Directory where binary files are located.
+    /// Directory path containing Nanvix binaries.
     binary_directory: String,
-    /// Directory where toolchain binary files are located.
+    /// Directory path containing toolchain binaries (cloud-hypervisor, etc.).
     toolchain_binary_directory: String,
-    /// Path where to redirect the console output.
+    /// Optional file path for redirecting console output.
     console_file: Option<String>,
-    /// CPU Topology.
+    /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
-    // Whether to log to a file instead of stdout/stderr.
+    /// Flag indicating whether to log to files instead of stdout/stderr.
     log_to_file: bool,
-    // If logging to file, the directory to write log files to.
+    /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
-    // Whether the Linux Daemon (linuxd) must be deployed in an L2 VM or not.
+    /// Flag indicating whether to deploy linuxd inside an L2 VM.
     l2: bool,
-    /// Optional control plane socket type.
-    control_plane_socket_type: Option<String>,
-    /// Optional gateway socket type.
-    gateway_socket_type: Option<String>,
-    /// Optional system VM socket type.
-    system_vm_socket_type: Option<String>,
+    /// Optional socket type for control plane communication (nanvixd <-> linuxd).
+    control_plane_socket_type: Option<SocketType>,
+    /// Optional socket type for gateway communication (client <-> linuxd stdin/stdout).
+    gateway_socket_type: Option<SocketType>,
+    /// Optional socket type for system VM communication (linuxd <-> uservm).
+    system_vm_socket_type: Option<SocketType>,
 }
 
 //==================================================================================================
@@ -71,7 +81,7 @@ impl Args {
     /// Command-line option that loads the serialized CPU topology.
     pub const OPT_HWLOC: &'static str = "-hwloc";
     /// Command-line flag that enables logging to files.
-    pub const OPT_LOG_TO_FILE: &'static str = "--log-to-file";
+    pub const OPT_LOG_TO_FILE: &'static str = "-log-to-file";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
     /// Command-line flag that enables L2 deployment mode.
@@ -86,16 +96,19 @@ impl Args {
     ///
     /// # Description
     ///
-    /// Parses command-line arguments.
+    /// Parses command-line arguments into an Args structure.
+    ///
+    /// This function processes all supported command-line flags and options, validates them,
+    /// and enforces constraints such as requiring TCP sockets for L2 deployment mode.
     ///
     /// # Parameters
     ///
-    /// - `args`: Command-line arguments.
+    /// - `args`: Vector of command-line arguments to parse.
     ///
     /// # Returns
     ///
-    /// On success, this function returns the parsed arguments. Otherwise, it returns an object
-    /// that describes the error.
+    /// On success, returns the parsed arguments. On failure, returns an error describing
+    /// the parsing issue or validation failure.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: String = String::new();
@@ -108,9 +121,9 @@ impl Args {
         let mut log_to_file: bool = false;
         let mut log_directory: String = config::DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
-        let mut control_plane_socket_type: Option<String> = None;
-        let mut gateway_socket_type: Option<String> = None;
-        let mut system_vm_socket_type: Option<String> = None;
+        let mut control_plane_socket_type: Option<SocketType> = None;
+        let mut gateway_socket_type: Option<SocketType> = None;
+        let mut system_vm_socket_type: Option<SocketType> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -156,15 +169,15 @@ impl Args {
                 },
                 Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
                     i += 1;
-                    control_plane_socket_type = Some(args[i].clone());
+                    control_plane_socket_type = Some(args[i].parse()?);
                 },
                 Self::OPT_GATEWAY_SOCKET_TYPE => {
                     i += 1;
-                    gateway_socket_type = Some(args[i].clone());
+                    gateway_socket_type = Some(args[i].parse()?);
                 },
                 Self::OPT_SYSTEM_VM_SOCKET_TYPE => {
                     i += 1;
-                    system_vm_socket_type = Some(args[i].clone());
+                    system_vm_socket_type = Some(args[i].parse()?);
                 },
                 Self::OPT_LOG_TO_FILE => {
                     log_to_file = true;
@@ -184,21 +197,21 @@ impl Args {
         // If we deploy the Linux Daemon (linuxd) in an L2 VM, we need to make sure that all socket
         // types are set to TCP.
         if l2 {
-            if control_plane_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+            if control_plane_socket_type == Some(SocketType::Unix) {
                 anyhow::bail!("control-plane must use a tcp socket in l2 deployments");
             }
 
-            if gateway_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+            if gateway_socket_type == Some(SocketType::Unix) {
                 anyhow::bail!("gateway must use a tcp socket in l2 deployments");
             }
 
-            if system_vm_socket_type == Some(SocketType::UNIX_STR.to_string()) {
+            if system_vm_socket_type == Some(SocketType::Unix) {
                 anyhow::bail!("system vm must use a tcp socket in l2 deployments");
             }
 
-            control_plane_socket_type = Some(SocketType::TCP_STR.to_string());
-            gateway_socket_type = Some(SocketType::TCP_STR.to_string());
-            system_vm_socket_type = Some(SocketType::TCP_STR.to_string());
+            control_plane_socket_type = Some(SocketType::Tcp);
+            gateway_socket_type = Some(SocketType::Tcp);
+            system_vm_socket_type = Some(SocketType::Tcp);
         }
 
         Ok(Self {
@@ -220,11 +233,11 @@ impl Args {
     ///
     /// # Description
     ///
-    /// Prints program usage.
+    /// Prints program usage information to stdout.
     ///
     /// # Parameters
     ///
-    /// - `program_name`: Name of the program.
+    /// - `program_name`: Name of the program executable.
     ///
     pub fn usage(program_name: &str) {
         println!(
@@ -375,10 +388,8 @@ impl Args {
     ///
     /// The control plane socket type.
     ///
-    pub fn control_plane_socket_type(&self) -> &str {
-        self.control_plane_socket_type
-            .as_deref()
-            .unwrap_or(SocketType::UNIX_STR)
+    pub fn control_plane_socket_type(&self) -> SocketType {
+        self.control_plane_socket_type.unwrap_or(SocketType::Unix)
     }
 
     ///
@@ -390,10 +401,8 @@ impl Args {
     ///
     /// The gateway socket type.
     ///
-    pub fn gateway_socket_type(&self) -> &str {
-        self.gateway_socket_type
-            .as_deref()
-            .unwrap_or(SocketType::UNIX_STR)
+    pub fn gateway_socket_type(&self) -> SocketType {
+        self.gateway_socket_type.unwrap_or(SocketType::Unix)
     }
 
     ///
@@ -405,9 +414,7 @@ impl Args {
     ///
     /// The system VM socket type.
     ///
-    pub fn system_vm_socket_type(&self) -> &str {
-        self.system_vm_socket_type
-            .as_deref()
-            .unwrap_or(SocketType::UNIX_STR)
+    pub fn system_vm_socket_type(&self) -> SocketType {
+        self.system_vm_socket_type.unwrap_or(SocketType::Unix)
     }
 }

@@ -1,25 +1,22 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! HTTP client handler for Nanvix Daemon.
+//!
+//! This module implements the HTTP service handler that processes incoming client requests.
+//! It deserializes messages, routes them to appropriate handlers (NEW, KILL), and constructs
+//! JSON responses. The implementation uses Hyper's Service trait for async request handling.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    args::Args,
     cache::SandboxCache,
     config,
     message::{
         self,
         MessageType,
-    },
-    sandbox::{
-        config::SandboxConfig,
-        tag::SandboxTag,
-        tcp_port::{
-            get_tcp_port_allocator,
-            TcpPort,
-        },
     },
 };
 use ::anyhow::Result;
@@ -48,32 +45,56 @@ use ::syslog::{
     trace,
 };
 use ::tokio::sync::Mutex;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-pub struct HttpClient {
+///
+/// # Description
+///
+/// HTTP client handler for the Nanvix Daemon.
+///
+/// This structure implements the Hyper Service trait to process incoming HTTP requests.
+/// It deserializes request bodies, routes them to appropriate handlers based on message
+/// type headers, and constructs JSON responses.
+///
+pub(crate) struct HttpClient {
+    /// Shared handle to the sandbox cache for managing sandboxes.
     sandbox_cache: Arc<Mutex<SandboxCache>>,
-    args: Arc<Args>,
 }
 
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
 impl HttpClient {
-    pub fn new(sandbox_cache: Arc<Mutex<SandboxCache>>, args: Arc<Args>) -> Self {
-        Self {
-            sandbox_cache,
-            args,
-        }
+    ///
+    /// # Description
+    ///
+    /// Creates a new HTTP client handler with access to the sandbox cache.
+    ///
+    /// # Parameters
+    ///
+    /// - `sandbox_cache`: Shared handle to the sandbox cache.
+    ///
+    /// # Returns
+    ///
+    /// A new HTTP client handler ready to process requests.
+    ///
+    pub(crate) fn new(sandbox_cache: Arc<Mutex<SandboxCache>>) -> Self {
+        Self { sandbox_cache }
     }
 
     ///
     /// # Description
     ///
-    /// Helper function that creates a "bad request" response.
+    /// Helper function that creates an HTTP "Bad Request" (400) response.
     ///
     /// # Returns
     ///
-    /// A "bad request" response.
+    /// An HTTP response with status code 400.
     ///
     fn bad_request() -> Response<Full<Bytes>> {
         let mut bad_request: Response<Full<Bytes>> = Response::new(Full::new(Bytes::new()));
@@ -84,11 +105,11 @@ impl HttpClient {
     ///
     /// # Description
     ///
-    /// Helper function that creates an "internal server error" response.
+    /// Helper function that creates an HTTP "Internal Server Error" (500) response.
     ///
     /// # Returns
     ///
-    /// An "internal server error" response.
+    /// An HTTP response with status code 500.
     ///
     fn internal_server_error() -> Response<Full<Bytes>> {
         let mut internal_server_error: Response<Full<Bytes>> =
@@ -97,86 +118,70 @@ impl HttpClient {
         internal_server_error
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a NEW request to create a new sandbox.
+    ///
+    /// This function retrieves or creates a sandbox matching the request parameters and returns
+    /// the User VM identifier and gateway socket address for client communication.
+    ///
+    /// # Parameters
+    ///
+    /// - `sandbox_cache`: Shared handle to the sandbox cache.
+    /// - `message`: NEW message containing tenant, program, and argument information.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns a NewResponse containing the User VM ID and gateway socket address.
+    /// On failure, returns an error describing what went wrong.
+    ///
     async fn serve_new(
         sandbox_cache: Arc<Mutex<SandboxCache>>,
-        args: Arc<Args>,
         message: &message::New,
     ) -> Result<message::NewResponse> {
-        trace!("serve_new(): {args:?}, {message:?}");
+        trace!("serve_new(): {message:?}");
 
-        let tag: SandboxTag = SandboxTag::new(&message.tenant_id, &message.app_name);
-        let tmp_directory: &str = args.tmp_directory();
-        let in_l2: bool = args.l2();
-
-        let control_plane_sockaddr: String =
-            config::control_plane_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
-        let user_vm_sockaddr: String =
-            config::user_vm_sockaddr_builder(tmp_directory, tag.tenant_id(), in_l2)?;
-
-        // Take a lock on the sandbox cache so that we can get the next available port, and then
-        // get the sandbox from the cache.
-        let mut locked_sandbox_cache = sandbox_cache.lock().await;
-
-        // Work-out the gateway address. We use one per user VM instance.
-        let gateway_l2_port: Option<TcpPort> = if in_l2 {
-            match get_tcp_port_allocator().lock().await.allocate().await {
-                Some(port) => Some(port),
-                None => {
-                    let reason: String = "failed to allocate TCP port for gateway".to_string();
-                    error!("{reason}");
-                    return Err(::anyhow::anyhow!("{reason}"));
+        // Get (or create) sandbox.
+        let (user_vm_id, gateway_sockaddr): (UserVmIdentifier, String) = sandbox_cache
+            .lock()
+            .await
+            .get(
+                &message.tenant_id,
+                &message.program,
+                &message.app_name,
+                if message.program_args.is_empty() {
+                    None
+                } else {
+                    Some(message.program_args.clone())
                 },
-            }
-        } else {
-            None
-        };
-
-        let gateway_sockaddr: String = config::gateway_sockaddr_builder(
-            tmp_directory,
-            tag.tenant_id(),
-            tag.sandbox_id(),
-            &gateway_l2_port,
-        )?;
-
-        let program_args = match message.program_args.len() {
-            0 => None,
-            _ => Some(message.program_args.clone()),
-        };
-
-        let control_plane_socket_type: &str = args.control_plane_socket_type();
-        let gateway_socket_type: &str = args.gateway_socket_type();
-        let system_vm_socket_type: &str = args.system_vm_socket_type();
-
-        let config: SandboxConfig = SandboxConfig::new(
-            &control_plane_sockaddr,
-            control_plane_socket_type,
-            &gateway_sockaddr,
-            gateway_socket_type,
-            &user_vm_sockaddr,
-            system_vm_socket_type,
-            &message.program,
-            program_args.clone(),
-            args.console_file().clone(),
-            args.hwloc().clone(),
-            args.binary_directory(),
-            args.toolchain_binary_directory(),
-            args.log_directory(),
-            args.l2(),
-            // Pass ownership of the L2 gateway port, if L2 deployment enabled.
-            gateway_l2_port,
-        );
-
-        // This method will create a sandbox if it is not in the cache.
-        let _ = locked_sandbox_cache
-            .get(&tag, Some(config), args.tmp_directory().to_string())
+            )
             .await?;
 
         Ok(message::NewResponse {
-            user_vm_id: tag.sandbox_id(),
-            gateway_sockaddr: gateway_sockaddr.clone(),
+            user_vm_id,
+            gateway_sockaddr,
         })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a KILL request to terminate an existing sandbox.
+    ///
+    /// This function removes the specified sandbox from the cache and terminates its associated
+    /// User VM instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `sandbox_cache`: Shared handle to the sandbox cache.
+    /// - `message`: KILL message containing the User VM identifier to terminate.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns a KillResponse with exit code 0. On failure, returns a response
+    /// with a non-zero exit code.
+    ///
     async fn serve_kill(
         sandbox_cache: Arc<Mutex<SandboxCache>>,
         message: &message::Kill,
@@ -200,7 +205,6 @@ impl Service<Request<Incoming>> for HttpClient {
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         // Clone all necessary values before moving them into the future
         let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
-        let args: Arc<Args> = self.args.clone();
         let future = async move {
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
@@ -237,13 +241,7 @@ impl Service<Request<Incoming>> for HttpClient {
                         },
                     };
 
-                    debug!("serving NEW message:");
-                    debug!("- tenant id: {}", msg.tenant_id);
-                    debug!("- app name: {}", msg.app_name);
-                    debug!("- program file: {}", msg.program);
-                    debug!("- program args: {}", msg.program_args);
-
-                    match Self::serve_new(sandbox_cache, args, &msg).await {
+                    match Self::serve_new(sandbox_cache, &msg).await {
                         Ok(response) => message::MessageResponse::New(response),
                         Err(_) => {
                             error!("error processing NEW request");

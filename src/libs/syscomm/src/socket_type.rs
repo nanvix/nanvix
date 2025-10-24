@@ -39,6 +39,22 @@ impl SocketType {
 
     /// String representation for Unix sockets.
     pub const UNIX_STR: &'static str = "unix";
+
+    ///
+    /// # Description
+    ///
+    /// Converts the socket type to a string.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a string representation of the socket type.
+    ///
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            SocketType::Tcp => Self::TCP_STR,
+            SocketType::Unix => Self::UNIX_STR,
+        }
+    }
 }
 
 impl FromStr for SocketType {

@@ -78,7 +78,7 @@ impl UnboundSocket {
     /// - On Success: A socket stream connected to the specified address.
     /// - On Failure: An error value.
     ///
-    pub async fn connect(self, addr: String) -> Result<SocketStream> {
+    pub async fn connect(self, addr: &str) -> Result<SocketStream> {
         trace!("connect(): addr={addr}");
         // Match socket type.
         match self.typ {
@@ -130,7 +130,7 @@ impl UnboundSocket {
     /// - On Success: A socket that is bound and ready to accept incoming connections.
     /// - On Failure: An error value.
     ///
-    pub async fn bind(self, addr: String) -> Result<SocketListener> {
+    pub async fn bind(self, addr: &str) -> Result<SocketListener> {
         trace!("bind(): addr={addr}");
         // Match socket type.
         match self.typ {
@@ -156,10 +156,10 @@ impl UnboundSocket {
                 }
             },
             // Bind a unix domain socket.
-            SocketType::Unix => match UnixListener::bind(&addr) {
+            SocketType::Unix => match UnixListener::bind(addr) {
                 Ok(listener) => Ok(SocketListener::Unix {
                     listener,
-                    path: addr,
+                    path: addr.to_string(),
                 }),
                 Err(error) => {
                     let reason: String = format!("bind(): {error}");

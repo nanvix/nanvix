@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Nanvix Daemon (nanvixd) entry point.
+//!
+//! This is the main executable for the Nanvix Daemon, which manages sandboxed execution
+//! environments for user applications. It provides an HTTP API for creating and managing
+//! user VM instances and handles their lifecycle.
+
 //==================================================================================================
 // Configuration
 //==================================================================================================
@@ -13,46 +19,38 @@
 // Modules
 //==================================================================================================
 
-mod args;
-mod cache;
-mod config;
-mod http;
-mod message;
-mod sandbox;
-
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::{
-    args::Args,
-    cache::SandboxCache,
-    http::HttpClient,
-};
 use ::anyhow::Result;
-use ::hyper::server::conn::http1;
-use ::hyper_util::rt::TokioIo;
+use ::nanvixd::{
+    args::Args,
+    cache::config::SandboxCacheConfig,
+    http::HttpServer,
+};
 use ::std::sync::Arc;
 use ::syslog::{
-    debug,
     error,
     info,
-};
-use ::tokio::{
-    net::{
-        TcpListener,
-        TcpStream,
-    },
-    signal::unix::{
-        signal,
-        Signal,
-        SignalKind,
-    },
-    sync::Mutex,
 };
 
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Entry point for the Nanvix Daemon.
+///
+/// This function initializes the daemon by parsing command-line arguments, setting up logging,
+/// configuring the sandbox cache, and starting the HTTP server to listen for client requests.
+/// It runs until interrupted by a signal.
+///
+/// # Returns
+///
+/// On success, returns an empty tuple after graceful shutdown. On failure, returns an error
+/// describing what went wrong during initialization or execution.
+///
 #[tokio::main]
 pub async fn main() -> Result<()> {
     let args: Arc<Args> =
@@ -65,54 +63,22 @@ pub async fn main() -> Result<()> {
     #[cfg(not(feature = "single-process"))]
     info!("nanvixd {} multi-process mode", env!("CARGO_PKG_VERSION"));
 
-    let mut signals: Signal = signal(SignalKind::interrupt())?;
-    let http_listener: TcpListener = TcpListener::bind(args.http_sockaddr()).await?;
-    let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new();
+    let config: SandboxCacheConfig = SandboxCacheConfig::new(
+        args.control_plane_socket_type(),
+        args.gateway_socket_type(),
+        args.system_vm_socket_type(),
+        args.console_file().clone(),
+        args.hwloc().clone(),
+        args.binary_directory(),
+        args.toolchain_binary_directory(),
+        args.log_directory(),
+        args.l2(),
+        args.tmp_directory(),
+    );
 
-    loop {
-        tokio::select! {
-           result = http_listener.accept() => {
-                match result {
-                    Ok((stream, sockaddr)) => {
-                        debug!("accepted connection from {sockaddr:?}");
-                        let sandbox_cache_clone: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
-                        let args_clone: Arc<Args> = args.clone();
-                        // In single-process mode, handle connections sequentially.
-                        #[cfg(feature = "single-process")]
-                        {
-                            let client: HttpClient = HttpClient::new(sandbox_cache_clone, args_clone);
-                            let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                            if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
-                                error!("failed to serve connection (error={e:?})");
-                            }
-                        }
-                        #[cfg(not(feature = "single-process"))]
-                        {
-                            tokio::spawn(async move {
-                                    let client: HttpClient = HttpClient::new(sandbox_cache_clone, args_clone);
-                                let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                                if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
-                                    error!("failed to serve connection (error={e:?})");
-                                }
-                            });
-                        }
-                    },
-                    Err(e) => {
-                        error!("failed to accept connection ({e:?})");
-                    },
-                }
-            },
-            _ = signals.recv() => {
-                info!("received exit signal, stopping...");
-                sandbox_cache
-                    .clone()
-                    .lock()
-                    .await
-                    .cleanup()
-                    .await;
-                break;
-            },
-        }
+    let mut http_server: HttpServer = HttpServer::new(args.http_sockaddr(), config);
+    if let Err(error) = http_server.run().await {
+        error!("HTTP server failed: {}", error);
     }
 
     Ok(())
