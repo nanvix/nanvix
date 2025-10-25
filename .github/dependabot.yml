@@ -10,6 +10,7 @@ updates:
     open-pull-requests-limit: 20
     pull-request-branch-name:
       separator: "-"
+
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
@@ -20,11 +21,13 @@ updates:
     open-pull-requests-limit: 20
     pull-request-branch-name:
       separator: "-"
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "chore(deps)"
     ignore:
       - dependency-name: "hyperlight-common"
       - dependency-name: "hyperlight-host"
       - dependency-name: "hyperlight-guest"
-
     groups:
       kvm-stack:
         patterns:
