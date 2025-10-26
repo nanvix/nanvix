@@ -26,7 +26,7 @@ export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 #===============================================================================
 
 all: $(OBJECTS)
-	$(CXX) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
+	$(NANVIX_CXX) $(NANVIX_LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
 
 clean:
 	rm -rf $(OBJECTS)
@@ -34,4 +34,4 @@ clean:
 
 # Builds C++ source files.
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) $< -c -o $@
+	$(NANVIX_CXX) $(NANVIX_CXXFLAGS) $< -c -o $@

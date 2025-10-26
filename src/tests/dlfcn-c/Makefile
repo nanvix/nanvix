@@ -29,14 +29,14 @@ REQUIRED_TYPES = R_386_RELATIVE R_386_PC32 R_386_GLOB_DAT R_386_32 R_386_JUMP_SL
 #===============================================================================
 
 all: $(OBJECTS) libs-all
-	$(CC) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
+	$(NANVIX_CC) $(NANVIX_LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
 
 clean: libs-clean
 	rm -rf $(OBJECTS)
 	rm -rf $(BINARIES_DIR)/$(BINARY)
 
 libs-all:
-	$(CC) libs/mul.c -shared -fPIC -o $(LIBRARIES_DIR)/libmul.so
+	$(NANVIX_CC) libs/mul.c -shared -fPIC -o $(LIBRARIES_DIR)/libmul.so
 	@for TYPE in $(REQUIRED_TYPES); do \
 	if ! readelf -r $(LIBRARIES_DIR)/libmul.so | grep -q $$TYPE; then \
 	echo "Error: Relocation type $$TYPE not found in $(LIBRARIES_DIR)/libmul.so"; \
@@ -49,4 +49,4 @@ libs-clean:
 
 # Builds C source files.
 %.$(TARGET).$(MACHINE).o: %.c
-	$(CC) $(CFLAGS) $< -c -o $@
+	$(NANVIX_CC) $(NANVIX_CFLAGS) $< -c -o $@
