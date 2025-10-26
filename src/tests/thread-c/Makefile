@@ -26,7 +26,7 @@ export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 #===============================================================================
 
 all: $(OBJECTS)
-	$(CC) $(LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
+	$(NANVIX_CC) $(NANVIX_LDFLAGS) $(OBJECTS) $(LIBRARIES) -o $(BINARIES_DIR)/$(BINARY)
 
 clean:
 	rm -rf $(OBJECTS)
@@ -34,4 +34,4 @@ clean:
 
 # Builds C source files.
 %.$(TARGET).$(MACHINE).o: %.c
-	$(CC) $(CFLAGS) $< -c -o $@
+	$(NANVIX_CC) $(NANVIX_CFLAGS) $< -c -o $@

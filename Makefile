@@ -150,56 +150,58 @@ export NANVIX_MACHINE := $(MACHINE)
 #===================================================================================================
 
 # Tools
-export CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
-export CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
+export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
+export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
 
 # SCCACHE integration for C/C++ compilation (optional)
 ifneq ($(SCCACHE),)
 export CC := $(SCCACHE) $(CC)
 export CXX := $(SCCACHE) $(CXX)
+export NANVIX_CC := $(SCCACHE) $(NANVIX_CC)
+export NANVIX_CXX := $(SCCACHE) $(NANVIX_CXX)
 endif
 
 # C Compiler Options
-export CFLAGS := -std=c17
-export CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-export CFLAGS += -Wall -Wextra -Werror
-export CFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
-export CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
-export CFLAGS += -Wvla -Wredundant-decls
-export CFLAGS += -pedantic-errors
-export CFLAGS += -Wstack-usage=4096
-export CFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
-export CFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
-export CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
+export NANVIX_CFLAGS := -std=c17
+export NANVIX_CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
+export NANVIX_CFLAGS += -Wall -Wextra -Werror
+export NANVIX_CFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
+export NANVIX_CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
+export NANVIX_CFLAGS += -Wvla -Wredundant-decls
+export NANVIX_CFLAGS += -pedantic-errors
+export NANVIX_CFLAGS += -Wstack-usage=4096
+export NANVIX_CFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
+export NANVIX_CFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
+export NANVIX_CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # C++ Compiler Options
-export CXXFLAGS := -std=c++17
-export CXXFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-export CXXFLAGS += -Wall -Wextra -Werror
-export CXXFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
-export CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
-export CXXFLAGS += -Wvla -Wredundant-decls
-export CXXFLAGS += -pedantic-errors
-export CXXFLAGS += -Wstack-usage=4096
-export CXXFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
-export CXXFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
-export CXXFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
+export NANVIX_CXXFLAGS := -std=c++17
+export NANVIX_CXXFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
+export NANVIX_CXXFLAGS += -Wall -Wextra -Werror
+export NANVIX_CXXFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
+export NANVIX_CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
+export NANVIX_CXXFLAGS += -Wvla -Wredundant-decls
+export NANVIX_CXXFLAGS += -pedantic-errors
+export NANVIX_CXXFLAGS += -Wstack-usage=4096
+export NANVIX_CXXFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
+export NANVIX_CXXFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
+export NANVIX_CXXFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # Linker Options
-export LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
+export NANVIX_LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
 
 # Optimization Flags
 ifeq ($(RELEASE), yes)
-export CFLAGS += -O3
-export CXXFLAGS += -O3
-export CFLAGS += -D__RELEASE
-export CXXFLAGS += -D__RELEASE
+export NANVIX_CFLAGS += -O3
+export NANVIX_CXXFLAGS += -O3
+export NANVIX_CFLAGS += -D__RELEASE
+export NANVIX_CXXFLAGS += -D__RELEASE
 else
-export CFLAGS += -O0
-export CFLAGS += -g
-export CXXFLAGS += -O0
-export CFLAGS += -D__DEBUG
-export CXXFLAGS += -D__DEBUG
+export NANVIX_CFLAGS += -O0
+export NANVIX_CFLAGS += -g
+export NANVIX_CXXFLAGS += -O0
+export NANVIX_CFLAGS += -D__DEBUG
+export NANVIX_CXXFLAGS += -D__DEBUG
 endif
 
 #===================================================================================================
