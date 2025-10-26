@@ -1,23 +1,31 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Linux Daemon management for multi-process mode.
+//!
+//! This module provides functionality to spawn and manage Linux Daemon instances as separate
+//! processes. It handles process lifecycle, control-plane communication, and supports both
+//! native execution and L2 VM deployment using cloud-hypervisor.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::config::{
-    get_clh_api_socket_path,
-    get_clh_bin_dir,
-    get_clh_snapshot_path,
-    CONTROL_PLANE_ACCEPT_TIMEOUT,
-    SHUTDOWN_TIMEOUT,
+use crate::{
+    config::{
+        get_clh_api_socket_path,
+        get_clh_bin_dir,
+        get_clh_snapshot_path,
+        CONTROL_PLANE_ACCEPT_TIMEOUT,
+        SHUTDOWN_TIMEOUT,
+    },
+    sandbox::LinuxDaemonArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
-use ::hwloc::HwLoc;
 use ::linuxd::{
     args,
     config::{
@@ -60,8 +68,15 @@ const RESTORE_GATE_BYTES: [u8; 1] = [0];
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Handle to a running Linux Daemon instance spawned as a separate process.
+///
 pub struct LinuxDaemon {
+    /// Child process handle.
     child: Child,
+    /// Control-plane socket stream.
     control_plane_stream: SocketStream,
 }
 
@@ -70,13 +85,25 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
+    ///
+    /// # Description
+    ///
     /// Helper method to resume linuxd from a snapshot.
     ///
     /// We need to do two steps after we restore linuxd's state from a snapshot (in an L2 VM).
     /// First we need to actually resume the VM's execution using cloud-hypervisor's API socket.
     /// Then we need to "unlock" linuxd from a pre-snapshot gate that we use to control exactly
     /// when the VM is snapshotted.
-    async fn resume_l2_vm(clh_api_socket_path: String) -> Result<()> {
+    ///
+    /// # Parameters
+    ///
+    /// - `clh_api_socket_path`: Path to the cloud-hypervisor API socket.
+    ///
+    /// # Returns
+    ///
+    /// On success, an empty tuple is returned. On failure, an error is returned instead.
+    ///
+    async fn resume_l2_vm(clh_api_socket_path: &str) -> Result<()> {
         let resume_req: &str = concat!(
             "PUT /api/v1/vm.resume HTTP/1.1\r\n",
             "Host: localhost\r\n",
@@ -90,7 +117,7 @@ impl LinuxDaemon {
         let mut clh_api_socket: SocketStream = loop {
             match unbound_clh_api_socket
                 .clone()
-                .connect(clh_api_socket_path.clone())
+                .connect(clh_api_socket_path)
                 .await
             {
                 Ok(stream) => {
@@ -150,7 +177,7 @@ impl LinuxDaemon {
         // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
         let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
         let mut stream: SocketStream = unbound_socket
-            .connect(restore_gate_sockaddr_builder())
+            .connect(&restore_gate_sockaddr_builder())
             .await?;
         if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
             error!("failed to write restore gate bytes (error={e:?})");
@@ -160,6 +187,16 @@ impl LinuxDaemon {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Helper method to send a SIGKILL to the linuxd process in case it is faulty and we need to
+    /// clean-up.
+    ///
+    /// # Parameters
+    ///
+    /// - `child`: The linuxd process handle.
+    ///
     fn send_sigkill_to_child(child: &Child) {
         if let Some(pid) = child.id() {
             debug!("killing linuxd instance (pid={pid:?})");
@@ -167,25 +204,34 @@ impl LinuxDaemon {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// # Description
+    ///
+    /// Spawns a new Linux Daemon instance as a separate process.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: Linux Daemon arguments.
+    /// - `control_plane_listener`: Control-plane socket listener.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns a handle to the spawned Linux Daemon instance. On failure,
+    /// this function returns an error object instead.
+    ///
     pub async fn spawn(
-        control_plane_sockaddr: &str,
-        user_vm_sockaddr: &str,
-        hwloc: Option<HwLoc>,
-        binary_directory: &str,
-        toolchain_binary_directory: &str,
-        log_directory: &str,
+        args: &LinuxDaemonArgs,
         control_plane_listener: &mut SocketListener,
-        l2: bool,
-        tmp_directory: String,
     ) -> Result<Self> {
         debug!(
-            "spawning linux daemon (control-plane={control_plane_sockaddr}, \
-             user-vm={user_vm_sockaddr}, l2={l2})"
+            "spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
+            args.control_plane_socket_info(),
+            args.system_vm_socket_info(),
+            args.l2()
         );
 
-        let clh_api_socket_path: String = get_clh_api_socket_path(&tmp_directory);
-        let mut linuxd_args: Vec<String> = if l2 {
+        let clh_api_socket_path: String = get_clh_api_socket_path(args.tmp_directory());
+        let mut linuxd_args: Vec<String> = if args.l2() {
             match std::fs::remove_file(&clh_api_socket_path) {
                 Ok(()) => {},
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
@@ -197,7 +243,7 @@ impl LinuxDaemon {
             };
 
             vec![
-                format!("{}/cloud-hypervisor", get_clh_bin_dir(toolchain_binary_directory)?),
+                format!("{}/cloud-hypervisor", get_clh_bin_dir(args.toolchain_binary_directory())?),
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
                 args::Args::OPT_CLH_RESTORE.to_string(),
@@ -205,18 +251,22 @@ impl LinuxDaemon {
             ]
         } else {
             vec![
-                format!("{}/linuxd.elf", binary_directory),
+                format!("{}/linuxd.elf", args.binary_directory()),
                 args::Args::OPT_LOGFILE.to_string(),
                 args::Args::OPT_LOGDIR.to_string(),
-                log_directory.to_string(),
+                args.log_directory().to_string(),
                 args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
-                control_plane_sockaddr.to_string(),
+                args.control_plane_socket_info().0.clone(),
+                args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
+                args.control_plane_socket_info().1.to_str().to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
-                user_vm_sockaddr.to_string(),
+                args.system_vm_socket_info().0.clone(),
+                args::Args::OPT_USER_VM_BIND_SOCKET_TYPE.to_string(),
+                args.system_vm_socket_info().1.to_str().to_string(),
             ]
         };
         trace!("linuxd args: {:?}", linuxd_args);
-        if let Some(hwloc) = hwloc {
+        if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
                 "-ac".to_string(),
@@ -232,8 +282,8 @@ impl LinuxDaemon {
             .stderr(Stdio::inherit())
             .spawn()?;
 
-        if l2 {
-            if let Err(e) = Self::resume_l2_vm(clh_api_socket_path).await {
+        if args.l2() {
+            if let Err(e) = Self::resume_l2_vm(&clh_api_socket_path).await {
                 let reason: String = format!("error resuming L2 VM (error={e:?})");
                 error!("{reason}");
 

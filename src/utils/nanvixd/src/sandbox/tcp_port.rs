@@ -1,6 +1,13 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! TCP port allocation and management.
+//!
+//! This module provides RAII-based TCP port allocation for L2 deployment mode. It maintains
+//! a pool of available TCP ports and ensures proper cleanup when ports are no longer needed.
+//! The port allocator uses a mutex-protected pool to safely manage ports across concurrent
+//! operations.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -25,7 +32,10 @@ pub type RawTcpPortNum = u16;
 ///
 /// # Description
 ///
-/// A TCP port wrapper that ensures that we do not leak ports after a user VM dies.
+/// A TCP port wrapper that ensures ports are properly released when no longer needed.
+///
+/// This structure implements RAII semantics so that TCP ports allocated for L2 gateway
+/// connections are automatically returned to the pool when the port is dropped.
 ///
 pub struct TcpPort {
     port: RawTcpPortNum,
@@ -33,6 +43,20 @@ pub struct TcpPort {
 }
 
 impl TcpPort {
+    ///
+    /// # Description
+    ///
+    /// Creates a new TCP port.
+    ///
+    /// # Parameters
+    ///
+    /// - `port`: TCP port number.
+    /// - `allocator`: TCP port allocator.
+    ///
+    /// # Returns
+    ///
+    /// A new TCP port.
+    ///
     fn new(port: RawTcpPortNum, allocator: TcpPortAllocatorInner) -> Self {
         Self { port, allocator }
     }
@@ -57,7 +81,7 @@ impl Drop for TcpPort {
 ///
 /// # Description
 ///
-/// Pool of TCP ports that are ready to be used.
+/// Pool of available TCP ports.
 ///
 #[derive(Clone)]
 struct TcpPortAllocatorInner {
@@ -68,11 +92,11 @@ impl TcpPortAllocatorInner {
     ///
     /// # Description
     ///
-    /// Allocate a free TCP port from the pool.
+    /// Allocates a free TCP port from the pool.
     ///
     /// # Returns
     ///
-    /// A TCP port if there are any in the pool, None otherwise.
+    /// A TCP port if there are any in the pool, or `None` otherwise.
     ///
     async fn allocate(&mut self) -> Option<RawTcpPortNum> {
         self.ports.lock().await.pop()
@@ -81,11 +105,11 @@ impl TcpPortAllocatorInner {
     ///
     /// # Description
     ///
-    /// Return a TCP port to the pool.
+    /// Returns a TCP port to the pool.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
-    /// The TCP port to return.
+    /// - `port`: The TCP port to return.
     ///
     async fn release(&self, port: RawTcpPortNum) {
         self.ports.lock().await.push(port)
@@ -106,18 +130,18 @@ impl TcpPortAllocator {
     ///
     /// # Description
     ///
-    /// Initialize a new TCP port pool and allocator.
+    /// Initializes a new TCP port allocator with the specified port range.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
-    /// - begin: the beginning of the port range we can use.
-    /// - end: the ending of the port range we can use.
+    /// - `begin`: The beginning of the port range (inclusive).
+    /// - `end`: The end of the port range (inclusive).
     ///
     /// # Returns
     ///
-    /// A wrapper around the TCP port pool allocator.
+    /// A new TCP port allocator.
     ///
-    fn new(begin: RawTcpPortNum, end: RawTcpPortNum) -> Self {
+    pub fn new(begin: RawTcpPortNum, end: RawTcpPortNum) -> Self {
         let mut ports: Vec<RawTcpPortNum> = Vec::with_capacity((end - begin + 1) as usize);
         for port in begin..=end {
             ports.push(port);
@@ -133,11 +157,12 @@ impl TcpPortAllocator {
     ///
     /// # Description
     ///
-    /// Allocate a TCP port and return a RAII guard.
+    /// Allocates a TCP port and returns a RAII guard that will automatically release the port
+    /// when dropped.
     ///
     /// # Returns
     ///
-    /// A RAII wrapper around a raw TCP port.
+    /// A RAII wrapper around a raw TCP port, or `None` if no ports are available.
     ///
     pub async fn allocate(&mut self) -> Option<TcpPort> {
         if let Some(port) = self.inner.allocate().await {
@@ -146,30 +171,4 @@ impl TcpPortAllocator {
             None
         }
     }
-}
-
-///
-/// # Description
-///
-/// Global static TCP port pool and allocator.
-///
-pub static TCP_PORT_ALLOCATOR: ::std::sync::OnceLock<Arc<Mutex<TcpPortAllocator>>> =
-    ::std::sync::OnceLock::new();
-
-///
-/// # Description
-///
-/// Initializes the global TCP port allocator if it hasn't been initialized yet.
-///
-/// # Returns
-///
-/// A reference to the global TCP port allocator.
-///
-pub fn get_tcp_port_allocator() -> &'static Arc<Mutex<TcpPortAllocator>> {
-    TCP_PORT_ALLOCATOR.get_or_init(|| {
-        Arc::new(Mutex::new(TcpPortAllocator::new(
-            ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
-            ::config::linuxd::GATEWAY_PORT_RANGE_END,
-        )))
-    })
 }
