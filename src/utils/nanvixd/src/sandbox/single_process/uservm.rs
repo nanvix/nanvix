@@ -1,16 +1,19 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! User VM management for single-process mode.
+//!
+//! This module provides functionality to spawn and manage User VM instances as async tasks
+//! within the same process. This mode simplifies testing and development by running all
+//! components in a single process, making debugging and profiling easier.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
     config::CONTROL_PLANE_ACCEPT_TIMEOUT,
-    sandbox::{
-        config::SandboxConfig,
-        tag::SandboxTag,
-    },
+    sandbox::UserVmArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -55,7 +58,6 @@ use ::uservm::{
         IoControlResponse,
     },
     UserVm as EmbeddedUserVm,
-    UserVmArgs,
     CHANNEL_CAPACITY,
 };
 
@@ -70,12 +72,9 @@ use ::uservm::{
 ///
 pub struct UserVm {
     /// Underlying task.
-    ///
     task: Mutex<Option<JoinHandle<Result<ExitCode>>>>,
+    /// Control-plane socket stream.
     control_plane_stream: SocketStream,
-    /// Configuration for this sandbox instance. It includes a RAII handle around the TCP
-    /// port used for the gateway of this user VM if linuxd is deployed in an L2 VM.
-    _config: SandboxConfig,
 }
 
 //==================================================================================================
@@ -90,49 +89,38 @@ impl UserVm {
     ///
     /// # Parameters
     ///
-    /// - `sandbox_tag`: Sandbox tag.
-    /// - `sandbox_config`: Sandbox configuration.
+    /// - `args`: User VM arguments.
     /// - `control_plane_listener`: Control-plane socket listener.
     ///
-    /// # Return Value
+    /// # Returns
     ///
-    /// On success this function returns a future that, when resolved, yields a handle to the
-    /// spawned User VM instance. On failure, this function returns an error object instead.
+    /// On success, this function returns a handle to the spawned User VM instance. On failure,
+    /// this function returns an error object instead.
     ///
     pub async fn spawn(
-        sandbox_tag: SandboxTag,
-        sandbox_config: SandboxConfig,
+        args: &UserVmArgs,
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
-        trace!("spawn(): sandbox_tag={sandbox_tag:?}, sandbox_config={sandbox_config:?}");
+        trace!("spawn(): args={args:?}");
 
         // Check if CPU affinity settings were provided.
-        if let Some(hwloc) = sandbox_config.hwloc() {
+        if let Some(hwloc) = args.hwloc() {
             warn!("spawn(): single-process mode ignores hwloc affinity settings (hwloc={hwloc:?})");
         }
 
-        // Check if L2 mode was requested.
-        if sandbox_config.l2() {
-            let reason: &str = "single-process mode does not support L2 deployments";
-            error!("spawn(): {reason}");
-            anyhow::bail!("{reason}");
-        }
-
         // Clone configuration values to move to User VM task.
-        let control_plane_addr: String = sandbox_config.control_plane_sockaddr().to_string();
-        let user_vm_addr: String = sandbox_config.user_vm_sockaddr().to_string();
-        let gateway_sockaddr: String = sandbox_config.gateway_sockaddr().to_string();
-        let kernel_filename: String = format!("{}/kernel.elf", sandbox_config.binary_directory());
-        let initrd_filename: String = sandbox_config.program().to_string();
-        let initrd_args: Option<String> =
-            sandbox_config.program_args().map(|args| args.to_string());
-        let stderr_file: Option<String> =
-            sandbox_config.console_file().map(|path| path.to_string());
-        let user_vm_id: UserVmIdentifier = sandbox_tag.sandbox_id();
+        let control_plane_addr: String = args.control_plane_socket_info().0.clone();
+        let user_vm_addr: String = args.system_vm_socket_info().0.clone();
+        let gateway_sockaddr: String = args.gateway_socket_info().0.clone();
+        let kernel_filename: String = format!("{}/kernel.elf", args.binary_directory());
+        let initrd_filename: String = args.program().to_string();
+        let initrd_args: Option<String> = args.program_args().map(|s| s.to_string());
+        let stderr_file: Option<String> = args.console_file().map(|s| s.to_string());
+        let user_vm_id: UserVmIdentifier = args.uservm_id();
         let control_plane_sockaddr_type: String =
-            sandbox_config.control_plane_sockaddr_type().to_string();
-        let system_vm_sockaddr_type: String = sandbox_config.system_vm_sockaddr_type().to_string();
-        let gateway_sockaddr_type: String = sandbox_config.gateway_sockaddr_type().to_string();
+            args.control_plane_socket_info().1.to_str().to_string();
+        let system_vm_sockaddr_type: String = args.system_vm_socket_info().1.to_str().to_string();
+        let gateway_sockaddr_type: String = args.gateway_socket_info().1.to_str().to_string();
 
         // Spawn the User VM as a new task.
         let uservm_task: JoinHandle<Result<ExitCode>> = ::tokio::spawn(async move {
@@ -148,7 +136,7 @@ impl UserVm {
             // Connect to the control-plane socket.
             let control_plane_stream: SocketStream =
                 match UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?)
-                    .connect(control_plane_addr.clone())
+                    .connect(&control_plane_addr)
                     .await
                 {
                     Ok(stream) => {
@@ -171,7 +159,7 @@ impl UserVm {
             // Connect to the system VM socket.
             let mut system_vm_stream: SocketStream =
                 match UnboundSocket::new(SocketType::from_str(&system_vm_sockaddr_type)?)
-                    .connect(user_vm_addr.clone())
+                    .connect(&user_vm_addr)
                     .await
                 {
                     Ok(stream) => {
@@ -226,7 +214,7 @@ impl UserVm {
             )?;
 
             // Spawn VMM thread.
-            let vmm_handle: JoinHandle<Result<u16>> = EmbeddedUserVm::spawn(UserVmArgs {
+            let vmm_handle: JoinHandle<Result<u16>> = EmbeddedUserVm::spawn(::uservm::UserVmArgs {
                 memory_size: ::config::kernel::MEMORY_SIZE,
                 kernel_filename,
                 initrd_filename: Some(initrd_filename.clone()),
@@ -297,7 +285,6 @@ impl UserVm {
         Ok(Self {
             task: Mutex::new(Some(uservm_task)),
             control_plane_stream,
-            _config: sandbox_config,
         })
     }
 

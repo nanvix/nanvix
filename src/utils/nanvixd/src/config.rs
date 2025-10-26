@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! Configuration constants and utilities for Nanvix Daemon.
+//!
+//! This module provides configuration constants, default values, and utility functions for
+//! constructing socket addresses and managing paths used throughout the Nanvix Daemon. It
+//! handles both Unix domain sockets and TCP sockets, and supports L2 deployment modes.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -8,15 +14,13 @@
 use crate::sandbox::tcp_port::TcpPort;
 use ::anyhow::Result;
 use ::linuxd::config::l2_system_vm_guest_ip;
-use ::syslog::error;
-use ::tokio::time::Duration;
-use ::user_vm_api::UserVmIdentifier;
-
-#[cfg(not(feature = "single-process"))]
 use ::std::{
     fs,
     path::PathBuf,
 };
+use ::syslog::error;
+use ::tokio::time::Duration;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -43,32 +47,56 @@ pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
 ///
 pub const DEFAULT_LOG_DIRECTORY: &str = "./logs";
 
-/// Suffix for Unix sockets.
+///
+/// # Description
+///
+/// Suffix for Unix sockets in debug builds.
+///
 #[cfg(debug_assertions)]
 const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
+
+///
+/// # Description
+///
+/// Suffix for Unix sockets in release builds.
+///
 #[cfg(not(debug_assertions))]
 const UNIX_SOCKET_SUFFIX: &str = ".socket";
 
-/// Path to the temporary directory.
+///
+/// # Description
+///
+/// Default path to the temporary directory.
+///
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
 
+///
+/// # Description
+///
+/// HTTP header name for message type identification.
+///
 pub const HTTP_HEADER_MESSAGE_TYPE: &str = "X-NVX-Message-Type";
 
+///
+/// # Description
+///
 /// Maximum length for a Unix socket name, including the null terminator.
+///
 /// This is a workaround for the fact that `libc::UNIX_PATH_MAX` is not available.
 /// On Linux, this is defined in `<linux/un.h>`.
+///
 /// TODO: replace this with `libc::UNIX_PATH_MAX` when it becomes available.
+///
 const UNIX_PATH_MAX: usize = 108;
 
 ///
 /// # Description
 ///
+/// Timeout for waiting for graceful shutdown of User VM instances.
+///
 /// We use control-plane messages to synchronize the graceful shutdown of different components.
 /// However, if components are faulty or hang, nanvixd cannot block. Instead, we wait for this
 /// timeout and revert to non-graceful shutdowns if the timeout is met.
-///
-/// This constant is only used when building nanvixd as a binary, so we need to allow(dead_code)
-/// for when we build nanvixd as a library.
 ///
 pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -106,15 +134,15 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 /// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
 /// to 0.0.0.0.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// - tmp_str: Temporary directory path.
-/// - tenant_id: Tenant ID.
-/// - l2: Flag to enable deploying linuxd inside an L2 VM.
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
 ///
 /// # Returns
 ///
-/// On success, returns the name of the control plane socket. On failure, returns an error.
+/// On success, returns the control plane socket address. On failure, returns an error.
 ///
 pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
     if l2 {
@@ -143,15 +171,15 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) 
 ///
 /// Builds the user VM socket address for a given tenant ID.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// - tmp_str: Temporary directory path.
-/// - tenant_id: Tenant ID.
-/// - l2: Flag to enable deploying linuxd inside an L2 VM.
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
 ///
 /// # Returns
 ///
-/// On success, returns the name of the user VM Unix socket. On failure, returns an error.
+/// On success, returns the user VM socket address. On failure, returns an error.
 ///
 pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
     if l2 {
@@ -177,19 +205,19 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Res
 ///
 /// # Description
 ///
-/// Builds the gateway Unix socket address for a given tenant and sandbox ID.
+/// Builds the gateway socket address for a given tenant and sandbox ID.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// - tmp_str: Temporary directory path.
-/// - tenant_id: Tenant ID.
-/// - sandbox_id: Sandbox ID.
-/// - l2_port: Optional value to indicate deployment in an L2 VM. If set, it contains the TCP port
-///   for the gateway in the L2 VM.
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `sandbox_id`: Sandbox ID.
+/// - `l2_port`: Optional TCP port for the gateway in L2 deployment mode. If set, it indicates
+///   deployment in an L2 VM and contains the TCP port for the gateway.
 ///
 /// # Returns
 ///
-/// On success, returns the name of the gateway Unix socket. On failure, returns an error.
+/// On success, returns the gateway socket address. On failure, returns an error.
 ///
 pub fn gateway_sockaddr_builder(
     tmp_str: &str,
@@ -228,7 +256,6 @@ pub fn gateway_sockaddr_builder(
 ///
 /// The absolute path to the source code root.
 ///
-#[cfg(not(feature = "single-process"))]
 fn get_proj_root() -> String {
     format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
 }
@@ -236,22 +263,21 @@ fn get_proj_root() -> String {
 ///
 /// # Description
 ///
-/// Gets the absolute path for cloud-hypervisor's binary directory given a
-/// path (potentially sym-linked) to the toolchain binary directory.
+/// Gets the absolute path for cloud-hypervisor's binary directory given a path (potentially
+/// sym-linked) to the toolchain binary directory.
 ///
-/// During toolchain build we set the CAP_NET_ADMIN to the cloud-hypervisor
-/// binary and, depending on the file-system type, these capabilities do not
-/// propagate well.
+/// During toolchain build we set the CAP_NET_ADMIN to the cloud-hypervisor binary and, depending
+/// on the file-system type, these capabilities do not propagate well through symbolic links.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// - `toolchain_bin_dir`: path to Nanvix's toolchain binary directory.
+/// - `toolchain_bin_dir`: Path to Nanvix's toolchain binary directory.
 ///
 /// # Returns
 ///
-/// The absolute path to cloud-hypervisor's binary directory.
+/// On success, the absolute path to cloud-hypervisor's binary directory. On failure, an error is
+/// returned instead.
 ///
-#[cfg(not(feature = "single-process"))]
 pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
     let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
     Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
@@ -266,7 +292,6 @@ pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 ///
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
-#[cfg(not(feature = "single-process"))]
 pub fn get_clh_snapshot_path() -> String {
     format!("{}/images/{}", get_proj_root(), config::linuxd::SNAPSHOT_NAME)
 }
@@ -276,15 +301,14 @@ pub fn get_clh_snapshot_path() -> String {
 ///
 /// Gets the absolute path for cloud-hypervisor's API socket.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// - tmp_dir: Temporary directory.
+/// - `tmp_dir`: Temporary directory.
 ///
 /// # Returns
 ///
-/// The absolute path to cloud-hypervisor's snapshot directory.
+/// The absolute path to cloud-hypervisor's API socket.
 ///
-#[cfg(not(feature = "single-process"))]
 pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
     format!("{tmp_dir}/nanvixd-clh{UNIX_SOCKET_SUFFIX}")
 }

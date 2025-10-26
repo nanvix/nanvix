@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+//! User VM management for multi-process mode.
+//!
+//! This module provides functionality to spawn and manage User VM instances as separate
+//! processes. It handles process lifecycle, control-plane communication, gateway sockets,
+//! and supports L2 deployment with TCP port allocation.
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -10,10 +16,7 @@ use crate::{
         CLEANUP_TIMEOUT,
         CONTROL_PLANE_ACCEPT_TIMEOUT,
     },
-    sandbox::{
-        config::SandboxConfig,
-        tag::SandboxTag,
-    },
+    sandbox::UserVmArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -47,12 +50,16 @@ use ::tokio::{
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Handle to a running User VM instance.
+///
 pub struct UserVm {
+    /// Child process handle.
     child: Option<Child>,
+    /// Control-plane socket stream.
     control_plane_stream: SocketStream,
-    /// Configuration for this sandbox instance. It includes a RAII handle around the TCP
-    /// port used for the gateway of this user VM if linuxd is deployed in an L2 VM.
-    _config: SandboxConfig,
 }
 
 //==================================================================================================
@@ -60,60 +67,65 @@ pub struct UserVm {
 //==================================================================================================
 
 impl UserVm {
+    ///
+    /// # Description
+    ///
+    /// Spawns a new User VM instance as a separate process.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: User VM arguments.
+    /// - `control_plane_listener`: Control-plane socket listener.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns a handle to the spawned User VM instance. On failure,
+    /// this function returns an error object instead.
+    ///
     pub async fn spawn(
-        sandbox_tag: SandboxTag,
-        sandbox_config: SandboxConfig,
+        args: &UserVmArgs,
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
-        trace!("spawn(): sandbox_tag={sandbox_tag:?}, sandbox_config={sandbox_config:?}");
+        trace!("spawn(): args={args:?}");
 
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/uservm.elf", sandbox_config.binary_directory()),
+            format!("{}/uservm.elf", args.binary_directory()),
             ::uservm::args::Args::OPT_LOGFILE.to_string(),
             ::uservm::args::Args::OPT_LOGDIR.to_string(),
-            sandbox_config.log_directory().to_string(),
+            args.log_directory().to_string(),
             ::uservm::args::Args::OPT_USER_VM_ID.to_string(),
-            sandbox_tag.sandbox_id().to_string(),
+            args.uservm_id().to_string(),
             ::uservm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/kernel.elf", sandbox_config.binary_directory()),
+            format!("{}/kernel.elf", args.binary_directory()),
             ::uservm::args::Args::OPT_INITRD.to_string(),
-            sandbox_config.program().to_string(),
+            args.program().to_string(),
             ::uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
-            sandbox_config.user_vm_sockaddr().to_string(),
+            args.system_vm_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string(),
-            sandbox_config.system_vm_sockaddr_type().to_string(),
+            args.system_vm_socket_info().1.to_str().to_string(),
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
-            sandbox_config.control_plane_sockaddr().to_string(),
+            args.control_plane_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
-            sandbox_config.control_plane_sockaddr_type().to_string(),
+            args.control_plane_socket_info().1.to_str().to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
-            sandbox_config.gateway_sockaddr().to_string(),
+            args.gateway_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string(),
-            sandbox_config.gateway_sockaddr_type().to_string(),
+            args.gateway_socket_info().1.to_str().to_string(),
         ];
 
-        debug!("spawning uservm (program={:?} args={:?})", sandbox_config.program(), user_vm_args,);
+        debug!("spawning uservm (program={:?} args={:?})", args.program(), user_vm_args,);
 
-        if sandbox_config.l2() {
-            user_vm_args.push(::uservm::args::Args::OPT_SYSTEM_VM_SOCKET_TYPE.to_string());
-            user_vm_args.push("tcp".to_string());
-            user_vm_args.push(::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string());
-            user_vm_args.push("tcp".to_string());
-            user_vm_args.push(::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string());
-            user_vm_args.push("tcp".to_string());
-        }
-
-        if let Some(program_args) = sandbox_config.program_args() {
+        if let Some(program_args) = args.program_args() {
             user_vm_args.push(::uservm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
         }
 
-        if let Some(stderr_file) = sandbox_config.console_file() {
+        if let Some(stderr_file) = args.console_file() {
             user_vm_args.push(::uservm::args::Args::OPT_STDERR.to_string());
             user_vm_args.push(stderr_file.to_string());
         }
 
-        if let Some(hwloc) = sandbox_config.hwloc() {
+        if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
                 "-ac".to_string(),
@@ -130,13 +142,12 @@ impl UserVm {
             .spawn()?;
 
         debug!(
-            "spawning uservm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?} l2={}",
+            "spawning uservm child.pid={:?} program={:?} args={:?} addr={:?} stderr={:?}",
             child.id(),
-            sandbox_config.program(),
-            sandbox_config.program_args(),
-            sandbox_config.user_vm_sockaddr(),
-            sandbox_config.console_file(),
-            sandbox_config.l2(),
+            args.program(),
+            args.program_args(),
+            args.system_vm_socket_info(),
+            args.console_file(),
         );
 
         // After the user VM has started, accept the incoming connection for the control-plane.
@@ -174,7 +185,6 @@ impl UserVm {
         Ok(Self {
             child: Some(child),
             control_plane_stream,
-            _config: sandbox_config,
         })
     }
 
@@ -184,9 +194,9 @@ impl UserVm {
     /// Helper method to send a SIGKILL to the user VM process in case it is faulty and we need to
     /// clean-up.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
-    /// - `child`: the user VM process handle.
+    /// - `child`: The user VM process handle.
     ///
     fn send_sigkill_to_child(child: Child) {
         if let Some(pid) = child.id() {

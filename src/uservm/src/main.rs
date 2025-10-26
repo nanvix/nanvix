@@ -87,7 +87,7 @@ pub async fn main() -> Result<ExitCode> {
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
     let control_plane_stream: SocketStream = match timeout(
         CONTROL_PLANE_CONNECT_TIMEOUT,
-        unbound_socket.connect(args.control_plane_addr().to_string()),
+        unbound_socket.connect(args.control_plane_addr()),
     )
     .await
     {
@@ -119,55 +119,57 @@ pub async fn main() -> Result<ExitCode> {
     // Connect to the system VM.
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.system_vm_socket_type())?);
-    let system_vm_stream: SocketStream = match timeout(
-        SYSTEM_VM_CONNECT_TIMEOUT,
-        unbound_socket.connect(args.system_vm_addr().to_string()),
-    )
-    .await
-    {
-        Ok(Ok(mut stream)) => {
-            info!("main(): connected to system VM (system_vm_addr={:?})", args.system_vm_addr());
-            let new_msg: NewUserVm = match NewUserVm::new(
-                args.user_vm_id(),
-                args.gateway_addr().to_string(),
-                SocketType::from_str(args.gateway_socket_type())?,
-            ) {
-                Ok(message) => message,
-                Err(e) => {
+    let system_vm_stream: SocketStream =
+        match timeout(SYSTEM_VM_CONNECT_TIMEOUT, unbound_socket.connect(args.system_vm_addr()))
+            .await
+        {
+            Ok(Ok(mut stream)) => {
+                info!(
+                    "main(): connected to system VM (system_vm_addr={:?})",
+                    args.system_vm_addr()
+                );
+                let new_msg: NewUserVm = match NewUserVm::new(
+                    args.user_vm_id(),
+                    args.gateway_addr().to_string(),
+                    SocketType::from_str(args.gateway_socket_type())?,
+                ) {
+                    Ok(message) => message,
+                    Err(e) => {
+                        let reason: String = format!(
+                            "failed to construct user VM registration message (error={e:?})"
+                        );
+                        error!("main(): {reason}");
+                        return Err(anyhow::anyhow!(reason));
+                    },
+                };
+
+                debug!("forwarding user vm information to system vm");
+                let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
+                if let Err(e) = stream.write_all(&new_msg_bytes).await {
                     let reason: String =
-                        format!("failed to construct user VM registration message (error={e:?})");
+                        format!("failed to send user VM registration message (error={e:?})");
                     error!("main(): {reason}");
                     return Err(anyhow::anyhow!(reason));
-                },
-            };
-
-            debug!("forwarding user vm information to system vm");
-            let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
-            if let Err(e) = stream.write_all(&new_msg_bytes).await {
-                let reason: String =
-                    format!("failed to send user VM registration message (error={e:?})");
+                }
+                stream
+            },
+            Ok(Err(e)) => {
+                let reason: String = format!(
+                    "failed to connect to system VM (system_vm_addr={:?}, error={e:?})",
+                    args.system_vm_addr()
+                );
                 error!("main(): {reason}");
-                return Err(anyhow::anyhow!(reason));
-            }
-            stream
-        },
-        Ok(Err(e)) => {
-            let reason: String = format!(
-                "failed to connect to system VM (system_vm_addr={:?}, error={e:?})",
-                args.system_vm_addr()
-            );
-            error!("main(): {reason}");
-            return Err(anyhow::anyhow!("{reason}"));
-        },
-        Err(_) => {
-            let reason: String = format!(
-                "timed out trying to connect to system VM (system_vm_addr={:?})",
-                args.system_vm_addr()
-            );
-            error!("main(): {reason}");
-            return Err(anyhow::anyhow!("{reason}"));
-        },
-    };
+                return Err(anyhow::anyhow!("{reason}"));
+            },
+            Err(_) => {
+                let reason: String = format!(
+                    "timed out trying to connect to system VM (system_vm_addr={:?})",
+                    args.system_vm_addr()
+                );
+                error!("main(): {reason}");
+                return Err(anyhow::anyhow!("{reason}"));
+            },
+        };
 
     // Spawn I/O thread.
     let io_thread: JoinHandle<Result<()>> = IoThread::spawn(

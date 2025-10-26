@@ -129,6 +129,11 @@ pub const WORKER_THREAD_CHANNEL_CAPACITY: usize = 1024;
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Linux daemon that manages user VMs and handles system calls.
+///
 pub struct LinuxDaemon {
     syscall_table: Arc<SyscallTable>,
     assembler: Arc<Mutex<RequestAssembler>>,
@@ -144,6 +149,24 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
+    ///
+    /// # Description
+    ///
+    /// Initializes a new Linux daemon.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: System call table.
+    /// - `control_plane_sockaddr`: Control plane socket address.
+    /// - `control_plane_sockaddr_type`: Control plane socket type.
+    /// - `user_vm_listener`: User VM listener socket.
+    /// - `in_l2`: Whether the daemon is running in an L2 VM.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this function returns a new Linux daemon instance.
+    /// Upon failure, an error is returned.
+    ///
     pub fn init(
         syscall_table: Arc<SyscallTable>,
         control_plane_sockaddr: &str,
@@ -186,7 +209,7 @@ impl LinuxDaemon {
         let unbound_socket: UnboundSocket = UnboundSocket::new(self.control_plane_sockaddr_type);
         match timeout(
             CONTROL_PLANE_CONNECT_TIMEOUT,
-            unbound_socket.connect(self.control_plane_sockaddr.clone()),
+            unbound_socket.connect(&self.control_plane_sockaddr),
         )
         .await
         {
@@ -312,6 +335,16 @@ impl LinuxDaemon {
         Error::new(code, msg)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Runs the Linux daemon main loop.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this function returns `Ok(())`.
+    /// Upon failure, an error is returned.
+    ///
     pub async fn run(self) -> Result<(), Error> {
         // Structure keeping track of the active user VM connections, indexed by their connection
         // ID. We use a slab to easily get the smallest available entry.

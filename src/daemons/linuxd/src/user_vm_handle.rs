@@ -102,7 +102,7 @@ impl UserVmHandle {
 
         let unbound_socket: UnboundSocket = UnboundSocket::new(self.gateway_socket_type);
         let gateway_listener: SocketListener =
-            match unbound_socket.bind(self.gateway_sockaddr.clone()).await {
+            match unbound_socket.bind(&self.gateway_sockaddr).await {
                 Ok(listener) => listener,
                 Err(e) => {
                     let reason: String = format!(
