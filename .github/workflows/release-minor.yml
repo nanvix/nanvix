@@ -13,9 +13,16 @@ defaults:
 
 jobs:
   create-minor-release:
-    # Only run on pushes to dev, and skip if the commit author is GitHub Actions
-    # This prevents infinite loops when the workflow commits back to dev
-    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, 'Nanvix ')
+    # Only run on merge commits to dev branch that were not made by github-actions[bot].
+    # This prevents infinite loops when the workflow commits back to dev.
+    # Checks:
+    # 1. Actor is not github-actions[bot] (prevents workflow-triggered runs)
+    # 2. Commit author is not github-actions[bot] (prevents runs on bot commits)
+    # 3. Event is a push to dev (implicit from on.push.branches)
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.head_commit.author.username != 'github-actions[bot]' &&
+      github.event.head_commit.committer.username != 'github-actions[bot]'
     runs-on: ubuntu-24.04
 
     steps:
@@ -25,13 +32,29 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
           fetch-depth: 0
 
+      - name: "Verify merge commit"
+        id: verify-merge
+        run: |
+          # Check if the current commit is a merge commit (has multiple parents).
+          PARENT_COUNT=$(git rev-list --parents -n 1 HEAD | wc -w)
+          # A merge commit has at least 3 words: commit_hash parent1 parent2
+          if [ "$PARENT_COUNT" -lt 3 ]; then
+            echo "Not a merge commit, skipping minor release creation."
+            echo "is_merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Merge commit detected, proceeding with minor release creation."
+          echo "is_merge=true" >> "$GITHUB_OUTPUT"
+
       - name: "Configure Git"
+        if: steps.verify-merge.outputs.is_merge == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin git@github.com:${{ github.repository }}.git
 
       - name: "Create minor release"
+        if: steps.verify-merge.outputs.is_merge == 'true'
         # This step runs the minor release script, which:
         # - Increments the minor version, updates changelogs, and tags the release.
         # - Requires the following secret to be available in the workflow:
