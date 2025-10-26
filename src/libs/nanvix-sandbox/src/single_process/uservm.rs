@@ -12,8 +12,11 @@
 //==================================================================================================
 
 use crate::{
-    config::CONTROL_PLANE_ACCEPT_TIMEOUT,
-    sandbox::UserVmArgs,
+    config::{
+        CLEANUP_TIMEOUT,
+        CONTROL_PLANE_ACCEPT_TIMEOUT,
+    },
+    UserVmArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -312,7 +315,7 @@ impl UserVm {
 
         // Wait for User VM to finish.
         if let Some(task) = self.task.lock().await.take() {
-            match timeout(crate::config::CLEANUP_TIMEOUT, task).await {
+            match timeout(CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(exit_status)) => {
                         if exit_status != ExitCode::SUCCESS {

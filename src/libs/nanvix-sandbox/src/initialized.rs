@@ -13,14 +13,12 @@
 
 use crate::{
     config::GATEWAY_CONNECT_TIMEOUT,
-    sandbox::{
-        linuxd::LinuxDaemon,
-        tcp_port::TcpPort,
-        uservm::UserVm,
-        RunningSandbox,
-        SandboxConfig,
-        UserVmArgs,
-    },
+    linuxd::LinuxDaemon,
+    tcp_port::TcpPort,
+    uservm::UserVm,
+    RunningSandbox,
+    SandboxConfig,
+    UserVmArgs,
 };
 use ::anyhow::Result;
 use ::std::sync::Arc;

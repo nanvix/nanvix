@@ -11,9 +11,9 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::tcp_port::TcpPort;
 use ::anyhow::Result;
 use ::linuxd::config::l2_system_vm_guest_ip;
+use ::nanvix_sandbox::tcp_port::TcpPort;
 use ::std::{
     fs,
     path::PathBuf,

@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-use crate::sandbox::{
+use crate::{
     linuxd::LinuxDaemon,
     InitializedSandbox,
     LinuxDaemonArgs,
