@@ -207,7 +207,7 @@ impl Vmm {
                     }
                 },
                 Err(err) => {
-                    let reason: String = format!("failed to read initird file {err:?}");
+                    let reason: String = format!("failed to read initrd file {err:?}");
                     error!("initrd(): {reason} (args={args:?})");
                     return Err(anyhow::anyhow!("{reason}"));
                 },

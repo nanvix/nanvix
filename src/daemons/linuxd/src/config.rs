@@ -39,19 +39,6 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// # Description
 ///
-/// Returns the IP address where services inside the L2 system VM may bind to.
-///
-/// # Returns
-///
-/// The system VM's guest bind IP.
-///
-pub fn l2_system_vm_guest_ip() -> String {
-    config::linuxd::GUEST_TAP_IP_ADDRESS.to_string()
-}
-
-///
-/// # Description
-///
 /// Builds the TCP address where L2-enabled linuxd deployments block waiting to be snapshotted.
 ///
 /// # Returns
@@ -59,5 +46,5 @@ pub fn l2_system_vm_guest_ip() -> String {
 /// On success, returns the address of the socket. On failure, returns an error.
 ///
 pub fn restore_gate_sockaddr_builder() -> String {
-    format!("{}:{DEFAULT_RESTORE_GATE_PORT}", l2_system_vm_guest_ip())
+    format!("{}:{DEFAULT_RESTORE_GATE_PORT}", config::linuxd::GUEST_TAP_IP_ADDRESS.to_string())
 }

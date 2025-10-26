@@ -11,16 +11,7 @@
 // Imports
 //==================================================================================================
 
-use ::anyhow::Result;
-use ::linuxd::config::l2_system_vm_guest_ip;
-use ::nanvix_sandbox::tcp_port::TcpPort;
-use ::std::{
-    fs,
-    path::PathBuf,
-};
-use ::syslog::error;
 use ::tokio::time::Duration;
-use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -50,22 +41,6 @@ pub const DEFAULT_LOG_DIRECTORY: &str = "./logs";
 ///
 /// # Description
 ///
-/// Suffix for Unix sockets in debug builds.
-///
-#[cfg(debug_assertions)]
-const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
-
-///
-/// # Description
-///
-/// Suffix for Unix sockets in release builds.
-///
-#[cfg(not(debug_assertions))]
-const UNIX_SOCKET_SUFFIX: &str = ".socket";
-
-///
-/// # Description
-///
 /// Default path to the temporary directory.
 ///
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
@@ -76,18 +51,6 @@ pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
 /// HTTP header name for message type identification.
 ///
 pub const HTTP_HEADER_MESSAGE_TYPE: &str = "X-NVX-Message-Type";
-
-///
-/// # Description
-///
-/// Maximum length for a Unix socket name, including the null terminator.
-///
-/// This is a workaround for the fact that `libc::UNIX_PATH_MAX` is not available.
-/// On Linux, this is defined in `<linux/un.h>`.
-///
-/// TODO: replace this with `libc::UNIX_PATH_MAX` when it becomes available.
-///
-const UNIX_PATH_MAX: usize = 108;
 
 ///
 /// # Description
@@ -120,195 +83,3 @@ pub const GATEWAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Provides the timeout we should use when waiting for Linuxd to shutdown.
 ///
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Builds the control plane socket address for a given tenant ID. If nanvixd is configured to
-/// spawn linuxd in an L2 VM, it will return a TCP socket address, otherwise a Unix socket one.
-///
-/// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
-/// to 0.0.0.0.
-///
-/// # Parameters
-///
-/// - `tmp_str`: Temporary directory path.
-/// - `tenant_id`: Tenant ID.
-/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
-///
-/// # Returns
-///
-/// On success, returns the control plane socket address. On failure, returns an error.
-///
-pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
-    if l2 {
-        return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
-    }
-
-    let unix_socket_name: String =
-        format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
-
-    // Check if socket name exceeds the maximum length.
-    if unix_socket_name.len() > UNIX_PATH_MAX {
-        let error: String = format!(
-            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
-            unix_socket_name.len(),
-            UNIX_PATH_MAX
-        );
-        error!("control_plane_sockaddr_builder(): {error}");
-        anyhow::bail!(error);
-    }
-
-    Ok(unix_socket_name)
-}
-
-///
-/// # Description
-///
-/// Builds the user VM socket address for a given tenant ID.
-///
-/// # Parameters
-///
-/// - `tmp_str`: Temporary directory path.
-/// - `tenant_id`: Tenant ID.
-/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
-///
-/// # Returns
-///
-/// On success, returns the user VM socket address. On failure, returns an error.
-///
-pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
-    if l2 {
-        return Ok(format!("{}:{}", l2_system_vm_guest_ip(), config::linuxd::USER_VM_PORT));
-    }
-
-    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
-
-    // Check if socket name exceeds the maximum length.
-    if unix_socket_name.len() > UNIX_PATH_MAX {
-        let error: String = format!(
-            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
-            unix_socket_name.len(),
-            UNIX_PATH_MAX
-        );
-        error!("user_vm_sockaddr_builder(): {error}");
-        anyhow::bail!(error);
-    }
-
-    Ok(unix_socket_name)
-}
-
-///
-/// # Description
-///
-/// Builds the gateway socket address for a given tenant and sandbox ID.
-///
-/// # Parameters
-///
-/// - `tmp_str`: Temporary directory path.
-/// - `tenant_id`: Tenant ID.
-/// - `sandbox_id`: Sandbox ID.
-/// - `l2_port`: Optional TCP port for the gateway in L2 deployment mode. If set, it indicates
-///   deployment in an L2 VM and contains the TCP port for the gateway.
-///
-/// # Returns
-///
-/// On success, returns the gateway socket address. On failure, returns an error.
-///
-pub fn gateway_sockaddr_builder(
-    tmp_str: &str,
-    tenant_id: &str,
-    sandbox_id: UserVmIdentifier,
-    l2_port: &Option<TcpPort>,
-) -> Result<String> {
-    if let Some(l2_port) = l2_port {
-        return Ok(format!("{}:{:?}", l2_system_vm_guest_ip(), l2_port));
-    }
-
-    let sandbox_id: u32 = sandbox_id.into();
-    let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
-
-    // Check if socket name exceeds the maximum length.
-    if unix_socket_name.len() > UNIX_PATH_MAX {
-        let error: String = format!(
-            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
-            unix_socket_name.len(),
-            UNIX_PATH_MAX
-        );
-        error!("gateway_sockaddr_builder(): {error}");
-        anyhow::bail!(error);
-    }
-
-    Ok(unix_socket_name)
-}
-
-///
-/// # Description
-///
-/// Gets the absolute path for the source root.
-///
-/// # Returns
-///
-/// The absolute path to the source code root.
-///
-fn get_proj_root() -> String {
-    format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
-}
-
-///
-/// # Description
-///
-/// Gets the absolute path for cloud-hypervisor's binary directory given a path (potentially
-/// sym-linked) to the toolchain binary directory.
-///
-/// During toolchain build we set the CAP_NET_ADMIN to the cloud-hypervisor binary and, depending
-/// on the file-system type, these capabilities do not propagate well through symbolic links.
-///
-/// # Parameters
-///
-/// - `toolchain_bin_dir`: Path to Nanvix's toolchain binary directory.
-///
-/// # Returns
-///
-/// On success, the absolute path to cloud-hypervisor's binary directory. On failure, an error is
-/// returned instead.
-///
-pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
-    let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
-    Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
-}
-
-///
-/// # Description
-///
-/// Gets the absolute path for cloud-hypervisor's snapshot directory.
-///
-/// # Returns
-///
-/// The absolute path to cloud-hypervisor's snapshot directory.
-///
-pub fn get_clh_snapshot_path() -> String {
-    format!("{}/images/{}", get_proj_root(), config::linuxd::SNAPSHOT_NAME)
-}
-
-///
-/// # Description
-///
-/// Gets the absolute path for cloud-hypervisor's API socket.
-///
-/// # Parameters
-///
-/// - `tmp_dir`: Temporary directory.
-///
-/// # Returns
-///
-/// The absolute path to cloud-hypervisor's API socket.
-///
-pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
-    format!("{tmp_dir}/nanvixd-clh{UNIX_SOCKET_SUFFIX}")
-}
