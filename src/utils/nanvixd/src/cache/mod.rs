@@ -130,8 +130,8 @@ impl SandboxCache {
     ///
     /// # Returns
     ///
-    /// On success, returns a tuple containing the User VM identifier and gateway socket address.
-    /// On failure, returns an error describing what went wrong.
+    /// On success, returns a tuple containing the User VM identifier, the gateway socket address
+    /// and the gateway socket type.  On failure, returns an error describing what went wrong.
     ///
     /// # Error Recovery
     ///
@@ -146,7 +146,7 @@ impl SandboxCache {
         program: &str,
         app_name: &str,
         program_args: Option<String>,
-    ) -> Result<(UserVmIdentifier, String)> {
+    ) -> Result<(UserVmIdentifier, String, SocketType)> {
         trace!(
             "get(): tenant_id={tenant_id}, program={program}, app_name={app_name}, \
              program_args={program_args:?}"
@@ -158,7 +158,11 @@ impl SandboxCache {
         // Check if sandbox is in cache.
         match self.running_sandboxes.get(&tag) {
             // Cache hit: sandbox found.
-            Some(sandbox) => Ok((tag.sandbox_id(), sandbox.gateway_socket_info().0.clone())),
+            Some(sandbox) => Ok((
+                tag.sandbox_id(),
+                sandbox.gateway_socket_info().0.clone(),
+                sandbox.gateway_socket_info().1,
+            )),
             // Cache miss: sandbox not found.
             None => {
                 // Allocate a TCP port for the gateway if we are in L2 mode.
@@ -267,7 +271,7 @@ impl SandboxCache {
                     },
                 };
 
-                Ok((tag.sandbox_id(), gateway_sockaddr))
+                Ok((tag.sandbox_id(), gateway_sockaddr, gateway_socket_type))
             },
         }
     }

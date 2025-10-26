@@ -39,6 +39,7 @@ use ::std::{
     pin::Pin,
     sync::Arc,
 };
+use ::syscomm::SocketType;
 use ::syslog::{
     debug,
     error,
@@ -143,7 +144,11 @@ impl HttpClient {
         trace!("serve_new(): {message:?}");
 
         // Get (or create) sandbox.
-        let (user_vm_id, gateway_sockaddr): (UserVmIdentifier, String) = sandbox_cache
+        let (user_vm_id, gateway_sockaddr, _gateway_socket_type): (
+            UserVmIdentifier,
+            String,
+            SocketType,
+        ) = sandbox_cache
             .lock()
             .await
             .get(
