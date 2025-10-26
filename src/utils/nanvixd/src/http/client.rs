@@ -12,7 +12,6 @@
 //==================================================================================================
 
 use crate::{
-    cache::SandboxCache,
     config,
     message::{
         self,
@@ -34,6 +33,7 @@ use ::hyper::{
     Response,
     StatusCode,
 };
+use ::nanvix_sandbox_cache::SandboxCache;
 use ::std::{
     future::Future,
     pin::Pin,
