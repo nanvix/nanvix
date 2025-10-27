@@ -16,7 +16,7 @@ use crate::{
         CONTROL_PLANE_ACCEPT_TIMEOUT,
         SHUTDOWN_TIMEOUT,
     },
-    sandbox::LinuxDaemonArgs,
+    LinuxDaemonArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
