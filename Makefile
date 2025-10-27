@@ -303,7 +303,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix-sandbox nanvix-sandbox-cache syscomm user-vm-api
+ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix-registry nanvix-sandbox nanvix-sandbox-cache syscomm user-vm-api
 ALL_HOST_UTILS := echo-client nanvix-bench
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
