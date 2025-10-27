@@ -39,7 +39,10 @@ uservm = { workspace = true }
 default = []
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into Nanvix Daemon (nanvixd).
-single-process = ["nanvix-sandbox/single-process"]
+single-process = [
+    "nanvix-sandbox/single-process",
+    "nanvix-sandbox-cache/single-process",
+]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",

@@ -115,7 +115,7 @@ impl UserVm {
         let control_plane_addr: String = args.control_plane_socket_info().0.clone();
         let user_vm_addr: String = args.system_vm_socket_info().0.clone();
         let gateway_sockaddr: String = args.gateway_socket_info().0.clone();
-        let kernel_filename: String = format!("{}/kernel.elf", args.binary_directory());
+        let kernel_filename: String = args.kernel_binary_path().to_string();
         let initrd_filename: String = args.program().to_string();
         let initrd_args: Option<String> = args.program_args().map(|s| s.to_string());
         let stderr_file: Option<String> = args.console_file().map(|s| s.to_string());

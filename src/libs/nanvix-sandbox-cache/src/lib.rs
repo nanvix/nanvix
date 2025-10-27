@@ -251,8 +251,12 @@ impl SandboxCache {
                     (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
                     self.config.console_file().map(|s| s.to_string()),
                     self.config.hwloc().clone(),
-                    self.config.binary_directory().to_string(),
-                    self.config.log_directory().to_string(),
+                    self.config.kernel_binary_path(),
+                    #[cfg(not(feature = "single-process"))]
+                    self.config.linuxd_binary_path(),
+                    #[cfg(not(feature = "single-process"))]
+                    self.config.uservm_binary_path(),
+                    self.config.log_directory(),
                     None,
                     Some((
                         control_plane_sockaddr.clone(),

@@ -23,3 +23,4 @@ user-vm-api = { workspace = true }
 
 [features]
 default = []
+single-process = []
