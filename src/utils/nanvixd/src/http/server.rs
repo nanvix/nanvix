@@ -12,16 +12,14 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    cache::{
-        config::SandboxCacheConfig,
-        SandboxCache,
-    },
-    http::client::HttpClient,
-};
+use crate::http::client::HttpClient;
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
+use ::nanvix_sandbox_cache::{
+    SandboxCache,
+    SandboxCacheConfig,
+};
 use ::std::sync::Arc;
 use ::syslog::{
     debug,

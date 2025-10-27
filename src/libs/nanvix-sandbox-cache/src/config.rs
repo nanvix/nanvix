@@ -7,8 +7,62 @@
 //! It handles socket types, file paths, hardware topology settings, and deployment modes
 //! (L2 VM support) that apply to all sandboxes managed by the daemon.
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::anyhow::Result;
 use ::hwloc::HwLoc;
+use ::nanvix_sandbox::tcp_port::TcpPort;
 use ::syscomm::SocketType;
+use ::syslog::error;
+use ::user_vm_api::UserVmIdentifier;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Suffix for Unix sockets in debug builds.
+///
+#[cfg(debug_assertions)]
+const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
+
+///
+/// # Description
+///
+/// Suffix for Unix sockets in release builds.
+///
+#[cfg(not(debug_assertions))]
+const UNIX_SOCKET_SUFFIX: &str = ".socket";
+
+///
+/// # Description
+///
+/// Default path to the temporary directory.
+///
+pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
+
+///
+/// # Description
+///
+/// HTTP header name for message type identification.
+///
+pub const HTTP_HEADER_MESSAGE_TYPE: &str = "X-NVX-Message-Type";
+
+///
+/// # Description
+///
+/// Maximum length for a Unix socket name, including the null terminator.
+///
+/// This is a workaround for the fact that `libc::UNIX_PATH_MAX` is not available.
+/// On Linux, this is defined in `<linux/un.h>`.
+///
+/// TODO: replace this with `libc::UNIX_PATH_MAX` when it becomes available.
+///
+const UNIX_PATH_MAX: usize = 108;
 
 //==================================================================================================
 // Structures
@@ -230,4 +284,138 @@ impl SandboxCacheConfig {
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Builds the control plane socket address for a given tenant ID. If nanvixd is configured to
+/// spawn linuxd in an L2 VM, it will return a TCP socket address, otherwise a Unix socket one.
+///
+/// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
+/// to 0.0.0.0.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
+///
+/// # Returns
+///
+/// On success, returns the control plane socket address. On failure, returns an error.
+///
+pub(crate) fn control_plane_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    l2: bool,
+) -> Result<String> {
+    if l2 {
+        return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
+    }
+
+    let unix_socket_name: String =
+        format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("control_plane_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
+}
+
+///
+/// # Description
+///
+/// Builds the user VM socket address for a given tenant ID.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
+///
+/// # Returns
+///
+/// On success, returns the user VM socket address. On failure, returns an error.
+///
+pub(crate) fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!(
+            "{}:{}",
+            config::linuxd::GUEST_TAP_IP_ADDRESS,
+            config::linuxd::USER_VM_PORT
+        ));
+    }
+
+    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("user_vm_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
+}
+
+///
+/// # Description
+///
+/// Builds the gateway socket address for a given tenant and sandbox ID.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `sandbox_id`: Sandbox ID.
+/// - `l2_port`: Optional TCP port for the gateway in L2 deployment mode. If set, it indicates
+///   deployment in an L2 VM and contains the TCP port for the gateway.
+///
+/// # Returns
+///
+/// On success, returns the gateway socket address. On failure, returns an error.
+///
+pub(crate) fn gateway_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    sandbox_id: UserVmIdentifier,
+    l2_port: &Option<TcpPort>,
+) -> Result<String> {
+    if let Some(l2_port) = l2_port {
+        return Ok(format!("{}:{:?}", config::linuxd::GUEST_TAP_IP_ADDRESS, l2_port));
+    }
+
+    let sandbox_id: u32 = sandbox_id.into();
+    let unix_socket_name: String =
+        format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("gateway_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
 }

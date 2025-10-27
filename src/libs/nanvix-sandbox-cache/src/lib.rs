@@ -1,9 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Sandbox cache management.
+//! Sandbox cache management for Nanvix.
 //!
-//! This module provides caching functionality for sandboxed execution environments. It maintains
+//! This library provides caching functionality for sandboxed execution environments. It maintains
 //! a registry of active Linux Daemon and User VM instances, manages their lifecycle, and handles
 //! the control-plane socket connections for communication with these instances.
 
@@ -20,12 +20,20 @@ pub mod config;
 mod tag;
 
 //==================================================================================================
+// Exports
+//==================================================================================================
+
+pub use config::SandboxCacheConfig;
+pub use tag::SandboxTag;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::cache::{
-    config::SandboxCacheConfig,
-    tag::SandboxTag,
+use crate::config::{
+    control_plane_sockaddr_builder,
+    gateway_sockaddr_builder,
+    user_vm_sockaddr_builder,
 };
 use ::anyhow::Result;
 use ::nanvix_sandbox::{
@@ -82,6 +90,19 @@ pub struct SandboxCache {
     control_plane_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// TCP port allocator for gateway ports in L2 deployment mode.
     tcp_port_allocator: TcpPortAllocator,
+    /// A builder function for control plane socket addresses.
+    control_plane_sockaddr_builder:
+        fn(&str, &str, bool) -> ::std::result::Result<String, ::anyhow::Error>,
+    /// A builder function for user VM socket addresses.
+    user_vm_sockaddr_builder:
+        fn(&str, &str, bool) -> ::std::result::Result<String, ::anyhow::Error>,
+    /// A builder function for gateway socket addresses.
+    gateway_sockaddr_builder: fn(
+        &str,
+        &str,
+        UserVmIdentifier,
+        &Option<TcpPort>,
+    ) -> ::std::result::Result<String, ::anyhow::Error>,
 }
 
 impl SandboxCache {
@@ -109,6 +130,9 @@ impl SandboxCache {
                 ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
                 ::config::linuxd::GATEWAY_PORT_RANGE_END,
             ),
+            control_plane_sockaddr_builder,
+            user_vm_sockaddr_builder,
+            gateway_sockaddr_builder,
         }))
     }
 
@@ -130,8 +154,8 @@ impl SandboxCache {
     ///
     /// # Returns
     ///
-    /// On success, returns a tuple containing the User VM identifier and gateway socket address.
-    /// On failure, returns an error describing what went wrong.
+    /// On success, returns a tuple containing the User VM identifier, the gateway socket address
+    /// and the gateway socket type.  On failure, returns an error describing what went wrong.
     ///
     /// # Error Recovery
     ///
@@ -146,7 +170,7 @@ impl SandboxCache {
         program: &str,
         app_name: &str,
         program_args: Option<String>,
-    ) -> Result<(UserVmIdentifier, String)> {
+    ) -> Result<(UserVmIdentifier, String, SocketType)> {
         trace!(
             "get(): tenant_id={tenant_id}, program={program}, app_name={app_name}, \
              program_args={program_args:?}"
@@ -158,7 +182,11 @@ impl SandboxCache {
         // Check if sandbox is in cache.
         match self.running_sandboxes.get(&tag) {
             // Cache hit: sandbox found.
-            Some(sandbox) => Ok((tag.sandbox_id(), sandbox.gateway_socket_info().0.clone())),
+            Some(sandbox) => Ok((
+                tag.sandbox_id(),
+                sandbox.gateway_socket_info().0.clone(),
+                sandbox.gateway_socket_info().1,
+            )),
             // Cache miss: sandbox not found.
             None => {
                 // Allocate a TCP port for the gateway if we are in L2 mode.
@@ -177,17 +205,17 @@ impl SandboxCache {
                 };
 
                 // Work-out socket addresses before allocating any resources.
-                let control_plane_sockaddr: String = crate::config::control_plane_sockaddr_builder(
+                let control_plane_sockaddr: String = (self.control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     self.config.l2(),
                 )?;
-                let user_vm_sockaddr: String = crate::config::user_vm_sockaddr_builder(
+                let user_vm_sockaddr: String = (self.user_vm_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     self.config.l2(),
                 )?;
-                let gateway_sockaddr: String = crate::config::gateway_sockaddr_builder(
+                let gateway_sockaddr: String = (self.gateway_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     tag.sandbox_id(),
@@ -267,7 +295,7 @@ impl SandboxCache {
                     },
                 };
 
-                Ok((tag.sandbox_id(), gateway_sockaddr))
+                Ok((tag.sandbox_id(), gateway_sockaddr, gateway_socket_type))
             },
         }
     }

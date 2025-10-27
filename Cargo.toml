@@ -22,6 +22,7 @@ members = [
         "src/libs/error",
         "src/libs/hwloc",
         "src/libs/nanvix-sandbox",
+        "src/libs/nanvix-sandbox-cache",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -91,6 +92,7 @@ libc = "0.2.172"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.27"
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
+nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
