@@ -34,6 +34,8 @@ use ::tokio::{
         self,
         AsyncReadExt,
         AsyncWriteExt,
+        Stdin,
+        Stdout,
     },
     sync::Mutex,
 };
@@ -205,7 +207,8 @@ impl Terminal {
         // Enable raw mode for terminal.
         let _raw_mode_guard: RawModeGuard = RawModeGuard::new()?;
 
-        let mut stdin: tokio::io::Stdin = io::stdin();
+        let mut stdout: Stdout = io::stdout();
+        let mut stdin: Stdin = io::stdin();
         let mut stdin_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
         let mut gateway_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
 
@@ -220,8 +223,8 @@ impl Terminal {
                                     break Ok(())
                                 } else {
                                     // Echo character to terminal.
-                                    io::stdout().write_all(&gateway_buffer[..n]).await?;
-                                    ::tokio::io::stdout().flush().await?;
+                                    stdout.write_all(&gateway_buffer[..n]).await?;
+                                    stdout.flush().await?;
                                 }
                             },
                             Err(error) => {
