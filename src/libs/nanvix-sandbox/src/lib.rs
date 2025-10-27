@@ -62,8 +62,12 @@
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // system_vm_socket_info
 //!     None,  // console_file
 //!     None,  // hwloc
-//!     "/path/to/bin".to_string(),  // binary_directory
-//!     "/path/to/logs".to_string(),  // log_directory
+//!     "/path/to/kernel.elf",  // kernel_binary_path
+//!     #[cfg(not(feature = "single-process"))]
+//!     "/path/to/linuxd.elf",  // linuxd_binary_path
+//!     #[cfg(not(feature = "single-process"))]
+//!     "/path/to/uservm.elf",  // uservm_binary_path
+//!     "/path/to/logs",  // log_directory
 //!     None,  // syscall_table
 //!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_socket_info
 //!     Some("/path/to/toolchain".to_string()),  // toolchain_binary_directory

@@ -89,14 +89,14 @@ impl UserVm {
         trace!("spawn(): args={args:?}");
 
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/uservm.elf", args.binary_directory()),
+            args.uservm_binary_path().to_string(),
             ::uservm::args::Args::OPT_LOGFILE.to_string(),
             ::uservm::args::Args::OPT_LOGDIR.to_string(),
             args.log_directory().to_string(),
             ::uservm::args::Args::OPT_USER_VM_ID.to_string(),
             args.uservm_id().to_string(),
             ::uservm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/kernel.elf", args.binary_directory()),
+            args.kernel_binary_path().to_string(),
             ::uservm::args::Args::OPT_INITRD.to_string(),
             args.program().to_string(),
             ::uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string(),
