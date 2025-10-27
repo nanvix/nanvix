@@ -16,7 +16,7 @@ use crate::{
         CLEANUP_TIMEOUT,
         CONTROL_PLANE_ACCEPT_TIMEOUT,
     },
-    sandbox::UserVmArgs,
+    UserVmArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
