@@ -152,7 +152,7 @@ jobs:
 
     - name: "Upload Release Artifact"
       if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' && matrix.deployment-type != 'l2' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         path: ${{ steps.release-archive.outputs.archive-path }}
@@ -160,7 +160,7 @@ jobs:
 
     - name: "Upload logs in case of failures"
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
         # Overwrite to limit the amount of storage we use.
