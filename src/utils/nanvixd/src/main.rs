@@ -24,9 +24,9 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::nanvix_sandbox_cache::SandboxCacheConfig;
 use ::nanvixd::{
     args::Args,
-    cache::config::SandboxCacheConfig,
     http::HttpServer,
 };
 use ::std::sync::Arc;

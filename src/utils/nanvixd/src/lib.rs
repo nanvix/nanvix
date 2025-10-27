@@ -12,7 +12,6 @@
 //==================================================================================================
 
 pub mod args;
-pub mod cache;
 pub mod config;
 pub mod http;
 pub mod message;
