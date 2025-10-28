@@ -503,7 +503,6 @@ main() {
     RUST_LOG="${LOG_LEVEL},hyperlight_host=off" setsid "${nanvixd_binary_path}" \
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_BIN_DIR}" \
-        -log-to-file \
         -log-dir "${logs_dir}" \
         -tmp-dir "${TMP_DIR}" \
         "$([ "$L2_VM" = "yes" ] && echo "-l2")" \

@@ -57,7 +57,7 @@ pub async fn main() -> Result<()> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    ::syslog::init(args.log_to_file(), args.log_directory().to_string());
+    ::syslog::init(true, args.log_directory().to_string());
 
     #[cfg(feature = "single-process")]
     info!("nanvixd {} single-process mode", env!("CARGO_PKG_VERSION"));
