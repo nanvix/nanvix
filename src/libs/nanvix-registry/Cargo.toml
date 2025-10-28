@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-registry"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Registry Management Library for Nanvix"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
+dirs = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+uuid = { workspace = true, features = ["std", "v4"] }
+
+[features]
+default = []
