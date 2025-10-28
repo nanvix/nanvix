@@ -873,33 +873,25 @@ impl WorkerThreadHandle {
                 profiler::timestamp_message!(&mut request.buffer, 0);
                 let count: usize = request.count as usize;
 
-                let mut locked_gateway_writer = gateway_writer.blocking_lock();
-                let mut total_written: usize = 0;
+                let mut locked_gateway_writer: MutexGuard<'_, SocketStreamWriter> =
+                    gateway_writer.blocking_lock();
 
-                while total_written < count {
-                    let write_slice: &[u8] = &request.buffer[total_written..count];
-                    match Handle::current().block_on(locked_gateway_writer.write(write_slice)) {
-                        Ok(0) => {
-                            error!("failed to write to gateway socket (written={total_written})");
-                            return Ok(build_error(source, ErrorCode::IoErr));
-                        },
-                        Ok(n) => {
-                            total_written += n;
-                        },
-                        Err(e) if e.kind() == ErrorKind::Interrupted => {
-                            return Err(WorkerThreadError::Interrupted);
-                        },
-                        Err(e) => {
-                            error!("failed to write to gateway socket (error={e:?})");
-                            return Ok(build_error(source, ErrorCode::IoErr));
-                        },
-                    }
+                // Use write_all() to ensure all bytes are written atomically while holding the lock.
+                match Handle::current()
+                    .block_on(locked_gateway_writer.write_all(&request.buffer[..count]))
+                {
+                    Ok(()) => {
+                        debug!("wrote {count} bytes to the gateway");
+                        Ok(WriteResponse::build(source, count as i32))
+                    },
+                    Err(e) if e.kind() == ErrorKind::Interrupted => {
+                        Err(WorkerThreadError::Interrupted)
+                    },
+                    Err(e) => {
+                        error!("failed to write to gateway socket (error={e:?})");
+                        Ok(build_error(source, ErrorCode::IoErr))
+                    },
                 }
-
-                // We don't wait for the IO thread to confirm that the write was correct, as writes
-                // are fully non-blocking.
-                debug!("wrote {count} bytes to the gateway");
-                Ok(WriteResponse::build(source, count as i32))
             }
         } else {
             // Write to other file descriptor.
