@@ -39,8 +39,11 @@ pub struct UserVmArgs {
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<hwloc::HwLoc>,
-    /// Path to the binary directory containing Nanvix binaries.
-    binary_directory: String,
+    /// Path to kernel binary.
+    kernel_binary_path: String,
+    /// Path to the User VM binary.
+    #[cfg(not(feature = "single-process"))]
+    uservm_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Unique identifier for this User VM instance.
@@ -66,7 +69,8 @@ impl UserVmArgs {
     /// - `program_args`: Optional command-line arguments for the program.
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
-    /// - `binary_directory`: Path to the binary directory.
+    /// - `kernel_binary_path`: Path to kernel binary.
+    /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
     /// - `log_directory`: Path to the log directory.
     /// - `uservm_id`: Unique identifier for this User VM instance.
     ///
@@ -83,7 +87,8 @@ impl UserVmArgs {
         program_args: Option<String>,
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
-        binary_directory: String,
+        kernel_binary_path: String,
+        #[cfg(not(feature = "single-process"))] uservm_binary_path: String,
         log_directory: String,
         uservm_id: UserVmIdentifier,
     ) -> Self {
@@ -95,7 +100,9 @@ impl UserVmArgs {
             program_args,
             console_file,
             hwloc,
-            binary_directory,
+            kernel_binary_path,
+            #[cfg(not(feature = "single-process"))]
+            uservm_binary_path,
             log_directory,
             uservm_id,
         }
@@ -195,14 +202,28 @@ impl UserVmArgs {
     ///
     /// # Description
     ///
-    /// Returns the path to the binary directory.
+    /// Returns the path to the kernel binary.
     ///
     /// # Returns
     ///
-    /// The path to the binary directory.
+    /// The path to the kernel binary.
     ///
-    pub fn binary_directory(&self) -> &str {
-        &self.binary_directory
+    pub fn kernel_binary_path(&self) -> &str {
+        &self.kernel_binary_path
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the User VM binary.
+    ///
+    /// # Returns
+    ///
+    /// The path to the User VM binary.
+    ///
+    #[cfg(not(feature = "single-process"))]
+    pub fn uservm_binary_path(&self) -> &str {
+        &self.uservm_binary_path
     }
 
     ///

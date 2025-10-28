@@ -64,13 +64,25 @@ pub async fn main() -> Result<()> {
     #[cfg(not(feature = "single-process"))]
     info!("nanvixd {} multi-process mode", env!("CARGO_PKG_VERSION"));
 
+    #[cfg(not(feature = "single-process"))]
+    let linuxd_binary_path: String = format!("{}/linuxd.elf", args.binary_directory());
+
+    let kernel_binary_path: String = format!("{}/kernel.elf", args.binary_directory());
+
+    #[cfg(not(feature = "single-process"))]
+    let uservm_binary_path: String = format!("{}/uservm.elf", args.binary_directory());
+
     let config: SandboxCacheConfig = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
         args.system_vm_socket_type(),
         args.console_file().clone(),
         args.hwloc().clone(),
-        args.binary_directory(),
+        &kernel_binary_path,
+        #[cfg(not(feature = "single-process"))]
+        &linuxd_binary_path,
+        #[cfg(not(feature = "single-process"))]
+        &uservm_binary_path,
         args.toolchain_binary_directory(),
         args.log_directory(),
         args.l2(),

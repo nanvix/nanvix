@@ -257,7 +257,8 @@ impl UninitializedSandbox {
                         ),
                         config.system_vm_socket_info().clone(),
                         config.hwloc(),
-                        config.binary_directory().to_string(),
+                        #[cfg(not(feature = "single-process"))]
+                        config.linuxd_binary_path().to_string(),
                         toolchain_binary_directory,
                         config.log_directory().to_string(),
                         tmp_directory,
@@ -283,6 +284,7 @@ impl UninitializedSandbox {
 
         Ok(InitializedSandbox {
             guest_binary_path: self.guest_binary_path,
+            kernel_binary_path: config.kernel_binary_path().to_string(),
             program_args: self.program_args,
             linuxd,
             control_plane_socket_and_info,
