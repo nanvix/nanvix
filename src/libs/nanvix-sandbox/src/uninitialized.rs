@@ -263,6 +263,7 @@ impl UninitializedSandbox {
                         config.log_directory().to_string(),
                         tmp_directory,
                         l2,
+                        #[cfg(feature = "single-process")]
                         config.syscall_table(),
                     )
                 };

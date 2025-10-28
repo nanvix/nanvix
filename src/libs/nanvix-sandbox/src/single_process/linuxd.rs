@@ -116,7 +116,7 @@ impl LinuxDaemon {
 
         // Create a new Linux Daemon instance.
         let linuxd: EmbeddedLinuxd = EmbeddedLinuxd::init(
-            args.syscall_table().cloned().unwrap_or_default(),
+            args.syscall_table().unwrap_or_default(),
             &args.control_plane_socket_info().0,
             args.control_plane_socket_info().1.to_str(),
             user_vm_listener,
