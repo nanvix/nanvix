@@ -25,10 +25,10 @@
 
 use ::anyhow::Result;
 use ::nanvix_sandbox_cache::SandboxCacheConfig;
+use ::nanvix_terminal::Terminal;
 use ::nanvixd::{
     args::Args,
     http::HttpServer,
-    terminal::Terminal,
 };
 use ::std::sync::Arc;
 use ::syslog::{
