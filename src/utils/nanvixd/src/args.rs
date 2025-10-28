@@ -35,8 +35,8 @@ use ::syscomm::SocketType;
 ///
 #[derive(Debug, Clone)]
 pub struct Args {
-    /// HTTP server socket address (host:port).
-    http_sockaddr: String,
+    /// Optional HTTP server socket address (host:port). If present, enables HTTP mode.
+    http_sockaddr: Option<String>,
     /// Directory path for temporary files and Unix sockets.
     tmp_directory: String,
     /// Directory path containing Nanvix binaries.
@@ -59,6 +59,10 @@ pub struct Args {
     gateway_socket_type: Option<SocketType>,
     /// Optional socket type for system VM communication (linuxd <-> uservm).
     system_vm_socket_type: Option<SocketType>,
+    /// Program name for interactive mode (first word after `--` separator).
+    program_name: Option<String>,
+    /// Program arguments for interactive mode (remaining words after `--` separator).
+    program_args: Vec<String>,
 }
 
 //==================================================================================================
@@ -92,6 +96,8 @@ impl Args {
     pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
     /// Command-line option that sets the system VM socket type.
     pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
+    /// Command-line separator for interactive mode program and arguments.
+    pub const OPT_SEPARATOR: &'static str = "--";
 
     ///
     /// # Description
@@ -100,6 +106,7 @@ impl Args {
     ///
     /// This function processes all supported command-line flags and options, validates them,
     /// and enforces constraints such as requiring TCP sockets for L2 deployment mode.
+    /// It also enforces mutual exclusivity between HTTP mode and interactive mode.
     ///
     /// # Parameters
     ///
@@ -111,7 +118,7 @@ impl Args {
     /// the parsing issue or validation failure.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
-        let mut http_sockaddr: String = String::new();
+        let mut http_sockaddr: Option<String> = None;
         let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut toolchain_binary_directory: String =
@@ -124,9 +131,26 @@ impl Args {
         let mut control_plane_socket_type: Option<SocketType> = None;
         let mut gateway_socket_type: Option<SocketType> = None;
         let mut system_vm_socket_type: Option<SocketType> = None;
+        let mut program_name: Option<String> = None;
+        let mut program_args: Vec<String> = Vec::new();
 
         let mut i: usize = 1;
         while i < args.len() {
+            // Check for separator.
+            if args[i] == Self::OPT_SEPARATOR {
+                i += 1;
+                // The first word after separator is the program name.
+                if i < args.len() {
+                    program_name = Some(args[i].clone());
+                    i += 1;
+                    // Remaining words are program arguments.
+                    while i < args.len() {
+                        program_args.push(args[i].clone());
+                        i += 1;
+                    }
+                }
+                break;
+            }
             match args[i].as_str() {
                 Self::OPT_HELP => {
                     Self::usage(args[0].as_str());
@@ -134,7 +158,7 @@ impl Args {
                 },
                 Self::OPT_HTTP_SOCKADDR => {
                     i += 1;
-                    http_sockaddr = args[i].clone();
+                    http_sockaddr = Some(args[i].clone());
                 },
                 Self::OPT_TMP_DIRECTORY => {
                     i += 1;
@@ -214,6 +238,29 @@ impl Args {
             system_vm_socket_type = Some(SocketType::Tcp);
         }
 
+        // Determine operation mode: HTTP mode is active if -http-addr is provided,
+        // interactive mode is active if `--` separator with program name is provided.
+        let http_mode: bool = http_sockaddr.is_some();
+        let interactive_mode: bool = program_name.is_some();
+
+        // Ensure exactly one mode is active.
+        if http_mode && interactive_mode {
+            anyhow::bail!(
+                "cannot use both HTTP mode ({}) and interactive mode ({}) simultaneously",
+                Self::OPT_HTTP_SOCKADDR,
+                Self::OPT_SEPARATOR
+            );
+        }
+
+        if !http_mode && !interactive_mode {
+            anyhow::bail!(
+                "must specify either HTTP mode ({} <sockaddr>) or interactive mode ({} <program> \
+                 [<args>...])",
+                Self::OPT_HTTP_SOCKADDR,
+                Self::OPT_SEPARATOR
+            );
+        }
+
         Ok(Self {
             http_sockaddr,
             tmp_directory,
@@ -227,6 +274,8 @@ impl Args {
             control_plane_socket_type,
             gateway_socket_type,
             system_vm_socket_type,
+            program_name,
+            program_args,
         })
     }
 
@@ -241,38 +290,61 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            concat!(
-                "Usage: {} {} <sockaddr> [{} <file>] [{} <tmp_dir>] [{} <bin_dir>] ",
-                "[{} <toolchain_bin_dir>] [{} <hwloc.json>] [{} [{} <log_dir>]] ",
-                "[{} <socket_type>] [{} <socket_type>] [{} <socket_type>] [{}]"
-            ),
-            program_name,
-            Self::OPT_HTTP_SOCKADDR,
-            Self::OPT_CONSOLE_FILE,
-            Self::OPT_TMP_DIRECTORY,
-            Self::OPT_BIN_DIRECTORY,
-            Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
-            Self::OPT_HWLOC,
-            Self::OPT_LOG_TO_FILE,
-            Self::OPT_LOG_DIRECTORY,
-            Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
-            Self::OPT_GATEWAY_SOCKET_TYPE,
-            Self::OPT_SYSTEM_VM_SOCKET_TYPE,
-            Self::OPT_L2
+            "\
+Nanvix Daemon - System-level service and VM orchestration daemon for Nanvix OS.
+
+Usage (HTTP mode):
+  {program_name} {http_addr} <sockaddr> [OPTIONS]
+
+Usage (Interactive mode):
+  {program_name} [OPTIONS] {separator} <program> [<args>...]
+
+Options:
+  {console_file} <file>                     Redirect console output to a file.
+  {tmp_dir} <tmp_dir>                       Directory for temporary files and Unix sockets.
+  {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
+  {toolchain_bin_dir} <toolchain_bin_dir>   Directory containing toolchain binaries \
+             (cloud-hypervisor, etc.).
+  {hwloc} <hwloc.json>                      Hardware locality configuration file for CPU \
+             affinity/topology.
+  {log_to_file}                             Enable logging to files instead of stdout/stderr.
+  {log_dir} <log_dir>                       Directory for log files (used with {log_to_file}).
+  {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
+             <-> linuxd).
+  {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
+             linuxd).
+  {system_vm_socket_type} <socket_type>     Socket type for system VM communication (linuxd <-> \
+             uservm).
+  {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
+",
+            program_name = program_name,
+            http_addr = Self::OPT_HTTP_SOCKADDR,
+            separator = Self::OPT_SEPARATOR,
+            console_file = Self::OPT_CONSOLE_FILE,
+            tmp_dir = Self::OPT_TMP_DIRECTORY,
+            bin_dir = Self::OPT_BIN_DIRECTORY,
+            toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
+            hwloc = Self::OPT_HWLOC,
+            log_to_file = Self::OPT_LOG_TO_FILE,
+            log_dir = Self::OPT_LOG_DIRECTORY,
+            control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
+            gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
+            system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
+            l2 = Self::OPT_L2,
         );
     }
 
     ///
     /// # Description
     ///
-    /// Returns the HTTP socket address.
+    /// Returns the HTTP socket address if HTTP mode is enabled.
     ///
     /// # Returns
     ///
-    /// The HTTP socket address.
+    /// The HTTP socket address if present; `None` otherwise.
     ///
-    pub fn http_sockaddr(&self) -> &str {
-        &self.http_sockaddr
+    pub fn http_sockaddr(&self) -> Option<&str> {
+        self.http_sockaddr.as_deref()
     }
 
     ///
@@ -416,5 +488,57 @@ impl Args {
     ///
     pub fn system_vm_socket_type(&self) -> SocketType {
         self.system_vm_socket_type.unwrap_or(SocketType::Unix)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Indicates whether HTTP mode is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if HTTP mode is enabled; `false` otherwise.
+    ///
+    pub fn http_mode(&self) -> bool {
+        self.http_sockaddr.is_some()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Indicates whether interactive mode is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if interactive mode is enabled; `false` otherwise.
+    ///
+    pub fn interactive_mode(&self) -> bool {
+        self.program_name.is_some()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the program name for interactive mode.
+    ///
+    /// # Returns
+    ///
+    /// The program name if specified; `None` otherwise.
+    ///
+    pub fn program_name(&self) -> Option<&str> {
+        self.program_name.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the program arguments for interactive mode.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the vector of program arguments.
+    ///
+    pub fn program_args(&self) -> &[String] {
+        &self.program_args
     }
 }
