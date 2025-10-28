@@ -251,7 +251,7 @@ impl LinuxDaemon {
             ]
         } else {
             vec![
-                format!("{}/linuxd.elf", args.binary_directory()),
+                args.linuxd_binary_path().to_string(),
                 args::Args::OPT_LOGFILE.to_string(),
                 args::Args::OPT_LOGDIR.to_string(),
                 args.log_directory().to_string(),

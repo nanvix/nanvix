@@ -55,6 +55,8 @@ use ::tokio::{
 pub struct InitializedSandbox {
     /// Path to the guest binary file to execute.
     pub(super) guest_binary_path: String,
+    /// Path to the kernel binary file.
+    pub(super) kernel_binary_path: String,
     /// Optional command-line arguments for the program.
     pub(super) program_args: Option<String>,
     /// Shared handle to the Linux Daemon instance managing this sandbox.
@@ -86,9 +88,10 @@ impl InitializedSandbox {
         let console_file: Option<String> =
             self.sandbox_config.console_file().map(|s| s.to_string());
         let hwloc: Option<hwloc::HwLoc> = self.sandbox_config.hwloc();
-        let binary_directory: String = self.sandbox_config.binary_directory().to_string();
         let log_directory: String = self.sandbox_config.log_directory().to_string();
         let uservm_id: ::user_vm_api::UserVmIdentifier = self.sandbox_config.uservm_id();
+        #[cfg(not(feature = "single-process"))]
+        let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
 
         // Extract gateway socket info (consumes the config to get ownership of TcpPort).
         let gateway_socket_info_with_port: (String, SocketType, Option<TcpPort>) =
@@ -113,7 +116,9 @@ impl InitializedSandbox {
                     self.program_args.clone(),
                     console_file,
                     hwloc,
-                    binary_directory,
+                    self.kernel_binary_path.clone(),
+                    #[cfg(not(feature = "single-process"))]
+                    uservm_binary_path,
                     log_directory,
                     uservm_id,
                 ),

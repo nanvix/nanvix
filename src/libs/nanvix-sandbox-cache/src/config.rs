@@ -89,8 +89,14 @@ pub struct SandboxCacheConfig {
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<HwLoc>,
-    /// Path to the binary directory containing Nanvix binaries.
-    binary_directory: String,
+    /// Path to kernel binary.
+    kernel_binary_path: String,
+    /// Path to the Linux Daemon binary.
+    #[cfg(not(feature = "single-process"))]
+    linuxd_binary_path: String,
+    /// Path to the User VM binary.
+    #[cfg(not(feature = "single-process"))]
+    uservm_binary_path: String,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -118,7 +124,9 @@ impl SandboxCacheConfig {
     /// - `system_vm_socket_type`: Socket type for system VM communication.
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
-    /// - `binary_directory`: Path to the binary directory.
+    /// - `kernel_binary_path`: Path to kernel binary.
+    /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
+    /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
@@ -135,7 +143,9 @@ impl SandboxCacheConfig {
         system_vm_socket_type: SocketType,
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
-        binary_directory: &str,
+        kernel_binary_path: &str,
+        #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
+        #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
         toolchain_binary_directory: &str,
         log_directory: &str,
         l2: bool,
@@ -147,7 +157,11 @@ impl SandboxCacheConfig {
             system_vm_socket_type,
             console_file,
             hwloc,
-            binary_directory: binary_directory.to_string(),
+            kernel_binary_path: kernel_binary_path.to_string(),
+            #[cfg(not(feature = "single-process"))]
+            linuxd_binary_path: linuxd_binary_path.to_string(),
+            #[cfg(not(feature = "single-process"))]
+            uservm_binary_path: uservm_binary_path.to_string(),
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
             log_directory: log_directory.to_string(),
             l2,
@@ -223,14 +237,42 @@ impl SandboxCacheConfig {
     ///
     /// # Description
     ///
-    /// Returns the path to the binary directory.
+    /// Returns the path to the kernel binary.
     ///
     /// # Returns
     ///
-    /// The path to the binary directory.
+    /// The path to the kernel binary.
     ///
-    pub fn binary_directory(&self) -> &str {
-        &self.binary_directory
+    pub fn kernel_binary_path(&self) -> &str {
+        &self.kernel_binary_path
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the Linux Daemon binary.
+    ///
+    /// # Returns
+    ///
+    /// The path to the Linux Daemon binary.
+    ///
+    #[cfg(not(feature = "single-process"))]
+    pub fn linuxd_binary_path(&self) -> &str {
+        &self.linuxd_binary_path
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the User VM binary.
+    ///
+    /// # Returns
+    ///
+    /// The path to the User VM binary.
+    ///
+    #[cfg(not(feature = "single-process"))]
+    pub fn uservm_binary_path(&self) -> &str {
+        &self.uservm_binary_path
     }
 
     ///

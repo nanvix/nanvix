@@ -31,8 +31,9 @@ pub struct LinuxDaemonArgs {
     system_vm_socket_info: (String, SocketType),
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<hwloc::HwLoc>,
-    /// Path to the binary directory containing Nanvix binaries.
-    binary_directory: String,
+    /// Path to Linux Daemon binary.
+    #[cfg(not(feature = "single-process"))]
+    linuxd_binary_path: String,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -60,7 +61,7 @@ impl LinuxDaemonArgs {
     /// - `control_plane_socket_info`: Information on control plane socket (address, socket type).
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `hwloc`: Optional hardware locality configuration for CPU affinity and topology information.
-    /// - `binary_directory`: Path to the binary directory containing Nanvix binaries.
+    /// - `linuxd_binary_path`: Path to Linux Daemon binary (only if not in single-process mode).
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     /// - `log_directory`: Directory path for writing log files.
     /// - `tmp_directory`: Temporary directory path for Unix sockets and transient files.
@@ -76,7 +77,7 @@ impl LinuxDaemonArgs {
         control_plane_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
-        binary_directory: String,
+        #[cfg(not(feature = "single-process"))] linuxd_binary_path: String,
         toolchain_binary_directory: String,
         log_directory: String,
         tmp_directory: String,
@@ -87,7 +88,8 @@ impl LinuxDaemonArgs {
             control_plane_socket_info,
             system_vm_socket_info,
             hwloc,
-            binary_directory,
+            #[cfg(not(feature = "single-process"))]
+            linuxd_binary_path,
             toolchain_binary_directory,
             log_directory,
             tmp_directory,
@@ -138,14 +140,15 @@ impl LinuxDaemonArgs {
     ///
     /// # Description
     ///
-    /// Returns the path to the binary directory containing Nanvix binaries.
+    /// Returns the path to the Linux Daemon binary.
     ///
     /// # Returns
     ///
-    /// The path to the binary directory.
+    /// The path to the Linux Daemon binary.
     ///
-    pub fn binary_directory(&self) -> &str {
-        &self.binary_directory
+    #[cfg(not(feature = "single-process"))]
+    pub fn linuxd_binary_path(&self) -> &str {
+        &self.linuxd_binary_path
     }
 
     ///
