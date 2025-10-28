@@ -12,8 +12,6 @@
 //==================================================================================================
 
 use crate::tcp_port::TcpPort;
-use ::linuxd::syscalls::SyscallTable;
-use ::std::sync::Arc;
 use ::syscomm::SocketType;
 use ::user_vm_api::UserVmIdentifier;
 
@@ -52,7 +50,8 @@ pub struct SandboxConfig {
     /// Directory path for writing log files.
     log_directory: String,
     /// Optional system call table for overriding default system call behavior.
-    syscall_table: Option<Arc<SyscallTable>>,
+    #[cfg(feature = "single-process")]
+    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
 
     /// Optional information on control plane socket (address, socket type).
     /// This must be provided if the control plane socket is not already initialized before
@@ -93,7 +92,7 @@ impl SandboxConfig {
     /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
     /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
     /// - `log_directory`: Path to the log directory.
-    /// - `syscall_table`: Optional system call table for overriding default system call behavior.
+    /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     /// - `control_plane_socket_info`: Optional information on control plane socket (address, socket type).
     /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
@@ -114,7 +113,9 @@ impl SandboxConfig {
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
         log_directory: &str,
-        syscall_table: Option<Arc<SyscallTable>>,
+        #[cfg(feature = "single-process")] syscall_table: Option<
+            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+        >,
         control_plane_socket_info: Option<(String, SocketType)>,
         toolchain_binary_directory: Option<String>,
         tmp_directory: Option<String>,
@@ -132,6 +133,7 @@ impl SandboxConfig {
             #[cfg(not(feature = "single-process"))]
             uservm_binary_path: uservm_binary_path.to_string(),
             log_directory: log_directory.to_string(),
+            #[cfg(feature = "single-process")]
             syscall_table,
             control_plane_socket_info,
             toolchain_binary_directory,
@@ -268,7 +270,8 @@ impl SandboxConfig {
     ///
     /// An optional clone of the system call table.
     ///
-    pub fn syscall_table(&self) -> Option<Arc<SyscallTable>> {
+    #[cfg(feature = "single-process")]
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
         self.syscall_table.clone()
     }
 
