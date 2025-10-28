@@ -28,6 +28,7 @@ use ::nanvix_sandbox_cache::SandboxCacheConfig;
 use ::nanvixd::{
     args::Args,
     http::HttpServer,
+    terminal::Terminal,
 };
 use ::std::sync::Arc;
 use ::syslog::{
@@ -76,9 +77,47 @@ pub async fn main() -> Result<()> {
         args.tmp_directory(),
     );
 
-    let mut http_server: HttpServer = HttpServer::new(args.http_sockaddr(), config);
-    if let Err(error) = http_server.run().await {
-        error!("HTTP server failed: {}", error);
+    // Check for interactive mode or HTTP mode.
+    if args.interactive_mode() {
+        info!("running in interactive mode");
+        let guest_binary_path: String = match args.program_name() {
+            None => {
+                let reason: &str = "no program name specified in interactive mode";
+                error!("{}", reason);
+                anyhow::bail!(reason);
+            },
+            Some(path) => path.to_string(),
+        };
+
+        let guest_binary_args: String = if args.program_args().is_empty() {
+            String::new()
+        } else {
+            args.program_args().join(" ")
+        };
+
+        let mut terminal: Terminal = Terminal::new(config);
+        if let Err(error) = terminal.run(guest_binary_path, guest_binary_args).await {
+            error!("terminal failed: {}", error);
+        }
+    } else if args.http_mode() {
+        info!("running in HTTP mode");
+        let http_sockaddr: &str = match args.http_sockaddr() {
+            None => {
+                let reason: &str = "no HTTP socket address specified in HTTP mode";
+                error!("{}", reason);
+                anyhow::bail!(reason);
+            },
+            Some(addr) => addr,
+        };
+
+        let mut http_server: HttpServer = HttpServer::new(http_sockaddr, config);
+        if let Err(error) = http_server.run().await {
+            error!("http server failed: {}", error);
+        }
+    } else {
+        let reason: &str = "no operation mode specified";
+        error!("{}", reason);
+        anyhow::bail!(reason);
     }
 
     Ok(())
