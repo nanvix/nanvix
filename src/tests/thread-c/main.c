@@ -102,6 +102,9 @@ int main(int argc, const char *argv[])
                            sizeof(int)   // recursive
     );
 
+    // Sanity check size of `pthread_rwlock_t` type.
+    STATIC_ASSERT_SIZE(pthread_rwlock_t, sizeof(uint32_t));
+
     test_pthread_self();
     test_pthread_attr_init_destroy();
     test_pthread_attr_getstack();
