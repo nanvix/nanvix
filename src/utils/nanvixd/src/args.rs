@@ -11,7 +11,10 @@
 // Imports
 //==================================================================================================
 
-use crate::config;
+use crate::config::{
+    self,
+    DEFAULT_LOG_DIRECTORY,
+};
 use ::anyhow::Result;
 use ::hwloc::HwLoc;
 use ::std::{
@@ -47,8 +50,6 @@ pub struct Args {
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
-    /// Flag indicating whether to log to files instead of stdout/stderr.
-    log_to_file: bool,
     /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM.
@@ -84,8 +85,6 @@ impl Args {
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
     /// Command-line option that loads the serialized CPU topology.
     pub const OPT_HWLOC: &'static str = "-hwloc";
-    /// Command-line flag that enables logging to files.
-    pub const OPT_LOG_TO_FILE: &'static str = "-log-to-file";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
     /// Command-line flag that enables L2 deployment mode.
@@ -125,8 +124,7 @@ impl Args {
             config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
         let mut console_file: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
-        let mut log_to_file: bool = false;
-        let mut log_directory: String = config::DEFAULT_LOG_DIRECTORY.to_string();
+        let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
         let mut control_plane_socket_type: Option<SocketType> = None;
         let mut gateway_socket_type: Option<SocketType> = None;
@@ -203,9 +201,6 @@ impl Args {
                     i += 1;
                     system_vm_socket_type = Some(args[i].parse()?);
                 },
-                Self::OPT_LOG_TO_FILE => {
-                    log_to_file = true;
-                },
                 Self::OPT_LOG_DIRECTORY => {
                     i += 1;
                     log_directory = args[i].clone();
@@ -268,7 +263,6 @@ impl Args {
             toolchain_binary_directory,
             console_file,
             hwloc,
-            log_to_file,
             log_directory,
             l2,
             control_plane_socket_type,
@@ -307,8 +301,8 @@ Options:
              (cloud-hypervisor, etc.).
   {hwloc} <hwloc.json>                      Hardware locality configuration file for CPU \
              affinity/topology.
-  {log_to_file}                             Enable logging to files instead of stdout/stderr.
-  {log_dir} <log_dir>                       Directory for log files (used with {log_to_file}).
+  {log_dir} <log_dir>                       Directory for log files (Default: \
+             {DEFAULT_LOG_DIRECTORY}).
   {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
              <-> linuxd).
   {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
@@ -325,7 +319,6 @@ Options:
             bin_dir = Self::OPT_BIN_DIRECTORY,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             hwloc = Self::OPT_HWLOC,
-            log_to_file = Self::OPT_LOG_TO_FILE,
             log_dir = Self::OPT_LOG_DIRECTORY,
             control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
@@ -423,19 +416,6 @@ Options:
     ///
     pub fn l2(&self) -> bool {
         self.l2
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Indicates whether to log to a file instead of stdout/stderr.
-    ///
-    /// # Returns
-    ///
-    /// `true` if logging to a file; `false` otherwise.
-    ///
-    pub fn log_to_file(&self) -> bool {
-        self.log_to_file
     }
 
     ///
