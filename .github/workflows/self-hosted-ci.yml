@@ -171,6 +171,11 @@ jobs:
           **/*.out
           **/*.err
 
+    - name: "Cleanup images directory"
+      if: always()
+      run: sudo rm -rf images
+      shell: bash
+
   publish-latest:
     name: "Publish Latest Release"
     needs: ci
