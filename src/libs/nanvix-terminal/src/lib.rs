@@ -70,6 +70,9 @@ const DEFAULT_APP_NAME: &str = "nanvixd-terminal";
 /// Set to 1 byte for character-by-character I/O to ensure responsive terminal interaction.
 const IO_BUFFER_SIZE: usize = 1;
 
+/// Signal used to interrupt stdin thread.
+const SIGUSR1: i32 = 10;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -150,13 +153,24 @@ impl Terminal {
         let (stdin_tx, mut stdin_rx): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) =
             mpsc::unbounded_channel();
 
+        // Create channel for thread ID communication.
+        let (thread_id_tx, mut thread_id_rx): (UnboundedSender<u64>, UnboundedReceiver<u64>) =
+            mpsc::unbounded_channel();
+
         // Spawn a dedicated thread for blocking stdin reads. We use a separate thread because
         // tokio's async stdin handling is not suitable for standard blocking stdin reads.
         // Furthermore, we don't join this thread because it should run for the entire duration of
         // the terminal session.
         let _stdin_handle: ::std::thread::JoinHandle<()> = ::std::thread::spawn(move || {
-            Self::stdin_thread(stdin_tx);
+            Self::stdin_thread(stdin_tx, thread_id_tx);
         });
+
+        // Wait for the thread ID to be sent.
+        let stdin_thread_id: u64 = thread_id_rx.recv().await.ok_or_else(|| {
+            let reason: &str = "failed to receive id of stdin thread";
+            error!("{reason}");
+            anyhow::anyhow!(reason)
+        })?;
 
         let mut stdout: Stdout = io::stdout();
         let mut gateway_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
@@ -207,6 +221,13 @@ impl Terminal {
             error!("failed to shutdown VM: {error}");
         }
 
+        // Send SIGUSR1 signal to stdin thread to interrupt the blocking read operation.
+        // SAFETY: The thread ID is valid and was obtained from the stdin thread itself.
+        let kill_result: i32 = unsafe { libc::pthread_kill(stdin_thread_id, SIGUSR1) };
+        if kill_result != 0 {
+            error!("failed to send signal to stdin thread: error code {kill_result}");
+        }
+
         result
     }
 
@@ -218,8 +239,17 @@ impl Terminal {
     /// # Parameters
     ///
     /// - `stdin_tx`: Channel sender to forward stdin data to the async task.
+    /// - `thread_id_tx`: Channel sender to send the thread ID back to the main task.
     ///
-    fn stdin_thread(stdin_tx: UnboundedSender<Vec<u8>>) {
+    fn stdin_thread(stdin_tx: UnboundedSender<Vec<u8>>, thread_id_tx: UnboundedSender<u64>) {
+        // Send thread ID back to the main task.
+        // SAFETY: Calling pthread_self is safe as it only reads the thread ID.
+        let thread_id: u64 = unsafe { libc::pthread_self() };
+        if thread_id_tx.send(thread_id).is_err() {
+            error!("failed to send thread ID: channel closed.");
+            return;
+        }
+
         let mut stdin: ::std::io::Stdin = ::std::io::stdin();
         let mut buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
 
@@ -237,7 +267,12 @@ impl Terminal {
                     }
                 },
                 Err(error) => {
-                    error!("failed to read from stdin: {}", error);
+                    // Check if operation was interrupted by a signal.
+                    if error.kind() == ::std::io::ErrorKind::Interrupted {
+                        // Signal received, exit gracefully.
+                        break;
+                    }
+                    error!("failed to read from stdin: {error}");
                     break;
                 },
             }
