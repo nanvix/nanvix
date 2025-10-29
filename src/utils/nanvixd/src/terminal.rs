@@ -16,7 +16,10 @@ use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
 };
-use ::std::sync::Arc;
+use ::std::{
+    io::Read,
+    sync::Arc,
+};
 use ::syscomm::{
     SocketStream,
     SocketStreamReader,
@@ -25,17 +28,26 @@ use ::syscomm::{
     UnboundSocket,
     WriteAll,
 };
-use ::syslog::{
-    error,
-    info,
-};
+use ::syslog::error;
 use ::tokio::{
     io::{
         self,
-        AsyncReadExt,
         AsyncWriteExt,
+        Stdout,
     },
-    sync::Mutex,
+    signal::unix::{
+        signal,
+        Signal,
+        SignalKind,
+    },
+    sync::{
+        mpsc,
+        mpsc::{
+            UnboundedReceiver,
+            UnboundedSender,
+        },
+        Mutex,
+    },
 };
 use ::user_vm_api::UserVmIdentifier;
 
@@ -64,77 +76,9 @@ pub struct Terminal {
     config: SandboxCacheConfig,
 }
 
-///
-/// # Description
-///
-/// RAII guard for terminal raw mode. Restores terminal to original mode on drop.
-///
-struct RawModeGuard {
-    /// Original terminal settings.
-    original_termios: ::libc::termios,
-}
-
 //==================================================================================================
 // Implementations
 //==================================================================================================
-
-impl RawModeGuard {
-    ///
-    /// # Description
-    ///
-    /// Enables raw mode for stdin.
-    ///
-    /// # Returns
-    ///
-    /// Returns a guard that will restore the original terminal mode on drop.
-    ///
-    fn new() -> Result<Self> {
-        // SAFETY: We are accessing stdin's file descriptor (STDIN_FILENO) which is always
-        // valid for the current process. The termios structure is properly zeroed before use,
-        // and tcgetattr/tcsetattr are standard POSIX calls that safely manipulate terminal
-        // attributes through the provided file descriptor.
-        unsafe {
-            let mut termios: ::libc::termios = ::std::mem::zeroed();
-            if ::libc::tcgetattr(::libc::STDIN_FILENO, &mut termios) != 0 {
-                let error: ::std::io::Error = ::std::io::Error::last_os_error();
-                error!("failed to get terminal attributes: {}", error);
-                return Err(anyhow::anyhow!(error));
-            }
-
-            let original_termios: ::libc::termios = termios;
-
-            // Disable canonical mode and echo.
-            termios.c_lflag &= !(::libc::ICANON | ::libc::ECHO);
-            // Set minimum characters to read to 0 (non-blocking).
-            termios.c_cc[::libc::VMIN] = 0;
-            // Set timeout to 1 decisecond (100ms).
-            termios.c_cc[::libc::VTIME] = 1;
-
-            if ::libc::tcsetattr(::libc::STDIN_FILENO, ::libc::TCSANOW, &termios) != 0 {
-                let error: ::std::io::Error = ::std::io::Error::last_os_error();
-                error!("failed to set terminal attributes: {}", error);
-                return Err(anyhow::anyhow!(error));
-            }
-
-            Ok(Self { original_termios })
-        }
-    }
-}
-
-impl Drop for RawModeGuard {
-    ///
-    /// # Description
-    ///
-    /// Restores the original terminal mode.
-    ///
-    fn drop(&mut self) {
-        // SAFETY: We are restoring the terminal attributes to their original state.
-        // The original_termios was obtained through a valid tcgetattr call in new().
-        unsafe {
-            ::libc::tcsetattr(::libc::STDIN_FILENO, ::libc::TCSANOW, &self.original_termios);
-        }
-    }
-}
 
 impl Terminal {
     ///
@@ -171,6 +115,7 @@ impl Terminal {
         guest_binary_args: String,
     ) -> Result<()> {
         let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new(self.config.clone());
+        let mut signals: Signal = signal(SignalKind::interrupt())?;
 
         let tenant_id: String = Self::get_current_user_name()?;
         let app_name: String = DEFAULT_APP_NAME.to_string();
@@ -197,74 +142,102 @@ impl Terminal {
             .connect(&gateway_sockaddr)
             .await?;
 
+        // Create channel for stdin data.
+        let (stdin_tx, mut stdin_rx): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) =
+            mpsc::unbounded_channel();
+
+        // Spawn a dedicated thread for blocking stdin reads. We use a separate thread because
+        // tokio's async stdin handling is not suitable for standard blocking stdin reads.
+        // Furthermore, we don't join this thread because it should run for the entire duration of
+        // the terminal session.
+        let _stdin_handle: ::std::thread::JoinHandle<()> = ::std::thread::spawn(move || {
+            Self::stdin_thread(stdin_tx);
+        });
+
+        let mut stdout: Stdout = io::stdout();
+        let mut gateway_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
+
         let (mut gateway_stream_rx, mut gateway_stream_tx): (
             SocketStreamReader,
             SocketStreamWriter,
         ) = gateway_stream.split();
 
-        // Enable raw mode for terminal.
-        let _raw_mode_guard: RawModeGuard = RawModeGuard::new()?;
-
-        let mut stdin: tokio::io::Stdin = io::stdin();
-        let mut stdin_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
-        let mut gateway_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
-
-        let result: Result<()> = loop {
+        let result: Result<(), ::anyhow::Error> = loop {
             tokio::select! {
-                    // Handle input from gateway.
-                    result = gateway_stream_rx.read(&mut gateway_buffer) => {
-                        match result {
-                            Ok(n) => {
-                                if n == 0 {
-                                    // Connection closed.
-                                    break Ok(())
-                                } else {
-                                    // Echo character to terminal.
-                                    io::stdout().write_all(&gateway_buffer[..n]).await?;
-                                    ::tokio::io::stdout().flush().await?;
-                                }
-                            },
-                            Err(error) => {
-                                error!("failed to read from gateway: {}", error);
-                                break Err(anyhow::anyhow!(error));
-                            },
-                        }
-                    },
-                    // Handle input from terminal.
-                    result = stdin.read(&mut stdin_buffer) => {
-                        match result {
-                            Ok(n) => {
-                                if n == 0 {
-                                    // EOF reached.
-                                    break Ok(());
-                                } else {
-                                    // Send character to gateway.
-                                    if let Err(error) = gateway_stream_tx.write_all(&stdin_buffer[..n]).await {
-                                        error!("failed to write to gateway: {}", error);
-                                        break Err(anyhow::anyhow!(error));
-                                    }
-                                }
-                            },
-                            Err(error) => {
-                                error!("failed to read from terminal: {}", error);
-                                break Err(anyhow::anyhow!(error));
-                            },
-                        }
-                    },
-                    // Handle interrupt signal (Ctrl+C).
-                    _ = tokio::signal::ctrl_c() => {
-                        info!("received interrupt signal, exiting terminal");
-                        break Ok(())
+                // Handle input from gateway.
+                result = gateway_stream_rx.read(&mut gateway_buffer) => {
+                    match result {
+                        Ok(n) => {
+                            if n == 0 {
+                                // Connection closed.
+                                break Ok(())
+                            } else {
+                                // Echo character to terminal.
+                                stdout.write_all(&gateway_buffer[..n]).await?;
+                                stdout.flush().await?;
+                            }
+                        },
+                        Err(error) => {
+                            error!("failed to read from gateway: {}", error);
+                            break Err(anyhow::anyhow!(error));
+                        },
                     }
+                },
+                // Handle input from stdin thread.
+                Some(data) = stdin_rx.recv() => {
+                    // Send data to gateway.
+                    if let Err(error) = gateway_stream_tx.write_all(&data).await {
+                        error!("failed to write to gateway: {}", error);
+                        break Err(anyhow::anyhow!(error));
+                    }
+                },
+                _ = signals.recv() => {
+                    break Ok(());
+                }
+
             }
         };
 
         // Shutdown VM.
-        if let Err(e) = sandbox_cache.lock().await.kill(uservm_id).await {
-            error!("failed to shutdown VM: {}", e);
+        if let Err(error) = sandbox_cache.lock().await.kill(uservm_id).await {
+            error!("failed to shutdown VM: {error}");
         }
 
         result
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Thread function for reading from stdin in a blocking manner.
+    ///
+    /// # Parameters
+    ///
+    /// - `stdin_tx`: Channel sender to forward stdin data to the async task.
+    ///
+    fn stdin_thread(stdin_tx: UnboundedSender<Vec<u8>>) {
+        let mut stdin: ::std::io::Stdin = ::std::io::stdin();
+        let mut buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
+
+        loop {
+            match stdin.read(&mut buffer) {
+                Ok(n) => {
+                    if n == 0 {
+                        // EOF reached.
+                        break;
+                    }
+                    // Send data to async task.
+                    if stdin_tx.send(buffer[..n].to_vec()).is_err() {
+                        // Channel closed, exit thread.
+                        break;
+                    }
+                },
+                Err(error) => {
+                    error!("failed to read from stdin: {}", error);
+                    break;
+                },
+            }
+        }
     }
 
     ///
@@ -276,7 +249,7 @@ impl Terminal {
     ///
     /// Returns the current user name on success, or an error if the user name cannot be retrieved.
     ///
-    pub fn get_current_user_name() -> Result<String> {
+    fn get_current_user_name() -> Result<String> {
         let username: String = ::std::env::var("USER")
             .or_else(|_| ::std::env::var("USERNAME"))
             .map_err(|error| ::anyhow::anyhow!("failed to get current user name: {}", error))?;
