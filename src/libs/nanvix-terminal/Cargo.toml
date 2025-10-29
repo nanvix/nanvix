@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+libc = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
