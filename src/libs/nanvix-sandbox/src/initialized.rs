@@ -98,7 +98,6 @@ impl InitializedSandbox {
             self.sandbox_config.into_gateway_socket_info();
 
         // Spawn User VM.
-
         let uservm: UserVm = {
             let mut locked_control_plane_socket_and_info: MutexGuard<
                 '_,
