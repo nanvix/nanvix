@@ -11,8 +11,6 @@
 // Imports
 //==================================================================================================
 
-use ::linuxd::syscalls::SyscallTable;
-use ::std::sync::Arc;
 use ::syscomm::SocketType;
 
 //==================================================================================================
@@ -43,7 +41,8 @@ pub struct LinuxDaemonArgs {
     /// Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
     l2: bool,
     /// Optional system call table for overriding default system call behavior.
-    syscall_table: Option<Arc<SyscallTable>>,
+    #[cfg(feature = "single-process")]
+    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
 }
 
 //==================================================================================================
@@ -66,7 +65,7 @@ impl LinuxDaemonArgs {
     /// - `log_directory`: Directory path for writing log files.
     /// - `tmp_directory`: Temporary directory path for Unix sockets and transient files.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
-    /// - `syscall_table`: Optional system call table for overriding default system call behavior.
+    /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     ///
     /// # Returns
     ///
@@ -82,7 +81,9 @@ impl LinuxDaemonArgs {
         log_directory: String,
         tmp_directory: String,
         l2: bool,
-        syscall_table: Option<Arc<SyscallTable>>,
+        #[cfg(feature = "single-process")] syscall_table: Option<
+            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+        >,
     ) -> Self {
         Self {
             control_plane_socket_info,
@@ -94,6 +95,7 @@ impl LinuxDaemonArgs {
             log_directory,
             tmp_directory,
             l2,
+            #[cfg(feature = "single-process")]
             syscall_table,
         }
     }
@@ -212,7 +214,8 @@ impl LinuxDaemonArgs {
     ///
     /// An optional reference to the system call table.
     ///
-    pub fn syscall_table(&self) -> Option<&Arc<SyscallTable>> {
-        self.syscall_table.as_ref()
+    #[cfg(feature = "single-process")]
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
+        self.syscall_table.clone()
     }
 }

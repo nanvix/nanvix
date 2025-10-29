@@ -83,6 +83,8 @@ pub async fn main() -> Result<()> {
         &linuxd_binary_path,
         #[cfg(not(feature = "single-process"))]
         &uservm_binary_path,
+        #[cfg(feature = "single-process")]
+        None,
         args.toolchain_binary_directory(),
         args.log_directory(),
         args.l2(),

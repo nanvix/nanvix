@@ -257,7 +257,8 @@ impl SandboxCache {
                     #[cfg(not(feature = "single-process"))]
                     self.config.uservm_binary_path(),
                     self.config.log_directory(),
-                    None,
+                    #[cfg(feature = "single-process")]
+                    self.config.syscall_table(),
                     Some((
                         control_plane_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),

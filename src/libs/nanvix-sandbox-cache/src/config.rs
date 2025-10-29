@@ -77,7 +77,7 @@ const UNIX_PATH_MAX: usize = 108;
 /// by the Nanvix Daemon, including socket types, file paths, hardware topology, and deployment
 /// mode settings.
 ///
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SandboxCacheConfig {
     /// Socket type for control plane communication between nanvixd and linuxd.
     control_plane_socket_type: SocketType,
@@ -97,6 +97,9 @@ pub struct SandboxCacheConfig {
     /// Path to the User VM binary.
     #[cfg(not(feature = "single-process"))]
     uservm_binary_path: String,
+    /// System call table.
+    #[cfg(feature = "single-process")]
+    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -127,6 +130,7 @@ impl SandboxCacheConfig {
     /// - `kernel_binary_path`: Path to kernel binary.
     /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
     /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
+    /// - `syscall_table`: Optional system call table (only in single-process mode).
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
@@ -146,6 +150,9 @@ impl SandboxCacheConfig {
         kernel_binary_path: &str,
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
+        #[cfg(feature = "single-process")] syscall_table: Option<
+            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+        >,
         toolchain_binary_directory: &str,
         log_directory: &str,
         l2: bool,
@@ -162,6 +169,8 @@ impl SandboxCacheConfig {
             linuxd_binary_path: linuxd_binary_path.to_string(),
             #[cfg(not(feature = "single-process"))]
             uservm_binary_path: uservm_binary_path.to_string(),
+            #[cfg(feature = "single-process")]
+            syscall_table,
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
             log_directory: log_directory.to_string(),
             l2,
@@ -273,6 +282,21 @@ impl SandboxCacheConfig {
     #[cfg(not(feature = "single-process"))]
     pub fn uservm_binary_path(&self) -> &str {
         &self.uservm_binary_path
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a handle to the system call table.
+    ///
+    /// # Returns
+    ///
+    /// If a system call table is set, this function returns a handle to it. Otherwise, it returns
+    /// empty.
+    ///
+    #[cfg(feature = "single-process")]
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
+        self.syscall_table.clone()
     }
 
     ///
