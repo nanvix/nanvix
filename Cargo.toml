@@ -70,7 +70,7 @@ cc = "1.2.26"
 cfg-if = "1.0.0"
 config = { path = "src/libs/config", default-features = false }
 control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
-dirs = "5.0"
+dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
 flexi_logger = "0.31.2"
