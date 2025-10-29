@@ -23,6 +23,7 @@ hwloc = { workspace = true }
 libc = { workspace = true }
 linuxd = { workspace = true }
 nanvix-sandbox = { workspace = true }
+nanvix-registry = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
 nanvix-terminal = { workspace = true }
 num_enum = { workspace = true }
