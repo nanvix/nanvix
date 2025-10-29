@@ -61,7 +61,7 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// Suffix for Unix sockets in debug builds.
 ///
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(feature = "single-process")))]
 const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 
 ///
@@ -69,7 +69,7 @@ const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 ///
 /// Suffix for Unix sockets in release builds.
 ///
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), not(feature = "single-process")))]
 const UNIX_SOCKET_SUFFIX: &str = ".socket";
 
 //==================================================================================================
