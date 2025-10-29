@@ -13,11 +13,8 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 config = { workspace = true }
-hwloc = { workspace = true }
-linuxd = { workspace = true, optional = true }
 nanvix-sandbox = { workspace = true }
 rand = { workspace = true }
-syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
@@ -25,4 +22,4 @@ user-vm-api = { workspace = true }
 [features]
 default = []
 hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
-single-process = ["linuxd"]
+single-process = ["nanvix-sandbox/single-process"]

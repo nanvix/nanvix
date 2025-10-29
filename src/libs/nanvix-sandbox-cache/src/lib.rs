@@ -23,8 +23,17 @@ mod tag;
 // Exports
 //==================================================================================================
 
-pub use config::SandboxCacheConfig;
-pub use tag::SandboxTag;
+pub use self::{
+    config::SandboxCacheConfig,
+    tag::SandboxTag,
+};
+pub use ::nanvix_sandbox::{
+    syscomm,
+    HwLoc,
+};
+
+#[cfg(feature = "single-process")]
+pub use ::nanvix_sandbox::SyscallTable;
 
 //==================================================================================================
 // Imports
@@ -38,6 +47,10 @@ use crate::config::{
 use ::anyhow::Result;
 use ::nanvix_sandbox::{
     linuxd::LinuxDaemon,
+    syscomm::{
+        SocketListener,
+        SocketType,
+    },
     tcp_port::{
         TcpPort,
         TcpPortAllocator,
@@ -50,10 +63,6 @@ use ::nanvix_sandbox::{
 use ::std::{
     collections::HashMap,
     sync::Arc,
-};
-use ::syscomm::{
-    SocketListener,
-    SocketType,
 };
 use ::syslog::{
     debug,
