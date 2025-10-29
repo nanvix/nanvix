@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::env::get_proj_root;
-use hwloc::HwLoc;
-use std::{
+use ::nanvix::hwloc::HwLoc;
+use ::std::{
     fmt,
     process::Child,
     str::FromStr,

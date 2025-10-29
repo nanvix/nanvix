@@ -12,35 +12,13 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = { workspace = true }
-config = { workspace = true }
-http = { workspace = true }
-http-body-util = { workspace = true }
-hyper = { workspace = true, features = ["full"] }
-hyper-util = { workspace = true, features = ["full"] }
-libc = { workspace = true }
-nanvix-sandbox-cache = { workspace = true }
-nanvix-terminal = { workspace = true }
-num_enum = { workspace = true }
-rand = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+nanvix = { workspace = true }
 serde_json = { workspace = true, features = ["std"] }
-syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
-user-vm-api = { workspace = true }
-uservm = { workspace = true }
 
 [features]
 default = []
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into Nanvix Daemon (nanvixd).
-single-process = [
-    "nanvix-sandbox-cache/single-process",
-    "nanvix-terminal/single-process",
-]
-hyperlight = [
-    "config/hyperlight",
-    "uservm/hyperlight",
-    "nanvix-sandbox-cache/hyperlight",
-    "nanvix-terminal/hyperlight",
-]
+single-process = ["nanvix/single-process"]
+hyperlight = ["nanvix/hyperlight"]

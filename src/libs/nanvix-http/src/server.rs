@@ -12,7 +12,7 @@
 // Imports
 //==================================================================================================
 
-use crate::http::client::HttpClient;
+use crate::client::HttpClient;
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;

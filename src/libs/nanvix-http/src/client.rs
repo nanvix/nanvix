@@ -11,12 +11,10 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    config,
-    message::{
-        self,
-        MessageType,
-    },
+use crate::message::{
+    self,
+    MessageType,
+    HTTP_HEADER_MESSAGE_TYPE,
 };
 use ::anyhow::Result;
 use ::http_body_util::{
@@ -33,15 +31,13 @@ use ::hyper::{
     Response,
     StatusCode,
 };
-use ::nanvix_sandbox_cache::{
-    syscomm::SocketType,
-    SandboxCache,
-};
+use ::nanvix_sandbox_cache::SandboxCache;
 use ::std::{
     future::Future,
     pin::Pin,
     sync::Arc,
 };
+use ::syscomm::SocketType;
 use ::syslog::{
     debug,
     error,
@@ -216,13 +212,13 @@ impl Service<Request<Incoming>> for HttpClient {
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
                 .headers()
-                .get(config::HTTP_HEADER_MESSAGE_TYPE)
+                .get(HTTP_HEADER_MESSAGE_TYPE)
                 .and_then(|val| val.to_str().ok())
                 .and_then(|s| s.parse::<MessageType>().ok())
             {
                 Some(message_type) => message_type,
                 None => {
-                    error!("{} is a mandatory header", config::HTTP_HEADER_MESSAGE_TYPE);
+                    error!("{} is a mandatory header", HTTP_HEADER_MESSAGE_TYPE);
                     return Ok(Self::bad_request());
                 },
             };

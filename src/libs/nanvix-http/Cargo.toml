@@ -1,0 +1,44 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-http"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "HTTP Interface for Nanvix"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+config = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true, features = ["full"] }
+linuxd = { workspace = true, optional = true }
+nanvix-registry = { workspace = true }
+nanvix-sandbox-cache = { workspace = true }
+nanvix-terminal = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["std"] }
+syscomm = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["full"] }
+uservm = { workspace = true }
+user-vm-api = { workspace = true }
+
+[features]
+default = []
+single-process = [
+    "linuxd",
+    "nanvix-sandbox-cache/single-process",
+    "nanvix-terminal/single-process",
+]
+hyperlight = [
+    "config/hyperlight",
+    "uservm/hyperlight",
+    "nanvix-sandbox-cache/hyperlight",
+    "nanvix-terminal/hyperlight",
+]

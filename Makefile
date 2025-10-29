@@ -303,8 +303,8 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client nanvix-bench
+ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
+ALL_HOST_UTILS := echo-client
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 
@@ -323,6 +323,7 @@ all-nanvix: \
 	all-wasmd \
 	all-kernel \
 	all-nanvixd \
+	all-nanvix-bench \
 	all-wasm-binaries \
 	all-host-binaries \
 	all-snapshot \
@@ -344,6 +345,7 @@ clean: \
 	clean-wasmd \
 	clean-kernel \
 	clean-nanvixd \
+	clean-nanvix-bench \
 	clean-wasm-binaries \
 	clean-host-binaries \
 	clean-opt \
@@ -448,6 +450,7 @@ lint-check: \
 rust-lint-check: \
 	rust-lint-check-kernel \
 	rust-lint-check-nanvixd \
+	rust-lint-check-nanvix-bench \
 	rust-lint-check-guest-binaries \
 	rust-lint-check-guest-rlibs \
 	rust-lint-check-guest-staticlibs \
@@ -461,6 +464,7 @@ rust-lint-check: \
 rust-lint: \
 	rust-lint-kernel \
 	rust-lint-nanvixd \
+	rust-lint-nanvix-bench \
 	rust-lint-guest-binaries \
 	rust-lint-guest-rlibs \
 	rust-lint-guest-staticlibs \
@@ -499,6 +503,7 @@ rust-format: \
 	format-host-rlibs \
 	format-kernel \
 	format-nanvixd \
+	format-nanvix-bench \
 	format-uservm \
 	format-wasmd \
 	format-wasm-binaries
@@ -512,6 +517,7 @@ rust-format-check: \
 	format-check-host-rlibs \
 	format-check-kernel \
 	format-check-nanvixd \
+	format-check-nanvix-bench \
 	format-check-uservm \
 	format-check-wasmd \
 	format-check-wasm-binaries
@@ -555,6 +561,7 @@ clang-format:
 check: \
 	check-kernel \
 	check-nanvixd \
+	check-nanvix-bench \
 	check-guest-binaries \
 	check-guest-rlibs \
 	check-guest-staticlibs \
@@ -662,6 +669,12 @@ include build/make/generic-wasm-binaries.mk
 #===================================================================================================
 
 include build/make/generic-host-rlibs.mk
+
+#===================================================================================================
+# Build Rules for Nanvix Bench
+#===================================================================================================
+
+include build/make/nanvix-bench.mk
 
 #===================================================================================================
 # Build Rules for Nanvix Daemon

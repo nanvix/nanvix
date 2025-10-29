@@ -17,7 +17,6 @@ nanvix-sandbox = { workspace = true }
 rand = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
-user-vm-api = { workspace = true }
 
 [features]
 default = []

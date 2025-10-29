@@ -1,0 +1,46 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "A crate for interacting with Nanvix"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+config = { workspace = true }
+hwloc = { workspace = true }
+linuxd = { workspace = true, optional = true }
+nanvix-http = { workspace = true }
+nanvix-registry = { workspace = true }
+nanvix-sandbox = { workspace = true }
+nanvix-sandbox-cache = { workspace = true }
+nanvix-terminal = { workspace = true }
+sys = { workspace = true, features = ["std"], optional = true }
+syscall = { workspace = true, features = ["std"], optional = true }
+syscomm = { workspace = true }
+syslog = { workspace = true, features = ["std"] }
+uservm = { workspace = true, optional = true }
+
+[features]
+default = []
+internal-api = ["sys", "syscall", "uservm"]
+single-process = [
+    "linuxd",
+    "nanvix-http/single-process",
+    "nanvix-sandbox/single-process",
+    "nanvix-sandbox-cache/single-process",
+    "nanvix-terminal/single-process",
+]
+hyperlight = [
+    "config/hyperlight",
+    "nanvix-http/hyperlight",
+    "nanvix-sandbox/hyperlight",
+    "nanvix-sandbox-cache/hyperlight",
+    "nanvix-terminal/hyperlight",
+    "uservm/hyperlight",
+]

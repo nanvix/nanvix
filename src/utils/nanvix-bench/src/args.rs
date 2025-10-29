@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::benchmark::BenchmarkFlavour;
-use ::syslog::error;
+use ::nanvix::log::error;
 use anyhow::Result;
 use std::{
     process,

@@ -32,12 +32,60 @@ use crate::{
     env::get_proj_root,
 };
 use ::anyhow::Result;
-use ::hwloc::HwLoc;
 use ::indicatif::{
     ProgressBar,
     ProgressStyle,
 };
-use ::nanvixd::message::Kill;
+use ::nanvix::{
+    config::kernel::MEMORY_SIZE,
+    http::{
+        message,
+        message::{
+            HTTP_HEADER_MESSAGE_TYPE,
+            Kill,
+            KillResponse,
+            MessageType,
+            New,
+        },
+    },
+    hwloc,
+    hwloc::HwLoc,
+    log,
+    log::{
+        debug,
+        error,
+        warn,
+    },
+    sandbox::UserVmIdentifier,
+    sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+    syscall::{
+        LinuxDaemonMessage,
+        unistd::message::{
+            ReadRequest,
+            ReadResponse,
+            WriteResponse,
+        },
+    },
+    syscomm::{
+        ReadExact,
+        SocketStream,
+        SocketType,
+        UnboundSocket,
+        WriteAll,
+    },
+    uservm,
+    uservm::{
+        UserVm,
+        UserVmArgs,
+        orchestrator::{
+            IoControlCommand,
+            IoControlResponse,
+        },
+    },
+};
 use ::reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -59,43 +107,10 @@ use ::std::{
         Instant,
     },
 };
-use ::sys::{
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
-use ::syscall::{
-    LinuxDaemonMessage,
-    unistd::message::{
-        ReadRequest,
-        ReadResponse,
-        WriteResponse,
-    },
-};
-use ::syscomm::{
-    ReadExact,
-    SocketStream,
-    SocketType,
-    UnboundSocket,
-    WriteAll,
-};
-use ::syslog::{
-    debug,
-    error,
-    warn,
-};
 use ::tokio::{
     sync::mpsc,
     task::JoinHandle,
     time::sleep,
-};
-use ::user_vm_api::UserVmIdentifier;
-use ::uservm::{
-    UserVm,
-    UserVmArgs,
-    orchestrator::{
-        IoControlCommand,
-        IoControlResponse,
-    },
 };
 
 //==================================================================================================
@@ -135,15 +150,13 @@ pub const CHANNEL_CAPACITY: usize = 1024;
 const NANVIXD_ADDRESS: &str = "127.0.0.1:9999";
 
 impl Benchmark {
-    fn prepare_new_message(&self) -> Result<(HeaderMap, nanvixd::message::New)> {
+    fn prepare_new_message(&self) -> Result<(HeaderMap, message::New)> {
         let mut new_msg_headers = HeaderMap::new();
         new_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
-        new_msg_headers.insert(
-            nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
-            format!("{}", nanvixd::message::MessageType::New).parse()?,
-        );
+        new_msg_headers
+            .insert(HTTP_HEADER_MESSAGE_TYPE, format!("{}", message::MessageType::New).parse()?);
 
-        let new_msg = nanvixd::message::New {
+        let new_msg = message::New {
             tenant_id: "foo".to_string(),
             app_name: "bar".to_string(),
             program: self.flavour.get_program(),
@@ -188,15 +201,15 @@ impl Benchmark {
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
             format!("{}/bin/uservm.elf", get_proj_root()),
-            ::uservm::args::Args::OPT_USER_VM_ID.to_string(),
+            uservm::args::Args::OPT_USER_VM_ID.to_string(),
             "1".to_string(),
-            ::uservm::args::Args::OPT_KERNEL.to_string(),
+            uservm::args::Args::OPT_KERNEL.to_string(),
             format!("{}/bin/kernel.elf", get_proj_root()),
-            ::uservm::args::Args::OPT_INITRD.to_string(),
+            uservm::args::Args::OPT_INITRD.to_string(),
             self.flavour.get_program(),
         ];
         if let Some(gateway_addr) = gateway_addr {
-            user_vm_args.push(::uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
+            user_vm_args.push(uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
             user_vm_args.push(gateway_addr);
         }
         if let Some(hwloc) = self.hwloc.clone() {
@@ -246,11 +259,11 @@ impl Benchmark {
     /// socket to interact with the VMs stdin/stdout.
     pub async fn start(
         &mut self,
-        payload: nanvixd::message::New,
+        payload: message::New,
         headers: HeaderMap,
         l2: bool,
     ) -> Result<(UserVmIdentifier, SocketStream)> {
-        let response: nanvixd::message::NewResponse = self
+        let response: message::NewResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(headers)
@@ -285,13 +298,11 @@ impl Benchmark {
     pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
         let mut kill_msg_headers = HeaderMap::new();
         kill_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
-        kill_msg_headers.insert(
-            nanvixd::config::HTTP_HEADER_MESSAGE_TYPE,
-            format!("{}", nanvixd::message::MessageType::Kill).parse()?,
-        );
+        kill_msg_headers
+            .insert(HTTP_HEADER_MESSAGE_TYPE, format!("{}", MessageType::Kill).parse()?);
 
         let kill_msg: Kill = Kill { user_vm_id };
-        let response: nanvixd::message::KillResponse = self
+        let response: KillResponse = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(kill_msg_headers)
@@ -376,7 +387,7 @@ impl Benchmark {
 
             let start = Instant::now();
             let user_vm_handle = UserVm::spawn(UserVmArgs {
-                memory_size: config::kernel::MEMORY_SIZE,
+                memory_size: MEMORY_SIZE,
                 kernel_filename,
                 initrd_filename: Some(initrd_filename),
                 initrd_args: None,
@@ -551,8 +562,7 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        let (new_msg_headers, new_msg): (HeaderMap, nanvixd::message::New) =
-            self.prepare_new_message()?;
+        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
 
         // Start nanvixd.
         self.setup(l2);
@@ -714,7 +724,7 @@ impl Benchmark {
         let program: String = self.flavour.get_program();
 
         let user_vm_handle = UserVm::spawn(UserVmArgs {
-            memory_size: config::kernel::MEMORY_SIZE,
+            memory_size: MEMORY_SIZE,
             kernel_filename,
             initrd_filename: Some(program),
             initrd_args: None,
@@ -968,7 +978,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    ::syslog::init(false, String::new());
+    log::init(false, String::new());
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {
