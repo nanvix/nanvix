@@ -144,3 +144,9 @@ pub use running::RunningSandbox;
 pub use sandbox_config::SandboxConfig;
 pub use uninitialized::UninitializedSandbox;
 pub use uservm_args::UserVmArgs;
+
+#[cfg(feature = "single-process")]
+pub use ::linuxd::syscalls::SyscallTable;
+
+pub use ::hwloc::HwLoc;
+pub use ::syscomm;

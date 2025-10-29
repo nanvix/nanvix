@@ -33,13 +33,15 @@ use ::hyper::{
     Response,
     StatusCode,
 };
-use ::nanvix_sandbox_cache::SandboxCache;
+use ::nanvix_sandbox_cache::{
+    syscomm::SocketType,
+    SandboxCache,
+};
 use ::std::{
     future::Future,
     pin::Pin,
     sync::Arc,
 };
-use ::syscomm::SocketType;
 use ::syslog::{
     debug,
     error,

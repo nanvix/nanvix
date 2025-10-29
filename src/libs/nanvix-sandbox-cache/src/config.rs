@@ -12,9 +12,11 @@
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::hwloc::HwLoc;
-use ::nanvix_sandbox::tcp_port::TcpPort;
-use ::syscomm::SocketType;
+use ::nanvix_sandbox::{
+    syscomm::SocketType,
+    tcp_port::TcpPort,
+    HwLoc,
+};
 use ::syslog::error;
 use ::user_vm_api::UserVmIdentifier;
 
@@ -99,7 +101,7 @@ pub struct SandboxCacheConfig {
     uservm_binary_path: String,
     /// System call table.
     #[cfg(feature = "single-process")]
-    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
+    syscall_table: Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable>>,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -151,7 +153,7 @@ impl SandboxCacheConfig {
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
         #[cfg(feature = "single-process")] syscall_table: Option<
-            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+            ::std::sync::Arc<::nanvix_sandbox::SyscallTable>,
         >,
         toolchain_binary_directory: &str,
         log_directory: &str,
@@ -295,7 +297,7 @@ impl SandboxCacheConfig {
     /// empty.
     ///
     #[cfg(feature = "single-process")]
-    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable>> {
         self.syscall_table.clone()
     }
 
