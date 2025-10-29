@@ -117,11 +117,7 @@ impl Terminal {
     /// On success, this function returns an empty tuple after the terminal session ends. On
     /// failure, it returns an object that describes the error that occurred.
     ///
-    pub async fn run(
-        &mut self,
-        guest_binary_path: String,
-        guest_binary_args: String,
-    ) -> Result<()> {
+    pub async fn run(&mut self, guest_binary_path: &str, guest_binary_args: &str) -> Result<()> {
         let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new(self.config.clone());
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
@@ -136,12 +132,12 @@ impl Terminal {
             .await
             .get(
                 &tenant_id,
-                &guest_binary_path,
+                guest_binary_path,
                 &app_name,
                 if guest_binary_args.is_empty() {
                     None
                 } else {
-                    Some(guest_binary_args)
+                    Some(guest_binary_args.to_string())
                 },
             )
             .await?;
