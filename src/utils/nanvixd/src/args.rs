@@ -16,9 +16,9 @@ use crate::config::{
     DEFAULT_LOG_DIRECTORY,
 };
 use ::anyhow::Result;
-use ::nanvix_sandbox_cache::{
+use ::nanvix::{
+    hwloc::HwLoc,
     syscomm::SocketType,
-    HwLoc,
 };
 use ::std::{
     fs::File,

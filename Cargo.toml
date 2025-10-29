@@ -3,7 +3,7 @@
 
 [workspace]
 resolver = "2"
-default-members = ["src/uservm"]
+default-members = ["src/utils/nanvixd"]
 members = [
         "src/benchmarks/echo-rust-nostd",
         "src/benchmarks/echo-wasm-rust",
@@ -21,6 +21,8 @@ members = [
         "src/libs/elf",
         "src/libs/error",
         "src/libs/hwloc",
+        "src/libs/nanvix",
+        "src/libs/nanvix-http",
         "src/libs/nanvix-registry",
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
@@ -94,6 +96,8 @@ kvm-ioctls = "0.24.0"
 libc = "0.2.172"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.27"
+nanvix = { path = "src/libs/nanvix", default-features = false }
+nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
