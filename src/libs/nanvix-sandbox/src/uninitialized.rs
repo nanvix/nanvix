@@ -250,6 +250,17 @@ impl UninitializedSandbox {
                         Some(l2) => l2,
                     };
 
+                    // Get L2 snapshot path.
+                    let l2_snapshot_path: &str = match config.l2_snapshot_path() {
+                        None => {
+                            let reason: &str =
+                                "L2 snapshot path not provided and linuxd not initialized";
+                            error!("initialize(): {reason}");
+                            anyhow::bail!(reason);
+                        },
+                        Some(l2_snapshot_path) => l2_snapshot_path,
+                    };
+
                     LinuxDaemonArgs::new(
                         (
                             locked_control_plane_socket_and_info.1.clone(),
@@ -263,6 +274,7 @@ impl UninitializedSandbox {
                         config.log_directory().to_string(),
                         tmp_directory,
                         l2,
+                        l2_snapshot_path.to_string(),
                         #[cfg(feature = "single-process")]
                         config.syscall_table(),
                     )

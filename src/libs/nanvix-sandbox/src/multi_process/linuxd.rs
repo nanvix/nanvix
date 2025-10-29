@@ -247,7 +247,7 @@ impl LinuxDaemon {
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
                 args::Args::OPT_CLH_RESTORE.to_string(),
-                format!("source_url=file://{}", get_clh_snapshot_path()),
+                format!("source_url=file://{}", get_clh_snapshot_path(args.l2_snapshot_path())?),
             ]
         } else {
             vec![

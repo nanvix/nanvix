@@ -56,6 +56,8 @@ pub struct Args {
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM.
     l2: bool,
+    /// File path for the L2 snapshot.
+    l2_snapshot_path: String,
     /// Optional socket type for control plane communication (nanvixd <-> linuxd).
     control_plane_socket_type: Option<SocketType>,
     /// Optional socket type for gateway communication (client <-> linuxd stdin/stdout).
@@ -83,6 +85,8 @@ impl Args {
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
     /// Command-line option that sets the toolchain binary directory path.
     pub const OPT_TOOLCHAIN_BIN_DIRECTORY: &'static str = "-toolchain-bin-dir";
+    /// Command-line option that sets the L2 snapshot path.
+    pub const OPT_L2_SNAPSHOT_PATH: &'static str = "-l2-snapshot-path";
     /// Command-line option that redirects the console output to a file.
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
     /// Command-line option that loads the serialized CPU topology.
@@ -128,6 +132,7 @@ impl Args {
         let mut hwloc: Option<HwLoc> = None;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
+        let mut l2_snapshot_path: String = String::new();
         let mut control_plane_socket_type: Option<SocketType> = None;
         let mut gateway_socket_type: Option<SocketType> = None;
         let mut system_vm_socket_type: Option<SocketType> = None;
@@ -191,6 +196,10 @@ impl Args {
                 Self::OPT_L2 => {
                     l2 = true;
                 },
+                Self::OPT_L2_SNAPSHOT_PATH => {
+                    i += 1;
+                    l2_snapshot_path = args[i].clone();
+                },
                 Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
                     i += 1;
                     control_plane_socket_type = Some(args[i].parse()?);
@@ -215,6 +224,15 @@ impl Args {
             i += 1;
         }
 
+        // If we set the l2 snapshot path, but do not enable l2, we have an invalid configuration.
+        if !l2_snapshot_path.is_empty() && !l2 {
+            anyhow::bail!(
+                "{} must be used together with {}",
+                Self::OPT_L2_SNAPSHOT_PATH,
+                Self::OPT_L2,
+            );
+        }
+
         // If we deploy the Linux Daemon (linuxd) in an L2 VM, we need to make sure that all socket
         // types are set to TCP.
         if l2 {
@@ -233,6 +251,12 @@ impl Args {
             control_plane_socket_type = Some(SocketType::Tcp);
             gateway_socket_type = Some(SocketType::Tcp);
             system_vm_socket_type = Some(SocketType::Tcp);
+
+            // If we enable L2 deployment, and don't set a snapshot path, revert to the default
+            // path.
+            if l2_snapshot_path.is_empty() {
+                l2_snapshot_path = config::default_l2_snapshot_path();
+            }
         }
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
@@ -263,6 +287,7 @@ impl Args {
             tmp_directory,
             binary_directory,
             toolchain_binary_directory,
+            l2_snapshot_path,
             console_file,
             hwloc,
             log_directory,
@@ -312,6 +337,7 @@ Options:
   {system_vm_socket_type} <socket_type>     Socket type for system VM communication (linuxd <-> \
              uservm).
   {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
+  {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
 ",
             program_name = program_name,
             http_addr = Self::OPT_HTTP_SOCKADDR,
@@ -326,6 +352,7 @@ Options:
             gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
             system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
             l2 = Self::OPT_L2,
+            l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
         );
     }
 
@@ -379,6 +406,19 @@ Options:
     ///
     pub fn toolchain_binary_directory(&self) -> &str {
         &self.toolchain_binary_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the L2 snapshot path.
+    ///
+    /// # Returns
+    ///
+    /// The L2 snapshot path.
+    ///
+    pub fn l2_snapshot_path(&self) -> &str {
+        &self.l2_snapshot_path
     }
 
     ///

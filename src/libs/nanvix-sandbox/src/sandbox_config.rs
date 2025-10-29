@@ -69,6 +69,9 @@ pub struct SandboxConfig {
     /// Optional flag to deploy the Linux Daemon inside an L2 VM (using cloud-hypervisor).
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
     l2: Option<bool>,
+
+    /// Optional path to the snapshot used to deploy an L2 VM.
+    l2_snapshot_path: Option<String>,
 }
 
 //==================================================================================================
@@ -97,6 +100,7 @@ impl SandboxConfig {
     /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
     /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
+    /// - `l2_snapshot_path`: Optional path to the L2 VM's snapshot.
     ///
     /// # Returns
     ///
@@ -120,6 +124,7 @@ impl SandboxConfig {
         toolchain_binary_directory: Option<String>,
         tmp_directory: Option<String>,
         l2: Option<bool>,
+        l2_snapshot_path: Option<String>,
     ) -> Self {
         Self {
             uservm_id,
@@ -139,6 +144,7 @@ impl SandboxConfig {
             toolchain_binary_directory,
             tmp_directory,
             l2,
+            l2_snapshot_path,
         }
     }
 
@@ -325,6 +331,19 @@ impl SandboxConfig {
     ///
     pub fn l2(&self) -> Option<bool> {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional path pointing to the L2 snapshot directory.
+    ///
+    /// # Returns
+    ///
+    /// An optional path to the L2 snapshot directory.
+    ///
+    pub fn l2_snapshot_path(&self) -> Option<&str> {
+        self.l2_snapshot_path.as_deref()
     }
 
     ///
