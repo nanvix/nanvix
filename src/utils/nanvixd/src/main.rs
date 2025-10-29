@@ -110,7 +110,7 @@ pub async fn main() -> Result<()> {
         };
 
         let mut terminal: Terminal = Terminal::new(config);
-        if let Err(error) = terminal.run(guest_binary_path, guest_binary_args).await {
+        if let Err(error) = terminal.run(&guest_binary_path, &guest_binary_args).await {
             error!("terminal failed: {}", error);
         }
     } else if args.http_mode() {
