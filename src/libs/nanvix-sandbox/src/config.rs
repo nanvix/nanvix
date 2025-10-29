@@ -93,20 +93,6 @@ const UNIX_SOCKET_SUFFIX: &str = ".socket";
 ///
 /// # Description
 ///
-/// Gets the absolute path for the source root.
-///
-/// # Returns
-///
-/// The absolute path to the source code root.
-///
-#[cfg(not(feature = "single-process"))]
-fn get_proj_root() -> String {
-    format!("{}/../../..", env!("CARGO_MANIFEST_DIR"))
-}
-
-///
-/// # Description
-///
 /// Gets the absolute path for cloud-hypervisor's binary directory given a path (potentially
 /// sym-linked) to the toolchain binary directory.
 ///
@@ -138,8 +124,9 @@ pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
 #[cfg(not(feature = "single-process"))]
-pub(crate) fn get_clh_snapshot_path() -> String {
-    format!("{}/images/{}", get_proj_root(), ::config::linuxd::SNAPSHOT_NAME)
+pub(crate) fn get_clh_snapshot_path(l2_snapshot_path: &str) -> Result<String> {
+    let l2_snapshot_path: PathBuf = PathBuf::from(l2_snapshot_path);
+    Ok(format!("{}", fs::canonicalize(l2_snapshot_path)?.display()))
 }
 
 ///
