@@ -46,5 +46,5 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// On success, returns the address of the socket. On failure, returns an error.
 ///
 pub fn restore_gate_sockaddr_builder() -> String {
-    format!("{}:{DEFAULT_RESTORE_GATE_PORT}", config::linuxd::GUEST_TAP_IP_ADDRESS.to_string())
+    format!("{}:{DEFAULT_RESTORE_GATE_PORT}", config::linuxd::GUEST_TAP_IP_ADDRESS)
 }
