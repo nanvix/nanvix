@@ -25,10 +25,10 @@
 
 use ::anyhow::Result;
 use ::nanvix_sandbox_cache::SandboxCacheConfig;
+use ::nanvix_terminal::Terminal;
 use ::nanvixd::{
     args::Args,
     http::HttpServer,
-    terminal::Terminal,
 };
 use ::std::sync::Arc;
 use ::syslog::{
@@ -110,7 +110,7 @@ pub async fn main() -> Result<()> {
         };
 
         let mut terminal: Terminal = Terminal::new(config);
-        if let Err(error) = terminal.run(guest_binary_path, guest_binary_args).await {
+        if let Err(error) = terminal.run(&guest_binary_path, &guest_binary_args).await {
             error!("terminal failed: {}", error);
         }
     } else if args.http_mode() {

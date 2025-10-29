@@ -22,10 +22,11 @@ hyper-util = { workspace = true, features = ["full"] }
 hwloc = { workspace = true }
 libc = { workspace = true }
 linuxd = { workspace = true }
-num_enum = { workspace = true }
-rand = { workspace = true }
 nanvix-sandbox = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
+nanvix-terminal = { workspace = true }
+num_enum = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 sys = { workspace = true }
@@ -42,6 +43,7 @@ default = []
 single-process = [
     "nanvix-sandbox/single-process",
     "nanvix-sandbox-cache/single-process",
+    "nanvix-terminal/single-process",
 ]
 hyperlight = [
     "config/hyperlight",
