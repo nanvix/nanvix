@@ -2,21 +2,18 @@
 # Licensed under the MIT License.
 
 [package]
-name = "nanvix-sandbox-cache"
+name = "nanvix-terminal"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Sandbox cache management for Nanvix"
+description = "Terminal interface for Nanvix"
 homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-config = { workspace = true }
-hwloc = { workspace = true }
-linuxd = { workspace = true, optional = true }
-nanvix-sandbox = { workspace = true }
-rand = { workspace = true }
+libc = { workspace = true }
+nanvix-sandbox-cache = { workspace = true }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
@@ -24,5 +21,5 @@ user-vm-api = { workspace = true }
 
 [features]
 default = []
-hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
-single-process = ["linuxd"]
+hyperlight = ["nanvix-sandbox-cache/hyperlight"]
+single-process = ["nanvix-sandbox-cache/single-process"]

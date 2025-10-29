@@ -24,6 +24,7 @@ members = [
         "src/libs/nanvix-registry",
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
+        "src/libs/nanvix-terminal",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -96,6 +97,7 @@ log = "0.4.27"
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
+nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
