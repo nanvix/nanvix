@@ -20,6 +20,12 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::libc::{
+    c_int,
+    sigaction,
+    sigemptyset,
+    SIGUSR1,
+};
 use ::nanvix_sandbox_cache::{
     syscomm::{
         SocketStream,
@@ -34,6 +40,8 @@ use ::nanvix_sandbox_cache::{
 };
 use ::std::{
     io::Read,
+    mem,
+    ptr,
     sync::Arc,
 };
 use ::syslog::error;
@@ -70,8 +78,8 @@ const DEFAULT_APP_NAME: &str = "nanvixd-terminal";
 /// Set to 1 byte for character-by-character I/O to ensure responsive terminal interaction.
 const IO_BUFFER_SIZE: usize = 1;
 
-/// Signal used to interrupt stdin thread.
-const SIGUSR1: i32 = 10;
+/// Signal used to interrupt blocking operations in stdin thread.
+const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
 //==================================================================================================
 // Structures
@@ -242,6 +250,8 @@ impl Terminal {
     /// - `thread_id_tx`: Channel sender to send the thread ID back to the main task.
     ///
     fn stdin_thread(stdin_tx: UnboundedSender<Vec<u8>>, thread_id_tx: UnboundedSender<u64>) {
+        install_signal_handler();
+
         // Send thread ID back to the main task.
         // SAFETY: Calling pthread_self is safe as it only reads the thread ID.
         let thread_id: u64 = unsafe { libc::pthread_self() };
@@ -293,5 +303,67 @@ impl Terminal {
             .or_else(|_| ::std::env::var("USERNAME"))
             .map_err(|error| ::anyhow::anyhow!("failed to get current user name: {}", error))?;
         Ok(username)
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// No-op signal handler for SIGUSR1 used to interrupt blocking I/O operations in the stdin thread.
+///
+/// When SIGUSR1 is delivered, this handler causes any blocking system calls (such as read)
+/// to be interrupted and return EINTR, allowing the thread to exit gracefully or handle the
+/// interruption as needed. The handler itself performs no action.
+///
+extern "C" fn stdin_thread_signal_handler(_: i32) {}
+
+///
+/// # Description
+///
+/// Installs signal handler for SIGUSR1 in the stdin thread.
+///
+// SAFETY:
+// Pre-conditions:
+// - The signal handler (`stdin_thread_signal_handler`) is a no-op and only sets EINTR on blocking syscalls.
+// - SIGUSR1 is not used for any other purpose in this process while this handler is installed.
+// - The handler does not perform any non-signal-safe operations (it is an empty function).
+// - The signal mask is empty, so no other signals are blocked during handler execution.
+// - No SA_RESTART flag is set, so syscalls will return EINTR as intended.
+// Post-conditions:
+// - After installation, SIGUSR1 will interrupt blocking syscalls in the thread, causing them to return EINTR.
+// - Only this thread installs this handler for SIGUSR1; no other code should modify the handler for SIGUSR1 while this is in effect.
+// Invariants:
+// - The handler remains a no-op and signal-safe.
+// - The signal mask and flags remain as specified.
+/// EINTR. This allows graceful shutdown of the stdin thread.
+///
+///
+fn install_signal_handler() {
+    // SAFETY: We install a signal handler that is a no-op so this is safe.
+    let ret: c_int = unsafe {
+        let sig_action: sigaction = sigaction {
+            sa_sigaction: stdin_thread_signal_handler as usize,
+            // Empty set to not block any other signals that may happen during signal handling.
+            sa_mask: {
+                let mut set: libc::sigset_t = mem::zeroed();
+                sigemptyset(&mut set);
+                set
+            },
+            // No SA_RESTART so that syscall will return EINTR.
+            sa_flags: 0,
+            sa_restorer: None,
+        };
+
+        sigaction(INTERRUPT_SIGNAL, &sig_action, ptr::null_mut())
+    };
+
+    if ret != 0 {
+        // Notify the error, but don't fail.
+        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+        error!("error installing signal handler (errno={errno:?})");
     }
 }
