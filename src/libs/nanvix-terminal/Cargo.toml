@@ -14,7 +14,6 @@ homepage.workspace = true
 anyhow = { workspace = true }
 libc = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
-syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
