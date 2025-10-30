@@ -62,6 +62,15 @@ use ::uservm::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "error";
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
 
 #[tokio::main]
 pub async fn main() -> Result<ExitCode> {
@@ -74,7 +83,7 @@ pub async fn main() -> Result<ExitCode> {
     let stderr: Option<String> = args.take_vm_stderr();
 
     // Initialize logger. If this fails, the program will panic.
-    syslog::init(args.log_to_file(), args.log_directory());
+    syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_directory());
 
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);

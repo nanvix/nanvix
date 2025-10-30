@@ -37,6 +37,9 @@ use ::tokio::fs;
 // Constants
 //==================================================================================================
 
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "info";
+
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
 /// Binary name for Linux Daemon.
@@ -69,7 +72,7 @@ pub async fn main() -> Result<()> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    log::init(true, args.log_directory().to_string());
+    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string());
 
     print_startup_info(&args);
 

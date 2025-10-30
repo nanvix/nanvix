@@ -41,6 +41,13 @@ use ::syslog::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "error";
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
 
@@ -48,7 +55,7 @@ use ::syslog::{
 pub async fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    ::syslog::init(args.log_to_file(), args.log_file_dir());
+    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir());
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: &str = args.control_plane_sockaddr();
