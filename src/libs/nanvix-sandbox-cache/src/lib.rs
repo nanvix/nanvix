@@ -23,37 +23,45 @@ mod tag;
 // Exports
 //==================================================================================================
 
-pub use config::SandboxCacheConfig;
-pub use tag::SandboxTag;
+pub use self::{
+    config::SandboxCacheConfig,
+    tag::SandboxTag,
+};
+pub use ::nanvix_sandbox::{
+    syscomm,
+    HwLoc,
+};
+
+#[cfg(feature = "single-process")]
+pub use ::nanvix_sandbox::SyscallTable;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::config::{
-    control_plane_sockaddr_builder,
-    gateway_sockaddr_builder,
-    user_vm_sockaddr_builder,
-};
 use ::anyhow::Result;
 use ::nanvix_sandbox::{
+    control_plane_sockaddr_builder,
+    gateway_sockaddr_builder,
     linuxd::LinuxDaemon,
+    syscomm::{
+        SocketListener,
+        SocketType,
+    },
     tcp_port::{
         TcpPort,
         TcpPortAllocator,
     },
+    user_vm_sockaddr_builder,
     InitializedSandbox,
     RunningSandbox,
     SandboxConfig,
     UninitializedSandbox,
+    UserVmIdentifier,
 };
 use ::std::{
     collections::HashMap,
     sync::Arc,
-};
-use ::syscomm::{
-    SocketListener,
-    SocketType,
 };
 use ::syslog::{
     debug,
@@ -62,7 +70,6 @@ use ::syslog::{
     warn,
 };
 use ::tokio::sync::Mutex;
-use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
@@ -90,19 +97,6 @@ pub struct SandboxCache {
     control_plane_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// TCP port allocator for gateway ports in L2 deployment mode.
     tcp_port_allocator: TcpPortAllocator,
-    /// A builder function for control plane socket addresses.
-    control_plane_sockaddr_builder:
-        fn(&str, &str, bool) -> ::std::result::Result<String, ::anyhow::Error>,
-    /// A builder function for user VM socket addresses.
-    user_vm_sockaddr_builder:
-        fn(&str, &str, bool) -> ::std::result::Result<String, ::anyhow::Error>,
-    /// A builder function for gateway socket addresses.
-    gateway_sockaddr_builder: fn(
-        &str,
-        &str,
-        UserVmIdentifier,
-        &Option<TcpPort>,
-    ) -> ::std::result::Result<String, ::anyhow::Error>,
 }
 
 impl SandboxCache {
@@ -130,9 +124,6 @@ impl SandboxCache {
                 ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
                 ::config::linuxd::GATEWAY_PORT_RANGE_END,
             ),
-            control_plane_sockaddr_builder,
-            user_vm_sockaddr_builder,
-            gateway_sockaddr_builder,
         }))
     }
 
@@ -205,17 +196,17 @@ impl SandboxCache {
                 };
 
                 // Work-out socket addresses before allocating any resources.
-                let control_plane_sockaddr: String = (self.control_plane_sockaddr_builder)(
+                let control_plane_sockaddr: String = (control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     self.config.l2(),
                 )?;
-                let user_vm_sockaddr: String = (self.user_vm_sockaddr_builder)(
+                let user_vm_sockaddr: String = (user_vm_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     self.config.l2(),
                 )?;
-                let gateway_sockaddr: String = (self.gateway_sockaddr_builder)(
+                let gateway_sockaddr: String = (gateway_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     tag.sandbox_id(),

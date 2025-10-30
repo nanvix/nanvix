@@ -10,10 +10,12 @@
 // Imports
 //==================================================================================================
 
-use ::tokio::time::Duration;
-
-#[cfg(not(feature = "single-process"))]
+use crate::tcp_port::TcpPort;
 use ::anyhow::Result;
+use ::syslog::error;
+use ::tokio::time::Duration;
+use ::user_vm_api::UserVmIdentifier;
+
 #[cfg(not(feature = "single-process"))]
 use ::std::{
     fs,
@@ -59,9 +61,21 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// # Description
 ///
+/// Maximum length for a Unix socket name, including the null terminator.
+///
+/// This is a workaround for the fact that `libc::UNIX_PATH_MAX` is not available.
+/// On Linux, this is defined in `<linux/un.h>`.
+///
+/// TODO: replace this with `libc::UNIX_PATH_MAX` when it becomes available.
+///
+const UNIX_PATH_MAX: usize = 108;
+
+///
+/// # Description
+///
 /// Suffix for Unix sockets in debug builds.
 ///
-#[cfg(all(debug_assertions, not(feature = "single-process")))]
+#[cfg(debug_assertions)]
 const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 
 ///
@@ -69,7 +83,7 @@ const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 ///
 /// Suffix for Unix sockets in release builds.
 ///
-#[cfg(all(not(debug_assertions), not(feature = "single-process")))]
+#[cfg(not(debug_assertions))]
 const UNIX_SOCKET_SUFFIX: &str = ".socket";
 
 //==================================================================================================
@@ -109,7 +123,7 @@ fn get_proj_root() -> String {
 /// returned instead.
 ///
 #[cfg(not(feature = "single-process"))]
-pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
+pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
     let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
     Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
 }
@@ -124,7 +138,7 @@ pub fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
 #[cfg(not(feature = "single-process"))]
-pub fn get_clh_snapshot_path() -> String {
+pub(crate) fn get_clh_snapshot_path() -> String {
     format!("{}/images/{}", get_proj_root(), ::config::linuxd::SNAPSHOT_NAME)
 }
 
@@ -142,6 +156,132 @@ pub fn get_clh_snapshot_path() -> String {
 /// The absolute path to cloud-hypervisor's API socket.
 ///
 #[cfg(not(feature = "single-process"))]
-pub fn get_clh_api_socket_path(tmp_dir: &str) -> String {
+pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
     format!("{tmp_dir}/nanvixd-clh{UNIX_SOCKET_SUFFIX}")
+}
+
+///
+/// # Description
+///
+/// Builds the control plane socket address for a given tenant ID. If nanvixd is configured to
+/// spawn linuxd in an L2 VM, it will return a TCP socket address, otherwise a Unix socket one.
+///
+/// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
+/// to 0.0.0.0.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
+///
+/// # Returns
+///
+/// On success, returns the control plane socket address. On failure, returns an error.
+///
+pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
+    }
+
+    let unix_socket_name: String =
+        format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("control_plane_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
+}
+
+///
+/// # Description
+///
+/// Builds the user VM socket address for a given tenant ID.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
+///
+/// # Returns
+///
+/// On success, returns the user VM socket address. On failure, returns an error.
+///
+pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+    if l2 {
+        return Ok(format!(
+            "{}:{}",
+            config::linuxd::GUEST_TAP_IP_ADDRESS,
+            config::linuxd::USER_VM_PORT
+        ));
+    }
+
+    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("user_vm_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
+}
+
+///
+/// # Description
+///
+/// Builds the gateway socket address for a given tenant and sandbox ID.
+///
+/// # Parameters
+///
+/// - `tmp_str`: Temporary directory path.
+/// - `tenant_id`: Tenant ID.
+/// - `sandbox_id`: Sandbox ID.
+/// - `l2_port`: Optional TCP port for the gateway in L2 deployment mode. If set, it indicates
+///   deployment in an L2 VM and contains the TCP port for the gateway.
+///
+/// # Returns
+///
+/// On success, returns the gateway socket address. On failure, returns an error.
+///
+pub fn gateway_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    sandbox_id: UserVmIdentifier,
+    l2_port: &Option<TcpPort>,
+) -> Result<String> {
+    if let Some(l2_port) = l2_port {
+        return Ok(format!("{}:{:?}", config::linuxd::GUEST_TAP_IP_ADDRESS, l2_port));
+    }
+
+    let sandbox_id: u32 = sandbox_id.into();
+    let unix_socket_name: String =
+        format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
+
+    // Check if socket name exceeds the maximum length.
+    if unix_socket_name.len() > UNIX_PATH_MAX {
+        let error: String = format!(
+            "unix socket name '{unix_socket_name}' exceeds maximum length ({:?} > {:?})",
+            unix_socket_name.len(),
+            UNIX_PATH_MAX
+        );
+        error!("gateway_sockaddr_builder(): {error}");
+        anyhow::bail!(error);
+    }
+
+    Ok(unix_socket_name)
 }

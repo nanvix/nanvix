@@ -143,4 +143,16 @@ pub use linuxd_args::LinuxDaemonArgs;
 pub use running::RunningSandbox;
 pub use sandbox_config::SandboxConfig;
 pub use uninitialized::UninitializedSandbox;
+pub use user_vm_api::UserVmIdentifier;
 pub use uservm_args::UserVmArgs;
+
+#[cfg(feature = "single-process")]
+pub use ::linuxd::syscalls::SyscallTable;
+
+pub use ::hwloc::HwLoc;
+pub use ::syscomm;
+pub use config::{
+    control_plane_sockaddr_builder,
+    gateway_sockaddr_builder,
+    user_vm_sockaddr_builder,
+};

@@ -16,12 +16,14 @@ use crate::config::{
     DEFAULT_LOG_DIRECTORY,
 };
 use ::anyhow::Result;
-use ::hwloc::HwLoc;
+use ::nanvix::{
+    hwloc::HwLoc,
+    syscomm::SocketType,
+};
 use ::std::{
     fs::File,
     io::BufReader,
 };
-use ::syscomm::SocketType;
 
 //==================================================================================================
 // Structures

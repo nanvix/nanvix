@@ -20,19 +20,17 @@
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::config::system::DEFAULT_MACHINE_NAME;
-use ::nanvix_registry::Registry;
-use ::nanvix_sandbox_cache::SandboxCacheConfig;
-use ::nanvix_terminal::Terminal;
-use ::nanvixd::{
-    args::Args,
+use ::nanvix::{
+    config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
+    log,
+    log::error,
+    registry::Registry,
+    sandbox_cache::SandboxCacheConfig,
+    terminal::Terminal,
 };
+use ::nanvixd::args::Args;
 use ::std::sync::Arc;
-use ::syslog::{
-    error,
-    info,
-};
 use ::tokio::fs;
 
 //==================================================================================================
@@ -71,12 +69,9 @@ pub async fn main() -> Result<()> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    ::syslog::init(true, args.log_directory().to_string());
+    log::init(true, args.log_directory().to_string());
 
-    #[cfg(feature = "single-process")]
-    info!("nanvixd {} single-process mode", env!("CARGO_PKG_VERSION"));
-    #[cfg(not(feature = "single-process"))]
-    info!("nanvixd {} multi-process mode", env!("CARGO_PKG_VERSION"));
+    print_startup_info(&args);
 
     // Determine deployment type based on feature flag.
     #[cfg(feature = "single-process")]
@@ -117,11 +112,10 @@ pub async fn main() -> Result<()> {
 
     // Check for interactive mode or HTTP mode.
     if args.interactive_mode() {
-        info!("running in interactive mode");
         let guest_binary_path: String = match args.program_name() {
             None => {
                 let reason: &str = "no program name specified in interactive mode";
-                error!("{}", reason);
+                error!("{reason}");
                 anyhow::bail!(reason);
             },
             Some(path) => path.to_string(),
@@ -135,14 +129,13 @@ pub async fn main() -> Result<()> {
 
         let mut terminal: Terminal = Terminal::new(config);
         if let Err(error) = terminal.run(&guest_binary_path, &guest_binary_args).await {
-            error!("terminal failed: {}", error);
+            error!("terminal failed: {error}");
         }
     } else if args.http_mode() {
-        info!("running in HTTP mode");
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
                 let reason: &str = "no HTTP socket address specified in HTTP mode";
-                error!("{}", reason);
+                error!("{reason}");
                 anyhow::bail!(reason);
             },
             Some(addr) => addr,
@@ -150,11 +143,11 @@ pub async fn main() -> Result<()> {
 
         let mut http_server: HttpServer = HttpServer::new(http_sockaddr, config);
         if let Err(error) = http_server.run().await {
-            error!("http server failed: {}", error);
+            error!("http server failed: {error}");
         }
     } else {
         let reason: &str = "no operation mode specified";
-        error!("{}", reason);
+        error!("{reason}");
         anyhow::bail!(reason);
     }
 
@@ -206,13 +199,12 @@ async fn ensure_all_binaries_available(
 
     // If all binaries are available locally, use them.
     if all_available {
-        info!("All required binaries found locally");
-        info!("Using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
+        eprintln!("Using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
         #[cfg(not(feature = "single-process"))]
         {
-            info!("Using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
-            info!("Using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
+            eprintln!("Using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
+            eprintln!("Using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
         }
 
         #[cfg(feature = "single-process")]
@@ -222,14 +214,14 @@ async fn ensure_all_binaries_available(
         return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
     }
 
-    info!("Not all binaries found locally, fetching all from registry");
+    eprintln!("Not all binaries found locally, fetching all from registry");
 
     let registry: Registry = Registry::new();
 
     let kernel_cached_path: String = registry
         .get_cached_binary(machine, deployment, KERNEL_BINARY_NAME)
         .await?;
-    info!("Using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
+    eprintln!("Using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
     #[cfg(feature = "single-process")]
     return Ok((kernel_cached_path, String::new(), String::new()));
@@ -239,13 +231,43 @@ async fn ensure_all_binaries_available(
         let linuxd_cached_path: String = registry
             .get_cached_binary(machine, deployment, LINUXD_BINARY_NAME)
             .await?;
-        info!("Using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
+        eprintln!("Using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
 
         let uservm_cached_path: String = registry
             .get_cached_binary(machine, deployment, USERVM_BINARY_NAME)
             .await?;
-        info!("Using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
+        eprintln!("Using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
 
         Ok((kernel_cached_path, linuxd_cached_path, uservm_cached_path))
     }
+}
+
+///
+/// # Description
+///
+/// Prints startup information for the Nanvix Daemon.
+///
+/// This function displays the version, deployment type, operation mode, and L2 status.
+///
+/// # Parameters
+///
+/// - `args`: The parsed command-line arguments.
+///
+fn print_startup_info(args: &Args) {
+    let mode: &str = if args.interactive_mode() {
+        "interactive"
+    } else {
+        "http"
+    };
+
+    #[cfg(feature = "single-process")]
+    eprintln!("nanvixd {}, single-process deployment, {} mode", env!("CARGO_PKG_VERSION"), mode);
+
+    #[cfg(not(feature = "single-process"))]
+    eprintln!(
+        "nanvixd {}, multi-process deployment, {} mode, l2 {}",
+        env!("CARGO_PKG_VERSION"),
+        mode,
+        if args.l2() { "enabled" } else { "disabled" }
+    );
 }
