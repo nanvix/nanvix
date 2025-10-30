@@ -340,4 +340,21 @@ impl UserVm {
             }
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the User VM instance is still running.
+    ///
+    /// # Returns
+    ///
+    /// This function returns true if the target User VM is still running, and false otherwise.
+    ///
+    pub fn is_running(&mut self) -> bool {
+        if let Some(task) = &self.task {
+            !task.is_finished()
+        } else {
+            false
+        }
+    }
 }

@@ -253,4 +253,28 @@ impl UserVm {
             }
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the User VM instance is still running.
+    ///
+    /// # Returns
+    ///
+    /// This function returns true if the target User VM is still running, and false otherwise.
+    ///
+    pub fn is_running(&mut self) -> bool {
+        if let Some(child) = &mut self.child {
+            match child.try_wait() {
+                Ok(Some(_status)) => false,
+                Ok(None) => true,
+                Err(e) => {
+                    warn!("is_running(): failed to query user VM status (error={e:?})");
+                    false
+                },
+            }
+        } else {
+            false
+        }
+    }
 }
