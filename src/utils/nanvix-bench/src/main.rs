@@ -120,6 +120,9 @@ use ::tokio::{
 // Constants
 //==================================================================================================
 
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "error";
+
 // Name of this package, used for logging and error messages.
 const CARGO_PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
     Some(cargo_pkg_name) => cargo_pkg_name,
@@ -981,7 +984,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    log::init(false, String::new());
+    log::init(false, DEFAULT_LOG_LEVEL, String::new());
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {
