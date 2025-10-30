@@ -45,8 +45,9 @@ pub use ::log::{
 pub fn init(log_to_file: bool, default_level: &str, log_dir: String) {
     static INIT_LOG: Once = Once::new();
     INIT_LOG.call_once(|| {
-        let logger = Logger::try_with_env_or_str(default_level)
-            .expect("malformed RUST_LOG environment variable");
+        let logger: Logger = Logger::try_with_env_or_str(default_level)
+            .expect("malformed RUST_LOG environment variable")
+            .write_mode(::flexi_logger::WriteMode::Direct);
         if log_to_file {
             logger
                 .log_to_file(FileSpec::default().directory(log_dir))
