@@ -43,10 +43,7 @@ use ::syslog::{
     warn,
 };
 use ::tokio::{
-    sync::{
-        mpsc,
-        Mutex,
-    },
+    sync::mpsc,
     task::JoinHandle,
     time::timeout,
 };
@@ -75,7 +72,7 @@ use ::uservm::{
 ///
 pub struct UserVm {
     /// Underlying task.
-    task: Mutex<Option<JoinHandle<Result<ExitCode>>>>,
+    task: Option<JoinHandle<Result<ExitCode>>>,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
 }
@@ -286,7 +283,7 @@ impl UserVm {
             };
 
         Ok(Self {
-            task: Mutex::new(Some(uservm_task)),
+            task: Some(uservm_task),
             control_plane_stream,
         })
     }
@@ -314,7 +311,7 @@ impl UserVm {
         }
 
         // Wait for User VM to finish.
-        if let Some(task) = self.task.lock().await.take() {
+        if let Some(task) = self.task.take() {
             match timeout(CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(exit_status)) => {
@@ -341,6 +338,23 @@ impl UserVm {
                     );
                 },
             }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the User VM instance is still running.
+    ///
+    /// # Returns
+    ///
+    /// This function returns true if the target User VM is still running, and false otherwise.
+    ///
+    pub fn is_running(&mut self) -> bool {
+        if let Some(task) = &self.task {
+            !task.is_finished()
+        } else {
+            false
         }
     }
 }
