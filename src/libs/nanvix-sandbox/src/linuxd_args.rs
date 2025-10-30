@@ -40,6 +40,8 @@ pub struct LinuxDaemonArgs {
     tmp_directory: String,
     /// Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
     l2: bool,
+    /// Path to the L2 snapshot path.
+    l2_snapshot_path: String,
     /// Optional system call table for overriding default system call behavior.
     #[cfg(feature = "single-process")]
     syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
@@ -65,6 +67,7 @@ impl LinuxDaemonArgs {
     /// - `log_directory`: Directory path for writing log files.
     /// - `tmp_directory`: Temporary directory path for Unix sockets and transient files.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
+    /// - `l2_snapshot_path`: Path to the L2 VM snapshot.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     ///
     /// # Returns
@@ -81,6 +84,7 @@ impl LinuxDaemonArgs {
         log_directory: String,
         tmp_directory: String,
         l2: bool,
+        l2_snapshot_path: String,
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
         >,
@@ -95,6 +99,7 @@ impl LinuxDaemonArgs {
             log_directory,
             tmp_directory,
             l2,
+            l2_snapshot_path,
             #[cfg(feature = "single-process")]
             syscall_table,
         }
@@ -164,6 +169,19 @@ impl LinuxDaemonArgs {
     ///
     pub fn toolchain_binary_directory(&self) -> &str {
         &self.toolchain_binary_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the L2 snapshot path.
+    ///
+    /// # Returns
+    ///
+    /// The L2 snapshot path.
+    ///
+    pub fn l2_snapshot_path(&self) -> &str {
+        &self.l2_snapshot_path
     }
 
     ///
