@@ -257,6 +257,7 @@ impl SandboxCache {
                     Some(self.config.toolchain_binary_directory().to_string()),
                     Some(self.config.tmp_directory().to_string()),
                     Some(self.config.l2()),
+                    Some(self.config.l2_snapshot_path().to_string()),
                 );
 
                 let uninitialized_sandbox: UninitializedSandbox =

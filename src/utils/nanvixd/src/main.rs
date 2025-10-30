@@ -107,6 +107,7 @@ pub async fn main() -> Result<()> {
         args.toolchain_binary_directory(),
         args.log_directory(),
         args.l2(),
+        args.l2_snapshot_path(),
         args.tmp_directory(),
     );
 

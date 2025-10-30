@@ -38,3 +38,15 @@ pub const DEFAULT_LOG_DIRECTORY: &str = "./logs";
 /// Default path to the temporary directory.
 ///
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
+
+///
+/// # Description
+///
+/// Default path for the L2 snapshot.
+///
+/// We cannot define this variable as a pub const &str because it depends on
+/// SNAPSHOT_NAME which is another build-time constant.
+///
+pub fn default_l2_snapshot_path() -> String {
+    format!("./images/{}", ::nanvix::config::linuxd::SNAPSHOT_NAME)
+}

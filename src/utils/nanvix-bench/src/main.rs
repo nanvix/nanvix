@@ -86,6 +86,9 @@ use ::nanvix::{
         },
     },
 };
+// FIXME(#1128): We need to re-export this import for the profiler macros.
+#[cfg(feature = "timestamp-messages")]
+use ::nanvix::log as syslog;
 use ::reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -1034,10 +1037,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::BootTime => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1048,10 +1050,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::ColdStart => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1062,10 +1063,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::ColdStartL2 => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1076,11 +1076,10 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::EchoBreakdown => {
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark requires Nanvix (re-) compilation with \
                      TIMESTAMP_MSG=yes"
                 );
-                return Ok(());
             }
 
             #[cfg(feature = "timestamp-messages")]
@@ -1091,11 +1090,10 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::EchoBreakdownL2 => {
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark requires Nanvix (re-) compilation with \
                      TIMESTAMP_MSG=yes"
                 );
-                return Ok(());
             }
 
             #[cfg(feature = "timestamp-messages")]
@@ -1106,10 +1104,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::RoundTripLatency => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1120,10 +1117,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::WarmStart => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1134,10 +1130,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::WarmStartL2 => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1148,10 +1143,9 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::WarmStartVMM => {
             #[cfg(feature = "timestamp-messages")]
             {
-                error!(
+                anyhow::bail!(
                     "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
                 );
-                return Ok(());
             }
 
             #[cfg(not(feature = "timestamp-messages"))]
@@ -1163,7 +1157,7 @@ async fn main() -> Result<()> {
     match result {
         Ok(()) => {},
         Err(e) => {
-            error!("error running benchmark {}: {e:?}", args.benchmark());
+            anyhow::bail!("error running benchmark {}: {e:?}", args.benchmark());
 
             // In case of an error, re-run the clean up to prevent having dangling processes. Note
             // that the clean up is idempotent.

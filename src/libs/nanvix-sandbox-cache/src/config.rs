@@ -58,6 +58,8 @@ pub struct SandboxCacheConfig {
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM (using cloud-hypervisor).
     l2: bool,
+    /// Path to the snapshot file in an L2 deployment.
+    l2_snapshot_path: String,
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
 }
@@ -86,6 +88,7 @@ impl SandboxCacheConfig {
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
+    /// - `l2_snapshot_path`: Path to the L2 VM's snapshot.
     /// - `tmp_directory`: Path to the temporary directory.
     ///
     /// # Returns
@@ -108,6 +111,7 @@ impl SandboxCacheConfig {
         toolchain_binary_directory: &str,
         log_directory: &str,
         l2: bool,
+        l2_snapshot_path: &str,
         tmp_directory: &str,
     ) -> Self {
         Self {
@@ -126,6 +130,7 @@ impl SandboxCacheConfig {
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
             log_directory: log_directory.to_string(),
             l2,
+            l2_snapshot_path: l2_snapshot_path.to_string(),
             tmp_directory: tmp_directory.to_string(),
         }
     }
@@ -288,6 +293,19 @@ impl SandboxCacheConfig {
     ///
     pub fn l2(&self) -> bool {
         self.l2
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the L2 snapshot path.
+    ///
+    /// # Returns
+    ///
+    /// The L2 snapshot path.
+    ///
+    pub fn l2_snapshot_path(&self) -> &str {
+        &self.l2_snapshot_path
     }
 
     ///

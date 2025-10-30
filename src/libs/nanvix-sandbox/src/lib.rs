@@ -74,6 +74,7 @@
 //!     Some("/path/to/toolchain".to_string()),  // toolchain_binary_directory
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2
+//!     Some("/path/to/l2/snapshot".to_string()), // l2_snapshot_path
 //! );
 //!
 //! // Create and initialize sandbox.
