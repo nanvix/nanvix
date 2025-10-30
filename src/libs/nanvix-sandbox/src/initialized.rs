@@ -98,8 +98,7 @@ impl InitializedSandbox {
             self.sandbox_config.into_gateway_socket_info();
 
         // Spawn User VM.
-
-        let uservm: UserVm = {
+        let mut uservm: UserVm = {
             let mut locked_control_plane_socket_and_info: MutexGuard<
                 '_,
                 (SocketListener, String, SocketType),
@@ -135,8 +134,12 @@ impl InitializedSandbox {
         };
 
         // Attempt to connect to the gateway socket.
-        wait_for_gateway_connection(UnboundSocket::new(gateway_socket_type), &gateway_sockaddr)
-            .await?;
+        wait_for_gateway_connection(
+            &mut uservm,
+            UnboundSocket::new(gateway_socket_type),
+            &gateway_sockaddr,
+        )
+        .await?;
 
         Ok(RunningSandbox {
             uservm,
@@ -184,6 +187,7 @@ impl InitializedSandbox {
 ///
 /// # Parameters
 ///
+/// - `uservm`: Reference to the User VM instance.
 /// - `unbound_gateway_socket`: The unbound socket to use for connection attempts.
 /// - `gateway_sockaddr`: The address of the gateway socket to connect to.
 ///
@@ -193,11 +197,22 @@ impl InitializedSandbox {
 /// timeout, returns an error describing the connection failure.
 ///
 async fn wait_for_gateway_connection(
+    uservm: &mut UserVm,
     unbound_gateway_socket: UnboundSocket,
     gateway_sockaddr: &str,
 ) -> Result<()> {
     let now: Instant = Instant::now();
     loop {
+        // Check if user VM finished before attempting to connect to gateway.
+        if !uservm.is_running() {
+            let reason: String = format!(
+                "user VM terminated before gateway socket became available \
+                 (address={gateway_sockaddr})"
+            );
+            error!("wait_for_gateway_connection(): {reason}");
+            return Err(anyhow::anyhow!("{reason}"));
+        }
+
         match unbound_gateway_socket
             .clone()
             .connect(gateway_sockaddr)
