@@ -13,9 +13,11 @@
 
 use crate::config::{
     self,
+    DEFAULT_CONSOLE_FILENAME,
     DEFAULT_LOG_DIRECTORY,
 };
 use ::anyhow::Result;
+use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
     syscomm::SocketType,
@@ -128,7 +130,12 @@ impl Args {
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut toolchain_binary_directory: String =
             config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
-        let mut console_file: Option<String> = None;
+        let mut console_file: Option<String> = Some(format!(
+            "{}/{}_{}.log",
+            DEFAULT_LOG_DIRECTORY,
+            DEFAULT_CONSOLE_FILENAME,
+            Local::now().format("%Y_%m_%d_%H_%M")
+        ));
         let mut hwloc: Option<HwLoc> = None;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;

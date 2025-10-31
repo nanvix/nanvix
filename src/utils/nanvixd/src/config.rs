@@ -42,6 +42,16 @@ pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
 ///
 /// # Description
 ///
+/// Default base filename for guest console output logs.
+///
+/// The actual log file will be named as `{DEFAULT_CONSOLE_FILENAME}_YYYY_MM_DD_HH_MM.log`
+/// where the timestamp is appended to create unique log files for each guest session.
+///
+pub const DEFAULT_CONSOLE_FILENAME: &str = "guest";
+
+///
+/// # Description
+///
 /// Default path for the L2 snapshot.
 ///
 /// We cannot define this variable as a pub const &str because it depends on
