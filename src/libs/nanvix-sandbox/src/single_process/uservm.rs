@@ -61,6 +61,8 @@ use ::uservm::{
     },
     UserVm as EmbeddedUserVm,
     CHANNEL_CAPACITY,
+    CONTROL_PLANE_CONNECT_TIMEOUT,
+    SYSTEM_VM_CONNECT_TIMEOUT,
 };
 
 //==================================================================================================
@@ -136,72 +138,92 @@ impl UserVm {
                 mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
             // Connect to the control-plane socket.
-            let control_plane_stream: SocketStream =
-                match UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?)
-                    .connect(&control_plane_addr)
-                    .await
-                {
-                    Ok(stream) => {
-                        debug!("user VM connected to control-plane (addr={control_plane_addr})");
-                        stream
-                    },
-                    Err(e) => {
-                        let reason: String = format!(
-                            "failed to connect to control plane (control_plane_addr={:?}, \
-                             error={e:?})",
-                            control_plane_addr
-                        );
-                        error!("spawn(): {reason}");
-                        anyhow::bail!("{reason}");
-                    },
-                };
+            let unbound_socket: UnboundSocket =
+                UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?);
+            let control_plane_stream: SocketStream = match timeout(
+                CONTROL_PLANE_CONNECT_TIMEOUT,
+                unbound_socket.connect(&control_plane_addr),
+            )
+            .await
+            {
+                Ok(Ok(stream)) => {
+                    debug!("user VM connected to control-plane (addr={control_plane_addr})");
+                    stream
+                },
+                Ok(Err(e)) => {
+                    let reason: String = format!(
+                        "failed to connect to control plane (control_plane_addr={:?}, error={e:?})",
+                        control_plane_addr
+                    );
+                    error!("spawn(): {reason}");
+                    return Err(anyhow::anyhow!("{reason}"));
+                },
+                Err(_elapsed) => {
+                    let reason: String = format!(
+                        "timed out trying to connect to control plane (control_plane_addr={:?})",
+                        control_plane_addr
+                    );
+                    error!("spawn(): {reason}");
+                    return Err(anyhow::anyhow!("{reason}"));
+                },
+            };
 
             // Connect to the system VM socket.
-            let mut system_vm_stream: SocketStream =
-                match UnboundSocket::new(SocketType::from_str(&system_vm_sockaddr_type)?)
-                    .connect(&system_vm_addr)
+            let unbound_socket: UnboundSocket =
+                UnboundSocket::new(SocketType::from_str(&system_vm_sockaddr_type)?);
+            let system_vm_stream: SocketStream =
+                match timeout(SYSTEM_VM_CONNECT_TIMEOUT, unbound_socket.connect(&system_vm_addr))
                     .await
                 {
-                    Ok(stream) => {
+                    Ok(Ok(mut stream)) => {
                         info!(
                             "spawn(): connected to system VM (system_vm_addr={:?})",
                             system_vm_addr
                         );
+                        let new_msg: NewUserVm = match NewUserVm::new(
+                            user_vm_id,
+                            gateway_sockaddr.clone(),
+                            SocketType::from_str(&gateway_sockaddr_type)?,
+                        ) {
+                            Ok(message) => message,
+                            Err(e) => {
+                                let reason: String = format!(
+                                    "failed to construct user VM registration message \
+                                     (error={e:?})"
+                                );
+                                error!("spawn(): {reason}");
+                                return Err(anyhow::anyhow!(reason));
+                            },
+                        };
+
+                        debug!("forwarding user vm information to system vm");
+                        let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
+                        if let Err(e) = stream.write_all(&new_msg_bytes).await {
+                            let reason: String = format!(
+                                "failed to send user VM registration message (error={e:?})"
+                            );
+                            error!("spawn(): {reason}");
+                            return Err(anyhow::anyhow!(reason));
+                        }
                         stream
                     },
-                    Err(error) => {
+                    Ok(Err(e)) => {
                         let reason: String = format!(
-                            "failed to connect to system VM (system_vm_addr={:?}, error={error:?})",
+                            "failed to connect to system VM (system_vm_addr={:?}, error={e:?})",
                             system_vm_addr
                         );
                         error!("spawn(): {reason}");
-                        anyhow::bail!("{reason}");
+                        return Err(anyhow::anyhow!("{reason}"));
+                    },
+                    Err(_) => {
+                        let reason: String = format!(
+                            "timed out trying to connect to system VM (system_vm_addr={:?})",
+                            system_vm_addr
+                        );
+                        error!("spawn(): {reason}");
+                        return Err(anyhow::anyhow!("{reason}"));
                     },
                 };
-
-            // Send NewUserVm registration to linuxd.
-            let new_msg: NewUserVm = match NewUserVm::new(
-                user_vm_id,
-                gateway_sockaddr.clone(),
-                SocketType::from_str(&gateway_sockaddr_type)?,
-            ) {
-                Ok(message) => message,
-                Err(error) => {
-                    let reason: String = format!(
-                        "failed to construct user VM registration message (error={error:?})"
-                    );
-                    error!("spawn(): {reason}");
-                    anyhow::bail!(reason);
-                },
-            };
-            debug!("forwarding user vm information to system vm");
-            let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
-            if let Err(e) = system_vm_stream.write_all(&new_msg_bytes).await {
-                let reason: String =
-                    format!("failed to send user VM registration message (error={e:?})");
-                error!("spawn(): {reason}");
-                anyhow::bail!(reason);
-            }
 
             // Spawn I/O thread.
             let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
