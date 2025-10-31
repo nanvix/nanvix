@@ -10,14 +10,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <sys/mman.h>
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-// Page size (in bytes.)
-// TODO: get this from sysconf() when it is supported (#342).
-#define PAGE_SIZE 4096
+#include <unistd.h>
 
 //==================================================================================================
 // Standalone Functions
@@ -28,15 +21,19 @@ void test_mmap_munmap(void)
 {
     fprintf(stderr, "testing mmap() and munmap() with anonymous memory ... ");
 
+    // Get the page size from the system.
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    assert(page_size > 0);
+
     // Map a page of anonymous memory.
-    void *ptr = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *ptr = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(ptr != MAP_FAILED);
 
     // Attempt to write to the mapped memory.
     *((char *)ptr) = 'A';
 
     // Unmap the page.
-    assert(munmap(ptr, PAGE_SIZE) == 0);
+    assert(munmap(ptr, page_size) == 0);
 
     fprintf(stderr, "passed\n");
 }
