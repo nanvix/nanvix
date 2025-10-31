@@ -224,7 +224,7 @@ impl UserVm {
 
         // Send shutdown command to User VM.
         if let Err(e) = self.control_plane_stream.write_all(&msg_bytes).await {
-            warn!("shutdown(): failed to send shutdown command to embedded user VM (error={e:?})");
+            warn!("shutdown(): failed to send shutdown command to user VM (error={e:?})");
         }
 
         // Wait for user VM instance to finish.

@@ -53,13 +53,20 @@ use ::tokio::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "error";
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging system.
-    ::syslog::init(false, String::new());
+    ::syslog::init(false, DEFAULT_LOG_LEVEL, String::new());
 
     // Parse and retrieve command-line arguments.
     let args: Args = Args::parse(env::args().collect())?;

@@ -515,19 +515,6 @@ Options:
     ///
     /// # Description
     ///
-    /// Indicates whether HTTP mode is enabled.
-    ///
-    /// # Returns
-    ///
-    /// `true` if HTTP mode is enabled; `false` otherwise.
-    ///
-    pub fn http_mode(&self) -> bool {
-        self.http_sockaddr.is_some()
-    }
-
-    ///
-    /// # Description
-    ///
     /// Indicates whether interactive mode is enabled.
     ///
     /// # Returns

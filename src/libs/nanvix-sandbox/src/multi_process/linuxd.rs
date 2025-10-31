@@ -351,7 +351,9 @@ impl LinuxDaemon {
 
         // Send shutdown command to Linux Daemon.
         if let Err(error) = self.control_plane_stream.write_all(&msg_bytes).await {
-            warn!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
+            if error.kind() != ErrorKind::BrokenPipe {
+                error!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
+            }
         }
 
         // Wait for linuxd instance to finish.

@@ -30,12 +30,18 @@ use ::nanvix::{
     terminal::Terminal,
 };
 use ::nanvixd::args::Args;
-use ::std::sync::Arc;
+use ::std::sync::{
+    Arc,
+    OnceLock,
+};
 use ::tokio::fs;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
+
+/// Default log-level (overridden by RUST_LOG environment variable if set).
+const DEFAULT_LOG_LEVEL: &str = "info";
 
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
@@ -45,6 +51,38 @@ const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
 #[cfg(not(feature = "single-process"))]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Global flag indicating whether the daemon is running in interactive mode. This flag is set
+/// exactly once during initialization and remains immutable thereafter.
+static INTERACTIVE_MODE: OnceLock<bool> = OnceLock::new();
+
+//==================================================================================================
+// Macros
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Logs a message using either `info!()` or `eprintln!()` depending on the mode.
+///
+/// # Parameters
+///
+/// - `fmt`: The format string.
+/// - `args`: The format arguments.
+///
+macro_rules! log_info {
+    ($fmt:expr $(, $($args:tt)*)?) => {
+        if let Some(true) = $crate::INTERACTIVE_MODE.get().copied() {
+            eprintln!($fmt $(, $($args)*)?);
+        } else {
+            ::nanvix::log::info!($fmt $(, $($args)*)?);
+        }
+    };
+}
 
 //==================================================================================================
 // Standalone Functions
@@ -69,7 +107,10 @@ pub async fn main() -> Result<()> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    log::init(true, args.log_directory().to_string());
+    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string());
+
+    // Set the global INTERACTIVE_MODE flag.
+    let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());
 
     print_startup_info(&args);
 
@@ -112,7 +153,7 @@ pub async fn main() -> Result<()> {
     );
 
     // Check for interactive mode or HTTP mode.
-    if args.interactive_mode() {
+    if let Some(true) = INTERACTIVE_MODE.get().copied() {
         let guest_binary_path: String = match args.program_name() {
             None => {
                 let reason: &str = "no program name specified in interactive mode";
@@ -132,7 +173,7 @@ pub async fn main() -> Result<()> {
         if let Err(error) = terminal.run(&guest_binary_path, &guest_binary_args).await {
             error!("terminal failed: {error}");
         }
-    } else if args.http_mode() {
+    } else {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
                 let reason: &str = "no HTTP socket address specified in HTTP mode";
@@ -146,10 +187,6 @@ pub async fn main() -> Result<()> {
         if let Err(error) = http_server.run().await {
             error!("http server failed: {error}");
         }
-    } else {
-        let reason: &str = "no operation mode specified";
-        error!("{reason}");
-        anyhow::bail!(reason);
     }
 
     Ok(())
@@ -200,12 +237,12 @@ async fn ensure_all_binaries_available(
 
     // If all binaries are available locally, use them.
     if all_available {
-        eprintln!("Using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
+        log_info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
         #[cfg(not(feature = "single-process"))]
         {
-            eprintln!("Using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
-            eprintln!("Using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
+            log_info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
+            log_info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
         }
 
         #[cfg(feature = "single-process")]
@@ -215,14 +252,14 @@ async fn ensure_all_binaries_available(
         return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
     }
 
-    eprintln!("Not all binaries found locally, fetching all from registry");
+    log_info!("not all binaries found locally, fetching all from registry");
 
     let registry: Registry = Registry::new();
 
     let kernel_cached_path: String = registry
         .get_cached_binary(machine, deployment, KERNEL_BINARY_NAME)
         .await?;
-    eprintln!("Using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
+    log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
     #[cfg(feature = "single-process")]
     return Ok((kernel_cached_path, String::new(), String::new()));
@@ -232,12 +269,12 @@ async fn ensure_all_binaries_available(
         let linuxd_cached_path: String = registry
             .get_cached_binary(machine, deployment, LINUXD_BINARY_NAME)
             .await?;
-        eprintln!("Using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
+        log_info!("using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
 
         let uservm_cached_path: String = registry
             .get_cached_binary(machine, deployment, USERVM_BINARY_NAME)
             .await?;
-        eprintln!("Using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
+        log_info!("using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
 
         Ok((kernel_cached_path, linuxd_cached_path, uservm_cached_path))
     }
@@ -262,10 +299,10 @@ fn print_startup_info(args: &Args) {
     };
 
     #[cfg(feature = "single-process")]
-    eprintln!("nanvixd {}, single-process deployment, {} mode", env!("CARGO_PKG_VERSION"), mode);
+    log_info!("nanvixd {}, single-process deployment, {} mode", env!("CARGO_PKG_VERSION"), mode);
 
     #[cfg(not(feature = "single-process"))]
-    eprintln!(
+    log_info!(
         "nanvixd {}, multi-process deployment, {} mode, l2 {}",
         env!("CARGO_PKG_VERSION"),
         mode,

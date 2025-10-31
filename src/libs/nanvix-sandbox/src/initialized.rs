@@ -30,6 +30,7 @@ use ::syscomm::{
 use ::syslog::{
     debug,
     error,
+    trace,
 };
 use ::tokio::{
     sync::{
@@ -201,6 +202,10 @@ async fn wait_for_gateway_connection(
     unbound_gateway_socket: UnboundSocket,
     gateway_sockaddr: &str,
 ) -> Result<()> {
+    trace!(
+        "wait_for_gateway_connection(): waiting for gateway socket to become available \
+         (address={gateway_sockaddr})"
+    );
     let now: Instant = Instant::now();
     loop {
         // Check if user VM finished before attempting to connect to gateway.

@@ -374,10 +374,8 @@ impl LinuxDaemon {
                 result = control_plane_stream.read(&mut control_plane_buffer[control_plane_buffer_filled..]) => {
                     match result {
                         Ok(0) => {
-                            let reason: &'static str = "failed reading command from control-plane";
-                            error!("run(): {reason} (error=connection closed)");
-                            return Err(Error::new(ErrorCode::IoErr, reason));
-
+                            // Control-plane disconnected.
+                            break 'main_loop;
                         },
                         Ok(n) => {
                             control_plane_buffer_filled += n;
@@ -500,12 +498,12 @@ impl LinuxDaemon {
             partial_read_buffer.clear();
             num_filled += num_partial_read;
         }
-        // Post-condition: partial_read_buffer is empty.
 
+        // Post-condition: partial_read_buffer is empty.
         match locked_reader.read(&mut buf[num_filled..]).await {
             Ok(n) => {
                 if n == 0 {
-                    return Err(ErrorKind::UnexpectedEof);
+                    return Err(ErrorKind::ConnectionAborted);
                 }
                 if n + num_filled < buf.len() {
                     partial_read_buffer.extend(&buf[..(n + num_filled)]);
@@ -548,8 +546,14 @@ impl LinuxDaemon {
             let message: Message = match Self::recv(uvm_handle.get_user_vm_reader()).await {
                 Ok(m) => m,
                 Err(error_kind) => {
-                    let reason: String = format!("failed to read message (error={error_kind:?})");
-                    error!("{reason}");
+                    // Log error message only if error was not caused by a disconnection.
+                    if error_kind != ErrorKind::ConnectionAborted
+                        && error_kind != ErrorKind::WouldBlock
+                    {
+                        let reason: String =
+                            format!("failed to read message (error={error_kind:?})");
+                        error!("{reason}");
+                    }
                     return Err(uvm_id);
                 },
             };
