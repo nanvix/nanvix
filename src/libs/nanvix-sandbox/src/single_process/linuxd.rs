@@ -39,8 +39,12 @@ use ::syslog::{
     warn,
 };
 use ::tokio::{
+    runtime::Handle,
     sync::Mutex,
-    task::JoinHandle,
+    task::{
+        self,
+        JoinHandle,
+    },
     time::timeout,
 };
 
@@ -128,12 +132,14 @@ impl LinuxDaemon {
         })?;
 
         // Spawn a task to run the Linux Daemon.
-        let linuxd_task: JoinHandle<Result<()>> = ::tokio::spawn(async move {
-            let result = linuxd.run().await;
-            if let Err(ref err) = result {
-                error!("spawn(): linuxd terminated with error (error={err:?})");
-            }
-            result.map_err(|e| anyhow::anyhow!("linuxd run failed: {e:?}"))
+        let linuxd_task: JoinHandle<Result<()>> = task::spawn_blocking(move || {
+            Handle::current().block_on(async move {
+                let result = linuxd.run().await;
+                if let Err(ref err) = result {
+                    error!("spawn(): linuxd terminated with error (error={err:?})");
+                }
+                result.map_err(|e| anyhow::anyhow!("linuxd run failed: {e:?}"))
+            })
         });
 
         // Wait for the linuxd to connect to the control-plane socket.
