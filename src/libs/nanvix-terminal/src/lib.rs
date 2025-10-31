@@ -161,6 +161,10 @@ impl Terminal {
         let (stdin_tx, mut stdin_rx): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) =
             mpsc::unbounded_channel();
 
+        // Create channel for EOF notification.
+        let (eof_tx, mut eof_rx): (UnboundedSender<()>, UnboundedReceiver<()>) =
+            mpsc::unbounded_channel();
+
         // Create channel for thread ID communication.
         let (thread_id_tx, mut thread_id_rx): (UnboundedSender<u64>, UnboundedReceiver<u64>) =
             mpsc::unbounded_channel();
@@ -170,7 +174,7 @@ impl Terminal {
         // Furthermore, we don't join this thread because it should run for the entire duration of
         // the terminal session.
         let _stdin_handle: ::std::thread::JoinHandle<()> = ::std::thread::spawn(move || {
-            Self::stdin_thread(stdin_tx, thread_id_tx);
+            Self::stdin_thread(stdin_tx, thread_id_tx, eof_tx);
         });
 
         // Wait for the thread ID to be sent.
@@ -183,10 +187,11 @@ impl Terminal {
         let mut stdout: Stdout = io::stdout();
         let mut gateway_buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
 
-        let (mut gateway_stream_rx, mut gateway_stream_tx): (
-            SocketStreamReader,
-            SocketStreamWriter,
-        ) = gateway_stream.split();
+        let (mut gateway_stream_rx, gateway_stream_tx): (SocketStreamReader, SocketStreamWriter) =
+            gateway_stream.split();
+
+        // Wrap the writer in an Option so we can drop it when EOF is reached.
+        let mut gateway_stream_tx: Option<SocketStreamWriter> = Some(gateway_stream_tx);
 
         let result: Result<(), ::anyhow::Error> = loop {
             tokio::select! {
@@ -211,11 +216,34 @@ impl Terminal {
                 },
                 // Handle input from stdin thread.
                 Some(data) = stdin_rx.recv() => {
-                    // Send data to gateway.
-                    if let Err(error) = gateway_stream_tx.write_all(&data).await {
-                        error!("failed to write to gateway: {}", error);
-                        break Err(anyhow::anyhow!(error));
+                    // Send data to gateway if writer is still available.
+                    if let Some(ref mut writer) = gateway_stream_tx {
+                        if let Err(error) = writer.write_all(&data).await {
+                            error!("failed to write to gateway: {}", error);
+                            break Err(anyhow::anyhow!(error));
+                        }
                     }
+                },
+                // Handle EOF from stdin.
+                Some(()) = eof_rx.recv() => {
+                    // Process any remaining buffered data before closing the writer.
+                    let mut eof_error: Option<::anyhow::Error> = None;
+                    while let Ok(data) = stdin_rx.try_recv() {
+                        if let Some(ref mut writer) = gateway_stream_tx {
+                            if let Err(error) = writer.write_all(&data).await {
+                                error!("failed to write remaining data to gateway: {}", error);
+                                eof_error = Some(anyhow::anyhow!(error));
+                                break;
+                            }
+                        }
+                    }
+                    // If an error occurred while processing buffered data, propagate it.
+                    if let Some(error) = eof_error {
+                        break Err(error);
+                    }
+                    // Drop the gateway writer to signal EOF to the guest program.
+                    gateway_stream_tx = None;
+                    // Continue reading from gateway until it closes.
                 },
                 _ = signals.recv() => {
                     break Ok(());
@@ -248,8 +276,13 @@ impl Terminal {
     ///
     /// - `stdin_tx`: Channel sender to forward stdin data to the async task.
     /// - `thread_id_tx`: Channel sender to send the thread ID back to the main task.
+    /// - `eof_tx`: Channel sender to notify when EOF is reached on stdin.
     ///
-    fn stdin_thread(stdin_tx: UnboundedSender<Vec<u8>>, thread_id_tx: UnboundedSender<u64>) {
+    fn stdin_thread(
+        stdin_tx: UnboundedSender<Vec<u8>>,
+        thread_id_tx: UnboundedSender<u64>,
+        eof_tx: UnboundedSender<()>,
+    ) {
         install_signal_handler();
 
         // Send thread ID back to the main task.
@@ -267,7 +300,8 @@ impl Terminal {
             match stdin.read(&mut buffer) {
                 Ok(n) => {
                     if n == 0 {
-                        // EOF reached.
+                        // EOF reached, notify the main task.
+                        let _ = eof_tx.send(());
                         break;
                     }
                     // Send data to async task.
