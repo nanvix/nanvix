@@ -119,7 +119,7 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 
 - Do not use `panic!`, `unwrap()`, or `expect()`, instead return `Result<T, E>`.
 - Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
-- Use explicit type annotation when defining variables and constants, even if type can be inferred (e.g., `let x: u32 = 42;`).
+- Always add type annotations when defining variables and constants, even if type can be inferred (e.g., `let x: u32 = 42;`).
 - Prefix all import statements with `::` (e.g., use `::std:fs` instead of `std::fs`).
 - Always log errors with `error!` before returning an error.
 - Use `warn!` log level for non-critical warnings that do not affect functionality.
@@ -153,3 +153,4 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 - Ensure `c_size_t` is used instead of `usize` for C interoperability.
 - Ensure `c_ssize_t` is used instead of `isize` for C interoperability.
 - Ensure `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_short`, and `c_ushort` are used instead of their Rust counterparts for C interoperability.
+- Member fields in `struct`s must be private and accessed via getter/setter methods.
