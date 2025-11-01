@@ -6,61 +6,63 @@
 //==================================================================================================
 
 /// Type alias for `times()` system call function.
-pub type TimesFn = unsafe fn(*mut libc::tms) -> libc::clock_t;
+pub type TimesFn<T> = unsafe fn(&T, *mut libc::tms) -> libc::clock_t;
 
 /// Type alias for `chdir()` system call function.
-pub type ChdirFn = unsafe fn(*const libc::c_char) -> libc::c_int;
+pub type ChdirFn<T> = unsafe fn(&T, *const libc::c_char) -> libc::c_int;
 
 /// Type alias for `close()` system call function.
-pub type CloseFn = unsafe fn(libc::c_int) -> libc::c_int;
+pub type CloseFn<T> = unsafe fn(&T, libc::c_int) -> libc::c_int;
 
 /// Type alias for `faccessat()` system call function.
-pub type FaccessatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, libc::c_int, libc::c_int) -> libc::c_int;
+pub type FaccessatFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `fdatasync()` system call function.
-pub type FdatasyncFn = unsafe fn(libc::c_int) -> libc::c_int;
+pub type FdatasyncFn<T> = unsafe fn(&T, libc::c_int) -> libc::c_int;
 
 /// Type alias for `getuid()` system call function.
-pub type GetuidFn = unsafe fn() -> libc::uid_t;
+pub type GetuidFn<T> = unsafe fn(&T) -> libc::uid_t;
 
 /// Type alias for `geteuid()` system call function.
-pub type GeteuidFn = unsafe fn() -> libc::uid_t;
+pub type GeteuidFn<T> = unsafe fn(&T) -> libc::uid_t;
 
 /// Type alias for `getgid()` system call function.
-pub type GetgidFn = unsafe fn() -> libc::gid_t;
+pub type GetgidFn<T> = unsafe fn(&T) -> libc::gid_t;
 
 /// Type alias for `getegid()` system call function.
-pub type GetegidFn = unsafe fn() -> libc::gid_t;
+pub type GetegidFn<T> = unsafe fn(&T) -> libc::gid_t;
 
 /// Type alias for `getcwd()` system call function.
-pub type GetcwdFn = unsafe fn(*mut libc::c_char, libc::size_t) -> *mut libc::c_char;
+pub type GetcwdFn<T> = unsafe fn(&T, *mut libc::c_char, libc::size_t) -> *mut libc::c_char;
 
 /// Type alias for `fsync()` system call function.
-pub type FsyncFn = unsafe fn(libc::c_int) -> libc::c_int;
+pub type FsyncFn<T> = unsafe fn(&T, libc::c_int) -> libc::c_int;
 
 /// Type alias for `lseek()` system call function.
-pub type LseekFn = unsafe fn(libc::c_int, libc::off_t, libc::c_int) -> libc::off_t;
+pub type LseekFn<T> = unsafe fn(&T, libc::c_int, libc::off_t, libc::c_int) -> libc::off_t;
 
 /// Type alias for `ftruncate()` system call function.
-pub type FtruncateFn = unsafe fn(libc::c_int, libc::off_t) -> libc::c_int;
+pub type FtruncateFn<T> = unsafe fn(&T, libc::c_int, libc::off_t) -> libc::c_int;
 
 /// Type alias for `write()` system call function.
-pub type WriteFn = unsafe fn(libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t;
+pub type WriteFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t;
 
 /// Type alias for `read()` system call function.
-pub type ReadFn = unsafe fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t;
+pub type ReadFn<T> = unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t;
 
 /// Type alias for `pwrite()` system call function.
-pub type PwriteFn =
-    unsafe fn(libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
+pub type PwriteFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
 
 /// Type alias for `pread()` system call function.
-pub type PreadFn =
-    unsafe fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
+pub type PreadFn<T> =
+    unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
 
 /// Type alias for `linkat()` system call function.
-pub type LinkatFn = unsafe fn(
+pub type LinkatFn<T> = unsafe fn(
+    &T,
     libc::c_int,
     *const libc::c_char,
     libc::c_int,
@@ -69,58 +71,61 @@ pub type LinkatFn = unsafe fn(
 ) -> libc::c_int;
 
 /// Type alias for `fchdir()` system call function.
-pub type FchdirFn = unsafe fn(libc::c_int) -> libc::c_int;
+pub type FchdirFn<T> = unsafe fn(&T, libc::c_int) -> libc::c_int;
 
 /// Type alias for `fchown()` system call function.
-pub type FchownFn = unsafe fn(libc::c_int, libc::uid_t, libc::gid_t) -> libc::c_int;
+pub type FchownFn<T> = unsafe fn(&T, libc::c_int, libc::uid_t, libc::gid_t) -> libc::c_int;
 
 /// Type alias for `pipe()` system call function.
-pub type PipeFn = unsafe fn(*mut libc::c_int) -> libc::c_int;
+pub type PipeFn<T> = unsafe fn(&T, *mut libc::c_int) -> libc::c_int;
 
 /// Type alias for `getdents()` system call function.
-pub type GetdentsFn = unsafe fn(libc::c_int, *mut u8, libc::size_t) -> libc::c_long;
+pub type GetdentsFn<T> = unsafe fn(&T, libc::c_int, *mut u8, libc::size_t) -> libc::c_long;
 
 /// Type alias for `socket()` system call function.
-pub type SocketFn = unsafe fn(libc::c_int, libc::c_int, libc::c_int) -> libc::c_int;
+pub type SocketFn<T> = unsafe fn(&T, libc::c_int, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `socketpair()` system call function.
-pub type SocketpairFn =
-    unsafe fn(libc::c_int, libc::c_int, libc::c_int, *mut libc::c_int) -> libc::c_int;
+pub type SocketpairFn<T> =
+    unsafe fn(&T, libc::c_int, libc::c_int, libc::c_int, *mut libc::c_int) -> libc::c_int;
 
 /// Type alias for `bind()` system call function.
-pub type BindFn = unsafe fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
+pub type BindFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `connect()` system call function.
-pub type ConnectFn = unsafe fn(libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
+pub type ConnectFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `listen()` system call function.
-pub type ListenFn = unsafe fn(libc::c_int, libc::c_int) -> libc::c_int;
+pub type ListenFn<T> = unsafe fn(&T, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `getpeername()` system call function.
-pub type GetpeernameFn =
-    unsafe fn(libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
+pub type GetpeernameFn<T> =
+    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `getsockname()` system call function.
-pub type GetsocknameFn =
-    unsafe fn(libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
+pub type GetsocknameFn<T> =
+    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `accept()` system call function.
-pub type AcceptFn =
-    unsafe fn(libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
+pub type AcceptFn<T> =
+    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
 
 /// Type alias for `recv()` system call function.
-pub type RecvFn =
-    unsafe fn(libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
+pub type RecvFn<T> =
+    unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
 
 /// Type alias for `send()` system call function.
-pub type SendFn =
-    unsafe fn(libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
+pub type SendFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
 
 /// Type alias for `shutdown()` system call function.
-pub type ShutdownFn = unsafe fn(libc::c_int, libc::c_int) -> libc::c_int;
+pub type ShutdownFn<T> = unsafe fn(&T, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `select()` system call function.
-pub type SelectFn = unsafe fn(
+pub type SelectFn<T> = unsafe fn(
+    &T,
     libc::c_int,
     *mut libc::fd_set,
     *mut libc::fd_set,
@@ -129,7 +134,7 @@ pub type SelectFn = unsafe fn(
 ) -> libc::c_int;
 
 /// Type alias for `poll()` system call function.
-pub type PollFn = unsafe fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int;
+pub type PollFn<T> = unsafe fn(&T, *mut libc::pollfd, libc::nfds_t, libc::c_int) -> libc::c_int;
 
 //==================================================================================================
 // Default Implementations - unistd.rs
@@ -142,13 +147,14 @@ pub type PollFn = unsafe fn(*mut libc::pollfd, libc::nfds_t, libc::c_int) -> lib
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `path`: Path to change to.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_chdir(path: *const libc::c_char) -> libc::c_int {
+pub unsafe fn default_chdir<T>(_state: &T, path: *const libc::c_char) -> libc::c_int {
     libc::chdir(path)
 }
 
@@ -159,13 +165,14 @@ pub unsafe fn default_chdir(path: *const libc::c_char) -> libc::c_int {
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor to close.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_close(fd: libc::c_int) -> libc::c_int {
+pub unsafe fn default_close<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::close(fd)
 }
 
@@ -176,6 +183,7 @@ pub unsafe fn default_close(fd: libc::c_int) -> libc::c_int {
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to check.
 /// - `mode`: Access mode.
@@ -185,7 +193,8 @@ pub unsafe fn default_close(fd: libc::c_int) -> libc::c_int {
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_faccessat(
+pub unsafe fn default_faccessat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::c_int,
@@ -201,13 +210,14 @@ pub unsafe fn default_faccessat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor to synchronize.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fdatasync(fd: libc::c_int) -> libc::c_int {
+pub unsafe fn default_fdatasync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fdatasync(fd)
 }
 
@@ -216,11 +226,15 @@ pub unsafe fn default_fdatasync(fd: libc::c_int) -> libc::c_int {
 ///
 /// Default implementation for `getuid()` system call.
 ///
+/// # Parameters
+///
+/// - `_state`: Immutable reference to state (unused in default implementation).
+///
 /// # Returns
 ///
 /// The real user ID of the calling process.
 ///
-pub unsafe fn default_getuid() -> libc::uid_t {
+pub unsafe fn default_getuid<T>(_state: &T) -> libc::uid_t {
     libc::getuid()
 }
 
@@ -229,11 +243,15 @@ pub unsafe fn default_getuid() -> libc::uid_t {
 ///
 /// Default implementation for `geteuid()` system call.
 ///
+/// # Parameters
+///
+/// - `_state`: Immutable reference to state (unused in default implementation).
+///
 /// # Returns
 ///
 /// The effective user ID of the calling process.
 ///
-pub unsafe fn default_geteuid() -> libc::uid_t {
+pub unsafe fn default_geteuid<T>(_state: &T) -> libc::uid_t {
     libc::geteuid()
 }
 
@@ -242,11 +260,15 @@ pub unsafe fn default_geteuid() -> libc::uid_t {
 ///
 /// Default implementation for `getgid()` system call.
 ///
+/// # Parameters
+///
+/// - `_state`: Immutable reference to state (unused in default implementation).
+///
 /// # Returns
 ///
 /// The real group ID of the calling process.
 ///
-pub unsafe fn default_getgid() -> libc::gid_t {
+pub unsafe fn default_getgid<T>(_state: &T) -> libc::gid_t {
     libc::getgid()
 }
 
@@ -255,11 +277,15 @@ pub unsafe fn default_getgid() -> libc::gid_t {
 ///
 /// Default implementation for `getegid()` system call.
 ///
+/// # Parameters
+///
+/// - `_state`: Immutable reference to state (unused in default implementation).
+///
 /// # Returns
 ///
 /// The effective group ID of the calling process.
 ///
-pub unsafe fn default_getegid() -> libc::gid_t {
+pub unsafe fn default_getegid<T>(_state: &T) -> libc::gid_t {
     libc::getegid()
 }
 
@@ -270,6 +296,7 @@ pub unsafe fn default_getegid() -> libc::gid_t {
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `buf`: Buffer to store current working directory.
 /// - `size`: Size of buffer.
 ///
@@ -277,7 +304,11 @@ pub unsafe fn default_getegid() -> libc::gid_t {
 ///
 /// Upon successful completion, a pointer to the buffer is returned. Otherwise, NULL is returned and `errno` is set.
 ///
-pub unsafe fn default_getcwd(buf: *mut libc::c_char, size: libc::size_t) -> *mut libc::c_char {
+pub unsafe fn default_getcwd<T>(
+    _state: &T,
+    buf: *mut libc::c_char,
+    size: libc::size_t,
+) -> *mut libc::c_char {
     libc::getcwd(buf, size)
 }
 
@@ -288,13 +319,14 @@ pub unsafe fn default_getcwd(buf: *mut libc::c_char, size: libc::size_t) -> *mut
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor to synchronize.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fsync(fd: libc::c_int) -> libc::c_int {
+pub unsafe fn default_fsync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fsync(fd)
 }
 
@@ -305,6 +337,7 @@ pub unsafe fn default_fsync(fd: libc::c_int) -> libc::c_int {
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `offset`: Offset.
 /// - `whence`: Whence.
@@ -313,7 +346,8 @@ pub unsafe fn default_fsync(fd: libc::c_int) -> libc::c_int {
 ///
 /// Upon successful completion, the resulting offset is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_lseek(
+pub unsafe fn default_lseek<T>(
+    _state: &T,
     fd: libc::c_int,
     offset: libc::off_t,
     whence: libc::c_int,
@@ -328,6 +362,7 @@ pub unsafe fn default_lseek(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `length`: Length.
 ///
@@ -335,7 +370,11 @@ pub unsafe fn default_lseek(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_ftruncate(fd: libc::c_int, length: libc::off_t) -> libc::c_int {
+pub unsafe fn default_ftruncate<T>(
+    _state: &T,
+    fd: libc::c_int,
+    length: libc::off_t,
+) -> libc::c_int {
     libc::ftruncate(fd, length)
 }
 
@@ -346,6 +385,7 @@ pub unsafe fn default_ftruncate(fd: libc::c_int, length: libc::off_t) -> libc::c
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `buf`: Buffer to write from.
 /// - `count`: Number of bytes to write.
@@ -354,7 +394,8 @@ pub unsafe fn default_ftruncate(fd: libc::c_int, length: libc::off_t) -> libc::c
 ///
 /// Upon successful completion, the number of bytes written is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_write(
+pub unsafe fn default_write<T>(
+    _state: &T,
     fd: libc::c_int,
     buf: *const libc::c_void,
     count: libc::size_t,
@@ -369,6 +410,7 @@ pub unsafe fn default_write(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `buf`: Buffer to read into.
 /// - `count`: Number of bytes to read.
@@ -377,7 +419,8 @@ pub unsafe fn default_write(
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_read(
+pub unsafe fn default_read<T>(
+    _state: &T,
     fd: libc::c_int,
     buf: *mut libc::c_void,
     count: libc::size_t,
@@ -392,6 +435,7 @@ pub unsafe fn default_read(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `buf`: Buffer to write from.
 /// - `count`: Number of bytes to write.
@@ -401,7 +445,8 @@ pub unsafe fn default_read(
 ///
 /// Upon successful completion, the number of bytes written is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_pwrite(
+pub unsafe fn default_pwrite<T>(
+    _state: &T,
     fd: libc::c_int,
     buf: *const libc::c_void,
     count: libc::size_t,
@@ -417,6 +462,7 @@ pub unsafe fn default_pwrite(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `buf`: Buffer to read into.
 /// - `count`: Number of bytes to read.
@@ -426,7 +472,8 @@ pub unsafe fn default_pwrite(
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_pread(
+pub unsafe fn default_pread<T>(
+    _state: &T,
     fd: libc::c_int,
     buf: *mut libc::c_void,
     count: libc::size_t,
@@ -442,6 +489,7 @@ pub unsafe fn default_pread(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `olddirfd`: Old directory file descriptor.
 /// - `oldpath`: Old path.
 /// - `newdirfd`: New directory file descriptor.
@@ -452,7 +500,8 @@ pub unsafe fn default_pread(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_linkat(
+pub unsafe fn default_linkat<T>(
+    _state: &T,
     olddirfd: libc::c_int,
     oldpath: *const libc::c_char,
     newdirfd: libc::c_int,
@@ -469,13 +518,14 @@ pub unsafe fn default_linkat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fchdir(fd: libc::c_int) -> libc::c_int {
+pub unsafe fn default_fchdir<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fchdir(fd)
 }
 
@@ -486,6 +536,7 @@ pub unsafe fn default_fchdir(fd: libc::c_int) -> libc::c_int {
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `owner`: Owner.
 /// - `group`: Group.
@@ -494,7 +545,8 @@ pub unsafe fn default_fchdir(fd: libc::c_int) -> libc::c_int {
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fchown(
+pub unsafe fn default_fchown<T>(
+    _state: &T,
     fd: libc::c_int,
     owner: libc::uid_t,
     group: libc::gid_t,
@@ -509,64 +561,83 @@ pub unsafe fn default_fchown(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `pipefd`: Pipe file descriptors.
 ///
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_pipe(pipefd: *mut libc::c_int) -> libc::c_int {
+pub unsafe fn default_pipe<T>(_state: &T, pipefd: *mut libc::c_int) -> libc::c_int {
     libc::pipe(pipefd)
 }
 
 /// Type alias for `openat()` system call function.
-pub type OpenatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int;
+pub type OpenatFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int;
 
 /// Type alias for `unlinkat()` system call function.
-pub type UnlinkatFn = unsafe fn(libc::c_int, *const libc::c_char, libc::c_int) -> libc::c_int;
+pub type UnlinkatFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, libc::c_int) -> libc::c_int;
 
 /// Type alias for `renameat()` system call function.
-pub type RenameatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, libc::c_int, *const libc::c_char) -> libc::c_int;
+pub type RenameatFn<T> = unsafe fn(
+    &T,
+    libc::c_int,
+    *const libc::c_char,
+    libc::c_int,
+    *const libc::c_char,
+) -> libc::c_int;
 
 /// Type alias for `fstatat()` system call function.
-pub type FstatatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, *mut libc::stat, libc::c_int) -> libc::c_int;
+pub type FstatatFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, *mut libc::stat, libc::c_int) -> libc::c_int;
 
 /// Type alias for `posix_fallocate()` system call function.
-pub type PosixFallocateFn = unsafe fn(libc::c_int, libc::off_t, libc::off_t) -> libc::c_int;
+pub type PosixFallocateFn<T> = unsafe fn(&T, libc::c_int, libc::off_t, libc::off_t) -> libc::c_int;
 
 /// Type alias for `posix_fadvise()` system call function.
-pub type PosixFadviseFn =
-    unsafe fn(libc::c_int, libc::off_t, libc::off_t, libc::c_int) -> libc::c_int;
+pub type PosixFadviseFn<T> =
+    unsafe fn(&T, libc::c_int, libc::off_t, libc::off_t, libc::c_int) -> libc::c_int;
 
 /// Type alias for `fstat()` system call function.
-pub type FstatFn = unsafe fn(libc::c_int, *mut libc::stat) -> libc::c_int;
+pub type FstatFn<T> = unsafe fn(&T, libc::c_int, *mut libc::stat) -> libc::c_int;
 
 /// Type alias for `symlinkat()` system call function.
-pub type SymlinkatFn =
-    unsafe fn(*const libc::c_char, libc::c_int, *const libc::c_char) -> libc::c_int;
+pub type SymlinkatFn<T> =
+    unsafe fn(&T, *const libc::c_char, libc::c_int, *const libc::c_char) -> libc::c_int;
 
 /// Type alias for `readlinkat()` system call function.
-pub type ReadlinkatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, *mut libc::c_char, libc::size_t) -> libc::ssize_t;
+pub type ReadlinkatFn<T> = unsafe fn(
+    &T,
+    libc::c_int,
+    *const libc::c_char,
+    *mut libc::c_char,
+    libc::size_t,
+) -> libc::ssize_t;
 
 /// Type alias for `mkdirat()` system call function.
-pub type MkdiratFn = unsafe fn(libc::c_int, *const libc::c_char, libc::mode_t) -> libc::c_int;
+pub type MkdiratFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, libc::mode_t) -> libc::c_int;
 
 /// Type alias for `utimensat()` system call function.
-pub type UtimensatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, *const libc::timespec, libc::c_int) -> libc::c_int;
+pub type UtimensatFn<T> = unsafe fn(
+    &T,
+    libc::c_int,
+    *const libc::c_char,
+    *const libc::timespec,
+    libc::c_int,
+) -> libc::c_int;
 
 /// Type alias for `futimens()` system call function.
-pub type FutimensFn = unsafe fn(libc::c_int, *const libc::timespec) -> libc::c_int;
+pub type FutimensFn<T> = unsafe fn(&T, libc::c_int, *const libc::timespec) -> libc::c_int;
 
 /// Type alias for `fcntl()` system call function.
-pub type FcntlFn = unsafe fn(libc::c_int, libc::c_int, libc::c_int) -> libc::c_int;
+pub type FcntlFn<T> = unsafe fn(&T, libc::c_int, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `fchownat()` system call function.
-pub type FchownatFn = unsafe fn(
+pub type FchownatFn<T> = unsafe fn(
+    &T,
     libc::c_int,
     *const libc::c_char,
     libc::uid_t,
@@ -575,11 +646,11 @@ pub type FchownatFn = unsafe fn(
 ) -> libc::c_int;
 
 /// Type alias for `fchmod()` system call function.
-pub type FchmodFn = unsafe fn(libc::c_int, libc::mode_t) -> libc::c_int;
+pub type FchmodFn<T> = unsafe fn(&T, libc::c_int, libc::mode_t) -> libc::c_int;
 
 /// Type alias for `fchmodat()` system call function.
-pub type FchmodatFn =
-    unsafe fn(libc::c_int, *const libc::c_char, libc::mode_t, libc::c_int) -> libc::c_int;
+pub type FchmodatFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::c_char, libc::mode_t, libc::c_int) -> libc::c_int;
 
 //==================================================================================================
 // Default Implementations - fcntl.rs
@@ -592,6 +663,7 @@ pub type FchmodatFn =
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to open.
 /// - `flags`: Flags.
@@ -601,7 +673,8 @@ pub type FchmodatFn =
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_openat(
+pub unsafe fn default_openat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     flags: libc::c_int,
@@ -617,6 +690,7 @@ pub unsafe fn default_openat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to unlink.
 /// - `flags`: Flags.
@@ -625,7 +699,8 @@ pub unsafe fn default_openat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_unlinkat(
+pub unsafe fn default_unlinkat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     flags: libc::c_int,
@@ -640,6 +715,7 @@ pub unsafe fn default_unlinkat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `olddirfd`: Old directory file descriptor.
 /// - `oldpath`: Old path.
 /// - `newdirfd`: New directory file descriptor.
@@ -649,7 +725,8 @@ pub unsafe fn default_unlinkat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_renameat(
+pub unsafe fn default_renameat<T>(
+    _state: &T,
     olddirfd: libc::c_int,
     oldpath: *const libc::c_char,
     newdirfd: libc::c_int,
@@ -665,6 +742,7 @@ pub unsafe fn default_renameat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to stat.
 /// - `buf`: Buffer to store stat.
@@ -674,7 +752,8 @@ pub unsafe fn default_renameat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fstatat(
+pub unsafe fn default_fstatat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     buf: *mut libc::stat,
@@ -690,6 +769,7 @@ pub unsafe fn default_fstatat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `offset`: Offset.
 /// - `len`: Length.
@@ -698,7 +778,8 @@ pub unsafe fn default_fstatat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, an error number is returned.
 ///
-pub unsafe fn default_posix_fallocate(
+pub unsafe fn default_posix_fallocate<T>(
+    _state: &T,
     fd: libc::c_int,
     offset: libc::off_t,
     len: libc::off_t,
@@ -713,6 +794,7 @@ pub unsafe fn default_posix_fallocate(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `offset`: Offset.
 /// - `len`: Length.
@@ -722,7 +804,8 @@ pub unsafe fn default_posix_fallocate(
 ///
 /// Upon successful completion, zero is returned. Otherwise, an error number is returned.
 ///
-pub unsafe fn default_posix_fadvise(
+pub unsafe fn default_posix_fadvise<T>(
+    _state: &T,
     fd: libc::c_int,
     offset: libc::off_t,
     len: libc::off_t,
@@ -738,6 +821,7 @@ pub unsafe fn default_posix_fadvise(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `buf`: Buffer to store stat.
 ///
@@ -745,7 +829,7 @@ pub unsafe fn default_posix_fadvise(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fstat(fd: libc::c_int, buf: *mut libc::stat) -> libc::c_int {
+pub unsafe fn default_fstat<T>(_state: &T, fd: libc::c_int, buf: *mut libc::stat) -> libc::c_int {
     libc::fstat(fd, buf)
 }
 
@@ -756,6 +840,7 @@ pub unsafe fn default_fstat(fd: libc::c_int, buf: *mut libc::stat) -> libc::c_in
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `target`: Target.
 /// - `newdirfd`: New directory file descriptor.
 /// - `linkpath`: Link path.
@@ -764,7 +849,8 @@ pub unsafe fn default_fstat(fd: libc::c_int, buf: *mut libc::stat) -> libc::c_in
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_symlinkat(
+pub unsafe fn default_symlinkat<T>(
+    _state: &T,
     target: *const libc::c_char,
     newdirfd: libc::c_int,
     linkpath: *const libc::c_char,
@@ -779,6 +865,7 @@ pub unsafe fn default_symlinkat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to read.
 /// - `buf`: Buffer to store link.
@@ -788,7 +875,8 @@ pub unsafe fn default_symlinkat(
 ///
 /// Upon successful completion, the number of bytes placed in the buffer is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_readlinkat(
+pub unsafe fn default_readlinkat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     buf: *mut libc::c_char,
@@ -804,6 +892,7 @@ pub unsafe fn default_readlinkat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to create.
 /// - `mode`: Mode.
@@ -812,7 +901,8 @@ pub unsafe fn default_readlinkat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_mkdirat(
+pub unsafe fn default_mkdirat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::mode_t,
@@ -827,6 +917,7 @@ pub unsafe fn default_mkdirat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to update.
 /// - `times`: Times.
@@ -836,7 +927,8 @@ pub unsafe fn default_mkdirat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_utimensat(
+pub unsafe fn default_utimensat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     times: *const libc::timespec,
@@ -852,6 +944,7 @@ pub unsafe fn default_utimensat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `times`: Times.
 ///
@@ -859,7 +952,11 @@ pub unsafe fn default_utimensat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_futimens(fd: libc::c_int, times: *const libc::timespec) -> libc::c_int {
+pub unsafe fn default_futimens<T>(
+    _state: &T,
+    fd: libc::c_int,
+    times: *const libc::timespec,
+) -> libc::c_int {
     libc::futimens(fd, times)
 }
 
@@ -870,6 +967,7 @@ pub unsafe fn default_futimens(fd: libc::c_int, times: *const libc::timespec) ->
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `cmd`: Command.
 /// - `arg`: Argument.
@@ -878,7 +976,12 @@ pub unsafe fn default_futimens(fd: libc::c_int, times: *const libc::timespec) ->
 ///
 /// Upon successful completion, a value depends on the command. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fcntl(fd: libc::c_int, cmd: libc::c_int, arg: libc::c_int) -> libc::c_int {
+pub unsafe fn default_fcntl<T>(
+    _state: &T,
+    fd: libc::c_int,
+    cmd: libc::c_int,
+    arg: libc::c_int,
+) -> libc::c_int {
     libc::fcntl(fd, cmd, arg)
 }
 
@@ -889,6 +992,7 @@ pub unsafe fn default_fcntl(fd: libc::c_int, cmd: libc::c_int, arg: libc::c_int)
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to change ownership.
 /// - `owner`: Owner.
@@ -899,7 +1003,8 @@ pub unsafe fn default_fcntl(fd: libc::c_int, cmd: libc::c_int, arg: libc::c_int)
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fchownat(
+pub unsafe fn default_fchownat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     owner: libc::uid_t,
@@ -916,6 +1021,7 @@ pub unsafe fn default_fchownat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `mode`: Mode.
 ///
@@ -923,7 +1029,7 @@ pub unsafe fn default_fchownat(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fchmod(fd: libc::c_int, mode: libc::mode_t) -> libc::c_int {
+pub unsafe fn default_fchmod<T>(_state: &T, fd: libc::c_int, mode: libc::mode_t) -> libc::c_int {
     libc::fchmod(fd, mode)
 }
 
@@ -934,6 +1040,7 @@ pub unsafe fn default_fchmod(fd: libc::c_int, mode: libc::mode_t) -> libc::c_int
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `dirfd`: Directory file descriptor.
 /// - `pathname`: Path to change mode.
 /// - `mode`: Mode.
@@ -943,7 +1050,8 @@ pub unsafe fn default_fchmod(fd: libc::c_int, mode: libc::mode_t) -> libc::c_int
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_fchmodat(
+pub unsafe fn default_fchmodat<T>(
+    _state: &T,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::mode_t,
@@ -963,6 +1071,7 @@ pub unsafe fn default_fchmodat(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fd`: File descriptor.
 /// - `dirp`: Directory entries buffer.
 /// - `count`: Buffer size.
@@ -971,7 +1080,8 @@ pub unsafe fn default_fchmodat(
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_getdents(
+pub unsafe fn default_getdents<T>(
+    _state: &T,
     fd: libc::c_int,
     dirp: *mut u8,
     count: libc::size_t,
@@ -990,6 +1100,7 @@ pub unsafe fn default_getdents(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `domain`: Domain.
 /// - `type_`: Type.
 /// - `protocol`: Protocol.
@@ -998,7 +1109,8 @@ pub unsafe fn default_getdents(
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_socket(
+pub unsafe fn default_socket<T>(
+    _state: &T,
     domain: libc::c_int,
     type_: libc::c_int,
     protocol: libc::c_int,
@@ -1013,6 +1125,7 @@ pub unsafe fn default_socket(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `domain`: Domain.
 /// - `type_`: Type.
 /// - `protocol`: Protocol.
@@ -1022,7 +1135,8 @@ pub unsafe fn default_socket(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_socketpair(
+pub unsafe fn default_socketpair<T>(
+    _state: &T,
     domain: libc::c_int,
     type_: libc::c_int,
     protocol: libc::c_int,
@@ -1038,6 +1152,7 @@ pub unsafe fn default_socketpair(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `addr`: Address.
 /// - `addrlen`: Address length.
@@ -1046,7 +1161,8 @@ pub unsafe fn default_socketpair(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_bind(
+pub unsafe fn default_bind<T>(
+    _state: &T,
     sockfd: libc::c_int,
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
@@ -1061,6 +1177,7 @@ pub unsafe fn default_bind(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `addr`: Address.
 /// - `addrlen`: Address length.
@@ -1069,7 +1186,8 @@ pub unsafe fn default_bind(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_connect(
+pub unsafe fn default_connect<T>(
+    _state: &T,
     sockfd: libc::c_int,
     addr: *const libc::sockaddr,
     addrlen: libc::socklen_t,
@@ -1084,6 +1202,7 @@ pub unsafe fn default_connect(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `backlog`: Backlog.
 ///
@@ -1091,7 +1210,11 @@ pub unsafe fn default_connect(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_listen(sockfd: libc::c_int, backlog: libc::c_int) -> libc::c_int {
+pub unsafe fn default_listen<T>(
+    _state: &T,
+    sockfd: libc::c_int,
+    backlog: libc::c_int,
+) -> libc::c_int {
     libc::listen(sockfd, backlog)
 }
 
@@ -1102,6 +1225,7 @@ pub unsafe fn default_listen(sockfd: libc::c_int, backlog: libc::c_int) -> libc:
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `addr`: Address.
 /// - `addrlen`: Address length.
@@ -1110,7 +1234,8 @@ pub unsafe fn default_listen(sockfd: libc::c_int, backlog: libc::c_int) -> libc:
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_getpeername(
+pub unsafe fn default_getpeername<T>(
+    _state: &T,
     sockfd: libc::c_int,
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
@@ -1125,6 +1250,7 @@ pub unsafe fn default_getpeername(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `addr`: Address.
 /// - `addrlen`: Address length.
@@ -1133,7 +1259,8 @@ pub unsafe fn default_getpeername(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_getsockname(
+pub unsafe fn default_getsockname<T>(
+    _state: &T,
     sockfd: libc::c_int,
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
@@ -1148,6 +1275,7 @@ pub unsafe fn default_getsockname(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `addr`: Address.
 /// - `addrlen`: Address length.
@@ -1156,7 +1284,8 @@ pub unsafe fn default_getsockname(
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_accept(
+pub unsafe fn default_accept<T>(
+    _state: &T,
     sockfd: libc::c_int,
     addr: *mut libc::sockaddr,
     addrlen: *mut libc::socklen_t,
@@ -1171,6 +1300,7 @@ pub unsafe fn default_accept(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `buf`: Buffer.
 /// - `len`: Length.
@@ -1180,7 +1310,8 @@ pub unsafe fn default_accept(
 ///
 /// Upon successful completion, the number of bytes received is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_recv(
+pub unsafe fn default_recv<T>(
+    _state: &T,
     sockfd: libc::c_int,
     buf: *mut libc::c_void,
     len: libc::size_t,
@@ -1196,6 +1327,7 @@ pub unsafe fn default_recv(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `buf`: Buffer.
 /// - `len`: Length.
@@ -1205,7 +1337,8 @@ pub unsafe fn default_recv(
 ///
 /// Upon successful completion, the number of bytes sent is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_send(
+pub unsafe fn default_send<T>(
+    _state: &T,
     sockfd: libc::c_int,
     buf: *const libc::c_void,
     len: libc::size_t,
@@ -1221,6 +1354,7 @@ pub unsafe fn default_send(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `sockfd`: Socket file descriptor.
 /// - `how`: How.
 ///
@@ -1228,7 +1362,11 @@ pub unsafe fn default_send(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_shutdown(sockfd: libc::c_int, how: libc::c_int) -> libc::c_int {
+pub unsafe fn default_shutdown<T>(
+    _state: &T,
+    sockfd: libc::c_int,
+    how: libc::c_int,
+) -> libc::c_int {
     libc::shutdown(sockfd, how)
 }
 
@@ -1243,6 +1381,7 @@ pub unsafe fn default_shutdown(sockfd: libc::c_int, how: libc::c_int) -> libc::c
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `fds`: File descriptors.
 /// - `nfds`: Number of file descriptors.
 /// - `timeout`: Timeout.
@@ -1251,7 +1390,8 @@ pub unsafe fn default_shutdown(sockfd: libc::c_int, how: libc::c_int) -> libc::c
 ///
 /// Upon successful completion, the number of file descriptors with events is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_poll(
+pub unsafe fn default_poll<T>(
+    _state: &T,
     fds: *mut libc::pollfd,
     nfds: libc::nfds_t,
     timeout: libc::c_int,
@@ -1270,6 +1410,7 @@ pub unsafe fn default_poll(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `nfds`: Number of file descriptors.
 /// - `readfds`: Read file descriptors.
 /// - `writefds`: Write file descriptors.
@@ -1280,7 +1421,8 @@ pub unsafe fn default_poll(
 ///
 /// Upon successful completion, the number of file descriptors with events is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_select(
+pub unsafe fn default_select<T>(
+    _state: &T,
     nfds: libc::c_int,
     readfds: *mut libc::fd_set,
     writefds: *mut libc::fd_set,
@@ -1301,13 +1443,14 @@ pub unsafe fn default_select(
 ///
 /// # Parameters
 ///
+/// - `_state`: Immutable reference to state (unused in default implementation).
 /// - `buf`: Buffer to store times.
 ///
 /// # Returns
 ///
 /// Upon successful completion, the elapsed real time in clock ticks is returned. Otherwise, -1 is returned and `errno` is set.
 ///
-pub unsafe fn default_times(buf: *mut libc::tms) -> libc::clock_t {
+pub unsafe fn default_times<T>(_state: &T, buf: *mut libc::tms) -> libc::clock_t {
     libc::times(buf)
 }
 
@@ -1327,76 +1470,105 @@ pub enum SyscallAction<F> {
 ///
 /// System call routing table.
 ///
-pub struct SyscallTable {
+/// This structure holds the configuration for how system calls should be handled. Each system
+/// call can be either blocked or forwarded to a handler function. The generic type parameter `T`
+/// represents custom state that is passed as a reference to each system call handler, allowing
+/// implementations to maintain context-specific information (e.g., file descriptor tables,
+/// process state, or other runtime data).
+///
+/// # Type Parameters
+///
+/// - `T`: Custom state type that is passed to all system call handler functions. Use `()` if no
+///   state is required.
+///
+pub struct SyscallTable<T> {
+    /// State that is passed to each system call action function.
+    pub state: T,
+
     // unistd.rs system calls.
-    pub chdir: SyscallAction<ChdirFn>,
-    pub close: SyscallAction<CloseFn>,
-    pub faccessat: SyscallAction<FaccessatFn>,
-    pub fdatasync: SyscallAction<FdatasyncFn>,
-    pub fchdir: SyscallAction<FchdirFn>,
-    pub fchown: SyscallAction<FchownFn>,
-    pub fsync: SyscallAction<FsyncFn>,
-    pub ftruncate: SyscallAction<FtruncateFn>,
-    pub getcwd: SyscallAction<GetcwdFn>,
-    pub getegid: SyscallAction<GetegidFn>,
-    pub geteuid: SyscallAction<GeteuidFn>,
-    pub getgid: SyscallAction<GetgidFn>,
-    pub getuid: SyscallAction<GetuidFn>,
-    pub linkat: SyscallAction<LinkatFn>,
-    pub lseek: SyscallAction<LseekFn>,
-    pub pipe: SyscallAction<PipeFn>,
-    pub pread: SyscallAction<PreadFn>,
-    pub pwrite: SyscallAction<PwriteFn>,
-    pub read: SyscallAction<ReadFn>,
-    pub write: SyscallAction<WriteFn>,
+    pub chdir: SyscallAction<ChdirFn<T>>,
+    pub close: SyscallAction<CloseFn<T>>,
+    pub faccessat: SyscallAction<FaccessatFn<T>>,
+    pub fdatasync: SyscallAction<FdatasyncFn<T>>,
+    pub fchdir: SyscallAction<FchdirFn<T>>,
+    pub fchown: SyscallAction<FchownFn<T>>,
+    pub fsync: SyscallAction<FsyncFn<T>>,
+    pub ftruncate: SyscallAction<FtruncateFn<T>>,
+    pub getcwd: SyscallAction<GetcwdFn<T>>,
+    pub getegid: SyscallAction<GetegidFn<T>>,
+    pub geteuid: SyscallAction<GeteuidFn<T>>,
+    pub getgid: SyscallAction<GetgidFn<T>>,
+    pub getuid: SyscallAction<GetuidFn<T>>,
+    pub linkat: SyscallAction<LinkatFn<T>>,
+    pub lseek: SyscallAction<LseekFn<T>>,
+    pub pipe: SyscallAction<PipeFn<T>>,
+    pub pread: SyscallAction<PreadFn<T>>,
+    pub pwrite: SyscallAction<PwriteFn<T>>,
+    pub read: SyscallAction<ReadFn<T>>,
+    pub write: SyscallAction<WriteFn<T>>,
 
     // fcntl.rs system calls.
-    pub fchmod: SyscallAction<FchmodFn>,
-    pub fchmodat: SyscallAction<FchmodatFn>,
-    pub fchownat: SyscallAction<FchownatFn>,
-    pub fcntl: SyscallAction<FcntlFn>,
-    pub fstat: SyscallAction<FstatFn>,
-    pub fstatat: SyscallAction<FstatatFn>,
-    pub futimens: SyscallAction<FutimensFn>,
-    pub mkdirat: SyscallAction<MkdiratFn>,
-    pub openat: SyscallAction<OpenatFn>,
-    pub posix_fadvise: SyscallAction<PosixFadviseFn>,
-    pub posix_fallocate: SyscallAction<PosixFallocateFn>,
-    pub readlinkat: SyscallAction<ReadlinkatFn>,
-    pub renameat: SyscallAction<RenameatFn>,
-    pub symlinkat: SyscallAction<SymlinkatFn>,
-    pub unlinkat: SyscallAction<UnlinkatFn>,
-    pub utimensat: SyscallAction<UtimensatFn>,
+    pub fchmod: SyscallAction<FchmodFn<T>>,
+    pub fchmodat: SyscallAction<FchmodatFn<T>>,
+    pub fchownat: SyscallAction<FchownatFn<T>>,
+    pub fcntl: SyscallAction<FcntlFn<T>>,
+    pub fstat: SyscallAction<FstatFn<T>>,
+    pub fstatat: SyscallAction<FstatatFn<T>>,
+    pub futimens: SyscallAction<FutimensFn<T>>,
+    pub mkdirat: SyscallAction<MkdiratFn<T>>,
+    pub openat: SyscallAction<OpenatFn<T>>,
+    pub posix_fadvise: SyscallAction<PosixFadviseFn<T>>,
+    pub posix_fallocate: SyscallAction<PosixFallocateFn<T>>,
+    pub readlinkat: SyscallAction<ReadlinkatFn<T>>,
+    pub renameat: SyscallAction<RenameatFn<T>>,
+    pub symlinkat: SyscallAction<SymlinkatFn<T>>,
+    pub unlinkat: SyscallAction<UnlinkatFn<T>>,
+    pub utimensat: SyscallAction<UtimensatFn<T>>,
 
     // dirent.rs system calls.
-    pub getdents: SyscallAction<GetdentsFn>,
+    pub getdents: SyscallAction<GetdentsFn<T>>,
 
     // socket.rs system calls.
-    pub accept: SyscallAction<AcceptFn>,
-    pub bind: SyscallAction<BindFn>,
-    pub connect: SyscallAction<ConnectFn>,
-    pub getpeername: SyscallAction<GetpeernameFn>,
-    pub getsockname: SyscallAction<GetsocknameFn>,
-    pub listen: SyscallAction<ListenFn>,
-    pub recv: SyscallAction<RecvFn>,
-    pub send: SyscallAction<SendFn>,
-    pub shutdown: SyscallAction<ShutdownFn>,
-    pub socket: SyscallAction<SocketFn>,
-    pub socketpair: SyscallAction<SocketpairFn>,
+    pub accept: SyscallAction<AcceptFn<T>>,
+    pub bind: SyscallAction<BindFn<T>>,
+    pub connect: SyscallAction<ConnectFn<T>>,
+    pub getpeername: SyscallAction<GetpeernameFn<T>>,
+    pub getsockname: SyscallAction<GetsocknameFn<T>>,
+    pub listen: SyscallAction<ListenFn<T>>,
+    pub recv: SyscallAction<RecvFn<T>>,
+    pub send: SyscallAction<SendFn<T>>,
+    pub shutdown: SyscallAction<ShutdownFn<T>>,
+    pub socket: SyscallAction<SocketFn<T>>,
+    pub socketpair: SyscallAction<SocketpairFn<T>>,
 
     // poll.rs system calls.
-    pub poll: SyscallAction<PollFn>,
+    pub poll: SyscallAction<PollFn<T>>,
 
     // sys_select.rs system calls.
-    pub select: SyscallAction<SelectFn>,
+    pub select: SyscallAction<SelectFn<T>>,
 
     // times.rs system calls.
-    pub times: SyscallAction<TimesFn>,
+    pub times: SyscallAction<TimesFn<T>>,
 }
 
-impl Default for SyscallTable {
-    fn default() -> Self {
+impl<T> SyscallTable<T> {
+    ///
+    /// # Description
+    ///
+    /// Creates a new syscall table with the given state.
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: State that is passed to each system call action function.
+    ///
+    /// # Returns
+    ///
+    /// A new syscall table.
+    ///
+    pub fn new(state: T) -> Self {
         Self {
+            state,
+
             // unistd.rs system calls.
             chdir: SyscallAction::Forward(default_chdir),
             close: SyscallAction::Forward(default_close),
@@ -1462,5 +1634,11 @@ impl Default for SyscallTable {
             // times.rs system calls.
             times: SyscallAction::Forward(default_times),
         }
+    }
+}
+
+impl Default for SyscallTable<()> {
+    fn default() -> Self {
+        Self::new(())
     }
 }
