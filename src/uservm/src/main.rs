@@ -54,6 +54,7 @@ use ::uservm::{
         self,
         Args,
     },
+    counters::MessageCounters,
     io_thread::IoThread,
     orchestrator::{
         IoControlCommand,
@@ -91,6 +92,9 @@ pub async fn main() -> Result<ExitCode> {
     let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
     let (io_control_tx, io_thread_control_rx) =
         mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
+
+    // Create shared counters for tracking message flow across threads.
+    let counters: MessageCounters = MessageCounters::new();
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
@@ -188,6 +192,7 @@ pub async fn main() -> Result<ExitCode> {
         io_thread_control_tx,
         io_thread_control_rx,
         control_plane_stream,
+        counters.clone(),
     )?;
 
     // Run virtual machine and check exit status code.
@@ -201,6 +206,7 @@ pub async fn main() -> Result<ExitCode> {
         io_control_rx,
         io_control_tx,
         kernel_filename,
+        counters,
     });
 
     let result: Result<ExitCode> = match vmm_handle.await? {

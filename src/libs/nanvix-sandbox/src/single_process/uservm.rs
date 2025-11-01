@@ -58,6 +58,7 @@ use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
 };
 use ::uservm::{
+    counters::MessageCounters,
     io_thread::IoThread,
     orchestrator::{
         IoControlCommand,
@@ -141,6 +142,9 @@ impl UserVm {
                     mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
                 let (io_control_tx, io_thread_control_rx) =
                     mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
+
+                // Create shared counters for tracking message flow across threads.
+                let counters: MessageCounters = MessageCounters::default();
 
                 // Connect to the control-plane socket.
                 let unbound_socket: UnboundSocket =
@@ -242,6 +246,7 @@ impl UserVm {
                     io_thread_control_tx,
                     io_thread_control_rx,
                     control_plane_stream,
+                    counters.clone(),
                 )?;
 
                 // Spawn VMM thread.
@@ -256,6 +261,7 @@ impl UserVm {
                         memory_thread_data_rx,
                         io_control_rx,
                         io_control_tx,
+                        counters,
                     });
 
                 // Wait for VMM thread to finish.
