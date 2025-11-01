@@ -52,18 +52,24 @@ use ::tokio::{
 /// handles interrupt signals for graceful shutdown, and maintains the sandbox cache for
 /// all active instances. It provides the main event loop for the daemon.
 ///
-pub struct HttpServer {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Must implement `Send + Sync + Default + Clone`. Use `()` if no custom
+///   state is required.
+///
+pub struct HttpServer<T> {
     /// Socket address to bind the HTTP server to.
     sockaddr: String,
     /// Configuration for sandbox cache management.
-    config: SandboxCacheConfig,
+    config: SandboxCacheConfig<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl HttpServer {
+impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     ///
     /// # Description
     ///
@@ -78,7 +84,7 @@ impl HttpServer {
     ///
     /// A new HTTP server instance ready to be started.
     ///
-    pub fn new(sockaddr: &str, config: SandboxCacheConfig) -> Self {
+    pub fn new(sockaddr: &str, config: SandboxCacheConfig<T>) -> Self {
         Self {
             sockaddr: sockaddr.to_string(),
             config,
@@ -105,7 +111,7 @@ impl HttpServer {
     pub async fn run(&mut self) -> Result<()> {
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
-        let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new(self.config.clone());
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone());
 
         loop {
             tokio::select! {
@@ -113,11 +119,11 @@ impl HttpServer {
                     match result {
                         Ok((stream, sockaddr)) => {
                             debug!("accepted connection from {sockaddr:?}");
-                            let sandbox_cache_clone: Arc<Mutex<SandboxCache>> = sandbox_cache.clone();
+                            let sandbox_cache_clone: Arc<Mutex<SandboxCache<T>>> = sandbox_cache.clone();
                             // In single-process mode, handle connections sequentially.
                             #[cfg(feature = "single-process")]
                             {
-                                let client: HttpClient = HttpClient::new(sandbox_cache_clone);
+                                let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);
                                 let io: TokioIo<TcpStream> = TokioIo::new(stream);
                                 if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                     error!("failed to serve connection (error={e:?})");
@@ -126,7 +132,7 @@ impl HttpServer {
                             #[cfg(not(feature = "single-process"))]
                             {
                                 tokio::spawn(async move {
-                                    let client: HttpClient = HttpClient::new(sandbox_cache_clone);
+                                    let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);
                                     let io: TokioIo<TcpStream> = TokioIo::new(stream);
                                     if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
                                         error!("failed to serve connection (error={e:?})");

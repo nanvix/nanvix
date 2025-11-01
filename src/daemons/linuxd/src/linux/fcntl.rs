@@ -15,7 +15,6 @@ use crate::{
 };
 use ::alloc::ffi::CString;
 use ::core::ffi;
-use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -157,8 +156,8 @@ use sysapi::fcntl::file_descriptor_flags::{
 // do_openat
 //==================================================================================================
 
-pub fn do_openat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_openat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: OpenAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -190,7 +189,7 @@ pub fn do_openat(
         mode.inner()
     );
     match unsafe {
-        handle_openat(&syscall_table, dirfd.inner(), pathname.as_ptr(), flags.inner(), mode.inner())
+        handle_openat(syscall_table, dirfd.inner(), pathname.as_ptr(), flags.inner(), mode.inner())
     } {
         fd if fd >= 0 => {
             debug!("libc::openat(): fd={fd:?}");
@@ -223,8 +222,8 @@ pub fn do_openat(
 // do_unlink_at
 //==================================================================================================
 
-pub fn do_unlinkat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_unlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: UnlinkAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -248,7 +247,7 @@ pub fn do_unlinkat(
     debug!("libc::unlinkat(): dirfd={:?}, pathname={pathname:?}, flags={flags:?}", dirfd.inner(),);
     match unsafe {
         handle_unlinkat(
-            &syscall_table,
+            syscall_table,
             dirfd.inner(),
             pathname.as_bytes().as_ptr() as *const i8,
             flags,
@@ -283,8 +282,8 @@ pub fn do_unlinkat(
 // do_rename_at
 //==================================================================================================
 
-pub fn do_renameat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_renameat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: RenameAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -313,7 +312,7 @@ pub fn do_renameat(
     );
     match unsafe {
         handle_renameat(
-            &syscall_table,
+            syscall_table,
             olddirfd.inner(),
             oldpath.as_bytes().as_ptr() as *const i8,
             newdirfd.inner(),
@@ -351,8 +350,8 @@ pub fn do_renameat(
 // do_fstatat
 //==================================================================================================
 
-pub fn do_fstat_at(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fstat_at<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileStatAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -375,7 +374,7 @@ pub fn do_fstat_at(
     debug!("libc::fstatat(): dirfd={:?}, path={path:?}, flag={:?}", dirfd.inner(), flag);
     match unsafe {
         handle_fstatat(
-            &syscall_table,
+            syscall_table,
             dirfd.inner(),
             path.as_ptr(),
             &mut st as *mut libc::stat,
@@ -461,8 +460,8 @@ pub fn do_fstat_at(
 // do_posix_fallocate
 //==================================================================================================
 
-pub fn do_posix_fallocate(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_posix_fallocate<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileSpaceControlRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -473,7 +472,7 @@ pub fn do_posix_fallocate(
     let len: off_t = request.len;
 
     debug!("libc::posix_fallocate(): fd={fd:?}, offset={offset:?}, len={len:?}");
-    match unsafe { handle_posix_fallocate(&syscall_table, fd, offset, len) } {
+    match unsafe { handle_posix_fallocate(syscall_table, fd, offset, len) } {
         0 => {
             debug!("libc::posix_fallocate(): success");
             Ok(FileSpaceControlResponse::build(tid, 0))
@@ -506,8 +505,8 @@ pub fn do_posix_fallocate(
 // do_posix_fadvise
 //==================================================================================================
 
-pub fn do_posix_fadvise(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_posix_fadvise<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileAdvisoryInformationRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -525,7 +524,7 @@ pub fn do_posix_fadvise(
         "libc::posix_fadvise(): fd={fd:?}, offset={offset:?}, len={len:?}, advice={:?}",
         advice.inner()
     );
-    match unsafe { handle_posix_fadvise(&syscall_table, fd, offset, len, advice.inner()) } {
+    match unsafe { handle_posix_fadvise(syscall_table, fd, offset, len, advice.inner()) } {
         0 => {
             debug!("libc::posix_fadvise(): success");
             Ok(FileAdvisoryInformationResponse::build(tid, 0))
@@ -558,8 +557,8 @@ pub fn do_posix_fadvise(
 // do_fstat()
 //==================================================================================================
 
-pub fn do_fstat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fstat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileStatRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -570,7 +569,7 @@ pub fn do_fstat(
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
 
     debug!("libc::fstat(): fd={fd:?}");
-    match unsafe { handle_fstat(&syscall_table, fd, &mut st) } {
+    match unsafe { handle_fstat(syscall_table, fd, &mut st) } {
         0 => {
             debug!("libc::fstatat(): success");
 
@@ -650,8 +649,8 @@ pub fn do_fstat(
 // do_symlinkat()
 //==================================================================================================
 
-pub fn do_symlinkat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_symlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: SymbolicLinkAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -675,7 +674,7 @@ pub fn do_symlinkat(
         newdirfd.inner(),
     );
     match unsafe {
-        handle_symlinkat(&syscall_table, target.as_ptr(), newdirfd.inner(), linkpath.as_ptr())
+        handle_symlinkat(syscall_table, target.as_ptr(), newdirfd.inner(), linkpath.as_ptr())
     } {
         0 => {
             debug!("libc::symlinkat(): success");
@@ -708,8 +707,8 @@ pub fn do_symlinkat(
 // do_readlinkat()
 //==================================================================================================
 
-pub fn do_readlinkat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_readlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: ReadLinkAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -733,7 +732,7 @@ pub fn do_readlinkat(
     );
     match unsafe {
         handle_readlinkat(
-            &syscall_table,
+            syscall_table,
             dirfd.inner(),
             path.as_ptr(),
             buf.as_mut_ptr() as *mut i8,
@@ -782,8 +781,8 @@ pub fn do_readlinkat(
 // do_mkdirat()
 //==================================================================================================
 
-pub fn do_mkdirat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_mkdirat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: MakeDirectoryAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -807,8 +806,7 @@ pub fn do_mkdirat(
         dirfd.inner(),
         mode.inner()
     );
-    match unsafe { handle_mkdirat(&syscall_table, dirfd.inner(), pathname.as_ptr(), mode.inner()) }
-    {
+    match unsafe { handle_mkdirat(syscall_table, dirfd.inner(), pathname.as_ptr(), mode.inner()) } {
         0 => {
             debug!("libc::mkdirat(): success");
             Ok(vec![MakeDirectoryAtResponse::build(tid, 0)])
@@ -840,8 +838,8 @@ pub fn do_mkdirat(
 // do_utimensat()
 //==================================================================================================
 
-pub fn do_utimensat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_utimensat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: UpdateFileAccessTimeAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -879,7 +877,7 @@ pub fn do_utimensat(
         libc_times[1].tv_nsec
     );
     match unsafe {
-        handle_utimensat(&syscall_table, dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag)
+        handle_utimensat(syscall_table, dirfd.inner(), path.as_ptr(), libc_times.as_ptr(), flag)
     } {
         0 => {
             debug!("libc::utimensat(): success");
@@ -912,8 +910,8 @@ pub fn do_utimensat(
 // do_futimens()
 //==================================================================================================
 
-pub fn do_futimens(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_futimens<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: UpdateFileAccessTimeRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -933,7 +931,7 @@ pub fn do_futimens(
          times[1].tv_sec={:?}, times[1].tv_nsec={:?}",
         libc_times[0].tv_sec, libc_times[0].tv_nsec, libc_times[1].tv_sec, libc_times[1].tv_nsec
     );
-    match unsafe { handle_futimens(&syscall_table, fd, libc_times.as_ptr()) } {
+    match unsafe { handle_futimens(syscall_table, fd, libc_times.as_ptr()) } {
         0 => {
             debug!("libc::futimens(): success");
             Ok(UpdateFileAccessTimeResponse::build(tid, 0))
@@ -965,8 +963,8 @@ pub fn do_futimens(
 // do_fcntl()
 //==================================================================================================
 
-pub fn do_fcntl(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fcntl<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileControlRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -1043,7 +1041,7 @@ pub fn do_fcntl(
         },
     };
 
-    let ret: i32 = unsafe { handle_fcntl(&syscall_table, fd, cmd.inner(), libc_arg) };
+    let ret: i32 = unsafe { handle_fcntl(syscall_table, fd, cmd.inner(), libc_arg) };
 
     match cmd.inner() {
         libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
@@ -1211,8 +1209,8 @@ pub fn do_fcntl(
 // do_fchownat()
 //==================================================================================================
 
-pub fn do_fchownat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fchownat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileChownAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -1236,7 +1234,7 @@ pub fn do_fchownat(
         flag.inner()
     );
     match unsafe {
-        handle_fchownat(&syscall_table, dirfd.inner(), path.as_ptr(), owner, group, flag.inner())
+        handle_fchownat(syscall_table, dirfd.inner(), path.as_ptr(), owner, group, flag.inner())
     } {
         0 => {
             debug!("libc::fchownat(): success");
@@ -1269,8 +1267,8 @@ pub fn do_fchownat(
 // do_fchmod
 //==================================================================================================
 
-pub fn do_fchmod(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fchmod<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileChmodRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -1280,7 +1278,7 @@ pub fn do_fchmod(
     let mode: u32 = request.mode;
 
     debug!("libc::fchmod(): fd={fd:?}, mode={mode:?}");
-    match unsafe { handle_fchmod(&syscall_table, fd, mode) } {
+    match unsafe { handle_fchmod(syscall_table, fd, mode) } {
         0 => Ok(FileChmodResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -1305,8 +1303,8 @@ pub fn do_fchmod(
 // do_fchmodat()
 //==================================================================================================
 
-pub fn do_fchmodat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fchmodat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileChmodAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -1335,7 +1333,7 @@ pub fn do_fchmodat(
         flag.inner()
     );
     match unsafe {
-        handle_fchmodat(&syscall_table, dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner())
+        handle_fchmodat(syscall_table, dirfd.inner(), path.as_ptr(), mode.inner(), flag.inner())
     } {
         0 => {
             debug!("libc::fchmodat(): success");
@@ -1803,8 +1801,8 @@ impl LibcFileAdvice {
 //==================================================================================================
 
 /// Handler for `libc::openat()`.
-unsafe fn handle_openat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_openat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     flags: libc::c_int,
@@ -1815,13 +1813,15 @@ unsafe fn handle_openat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, flags, mode) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, flags, mode)
+        },
     }
 }
 
 /// Handler for `libc::unlinkat()`.
-unsafe fn handle_unlinkat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_unlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     flags: libc::c_int,
@@ -1831,13 +1831,15 @@ unsafe fn handle_unlinkat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, flags) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, flags)
+        },
     }
 }
 
 /// Handler for `libc::renameat()`.
-unsafe fn handle_renameat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_renameat<T>(
+    syscall_table: &SyscallTable<T>,
     olddirfd: libc::c_int,
     oldpath: *const libc::c_char,
     newdirfd: libc::c_int,
@@ -1849,14 +1851,14 @@ unsafe fn handle_renameat(
             -1
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(olddirfd, oldpath, newdirfd, newpath)
+            syscall_fn(&syscall_table.state, olddirfd, oldpath, newdirfd, newpath)
         },
     }
 }
 
 /// Handler for `libc::fstatat()`.
-unsafe fn handle_fstatat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fstatat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     buf: *mut libc::stat,
@@ -1867,13 +1869,15 @@ unsafe fn handle_fstatat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, buf, flags) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, buf, flags)
+        },
     }
 }
 
 /// Handler for `libc::posix_fallocate()`.
-unsafe fn handle_posix_fallocate(
-    syscall_table: &SyscallTable,
+unsafe fn handle_posix_fallocate<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     offset: off_t,
     len: off_t,
@@ -1883,13 +1887,15 @@ unsafe fn handle_posix_fallocate(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, offset, len) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, offset, len)
+        },
     }
 }
 
 /// Handler for `libc::posix_fadvise()`.
-unsafe fn handle_posix_fadvise(
-    syscall_table: &SyscallTable,
+unsafe fn handle_posix_fadvise<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     offset: off_t,
     len: off_t,
@@ -1900,13 +1906,15 @@ unsafe fn handle_posix_fadvise(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, offset, len, advice) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, offset, len, advice)
+        },
     }
 }
 
 /// Handler for `libc::fstat()`.
-unsafe fn handle_fstat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fstat<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     buf: *mut libc::stat,
 ) -> libc::c_int {
@@ -1915,13 +1923,13 @@ unsafe fn handle_fstat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd, buf) },
     }
 }
 
 /// Handler for `libc::symlinkat()`.
-unsafe fn handle_symlinkat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_symlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     target: *const libc::c_char,
     newdirfd: libc::c_int,
     linkpath: *const libc::c_char,
@@ -1931,13 +1939,15 @@ unsafe fn handle_symlinkat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(target, newdirfd, linkpath) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, target, newdirfd, linkpath)
+        },
     }
 }
 
 /// Handler for `libc::readlinkat()`.
-unsafe fn handle_readlinkat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_readlinkat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     buf: *mut libc::c_char,
@@ -1948,13 +1958,15 @@ unsafe fn handle_readlinkat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, buf, bufsiz) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, buf, bufsiz)
+        },
     }
 }
 
 /// Handler for `libc::mkdirat()`.
-unsafe fn handle_mkdirat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_mkdirat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::mode_t,
@@ -1964,13 +1976,15 @@ unsafe fn handle_mkdirat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, mode) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, mode)
+        },
     }
 }
 
 /// Handler for `libc::utimensat()`.
-unsafe fn handle_utimensat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_utimensat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     times: *const libc::timespec,
@@ -1981,13 +1995,15 @@ unsafe fn handle_utimensat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, times, flags) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, times, flags)
+        },
     }
 }
 
 /// Handler for `libc::futimens()`.
-unsafe fn handle_futimens(
-    syscall_table: &SyscallTable,
+unsafe fn handle_futimens<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     times: *const libc::timespec,
 ) -> libc::c_int {
@@ -1996,13 +2012,15 @@ unsafe fn handle_futimens(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, times) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, times)
+        },
     }
 }
 
 /// Handler for `libc::fcntl()`.
-unsafe fn handle_fcntl(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fcntl<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     cmd: libc::c_int,
     arg: libc::c_int,
@@ -2012,13 +2030,15 @@ unsafe fn handle_fcntl(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, cmd, arg) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, cmd, arg)
+        },
     }
 }
 
 /// Handler for `libc::fchownat()`.
-unsafe fn handle_fchownat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fchownat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     owner: libc::uid_t,
@@ -2031,14 +2051,14 @@ unsafe fn handle_fchownat(
             -1
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(dirfd, pathname, owner, group, flags)
+            syscall_fn(&syscall_table.state, dirfd, pathname, owner, group, flags)
         },
     }
 }
 
 /// Handler for `libc::fchmod()`.
-unsafe fn handle_fchmod(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fchmod<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     mode: libc::mode_t,
 ) -> libc::c_int {
@@ -2047,13 +2067,13 @@ unsafe fn handle_fchmod(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, mode) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd, mode) },
     }
 }
 
 /// Handler for `libc::fchmodat()`.
-unsafe fn handle_fchmodat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fchmodat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::mode_t,
@@ -2064,6 +2084,8 @@ unsafe fn handle_fchmodat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, mode, flags) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, mode, flags)
+        },
     }
 }

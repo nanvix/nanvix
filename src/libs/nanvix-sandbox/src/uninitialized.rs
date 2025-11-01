@@ -18,6 +18,8 @@ use crate::{
     SandboxConfig,
 };
 use ::anyhow::Result;
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
@@ -43,7 +45,12 @@ use ::tokio::sync::{
 /// a builder pattern to accumulate configuration and resources (Linux Daemon, control plane
 /// socket, configuration) before transitioning to an initialized state.
 ///
-pub struct UninitializedSandbox {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Use `()` if no custom state is required.
+///
+pub struct UninitializedSandbox<T> {
     /// Path to the guest binary file to execute.
     guest_binary_path: String,
     /// Optional command-line arguments for the program.
@@ -53,14 +60,18 @@ pub struct UninitializedSandbox {
     /// Optional control plane listener socket, address, and socket type.
     control_plane_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Optional sandbox configuration parameters.
-    config: Option<SandboxConfig>,
+    config: Option<SandboxConfig<T>>,
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl UninitializedSandbox {
+impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// # Description
     ///
@@ -82,6 +93,8 @@ impl UninitializedSandbox {
             linuxd: None,
             control_plane_socket_and_info: None,
             config: None,
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         }
     }
 
@@ -98,7 +111,7 @@ impl UninitializedSandbox {
     ///
     /// This function returns the modified uninitialized sandbox.
     ///
-    pub fn with_config(mut self, config: SandboxConfig) -> Self {
+    pub fn with_config(mut self, config: SandboxConfig<T>) -> Self {
         self.config = Some(config);
         self
     }
@@ -153,9 +166,9 @@ impl UninitializedSandbox {
     /// On success, returns an initialized sandbox ready to be started. On failure, returns
     /// an error describing what went wrong during initialization.
     ///
-    pub async fn initialize(mut self) -> Result<InitializedSandbox> {
+    pub async fn initialize(mut self) -> Result<InitializedSandbox<T>> {
         // Get sandbox configuration.
-        let config: SandboxConfig = match self.config.take() {
+        let config: SandboxConfig<T> = match self.config.take() {
             None => {
                 let reason: &str = "sandbox configuration not provided";
                 error!("initialize(): {reason}");
@@ -216,7 +229,7 @@ impl UninitializedSandbox {
                 > = control_plane_socket_and_info.lock().await;
 
                 // Build Linux Daemon arguments.
-                let linuxd_args: LinuxDaemonArgs = {
+                let linuxd_args: LinuxDaemonArgs<T> = {
                     // Get toolchain binary directory.
                     let toolchain_binary_directory: String =
                         match config.toolchain_binary_directory() {
@@ -302,6 +315,8 @@ impl UninitializedSandbox {
             linuxd,
             control_plane_socket_and_info,
             sandbox_config: config,
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         })
     }
 }

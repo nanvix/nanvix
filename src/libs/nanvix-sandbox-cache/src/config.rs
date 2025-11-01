@@ -15,6 +15,8 @@ use ::nanvix_sandbox::{
     syscomm::SocketType,
     HwLoc,
 };
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 
 //==================================================================================================
 // Structures
@@ -29,8 +31,13 @@ use ::nanvix_sandbox::{
 /// by the Nanvix Daemon, including socket types, file paths, hardware topology, and deployment
 /// mode settings.
 ///
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Use `()` if no custom state is required.
+///
 #[derive(Clone)]
-pub struct SandboxCacheConfig {
+pub struct SandboxCacheConfig<T> {
     /// Socket type for control plane communication between nanvixd and linuxd.
     control_plane_socket_type: SocketType,
     /// Socket type for gateway communication between external clients and linuxd for stdin/stdout.
@@ -51,7 +58,7 @@ pub struct SandboxCacheConfig {
     uservm_binary_path: String,
     /// System call table.
     #[cfg(feature = "single-process")]
-    syscall_table: Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable>>,
+    syscall_table: Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>>,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -62,13 +69,17 @@ pub struct SandboxCacheConfig {
     l2_snapshot_path: String,
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl SandboxCacheConfig {
+impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// # Description
     ///
@@ -106,7 +117,7 @@ impl SandboxCacheConfig {
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
         #[cfg(feature = "single-process")] syscall_table: Option<
-            ::std::sync::Arc<::nanvix_sandbox::SyscallTable>,
+            ::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>,
         >,
         toolchain_binary_directory: &str,
         log_directory: &str,
@@ -132,6 +143,8 @@ impl SandboxCacheConfig {
             l2,
             l2_snapshot_path: l2_snapshot_path.to_string(),
             tmp_directory: tmp_directory.to_string(),
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         }
     }
 
@@ -252,7 +265,7 @@ impl SandboxCacheConfig {
     /// empty.
     ///
     #[cfg(feature = "single-process")]
-    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable>> {
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>> {
         self.syscall_table.clone()
     }
 

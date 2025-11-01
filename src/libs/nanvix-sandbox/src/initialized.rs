@@ -21,6 +21,8 @@ use crate::{
     UserVmArgs,
 };
 use ::anyhow::Result;
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
@@ -53,10 +55,15 @@ use ::tokio::{
 /// plane socket and a spawned Linux Daemon instance, but has not yet started executing the
 /// guest program. It holds all necessary resources to transition to a running state.
 ///
-pub struct InitializedSandbox {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Must implement `Send + Sync + Default`. Use `()` if no custom state is required.
+///
+pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     /// Path to the guest binary file to execute.
     pub(super) guest_binary_path: String,
-    /// Path to the kernel binary file.
+    /// Path to the kernel binary.
     pub(super) kernel_binary_path: String,
     /// Optional command-line arguments for the program.
     pub(super) program_args: Option<String>,
@@ -65,10 +72,14 @@ pub struct InitializedSandbox {
     /// Control plane listener socket, address, and socket type.
     pub(super) control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
     /// Complete configuration for the sandbox execution environment.
-    pub(super) sandbox_config: SandboxConfig,
+    pub(super) sandbox_config: SandboxConfig<T>,
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    pub(super) _phantom: PhantomData<T>,
 }
 
-impl InitializedSandbox {
+impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     ///
     /// # Description
     ///
