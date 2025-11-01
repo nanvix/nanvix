@@ -219,8 +219,8 @@ impl LinuxDaemon {
     /// On success, this function returns a handle to the spawned Linux Daemon instance. On failure,
     /// this function returns an error object instead.
     ///
-    pub async fn spawn(
-        args: &LinuxDaemonArgs,
+    pub async fn spawn<T: Sync + Send + 'static>(
+        args: &LinuxDaemonArgs<T>,
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
         debug!(

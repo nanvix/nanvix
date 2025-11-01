@@ -59,6 +59,8 @@ use ::nanvix_sandbox::{
     UninitializedSandbox,
     UserVmIdentifier,
 };
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 use ::std::{
     collections::HashMap,
     sync::Arc,
@@ -84,9 +86,14 @@ use ::tokio::sync::Mutex;
 /// and their control plane connections. It handles sandbox creation, lifecycle management,
 /// and resource cleanup for the Nanvix Daemon.
 ///
-pub struct SandboxCache {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Use `()` if no custom state is required.
+///
+pub struct SandboxCache<T> {
     /// Configuration parameters for all sandboxes.
-    config: SandboxCacheConfig,
+    config: SandboxCacheConfig<T>,
     /// Registry of all currently running sandboxes indexed by their unique tag.
     running_sandboxes: HashMap<SandboxTag, RunningSandbox>,
     /// Registry of Linux Daemon instances indexed by tenant ID (one per tenant).
@@ -97,9 +104,13 @@ pub struct SandboxCache {
     control_plane_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// TCP port allocator for gateway ports in L2 deployment mode.
     tcp_port_allocator: TcpPortAllocator,
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    _phantom: PhantomData<T>,
 }
 
-impl SandboxCache {
+impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Description
     ///
@@ -113,7 +124,7 @@ impl SandboxCache {
     ///
     /// A shared, mutex-protected sandbox cache ready for concurrent access.
     ///
-    pub fn new(config: SandboxCacheConfig) -> Arc<Mutex<Self>> {
+    pub fn new(config: SandboxCacheConfig<T>) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             config,
             running_sandboxes: HashMap::new(),
@@ -124,6 +135,8 @@ impl SandboxCache {
                 ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
                 ::config::linuxd::GATEWAY_PORT_RANGE_END,
             ),
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         }))
     }
 
@@ -213,11 +226,11 @@ impl SandboxCache {
                     &gateway_l2_port,
                 )?;
 
-                let uninitialized_sandbox: UninitializedSandbox =
+                let uninitialized_sandbox: UninitializedSandbox<T> =
                     UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
 
                 // Add Linux Daemon instance to sandbox if one exists for the tenant.
-                let uninitialized_sandbox: UninitializedSandbox =
+                let uninitialized_sandbox: UninitializedSandbox<T> =
                     if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
                         uninitialized_sandbox.with_linuxd(linuxd.clone())
                     } else {
@@ -225,7 +238,7 @@ impl SandboxCache {
                     };
 
                 // Add control-plane socket if one exists.
-                let uninitialized_sandbox: UninitializedSandbox =
+                let uninitialized_sandbox: UninitializedSandbox<T> =
                     if let Some(control_plane_socket) = &self.control_plane_socket {
                         uninitialized_sandbox
                             .with_control_plane_socket(control_plane_socket.clone())
@@ -236,7 +249,7 @@ impl SandboxCache {
                 let gateway_socket_address: String = gateway_sockaddr.clone();
                 let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
 
-                let config: SandboxConfig = SandboxConfig::new(
+                let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.sandbox_id(),
                     (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
                     (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
@@ -260,10 +273,10 @@ impl SandboxCache {
                     Some(self.config.l2_snapshot_path().to_string()),
                 );
 
-                let uninitialized_sandbox: UninitializedSandbox =
+                let uninitialized_sandbox: UninitializedSandbox<T> =
                     uninitialized_sandbox.with_config(config);
 
-                let initialized_sandbox: InitializedSandbox =
+                let initialized_sandbox: InitializedSandbox<T> =
                     match uninitialized_sandbox.initialize().await {
                         Ok(sandbox) => sandbox,
                         Err(error) => {

@@ -90,16 +90,22 @@ const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 ///
 /// Terminal interface for interacting with user VMs.
 ///
-pub struct Terminal {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Must implement `Sync + Send + Clone + Default`. Use `()` if no custom
+///   state is required.
+///
+pub struct Terminal<T> {
     /// Configuration for sandbox cache management.
-    config: SandboxCacheConfig,
+    config: SandboxCacheConfig<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl Terminal {
+impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     ///
     /// # Description
     ///
@@ -109,7 +115,7 @@ impl Terminal {
     ///
     /// - `config`: Configuration for sandbox cache management.
     ///
-    pub fn new(config: SandboxCacheConfig) -> Self {
+    pub fn new(config: SandboxCacheConfig<T>) -> Self {
         Self { config }
     }
 
@@ -129,7 +135,7 @@ impl Terminal {
     /// failure, it returns an object that describes the error that occurred.
     ///
     pub async fn run(&mut self, guest_binary_path: &str, guest_binary_args: &str) -> Result<()> {
-        let sandbox_cache: Arc<Mutex<SandboxCache>> = SandboxCache::new(self.config.clone());
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone());
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
         let tenant_id: String = Self::get_current_user_name()?;

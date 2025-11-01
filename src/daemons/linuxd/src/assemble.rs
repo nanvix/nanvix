@@ -18,7 +18,6 @@ use crate::{
     syscalls::SyscallTable,
 };
 use ::anyhow::Result;
-use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -58,7 +57,7 @@ use ::syscall::{
 // Implementations
 //==================================================================================================
 
-impl RequestAssemblerTrait for FileStatAtRequest {
+impl<T> RequestAssemblerTrait<T> for FileStatAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileStatAtRequest(
@@ -91,7 +90,7 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -99,7 +98,7 @@ impl RequestAssemblerTrait for FileStatAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for SymbolicLinkAtRequest {
+impl<T> RequestAssemblerTrait<T> for SymbolicLinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::SymbolicLinkAtRequest(
@@ -132,7 +131,7 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -140,7 +139,7 @@ impl RequestAssemblerTrait for SymbolicLinkAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for LinkAtRequest {
+impl<T> RequestAssemblerTrait<T> for LinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::LinkAtRequest(
@@ -173,7 +172,7 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -181,7 +180,7 @@ impl RequestAssemblerTrait for LinkAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for ReadLinkAtRequest {
+impl<T> RequestAssemblerTrait<T> for ReadLinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::ReadLinkAtRequest(
@@ -214,7 +213,7 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -222,7 +221,7 @@ impl RequestAssemblerTrait for ReadLinkAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for MakeDirectoryAtRequest {
+impl<T> RequestAssemblerTrait<T> for MakeDirectoryAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::MakeDirectoryAtRequest(
@@ -257,7 +256,7 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -265,7 +264,7 @@ impl RequestAssemblerTrait for MakeDirectoryAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
+impl<T> RequestAssemblerTrait<T> for UpdateFileAccessTimeAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::UpdateFileAccessTimeAtRequest(
@@ -304,7 +303,7 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -312,7 +311,7 @@ impl RequestAssemblerTrait for UpdateFileAccessTimeAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for FileChownAtRequest {
+impl<T> RequestAssemblerTrait<T> for FileChownAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileChownAtRequest(
@@ -345,7 +344,7 @@ impl RequestAssemblerTrait for FileChownAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -353,7 +352,7 @@ impl RequestAssemblerTrait for FileChownAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for FileChmodAtRequest {
+impl<T> RequestAssemblerTrait<T> for FileChmodAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileChmodAtRequest(
@@ -386,7 +385,7 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -394,7 +393,7 @@ impl RequestAssemblerTrait for FileChmodAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for OpenAtRequest {
+impl<T> RequestAssemblerTrait<T> for OpenAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::OpenAtRequest(
@@ -427,7 +426,7 @@ impl RequestAssemblerTrait for OpenAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -435,7 +434,7 @@ impl RequestAssemblerTrait for OpenAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for RenameAtRequest {
+impl<T> RequestAssemblerTrait<T> for RenameAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::RenameAtRequest(
@@ -468,7 +467,7 @@ impl RequestAssemblerTrait for RenameAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -476,7 +475,7 @@ impl RequestAssemblerTrait for RenameAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for UnlinkAtRequest {
+impl<T> RequestAssemblerTrait<T> for UnlinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::UnlinkAtRequest(
@@ -509,7 +508,7 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -517,7 +516,7 @@ impl RequestAssemblerTrait for UnlinkAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for ChangeDirectoryRequest {
+impl<T> RequestAssemblerTrait<T> for ChangeDirectoryRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::ChangeDirectoryRequest(
@@ -552,7 +551,7 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -560,7 +559,7 @@ impl RequestAssemblerTrait for ChangeDirectoryRequest {
     }
 }
 
-impl RequestAssemblerTrait for FileAccessAtRequest {
+impl<T> RequestAssemblerTrait<T> for FileAccessAtRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileAccessAtRequest(
@@ -593,7 +592,7 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -601,7 +600,7 @@ impl RequestAssemblerTrait for FileAccessAtRequest {
     }
 }
 
-impl RequestAssemblerTrait for PollRequest {
+impl<T> RequestAssemblerTrait<T> for PollRequest {
     fn new_assembler() -> RequestAssemblerType {
         let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::PollRequest(
@@ -634,7 +633,7 @@ impl RequestAssemblerTrait for PollRequest {
     }
 
     fn process_request(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {

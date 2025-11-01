@@ -56,7 +56,7 @@
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create configuration.
-//! let config: SandboxConfig = SandboxConfig::new(
+//! let config: SandboxConfig<()> = SandboxConfig::new(
 //!     UserVmIdentifier::new(0),  // uservm_id
 //!     ("127.0.0.1:8080".to_string(), SocketType::Tcp, None),  // gateway_socket_info
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // system_vm_socket_info

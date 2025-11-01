@@ -12,7 +12,6 @@ use crate::{
         SyscallTable,
     },
 };
-use ::std::sync::Arc;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -34,8 +33,8 @@ use ::syslog::{
 // do_times()
 //==================================================================================================
 
-pub fn do_times(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_times<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     _request: TimesRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -50,7 +49,7 @@ pub fn do_times(
 
     debug!("libc::times(): buffer={:p}", &libc_buffer as *const libc::tms);
 
-    match unsafe { handle_times(&syscall_table, &mut libc_buffer as *mut libc::tms) } {
+    match unsafe { handle_times(syscall_table, &mut libc_buffer as *mut libc::tms) } {
         -1 => {
             let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -99,12 +98,12 @@ pub fn do_times(
 //==================================================================================================
 
 /// Handler for `libc::times()`.
-unsafe fn handle_times(syscall_table: &SyscallTable, buf: *mut libc::tms) -> libc::clock_t {
+unsafe fn handle_times<T>(syscall_table: &SyscallTable<T>, buf: *mut libc::tms) -> libc::clock_t {
     match &syscall_table.times {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(buf) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, buf) },
     }
 }
