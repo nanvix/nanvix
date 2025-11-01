@@ -31,24 +31,34 @@
 #![forbid(clippy::cast_possible_truncation)]
 
 //==================================================================================================
-// Modules
+// Public Modules
 //==================================================================================================
 
 pub mod args;
+pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
 pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
+pub mod pal;
 pub mod vmm;
 
-pub mod pal;
+//==================================================================================================
+// Private Modules
+//==================================================================================================
+
+#[cfg(feature = "hyperlight")]
+mod handles;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "hyperlight")]
+use crate::handles::UserVmHandles;
 use crate::{
+    counters::MessageCounters,
     memory_thread::{
         AddCreditFn,
         MemoryThread,
@@ -78,13 +88,7 @@ use ::anyhow::Result;
 use ::std::{
     fs::File,
     io::Write,
-    sync::{
-        Arc,
-        atomic::{
-            AtomicUsize,
-            Ordering,
-        },
-    },
+    sync::Arc,
     time::Duration,
 };
 use ::sys::ipc::{
@@ -134,23 +138,7 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 pub const CHANNEL_CAPACITY: usize = 1024;
 
 //==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Tracks the number of messages received by the I/O thread.
-static IO_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
-
-/// Tracks the number of messages received by the memory thread.
-static MEM_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
-
-/// Tracks the number of messages received by the VMM thread.
-static VMM_THREAD_NUM_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
-
-/// Tracks the number of times the input function has been called.
-static VMM_THREAD_NUM_INPUT_CALLS: AtomicUsize = AtomicUsize::new(0);
-
-//==================================================================================================
-// VmmArgs
+// UserVmArgs
 //==================================================================================================
 
 /// Bundles all resources required to spawn a [`UserVm`] instance.
@@ -173,10 +161,12 @@ pub struct UserVmArgs {
     pub io_control_rx: Receiver<IoControlCommand>,
     /// Channel transmitting responses back to the orchestrator's I/O subsystem.
     pub io_control_tx: Sender<IoControlResponse>,
+    /// Shared counters for tracking message flow across threads.
+    pub counters: MessageCounters,
 }
 
 //==================================================================================================
-// VMM
+// UserVm
 //==================================================================================================
 
 /// Asynchronous facade responsible for instantiating and supervising a user virtual machine.
@@ -185,12 +175,6 @@ pub struct UserVm;
 impl UserVm {
     /// Launches a user virtual machine on a Tokio task and returns a handle to its completion.
     pub fn spawn(args: UserVmArgs) -> JoinHandle<Result<u16>> {
-        // Reset counters of previous runs.
-        IO_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
-        MEM_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
-        VMM_THREAD_NUM_MESSAGES_RECEIVED.store(0, Ordering::SeqCst);
-        VMM_THREAD_NUM_INPUT_CALLS.store(0, Ordering::SeqCst);
-
         tokio::spawn(async move { UserVm::run(args).await })
     }
 
@@ -238,7 +222,16 @@ impl UserVm {
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx.clone());
 
         // Input function used for emulating I/O port reads.
-        let vmm_stdin_fn: Box<StdinFn> = build_input_fn(vcpu_thread_stdin_rx);
+        #[cfg(not(feature = "hyperlight"))]
+        let vmm_stdin_fn: Box<StdinFn> =
+            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone());
+
+        #[cfg(feature = "hyperlight")]
+        let handles: UserVmHandles = handles::UserVmHandles::default();
+
+        #[cfg(feature = "hyperlight")]
+        let vmm_stdin_fn: Box<StdinFn> =
+            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), handles.clone());
 
         let microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
@@ -255,6 +248,13 @@ impl UserVm {
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
 
+        // Set hyperlight handles in counters for this UserVM instance.
+        #[cfg(feature = "hyperlight")]
+        {
+            handles.set_guest_handle(guest.clone()).await;
+            handles.set_vmem_handle(vmem.clone()).await;
+        }
+
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
             args.memory_thread_data_rx,
@@ -262,6 +262,7 @@ impl UserVm {
             memory_thread_control_rx,
             memory_thread_control_tx,
             add_credit_fn(guest.clone(), vmem.clone()),
+            args.counters.clone(),
         );
         let memory_thread: JoinHandle<()> = memory_thread.spawn();
 
@@ -421,23 +422,28 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 ///
 /// # Parameters
 ///
-/// * `input_queue` - Channel used to receive emulated port-I/O requests originating from the
+/// - `input_queue` - Channel used to receive emulated port-I/O requests originating from the
 ///   Linux daemon.
+/// - `counters` - Shared counters for tracking message flow across threads.
+/// - `handles` - Shared handles for guest and virtual memory manager (hyperlight only).
 ///
 /// # Returns
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
 ///
-pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
+#[cfg(not(feature = "hyperlight"))]
+pub fn build_input_fn(
+    mut input_queue: Receiver<Message>,
+    counters: MessageCounters,
+) -> Box<StdinFn> {
     // Input function used for emulating I/O port reads.
-    #[cfg(not(feature = "hyperlight"))]
     let input = move |guest: &Arc<Mutex<Guest>>,
                       vmem: &Arc<Mutex<VirtualMemory>>,
                       data,
                       size|
           -> Result<()> {
         use std::mem;
-        on_input_function_called();
+        on_input_function_called(&counters);
 
         // Check for invalid operand size.
         if size != mem::size_of::<u32>() {
@@ -455,7 +461,7 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                         + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
-                on_message_received_from_memory_thread();
+                on_message_received_from_memory_thread(&counters);
                 msg.message_type = MessageType::Ikc;
                 let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                 let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
@@ -481,9 +487,17 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
         Ok(())
     };
 
-    #[cfg(feature = "hyperlight")]
+    Box::new(input)
+}
+
+#[cfg(feature = "hyperlight")]
+pub fn build_input_fn(
+    mut input_queue: Receiver<Message>,
+    counters: MessageCounters,
+    handles: UserVmHandles,
+) -> Box<StdinFn> {
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
-        on_input_function_called();
+        on_input_function_called(&counters);
         match input_queue.blocking_recv() {
             Some(mut msg) => {
                 // Label: uservm::lib::vm_input::vm_exit()
@@ -493,25 +507,25 @@ pub fn build_input_fn(mut input_queue: Receiver<Message>) -> Box<StdinFn> {
                         + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                 );
 
-                on_message_received_from_memory_thread();
+                on_message_received_from_memory_thread(&counters);
                 msg.message_type = MessageType::Ikc;
-                // Acquire lock on guest information.
-                let guest_handle: Arc<Mutex<Guest>> = crate::vmm::try_get_guest_handle()
-                    .ok_or_else(|| {
-                        let reason: &str = "guest handle not initialized";
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-                let mut locked_guest: MutexGuard<'_, Guest> = guest_handle.blocking_lock();
 
-                // Acquire lock on virtual memory manager.
-                let vmem_handle: Arc<Mutex<VirtualMemory>> = crate::vmm::try_get_vmem_handle()
-                    .ok_or_else(|| {
-                        let reason: &str = "vmem handle not initialized";
+                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
+                    let reason: &str = "guest handle not set in UserVmHandles";
+                    error!("input(): {reason}");
+                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                })?;
+
+                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
+
+                let vmem_arc: Arc<Mutex<VirtualMemory>> =
+                    handles.get_vmem_handle().ok_or_else(|| {
+                        let reason: &str = "vmem handle not set in UserVmHandles";
                         error!("input(): {reason}");
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
                     })?;
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_handle.blocking_lock();
+
+                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
 
                 // Label: uservm::lib::vm_input::vm_write_bytes()
                 profiler::timestamp_message!(
@@ -654,8 +668,12 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
 ///
 /// Handler to be called whenever the input function is called.
 ///
-fn on_input_function_called() {
-    VMM_THREAD_NUM_INPUT_CALLS.fetch_add(1, Ordering::SeqCst);
+/// # Parameters
+///
+/// - `counters` - Shared counters for tracking message flow across threads.
+///
+fn on_input_function_called(counters: &MessageCounters) {
+    counters.increment_vmm_thread_input_calls();
 
     // Sanity check that no messages are lost.
     #[cfg(debug_assertions)]
@@ -665,9 +683,8 @@ fn on_input_function_called() {
         // detect message losses.
 
         let cached_mem_thread_num_messages_received: usize =
-            MEM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
-        let cached_vmm_thread_num_input_calls: usize =
-            VMM_THREAD_NUM_INPUT_CALLS.load(Ordering::SeqCst);
+            counters.get_mem_thread_messages_received();
+        let cached_vmm_thread_num_input_calls: usize = counters.get_vmm_thread_input_calls();
 
         debug_assert!(
             cached_vmm_thread_num_input_calls <= cached_mem_thread_num_messages_received,
@@ -684,8 +701,12 @@ fn on_input_function_called() {
 ///
 /// Handler to be called whenever a message is received from the memory thread.
 ///
-fn on_message_received_from_memory_thread() {
-    VMM_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
+/// # Parameters
+///
+/// - `counters` - Shared counters for tracking message flow across threads.
+///
+fn on_message_received_from_memory_thread(counters: &MessageCounters) {
+    counters.increment_vmm_thread_messages_received();
 
     // Sanity check that no messages are lost.
     #[cfg(debug_assertions)]
@@ -694,10 +715,9 @@ fn on_message_received_from_memory_thread() {
         // increasing AND they are strictly updated one after another, it should be sufficient to
         // detect message losses.
 
-        let cached_vmm_thread_num_input_calls: usize =
-            VMM_THREAD_NUM_INPUT_CALLS.load(Ordering::SeqCst);
+        let cached_vmm_thread_num_input_calls: usize = counters.get_vmm_thread_input_calls();
         let cached_vmm_thread_num_messages_received: usize =
-            VMM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+            counters.get_vmm_thread_messages_received();
 
         debug_assert!(
             cached_vmm_thread_num_messages_received <= cached_vmm_thread_num_input_calls,
