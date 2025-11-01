@@ -80,6 +80,7 @@ use ::nanvix::{
     uservm::{
         UserVm,
         UserVmArgs,
+        counters::MessageCounters,
         orchestrator::{
             IoControlCommand,
             IoControlResponse,
@@ -391,6 +392,9 @@ impl Benchmark {
             let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
             let initrd_filename: String = self.flavour.get_program();
 
+            // Create shared counters for tracking message flow across threads.
+            let counters: MessageCounters = MessageCounters::new();
+
             let start = Instant::now();
             let user_vm_handle = UserVm::spawn(UserVmArgs {
                 memory_size: MEMORY_SIZE,
@@ -402,6 +406,7 @@ impl Benchmark {
                 memory_thread_data_rx,
                 io_control_rx,
                 io_control_tx,
+                counters,
             });
 
             let join_result = user_vm_handle.await;
@@ -729,6 +734,9 @@ impl Benchmark {
         let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
         let program: String = self.flavour.get_program();
 
+        // Create shared counters for tracking message flow across threads.
+        let counters: MessageCounters = MessageCounters::new();
+
         let user_vm_handle = UserVm::spawn(UserVmArgs {
             memory_size: MEMORY_SIZE,
             kernel_filename,
@@ -739,6 +747,7 @@ impl Benchmark {
             memory_thread_data_rx,
             io_control_rx,
             io_control_tx,
+            counters,
         });
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
