@@ -114,6 +114,7 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 - Code must pass linting checks with `./z build --with-cached-options -- lint-check`.
 - Constants must be defined at module/file scope; avoid magic numbers in code paths.
 - Map errors to OS error codes consistently; prefer typed errors over ad-hoc strings.
+- Error messages should contain relevant information about the error and the context in which it occurred.
 
 #### Style & Formatting (Rust only)
 
