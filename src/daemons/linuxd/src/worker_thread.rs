@@ -31,12 +31,21 @@ use crate::{
     venv::VenvCommand,
 };
 use ::anyhow::Result;
+use ::libc::{
+    c_int,
+    pthread_kill,
+    pthread_self,
+    sigaction,
+    sigemptyset,
+    SIGUSR1,
+};
 use ::std::{
     io::ErrorKind,
     mem,
     ptr,
     sync::{
         atomic::{
+            AtomicBool,
             AtomicUsize,
             Ordering,
         },
@@ -46,6 +55,7 @@ use ::std::{
         self,
         ThreadId,
     },
+    time::Duration,
 };
 use ::sys::{
     error::{
@@ -159,16 +169,30 @@ use ::tokio::{
         JoinHandle,
     },
 };
-use libc::{
-    c_int,
-    pthread_kill,
-    pthread_self,
-    sigaction,
-    sigemptyset,
-    SIGUSR1,
-};
 
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Signal used to interrupt async operations in worker threads.
 const INTERRUPT_SIGNAL: c_int = SIGUSR1;
+
+/// Frequency to poll for cancellation flag.
+const CANCELLATION_POLL_FREQUENCY: Duration = Duration::from_millis(100);
+
+//==================================================================================================
+// Thread-Local Storage
+//==================================================================================================
+
+thread_local! {
+    /// Atomic flag for interrupting async operations in the current worker thread.
+    /// This flag is set by the signal handler to indicate that the thread should be cancelled.
+    static CANCELLATION_FLAG: AtomicBool = const { AtomicBool::new(false) };
+}
+
+//==================================================================================================
+// Structures
+//==================================================================================================
 
 /// State associated with a worker thread in linuxd.
 pub struct WorkerThreadHandle {
@@ -181,9 +205,9 @@ pub struct WorkerThreadHandle {
     pub cmd_tx: Sender<VenvCommand>,
 }
 
-/// Our signal handler is a no-op that will just interrupt any blocking system calls, and make the
-/// thread error and return EINTR.
-extern "C" fn linuxd_worker_thread_signal_handler(_: i32) {}
+//==================================================================================================
+// Implementations
+//==================================================================================================
 
 impl WorkerThreadHandle {
     fn install_signal_handler() {
@@ -212,6 +236,62 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Run an async operation with cancellation support via the thread-local cancellation flag.
+    ///
+    /// This helper function wraps an async operation to make it interruptible via the
+    /// thread-local cancellation flag. When the flag is set (typically by a signal handler),
+    /// the operation is cancelled and returns `ErrorKind::Interrupted`.
+    ///
+    /// # Parameters
+    ///
+    /// * `f` - The async operation to run. Must return a `std::io::Result<R>`.
+    ///
+    /// # Returns
+    ///
+    /// Returns the result of the async operation, or an `Interrupted` error if cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The operation is cancelled via the cancellation flag
+    /// - The underlying operation fails
+    ///
+    /// # Safety
+    ///
+    /// Note: The operation `f` may not be cancel-safe. This is acceptable in our use case because
+    /// cancellation only occurs when a signal interrupts the operation, ensuring that partial
+    /// completion is handled by the underlying I/O layer. The signal is sent externally to
+    /// interrupt blocking system calls, making cancellation safe.
+    ///
+    fn run_cancellable_operation<F, R>(f: F) -> ::std::io::Result<R>
+    where
+        F: ::std::future::Future<Output = ::std::io::Result<R>>,
+    {
+        Handle::current().block_on(async {
+            ::tokio::pin!(f);
+
+            // Poll the cancellation flag periodically while waiting for the future.
+            loop {
+                ::tokio::select! {
+                    result = &mut f => return result,
+                    _ = ::tokio::time::sleep(CANCELLATION_POLL_FREQUENCY) => {
+                        // Check if cancellation was requested.
+                        let cancelled: bool = CANCELLATION_FLAG.with(|flag| flag.load(Ordering::Relaxed));
+                        if cancelled {
+                            return Err(::std::io::Error::new(
+                                ErrorKind::Interrupted,
+                                "run_cancellable_operation(): operation cancelled by signal",
+                            ));
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     /// Spawn an interruptible worker thread.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_worker_thread<T: Sync + Send + 'static>(
@@ -231,10 +311,16 @@ impl WorkerThreadHandle {
         let pthread_id_holder_clone = pthread_id_holder.clone();
 
         let join_handle = task::spawn_blocking(move || {
-            Self::install_signal_handler();
-
             let pthread_id = unsafe { pthread_self() };
             pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
+
+            // Initialize the cancellation flag for this worker thread before installing signal
+            // handler to avoid race conditions.
+            CANCELLATION_FLAG.with(|flag| {
+                flag.store(false, Ordering::Relaxed);
+            });
+
+            Self::install_signal_handler();
 
             Self::handle_message(channel_rx, uvm_handle, syscall_table, assembler);
 
@@ -259,8 +345,10 @@ impl WorkerThreadHandle {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        // SAFETY: we call pthread_kill on a non-zero TID after we have managed to send a message
-        // to its reception queue, so the thread is alive and safe.
+        // SAFETY: We call pthread_kill() on a valid pthread_t that was stored when the thread was
+        // created via spawn_blocking(). The thread ID is non-zero and the thread is guaranteed to
+        // be alive because we hold a reference to its JoinHandle. The signal SIGUSR1 has a
+        // handler installed that safely triggers cancellation via the thread-local token.
         let pthread_id = raw_tid as libc::pthread_t;
         unsafe { pthread_kill(pthread_id, INTERRUPT_SIGNAL) };
 
@@ -878,15 +966,19 @@ impl WorkerThreadHandle {
                 let mut locked_gateway_writer: MutexGuard<'_, SocketStreamWriter> =
                     gateway_writer.blocking_lock();
 
+                // Run blocking write as a cancellable operation.
+                let result: ::std::io::Result<()> = Self::run_cancellable_operation(
+                    locked_gateway_writer.write_all(&request.buffer[..count]),
+                );
+
                 // Use write_all() to ensure all bytes are written atomically while holding the lock.
-                match Handle::current()
-                    .block_on(locked_gateway_writer.write_all(&request.buffer[..count]))
-                {
+                match result {
                     Ok(()) => {
                         debug!("wrote {count} bytes to the gateway");
                         Ok(WriteResponse::build(source, count as i32))
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => {
+                        debug!("handle_write_request(): write interrupted");
                         Err(WorkerThreadError::Interrupted)
                     },
                     Err(e) => {
@@ -924,9 +1016,12 @@ impl WorkerThreadHandle {
                 // Read from the gateway.
                 let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
                     [0u8; ReadResponse::BUFFER_SIZE];
-                // Blocking read from the gateway socket to make sure we can be interrupted if
-                // necessary.
-                match Handle::current().block_on(locked_gateway_reader.read(&mut response_buf)) {
+
+                // Run blocking read as a cancellable operation.
+                let result: ::std::io::Result<usize> =
+                    Self::run_cancellable_operation(locked_gateway_reader.read(&mut response_buf));
+
+                match result {
                     Ok(0) => {
                         debug!("handle_read_request(): eof");
                         Ok(ReadResponse::eof(source))
@@ -936,7 +1031,8 @@ impl WorkerThreadHandle {
                         Ok(ReadResponse::build(source, n as c_ssize_t, response_buf))
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => {
-                        return Err(WorkerThreadError::Interrupted)
+                        debug!("handle_read_request(): read interrupted");
+                        return Err(WorkerThreadError::Interrupted);
                     },
                     Err(e) => {
                         error!(
@@ -1063,4 +1159,30 @@ impl WorkerThreadHandle {
             },
         }
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Signal handler for worker thread cancellation.
+///
+/// This handler is invoked when a registered signal is received by a worker thread. It sets the
+/// thread-local cancellation flag, which causes any ongoing async I/O operations to be interrupted
+/// and return `ErrorKind::Interrupted`.
+///
+/// # Safety
+///
+/// This function uses only async-signal-safe operations:
+/// - `AtomicBool::store()` is async-signal-safe as it performs a simple atomic write.
+/// - Thread-local storage access is async-signal-safe.
+/// - No heap allocations, locks, or other unsafe operations are performed.
+///
+extern "C" fn linuxd_worker_thread_signal_handler(_: i32) {
+    CANCELLATION_FLAG.with(|flag| {
+        flag.store(true, Ordering::Relaxed);
+    });
 }
