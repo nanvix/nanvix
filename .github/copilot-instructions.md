@@ -43,13 +43,25 @@ types and supports various runtimes.
 - **`src/user/`** - User-space applications
 - **`src/utils/`** - Utility programs
 
-## Build Commands
+## Building, Formatting, Linting, and Testing
+
+Nanvix uses the `z` utility script to streamline building, formatting, linting, and testing.
+
+### Getting Started
+
+To get started with the `z` utility, run:
+
+```bash
+./z help
+```
+
+### Build Commands
 
 ```bash
 ./z build --with-cached-options -- all
 ```
 
-## Code Linting Commands
+### Code Linting Commands
 
 ```bash
 # Check for linting issues in the code.
@@ -59,7 +71,7 @@ types and supports various runtimes.
 ./z build --with-cached-options -- lint
 ```
 
-## Code Formatting Commands
+### Code Formatting Commands
 
 ```bash
 # Check for code formatting issues.
@@ -69,7 +81,7 @@ types and supports various runtimes.
 ./z build --with-cached-options -- format
 ```
 
-## Spell Check Commands
+### Spell Check Commands
 
 ```bash
 # Check for spelling errors in source code and documentation.
@@ -79,15 +91,15 @@ types and supports various runtimes.
 ./z build --with-cached-options -- spellcheck-fix
 ```
 
-## Testing Commands
+### Testing Commands
 
-### Unit Tests
+#### Unit Tests
 
 ```bash
 ./z build --with-cached-options -- run-unit-tests
 ```
 
-### System tests
+#### System tests
 
 ```bash
 scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world from C!'
