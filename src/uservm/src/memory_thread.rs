@@ -12,7 +12,7 @@
 //==================================================================================================
 
 use crate::{
-    MEM_THREAD_NUM_MESSAGES_RECEIVED,
+    counters::MessageCounters,
     orchestrator::{
         MemoryControlCommand,
         MemoryControlResponse,
@@ -25,7 +25,6 @@ use ::anyhow::{
 use ::std::{
     marker::Send,
     pin::Pin,
-    sync::atomic::Ordering,
 };
 use ::sys::ipc::Message;
 use ::syslog::{
@@ -57,6 +56,7 @@ pub struct MemoryThread {
     control_rx: Receiver<MemoryControlCommand>,
     control_tx: Sender<MemoryControlResponse>,
     add_credit: Box<AddCreditFn>,
+    counters: MessageCounters,
 }
 
 //==================================================================================================
@@ -76,6 +76,7 @@ impl MemoryThread {
     /// - `control_rx`: Receives control commands from the VMM.
     /// - `control_tx`: Sends control responses to the VMM.
     /// - `add_credit`: Closure that adds a credit to the virtual machine credit pool.
+    /// - `counters`: Shared counters for tracking message flow across threads.
     ///
     pub fn new(
         data_rx: Receiver<Message>,
@@ -83,6 +84,7 @@ impl MemoryThread {
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
         add_credit: Box<AddCreditFn>,
+        counters: MessageCounters,
     ) -> Self {
         Self {
             data_rx,
@@ -90,6 +92,7 @@ impl MemoryThread {
             control_rx,
             control_tx,
             add_credit,
+            counters,
         }
     }
 
@@ -113,6 +116,7 @@ impl MemoryThread {
             let mut control_rx: Receiver<MemoryControlCommand> = self.control_rx;
             let _control_tx: Sender<MemoryControlResponse> = self.control_tx;
             let mut add_credit: Box<AddCreditFn> = self.add_credit;
+            let counters: MessageCounters = self.counters;
 
             let result: Result<(), Error> = loop {
                 ::tokio::select! {
@@ -137,7 +141,7 @@ impl MemoryThread {
                                         + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                                 );
 
-                                on_message_received_from_io_thread();
+                                on_message_received_from_io_thread(&counters);
 
                                 if let Err(e) = data_tx.send(msg).await {
                                     error!("spawn(): failed to send message: {e}");
@@ -175,8 +179,12 @@ impl MemoryThread {
 ///
 /// Handler to be called whenever a message is received from the I/O thread.
 ///
-fn on_message_received_from_io_thread() {
-    MEM_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
+/// # Parameters
+///
+/// - `counters` - Shared counters for tracking message flow across threads.
+///
+fn on_message_received_from_io_thread(counters: &MessageCounters) {
+    counters.increment_mem_thread_messages_received();
 
     // Sanity check that no messages are lost.
     #[cfg(debug_assertions)]
@@ -185,11 +193,11 @@ fn on_message_received_from_io_thread() {
         // increasing AND they are strictly updated one after another, it should be sufficient to
         // detect message losses.
 
-        let cached_mem_thread_num_messages_received =
-            MEM_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+        let cached_mem_thread_num_messages_received: usize =
+            counters.get_mem_thread_messages_received();
 
-        let cached_io_thread_num_messages_received =
-            crate::IO_THREAD_NUM_MESSAGES_RECEIVED.load(Ordering::SeqCst);
+        let cached_io_thread_num_messages_received: usize =
+            counters.get_io_thread_messages_received();
 
         debug_assert!(
             cached_mem_thread_num_messages_received <= cached_io_thread_num_messages_received,
@@ -242,7 +250,9 @@ mod tests {
             let res: Result<()> = add_credit();
             Box::pin(async move { res })
         });
-        MemoryThread::new(data_rx, data_tx, control_rx, control_tx, add_credit_box).spawn()
+        let counters: MessageCounters = MessageCounters::new();
+        MemoryThread::new(data_rx, data_tx, control_rx, control_tx, add_credit_box, counters)
+            .spawn()
     }
 
     // Helper: small timeout to avoid hanging tests.

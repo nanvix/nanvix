@@ -1,7 +1,6 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-mod global_handles;
 pub mod guest;
 
 //==================================================================================================
@@ -13,7 +12,6 @@ use crate::{
     vmm::{
         MicroVmArgs,
         guest::Guest,
-        hyperlight::global_handles::GlobalRegistration,
     },
 };
 use ::anyhow::Result;
@@ -57,15 +55,6 @@ use ::tokio::{
 };
 
 //==================================================================================================
-// Exports
-//==================================================================================================
-
-pub(crate) use self::global_handles::{
-    try_get_guest_handle,
-    try_get_vmem_handle,
-};
-
-//==================================================================================================
 // Types
 //==================================================================================================
 
@@ -90,7 +79,6 @@ pub struct Vmm {
     // Wrapped in Option so we can move the UninitializedSandbox out (evolve consumes self).
     sandbox: Arc<Mutex<Option<UninitializedSandbox>>>,
     vmem: Arc<Mutex<VirtualMemory>>,
-    _global_registration: Arc<GlobalRegistration>,
 }
 
 struct InnerVmm {
@@ -239,8 +227,6 @@ impl Vmm {
         }));
 
         let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
-        let global_registration: Arc<GlobalRegistration> =
-            GlobalRegistration::register(guest.clone(), vmem.clone())?;
 
         // Create a closure that takes a String and writes it to stderr.
         // NOTE: underlying writer implements `Write` and requires mutable access.
@@ -274,7 +260,6 @@ impl Vmm {
             inner: Arc::new(Mutex::new(InnerVmm {
                 control_tx: args.control_tx,
             })),
-            _global_registration: global_registration,
         })
     }
 

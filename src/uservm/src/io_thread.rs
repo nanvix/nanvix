@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    IO_THREAD_NUM_MESSAGES_RECEIVED,
+    counters::MessageCounters,
     orchestrator::{
         IoControlCommand,
         IoControlResponse,
@@ -17,10 +17,7 @@ use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
-use ::std::{
-    mem,
-    sync::atomic::Ordering,
-};
+use ::std::mem;
 use ::sys::ipc::Message;
 use ::syscomm::{
     SocketStream,
@@ -63,6 +60,7 @@ impl IoThread {
     /// - `control_tx`: Command sender.
     /// - `control_rx`: Response receiver.
     /// - `control_plane_stream`: Connection to the control-plane.
+    /// - `counters`: Shared counters for tracking message flow across threads.
     ///
     /// # Returns
     ///
@@ -75,6 +73,7 @@ impl IoThread {
         control_tx: Sender<IoControlCommand>,
         control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
+        counters: MessageCounters,
     ) -> Result<JoinHandle<Result<()>>> {
         trace!("spawn()");
         let handle: JoinHandle<Result<()>> = tokio::spawn(async move {
@@ -85,6 +84,7 @@ impl IoThread {
                 control_tx,
                 control_rx,
                 control_plane_stream,
+                counters,
             )
             .await
         });
@@ -103,6 +103,8 @@ impl IoThread {
     /// - `data_tx`: User VM sender.
     /// - `control_tx`: Command sender.
     /// - `control_rx`: Response receiver.
+    /// - `control_plane_stream`: Connection to the control-plane.
+    /// - `counters`: Shared counters for tracking message flow across threads.
     ///
     /// # Returns
     ///
@@ -115,6 +117,7 @@ impl IoThread {
         control_tx: Sender<IoControlCommand>,
         mut control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
+        counters: MessageCounters,
     ) -> Result<()> {
         let mut buf: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
         let mut buf_len: usize = 0;
@@ -165,7 +168,7 @@ impl IoThread {
                                 buf.fill(0);
                                 buf_len = 0;
 
-                                on_message_received_from_system_vm();
+                                on_message_received_from_system_vm(&counters);
 
                                 // Push message to incoming queue.
                                 data_tx.send(message).await?;
@@ -284,6 +287,10 @@ impl IoThread {
 ///
 /// Handler to be called whenever a message is received from the system VM.
 ///
-fn on_message_received_from_system_vm() {
-    IO_THREAD_NUM_MESSAGES_RECEIVED.fetch_add(1, Ordering::SeqCst);
+/// # Parameters
+///
+/// - `counters`: Shared counters for tracking message flow across threads.
+///
+fn on_message_received_from_system_vm(counters: &MessageCounters) {
+    counters.increment_io_thread_messages_received();
 }
