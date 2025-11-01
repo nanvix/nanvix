@@ -95,19 +95,32 @@ use ::tokio::{
 
 pub use kvm::vmem::VirtualMemory;
 
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Signal used to interrupt the vCPU thread.
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
+/// Signal used to kill the vCPU thread.
+pub const KILL_SIGNAL: c_int = libc::SIGKILL;
+
 //==================================================================================================
-// Global variables
+// Thread-Local Variables
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Global shutdown flag. Safe to read/write from any thread. Writing an AtomicBool is
-/// async-signal-safe, so a signal handler can set it.
-///
-pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+thread_local! {
+    ///
+    /// # Description
+    ///
+    /// Shutdown flag, set to true when the vCPU thread receives a shutdown signal.
+    /// This will prevent the vCPU from entering KVM_RUN again and blocking indefinitely.
+    ///
+    /// This variable must be thread-safe to enable multiple VMM instances to co-exist in the same
+    /// process.
+    ///
+    static SHUTDOWN: AtomicBool = const { AtomicBool::new(false) };
+}
 
 //==================================================================================================
 // Structures
@@ -170,7 +183,7 @@ pub type StderrFn = dyn Write + Send;
 
 /// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
 extern "C" fn vcpu_thread_signal_handler(_: i32) {
-    SHUTDOWN.store(true, Ordering::SeqCst);
+    SHUTDOWN.with(|shutdown| shutdown.store(true, Ordering::SeqCst));
 }
 
 impl Vmm {
@@ -190,9 +203,6 @@ impl Vmm {
     ///
     pub fn new(args: MicroVmArgs) -> Result<Self> {
         trace!("new(): args={:?}", args);
-
-        // Reset shutdown flag from any previous runs.
-        SHUTDOWN.store(false, Ordering::SeqCst);
 
         let mut kvm: Kvm = Kvm::new()?;
         let mut vm: VmFd = kvm.create_vm()?;
@@ -288,10 +298,20 @@ impl Vmm {
     pub fn run(&mut self) -> Result<u16> {
         trace!("run()");
 
+        // Reset shutdown flag from any previous runs.
+        SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
+
         // Install a signal handler in the virtual processor's thread.
         Self::install_signal_handler();
 
         loop {
+            // Check shutdown flag before entering KVM_RUN, and blocking indefinitely.
+            if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
+                let exit_status: u16 = 0;
+                Handle::current().block_on(self.handle_shutdown(exit_status));
+                break Ok(exit_status);
+            }
+
             let exit_context: VirtualProcessorExitContext = {
                 let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
                 // Exit if the vCPU is no longer online.
@@ -334,15 +354,6 @@ impl Vmm {
                 VirtualProcessorExitReasonRef::Unknown => {
                     break Ok(ErrorCode::IllegalByteSequence.into());
                 },
-            }
-
-            // Check if we were interrupted while handling a PMIO exit. This check covers
-            // the situation where we have sent an interrupt to the vCPU, but the vCPU
-            // thread was not in KVM_RUN, thus not triggering an -EINTR that we can catch.
-            if SHUTDOWN.load(std::sync::atomic::Ordering::SeqCst) {
-                let exit_status: u16 = 0;
-                Handle::current().block_on(self.handle_shutdown(exit_status));
-                break Ok(exit_status);
             }
         }
     }
@@ -459,7 +470,8 @@ impl Vmm {
     /// # Description
     ///
     /// Helper method to poweroff the vCPU with a given exit status, and send a shutdown message to
-    /// the VMM thread.
+    /// the orchestrator thread. If the channel is closed, we still proceed with shutdown as the
+    /// orchestrator will handle this via timeout.
     ///
     /// # Arguments
     ///
@@ -469,8 +481,10 @@ impl Vmm {
         // Power-off vCPU.
         self.vcpu.lock().await.poweroff(exit_status);
 
-        // Send message to VMM thread.
-        if let Err(error) = self
+        // Send message to orchestrator thread.
+        // If the channel is closed, the orchestrator has already disconnected,
+        // but we still need to clean up our side properly.
+        match self
             .inner
             .lock()
             .await
@@ -478,8 +492,14 @@ impl Vmm {
             .send(VcpuControlResponse::Shutdown)
             .await
         {
-            warn!("handle_shutdown(): failed to notify vmm thread (error={error:?})");
-            // Don't bail as we are shutting down anyway.
+            Ok(()) => {
+                trace!("handle_shutdown(): shutdown notification sent to orchestrator");
+            },
+            Err(error) => {
+                warn!("handle_shutdown(): failed to notify orchestrator thread (error={error:?})");
+                // Don't bail as we are shutting down anyway. The orchestrator will detect
+                // this via timeout and forcefully terminate the vCPU thread if needed.
+            },
         }
     }
 
