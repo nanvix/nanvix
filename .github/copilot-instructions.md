@@ -46,37 +46,37 @@ types and supports various runtimes.
 ## Build Commands
 
 ```bash
-./z build --with-docker -- all
+./z build --with-cached-options -- all
 ```
 
 ## Code Linting Commands
 
 ```bash
 # Check for linting issues in the code.
-./z build --with-docker -- lint-check
+./z build --with-cached-options -- lint-check
 
 # Fix code linting issues.
-./z build --with-docker -- lint
+./z build --with-cached-options -- lint
 ```
 
 ## Code Formatting Commands
 
 ```bash
 # Check for code formatting issues.
-./z build --with-docker -- format-check
+./z build --with-cached-options -- format-check
 
 # Fix code formatting issues.
-./z build --with-docker -- format
+./z build --with-cached-options -- format
 ```
 
 ## Spell Check Commands
 
 ```bash
 # Check for spelling errors in source code and documentation.
-./z build --with-docker -- spellcheck
+./z build --with-cached-options -- spellcheck
 
 # Fix spelling errors in source code and documentation.
-./z build --with-docker -- spellcheck-fix
+./z build --with-cached-options -- spellcheck-fix
 ```
 
 ## Testing Commands
@@ -84,7 +84,7 @@ types and supports various runtimes.
 ### Unit Tests
 
 ```bash
-./z build --with-docker -- run-unit-tests
+./z build --with-cached-options -- run-unit-tests
 ```
 
 ### System tests
@@ -98,8 +98,8 @@ scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world fro
 ### Style & Formatting
 
 - Always follow the existing code style.
-- Code must pass formatting checks with `./z build --with-docker -- format-check`.
-- Code must pass linting checks with `./z build --with-docker -- lint-check`.
+- Code must pass formatting checks with `./z build --with-cached-options -- format-check`.
+- Code must pass linting checks with `./z build --with-cached-options -- lint-check`.
 - Constants must be defined at module/file scope; avoid magic numbers in code paths.
 - Map errors to OS error codes consistently; prefer typed errors over ad-hoc strings.
 
