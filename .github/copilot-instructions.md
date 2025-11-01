@@ -38,7 +38,7 @@ types and supports various runtimes.
 - **`src/daemons/`** - System services (linuxd, nanvixd, wasmd, memd, procd)
 - **`src/kernel/`** - Microkernel implementation (Rust)
 - **`src/libs/`** - System libraries (arch, config, syscall, etc.)
-- **`src/microvm/`** - MicroVM implementation
+- **`src/uservm/`** - UserVM implementation
 - **`src/tests/`** - Integration tests
 - **`src/user/`** - User-space applications
 - **`src/utils/`** - Utility programs
