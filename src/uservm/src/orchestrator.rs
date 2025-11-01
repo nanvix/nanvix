@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::vmm::KILL_SIGNAL;
 use ::anyhow::Result;
 use ::std::{
     ops::ControlFlow::{
@@ -41,6 +42,10 @@ use ::tokio::{
 
 // This value was chosen so it catches issues without polluting the logs with too many warnings.
 pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
+
+/// Timeout for shutdown operations.
+/// After this timeout, the orchestrator will forcefully terminate the vCPU thread.
+pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(5000);
 
 //==================================================================================================
 // Types
@@ -108,6 +113,8 @@ enum State {
     Running,
     /// VM is not running.
     Paused,
+    /// VM is shutting down, waiting for vCPU to confirm.
+    ShuttingDown,
 }
 
 ///
@@ -229,6 +236,28 @@ impl Orchestrator {
     ///
     async fn run(&mut self) -> Result<()> {
         loop {
+            // If we're in shutting down state, add timeout to prevent indefinite hang.
+            if self.state == State::ShuttingDown {
+                match timeout(SHUTDOWN_TIMEOUT, self.wait_for_shutdown()).await {
+                    Ok(Ok(())) => break,
+                    Ok(Err(error)) => {
+                        error!("run(): error during shutdown: {error:?}");
+                        break;
+                    },
+                    Err(_) => {
+                        error!(
+                            "run(): shutdown timeout after {}ms, forcefully terminating vCPU \
+                             thread",
+                            SHUTDOWN_TIMEOUT.as_millis()
+                        );
+                        // Forcefully terminate the vCPU thread.
+                        let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
+                        unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        break;
+                    },
+                }
+            }
+
             select! {
                 // Only poll the I/O control channel when I/O is enabled; otherwise skip this branch.
                 result = self.io_control_rx.recv() => {
@@ -278,6 +307,48 @@ impl Orchestrator {
         self.io_control_tx.send(IoControlResponse::Shutdown).await?;
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for the vCPU thread to send a shutdown message.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned.
+    ///
+    async fn wait_for_shutdown(&mut self) -> Result<()> {
+        loop {
+            select! {
+                result = self.io_control_rx.recv() => {
+                    // Ignore I/O commands during shutdown.
+                    if result.is_none() {
+                        let reason: String =
+                            "I/O control channel closed during shutdown".to_string();
+                        warn!("wait_for_shutdown(): {reason}");
+                    }
+                },
+
+                result = self.vcpu_control_rx.recv() => {
+                    match result {
+                        Some(VcpuControlResponse::Shutdown) => {
+                            info!("wait_for_shutdown(): vCPU shutdown confirmed");
+                            return Ok(());
+                        },
+                        Some(other) => {
+                            warn!("wait_for_shutdown(): unexpected vCPU response: {other:?}");
+                        },
+                        None => {
+                            let reason: String =
+                                "vCPU control channel closed during shutdown".to_string();
+                            error!("wait_for_shutdown(): {reason}");
+                            return Err(anyhow::anyhow!(reason));
+                        },
+                    }
+                },
+            }
+        }
     }
 
     ///
@@ -402,9 +473,9 @@ impl Orchestrator {
             IoControlCommand::_ResumeMicroVm => {
                 if self.state == State::Paused {
                     // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
-                    if let Err(e) = self.resume_protocol().await {
+                    if let Err(error) = self.resume_protocol().await {
                         let reason: String =
-                            format!("ResumeMicroVm: failed to resume microvm: {e:?}");
+                            format!("ResumeMicroVm: failed to resume microvm: {error:?}");
                         error!("try_receive_from_io_thread(): {reason}");
                         anyhow::bail!(reason);
                     }
@@ -428,16 +499,20 @@ impl Orchestrator {
                     // itself, we kill it here. This may populate the logs with an error message
                     // during shutdown, but is functionally equivalent.
                     if #[cfg(feature = "hyperlight")] {
-                        debug!("vcpu thread id: {}", self.vcpu_tid);
+                        debug!("try_receive_from_io_thread(): killing vcpu thread id: {}", self.vcpu_tid);
                         let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                        unsafe { ::libc::pthread_kill(pthread_id, libc::SIGKILL) };
+                        unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        self.state = State::ShuttingDown;
                         Ok(Continue(()))
                     } else {
                         // SAFETY: we call pthread_kill on a non-zero TID that we have received from
                         // the VCPU thread after boot, so this is safe.
                         let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                        unsafe { ::libc::pthread_kill(pthread_id, libc::SIGUSR1) };
+                        debug!("try_receive_from_io_thread(): signaling to vcpu thread (tid={})", self.vcpu_tid);
+                        unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
 
+                        // Transition to shutting down state.
+                        self.state = State::ShuttingDown;
                         Ok(Continue(()))
                     }
                 }
