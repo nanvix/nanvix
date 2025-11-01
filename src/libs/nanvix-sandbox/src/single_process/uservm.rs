@@ -39,17 +39,23 @@ use ::syscomm::{
 use ::syslog::{
     debug,
     error,
+    info,
     trace,
     warn,
 };
 use ::tokio::{
+    runtime::Handle,
     sync::mpsc,
-    task::JoinHandle,
+    task::{
+        self,
+        JoinHandle,
+    },
     time::timeout,
 };
 use ::user_vm_api::{
     NewUserVm,
     UserVmIdentifier,
+    NEW_USER_VM_MESSAGE_LEN,
 };
 use ::uservm::{
     io_thread::IoThread,
@@ -59,6 +65,8 @@ use ::uservm::{
     },
     UserVm as EmbeddedUserVm,
     CHANNEL_CAPACITY,
+    CONTROL_PLANE_CONNECT_TIMEOUT,
+    SYSTEM_VM_CONNECT_TIMEOUT,
 };
 
 //==================================================================================================
@@ -110,7 +118,7 @@ impl UserVm {
 
         // Clone configuration values to move to User VM task.
         let control_plane_addr: String = args.control_plane_socket_info().0.clone();
-        let user_vm_addr: String = args.system_vm_socket_info().0.clone();
+        let system_vm_addr: String = args.system_vm_socket_info().0.clone();
         let gateway_sockaddr: String = args.gateway_socket_info().0.clone();
         let kernel_filename: String = args.kernel_binary_path().to_string();
         let initrd_filename: String = args.program().to_string();
@@ -123,140 +131,169 @@ impl UserVm {
         let gateway_sockaddr_type: String = args.gateway_socket_info().1.to_str().to_string();
 
         // Spawn the User VM as a new task.
-        let uservm_task: JoinHandle<Result<ExitCode>> = ::tokio::spawn(async move {
-            let (vcpu_thread_stdout_tx, io_thread_data_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
-            let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
-            let (io_thread_control_tx, io_control_rx) =
-                mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
-            let (io_control_tx, io_thread_control_rx) =
-                mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
+        let uservm_task: JoinHandle<Result<ExitCode>> = task::spawn_blocking(move || {
+            Handle::current().block_on(async move {
+                let (vcpu_thread_stdout_tx, io_thread_data_rx) =
+                    mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                let (io_thread_data_tx, memory_thread_data_rx) =
+                    mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                let (io_thread_control_tx, io_control_rx) =
+                    mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
+                let (io_control_tx, io_thread_control_rx) =
+                    mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
-            // Connect to the control-plane socket.
-            let control_plane_stream: SocketStream =
-                match UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?)
-                    .connect(&control_plane_addr)
-                    .await
+                // Connect to the control-plane socket.
+                let unbound_socket: UnboundSocket =
+                    UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?);
+                let control_plane_stream: SocketStream = match timeout(
+                    CONTROL_PLANE_CONNECT_TIMEOUT,
+                    unbound_socket.connect(&control_plane_addr),
+                )
+                .await
                 {
-                    Ok(stream) => {
-                        debug!(
-                            "embedded user VM connected to control-plane \
-                             (addr={control_plane_addr})"
-                        );
+                    Ok(Ok(stream)) => {
+                        debug!("user VM connected to control-plane (addr={control_plane_addr})");
                         stream
                     },
-                    Err(e) => {
-                        let reason = format!(
-                            "failed to connect embedded user VM to control-plane \
-                             (addr={control_plane_addr}, error={e:?})"
+                    Ok(Err(e)) => {
+                        let reason: String = format!(
+                            "failed to connect to control plane (control_plane_addr={:?}, \
+                             error={e:?})",
+                            control_plane_addr
                         );
                         error!("spawn(): {reason}");
-                        anyhow::bail!(reason);
+                        return Err(anyhow::anyhow!("{reason}"));
+                    },
+                    Err(_elapsed) => {
+                        let reason: String = format!(
+                            "timed out trying to connect to control plane \
+                             (control_plane_addr={:?})",
+                            control_plane_addr
+                        );
+                        error!("spawn(): {reason}");
+                        return Err(anyhow::anyhow!("{reason}"));
                     },
                 };
 
-            // Connect to the system VM socket.
-            let mut system_vm_stream: SocketStream =
-                match UnboundSocket::new(SocketType::from_str(&system_vm_sockaddr_type)?)
-                    .connect(&user_vm_addr)
-                    .await
+                // Connect to the system VM socket.
+                let unbound_socket: UnboundSocket =
+                    UnboundSocket::new(SocketType::from_str(&system_vm_sockaddr_type)?);
+                let system_vm_stream: SocketStream = match timeout(
+                    SYSTEM_VM_CONNECT_TIMEOUT,
+                    unbound_socket.connect(&system_vm_addr),
+                )
+                .await
                 {
-                    Ok(stream) => {
-                        debug!("embedded user VM connected to linuxd (addr={user_vm_addr})");
+                    Ok(Ok(mut stream)) => {
+                        info!(
+                            "spawn(): connected to system VM (system_vm_addr={:?})",
+                            system_vm_addr
+                        );
+                        let new_msg: NewUserVm = match NewUserVm::new(
+                            user_vm_id,
+                            gateway_sockaddr.clone(),
+                            SocketType::from_str(&gateway_sockaddr_type)?,
+                        ) {
+                            Ok(message) => message,
+                            Err(e) => {
+                                let reason: String = format!(
+                                    "failed to construct user VM registration message \
+                                     (error={e:?})"
+                                );
+                                error!("spawn(): {reason}");
+                                return Err(anyhow::anyhow!(reason));
+                            },
+                        };
+
+                        debug!("forwarding user vm information to system vm");
+                        let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
+                        if let Err(e) = stream.write_all(&new_msg_bytes).await {
+                            let reason: String = format!(
+                                "failed to send user VM registration message (error={e:?})"
+                            );
+                            error!("spawn(): {reason}");
+                            return Err(anyhow::anyhow!(reason));
+                        }
                         stream
+                    },
+                    Ok(Err(e)) => {
+                        let reason: String = format!(
+                            "failed to connect to system VM (system_vm_addr={:?}, error={e:?})",
+                            system_vm_addr
+                        );
+                        error!("spawn(): {reason}");
+                        return Err(anyhow::anyhow!("{reason}"));
+                    },
+                    Err(_) => {
+                        let reason: String = format!(
+                            "timed out trying to connect to system VM (system_vm_addr={:?})",
+                            system_vm_addr
+                        );
+                        error!("spawn(): {reason}");
+                        return Err(anyhow::anyhow!("{reason}"));
+                    },
+                };
+
+                // Spawn I/O thread.
+                let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
+                    system_vm_stream,
+                    io_thread_data_rx,
+                    io_thread_data_tx,
+                    io_thread_control_tx,
+                    io_thread_control_rx,
+                    control_plane_stream,
+                )?;
+
+                // Spawn VMM thread.
+                let vmm_handle: JoinHandle<Result<u16>> =
+                    EmbeddedUserVm::spawn(::uservm::UserVmArgs {
+                        memory_size: ::config::kernel::MEMORY_SIZE,
+                        kernel_filename,
+                        initrd_filename: Some(initrd_filename.clone()),
+                        initrd_args,
+                        stderr: stderr_file,
+                        vcpu_thread_stdout_tx,
+                        memory_thread_data_rx,
+                        io_control_rx,
+                        io_control_tx,
+                    });
+
+                // Wait for VMM thread to finish.
+                let result: Result<ExitCode> = match vmm_handle.await? {
+                    Ok(exit_status) => {
+                        if exit_status == 0 {
+                            return Ok(ExitCode::from(0));
+                        }
+                        let exit_code_result: ::std::result::Result<
+                            u8,
+                            ::std::num::TryFromIntError,
+                        > = exit_status.try_into();
+                        match exit_code_result {
+                            Ok(code) => Ok(ExitCode::from(code)),
+                            Err(_) => {
+                                let reason: String = format!(
+                                    "failed to convert exit status (exit_status={exit_status})"
+                                );
+                                error!("spawn(): {reason}");
+                                Err(anyhow::anyhow!(reason))
+                            },
+                        }
                     },
                     Err(error) => {
-                        let reason = format!(
-                            "failed to connect embedded user VM to linuxd (addr={user_vm_addr}, \
-                             error={error:?})"
-                        );
+                        let reason: String = format!("virtual machine failed ({error:?})");
                         error!("spawn(): {reason}");
-                        anyhow::bail!(reason);
+                        Err(anyhow::anyhow!(reason))
                     },
                 };
 
-            // Send NewUserVm registration to linuxd.
-            let new_msg: NewUserVm = match NewUserVm::new(
-                user_vm_id,
-                gateway_sockaddr.clone(),
-                SocketType::from_str(&gateway_sockaddr_type)?,
-            ) {
-                Ok(message) => message,
-                Err(error) => {
-                    let reason: String = format!(
-                        "failed to create embedded user VM registration message \
-                         (user_vm_id={user_vm_id}, gateway_sockaddr={gateway_sockaddr}, \
-                         error={error:?})"
-                    );
-                    error!("spawn(): {reason}");
-                    anyhow::bail!(reason);
-                },
-            };
-            debug!("forwarding embedded user VM registration to linuxd");
-            let new_msg_bytes: [u8; ::user_vm_api::NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
-            if let Err(e) = system_vm_stream.write_all(&new_msg_bytes).await {
-                let reason: String = format!(
-                    "failed to forward embedded user VM registration to linuxd (error={e:?})"
-                );
-                error!("spawn(): {reason}");
-                anyhow::bail!(reason);
-            }
+                // Wait for I/O thread to finish.
+                if let Err(error) = io_thread.await? {
+                    error!("spawn(): I/O thread failed (error={error:?})");
+                    // Don't bail as we want to return the VM's exit code.
+                }
 
-            // Spawn I/O thread.
-            let io_thread: JoinHandle<Result<()>> = IoThread::spawn(
-                system_vm_stream,
-                io_thread_data_rx,
-                io_thread_data_tx,
-                io_thread_control_tx,
-                io_thread_control_rx,
-                control_plane_stream,
-            )?;
-
-            // Spawn VMM thread.
-            let vmm_handle: JoinHandle<Result<u16>> = EmbeddedUserVm::spawn(::uservm::UserVmArgs {
-                memory_size: ::config::kernel::MEMORY_SIZE,
-                kernel_filename,
-                initrd_filename: Some(initrd_filename.clone()),
-                initrd_args,
-                stderr: stderr_file,
-                vcpu_thread_stdout_tx,
-                memory_thread_data_rx,
-                io_control_rx,
-                io_control_tx,
-            });
-
-            // Wait for VMM thread to finish.
-            let result: Result<ExitCode> = match vmm_handle.await? {
-                Ok(0) => Ok(ExitCode::from(0)),
-                Ok(exit_status) if exit_status != 0 => {
-                    let exit_code_result: ::std::result::Result<u8, ::std::num::TryFromIntError> =
-                        exit_status.try_into();
-                    match exit_code_result {
-                        Ok(code) => Ok(ExitCode::from(code)),
-                        Err(_) => {
-                            let reason: String = format!(
-                                "failed to convert exit status (exit_status={exit_status})"
-                            );
-                            error!("main(): {reason}");
-                            Err(anyhow::anyhow!(reason))
-                        },
-                    }
-                },
-                _ => {
-                    let reason: String = "virtual machine failed".to_string();
-                    error!("main(): {reason}");
-                    Err(anyhow::anyhow!(reason))
-                },
-            };
-
-            // Wait for I/O thread to finish.
-            if let Err(error) = io_thread.await? {
-                error!("main(): I/O thread failed (error={error:?})");
-                // Don't bail as we want to return the VM's exit code.
-            }
-
-            result
+                result
+            })
         });
 
         // Wait for the User VM task to connect to the control-plane socket.
@@ -274,8 +311,8 @@ impl UserVm {
                 Err(elapsed) => {
                     uservm_task.abort();
                     let reason: String = format!(
-                        "timed-out waiting for embedded user VM to connect the control-plane \
-                         stream (error={elapsed:?})"
+                        "timed-out waiting for user VM to connect the control-plane stream \
+                         (elapsed={elapsed:?})"
                     );
                     error!("spawn(): {reason}");
                     anyhow::bail!("{reason}");
