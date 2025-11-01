@@ -11,6 +11,8 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 use ::syscomm::SocketType;
 
 //==================================================================================================
@@ -22,7 +24,12 @@ use ::syscomm::SocketType;
 ///
 /// Arguments for spawning a Linux Daemon instance.
 ///
-pub struct LinuxDaemonArgs {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Use `()` if no custom state is required.
+///
+pub struct LinuxDaemonArgs<T> {
     /// Information on control plane socket (address, socket type).
     control_plane_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type).
@@ -44,14 +51,18 @@ pub struct LinuxDaemonArgs {
     l2_snapshot_path: String,
     /// Optional system call table for overriding default system call behavior.
     #[cfg(feature = "single-process")]
-    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
+    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl LinuxDaemonArgs {
+impl<T> LinuxDaemonArgs<T> {
     ///
     /// # Description
     ///
@@ -86,7 +97,7 @@ impl LinuxDaemonArgs {
         l2: bool,
         l2_snapshot_path: String,
         #[cfg(feature = "single-process")] syscall_table: Option<
-            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+            ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
         >,
     ) -> Self {
         Self {
@@ -102,6 +113,8 @@ impl LinuxDaemonArgs {
             l2_snapshot_path,
             #[cfg(feature = "single-process")]
             syscall_table,
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         }
     }
 
@@ -233,7 +246,7 @@ impl LinuxDaemonArgs {
     /// An optional reference to the system call table.
     ///
     #[cfg(feature = "single-process")]
-    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>> {
         self.syscall_table.clone()
     }
 }

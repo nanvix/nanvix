@@ -84,8 +84,8 @@ impl LinuxDaemon {
     /// On success, this function returns a handle to the spawned Linux Daemon instance. On failure,
     /// this function returns an error object instead.
     ///
-    pub async fn spawn(
-        args: &LinuxDaemonArgs,
+    pub async fn spawn<T: Sync + Send + Default + 'static>(
+        args: &LinuxDaemonArgs<T>,
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
         trace!(
@@ -119,8 +119,13 @@ impl LinuxDaemon {
             })?;
 
         // Create a new Linux Daemon instance.
-        let linuxd: EmbeddedLinuxd = EmbeddedLinuxd::init(
-            args.syscall_table().unwrap_or_default(),
+        let syscall_table: ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>> =
+            args.syscall_table().unwrap_or_else(|| {
+                ::std::sync::Arc::new(::linuxd::syscalls::SyscallTable::new(T::default()))
+            });
+
+        let linuxd: EmbeddedLinuxd<T> = EmbeddedLinuxd::init(
+            syscall_table,
             &args.control_plane_socket_info().0,
             args.control_plane_socket_info().1.to_str(),
             user_vm_listener,

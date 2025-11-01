@@ -16,7 +16,6 @@ use ::core::{
     cmp,
     ptr,
 };
-use ::std::sync::Arc;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -48,8 +47,8 @@ use ::syslog::{
 // do_select()
 //==================================================================================================
 
-pub fn do_select(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_select<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: SelectRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -100,7 +99,7 @@ pub fn do_select(
     // SAFETY: All pointers either null or point to valid local storage; nfds validated.
     let nready: libc::c_int = unsafe {
         handle_select(
-            &syscall_table,
+            syscall_table,
             nfds_c_int,
             read_ptr
                 .as_mut()
@@ -206,8 +205,8 @@ impl TryFrom<LibcFdSet> for fd_set {
 // Wrapper Functions
 //==================================================================================================
 
-unsafe fn handle_select(
-    syscall_table: &SyscallTable,
+unsafe fn handle_select<T>(
+    syscall_table: &SyscallTable<T>,
     nfds: libc::c_int,
     readfds: *mut libc::fd_set,
     writefds: *mut libc::fd_set,
@@ -220,7 +219,7 @@ unsafe fn handle_select(
             -1
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(nfds, readfds, writefds, errorfds, timeout)
+            syscall_fn(&syscall_table.state, nfds, readfds, writefds, errorfds, timeout)
         },
     }
 }

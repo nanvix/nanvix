@@ -59,16 +59,21 @@ use ::user_vm_api::UserVmIdentifier;
 /// It deserializes request bodies, routes them to appropriate handlers based on message
 /// type headers, and constructs JSON responses.
 ///
-pub(crate) struct HttpClient {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Must implement `Send + Sync + Default`. Use `()` if no custom state is required.
+///
+pub(crate) struct HttpClient<T> {
     /// Shared handle to the sandbox cache for managing sandboxes.
-    sandbox_cache: Arc<Mutex<SandboxCache>>,
+    sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl HttpClient {
+impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ///
     /// # Description
     ///
@@ -82,7 +87,7 @@ impl HttpClient {
     ///
     /// A new HTTP client handler ready to process requests.
     ///
-    pub(crate) fn new(sandbox_cache: Arc<Mutex<SandboxCache>>) -> Self {
+    pub(crate) fn new(sandbox_cache: Arc<Mutex<SandboxCache<T>>>) -> Self {
         Self { sandbox_cache }
     }
 
@@ -136,7 +141,7 @@ impl HttpClient {
     /// On failure, returns an error describing what went wrong.
     ///
     async fn serve_new(
-        sandbox_cache: Arc<Mutex<SandboxCache>>,
+        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
         message: &message::New,
     ) -> Result<message::NewResponse> {
         trace!("serve_new(): {message:?}");
@@ -186,7 +191,7 @@ impl HttpClient {
     /// with a non-zero exit code.
     ///
     async fn serve_kill(
-        sandbox_cache: Arc<Mutex<SandboxCache>>,
+        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
         message: &message::Kill,
     ) -> Result<message::KillResponse> {
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
@@ -200,14 +205,14 @@ impl HttpClient {
     }
 }
 
-impl Service<Request<Incoming>> for HttpClient {
+impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClient<T> {
     type Response = Response<Full<Bytes>>;
     type Error = hyper::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         // Clone all necessary values before moving them into the future
-        let sandbox_cache: Arc<Mutex<SandboxCache>> = self.sandbox_cache.clone();
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = self.sandbox_cache.clone();
         let future = async move {
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request

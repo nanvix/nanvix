@@ -17,10 +17,7 @@ use ::core::{
     cmp,
     mem,
 };
-use ::std::{
-    ffi::CStr,
-    sync::Arc,
-};
+use ::std::ffi::CStr;
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -118,8 +115,8 @@ impl linux_dirent {
 //==================================================================================================
 
 /// Handles a getdents() system call request.
-pub fn do_getdents(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_getdents<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: GetDirectoryEntriesRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -143,7 +140,7 @@ pub fn do_getdents(
     debug!("libc::getdents(): fd={}, buf={:#x?}, bufsize={}", { request.fd }, rawbuf.as_ptr(), {
         bufsize
     });
-    match unsafe { handle_getdents(&syscall_table, request.fd, rawbuf.as_mut_ptr(), bufsize) } {
+    match unsafe { handle_getdents(syscall_table, request.fd, rawbuf.as_mut_ptr(), bufsize) } {
         // Failed.
         -1 => {
             let errno = unsafe { *libc::__errno_location() };
@@ -234,8 +231,8 @@ pub fn do_getdents(
 //==================================================================================================
 
 /// Handler for `getdents()` system call.
-unsafe fn handle_getdents(
-    syscall_table: &SyscallTable,
+unsafe fn handle_getdents<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     dirp: *mut u8,
     count: libc::size_t,
@@ -245,6 +242,8 @@ unsafe fn handle_getdents(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, dirp, count) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, dirp, count)
+        },
     }
 }

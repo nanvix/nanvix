@@ -134,8 +134,14 @@ pub const WORKER_THREAD_CHANNEL_CAPACITY: usize = 1024;
 ///
 /// Linux daemon that manages user VMs and handles system calls.
 ///
-pub struct LinuxDaemon {
-    syscall_table: Arc<SyscallTable>,
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers and
+///   allows implementations to maintain context-specific information. Must implement `Sync + Send`.
+///   Use `()` if no custom state is required.
+///
+pub struct LinuxDaemon<T: Sync + Send + 'static> {
+    syscall_table: Arc<SyscallTable<T>>,
     assembler: Arc<Mutex<RequestAssembler>>,
     control_plane_sockaddr: String,
     control_plane_sockaddr_type: SocketType,
@@ -148,7 +154,7 @@ pub struct LinuxDaemon {
 // Implementations
 //==================================================================================================
 
-impl LinuxDaemon {
+impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     ///
     /// # Description
     ///
@@ -168,7 +174,7 @@ impl LinuxDaemon {
     /// Upon failure, an error is returned.
     ///
     pub fn init(
-        syscall_table: Arc<SyscallTable>,
+        syscall_table: Arc<SyscallTable<T>>,
         control_plane_sockaddr: &str,
         control_plane_sockaddr_type: &str,
         user_vm_listener: SocketListener,
@@ -529,7 +535,7 @@ impl LinuxDaemon {
 // Internal Helpers (Tokio-based message processing)
 //==================================================================================================
 
-impl LinuxDaemon {
+impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     async fn get_user_vm_messages(
         &self,
         user_vm_connections: &mut HashMap<UserVmIdentifier, UserVmHandle>,

@@ -12,6 +12,8 @@
 //==================================================================================================
 
 use crate::tcp_port::TcpPort;
+#[cfg(not(feature = "single-process"))]
+use ::std::marker::PhantomData;
 use ::syscomm::SocketType;
 use ::user_vm_api::UserVmIdentifier;
 
@@ -28,7 +30,12 @@ use ::user_vm_api::UserVmIdentifier;
 /// execution environment, including socket information, file paths, hardware topology,
 /// and optional control plane configuration for when components are initialized separately.
 ///
-pub struct SandboxConfig {
+/// # Type Parameters
+///
+/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
+///   single-process mode. Use `()` if no custom state is required.
+///
+pub struct SandboxConfig<T> {
     /// Unique identifier for the User VM.
     uservm_id: UserVmIdentifier,
     /// Information on gateway socket (address, socket type, optional L2 TCP port).
@@ -51,7 +58,7 @@ pub struct SandboxConfig {
     log_directory: String,
     /// Optional system call table for overriding default system call behavior.
     #[cfg(feature = "single-process")]
-    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>>,
+    syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
 
     /// Optional information on control plane socket (address, socket type).
     /// This must be provided if the control plane socket is not already initialized before
@@ -72,13 +79,18 @@ pub struct SandboxConfig {
 
     /// Optional path to the snapshot used to deploy an L2 VM.
     l2_snapshot_path: Option<String>,
+
+    /// Phantom data to maintain the generic type parameter `T` in the structure.
+    /// This is required because `T` is only used in single-process mode for the syscall table.
+    #[cfg(not(feature = "single-process"))]
+    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl SandboxConfig {
+impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
@@ -118,7 +130,7 @@ impl SandboxConfig {
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
         log_directory: &str,
         #[cfg(feature = "single-process")] syscall_table: Option<
-            ::std::sync::Arc<::linuxd::syscalls::SyscallTable>,
+            ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
         >,
         control_plane_socket_info: Option<(String, SocketType)>,
         toolchain_binary_directory: Option<String>,
@@ -145,6 +157,8 @@ impl SandboxConfig {
             tmp_directory,
             l2,
             l2_snapshot_path,
+            #[cfg(not(feature = "single-process"))]
+            _phantom: PhantomData,
         }
     }
 
@@ -277,7 +291,7 @@ impl SandboxConfig {
     /// An optional clone of the system call table.
     ///
     #[cfg(feature = "single-process")]
-    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable>> {
+    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>> {
         self.syscall_table.clone()
     }
 

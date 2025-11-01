@@ -18,7 +18,6 @@ use ::core::{
     ffi,
     ffi::CStr,
 };
-use ::std::sync::Arc;
 use ::sys::{
     error::{
         Error,
@@ -91,8 +90,8 @@ use ::syslog::{
 // do_chdir
 //==================================================================================================
 
-pub fn do_chdir(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_chdir<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: ChangeDirectoryRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -107,7 +106,7 @@ pub fn do_chdir(
     };
 
     debug!("libc::chdir(): path={path:?}");
-    match unsafe { handle_chdir(&syscall_table, path.as_ptr()) } {
+    match unsafe { handle_chdir(syscall_table, path.as_ptr()) } {
         0 => {
             debug!("do_chdir(): chdir() succeeded");
             Ok(vec![ChangeDirectoryResponse::build(tid)])
@@ -135,8 +134,8 @@ pub fn do_chdir(
 // do_close
 //==================================================================================================
 
-pub fn do_close(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_close<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: CloseRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -145,7 +144,7 @@ pub fn do_close(
     let fd: i32 = request.fd;
 
     debug!("libc::close(): fd={fd:?}");
-    match unsafe { handle_close(&syscall_table, fd) } {
+    match unsafe { handle_close(syscall_table, fd) } {
         ret if ret == 0 => Ok(CloseResponse::build(tid, ret)),
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -166,8 +165,8 @@ pub fn do_close(
 // do_faccessat
 //==================================================================================================
 
-pub fn do_faccessat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_faccessat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileAccessAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -188,7 +187,7 @@ pub fn do_faccessat(
         flag.inner()
     );
     match unsafe {
-        handle_faccessat(&syscall_table, dirfd.inner(), path.as_ptr(), amode, flag.inner())
+        handle_faccessat(syscall_table, dirfd.inner(), path.as_ptr(), amode, flag.inner())
     } {
         0 => Ok(vec![FileAccessAtResponse::build(tid)]),
         ret => {
@@ -214,8 +213,8 @@ pub fn do_faccessat(
 // do_fdatasync
 //==================================================================================================
 
-pub fn do_fdatasync(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fdatasync<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileDataSyncRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -224,7 +223,7 @@ pub fn do_fdatasync(
     let fd: i32 = request.fd;
 
     debug!("libc::fdatasync(): fd={fd:?}");
-    match unsafe { handle_fdatasync(&syscall_table, fd) } {
+    match unsafe { handle_fdatasync(syscall_table, fd) } {
         ret if ret == 0 => Ok(FileDataSyncResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -249,27 +248,27 @@ pub fn do_fdatasync(
 // do_getids
 //==================================================================================================
 
-pub fn do_getids(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_getids<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     _request: GetIdsRequest,
 ) -> Result<Message, WorkerThreadError> {
     trace!("getids(): tid={tid:?}");
 
     // Get user ID.
-    let uid: libc::uid_t = unsafe { handle_getuid(&syscall_table) };
+    let uid: libc::uid_t = unsafe { handle_getuid(syscall_table) };
     debug!("libc::getuid(): uid={uid:?}");
 
     // Get effective user ID.
-    let euid: libc::uid_t = unsafe { handle_geteuid(&syscall_table) };
+    let euid: libc::uid_t = unsafe { handle_geteuid(syscall_table) };
     debug!("libc::geteuid(): euid={euid:?}");
 
     // Get group ID.
-    let gid: libc::gid_t = unsafe { handle_getgid(&syscall_table) };
+    let gid: libc::gid_t = unsafe { handle_getgid(syscall_table) };
     debug!("libc::getgid(): gid={gid:?}");
 
     // Get effective group ID.
-    let egid: libc::gid_t = unsafe { handle_getegid(&syscall_table) };
+    let egid: libc::gid_t = unsafe { handle_getegid(syscall_table) };
     debug!("libc::getegid(): egid={egid:?}");
 
     // Build response.
@@ -280,8 +279,8 @@ pub fn do_getids(
 // do_getcwd
 //==================================================================================================
 
-pub fn do_getcwd(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_getcwd<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
 ) -> Result<Vec<Message>, WorkerThreadError> {
     trace!("getcwd(): tid={tid:?}");
@@ -291,7 +290,7 @@ pub fn do_getcwd(
     // Get current working directory and check for errors.
     debug!("libc::getcwd(): buf={:p}, size={:?}", buf.as_mut_ptr(), buf.capacity());
     if unsafe {
-        !handle_getcwd(&syscall_table, buf.as_mut_ptr() as *mut libc::c_char, buf.capacity())
+        !handle_getcwd(syscall_table, buf.as_mut_ptr() as *mut libc::c_char, buf.capacity())
             .is_null()
     } {
         // Build response and check for errors.
@@ -349,8 +348,8 @@ pub fn do_getcwd(
 // do_fsync
 //==================================================================================================
 
-pub fn do_fsync(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fsync<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileSyncRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -359,7 +358,7 @@ pub fn do_fsync(
     let fd: i32 = request.fd;
 
     debug!("libc::fsync(): fd={fd:?}");
-    match unsafe { handle_fsync(&syscall_table, fd) } {
+    match unsafe { handle_fsync(syscall_table, fd) } {
         ret if ret == 0 => Ok(FileSyncResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -384,8 +383,8 @@ pub fn do_fsync(
 // do_lseek
 //==================================================================================================
 
-pub fn do_lseek(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_lseek<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: SeekRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -399,7 +398,7 @@ pub fn do_lseek(
     };
 
     debug!("libc::lseek(): fd={:?}, offset={:?}, whence={:?}", fd, offset, whence.inner());
-    match unsafe { handle_lseek(&syscall_table, fd, offset, whence.inner()) } {
+    match unsafe { handle_lseek(syscall_table, fd, offset, whence.inner()) } {
         ret if ret >= 0 => Ok(SeekResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -424,8 +423,8 @@ pub fn do_lseek(
 // do_ftruncate
 //==================================================================================================
 
-pub fn do_ftruncate(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_ftruncate<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileTruncateRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -435,7 +434,7 @@ pub fn do_ftruncate(
     let length: off_t = request.length;
 
     debug!("libc::ftruncate(): fd={fd:?}, length={length:?}");
-    match unsafe { handle_ftruncate(&syscall_table, fd, length) } {
+    match unsafe { handle_ftruncate(syscall_table, fd, length) } {
         ret if ret == 0 => Ok(FileTruncateResponse::build(tid, ret)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -460,8 +459,8 @@ pub fn do_ftruncate(
 // do_write
 //==================================================================================================
 
-pub fn do_write(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_write<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: WriteRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -477,7 +476,7 @@ pub fn do_write(
     let buffer: &[u8] = &request.buffer[..count];
 
     debug!("libc::write(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { handle_write(&syscall_table, fd, buffer.as_ptr() as *const _, count) } {
+    match unsafe { handle_write(syscall_table, fd, buffer.as_ptr() as *const _, count) } {
         ret if ret >= 0 => Ok(WriteResponse::build(tid, ret as i32)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -502,8 +501,8 @@ pub fn do_write(
 // do_read
 //==================================================================================================
 
-pub fn do_read(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_read<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: ReadRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -519,7 +518,7 @@ pub fn do_read(
     let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0; ReadResponse::BUFFER_SIZE];
 
     debug!("libc::read(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { handle_read(&syscall_table, fd, buffer.as_mut_ptr() as *mut _, count) } {
+    match unsafe { handle_read(syscall_table, fd, buffer.as_mut_ptr() as *mut _, count) } {
         ret if ret >= 0 => Ok(ReadResponse::build(tid, ret as i32, buffer)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -544,8 +543,8 @@ pub fn do_read(
 // do_pwrite
 //==================================================================================================
 
-pub fn do_pwrite(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_pwrite<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: PartialWriteRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -562,7 +561,7 @@ pub fn do_pwrite(
     let buffer: &[u8] = &request.buffer[..count];
 
     debug!("libc::pwrite(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
-    match unsafe { handle_pwrite(&syscall_table, fd, buffer.as_ptr() as *const _, count, offset) } {
+    match unsafe { handle_pwrite(syscall_table, fd, buffer.as_ptr() as *const _, count, offset) } {
         ret if ret >= 0 => Ok(PartialWriteResponse::build(tid, ret as c_ssize_t)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -587,8 +586,8 @@ pub fn do_pwrite(
 // do_pread
 //==================================================================================================
 
-pub fn do_pread(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_pread<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: PartialReadRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -605,8 +604,7 @@ pub fn do_pread(
     let mut buffer: [u8; PartialReadResponse::BUFFER_SIZE] = [0; PartialReadResponse::BUFFER_SIZE];
 
     debug!("libc::pread(): fd={fd:?}, count={count:?}, offset={offset:?}, buffer={buffer:?}",);
-    match unsafe { handle_pread(&syscall_table, fd, buffer.as_mut_ptr() as *mut _, count, offset) }
-    {
+    match unsafe { handle_pread(syscall_table, fd, buffer.as_mut_ptr() as *mut _, count, offset) } {
         ret if ret >= 0 => Ok(PartialReadResponse::build(tid, ret as c_ssize_t, buffer)),
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -631,8 +629,8 @@ pub fn do_pread(
 // do_linkat
 //==================================================================================================
 
-pub fn do_linkat(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_linkat<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: LinkAtRequest,
 ) -> Result<Vec<Message>, WorkerThreadError> {
@@ -655,7 +653,7 @@ pub fn do_linkat(
          newpath={newpath:?}, flags={flags:?}",
     );
     match unsafe {
-        handle_linkat(&syscall_table, olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags)
+        handle_linkat(syscall_table, olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr(), flags)
     } {
         ret if ret == 0 => Ok(vec![LinkAtResponse::build(tid, ret)]),
         ret => {
@@ -682,8 +680,8 @@ pub fn do_linkat(
 //==================================================================================================
 
 /// Changes the current working directory.
-pub fn do_fchdir(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fchdir<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileChdirRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -692,7 +690,7 @@ pub fn do_fchdir(
     let fd: i32 = request.fd;
 
     debug!("libc::fchdir(): fd={fd:?}");
-    match unsafe { handle_fchdir(&syscall_table, fd) } {
+    match unsafe { handle_fchdir(syscall_table, fd) } {
         0 => Ok(FileChdirResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -717,8 +715,8 @@ pub fn do_fchdir(
 // do_fchown
 //==================================================================================================
 
-pub fn do_fchown(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_fchown<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: FileChownRequest,
 ) -> Result<Message, WorkerThreadError> {
@@ -729,7 +727,7 @@ pub fn do_fchown(
     let group: u32 = request.group;
 
     debug!("libc::fchown(): fd={fd:?}, owner={owner:?}, group={group:?}");
-    match unsafe { handle_fchown(&syscall_table, fd, owner, group) } {
+    match unsafe { handle_fchown(syscall_table, fd, owner, group) } {
         0 => Ok(FileChownResponse::build(tid)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -754,8 +752,8 @@ pub fn do_fchown(
 // do_pipe
 //==================================================================================================
 
-pub fn do_pipe(
-    syscall_table: Arc<SyscallTable>,
+pub fn do_pipe<T>(
+    syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
 ) -> Result<Message, WorkerThreadError> {
     trace!("pipe(): tid={tid:?}");
@@ -763,7 +761,7 @@ pub fn do_pipe(
     let mut fds: [i32; 2] = [0; 2];
 
     debug!("libc::pipe(): fds={fds:?}");
-    match unsafe { handle_pipe(&syscall_table, fds.as_mut_ptr()) } {
+    match unsafe { handle_pipe(syscall_table, fds.as_mut_ptr()) } {
         0 => {
             let read_fd: i32 = fds[0];
             let write_fd: i32 = fds[1];
@@ -820,30 +818,33 @@ impl TryFrom<i32> for LibcSeek {
 //==================================================================================================
 
 /// Handler for `libc::chdir()`.
-unsafe fn handle_chdir(syscall_table: &SyscallTable, path: *const libc::c_char) -> libc::c_int {
+unsafe fn handle_chdir<T>(
+    syscall_table: &SyscallTable<T>,
+    path: *const libc::c_char,
+) -> libc::c_int {
     match &syscall_table.chdir {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(path) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, path) },
     }
 }
 
 /// Handler for `libc::close()`.
-unsafe fn handle_close(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
+unsafe fn handle_close<T>(syscall_table: &SyscallTable<T>, fd: libc::c_int) -> libc::c_int {
     match &syscall_table.close {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd) },
     }
 }
 
 /// Handler for `libc::faccessat()`.
-unsafe fn handle_faccessat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_faccessat<T>(
+    syscall_table: &SyscallTable<T>,
     dirfd: libc::c_int,
     pathname: *const libc::c_char,
     mode: libc::c_int,
@@ -854,56 +855,58 @@ unsafe fn handle_faccessat(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(dirfd, pathname, mode, flags) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, dirfd, pathname, mode, flags)
+        },
     }
 }
 
 /// Handler for `libc::fdatasync()`.
-unsafe fn handle_fdatasync(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
+unsafe fn handle_fdatasync<T>(syscall_table: &SyscallTable<T>, fd: libc::c_int) -> libc::c_int {
     match &syscall_table.fdatasync {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd) },
     }
 }
 
 /// Handler for `libc::getuid()`.
-unsafe fn handle_getuid(syscall_table: &SyscallTable) -> libc::uid_t {
+unsafe fn handle_getuid<T>(syscall_table: &SyscallTable<T>) -> libc::uid_t {
     match &syscall_table.getuid {
         SyscallAction::Block => 0,
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state) },
     }
 }
 
 /// Handler for `libc::geteuid()`.
-unsafe fn handle_geteuid(syscall_table: &SyscallTable) -> libc::uid_t {
+unsafe fn handle_geteuid<T>(syscall_table: &SyscallTable<T>) -> libc::uid_t {
     match &syscall_table.geteuid {
         SyscallAction::Block => 0,
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state) },
     }
 }
 
 /// Handler for `libc::getgid()`.
-unsafe fn handle_getgid(syscall_table: &SyscallTable) -> libc::gid_t {
+unsafe fn handle_getgid<T>(syscall_table: &SyscallTable<T>) -> libc::gid_t {
     match &syscall_table.getgid {
         SyscallAction::Block => 0,
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state) },
     }
 }
 
 /// Handler for `libc::getegid()`.
-unsafe fn handle_getegid(syscall_table: &SyscallTable) -> libc::gid_t {
+unsafe fn handle_getegid<T>(syscall_table: &SyscallTable<T>) -> libc::gid_t {
     match &syscall_table.getegid {
         SyscallAction::Block => 0,
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn() },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state) },
     }
 }
 
 /// Handler for `libc::getcwd()`.
-unsafe fn handle_getcwd(
-    syscall_table: &SyscallTable,
+unsafe fn handle_getcwd<T>(
+    syscall_table: &SyscallTable<T>,
     buf: *mut libc::c_char,
     size: libc::size_t,
 ) -> *mut libc::c_char {
@@ -912,24 +915,26 @@ unsafe fn handle_getcwd(
             unsafe { *libc::__errno_location() = libc::EPERM };
             ::core::ptr::null_mut()
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(buf, size) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, buf, size)
+        },
     }
 }
 
 /// Handler for `libc::fsync()`.
-unsafe fn handle_fsync(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
+unsafe fn handle_fsync<T>(syscall_table: &SyscallTable<T>, fd: libc::c_int) -> libc::c_int {
     match &syscall_table.fsync {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd) },
     }
 }
 
 /// Handler for `libc::lseek()`.
-unsafe fn handle_lseek(
-    syscall_table: &SyscallTable,
+unsafe fn handle_lseek<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     offset: libc::off_t,
     whence: libc::c_int,
@@ -939,13 +944,15 @@ unsafe fn handle_lseek(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, offset, whence) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, offset, whence)
+        },
     }
 }
 
 /// Handler for `libc::ftruncate()`.
-unsafe fn handle_ftruncate(
-    syscall_table: &SyscallTable,
+unsafe fn handle_ftruncate<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     length: libc::off_t,
 ) -> libc::c_int {
@@ -954,13 +961,15 @@ unsafe fn handle_ftruncate(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, length) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, length)
+        },
     }
 }
 
 /// Handler for `libc::write()`.
-unsafe fn handle_write(
-    syscall_table: &SyscallTable,
+unsafe fn handle_write<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     buf: *const libc::c_void,
     count: libc::size_t,
@@ -970,13 +979,15 @@ unsafe fn handle_write(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf, count) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count)
+        },
     }
 }
 
 /// Handler for `libc::read()`.
-unsafe fn handle_read(
-    syscall_table: &SyscallTable,
+unsafe fn handle_read<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     buf: *mut libc::c_void,
     count: libc::size_t,
@@ -986,13 +997,15 @@ unsafe fn handle_read(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf, count) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count)
+        },
     }
 }
 
 /// Handler for `libc::pwrite()`.
-unsafe fn handle_pwrite(
-    syscall_table: &SyscallTable,
+unsafe fn handle_pwrite<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     buf: *const libc::c_void,
     count: libc::size_t,
@@ -1003,13 +1016,15 @@ unsafe fn handle_pwrite(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf, count, offset) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count, offset)
+        },
     }
 }
 
 /// Handler for `libc::pread()`.
-unsafe fn handle_pread(
-    syscall_table: &SyscallTable,
+unsafe fn handle_pread<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     buf: *mut libc::c_void,
     count: libc::size_t,
@@ -1020,13 +1035,15 @@ unsafe fn handle_pread(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, buf, count, offset) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count, offset)
+        },
     }
 }
 
 /// Handler for `libc::linkat()`.
-unsafe fn handle_linkat(
-    syscall_table: &SyscallTable,
+unsafe fn handle_linkat<T>(
+    syscall_table: &SyscallTable<T>,
     olddirfd: libc::c_int,
     oldpath: *const libc::c_char,
     newdirfd: libc::c_int,
@@ -1039,25 +1056,25 @@ unsafe fn handle_linkat(
             -1
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(olddirfd, oldpath, newdirfd, newpath, flags)
+            syscall_fn(&syscall_table.state, olddirfd, oldpath, newdirfd, newpath, flags)
         },
     }
 }
 
 /// Handler for `libc::fchdir()`.
-unsafe fn handle_fchdir(syscall_table: &SyscallTable, fd: libc::c_int) -> libc::c_int {
+unsafe fn handle_fchdir<T>(syscall_table: &SyscallTable<T>, fd: libc::c_int) -> libc::c_int {
     match &syscall_table.fchdir {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, fd) },
     }
 }
 
 /// Handler for `libc::fchown()`.
-unsafe fn handle_fchown(
-    syscall_table: &SyscallTable,
+unsafe fn handle_fchown<T>(
+    syscall_table: &SyscallTable<T>,
     fd: libc::c_int,
     owner: libc::uid_t,
     group: libc::gid_t,
@@ -1067,17 +1084,19 @@ unsafe fn handle_fchown(
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(fd, owner, group) },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, owner, group)
+        },
     }
 }
 
 /// Handler for `libc::pipe()`.
-unsafe fn handle_pipe(syscall_table: &SyscallTable, pipefd: *mut libc::c_int) -> libc::c_int {
+unsafe fn handle_pipe<T>(syscall_table: &SyscallTable<T>, pipefd: *mut libc::c_int) -> libc::c_int {
     match &syscall_table.pipe {
         SyscallAction::Block => {
             unsafe { *libc::__errno_location() = libc::EPERM };
             -1
         },
-        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(pipefd) },
+        SyscallAction::Forward(syscall_fn) => unsafe { syscall_fn(&syscall_table.state, pipefd) },
     }
 }

@@ -132,7 +132,7 @@ pub async fn main() -> Result<()> {
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
-    let config: SandboxCacheConfig = SandboxCacheConfig::new(
+    let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
         args.system_vm_socket_type(),
@@ -169,7 +169,7 @@ pub async fn main() -> Result<()> {
             args.program_args().join(" ")
         };
 
-        let mut terminal: Terminal = Terminal::new(config);
+        let mut terminal: Terminal<()> = Terminal::new(config);
         if let Err(error) = terminal.run(&guest_binary_path, &guest_binary_args).await {
             error!("terminal failed: {error}");
         }
@@ -183,7 +183,7 @@ pub async fn main() -> Result<()> {
             Some(addr) => addr,
         };
 
-        let mut http_server: HttpServer = HttpServer::new(http_sockaddr, config);
+        let mut http_server: HttpServer<()> = HttpServer::new(http_sockaddr, config);
         if let Err(error) = http_server.run().await {
             error!("http server failed: {error}");
         }
