@@ -75,6 +75,23 @@ get_cargo_toml_version() {
 #
 # Description
 #
+#   Get the repository root directory.
+#
+# Return Value
+#
+#   The absolute path to the repository root directory.
+#
+# Usage Example
+#
+#   repo_root=$(get_repo_root)
+#
+get_repo_root() {
+    git rev-parse --show-toplevel
+}
+
+#
+# Description
+#
 #   Reads a value from a simple, single-level TOML file with key = value pairs.
 #
 # Arguments
