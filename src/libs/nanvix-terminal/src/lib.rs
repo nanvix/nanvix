@@ -126,6 +126,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     ///
     /// # Parameters
     ///
+    /// - `tenant_id`: Optional tenant identifier. If `None`, a default tenant ID is used.
+    /// - `app_name`: Optional application name. If `None`, a default application name is used.
     /// - `guest_binary_path`: Path to the guest binary to execute.
     /// - `guest_binary_args`: Arguments to pass to the guest binary.
     ///
@@ -134,12 +136,23 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     /// On success, this function returns an empty tuple after the terminal session ends. On
     /// failure, it returns an object that describes the error that occurred.
     ///
-    pub async fn run(&mut self, guest_binary_path: &str, guest_binary_args: &str) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        tenant_id: Option<&str>,
+        app_name: Option<&str>,
+        guest_binary_path: &str,
+        guest_binary_args: &str,
+    ) -> Result<()> {
         let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone());
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
-        let tenant_id: String = Self::get_current_user_name()?;
-        let app_name: String = DEFAULT_APP_NAME.to_string();
+        let tenant_id: String = match tenant_id {
+            Some(s) => s.to_owned(),
+            None => Self::get_current_user_name()?,
+        };
+        let app_name: String = app_name
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| DEFAULT_APP_NAME.to_owned());
         let (uservm_id, gateway_sockaddr, gateway_socket_type): (
             UserVmIdentifier,
             String,
