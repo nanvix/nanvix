@@ -37,6 +37,7 @@ use ::hyperlight_host::{
 };
 use ::std::{
     io::Write,
+    os::raw::c_int,
     path::Path,
     sync::Arc,
 };
@@ -53,6 +54,16 @@ use ::tokio::{
     },
     task,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Signal used to interrupt the vCPU thread.
+pub const INTERRUPT_SIGNAL: c_int = libc::SIGUSR1;
+
+/// Signal used to kill the vCPU thread.
+pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 
 //==================================================================================================
 // Types
