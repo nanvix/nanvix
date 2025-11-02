@@ -15,7 +15,7 @@ rust-lint-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
 
 rust-lint-check-host-rlib-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) -p $(1)
+	$(HOST_CARGO_CLIPPY_CMD) -p $(1) -- -D warnings
 
 test-host-rlib-$(1):
 	$(HOST_CARGO_TEST_CMD) -p $(1)

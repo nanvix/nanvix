@@ -38,3 +38,6 @@ user-vm-api = { workspace = true }
 [features]
 default = []
 timestamp-messages = ["profiler/timestamp-messages"]
+
+[lints]
+workspace = true

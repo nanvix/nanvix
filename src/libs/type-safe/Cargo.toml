@@ -22,3 +22,6 @@ compiler_builtins = { version = "0.1", optional = true }
 default = []
 std = []
 rustc-dep-of-std = ["alloc", "core", "compiler_builtins/rustc-dep-of-std"]
+
+[lints]
+workspace = true

@@ -22,3 +22,6 @@ tokio = { workspace = true, features = ["full"] }
 [features]
 default = []
 timestamp-messages = []
+
+[lints]
+workspace = true

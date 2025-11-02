@@ -42,3 +42,6 @@ hyperlight = [
     "nanvix-sandbox-cache/hyperlight",
     "nanvix-terminal/hyperlight",
 ]
+
+[lints]
+workspace = true

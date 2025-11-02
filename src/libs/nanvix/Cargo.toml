@@ -44,3 +44,6 @@ hyperlight = [
     "nanvix-terminal/hyperlight",
     "uservm/hyperlight",
 ]
+
+[lints]
+workspace = true
