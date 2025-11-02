@@ -22,3 +22,6 @@ user-vm-api = { workspace = true }
 default = []
 hyperlight = ["nanvix-sandbox-cache/hyperlight"]
 single-process = ["nanvix-sandbox-cache/single-process"]
+
+[lints]
+workspace = true

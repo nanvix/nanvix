@@ -26,3 +26,6 @@ rustc-dep-of-std = [
     "compiler_builtins/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
 ]
+
+[lints]
+workspace = true

@@ -75,3 +75,6 @@ debug = ["syslog/debug"]
 info = ["syslog/info"]
 warn = ["syslog/warn"]
 panic = ["syslog/panic"]
+
+[lints]
+workspace = true

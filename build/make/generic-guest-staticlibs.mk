@@ -28,7 +28,7 @@ rust-lint-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty
 
 rust-lint-check-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) -- -D warnings
 endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))

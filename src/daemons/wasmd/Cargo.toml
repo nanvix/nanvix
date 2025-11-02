@@ -31,3 +31,6 @@ cfg-if = { workspace = true }
 [features]
 default = []
 wasm_binary = []
+
+[lints]
+workspace = true

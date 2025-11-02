@@ -27,3 +27,6 @@ default = []
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
+
+[lints]
+workspace = true

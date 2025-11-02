@@ -27,3 +27,6 @@ default = ["syslog"]
 std = []
 syscall = []
 daemon = ["syslog"]
+
+[lints]
+workspace = true

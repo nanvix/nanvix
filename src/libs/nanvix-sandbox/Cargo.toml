@@ -30,3 +30,6 @@ default = []
 # into the sandbox.
 single-process = []
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
+
+[lints]
+workspace = true
