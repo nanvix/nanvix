@@ -154,6 +154,10 @@ pub type PollFn<T> = unsafe fn(&T, *mut libc::pollfd, libc::nfds_t, libc::c_int)
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `path` is a valid pointer to a null-terminated C string.
+///
 pub unsafe fn default_chdir<T>(_state: &T, path: *const libc::c_char) -> libc::c_int {
     libc::chdir(path)
 }
@@ -171,6 +175,10 @@ pub unsafe fn default_chdir<T>(_state: &T, path: *const libc::c_char) -> libc::c
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
 ///
 pub unsafe fn default_close<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::close(fd)
@@ -192,6 +200,10 @@ pub unsafe fn default_close<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
 ///
 pub unsafe fn default_faccessat<T>(
     _state: &T,
@@ -217,6 +229,10 @@ pub unsafe fn default_faccessat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_fdatasync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fdatasync(fd)
 }
@@ -233,6 +249,10 @@ pub unsafe fn default_fdatasync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
 /// # Returns
 ///
 /// The real user ID of the calling process.
+///
+/// # Safety
+///
+/// This function is safe to call as it does not access any pointers.
 ///
 pub unsafe fn default_getuid<T>(_state: &T) -> libc::uid_t {
     libc::getuid()
@@ -251,6 +271,10 @@ pub unsafe fn default_getuid<T>(_state: &T) -> libc::uid_t {
 ///
 /// The effective user ID of the calling process.
 ///
+/// # Safety
+///
+/// This function is safe to call as it does not access any pointers.
+///
 pub unsafe fn default_geteuid<T>(_state: &T) -> libc::uid_t {
     libc::geteuid()
 }
@@ -268,6 +292,10 @@ pub unsafe fn default_geteuid<T>(_state: &T) -> libc::uid_t {
 ///
 /// The real group ID of the calling process.
 ///
+/// # Safety
+///
+/// This function is safe to call as it does not access any pointers.
+///
 pub unsafe fn default_getgid<T>(_state: &T) -> libc::gid_t {
     libc::getgid()
 }
@@ -284,6 +312,10 @@ pub unsafe fn default_getgid<T>(_state: &T) -> libc::gid_t {
 /// # Returns
 ///
 /// The effective group ID of the calling process.
+///
+/// # Safety
+///
+/// This function is safe to call as it does not access any pointers.
 ///
 pub unsafe fn default_getegid<T>(_state: &T) -> libc::gid_t {
     libc::getegid()
@@ -303,6 +335,10 @@ pub unsafe fn default_getegid<T>(_state: &T) -> libc::gid_t {
 /// # Returns
 ///
 /// Upon successful completion, a pointer to the buffer is returned. Otherwise, NULL is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` is a valid pointer to a writable buffer of at least `size` bytes.
 ///
 pub unsafe fn default_getcwd<T>(
     _state: &T,
@@ -326,6 +362,10 @@ pub unsafe fn default_getcwd<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_fsync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fsync(fd)
 }
@@ -345,6 +385,10 @@ pub unsafe fn default_fsync<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
 /// # Returns
 ///
 /// Upon successful completion, the resulting offset is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
 ///
 pub unsafe fn default_lseek<T>(
     _state: &T,
@@ -370,6 +414,10 @@ pub unsafe fn default_lseek<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_ftruncate<T>(
     _state: &T,
     fd: libc::c_int,
@@ -393,6 +441,10 @@ pub unsafe fn default_ftruncate<T>(
 /// # Returns
 ///
 /// Upon successful completion, the number of bytes written is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `buf` is a valid pointer to readable memory of at least `count` bytes.
 ///
 pub unsafe fn default_write<T>(
     _state: &T,
@@ -418,6 +470,10 @@ pub unsafe fn default_write<T>(
 /// # Returns
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `buf` is a valid pointer to writable memory of at least `count` bytes.
 ///
 pub unsafe fn default_read<T>(
     _state: &T,
@@ -445,6 +501,10 @@ pub unsafe fn default_read<T>(
 ///
 /// Upon successful completion, the number of bytes written is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `buf` is a valid pointer to readable memory of at least `count` bytes.
+///
 pub unsafe fn default_pwrite<T>(
     _state: &T,
     fd: libc::c_int,
@@ -471,6 +531,10 @@ pub unsafe fn default_pwrite<T>(
 /// # Returns
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `buf` is a valid pointer to writable memory of at least `count` bytes.
 ///
 pub unsafe fn default_pread<T>(
     _state: &T,
@@ -500,6 +564,10 @@ pub unsafe fn default_pread<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `oldpath` and `newpath` are valid pointers to null-terminated C strings.
+///
 pub unsafe fn default_linkat<T>(
     _state: &T,
     olddirfd: libc::c_int,
@@ -525,6 +593,10 @@ pub unsafe fn default_linkat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_fchdir<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
     libc::fchdir(fd)
 }
@@ -544,6 +616,10 @@ pub unsafe fn default_fchdir<T>(_state: &T, fd: libc::c_int) -> libc::c_int {
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
 ///
 pub unsafe fn default_fchown<T>(
     _state: &T,
@@ -567,6 +643,10 @@ pub unsafe fn default_fchown<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `pipefd` is a valid pointer to writable memory for at least 2 integers.
 ///
 pub unsafe fn default_pipe<T>(_state: &T, pipefd: *mut libc::c_int) -> libc::c_int {
     libc::pipe(pipefd)
@@ -673,6 +753,10 @@ pub type FchmodatFn<T> =
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
+///
 pub unsafe fn default_openat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -699,6 +783,10 @@ pub unsafe fn default_openat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
+///
 pub unsafe fn default_unlinkat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -724,6 +812,10 @@ pub unsafe fn default_unlinkat<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `oldpath` and `newpath` are valid pointers to null-terminated C strings.
 ///
 pub unsafe fn default_renameat<T>(
     _state: &T,
@@ -752,6 +844,10 @@ pub unsafe fn default_renameat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string and `buf` is a valid pointer to writable memory.
+///
 pub unsafe fn default_fstatat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -777,6 +873,10 @@ pub unsafe fn default_fstatat<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, an error number is returned.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
 ///
 pub unsafe fn default_posix_fallocate<T>(
     _state: &T,
@@ -804,6 +904,10 @@ pub unsafe fn default_posix_fallocate<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, an error number is returned.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_posix_fadvise<T>(
     _state: &T,
     fd: libc::c_int,
@@ -829,6 +933,10 @@ pub unsafe fn default_posix_fadvise<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `buf` is a valid pointer to writable memory.
+///
 pub unsafe fn default_fstat<T>(_state: &T, fd: libc::c_int, buf: *mut libc::stat) -> libc::c_int {
     libc::fstat(fd, buf)
 }
@@ -848,6 +956,10 @@ pub unsafe fn default_fstat<T>(_state: &T, fd: libc::c_int, buf: *mut libc::stat
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `target` and `linkpath` are valid pointers to null-terminated C strings.
 ///
 pub unsafe fn default_symlinkat<T>(
     _state: &T,
@@ -875,6 +987,10 @@ pub unsafe fn default_symlinkat<T>(
 ///
 /// Upon successful completion, the number of bytes placed in the buffer is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string and `buf` is a valid pointer to writable memory of at least `bufsiz` bytes.
+///
 pub unsafe fn default_readlinkat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -900,6 +1016,10 @@ pub unsafe fn default_readlinkat<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
 ///
 pub unsafe fn default_mkdirat<T>(
     _state: &T,
@@ -927,6 +1047,10 @@ pub unsafe fn default_mkdirat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string and `times` is either NULL or a valid pointer to readable memory.
+///
 pub unsafe fn default_utimensat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -952,6 +1076,10 @@ pub unsafe fn default_utimensat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `times` is either NULL or a valid pointer to readable memory.
+///
 pub unsafe fn default_futimens<T>(
     _state: &T,
     fd: libc::c_int,
@@ -975,6 +1103,10 @@ pub unsafe fn default_futimens<T>(
 /// # Returns
 ///
 /// Upon successful completion, a value depends on the command. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `arg` is valid for the given command.
 ///
 pub unsafe fn default_fcntl<T>(
     _state: &T,
@@ -1003,6 +1135,10 @@ pub unsafe fn default_fcntl<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
+///
 pub unsafe fn default_fchownat<T>(
     _state: &T,
     dirfd: libc::c_int,
@@ -1029,6 +1165,10 @@ pub unsafe fn default_fchownat<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor.
+///
 pub unsafe fn default_fchmod<T>(_state: &T, fd: libc::c_int, mode: libc::mode_t) -> libc::c_int {
     libc::fchmod(fd, mode)
 }
@@ -1049,6 +1189,10 @@ pub unsafe fn default_fchmod<T>(_state: &T, fd: libc::c_int, mode: libc::mode_t)
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `pathname` is a valid pointer to a null-terminated C string.
 ///
 pub unsafe fn default_fchmodat<T>(
     _state: &T,
@@ -1080,6 +1224,10 @@ pub unsafe fn default_fchmodat<T>(
 ///
 /// Upon successful completion, the number of bytes read is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `fd` is a valid file descriptor and `dirp` is a valid pointer to writable memory of at least `count` bytes.
+///
 pub unsafe fn default_getdents<T>(
     _state: &T,
     fd: libc::c_int,
@@ -1109,6 +1257,10 @@ pub unsafe fn default_getdents<T>(
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// This function is safe to call as it does not access any pointers.
+///
 pub unsafe fn default_socket<T>(
     _state: &T,
     domain: libc::c_int,
@@ -1134,6 +1286,10 @@ pub unsafe fn default_socket<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `sv` is a valid pointer to writable memory for at least 2 integers.
 ///
 pub unsafe fn default_socketpair<T>(
     _state: &T,
@@ -1161,6 +1317,10 @@ pub unsafe fn default_socketpair<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor and `addr` is a valid pointer to readable memory of at least `addrlen` bytes.
+///
 pub unsafe fn default_bind<T>(
     _state: &T,
     sockfd: libc::c_int,
@@ -1186,6 +1346,10 @@ pub unsafe fn default_bind<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor and `addr` is a valid pointer to readable memory of at least `addrlen` bytes.
+///
 pub unsafe fn default_connect<T>(
     _state: &T,
     sockfd: libc::c_int,
@@ -1210,6 +1374,10 @@ pub unsafe fn default_connect<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor.
+///
 pub unsafe fn default_listen<T>(
     _state: &T,
     sockfd: libc::c_int,
@@ -1233,6 +1401,10 @@ pub unsafe fn default_listen<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor, `addr` is a valid pointer to writable memory, and `addrlen` is a valid pointer to writable memory.
 ///
 pub unsafe fn default_getpeername<T>(
     _state: &T,
@@ -1259,6 +1431,10 @@ pub unsafe fn default_getpeername<T>(
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor, `addr` is a valid pointer to writable memory, and `addrlen` is a valid pointer to writable memory.
+///
 pub unsafe fn default_getsockname<T>(
     _state: &T,
     sockfd: libc::c_int,
@@ -1283,6 +1459,10 @@ pub unsafe fn default_getsockname<T>(
 /// # Returns
 ///
 /// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor, and if `addr` is not NULL, it must be a valid pointer to writable memory and `addrlen` must be a valid pointer to writable memory.
 ///
 pub unsafe fn default_accept<T>(
     _state: &T,
@@ -1309,6 +1489,10 @@ pub unsafe fn default_accept<T>(
 /// # Returns
 ///
 /// Upon successful completion, the number of bytes received is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor and `buf` is a valid pointer to writable memory of at least `len` bytes.
 ///
 pub unsafe fn default_recv<T>(
     _state: &T,
@@ -1337,6 +1521,10 @@ pub unsafe fn default_recv<T>(
 ///
 /// Upon successful completion, the number of bytes sent is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor and `buf` is a valid pointer to readable memory of at least `len` bytes.
+///
 pub unsafe fn default_send<T>(
     _state: &T,
     sockfd: libc::c_int,
@@ -1361,6 +1549,10 @@ pub unsafe fn default_send<T>(
 /// # Returns
 ///
 /// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `sockfd` is a valid socket file descriptor.
 ///
 pub unsafe fn default_shutdown<T>(
     _state: &T,
@@ -1389,6 +1581,10 @@ pub unsafe fn default_shutdown<T>(
 /// # Returns
 ///
 /// Upon successful completion, the number of file descriptors with events is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `fds` is a valid pointer to readable and writable memory for at least `nfds` elements.
 ///
 pub unsafe fn default_poll<T>(
     _state: &T,
@@ -1421,6 +1617,10 @@ pub unsafe fn default_poll<T>(
 ///
 /// Upon successful completion, the number of file descriptors with events is returned. Otherwise, -1 is returned and `errno` is set.
 ///
+/// # Safety
+///
+/// The caller must ensure that `readfds`, `writefds`, `exceptfds`, and `timeout` are either NULL or valid pointers to readable and writable memory.
+///
 pub unsafe fn default_select<T>(
     _state: &T,
     nfds: libc::c_int,
@@ -1449,6 +1649,10 @@ pub unsafe fn default_select<T>(
 /// # Returns
 ///
 /// Upon successful completion, the elapsed real time in clock ticks is returned. Otherwise, -1 is returned and `errno` is set.
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` is a valid pointer to writable memory.
 ///
 pub unsafe fn default_times<T>(_state: &T, buf: *mut libc::tms) -> libc::clock_t {
     libc::times(buf)
