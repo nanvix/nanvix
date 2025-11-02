@@ -8,13 +8,24 @@
 set -euo pipefail
 
 #===================================================================================================
+# Imports
+#===================================================================================================
+
+# Get the repository root directory.
+REPO_ROOT_DIR=$(git rev-parse --show-toplevel)
+
+# Directory where to find scripts to import.
+IMPORT_DIR="${REPO_ROOT_DIR}/scripts/common"
+
+source "${IMPORT_DIR}/logging.sh"
+
+#===================================================================================================
 # Global Variables
 #===================================================================================================
 
-# Colors
-RED='\033[0;31m'    # Red
-GREEN='\033[0;32m'  # Green
-NC='\033[0m'        # No Color
+# Configuration matrix matching CI (self-hosted-ci.yml).
+declare -a MACHINE_TYPES=("qemu-pc" "microvm" "hyperlight")
+declare -a DEPLOYMENT_TYPES=("single-process" "multi-process")
 
 #===================================================================================================
 # Functions
@@ -22,30 +33,90 @@ NC='\033[0m'        # No Color
 
 #
 # DESCRIPTION
-#   Prints an error message on stderr.
+#   Checks if a configuration should be excluded based on CI matrix rules.
 #
 # ARGUMENTS
-#   $1 - The error message to print.
+#   $1 - Machine type.
+#   $2 - Deployment type.
+#
+# RETURNS
+#   0 if excluded, 1 if included.
 #
 # USAGE EXAMPLE
-#   print_error "Print an error message."
+#   if is_excluded "qemu-pc" "single-process"; then
+#       echo "Configuration is excluded."
+#   fi
 #
-print_error() {
-    echo -e "${RED}[ERROR] ${1}${NC}" >&2
+is_excluded() {
+    local machine="${1}"
+    local deployment="${2}"
+
+    # Exclusion rules from self-hosted-ci.yml.
+    if [[ "${machine}" == "qemu-pc" && "${deployment}" == "single-process" ]]; then
+        return 0
+    fi
+
+    return 1
 }
 
 #
 # DESCRIPTION
-#   Prints a success message on stdout.
+#   Converts deployment type to SINGLE_PROCESS and L2_VM flags.
 #
 # ARGUMENTS
-#   $1 - The success message to print.
+#   $1 - Deployment type.
+#
+# RETURNS
+#   String with SINGLE_PROCESS and L2_VM values.
 #
 # USAGE EXAMPLE
-#   print_success "Print a success message."
+#   flags=$(get_deployment_flags "multi-process")
 #
-print_success() {
-    echo -e "${GREEN}[INFO] ${1}${NC}"
+get_deployment_flags() {
+    local deployment="${1}"
+
+    case "${deployment}" in
+        single-process)
+            echo "SINGLE_PROCESS=yes"
+            ;;
+        multi-process)
+            echo "SINGLE_PROCESS=no"
+            ;;
+        *)
+            print_error "(pre-commit) Invalid deployment type: ${deployment}"
+            exit 1
+            ;;
+    esac
+}
+
+#
+# DESCRIPTION
+#   Converts build type to RELEASE flag.
+#
+# ARGUMENTS
+#   $1 - Build type.
+#
+# RETURNS
+#   String with RELEASE value.
+#
+# USAGE EXAMPLE
+#   flag=$(get_release_flag "release")
+#
+get_release_flag() {
+    local build_type="${1}"
+
+    case "${build_type}" in
+        debug)
+            echo "RELEASE=no"
+            ;;
+        release)
+            echo "RELEASE=yes"
+            ;;
+        *)
+            print_error "(pre-commit) Invalid build type: ${build_type}"
+            exit 1
+            ;;
+    esac
 }
 
 #===================================================================================================
@@ -53,52 +124,80 @@ print_success() {
 #===================================================================================================
 
 main() {
-    # By default, use Docker to run the code formatting check.
-    local build_command="./z build --with-cached-options --"
-
     # Check if we are not running inside a Git repository.
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         print_error "(pre-commit) This script must be run inside a Git repository."
         exit 1
     fi
 
-    # No need to check for Docker installation or the correct Docker image here. This script uses
-    # cached build options, and all necessary environment checks were already performed when the
-    # build cache was created.
-
     # Create a temporary file to capture output.
     tmpfile="$(mktemp)"
     trap 'rm -f "$tmpfile"' EXIT
 
-    # Run code formatting check.
-    if ! eval "${build_command} format-check" > "${tmpfile}" 2>&1 ; then
-        # Code formatting check failed, print the output.
-        cat "${tmpfile}"
-        print_error "(pre-commit) Format check failed. Please fix formatting before committing."
-        exit 1
-    fi
+    # Track progress.
+    local total_configs=0
+    local checked_configs=0
 
-    print_success "(pre-commit) Code formatting check passed successfully."
+    # Note: We run format-check, lint-check, and spellcheck only once since they are
+    # configuration-independent (they check source code style, not runtime behavior).
+    # However, we iterate through all machine/deployment combinations to ensure the
+    # build system can be configured for each combination, matching CI behavior.
 
-    # Run code linting check.
-    if ! eval "${build_command} lint-check" > "${tmpfile}" 2>&1 ; then
-        # Code linting check failed, print the output.
-        cat "${tmpfile}"
-        print_error "(pre-commit) Lint check failed. Please fix linting issues before committing."
-        exit 1
-    fi
+    print_info "(pre-commit) Running pre-commit checks for all CI configurations..."
 
-    print_success "(pre-commit) Code linting check passed successfully."
+    # Use debug build for faster checks.
+    local build_type="debug"
+    local release_flag
+    release_flag=$(get_release_flag "${build_type}")
 
-    # Run spell check.
-    if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
-        # Spell check failed, print the output.
-        cat "${tmpfile}"
-        print_error "(pre-commit) Spell check failed. Please fix spelling errors before committing."
-        exit 1
-    fi
+    # Iterate through all machine/deployment combinations matching the CI matrix.
+    for machine in "${MACHINE_TYPES[@]}"; do
+        for deployment in "${DEPLOYMENT_TYPES[@]}"; do
+            total_configs=$((total_configs + 1))
 
-    print_success "(pre-commit) Spell check passed successfully."
+            # Skip excluded configurations.
+            if is_excluded "${machine}" "${deployment}"; then
+                print_info "(pre-commit) Skipping excluded configuration: ${build_type}, ${machine}, ${deployment}."
+                continue
+            fi
+
+            checked_configs=$((checked_configs + 1))
+
+            # Get configuration flags.
+            local deployment_flags
+            deployment_flags=$(get_deployment_flags "${deployment}")
+
+            print_info "(pre-commit) Checking configuration: ${build_type}, ${machine}, ${deployment}..."
+
+            # Build command with all parameters.
+            local build_command="./z build -- MACHINE=${machine} LOG_LEVEL=trace ${release_flag} ${deployment_flags}"
+
+            # Run code formatting check.
+            if ! eval "${build_command} format-check" > "${tmpfile}" 2>&1 ; then
+                cat "${tmpfile}"
+                print_error "(pre-commit) Format check failed for: ${build_type}, ${machine}, ${deployment}."
+                exit 1
+            fi
+
+            # Run code linting check.
+            if ! eval "${build_command} lint-check" > "${tmpfile}" 2>&1 ; then
+                cat "${tmpfile}"
+                print_error "(pre-commit) Lint check failed for: ${build_type}, ${machine}, ${deployment}."
+                exit 1
+            fi
+
+            # Run spell check.
+            if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
+                cat "${tmpfile}"
+                print_error "(pre-commit) Spell check failed for: ${build_type}, ${machine}, ${deployment}."
+                exit 1
+            fi
+
+            print_success "(pre-commit) Configuration passed: ${build_type}, ${machine}, ${deployment}."
+        done
+    done
+
+    print_success "(pre-commit) All checks passed successfully (${checked_configs}/${total_configs} configurations checked)."
 }
 
 # Run the main function.
