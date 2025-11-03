@@ -23,7 +23,7 @@ rust-lint-wasm-binaries-$(1):
 	$(WASM_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
 
 rust-lint-check-wasm-binaries-$(1):
-	$(WASM_CARGO_CLIPPY_CMD) -p $(1)
+	$(WASM_CARGO_CLIPPY_CMD) -p $(1) -- -D warnings
 endef
 
 $(foreach target,$(ALL_WASM_BINARIES),$(eval $(call WASM_BINARY_RULES,$(target))))

@@ -15,3 +15,6 @@ anyhow = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 syslog = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

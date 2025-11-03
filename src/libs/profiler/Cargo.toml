@@ -20,3 +20,6 @@ syslog = { workspace = true, features = ["std"] }
 default = []
 auto-calibrate = []
 timestamp-messages = []
+
+[lints]
+workspace = true

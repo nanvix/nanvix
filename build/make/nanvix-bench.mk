@@ -29,4 +29,4 @@ rust-lint-nanvix-bench:
 	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench --fix --allow-dirty
 
 rust-lint-check-nanvix-bench:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
+	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench -- -D warnings

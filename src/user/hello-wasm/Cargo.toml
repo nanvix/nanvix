@@ -9,3 +9,6 @@ edition.workspace = true
 authors.workspace = true
 description = "Hello World in WebAssembly"
 homepage.workspace = true
+
+[lints]
+workspace = true

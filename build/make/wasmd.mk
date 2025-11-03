@@ -32,4 +32,4 @@ rust-lint-wasmd:
 	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd --fix --allow-dirty
 
 rust-lint-check-wasmd:
-	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd
+	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd -- -D warnings

@@ -19,3 +19,6 @@ sys = { workspace = true }
 [features]
 default = []
 std = ["sys/std"]
+
+[lints]
+workspace = true

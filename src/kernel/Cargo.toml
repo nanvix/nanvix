@@ -120,3 +120,6 @@ info = ["warn"]
 warn = ["error"]
 error = ["panic"]
 panic = []
+
+[lints]
+workspace = true

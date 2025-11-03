@@ -27,7 +27,7 @@ rust-lint-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty
 
 rust-lint-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
 endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))

@@ -29,3 +29,6 @@ rustc-dep-of-std = [
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
 ]
+
+[lints]
+workspace = true

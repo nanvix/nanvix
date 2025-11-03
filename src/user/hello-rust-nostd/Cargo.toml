@@ -30,3 +30,6 @@ info = ["nvx/info"]
 warn = ["nvx/warn"]
 error = ["nvx/error"]
 panic = ["nvx/panic"]
+
+[lints]
+workspace = true

@@ -35,3 +35,6 @@ info = ["nvx/info", "syscall/info", "syslog/info"]
 warn = ["nvx/warn", "syscall/warn", "syslog/warn"]
 error = ["nvx/error", "syscall/error", "syslog/error"]
 panic = ["nvx/panic", "syscall/panic", "syslog/panic"]
+
+[lints]
+workspace = true

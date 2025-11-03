@@ -25,3 +25,6 @@ uuid = { workspace = true, features = ["std", "v4"] }
 
 [features]
 default = []
+
+[lints]
+workspace = true
