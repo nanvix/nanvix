@@ -178,9 +178,8 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) 
         return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
     }
 
-    let unix_socket_name: String = format!(
-        "{tmp_str}/{NAMED_RESOURCE_PREFIX}:control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}"
-    );
+    let unix_socket_name: String =
+        format!("{tmp_str}/{NAMED_RESOURCE_PREFIX}:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
