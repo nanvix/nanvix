@@ -308,9 +308,8 @@ impl UserVm {
                 Ok(Ok(stream)) => stream,
                 Ok(Err(error)) => {
                     uservm_task.abort();
-                    let reason: String = format!(
-                        "error connecting control-plane to embedded user VM (error={error:?})"
-                    );
+                    let reason: String =
+                        format!("error connecting control-plane to user VM (error={error:?})");
                     error!("spawn(): {reason}");
                     anyhow::bail!("{reason}");
                 },
@@ -350,7 +349,7 @@ impl UserVm {
 
         // Send shutdown command to User VM.
         if let Err(e) = self.control_plane_stream.write_all(&msg_bytes).await {
-            warn!("shutdown(): failed to send shutdown command to embedded user VM (error={e:?})");
+            warn!("shutdown(): failed to send shutdown command to user VM (error={e:?})");
         }
 
         // Wait for User VM to finish.
@@ -366,18 +365,15 @@ impl UserVm {
                         }
                     },
                     Ok(Err(error)) => {
-                        warn!(
-                            "shutdown(): embedded user VM terminated with error (error={error:?})"
-                        );
+                        warn!("shutdown(): user VM terminated with error (error={error:?})");
                     },
                     Err(join_error) => {
-                        warn!("shutdown(): embedded user VM task panicked (error={join_error:?})");
+                        warn!("shutdown(): user VM task panicked (error={join_error:?})");
                     },
                 },
                 Err(elapsed) => {
                     warn!(
-                        "shutdown(): timed-out waiting for embedded user VM to shutdown \
-                         (error={elapsed:?})"
+                        "shutdown(): timed-out waiting for user VM to shutdown (error={elapsed:?})"
                     );
                 },
             }

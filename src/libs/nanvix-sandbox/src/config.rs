@@ -73,6 +73,13 @@ const UNIX_PATH_MAX: usize = 108;
 ///
 /// # Description
 ///
+/// Prefix for all named resources.
+///
+pub const NAMED_RESOURCE_PREFIX: &str = "nvx";
+
+///
+/// # Description
+///
 /// Suffix for Unix sockets in debug builds.
 ///
 #[cfg(debug_assertions)]
@@ -172,7 +179,7 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) 
     }
 
     let unix_socket_name: String =
-        format!("{tmp_str}/control-plane:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
+        format!("{tmp_str}/{NAMED_RESOURCE_PREFIX}:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
@@ -212,7 +219,8 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Res
         ));
     }
 
-    let unix_socket_name: String = format!("{tmp_str}/{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
+    let unix_socket_name: String =
+        format!("{tmp_str}/{NAMED_RESOURCE_PREFIX}:{tenant_id}:uvm{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
@@ -256,8 +264,9 @@ pub fn gateway_sockaddr_builder(
     }
 
     let sandbox_id: u32 = sandbox_id.into();
-    let unix_socket_name: String =
-        format!("{tmp_str}/{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}");
+    let unix_socket_name: String = format!(
+        "{tmp_str}/{NAMED_RESOURCE_PREFIX}:{tenant_id}:gw-{sandbox_id}{UNIX_SOCKET_SUFFIX}"
+    );
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
