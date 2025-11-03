@@ -109,6 +109,26 @@
 //! - Utilities: [`tcp_port`] for managing TCP port allocations
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::config::NAMED_RESOURCE_PREFIX;
+use ::anyhow::Result;
+use ::std::{
+    borrow::Cow,
+    ffi::OsString,
+    path::PathBuf,
+};
+use ::syslog::{
+    error,
+    warn,
+};
+use ::tokio::{
+    fs,
+    fs::ReadDir,
+};
+
+//==================================================================================================
 // Private Modules
 //==================================================================================================
 
@@ -164,3 +184,81 @@ pub use config::{
     gateway_sockaddr_builder,
     user_vm_sockaddr_builder,
 };
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Helper function that removes dangling resources from previous runs.
+///
+/// # Parameters
+///
+/// - `tmp_dir_path`: Path to the temporary directory.
+///
+/// # Returns
+///
+/// On success, this function returns an empty tuple. On failure, it returns an object that
+/// describes the error.
+///
+pub async fn remove_dangling_resources(tmp_dir_path: &str) -> Result<()> {
+    let mut result: Result<()> = Ok(());
+
+    // Open temporary directory, all named resources are created here.
+    let mut dir_entries: ReadDir = fs::read_dir(tmp_dir_path).await.map_err(|error| {
+        let reason: String =
+            format!("failed to read temporary directory '{tmp_dir_path}': {error}");
+        error!("remove_dangling_resources(): {reason}");
+        anyhow::anyhow!(reason)
+    })?;
+
+    // Traverse directory entries and remove all dangling resources that start with the magic prefix
+    // for named resources. If we fail, log an error message and continue, as we want to cleanup as
+    // many resources as possible. The overall result will be an error if any removal fails.
+    loop {
+        match dir_entries.next_entry().await {
+            Ok(None) => break,
+            Ok(Some(entry)) => {
+                let file_name: OsString = entry.file_name();
+                let file_name_str: Cow<'_, str> = file_name.to_string_lossy();
+
+                // Check if the file name matches the named resource prefix.
+                if file_name_str.starts_with(NAMED_RESOURCE_PREFIX) {
+                    let file_path: PathBuf = entry.path();
+
+                    // Attempt to remove dangling resource.
+                    if let Err(error) = fs::remove_file(file_path).await {
+                        let reason: String = format!(
+                            "failed to remove dangling resource '{}': {error}",
+                            file_name_str
+                        );
+                        error!("remove_dangling_resources(): {reason}");
+
+                        // Do not overwrite previous errors.
+                        if result.is_ok() {
+                            result = Err(anyhow::anyhow!(reason));
+                        }
+                    } else {
+                        warn!("removed dangling resource: {}", file_name_str);
+                    }
+                }
+            },
+            Err(error) => {
+                let reason: String = format!(
+                    "failed to read entry in temporary directory '{}': {error}",
+                    tmp_dir_path
+                );
+                error!("remove_dangling_resources(): {reason}");
+
+                // Do not overwrite previous errors.
+                if result.is_ok() {
+                    result = Err(anyhow::anyhow!(reason));
+                }
+            },
+        };
+    }
+
+    result
+}
