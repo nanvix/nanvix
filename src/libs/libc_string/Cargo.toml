@@ -19,3 +19,6 @@ sysapi = { workspace = true }
 default = []
 # Enables the use of the Rust Standard Library.
 std = []
+
+[lints]
+workspace = true

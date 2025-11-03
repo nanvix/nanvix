@@ -20,3 +20,6 @@ sys = { workspace = true }
 [features]
 default = []
 std = ["sys/std", "bitmap/std", "raw-array/std"]
+
+[lints]
+workspace = true

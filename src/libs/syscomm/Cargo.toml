@@ -19,3 +19,6 @@ tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = []
+
+[lints]
+workspace = true

@@ -25,3 +25,6 @@ rustc-dep-of-std = [
     "config/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
 ]
+
+[lints]
+workspace = true

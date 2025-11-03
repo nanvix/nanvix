@@ -38,3 +38,6 @@ info = []
 warn = []
 error = []
 panic = []
+
+[lints]
+workspace = true

@@ -9,3 +9,6 @@ edition.workspace = true
 authors.workspace = true
 description = "Echo Benchmark for Wasm/Rust"
 homepage.workspace = true
+
+[lints]
+workspace = true

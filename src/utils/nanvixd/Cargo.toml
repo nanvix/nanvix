@@ -23,3 +23,6 @@ default = []
 # into Nanvix Daemon (nanvixd).
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
+
+[lints]
+workspace = true

@@ -29,7 +29,7 @@ rust-lint-uservm:
 	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty
 
 rust-lint-check-uservm:
-	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm
+	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm -- -D warnings
 
 test-uservm:
 	$(HOST_CARGO_TEST_CMD) $(USERVM_CARGO_FEATURES) -p uservm

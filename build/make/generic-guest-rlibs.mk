@@ -15,7 +15,7 @@ rust-lint-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
 
 rust-lint-check-guest-rlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1)
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) -- -D warnings
 endef
 
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
