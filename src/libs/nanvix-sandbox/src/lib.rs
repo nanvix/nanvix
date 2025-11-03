@@ -112,7 +112,6 @@
 // Imports
 //==================================================================================================
 
-use crate::config::NAMED_RESOURCE_PREFIX;
 use ::anyhow::Result;
 use ::std::{
     borrow::Cow,
@@ -183,6 +182,7 @@ pub use config::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
     user_vm_sockaddr_builder,
+    NAMED_RESOURCE_PREFIX,
 };
 
 //==================================================================================================
