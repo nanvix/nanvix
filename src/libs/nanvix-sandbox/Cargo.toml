@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+cfg-if = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 hwloc = { workspace = true }
