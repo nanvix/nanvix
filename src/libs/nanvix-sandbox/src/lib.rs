@@ -124,36 +124,41 @@ mod uservm_args;
 // Public Modules
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
-pub mod multi_process;
-#[cfg(feature = "single-process")]
-pub mod single_process;
+::cfg_if::cfg_if! {
+    if #[cfg(feature = "single-process")] {
+        pub mod single_process;
+    } else {
+        pub mod multi_process;
+    }
+}
+
 pub mod tcp_port;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
-pub use self::multi_process::*;
-#[cfg(feature = "single-process")]
-pub use self::single_process::*;
+::cfg_if::cfg_if! {
+    if #[cfg(feature = "single-process")] {
+        pub use self::single_process::*;
+        pub use ::linuxd::syscalls::SyscallAction;
+        pub use ::linuxd::syscalls::SyscallTable;
+    } else {
+        pub use self::multi_process::*;
+    }
+}
 
-pub use initialized::InitializedSandbox;
-pub use linuxd_args::LinuxDaemonArgs;
-pub use running::RunningSandbox;
-pub use sandbox_config::SandboxConfig;
-pub use uninitialized::UninitializedSandbox;
-pub use user_vm_api::UserVmIdentifier;
-pub use uservm_args::UserVmArgs;
-
-#[cfg(feature = "single-process")]
-pub use ::linuxd::syscalls::SyscallAction;
-#[cfg(feature = "single-process")]
-pub use ::linuxd::syscalls::SyscallTable;
-
+pub use self::{
+    initialized::InitializedSandbox,
+    linuxd_args::LinuxDaemonArgs,
+    running::RunningSandbox,
+    sandbox_config::SandboxConfig,
+    uninitialized::UninitializedSandbox,
+    uservm_args::UserVmArgs,
+};
 pub use ::hwloc::HwLoc;
 pub use ::syscomm;
+pub use ::user_vm_api::UserVmIdentifier;
 pub use config::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
