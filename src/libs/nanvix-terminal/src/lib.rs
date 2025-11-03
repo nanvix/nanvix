@@ -44,7 +44,10 @@ use ::std::{
     ptr,
     sync::Arc,
 };
-use ::syslog::error;
+use ::syslog::{
+    error,
+    info,
+};
 use ::tokio::{
     io::{
         self,
@@ -265,6 +268,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
                     // Continue reading from gateway until it closes.
                 },
                 _ = signals.recv() => {
+                    info!("received exit signal, stopping...");
                     break Ok(());
                 }
 
