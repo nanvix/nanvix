@@ -148,6 +148,8 @@ pub use user_vm_api::UserVmIdentifier;
 pub use uservm_args::UserVmArgs;
 
 #[cfg(feature = "single-process")]
+pub use ::linuxd::syscalls::SyscallAction;
+#[cfg(feature = "single-process")]
 pub use ::linuxd::syscalls::SyscallTable;
 
 pub use ::hwloc::HwLoc;
