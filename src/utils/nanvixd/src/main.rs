@@ -27,13 +27,24 @@ use ::nanvix::{
     log::error,
     registry::Registry,
     sandbox,
+    sandbox::NAMED_RESOURCE_PREFIX,
     sandbox_cache::SandboxCacheConfig,
     terminal::Terminal,
 };
-use ::nanvixd::args::Args;
-use ::std::sync::{
-    Arc,
-    OnceLock,
+use ::nanvixd::{
+    args::Args,
+    tempdir::TemporaryDirectory,
+};
+use ::rand::{
+    distr::Alphanumeric,
+    Rng,
+};
+use ::std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        OnceLock,
+    },
 };
 use ::tokio::fs;
 
@@ -52,6 +63,9 @@ const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
 #[cfg(not(feature = "single-process"))]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
+
+/// Length of temporary directory random suffix.
+const TMP_DIR_RANDOM_SUFFIX_LENGTH: usize = 4;
 
 //==================================================================================================
 // Global Variables
@@ -133,6 +147,9 @@ pub async fn main() -> Result<()> {
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
+    // Create temporary directory that will be automatically cleaned up on drop.
+    let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
+
     let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
@@ -150,12 +167,16 @@ pub async fn main() -> Result<()> {
         args.log_directory(),
         args.l2(),
         args.l2_snapshot_path(),
-        args.tmp_directory(),
+        tmp_directory.path().to_str().ok_or_else(|| {
+            let reason: &str = "temporary directory path is not valid UTF-8";
+            error!("main(): {reason}");
+            anyhow::anyhow!(reason)
+        })?,
     );
 
     // Remove dangling resources from previous runs. We do not expect concurrent instances of
     // nanvixd running in the same tmp directory, so we will not have unexpected side effects.
-    sandbox::remove_dangling_resources(args.tmp_directory()).await?;
+    sandbox::remove_dangling_resources(config.tmp_directory()).await?;
 
     // Check for interactive mode or HTTP mode.
     if let Some(true) = INTERACTIVE_MODE.get().copied() {
@@ -316,4 +337,44 @@ fn print_startup_info(args: &Args) {
         mode,
         if args.l2() { "enabled" } else { "disabled" }
     );
+}
+
+///
+/// # Description
+///
+/// Creates a temporary directory for the sandbox cache.
+///
+/// This function generates a random 4-character alphanumeric directory name under the specified
+/// tmp directory path. The directory will be automatically cleaned up when the returned
+/// `TemporaryDirectory` is dropped.
+///
+/// # Parameters
+///
+/// - `tmp_directory`: The base temporary directory path.
+///
+/// # Returns
+///
+/// On success, returns a `TemporaryDirectory` instance that manages the lifecycle of the created
+/// directory. On failure, returns an error describing what went wrong during directory creation.
+///
+async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
+    let tmp_dirname: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(TMP_DIR_RANDOM_SUFFIX_LENGTH)
+        .map(char::from)
+        .collect();
+    let tmp_directory_path: PathBuf =
+        PathBuf::from(tmp_directory).join(format!("{NAMED_RESOURCE_PREFIX}:{}", tmp_dirname));
+
+    // Check if temporary directory already exists (very unlikely).
+    if tmp_directory_path.exists() {
+        let reason: String =
+            format!("unique temporary directory already exists (path={tmp_directory_path:?})");
+        error!("create_tmp_dir(): {reason}");
+        anyhow::bail!(reason);
+    }
+
+    let tmp_directory: TemporaryDirectory = TemporaryDirectory::new(tmp_directory_path).await?;
+
+    Ok(tmp_directory)
 }
