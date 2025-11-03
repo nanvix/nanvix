@@ -156,7 +156,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         let app_name: String = app_name
             .map(|s| s.to_owned())
             .unwrap_or_else(|| DEFAULT_APP_NAME.to_owned());
-        let (uservm_id, gateway_sockaddr, gateway_socket_type): (
+        let (_uservm_id, gateway_sockaddr, gateway_socket_type): (
             UserVmIdentifier,
             String,
             SocketType,
@@ -275,10 +275,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             }
         };
 
-        // Shutdown VM.
-        if let Err(error) = sandbox_cache.lock().await.kill(uservm_id).await {
-            error!("failed to shutdown VM: {error}");
-        }
+        // Cleanup sandbox resources.
+        sandbox_cache.lock().await.cleanup().await;
 
         // Send SIGUSR1 signal to stdin thread to interrupt the blocking read operation.
         // SAFETY: The thread ID is valid and was obtained from the stdin thread itself.
@@ -337,6 +335,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
                     // Check if operation was interrupted by a signal.
                     if error.kind() == ::std::io::ErrorKind::Interrupted {
                         // Signal received, exit gracefully.
+                        info!("stdin thread interrupted by signal, exiting.");
                         break;
                     }
                     error!("failed to read from stdin: {error}");
