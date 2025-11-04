@@ -414,7 +414,6 @@ def run_benchmark(args):
         f"-benchmark {args.benchmark}",
         f"-hwloc {args.hwloc}",
         f"-iterations {args.iterations}",
-        f"-tmp-dir {args.tmp_dir}" if args.tmp_dir is not None else "",
         f"-toolchain-bin-dir {args.toolchain_bin_dir}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
@@ -486,10 +485,6 @@ if __name__ == "__main__":
         "--hwloc",
         required=True,
         help="Path to file with the hardware locality information",
-    )
-    run_parser.add_argument(
-        "--tmp-dir",
-        help="Temporary directory to run the benchmarks in",
     )
     run_parser.add_argument(
         "--bin-dir",
