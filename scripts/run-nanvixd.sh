@@ -18,7 +18,6 @@ readonly DEFAULT_NANVIXD_SOCKADDR="${DEFAULT_NANVIXD_HOST}:${DEFAULT_NANVIXD_POR
 readonly NANVIXD_BINARY_NAME="nanvixd.elf"
 readonly MAX_TRIALS=100
 readonly SLEEP_INTERVAL=0.1
-readonly TMP_DIR_BASE_PATH="/tmp/nanvixd"
 readonly DEFAULT_TOOLCHAIN_BIN_DIR="${PWD}/toolchain/bin"
 readonly DEFAULT_BIN_DIR="${PWD}/bin"
 readonly DEFAULT_LOG_LEVEL="warn"
@@ -45,9 +44,6 @@ LOG_LEVEL="${DEFAULT_LOG_LEVEL}"
 # Derived nanvixd endpoint components.
 NANVIXD_HOST="${DEFAULT_NANVIXD_HOST}"
 NANVIXD_PORT="${DEFAULT_NANVIXD_PORT}"
-
-# Temporary directory for nanvixd.
-TMP_DIR=""
 
 # PID of the nanvixd process.
 NANVIXD_PID=""
@@ -434,8 +430,6 @@ cleanup() {
 
         wait "${NANVIXD_PID}" 2>/dev/null || true
     fi
-
-    rm -rf "${TMP_DIR}"
 }
 
 #===================================================================================================
@@ -482,12 +476,6 @@ main() {
         fi
     fi
 
-    # Create temporary directory.
-    TMP_DIR=$(mktemp -d "${TMP_DIR_BASE_PATH}-XXXXXX") || {
-        echo "Error: Unable to create temporary directory." 1>&2
-        return 1
-    }
-
     local logs_dir
     logs_dir="logs/nanvixd-$(basename "${program_name}")"
 
@@ -504,7 +492,6 @@ main() {
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_BIN_DIR}" \
         -log-dir "${logs_dir}" \
-        -tmp-dir "${TMP_DIR}" \
         "$([ "$L2_VM" = "yes" ] && echo "-l2")" \
         -console-file "${console_file_name}" &
     NANVIXD_PID=$!
