@@ -195,7 +195,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             None => {
                 // Allocate a TCP port for the gateway if we are in L2 mode.
                 let gateway_l2_port: Option<TcpPort> = if self.config.l2() {
-                    match self.tcp_port_allocator.allocate().await {
+                    match self.tcp_port_allocator.allocate() {
                         Some(port) => Some(port),
                         None => {
                             let reason: String =
