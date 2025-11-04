@@ -21,7 +21,6 @@ pub struct Args {
     benchmark: BenchmarkFlavour,
     hwloc_file: Option<String>,
     iterations: usize,
-    tmp_dir: String,
     toolchain_bin_dir: String,
 }
 
@@ -34,19 +33,16 @@ impl Args {
     const OPT_BENCHMARK: &'static str = "-benchmark";
     const OPT_HWLOC: &'static str = "-hwloc";
     const OPT_ITERATIONS: &'static str = "-iterations";
-    const OPT_TMP_DIR: &'static str = "-tmp-dir";
     const OPT_TOOLCHAIN_BIN_DIR: &'static str = "-toolchain-bin-dir";
 
     fn usage() -> String {
         format!(
             "usage: ./bin/nanvix-bench.elf {} \
              [boot-time,cold-start,cold-start-l2,warm-start,warm-start-l2,warm-start-vmm,\
-             echo-breakdown] [{} <path_to_hwloc.json> {} <iterations> {} <tmp_dir> {} \
-             <toolchain_bin_dir>]",
+             echo-breakdown] [{} <path_to_hwloc.json> {} <iterations> {} <toolchain_bin_dir>]",
             Self::OPT_BENCHMARK,
             Self::OPT_HWLOC,
             Self::OPT_ITERATIONS,
-            Self::OPT_TMP_DIR,
             Self::OPT_TOOLCHAIN_BIN_DIR,
         )
     }
@@ -55,7 +51,6 @@ impl Args {
         let mut benchmark_str: String = String::new();
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
-        let mut tmp_dir: String = "/tmp/".to_string();
         let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
 
         let mut i: usize = 1;
@@ -90,14 +85,6 @@ impl Args {
                     }
                     iterations = args[i].parse::<usize>()?;
                 },
-                Self::OPT_TMP_DIR => {
-                    i += 1;
-                    if i >= args.len() {
-                        error!("{}", Self::usage());
-                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_TMP_DIR));
-                    }
-                    tmp_dir = args[i].clone();
-                },
                 Self::OPT_TOOLCHAIN_BIN_DIR => {
                     i += 1;
                     if i >= args.len() {
@@ -123,7 +110,6 @@ impl Args {
                 benchmark,
                 hwloc_file,
                 iterations,
-                tmp_dir,
                 toolchain_bin_dir,
             }),
             Err(_) => {
@@ -143,10 +129,6 @@ impl Args {
 
     pub fn iterations(&self) -> usize {
         self.iterations
-    }
-
-    pub fn tmp_dir(&self) -> String {
-        self.tmp_dir.clone()
     }
 
     pub fn toolchain_bin_dir(&self) -> String {

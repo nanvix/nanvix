@@ -44,8 +44,6 @@ use ::std::{
 pub struct Args {
     /// Optional HTTP server socket address (host:port). If present, enables HTTP mode.
     http_sockaddr: Option<String>,
-    /// Directory path for temporary files and Unix sockets.
-    tmp_directory: String,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
     /// Directory path containing toolchain binaries (cloud-hypervisor, etc.).
@@ -81,8 +79,6 @@ impl Args {
     pub const OPT_HELP: &'static str = "-help";
     /// Command-line option that sets the HTTP socket address.
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
-    /// Command-line option that sets the temporary directory path.
-    pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
     /// Command-line option that sets the toolchain binary directory path.
@@ -126,7 +122,6 @@ impl Args {
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: Option<String> = None;
-        let mut tmp_directory: String = config::DEFAULT_TMP_DIRECTORY.to_string();
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut toolchain_binary_directory: String =
             config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
@@ -171,10 +166,6 @@ impl Args {
                 Self::OPT_HTTP_SOCKADDR => {
                     i += 1;
                     http_sockaddr = Some(args[i].clone());
-                },
-                Self::OPT_TMP_DIRECTORY => {
-                    i += 1;
-                    tmp_directory = args[i].clone();
                 },
                 Self::OPT_BIN_DIRECTORY => {
                     i += 1;
@@ -291,7 +282,6 @@ impl Args {
 
         Ok(Self {
             http_sockaddr,
-            tmp_directory,
             binary_directory,
             toolchain_binary_directory,
             l2_snapshot_path,
@@ -329,7 +319,6 @@ Usage (Interactive mode):
 
 Options:
   {console_file} <file>                     Redirect console output to a file.
-  {tmp_dir} <tmp_dir>                       Directory for temporary files and Unix sockets.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
   {toolchain_bin_dir} <toolchain_bin_dir>   Directory containing toolchain binaries \
              (cloud-hypervisor, etc.).
@@ -350,7 +339,6 @@ Options:
             http_addr = Self::OPT_HTTP_SOCKADDR,
             separator = Self::OPT_SEPARATOR,
             console_file = Self::OPT_CONSOLE_FILE,
-            tmp_dir = Self::OPT_TMP_DIRECTORY,
             bin_dir = Self::OPT_BIN_DIRECTORY,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             hwloc = Self::OPT_HWLOC,
@@ -374,19 +362,6 @@ Options:
     ///
     pub fn http_sockaddr(&self) -> Option<&str> {
         self.http_sockaddr.as_deref()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the temporary directory path.
-    ///
-    /// # Returns
-    ///
-    /// The temporary directory path.
-    ///
-    pub fn tmp_directory(&self) -> &str {
-        &self.tmp_directory
     }
 
     ///
