@@ -17,11 +17,6 @@ runs:
   using: "composite"
   steps:
   # MicroVM benchmarks
-  - name: Create temp dir
-    run: |
-      TMPDIR_MICROVM=$(mktemp -d /tmp/nanvix-bench-microvm-XXXXX)
-      echo "TMPDIR_MICROVM=$TMPDIR_MICROVM" >> "$GITHUB_ENV"
-    shell: bash
   - name: Build (MicroVM)
     run: |
       python3 scripts/ci.py \
@@ -58,7 +53,6 @@ runs:
           --hwloc $HOME/hwloc.json \
           --iterations 1000 \
           --toolchain-bin-dir $HOME/toolchain/bin \
-          --tmp-dir ${TMPDIR_MICROVM} \
           --output-dir $(pwd)
       done
 
@@ -95,21 +89,11 @@ runs:
             --hwloc $HOME/hwloc.json \
             --iterations 1000 \
             --toolchain-bin-dir $HOME/toolchain/bin \
-            --tmp-dir ${TMPDIR_MICROVM} \
             --output-dir $(pwd)
         fi
       done
-  - name: Clean-up temporary directory
-    if: always()
-    run: rm -rf ${TMPDIR_MICROVM}
-    shell: bash
 
   # Hyperlight benchmarks
-  - name: Create temp dir
-    run: |
-      TMPDIR_HL=$(mktemp -d /tmp/nanvix-bench-hl-XXXXX)
-      echo "TMPDIR_HL=$TMPDIR_HL" >> "$GITHUB_ENV"
-    shell: bash
   - name: Build (Hyperlight)
     run: |
       python3 scripts/ci.py \
@@ -156,7 +140,6 @@ runs:
           --hwloc $HOME/hwloc.json \
           --iterations 1000 \
           --toolchain-bin-dir $HOME/toolchain/bin \
-          --tmp-dir ${TMPDIR_HL} \
           --output-dir $(pwd)
       done
 
@@ -193,14 +176,9 @@ runs:
             --hwloc $HOME/hwloc.json \
             --iterations 1000 \
             --toolchain-bin-dir $HOME/toolchain/bin \
-            --tmp-dir ${TMPDIR_HL} \
             --output-dir $(pwd)
         fi
       done
-  - name: Clean-up temporary directory
-    if: always()
-    run: rm -rf ${TMPDIR_HL}
-    shell: bash
 
   # Post-process the results
   - name: Format benchmark results
