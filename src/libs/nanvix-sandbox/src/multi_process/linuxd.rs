@@ -246,6 +246,10 @@ impl LinuxDaemon {
                 format!("{}/cloud-hypervisor", get_clh_bin_dir(args.toolchain_binary_directory())?),
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
+                // FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix
+                // release.
+                args::Args::OPT_CLH_SECCOMP.to_string(),
+                "false".to_string(),
                 args::Args::OPT_CLH_RESTORE.to_string(),
                 format!("source_url=file://{}", get_clh_snapshot_path(args.l2_snapshot_path())?),
             ]
