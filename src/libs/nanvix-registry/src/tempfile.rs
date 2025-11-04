@@ -25,6 +25,15 @@ use ::tokio::fs;
 ///
 /// Represents a temporary file that is automatically deleted when dropped.
 ///
+/// # Cleanup Behavior
+///
+/// When this structure is dropped, it attempts to remove the temporary file using synchronous I/O
+/// operations. If the cleanup fails (e.g., due to permission issues, the file being in use, or
+/// filesystem errors), a warning is logged but no error is propagated. This means that in failure
+/// cases, the temporary file may persist on the filesystem and require manual cleanup.
+///
+/// The destructor uses synchronous I/O because `Drop` cannot be async.
+///
 pub(crate) struct TemporaryFile {
     /// Path to the temporary file.
     path: PathBuf,
@@ -94,15 +103,16 @@ impl Drop for TemporaryFile {
     ///
     /// Automatically removes the temporary file when the instance is dropped.
     ///
+    /// NOTE: This uses synchronous I/O operations since Drop cannot be async. If we spawn an
+    /// async task to do this, we risk the task not being executed if the runtime is shut down
+    /// before the task runs.
+    ///
     fn drop(&mut self) {
-        let path: PathBuf = self.path.clone();
-        tokio::spawn(async move {
-            if fs::metadata(&path).await.is_ok() {
-                if let Err(error) = fs::remove_file(&path).await {
-                    warn!("Failed to remove temporary file {:?}: {}", path, error);
-                }
+        if ::std::fs::metadata(&self.path).is_ok() {
+            if let Err(error) = ::std::fs::remove_file(&self.path) {
+                warn!("Failed to remove temporary file {:?}: {}", self.path, error);
             }
-        });
+        }
     }
 }
 
@@ -208,5 +218,33 @@ mod tests {
 
         // Cleanup.
         let _: Result<(), std::io::Error> = fs::remove_file(&path).await;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that the destructor runs even after exiting a scoped tokio runtime.
+    ///
+    #[test]
+    fn test_drop_after_scoped_runtime() {
+        let path: PathBuf = env::temp_dir().join("nanvix-test-tempfile-scoped.txt");
+
+        // Create file in a scoped runtime.
+        {
+            let runtime: ::tokio::runtime::Runtime = ::tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(async {
+                let tempfile: TemporaryFile = TemporaryFile::new(path.clone());
+                let result: Result<()> = tempfile.write(b"scoped test data").await;
+                assert!(result.is_ok());
+                // TemporaryFile will be dropped when exiting this block.
+            });
+        }
+
+        // Check if file was removed by the destructor.
+        if path.exists() {
+            // Cleanup before failing.
+            let _: Result<(), std::io::Error> = ::std::fs::remove_file(&path);
+            panic!("Temporary file was not automatically removed by destructor");
+        }
     }
 }
