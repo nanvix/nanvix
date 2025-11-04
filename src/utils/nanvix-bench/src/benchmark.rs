@@ -94,7 +94,6 @@ pub struct Benchmark {
     pub flavour: BenchmarkFlavour,
     pub nanvixd: Option<Child>,
     pub nanvixd_client: reqwest::Client,
-    pub nanvixd_tmp_dir: String,
     pub nanvixd_toolchain_bin_dir: String,
     pub user_vm_id: Option<String>,
 }

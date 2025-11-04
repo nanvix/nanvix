@@ -179,8 +179,6 @@ impl Benchmark {
             format!("{}/bin/nanvixd.elf", get_proj_root()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
-            ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
-            self.nanvixd_tmp_dir.clone(),
             ::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY.to_string(),
             self.nanvixd_toolchain_bin_dir.clone(),
         ];
@@ -1040,7 +1038,6 @@ async fn main() -> Result<()> {
         flavour: args.benchmark(),
         nanvixd: None,
         nanvixd_client: reqwest::Client::new(),
-        nanvixd_tmp_dir: args.tmp_dir(),
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
         user_vm_id: None,
     };
