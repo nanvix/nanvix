@@ -65,6 +65,9 @@ impl Args {
     /// Command-line option to indicate the restore operation.
     #[allow(dead_code)]
     pub const OPT_CLH_RESTORE: &'static str = "--restore";
+    /// Command-line option to indicate the seccomp option.
+    #[allow(dead_code)]
+    pub const OPT_CLH_SECCOMP: &'static str = "--seccomp";
 
     ///
     /// # Description
