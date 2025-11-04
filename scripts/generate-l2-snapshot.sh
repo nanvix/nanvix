@@ -66,7 +66,10 @@ L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 boot_clh_vm() {
     rm -f ${CLH_API_SOCKET}
     rm -f ${CLH_CONSOLE}
+    # FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix release that
+    # includes an updated cloud-hypervisor.
     ${CLOUD_HYPERVISOR_PATH} \
+        --seccomp false \
         --api-socket ${CLH_API_SOCKET} \
         --kernel "${L2_SYSVM_KERNEL}" \
         --initramfs "${L2_SYSVM_INITRAMFS}" \
