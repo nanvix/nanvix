@@ -22,6 +22,8 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartL2,
+    Concurrent,
+    ConcurrentL2,
     EchoBreakdown,
     EchoBreakdownL2,
     RoundTripLatency,
@@ -36,6 +38,10 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
             BenchmarkFlavour::ColdStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::Concurrent => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::ConcurrentL2 => {
+                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+            },
             BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
                 format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
             },
@@ -57,6 +63,8 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
+            BenchmarkFlavour::Concurrent => "concurrent",
+            BenchmarkFlavour::ConcurrentL2 => "concurrent-l2",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
             BenchmarkFlavour::EchoBreakdownL2 => "echo-breakdown-l2",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
@@ -76,6 +84,8 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
+            "concurrent" => Ok(BenchmarkFlavour::Concurrent),
+            "concurrent-l2" => Ok(BenchmarkFlavour::ConcurrentL2),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             "echo-breakdown-l2" => Ok(BenchmarkFlavour::EchoBreakdownL2),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),

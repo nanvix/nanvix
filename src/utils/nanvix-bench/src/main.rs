@@ -152,9 +152,17 @@ const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
 ///
 pub const CHANNEL_CAPACITY: usize = 1024;
 
-//==================================================================================================
-
 const NANVIXD_ADDRESS: &str = "127.0.0.1:9999";
+
+///
+/// # Description
+///
+/// Default size of the message we are sending to the user VM.
+const DEFAULT_PAYLOAD_SIZE: usize = 32;
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
 
 impl Benchmark {
     fn prepare_new_message(&self) -> Result<(HeaderMap, message::New)> {
@@ -295,6 +303,7 @@ impl Benchmark {
                 Err(_) => continue,
             };
         };
+        debug!("connected to gateway socket stream");
 
         Ok((response.user_vm_id, gateway_stream))
     }
@@ -351,6 +360,67 @@ impl Benchmark {
             }
         }
     }
+
+    ///
+    /// # Description
+    ///
+    async fn run_user_vm_echo_once(
+        &mut self,
+        l2: bool,
+        new_msg_headers: HeaderMap,
+        new_msg: New,
+        latencies: &mut Vec<u128>,
+        in_flight_uvms: &mut Option<Vec<(UserVmIdentifier, SocketStream)>>,
+    ) -> Result<()> {
+        let must_persist: bool = in_flight_uvms.is_some();
+
+        // If we don't need to persist, run the setup first. Otherwise we expect the caller to have
+        // called setup already.
+        if !must_persist {
+            self.setup(l2);
+        }
+
+        let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
+        let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
+
+        let start: Instant = Instant::now();
+        let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) =
+            self.start(new_msg, new_msg_headers, l2).await?;
+        gateway_stream.write_all(&payload).await?;
+        gateway_stream.read_exact(&mut response_payload).await?;
+        latencies.push(start.elapsed().as_micros());
+
+        // Sanity-check the message to make sure is the same we sent.
+        if response_payload != payload {
+            error!("received payload does not match sent payload!");
+            error!(" - sent: {payload:?}");
+            error!(" - got: {response_payload:?}");
+        }
+
+        // If we must persist, store the user VM id and gateway stream. Otherwise clean-up.
+        if let Some(in_flight_uvms) = in_flight_uvms.as_mut() {
+            in_flight_uvms.push((user_vm_id, gateway_stream));
+        } else {
+            // Kill the user VM.
+            self.kill(user_vm_id).await?;
+
+            // Stop nanvixd.
+            self.cleanup();
+        }
+
+        // Need to give some time to clean-up (a bit longer for L2 benchmarks).
+        if l2 {
+            sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
+        } else {
+            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
+        }
+
+        Ok(())
+    }
+
+    //==============================================================================================
+    // Main entrypoint functions for each benchmark
+    //==============================================================================================
 
     /// This function runs the boot-time experiment, where we measure the time to start a user VM
     /// with a noop application and exit. To properly isolate just the time to start a user VM, we
@@ -457,11 +527,15 @@ impl Benchmark {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
     /// This function runs the cold-start experiment, where we measure the time to start linuxd,
     /// start a VM, and send a request to the new VM.
+    ///
     pub async fn run_cold_start(&mut self, l2: bool) -> Result<()> {
         // Display a progress bar
-        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
@@ -471,55 +545,18 @@ impl Benchmark {
         pb.set_message("Benchmark progress:");
 
         // Payload we are sending over the wire
-        const DATA_SIZE: u32 = 10;
-        let payload = [7u8; DATA_SIZE as usize];
-        let mut response_payload = [0u8; DATA_SIZE as usize];
-
-        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
-
+        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
-            // Clone all messages we need before starting the clock.
-            let new_msg_headers = new_msg_headers.clone();
-            let new_msg = new_msg.clone();
-
-            // We need to start nanvixd in each iteration of the loop, as otherwise re-using the
-            // same nanvixd instance but with different linuxd instances can exhaust resource
-            // limits (like open file descriptors).
-            self.setup(l2);
-
-            // Start the clock.
-            let user_vm_id = {
-                let start = Instant::now();
-                let (user_vm_id, mut gateway_stream) =
-                    self.start(new_msg, new_msg_headers, l2).await?;
-                gateway_stream.write_all(&payload).await?;
-                gateway_stream.read_exact(&mut response_payload).await?;
-                latencies.push(start.elapsed().as_micros());
-                user_vm_id
-            };
-
-            // Sanity-check the message to make sure is the same we sent.
-            if response_payload != payload {
-                error!("received payload does not match sent payload!");
-                error!(" - sent: {payload:?}");
-                error!(" - got: {response_payload:?}");
-            }
-
-            // Kill the user VM.
-            self.kill(user_vm_id).await?;
-
-            // Stop nanvixd.
-            self.cleanup();
-
+            self.run_user_vm_echo_once(
+                l2,
+                new_msg_headers.clone(),
+                new_msg.clone(),
+                &mut latencies,
+                &mut None,
+            )
+            .await?;
             pb.inc(1);
-
-            // Need to give some time to clean-up (a bit longer for L2 benchmarks).
-            if l2 {
-                sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
-            } else {
-                sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
-            }
         }
 
         pb.finish();
@@ -530,6 +567,79 @@ impl Benchmark {
         println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         print!("Cleaning up...");
+        println!("done!");
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// This benchmark measures the time to start N concurrent user VMs, all sharing the same
+    /// linuxd instance.
+    ///
+    /// # Arguments
+    ///
+    /// - `l2`: whether to deploy linuxd in an L2 VM or not.
+    /// - `num_concurrent_vms`: number of VMs to start concurrently.
+    ///
+    pub async fn run_concurrent(&mut self, l2: bool, num_concurrent_vms: usize) -> Result<()> {
+        // Display a progress bar
+        let pb: ProgressBar = ProgressBar::new(num_concurrent_vms.try_into().unwrap());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                .expect("error creating progress bar")
+                .progress_chars("#>-"),
+        );
+        pb.set_message("Benchmark progress:");
+
+        // Prepare message headers.
+        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
+
+        // Start nanvixd once.
+        self.setup(l2);
+
+        let mut latencies: Vec<u128> = Vec::with_capacity(num_concurrent_vms);
+        let mut in_flight_uvms: Option<Vec<(UserVmIdentifier, SocketStream)>> =
+            Some(Vec::with_capacity(num_concurrent_vms));
+        for iter in 0..num_concurrent_vms {
+            // Update the function name to prevent collisions.
+            let mut new_msg: New = new_msg.clone();
+            new_msg.app_name = format!("bar-{iter}");
+
+            self.run_user_vm_echo_once(
+                l2,
+                new_msg_headers.clone(),
+                new_msg.clone(),
+                &mut latencies,
+                &mut in_flight_uvms,
+            )
+            .await?;
+            pb.inc(1);
+        }
+
+        pb.finish();
+        println!(
+            "Time to spawn {num_concurrent_vms} user VMs (in serial): {:.2} s",
+            (latencies.iter().sum::<u128>() as f64) / 1_000_000.0
+        );
+        latencies.sort();
+        println!("p50: {} us", latencies[(num_concurrent_vms as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(num_concurrent_vms as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(num_concurrent_vms as f32 * 0.99) as usize]);
+
+        print!("Cleaning up...");
+
+        if let Some(in_flight_uvms) = in_flight_uvms.as_mut() {
+            for (user_vm_id, _) in in_flight_uvms.drain(..) {
+                self.kill(user_vm_id).await?;
+            }
+        } else {
+            error!("in_flight_uvms cannot be none");
+        }
+        self.cleanup();
+
         println!("done!");
 
         Ok(())
@@ -649,8 +759,7 @@ impl Benchmark {
         pb.set_message("Benchmark progress:");
 
         // Payload we are sending over the wire
-        const DATA_SIZE: u32 = 10;
-        let payload = [7u8; DATA_SIZE as usize];
+        let payload = [7u8; DEFAULT_PAYLOAD_SIZE];
 
         let (new_msg_headers, new_msg) = self.prepare_new_message()?;
 
@@ -663,7 +772,7 @@ impl Benchmark {
             let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
 
             for _ in 0..self.iterations {
-                let mut response_payload = [0u8; DATA_SIZE as usize];
+                let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
 
                 let start = Instant::now();
                 gateway_stream.write_all(&payload).await?;
@@ -714,10 +823,9 @@ impl Benchmark {
         pb.set_message("Benchmark progress:");
 
         // Payload we are sending over the wire.
-        const DATA_SIZE: u32 = 10;
-        let data = [7u8; DATA_SIZE as usize];
+        let data = [7u8; DEFAULT_PAYLOAD_SIZE];
         let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
-        payload.extend_from_slice(&DATA_SIZE.to_le_bytes());
+        payload.extend_from_slice(&DEFAULT_PAYLOAD_SIZE.to_le_bytes());
         payload.extend_from_slice(&data);
         let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         response_buf[..payload.len()].copy_from_slice(&payload);
@@ -1123,6 +1231,36 @@ async fn main() -> Result<()> {
                 benchmark.run_round_trip_latency(false).await
             }
         },
+        BenchmarkFlavour::Concurrent => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
+                    benchmark.run_concurrent(false, num_concurrent_vms).await
+                } else {
+                    anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
+                }
+            }
+        },
+        BenchmarkFlavour::ConcurrentL2 => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_concurrent(true, args.iterations()).await
+            }
+        },
         BenchmarkFlavour::WarmStart => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -1166,11 +1304,11 @@ async fn main() -> Result<()> {
     match result {
         Ok(()) => {},
         Err(e) => {
-            anyhow::bail!("error running benchmark {}: {e:?}", args.benchmark());
-
             // In case of an error, re-run the clean up to prevent having dangling processes. Note
             // that the clean up is idempotent.
             benchmark.cleanup();
+
+            anyhow::bail!("error running benchmark {}: {e:?}", args.benchmark());
         },
     }
 
