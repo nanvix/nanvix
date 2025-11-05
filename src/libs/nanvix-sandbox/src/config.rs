@@ -56,7 +56,7 @@ pub const GATEWAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// Provides the timeout we should use when waiting for Linux Daemon to shut down.
 ///
-pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
+pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 ///
 /// # Description
