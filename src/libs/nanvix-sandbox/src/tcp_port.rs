@@ -14,9 +14,15 @@
 
 use ::std::{
     fmt,
-    sync::Arc,
+    sync::{
+        Arc,
+        Mutex,
+    },
 };
-use ::tokio::sync::Mutex;
+use ::syslog::{
+    error,
+    warn,
+};
 
 //==================================================================================================
 // Structures
@@ -69,12 +75,17 @@ impl fmt::Debug for TcpPort {
 }
 
 impl Drop for TcpPort {
+    ///
+    /// # Description
+    ///
+    /// Automatically releases the TCP port back to the allocator when the instance is dropped.
+    ///
+    /// NOTE: This uses synchronous operations since Drop cannot be async. If we spawn an
+    /// async task to do this, we risk the task not being executed if the runtime is shut down
+    /// before the task runs.
+    ///
     fn drop(&mut self) {
-        let allocator: TcpPortAllocatorInner = self.allocator.clone();
-        let port: RawTcpPortNum = self.port;
-        ::tokio::task::spawn(async move {
-            allocator.release(port).await;
-        });
+        self.allocator.release(self.port);
     }
 }
 
@@ -98,8 +109,14 @@ impl TcpPortAllocatorInner {
     ///
     /// A TCP port if there are any in the pool, or `None` otherwise.
     ///
-    async fn allocate(&mut self) -> Option<RawTcpPortNum> {
-        self.ports.lock().await.pop()
+    fn allocate(&mut self) -> Option<RawTcpPortNum> {
+        match self.ports.lock() {
+            Ok(mut guard) => guard.pop(),
+            Err(error) => {
+                error!("allocate(): failed to acquire lock on port pool: {error}");
+                None
+            },
+        }
     }
 
     ///
@@ -111,8 +128,13 @@ impl TcpPortAllocatorInner {
     ///
     /// - `port`: The TCP port to return.
     ///
-    async fn release(&self, port: RawTcpPortNum) {
-        self.ports.lock().await.push(port)
+    fn release(&self, port: RawTcpPortNum) {
+        match self.ports.lock() {
+            Ok(mut guard) => guard.push(port),
+            Err(error) => {
+                warn!("release(): failed to acquire lock on port pool: {error}");
+            },
+        }
     }
 }
 
@@ -160,12 +182,17 @@ impl TcpPortAllocator {
     /// Allocates a TCP port and returns a RAII guard that will automatically release the port
     /// when dropped.
     ///
+    /// This is a synchronous operation that completes in microseconds (mutex lock + Vec pop +
+    /// unlock). It does not need to be wrapped in `tokio::task::spawn_blocking()` when called
+    /// from async contexts because the mutex critical section is trivial and won't block the
+    /// async runtime scheduler.
+    ///
     /// # Returns
     ///
     /// A RAII wrapper around a raw TCP port, or `None` if no ports are available.
     ///
-    pub async fn allocate(&mut self) -> Option<TcpPort> {
-        if let Some(port) = self.inner.allocate().await {
+    pub fn allocate(&mut self) -> Option<TcpPort> {
+        if let Some(port) = self.inner.allocate() {
             Some(TcpPort::new(port, self.inner.clone()))
         } else {
             None
