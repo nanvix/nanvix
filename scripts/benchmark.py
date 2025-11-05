@@ -32,12 +32,21 @@ L2_SUFFIX = "-l2"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
 COLD_START_L2_BENCH = COLD_START_BENCH + L2_SUFFIX
+CONCURRENT_BENCH = "concurrent"
+CONCURRENT_L2_BENCH = CONCURRENT_BENCH + L2_SUFFIX
 ECHO_BREAKDOWN_BENCH = "echo-breakdown"
 ECHO_BREAKDOWN_L2_BENCH = ECHO_BREAKDOWN_BENCH + L2_SUFFIX
 ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 WARM_START_BENCH = "warm-start"
 WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
 WARM_START_VMM_BENCH = "warm-start-vmm"
+
+# ======================================================================
+# Benchmark Constants
+# ======================================================================
+
+# How many user VMs do we spawn in parallel in the CONCURRENT* benchmarks.
+NUM_CONCURRENT_VMS = 100
 
 # ======================================================================
 # Helper Functions
@@ -62,6 +71,8 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
         BOOT_TIME_BENCH,
         COLD_START_BENCH,
         COLD_START_L2_BENCH,
+        CONCURRENT_BENCH,
+        CONCURRENT_L2_BENCH,
         WARM_START_BENCH,
         WARM_START_L2_BENCH,
         WARM_START_VMM_BENCH,
@@ -117,6 +128,10 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
     elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
         filtered_stdout = raw_stdout
 
+    else:
+        print(f"ERROR: unrecognized benchmark '{benchmark}'")
+        raise ValueError("Unrecognized benchmark")
+
     return filtered_stdout
 
 
@@ -129,6 +144,8 @@ def read_benchmark_values_from_file(benchmark, file_path, percentile=None):
         BOOT_TIME_BENCH,
         COLD_START_BENCH,
         COLD_START_L2_BENCH,
+        CONCURRENT_BENCH,
+        CONCURRENT_L2_BENCH,
         WARM_START_BENCH,
         WARM_START_L2_BENCH,
         WARM_START_VMM_BENCH,
@@ -164,6 +181,9 @@ def read_benchmark_values_from_file(benchmark, file_path, percentile=None):
             result_dict = {}
             for msg_size in ROUND_TRIP_SIZES:
                 result_dict[msg_size] = NA
+    else:
+        print(f"ERROR: unrecognized benchmark '{benchmark}'")
+        raise ValueError("Unrecognized benchmark")
 
     return result_dict
 
@@ -342,6 +362,8 @@ def ci_summary(args):
             BOOT_TIME_BENCH,
             COLD_START_BENCH,
             COLD_START_L2_BENCH,
+            CONCURRENT_BENCH,
+            CONCURRENT_L2_BENCH,
             WARM_START_BENCH,
             WARM_START_L2_BENCH,
             WARM_START_VMM_BENCH,
@@ -409,11 +431,20 @@ def run_benchmark(args):
         f"Running '{args.benchmark}' benchmark (machine={args.machine_type}, arch={X86_64_ARCH})"
     )
 
+    # The concurrent benchmark takes slightly different command-line arguments than the other
+    # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
+    # a number of concurrent user VMs.
+    is_concurrent_bench = args.benchmark.startswith(CONCURRENT_BENCH)
+
     nanvix_bench_cmd = [
         os.path.join(args.bin_dir, NANVIX_BENCH_ELF),
         f"-benchmark {args.benchmark}",
-        f"-hwloc {args.hwloc}",
-        f"-iterations {args.iterations}",
+        f"-hwloc {args.hwloc}" if not is_concurrent_bench else "",
+        (
+            f"-iterations {args.iterations}"
+            if not is_concurrent_bench
+            else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
+        ),
         f"-toolchain-bin-dir {args.toolchain_bin_dir}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
