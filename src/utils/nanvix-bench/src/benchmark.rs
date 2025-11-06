@@ -22,6 +22,7 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartL2,
+    ColdStartUvm,
     Concurrent,
     ConcurrentL2,
     EchoBreakdown,
@@ -36,21 +37,17 @@ impl BenchmarkFlavour {
     pub fn get_program(&self) -> String {
         match self {
             BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::ColdStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::ColdStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::Concurrent => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::ConcurrentL2 => {
-                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
-            },
-            BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
-                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
-            },
-            BenchmarkFlavour::RoundTripLatency => {
-                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
-            },
-            BenchmarkFlavour::WarmStart => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::WarmStartL2 => format!("{}/bin/echo-rust-nostd.elf", get_proj_root()),
-            BenchmarkFlavour::WarmStartVMM => {
+            BenchmarkFlavour::ColdStart
+            | BenchmarkFlavour::ColdStartL2
+            | BenchmarkFlavour::ColdStartUvm
+            | BenchmarkFlavour::Concurrent
+            | BenchmarkFlavour::ConcurrentL2
+            | BenchmarkFlavour::EchoBreakdown
+            | BenchmarkFlavour::EchoBreakdownL2
+            | BenchmarkFlavour::RoundTripLatency
+            | BenchmarkFlavour::WarmStart
+            | BenchmarkFlavour::WarmStartL2
+            | BenchmarkFlavour::WarmStartVMM => {
                 format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
             },
         }
@@ -63,6 +60,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
+            BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
             BenchmarkFlavour::Concurrent => "concurrent",
             BenchmarkFlavour::ConcurrentL2 => "concurrent-l2",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
@@ -84,6 +82,7 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
+            "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
             "concurrent" => Ok(BenchmarkFlavour::Concurrent),
             "concurrent-l2" => Ok(BenchmarkFlavour::ConcurrentL2),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
