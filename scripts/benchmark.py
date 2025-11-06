@@ -32,6 +32,7 @@ L2_SUFFIX = "-l2"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
 COLD_START_L2_BENCH = COLD_START_BENCH + L2_SUFFIX
+COLD_START_UVM_BENCH = "cold-start-uvm"
 CONCURRENT_BENCH = "concurrent"
 CONCURRENT_L2_BENCH = CONCURRENT_BENCH + L2_SUFFIX
 ECHO_BREAKDOWN_BENCH = "echo-breakdown"
@@ -71,6 +72,7 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
         BOOT_TIME_BENCH,
         COLD_START_BENCH,
         COLD_START_L2_BENCH,
+        COLD_START_UVM_BENCH,
         CONCURRENT_BENCH,
         CONCURRENT_L2_BENCH,
         WARM_START_BENCH,
@@ -144,6 +146,7 @@ def read_benchmark_values_from_file(benchmark, file_path, percentile=None):
         BOOT_TIME_BENCH,
         COLD_START_BENCH,
         COLD_START_L2_BENCH,
+        COLD_START_UVM_BENCH,
         CONCURRENT_BENCH,
         CONCURRENT_L2_BENCH,
         WARM_START_BENCH,
@@ -362,6 +365,7 @@ def ci_summary(args):
             BOOT_TIME_BENCH,
             COLD_START_BENCH,
             COLD_START_L2_BENCH,
+            COLD_START_UVM_BENCH,
             CONCURRENT_BENCH,
             CONCURRENT_L2_BENCH,
             WARM_START_BENCH,
