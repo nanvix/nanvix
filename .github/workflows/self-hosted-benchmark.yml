@@ -74,6 +74,8 @@ jobs:
           boot-time
           cold-start
           cold-start-l2
+          concurrent
+          concurrent-l2
           echo-breakdown
           echo-breakdown-l2
           round-trip-latency

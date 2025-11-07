@@ -32,6 +32,13 @@ pub(crate) const DEFAULT_LOG_DIRECTORY: &str = "./logs";
 ///
 pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
+///
+/// # Description
+///
+/// Timeout for joining the reader task when closing a user VM connection.
+///
+pub const READER_TASK_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

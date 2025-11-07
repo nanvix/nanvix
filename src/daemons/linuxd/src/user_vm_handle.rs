@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::std::{
-    collections::VecDeque,
-    sync::Arc,
-};
+use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
     SocketStream,
@@ -22,9 +19,12 @@ use ::syslog::{
     error,
     trace,
 };
-use ::tokio::sync::{
-    Mutex,
-    MutexGuard,
+use ::tokio::{
+    sync::{
+        Mutex,
+        MutexGuard,
+    },
+    task::JoinHandle,
 };
 
 //==================================================================================================
@@ -34,8 +34,6 @@ use ::tokio::sync::{
 /// State associated with a user VM connected to this linuxd instance.
 #[derive(Clone)]
 pub struct UserVmHandle {
-    /// Reader half + partial read buffer for assembling incoming messages.
-    user_vm_reader: Arc<Mutex<(SocketStreamReader, VecDeque<u8>)>>,
     /// Writer half used by worker threads to send responses without contending with the reader.
     user_vm_writer: Arc<Mutex<SocketStreamWriter>>,
     /// Address of the gateway socket to connect to.
@@ -48,30 +46,27 @@ pub struct UserVmHandle {
     gateway_writer: Arc<Mutex<Option<Arc<Mutex<SocketStreamWriter>>>>>,
     /// Listener for the gateway socket.
     gateway_listener: Arc<Mutex<Option<SocketListener>>>,
+    /// Join handle to the task that reads from the user VM stream.
+    user_vm_reader_handle: Arc<Mutex<Option<JoinHandle<Result<()>>>>>,
 }
 
 impl UserVmHandle {
     pub fn new(
-        user_vm_stream: SocketStream,
+        user_vm_writer: SocketStreamWriter,
         gateway_sockaddr: &str,
         gateway_socket_type: &SocketType,
+        user_vm_reader_handle: JoinHandle<Result<()>>,
     ) -> Self {
-        trace!("new(): user_vm_stream={:?}, gateway_sockaddr={}", user_vm_stream, gateway_sockaddr);
-        let (reader, writer) = user_vm_stream.split();
+        trace!("new(): gateway_sockaddr={}", gateway_sockaddr);
         Self {
-            user_vm_reader: Arc::new(Mutex::new((reader, VecDeque::new()))),
-            user_vm_writer: Arc::new(Mutex::new(writer)),
+            user_vm_writer: Arc::new(Mutex::new(user_vm_writer)),
             gateway_sockaddr: gateway_sockaddr.to_string(),
             gateway_socket_type: *gateway_socket_type,
             gateway_reader: Arc::new(Mutex::new(None)),
             gateway_writer: Arc::new(Mutex::new(None)),
             gateway_listener: Arc::new(Mutex::new(None)),
+            user_vm_reader_handle: Arc::new(Mutex::new(Some(user_vm_reader_handle))),
         }
-    }
-
-    /// Get the reader half (with partial buffer) of the user VM stream.
-    pub fn get_user_vm_reader(&self) -> Arc<Mutex<(SocketStreamReader, VecDeque<u8>)>> {
-        self.user_vm_reader.clone()
     }
 
     /// Get the writer half of the user VM stream.
@@ -157,5 +152,11 @@ impl UserVmHandle {
         *gateway_listener_slot = Some(gateway_listener);
 
         Ok((reader_arc, writer_arc))
+    }
+
+    pub async fn take_user_vm_reader_handle(&self) -> Option<JoinHandle<Result<()>>> {
+        let mut guard: MutexGuard<'_, Option<JoinHandle<Result<()>>>> =
+            self.user_vm_reader_handle.lock().await;
+        guard.take()
     }
 }
