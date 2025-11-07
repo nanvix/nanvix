@@ -216,7 +216,17 @@ impl UserVm {
             Receiver<VcpuControlResponse>,
         ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
-        let vmm_stderr_fn: Box<dyn Write + Send> = get_stderr_writer(args.stderr.clone())?;
+        let vmm_stderr_fn: Box<dyn Write + Send> = match get_stderr_writer(args.stderr.clone()) {
+            Ok(vmm_stderr_fn) => vmm_stderr_fn,
+            Err(e) => {
+                let reason: String = format!(
+                    "failed to get stderr writer (args.stderr={:?}, error={e:?})",
+                    args.stderr.clone()
+                );
+                error!("{reason}");
+                anyhow::bail!(reason);
+            },
+        };
 
         // Output function used for emulating I/O port writes.
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx.clone());
