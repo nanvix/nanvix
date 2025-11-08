@@ -18,7 +18,7 @@ use ::syslog::error;
 /// Represents a target machine type for Nanvix releases.
 ///
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Machine {
+pub enum Machine {
     /// Hyperlight machine type.
     Hyperlight,
     /// MicroVM machine type.

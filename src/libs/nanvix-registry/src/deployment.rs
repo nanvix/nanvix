@@ -18,7 +18,7 @@ use ::syslog::error;
 /// Represents a deployment type for Nanvix releases.
 ///
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Deployment {
+pub enum Deployment {
     /// Single-process deployment mode.
     SingleProcess,
     /// Multi-process deployment mode.
