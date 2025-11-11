@@ -74,6 +74,7 @@ jobs:
           boot-time
           cold-start
           cold-start-l2
+          cold-start-uvm
           concurrent
           concurrent-l2
           echo-breakdown
