@@ -366,13 +366,20 @@ impl Benchmark {
     ///
     async fn run_user_vm_echo_once(
         &mut self,
-        l2: bool,
         new_msg_headers: HeaderMap,
         new_msg: New,
+        l2: bool,
+        pre_warm: bool,
         latencies: &mut Vec<u128>,
         in_flight_uvms: &mut Option<Vec<(UserVmIdentifier, SocketStream)>>,
     ) -> Result<()> {
         let must_persist: bool = in_flight_uvms.is_some();
+
+        if must_persist & pre_warm {
+            let reason: &str = "inconsistent set of flags pre_warm AND must_persist";
+            error!("{reason}");
+            anyhow::bail!(reason);
+        }
 
         // If we don't need to persist, run the setup first. Otherwise we expect the caller to have
         // called setup already.
@@ -382,6 +389,23 @@ impl Benchmark {
 
         let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
         let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
+
+        if pre_warm {
+            let pw_new_msg_headers: HeaderMap = new_msg_headers.clone();
+            let mut pw_new_msg: New = new_msg.clone();
+
+            // Give the pre-warmed app a distinct name.
+            pw_new_msg.app_name = "prewarm-vm".to_string();
+
+            let (pw_user_vm_id, _): (UserVmIdentifier, SocketStream) =
+                self.start(pw_new_msg, pw_new_msg_headers, l2).await?;
+
+            // Kill the warm-up VM straight away.
+            self.kill(pw_user_vm_id).await?;
+
+            // Give some time to prevent interference.
+            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
+        };
 
         let start: Instant = Instant::now();
         let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) =
@@ -533,7 +557,12 @@ impl Benchmark {
     /// This function runs the cold-start experiment, where we measure the time to start linuxd,
     /// start a VM, and send a request to the new VM.
     ///
-    pub async fn run_cold_start(&mut self, l2: bool) -> Result<()> {
+    /// # Arguments
+    ///
+    /// - `l2`: whether to deploy linuxd inside an L2 VM.
+    /// - `pre_warm`: whether to start a warm-up user VM connected to the same linuxd instance.
+    ///
+    pub async fn run_cold_start(&mut self, l2: bool, pre_warm: bool) -> Result<()> {
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -549,9 +578,10 @@ impl Benchmark {
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
             self.run_user_vm_echo_once(
-                l2,
                 new_msg_headers.clone(),
                 new_msg.clone(),
+                l2,
+                pre_warm,
                 &mut latencies,
                 &mut None,
             )
@@ -609,9 +639,10 @@ impl Benchmark {
             new_msg.app_name = format!("bar-{iter}");
 
             self.run_user_vm_echo_once(
-                l2,
                 new_msg_headers.clone(),
                 new_msg.clone(),
+                l2,
+                false,
                 &mut latencies,
                 &mut in_flight_uvms,
             )
@@ -1174,7 +1205,7 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start(false).await
+                benchmark.run_cold_start(false, false).await
             }
         },
         BenchmarkFlavour::ColdStartL2 => {
@@ -1187,7 +1218,20 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start(true).await
+                benchmark.run_cold_start(true, false).await
+            }
+        },
+        BenchmarkFlavour::ColdStartUvm => {
+            #[cfg(feature = "timestamp-messages")]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
+                );
+            }
+
+            #[cfg(not(feature = "timestamp-messages"))]
+            {
+                benchmark.run_cold_start(false, true).await
             }
         },
         BenchmarkFlavour::EchoBreakdown => {

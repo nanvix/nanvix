@@ -48,6 +48,7 @@ Benchmarks:
   boot-time              Measure raw user VM boot latency.
   cold-start             Measure start-up latency from client's perspective.
   cold-start-l2          Same as cold-start, but deploy linuxd insdie an L2 VM.
+  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
   concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
   concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
   echo-breakdown         Analyze the latency contributions of each step in the data path.
