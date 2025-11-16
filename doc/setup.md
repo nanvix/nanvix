@@ -130,20 +130,7 @@ exec $SHELL
 ln -s $HOME/toolchain toolchain              # Create symbolic link for toolchain for convenience.
 ```
 
-#### Step 3: Build the JavaScript to WebAssembly Toolchain (Optional)
-
-To build JavaScript applications for Nanvix, build the JavaScript to WebAssembly (Javy) toolchain:
-
-```bash
-# Run these commands in a separate directory.
-git clone https://github.com/nanvix/javy
-
-# Building javy requires the `clang` package.
-cargo build -p javy-plugin --target=wasm32-wasip1 -r
-cargo install --path crates/cli
-```
-
-#### Step 4: Build QEMU (Optional)
+#### Step 3: Build QEMU (Optional)
 
 To run Nanvix on QEMU, you need to build it:
 
