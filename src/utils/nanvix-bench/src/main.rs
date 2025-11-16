@@ -1130,7 +1130,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    log::init(false, DEFAULT_LOG_LEVEL, String::new());
+    log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {

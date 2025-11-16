@@ -43,6 +43,7 @@ use ::tokio::{
 use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
+    UserVmIdentifier,
 };
 use ::uservm::{
     CHANNEL_CAPACITY,
@@ -82,9 +83,15 @@ pub async fn main() -> Result<ExitCode> {
     let initrd_args: Option<String> = args.initrd_args();
     let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
+    let user_vm_id: UserVmIdentifier = args.user_vm_id();
 
     // Initialize logger. If this fails, the program will panic.
-    syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_directory());
+    ::syslog::init(
+        args.log_to_file(),
+        DEFAULT_LOG_LEVEL,
+        args.log_directory(),
+        Some(format!("uservm{}", u32::from(user_vm_id))),
+    );
 
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
