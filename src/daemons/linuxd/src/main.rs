@@ -55,7 +55,7 @@ const DEFAULT_LOG_LEVEL: &str = "error";
 pub async fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir());
+    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir(), None);
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: &str = args.control_plane_sockaddr();

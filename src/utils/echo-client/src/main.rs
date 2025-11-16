@@ -66,7 +66,7 @@ const DEFAULT_LOG_LEVEL: &str = "error";
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging system.
-    ::syslog::init(false, DEFAULT_LOG_LEVEL, String::new());
+    ::syslog::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
 
     // Parse and retrieve command-line arguments.
     let args: Args = Args::parse(env::args().collect())?;

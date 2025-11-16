@@ -123,7 +123,7 @@ pub async fn main() -> Result<()> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string());
+    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
 
     // Set the global INTERACTIVE_MODE flag.
     let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());
