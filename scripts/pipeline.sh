@@ -27,7 +27,8 @@ source "${IMPORT_DIR}/logging.sh"
 # Configuration matrix for testing all supported machines.
 declare -a MACHINE_TYPES=("qemu-isapc" "qemu-pc" "qemu-baremetal" "microvm" "hyperlight")
 declare -a BUILD_TYPES=("debug" "release")
-declare -a STEP_TYPES=("lint" "build" "test")
+declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
+declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "format")
 
 # Padding to force aligned formatting.
 PADDING=40
@@ -90,6 +91,12 @@ get_make_target() {
     local step="${1}"
 
     case "${step}" in
+        format)
+            echo "format-check"
+            ;;
+        spellcheck)
+            echo "spellcheck"
+            ;;
         lint)
             echo "lint-check"
             ;;
@@ -104,6 +111,109 @@ get_make_target() {
             exit 1
             ;;
     esac
+}
+
+#
+# Description
+#   Checks if a step is machine-independent.
+#
+# Arguments
+#   $1 - Step type.
+#
+# Returns
+#   0 if machine-independent, 1 otherwise.
+#
+# Usage Example
+#   if is_machine_independent "lint"; then
+#
+is_machine_independent() {
+    local step="${1}"
+    local machine_independent_step
+
+    for machine_independent_step in "${MACHINE_INDEPENDENT_STEPS[@]}"; do
+        if [[ "${step}" == "${machine_independent_step}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+#
+# Description
+#   Runs a single pipeline step and reports the result.
+#
+# Arguments
+#   $1 - Build type (debug or release).
+#   $2 - Step type (format, spellcheck, lint, build, test).
+#   $3 - Temporary file path for capturing output.
+#   $4 - Machine type (optional, empty for machine-independent steps).
+#
+# Returns
+#   0 on success, non-zero on failure.
+#
+# Usage Example
+#   run_step "debug" "lint" "/tmp/output" ""
+#   run_step "release" "build" "/tmp/output" "microvm"
+#
+run_step() {
+    local build_type="${1}"
+    local step="${2}"
+    local tmpfile="${3}"
+    local machine="${4-}"
+    local release_flag
+    local make_target
+    local msg
+    local start_time
+    local end_time
+    local elapsed_time
+    local elapsed_seconds
+    local elapsed_milliseconds
+    local return_code
+
+    release_flag=$(get_release_flag "${build_type}")
+    make_target=$(get_make_target "${step}")
+
+    if [[ -z "${machine}" ]]; then
+        msg="${build_type} ${step}"
+    else
+        msg="${build_type} ${step} ${machine}"
+    fi
+    printf "%-${PADDING}s" "${msg}"
+
+    start_time=$(date +%s%3N)
+
+    # Run the step and capture return code.
+    if [[ -z "${machine}" ]]; then
+        if ./z build -- LOG_LEVEL=trace "${release_flag}" ${make_target} > "${tmpfile}" 2>&1; then
+            return_code=0
+        else
+            return_code=$?
+        fi
+    else
+        if ./z build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${make_target} > "${tmpfile}" 2>&1; then
+            return_code=0
+        else
+            return_code=$?
+        fi
+    fi
+
+    end_time=$(date +%s%3N)
+    elapsed_time=$((end_time - start_time))
+    total_elapsed_time=$((total_elapsed_time + elapsed_time))
+    elapsed_seconds=$((elapsed_time / 1000))
+    elapsed_milliseconds=$((elapsed_time % 1000))
+
+    # Report result.
+    if [[ ${return_code} -ne 0 ]]; then
+        cat "${tmpfile}"
+        print_error "${elapsed_seconds}.${elapsed_milliseconds}s"
+        failed_count=$((failed_count + 1))
+        return 1
+    else
+        print_success "${elapsed_seconds}.${elapsed_milliseconds}s"
+        passed_count=$((passed_count + 1))
+        return 0
+    fi
 }
 
 #===================================================================================================
@@ -123,58 +233,17 @@ main() {
 
     print_info "(pipeline) Running CI pipeline for all configurations..."
 
-    # Iterate through all build types, steps, and machines.
+    # Iterate through all build types, machine, and steps.
     for build_type in "${BUILD_TYPES[@]}"; do
-        for step in "${STEP_TYPES[@]}"; do
-            for machine in "${MACHINE_TYPES[@]}"; do
-                # Get configuration flags.
-                local release_flag
-                release_flag=$(get_release_flag "${build_type}")
-
-                # Get make target for this step.
-                local make_target
-                make_target=$(get_make_target "${step}")
-
-                # Format message for display.
-                local msg
-                msg="${build_type} ${step} ${machine}"
-                printf "%-${PADDING}s" "${msg}"
-
-                # Start timing.
-                local start_time
-                start_time=$(date +%s%3N)
-
-                # Build command with all parameters.
-                local build_command
-                build_command="./z build -- MACHINE=${machine} LOG_LEVEL=trace ${release_flag} ${make_target}"
-
-                # Run the step and capture return code.
-                local return_code
-                if eval "${build_command}" > "${tmpfile}" 2>&1; then
-                    return_code=0
+        for machine in "${MACHINE_TYPES[@]}"; do
+            for step in "${STEP_TYPES[@]}"; do
+                # Check if this step is machine-independent.
+                if is_machine_independent "${step}"; then
+                    # Run machine-independent steps only once.
+                    run_step "${build_type}" "${step}" "${tmpfile}"
                 else
-                    return_code=$?
-                fi
-
-                # End timing.
-                local end_time
-                end_time=$(date +%s%3N)
-                local elapsed_time
-                elapsed_time=$((end_time - start_time))
-                total_elapsed_time=$((total_elapsed_time + elapsed_time))
-                local elapsed_seconds
-                elapsed_seconds=$((elapsed_time / 1000))
-                local elapsed_milliseconds
-                elapsed_milliseconds=$((elapsed_time % 1000))
-
-                # Report result.
-                if [[ ${return_code} -ne 0 ]]; then
-                    cat "${tmpfile}"
-                    print_error "${elapsed_seconds}.${elapsed_milliseconds}s"
-                    failed_count=$((failed_count + 1))
-                else
-                    print_success "${elapsed_seconds}.${elapsed_milliseconds}s"
-                    passed_count=$((passed_count + 1))
+                    # Run machine-dependent steps for each machine.
+                    run_step "${build_type}" "${step}" "${tmpfile}" "${machine}"
                 fi
             done
         done
