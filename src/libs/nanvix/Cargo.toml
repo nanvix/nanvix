@@ -27,7 +27,7 @@ syslog = { workspace = true, features = ["std"] }
 uservm = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["microvm"]
 internal-api = ["sys", "syscall", "uservm"]
 single-process = [
     "linuxd",
@@ -43,6 +43,14 @@ hyperlight = [
     "nanvix-sandbox-cache/hyperlight",
     "nanvix-terminal/hyperlight",
     "uservm/hyperlight",
+]
+microvm = [
+    "config/microvm",
+    "nanvix-http/microvm",
+    "nanvix-sandbox/microvm",
+    "nanvix-sandbox-cache/microvm",
+    "nanvix-terminal/microvm",
+    "uservm/microvm",
 ]
 
 [lints]

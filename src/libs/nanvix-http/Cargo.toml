@@ -30,7 +30,7 @@ uservm = { workspace = true }
 user-vm-api = { workspace = true }
 
 [features]
-default = []
+default = ["microvm"]
 single-process = [
     "linuxd",
     "nanvix-sandbox-cache/single-process",
@@ -41,6 +41,12 @@ hyperlight = [
     "uservm/hyperlight",
     "nanvix-sandbox-cache/hyperlight",
     "nanvix-terminal/hyperlight",
+]
+microvm = [
+    "config/microvm",
+    "uservm/microvm",
+    "nanvix-sandbox-cache/microvm",
+    "nanvix-terminal/microvm",
 ]
 
 [lints]

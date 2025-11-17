@@ -375,13 +375,15 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 ifneq ($(SINGLE_PROCESS),yes)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
-	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
+endif
+	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 

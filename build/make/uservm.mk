@@ -5,6 +5,7 @@ USERVM_FEATURES :=
 USERVM_FEATURES += $(if $(filter yes,$(PROFILER)),profiler,)
 USERVM_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 USERVM_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+USERVM_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 USERVM_FEATURES := $(strip $(USERVM_FEATURES))
 USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)")
 

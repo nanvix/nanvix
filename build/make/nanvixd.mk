@@ -4,6 +4,7 @@
 NANVIXD_FEATURES :=
 NANVIXD_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
 NANVIXD_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
