@@ -6,16 +6,20 @@
 //!
 //! The `nanvix-registry` library provides functionality for managing a local cache of Nanvix
 //! release binaries downloaded from GitHub releases. It automatically downloads, extracts, and
-//! caches binaries for different deployment types and target machines.
+//! caches binaries for different deployment types and target machines, supporting multiple
+//! versions to coexist simultaneously.
 //!
 //! # Features
 //!
 //! - Downloads latest Nanvix releases from GitHub.
 //! - Caches binaries locally in the user's cache directory.
+//! - Organizes cached artifacts by commit ID in subdirectories following the pattern `<machine>-<deployment>-<commit_id>`.
 //! - Supports multiple deployment types (`single-process`, `multi-process`).
 //! - Supports multiple target machines (`hyperlight`, `microvm`).
 //! - Automatic tarball extraction (supports `.tar.bz2` format).
 //! - Cache management (automatic reuse and manual clearing).
+//! - Tracks latest downloaded artifacts via release registry.
+//! - Allows multiple versions of each machine-deployment configuration to coexist.
 //!
 //! # Usage
 //!
@@ -70,22 +74,38 @@
 //!
 //! - `deployment`: Defines deployment types (`SingleProcess`, `MultiProcess`).
 //! - `machine`: Defines target machine types (`Hyperlight`, `microvm`).
+//! - `metadata`: Manages release registry tracking multiple machine-deployment configurations.
 //! - `release`: Handles fetching and downloading releases from GitHub API.
 //! - `tarball`: Provides tarball extraction functionality.
 //! - `tempfile`: Manages temporary files with automatic cleanup.
 //!
 //! # Cache Location
 //!
-//! By default, binaries are cached in the user's cache directory under `nanvix-registry/`.
+//! Binaries are cached in the user's cache directory under
+//! `nanvix-registry/<machine>-<deployment>-<commit_id>/bin/`.
 //! The exact location depends on the operating system:
 //!
-//! - Linux: `~/.cache/nanvix-registry/`
-//! - macOS: `~/Library/Caches/nanvix-registry/`
-//! - Windows: `%LOCALAPPDATA%\nanvix-registry\`
+//! - Linux: `~/.cache/nanvix-registry/<machine>-<deployment>-<commit_id>/bin/`
+//! - macOS: `~/Library/Caches/nanvix-registry/<machine>-<deployment>-<commit_id>/bin/`
+//! - Windows: `%LOCALAPPDATA%\nanvix-registry\<machine>-<deployment>-<commit_id>\bin\`
 //!
 //! A custom cache directory can be specified when creating a `Registry` instance by passing
 //! a `PathBuf` to `Registry::new()`. This is useful for testing or when you need to isolate
 //! the cache from the default location.
+//!
+//! # Metadata
+//!
+//! The registry maintains a `release-metadata.json` file in the cache directory root that tracks
+//! multiple machine-deployment configurations. Each entry in the registry contains:
+//! - The URL of the release tarball.
+//! - The commit ID of the downloaded artifacts.
+//!
+//! The key format is `<machine>-<deployment>` (e.g., "microvm-single-process"), and multiple
+//! versions can coexist in separate subdirectories. The registry tracks the most recent commit ID
+//! for each configuration, enabling the library to:
+//! - Detect when new releases are available for specific configurations.
+//! - Automatically download new releases while preserving older versions.
+//! - Support side-by-side deployment of different machine-deployment combinations.
 
 //==================================================================================================
 // Lint Configuration
@@ -133,7 +153,7 @@ pub use crate::{
 //==================================================================================================
 
 use crate::{
-    metadata::ReleaseMetadata,
+    metadata::ReleaseRegistry,
     release::LatestRelease,
 };
 use ::anyhow::Result;
@@ -375,52 +395,88 @@ impl Registry {
         // Get the latest release URL.
         let latest_url: String = release.get_url().await?;
 
-        // Check if we have cached metadata.
-        let metadata_exists: bool = ReleaseMetadata::exists(&cache_dir).await;
+        // Extract commit ID from URL (format: .../release-<commit_id>.tar.bz2).
+        let commit_id: String = match Self::extract_commit_id(&latest_url) {
+            Some(id) => {
+                debug!("Extracted commit ID from URL: {}", id);
+                id
+            },
+            None => {
+                let reason: String =
+                    format!("Failed to extract commit ID from URL: {}", latest_url);
+                error!("{reason}");
+                anyhow::bail!(reason);
+            },
+        };
 
-        let needs_download: bool = if metadata_exists {
-            // Load cached metadata and compare URLs.
-            match ReleaseMetadata::load(&cache_dir).await {
-                Ok(cached_metadata) => {
-                    if cached_metadata.url != latest_url {
-                        info!(
-                            "New release detected (cached: {}, latest: {})",
-                            cached_metadata.url, latest_url
-                        );
-                        info!("Clearing old cache...");
-                        // Clear the cache to download the new release.
-                        self.clear_cache().await?;
-                        true
-                    } else {
-                        debug!("Using cached release: {}", cached_metadata.url);
-                        false
-                    }
-                },
-                Err(_) => {
-                    // Failed to load metadata, download fresh.
-                    info!("Failed to load metadata, downloading fresh release...");
-                    true
+        // Construct the subdirectory name: <machine>-<deployment>-<commit_id>.
+        let subdir_name: String = format!("{}-{}-{}", machine, deployment, commit_id);
+        let artifact_cache_dir: PathBuf = cache_dir.join(&subdir_name);
+
+        // Load or create the release registry.
+        let mut registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
+            match ReleaseRegistry::load(&cache_dir).await {
+                Ok(reg) => reg,
+                Err(error) => {
+                    let reason: String = format!("Failed to load registry: {error}");
+                    error!("{reason}");
+                    anyhow::bail!(reason)
                 },
             }
         } else {
-            // No metadata, need to download.
-            info!("Release not cached, downloading latest release...");
-            true
+            // No registry exists, create a new one.
+            info!("Creating a new registry...");
+            ReleaseRegistry::new()
         };
 
-        if needs_download {
-            // Download and extract the release.
-            let downloaded_url: String = release.download(&cache_dir).await?;
+        // Check if we need to download this specific configuration.
+        let needs_download: bool =
+            if let Some(cached_entry) = registry.get_release(machine, deployment) {
+                if cached_entry.commit_id() != commit_id.as_str() {
+                    info!(
+                        "New release detected for {}-{} (cached: {}, latest: {})",
+                        machine,
+                        deployment,
+                        cached_entry.commit_id(),
+                        commit_id
+                    );
+                    true
+                } else {
+                    debug!(
+                        "Using cached release for {}-{}: {}",
+                        machine,
+                        deployment,
+                        cached_entry.commit_id()
+                    );
+                    false
+                }
+            } else {
+                // Configuration not in registry, need to download.
+                info!("Configuration {}-{} not cached, downloading...", machine, deployment);
+                true
+            };
 
-            // Save the release metadata.
-            let metadata: ReleaseMetadata = ReleaseMetadata::new(downloaded_url);
-            metadata.save(&cache_dir).await?;
+        if needs_download {
+            // Create the artifact cache directory.
+            if let Err(error) = fs::create_dir_all(&artifact_cache_dir).await {
+                let reason: String =
+                    format!("Failed to create artifact cache directory: {}", error);
+                error!("{reason}");
+                anyhow::bail!(reason);
+            }
+
+            // Download and extract the release.
+            let downloaded_url: String = release.download(&artifact_cache_dir).await?;
+
+            // Update the registry with the new release.
+            registry.set_release(machine, deployment, downloaded_url, commit_id);
+            registry.save(&cache_dir).await?;
         }
 
         // Now search for the artifact in the specified directory.
         let search_dir: PathBuf = match dir {
-            Some(custom_dir) => cache_dir.join(custom_dir),
-            None => cache_dir.clone(),
+            Some(custom_dir) => artifact_cache_dir.join(custom_dir),
+            None => artifact_cache_dir.clone(),
         };
         match Self::search_artifact(search_dir, artifact_name.to_string()).await {
             Some(artifact_path) => {
@@ -433,6 +489,50 @@ impl Registry {
                 error!("{reason}");
                 anyhow::bail!(reason);
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Extracts the build identifier from a GitHub release URL.
+    ///
+    /// The build identifier is a numeric value (such as a workflow run ID or timestamp) encoded in
+    /// the release filename. It uniquely identifies a specific build of Nanvix artifacts.
+    ///
+    /// Example URL format:
+    /// `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-19417333438.tar.bz2`
+    ///
+    /// This method parses the filename to extract the numeric identifier between "release-" and
+    /// the file extension (e.g., `19417333438` from the example above).
+    ///
+    /// # Parameters
+    ///
+    /// - `url`: The GitHub release URL containing the build identifier.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<String>` containing the build identifier if found, or `None` if the URL format
+    /// is invalid.
+    ///
+    fn extract_commit_id(url: &str) -> Option<String> {
+        // Extract the filename from the URL.
+        let filename: &str = url.rsplit('/').next()?;
+
+        // Find "release-" prefix.
+        let release_prefix: &str = "release-";
+        let start_idx: usize = filename.find(release_prefix)? + release_prefix.len();
+
+        // Find the first dot after "release-" to identify start of file extension.
+        let remaining: &str = &filename[start_idx..];
+        let end_idx: usize = start_idx + remaining.find('.')?;
+
+        // Extract and validate the commit ID.
+        if start_idx < end_idx {
+            let commit_id: &str = &filename[start_idx..end_idx];
+            Some(commit_id.to_string())
+        } else {
+            None
         }
     }
 
@@ -532,8 +632,8 @@ impl Registry {
     pub async fn clear_cache(&self) -> Result<()> {
         let cache_dir: PathBuf = self.get_cache_dir().await?;
         if fs::metadata(&cache_dir).await.is_ok() {
-            // Delete metadata first.
-            ReleaseMetadata::delete(&cache_dir).await?;
+            // Delete registry first.
+            ReleaseRegistry::delete(&cache_dir).await?;
             // Then remove the entire cache directory.
             if let Err(error) = fs::remove_dir_all(&cache_dir).await {
                 let reason: String = format!("Failed to clear cache: {error}");
@@ -917,5 +1017,47 @@ mod tests {
 
         // Clean up.
         let _ = fs::remove_dir_all(&temp_dir).await;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests commit ID extraction from GitHub release URLs.
+    ///
+    #[test]
+    fn test_extract_commit_id() {
+        // Test valid URL with commit ID.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-19417333438.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.unwrap(), "19417333438");
+
+        // Test another valid URL format.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-12345678.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.unwrap(), "12345678");
+
+        // Test URL without release prefix.
+        let url: &str =
+            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-12345678.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_none());
+
+        // Test URL without file extension.
+        let url: &str =
+            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-release-12345678";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_none());
+
+        // Test empty string.
+        let url: &str = "";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_none());
+
+        // Test malformed URL.
+        let url: &str = "not-a-valid-url";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_none());
     }
 }
