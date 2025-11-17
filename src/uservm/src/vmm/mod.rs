@@ -19,9 +19,11 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "hyperlight")] {
         mod hyperlight;
         pub use hyperlight::*;
-    } else {
+    } else if #[cfg(feature = "microvm")] {
         mod microvm;
         pub use microvm::*;
+    } else {
+        compile_error!("No machine feature enabled for uservm. Please enable either 'hyperlight' or 'microvm'");
     }
 }
 

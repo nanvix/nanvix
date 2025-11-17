@@ -23,10 +23,11 @@ serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = []
+default = ["microvm"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
+microvm = ["nanvix/microvm"]
 
 [lints]
 workspace = true

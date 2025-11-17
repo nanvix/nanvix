@@ -19,11 +19,12 @@ serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = []
+default = ["microvm"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into Nanvix Daemon (nanvixd).
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
+microvm = ["nanvix/microvm"]
 
 [lints]
 workspace = true
