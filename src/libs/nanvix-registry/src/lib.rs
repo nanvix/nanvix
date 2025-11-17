@@ -93,12 +93,19 @@ mod tarball;
 mod tempfile;
 
 //==================================================================================================
+// Exports
+//==================================================================================================
+
+pub use crate::{
+    deployment::Deployment,
+    machine::Machine,
+};
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    deployment::Deployment,
-    machine::Machine,
     metadata::ReleaseMetadata,
     release::LatestRelease,
 };
@@ -108,6 +115,7 @@ use ::syslog::{
     debug,
     error,
     info,
+    warn,
 };
 use ::tokio::fs;
 
@@ -240,8 +248,81 @@ impl Registry {
         deployment: &str,
         binary_name: &str,
     ) -> Result<String> {
+        // Use get_cached_artifact to search for the binary within the "bin" directory.
+        self.get_cached_artifact(machine, deployment, binary_name, Some(BINARY_DIRECTORY_NAME))
+            .await
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Searches for a cached artifact (file) in the registry and returns the first occurrence found.
+    ///
+    /// This method shares the same initialization logic as `get_cached_binary`, ensuring the cache
+    /// is up-to-date before searching. It then performs an iterative depth-first search through the
+    /// cache directory (or specified subdirectory) to find the first file matching the given name.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Target machine type. Supported values:
+    ///   - `"hyperlight"`: Hyperlight machine type.
+    ///   - `"microvm"`: microvm machine type.
+    /// - `deployment`: Deployment type. Supported values:
+    ///   - `"single-process"`: Single-process deployment mode.
+    ///   - `"multi-process"`: Multi-process deployment mode.
+    /// - `artifact_name`: Name of the artifact file to search for (e.g., `"config.json"`, `"lib.so"`).
+    /// - `dir`: Optional directory path relative to the cache directory root where the artifact
+    ///   should be searched. If `None`, searches from the cache directory root.
+    ///   If specified, searches in `<cache_root>/<dir>/` instead.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path to the first cached artifact found as a `String`.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if:
+    /// - The machine type is not recognized.
+    /// - The deployment type is not recognized.
+    /// - The GitHub API request fails.
+    /// - The release tarball cannot be downloaded or extracted.
+    /// - The artifact is not found in the cached release.
+    /// - File system operations fail.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nanvix_registry::Registry;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> anyhow::Result<()> {
+    ///     let registry: Registry = Registry::new();
+    ///
+    ///     // Search for a configuration file from the cache directory root.
+    ///     let config_path: String = registry
+    ///         .get_cached_artifact("hyperlight", "multi-process", "config.json", None)
+    ///         .await?;
+    ///
+    ///     // Search for a library file in a specific subdirectory.
+    ///     let lib_path: String = registry
+    ///         .get_cached_artifact("microvm", "single-process", "libssl.so", Some("lib"))
+    ///         .await?;
+    ///
+    ///     println!("Configuration file: {}", config_path);
+    ///     println!("Library file: {}", lib_path);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    pub async fn get_cached_artifact(
+        &self,
+        machine: &str,
+        deployment: &str,
+        artifact_name: &str,
+        dir: Option<&str>,
+    ) -> Result<String> {
         let cache_dir: PathBuf = Self::get_cache_dir().await?;
-        let binary_path: PathBuf = cache_dir.join(BINARY_DIRECTORY_NAME).join(binary_name);
 
         // Convert machine from string representation.
         let machine: Machine = Machine::try_from(machine)?;
@@ -272,15 +353,8 @@ impl Registry {
                         self.clear_cache().await?;
                         true
                     } else {
-                        // URLs match, check if binary exists.
-                        if fs::metadata(&binary_path).await.is_ok() {
-                            debug!("Using cached binary: {:?}", binary_path);
-                            false
-                        } else {
-                            // Metadata exists but binary is missing, re-download.
-                            info!("Binary missing from cache, re-downloading...");
-                            true
-                        }
+                        debug!("Using cached release: {}", cached_metadata.url);
+                        false
                     }
                 },
                 Err(_) => {
@@ -291,7 +365,7 @@ impl Registry {
             }
         } else {
             // No metadata, need to download.
-            info!("Binary not cached, downloading latest release...");
+            info!("Release not cached, downloading latest release...");
             true
         };
 
@@ -302,16 +376,84 @@ impl Registry {
             // Save the release metadata.
             let metadata: ReleaseMetadata = ReleaseMetadata::new(downloaded_url);
             metadata.save(&cache_dir).await?;
+        }
 
-            // Verify binary now exists.
-            if fs::metadata(&binary_path).await.is_err() {
-                let reason: String = format!("Binary not found after download: {:?}", binary_path);
+        // Now search for the artifact in the specified directory.
+        let search_dir: PathBuf = match dir {
+            Some(custom_dir) => cache_dir.join(custom_dir),
+            None => cache_dir.clone(),
+        };
+        match Self::search_artifact(search_dir, artifact_name.to_string()).await {
+            Some(artifact_path) => {
+                debug!("Found artifact: {:?}", artifact_path);
+                Ok(artifact_path.to_string_lossy().to_string())
+            },
+            None => {
+                let reason: String =
+                    format!("Artifact '{}' not found in cached release", artifact_name);
                 error!("{reason}");
                 anyhow::bail!(reason);
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Searches for an artifact file in the given directory tree.
+    ///
+    /// This helper method performs an iterative depth-first search through the directory tree to
+    /// find the first file matching the given name. The implementation uses a stack-based approach
+    /// to avoid recursion overhead and potential stack overflow issues.
+    ///
+    /// # Parameters
+    ///
+    /// - `dir`: The directory path to search in.
+    /// - `artifact_name`: The name of the artifact file to search for.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<PathBuf>` containing the path to the first matching artifact, or `None` if not found.
+    ///
+    async fn search_artifact(dir: PathBuf, artifact_name: String) -> Option<PathBuf> {
+        let mut stack: Vec<PathBuf> = vec![dir];
+
+        while let Some(current_dir) = stack.pop() {
+            let mut read_dir = match fs::read_dir(&current_dir).await {
+                Ok(read_dir) => read_dir,
+                Err(error) => {
+                    // Could not read directory, skip it.
+                    warn!("failed to read '{current_dir:?}': {error}");
+                    continue;
+                },
+            };
+
+            while let Ok(Some(entry)) = read_dir.next_entry().await {
+                let path: PathBuf = entry.path();
+
+                match fs::metadata(&path).await {
+                    Ok(metadata) => {
+                        if metadata.is_file() {
+                            if let Some(file_name) = path.file_name() {
+                                if file_name == artifact_name.as_str() {
+                                    return Some(path);
+                                }
+                            }
+                        } else if metadata.is_dir() {
+                            // Add subdirectory to stack for later processing.
+                            stack.push(path);
+                        }
+                    },
+                    Err(error) => {
+                        // Could not get metadata, skip this entry.
+                        warn!("failed to read '{path:?}': {error}");
+                        continue;
+                    },
+                }
             }
         }
 
-        Ok(binary_path.to_string_lossy().to_string())
+        None
     }
 
     ///
@@ -507,9 +649,10 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_machine() {
         let registry: Registry = Registry::new();
-        let result: Result<String> = registry
+        let result = registry
             .get_cached_binary("invalid-machine", "single-process", "kernel.elf")
             .await;
+
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -525,9 +668,10 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_deployment() {
         let registry: Registry = Registry::new();
-        let result: Result<String> = registry
+        let result = registry
             .get_cached_binary("microvm", "invalid-deployment", "kernel.elf")
             .await;
+
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -547,5 +691,151 @@ mod tests {
 
         assert!(binary_path.to_string_lossy().contains("bin"));
         assert!(binary_path.to_string_lossy().ends_with("kernel.elf"));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that invalid machine type returns error for get_cached_artifact.
+    ///
+    #[tokio::test]
+    async fn test_get_cached_artifact_invalid_machine() {
+        let registry: Registry = Registry::new();
+        let result: Result<String> = registry
+            .get_cached_artifact("invalid-machine", "single-process", "config.json", None)
+            .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown machine type"));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that invalid deployment type returns error for get_cached_artifact.
+    ///
+    #[tokio::test]
+    async fn test_get_cached_artifact_invalid_deployment() {
+        let registry: Registry = Registry::new();
+        let result: Result<String> = registry
+            .get_cached_artifact("microvm", "invalid-deployment", "config.json", None)
+            .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown deployment type"));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests artifact search functionality with a temporary directory structure.
+    ///
+    #[tokio::test]
+    async fn test_search_artifact() {
+        use ::tokio::fs;
+
+        // Create a temporary directory structure for testing.
+        let temp_dir: PathBuf = ::std::env::temp_dir().join("nanvix-registry-test");
+        let sub_dir: PathBuf = temp_dir.join("subdir");
+        let test_file: PathBuf = sub_dir.join("test-artifact.txt");
+
+        // Clean up any existing test directory.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+
+        // Create directory structure.
+        fs::create_dir_all(&sub_dir).await.unwrap();
+        fs::write(&test_file, "test content").await.unwrap();
+
+        // Test that the artifact can be found.
+        let result: Option<PathBuf> =
+            Registry::search_artifact(temp_dir.clone(), "test-artifact.txt".to_string()).await;
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), test_file);
+
+        // Test that non-existent artifact returns None.
+        let result: Option<PathBuf> =
+            Registry::search_artifact(temp_dir.clone(), "non-existent.txt".to_string()).await;
+
+        assert!(result.is_none());
+
+        // Clean up.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that custom directory parameter works correctly.
+    ///
+    #[tokio::test]
+    async fn test_get_cached_artifact_custom_directory() {
+        let registry: Registry = Registry::new();
+
+        // Test with None (searches from cache root) - should fail gracefully since no actual cache exists.
+        let result: Result<String> = registry
+            .get_cached_artifact("microvm", "single-process", "nonexistent.txt", None)
+            .await;
+        assert!(result.is_err());
+
+        // Test with Some custom directory - should also fail gracefully since no actual cache exists.
+        let result: Result<String> = registry
+            .get_cached_artifact("microvm", "single-process", "nonexistent.txt", Some("lib"))
+            .await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that search starts from cache root when no directory is specified.
+    ///
+    #[tokio::test]
+    async fn test_get_cached_artifact_searches_from_cache_root() {
+        use ::tokio::fs;
+
+        // Create a temporary directory structure for testing.
+        let temp_dir: PathBuf = ::std::env::temp_dir().join("nanvix-registry-cache-root-test");
+        let bin_dir: PathBuf = temp_dir.join("bin");
+        let lib_dir: PathBuf = temp_dir.join("lib");
+        let root_artifact: PathBuf = temp_dir.join("root-config.json");
+        let bin_artifact: PathBuf = bin_dir.join("bin-config.json");
+        let lib_artifact: PathBuf = lib_dir.join("lib-config.json");
+
+        // Clean up any existing test directory.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+
+        // Create directory structure.
+        fs::create_dir_all(&bin_dir).await.unwrap();
+        fs::create_dir_all(&lib_dir).await.unwrap();
+        fs::write(&root_artifact, "root config").await.unwrap();
+        fs::write(&bin_artifact, "bin config").await.unwrap();
+        fs::write(&lib_artifact, "lib config").await.unwrap();
+
+        // Test that searching from cache root finds the root artifact.
+        let result: Option<PathBuf> =
+            Registry::search_artifact(temp_dir.clone(), "root-config.json".to_string()).await;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), root_artifact);
+
+        // Test that searching from cache root finds artifacts in subdirectories.
+        let result: Option<PathBuf> =
+            Registry::search_artifact(temp_dir.clone(), "bin-config.json".to_string()).await;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), bin_artifact);
+
+        let result: Option<PathBuf> =
+            Registry::search_artifact(temp_dir.clone(), "lib-config.json".to_string()).await;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), lib_artifact);
+
+        // Clean up.
+        let _ = fs::remove_dir_all(&temp_dir).await;
     }
 }
