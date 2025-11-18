@@ -19,13 +19,15 @@
 //!
 //! # Usage
 //!
+//! ## Basic Usage (Default Cache Directory)
+//!
 //! ```no_run
 //! use nanvix_registry::Registry;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     // Create a new registry instance.
-//!     let registry: Registry = Registry::new();
+//!     // Create a new registry instance with default cache directory.
+//!     let registry: Registry = Registry::new(None);
 //!
 //!     // Get a cached binary (downloads if not already cached).
 //!     let binary_path: String = registry
@@ -36,6 +38,27 @@
 //!
 //!     // Clear the cache when needed.
 //!     registry.clear_cache().await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Custom Cache Directory
+//!
+//! ```no_run
+//! use nanvix_registry::Registry;
+//! use std::path::PathBuf;
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     // Create a registry with a custom cache directory.
+//!     let cache_dir: PathBuf = PathBuf::from("/tmp/my-nanvix-cache");
+//!     let registry: Registry = Registry::new(Some(cache_dir));
+//!
+//!     // Use the registry normally - it will use the custom directory.
+//!     let binary_path: String = registry
+//!         .get_cached_binary("hyperlight", "multi-process", "kernel.elf")
+//!         .await?;
 //!
 //!     Ok(())
 //! }
@@ -53,12 +76,16 @@
 //!
 //! # Cache Location
 //!
-//! Binaries are cached in the user's cache directory under `nanvix-registry/bin/`.
+//! By default, binaries are cached in the user's cache directory under `nanvix-registry/`.
 //! The exact location depends on the operating system:
 //!
-//! - Linux: `~/.cache/nanvix-registry/bin/`
-//! - macOS: `~/Library/Caches/nanvix-registry/bin/`
-//! - Windows: `%LOCALAPPDATA%\nanvix-registry\bin\`
+//! - Linux: `~/.cache/nanvix-registry/`
+//! - macOS: `~/Library/Caches/nanvix-registry/`
+//! - Windows: `%LOCALAPPDATA%\nanvix-registry\`
+//!
+//! A custom cache directory can be specified when creating a `Registry` instance by passing
+//! a `PathBuf` to `Registry::new()`. This is useful for testing or when you need to isolate
+//! the cache from the default location.
 
 //==================================================================================================
 // Lint Configuration
@@ -149,7 +176,7 @@ const BINARY_DIRECTORY_NAME: &str = "bin";
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
-///     let registry: Registry = Registry::new();
+///     let registry: Registry = Registry::new(None);
 ///
 ///     // Get the kernel binary for microvm single-process deployment.
 ///     let kernel_path: String = registry
@@ -160,7 +187,10 @@ const BINARY_DIRECTORY_NAME: &str = "bin";
 /// }
 /// ```
 ///
-pub struct Registry;
+pub struct Registry {
+    /// Optional custom cache directory path.
+    cache_dir: Option<PathBuf>,
+}
 
 //==================================================================================================
 // Implementations
@@ -172,6 +202,11 @@ impl Registry {
     ///
     /// Creates a new registry instance for managing cached binaries.
     ///
+    /// # Parameters
+    ///
+    /// - `cache_dir`: Optional custom cache directory path. If `None`, uses the system's default
+    ///   cache directory.
+    ///
     /// # Returns
     ///
     /// A new `Registry` instance.
@@ -181,11 +216,15 @@ impl Registry {
     /// ```
     /// use nanvix_registry::Registry;
     ///
-    /// let registry: Registry = Registry::new();
+    /// // Use default cache directory.
+    /// let registry: Registry = Registry::new(None);
+    ///
+    /// // Use custom cache directory.
+    /// let registry: Registry = Registry::new(Some("/tmp/my-cache".into()));
     /// ```
     ///
-    pub fn new() -> Self {
-        Registry
+    pub fn new(cache_dir: Option<PathBuf>) -> Self {
+        Registry { cache_dir }
     }
 
     ///
@@ -229,7 +268,7 @@ impl Registry {
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
-    ///     let registry: Registry = Registry::new();
+    ///     let registry: Registry = Registry::new(None);
     ///
     ///     // Get the QuickJS binary for hyperlight multi-process deployment.
     ///     let qjs_path: String = registry
@@ -296,7 +335,7 @@ impl Registry {
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
-    ///     let registry: Registry = Registry::new();
+    ///     let registry: Registry = Registry::new(None);
     ///
     ///     // Search for a configuration file from the cache directory root.
     ///     let config_path: String = registry
@@ -322,7 +361,7 @@ impl Registry {
         artifact_name: &str,
         dir: Option<&str>,
     ) -> Result<String> {
-        let cache_dir: PathBuf = Self::get_cache_dir().await?;
+        let cache_dir: PathBuf = self.get_cache_dir().await?;
 
         // Convert machine from string representation.
         let machine: Machine = Machine::try_from(machine)?;
@@ -481,7 +520,7 @@ impl Registry {
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
-    ///     let registry: Registry = Registry::new();
+    ///     let registry: Registry = Registry::new(None);
     ///
     ///     // Clear all cached binaries.
     ///     registry.clear_cache().await?;
@@ -491,7 +530,7 @@ impl Registry {
     /// ```
     ///
     pub async fn clear_cache(&self) -> Result<()> {
-        let cache_dir: PathBuf = Self::get_cache_dir().await?;
+        let cache_dir: PathBuf = self.get_cache_dir().await?;
         if fs::metadata(&cache_dir).await.is_ok() {
             // Delete metadata first.
             ReleaseMetadata::delete(&cache_dir).await?;
@@ -511,7 +550,8 @@ impl Registry {
     /// Retrieves the cache directory path, creating it if it doesn't exist.
     ///
     /// This method determines the user's cache directory using platform-specific conventions and
-    /// appends `nanvix-registry/` as the cache subdirectory. If the directory doesn't exist, it is
+    /// appends `nanvix-registry/` as the cache subdirectory. If a custom cache directory was
+    /// provided during construction, it uses that instead. If the directory doesn't exist, it is
     /// created along with any necessary parent directories.
     ///
     /// # Returns
@@ -525,19 +565,22 @@ impl Registry {
     /// - The blocking task for retrieving the cache directory fails.
     /// - The cache directory cannot be created due to permission issues or I/O errors.
     ///
-    async fn get_cache_dir() -> Result<PathBuf> {
-        // Get user's cache directory.
-        let cache_dir: PathBuf = match tokio::task::spawn_blocking(dirs::cache_dir).await {
-            Ok(Some(dir)) => dir.join(CACHE_DIRECTORY_NAME),
-            Ok(None) => {
-                let reason: &str = "could not get user's cache directory";
-                error!("{reason}");
-                anyhow::bail!(reason);
-            },
-            Err(error) => {
-                let reason: String = format!("failed to spawn blocking task: {error}");
-                error!("{reason}");
-                anyhow::bail!(reason);
+    async fn get_cache_dir(&self) -> Result<PathBuf> {
+        // Get cache directory from custom path or user's cache directory.
+        let cache_dir: PathBuf = match &self.cache_dir {
+            Some(custom_dir) => custom_dir.clone(),
+            None => match tokio::task::spawn_blocking(dirs::cache_dir).await {
+                Ok(Some(dir)) => dir.join(CACHE_DIRECTORY_NAME),
+                Ok(None) => {
+                    let reason: &str = "could not get user's cache directory";
+                    error!("{reason}");
+                    anyhow::bail!(reason);
+                },
+                Err(error) => {
+                    let reason: String = format!("failed to spawn blocking task: {error}");
+                    error!("{reason}");
+                    anyhow::bail!(reason);
+                },
             },
         };
 
@@ -563,7 +606,7 @@ impl Default for Registry {
     /// A new `Registry` instance.
     ///
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -582,7 +625,7 @@ mod tests {
     ///
     #[test]
     fn test_new() {
-        let _registry: Registry = Registry::new();
+        let _registry: Registry = Registry::new(None);
     }
 
     ///
@@ -622,7 +665,8 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_get_cache_dir() {
-        let result: Result<PathBuf> = Registry::get_cache_dir().await;
+        let registry: Registry = Registry::new(None);
+        let result: Result<PathBuf> = registry.get_cache_dir().await;
         assert!(result.is_ok());
 
         let cache_dir: PathBuf = result.unwrap();
@@ -636,9 +680,28 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_clear_cache_nonexistent() {
-        let registry: Registry = Registry::new();
+        use ::tokio::fs;
+
+        // Create a unique temporary directory to avoid conflicts in NFS environments.
+        let temp_dir: PathBuf = ::std::env::temp_dir().join(format!(
+            "nanvix-registry-clear-test-{}-{}",
+            ::std::process::id(),
+            ::std::time::SystemTime::now()
+                .duration_since(::std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        // Ensure the directory doesn't exist before the test.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+
+        // Create a registry with the custom cache directory.
+        let registry: Registry = Registry::new(Some(temp_dir.clone()));
         let result: Result<()> = registry.clear_cache().await;
         assert!(result.is_ok());
+
+        // Clean up.
+        let _ = fs::remove_dir_all(&temp_dir).await;
     }
 
     ///
@@ -648,7 +711,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_invalid_machine() {
-        let registry: Registry = Registry::new();
+        let registry: Registry = Registry::new(None);
         let result = registry
             .get_cached_binary("invalid-machine", "single-process", "kernel.elf")
             .await;
@@ -667,7 +730,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_invalid_deployment() {
-        let registry: Registry = Registry::new();
+        let registry: Registry = Registry::new(None);
         let result = registry
             .get_cached_binary("microvm", "invalid-deployment", "kernel.elf")
             .await;
@@ -700,7 +763,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_get_cached_artifact_invalid_machine() {
-        let registry: Registry = Registry::new();
+        let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
             .get_cached_artifact("invalid-machine", "single-process", "config.json", None)
             .await;
@@ -719,7 +782,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_get_cached_artifact_invalid_deployment() {
-        let registry: Registry = Registry::new();
+        let registry: Registry = Registry::new(None);
         let result: Result<String> = registry
             .get_cached_artifact("microvm", "invalid-deployment", "config.json", None)
             .await;
@@ -776,7 +839,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_get_cached_artifact_custom_directory() {
-        let registry: Registry = Registry::new();
+        let registry: Registry = Registry::new(None);
 
         // Test with None (searches from cache root) - should fail gracefully since no actual cache exists.
         let result: Result<String> = registry
