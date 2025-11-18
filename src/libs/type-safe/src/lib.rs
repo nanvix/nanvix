@@ -25,6 +25,12 @@
 
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
+#[cfg(feature = "rustc-dep-of-std")]
+#[allow(unused_extern_crates)]
+extern crate compiler_builtins;
+#[cfg(feature = "rustc-dep-of-std")]
+#[allow(unused_extern_crates)]
+extern crate core;
 
 //==================================================================================================
 // Modules
