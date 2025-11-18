@@ -50,6 +50,7 @@ rustc-dep-of-std = [
     "alloc",
     "sigaction",
     "sbrk",
+    "arch/rustc-dep-of-std",
     "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
