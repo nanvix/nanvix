@@ -36,15 +36,15 @@ use ::nanvixd::{
     config::DEFAULT_TMP_DIRECTORY,
     tempdir::TemporaryDirectory,
 };
-use ::rand::{
-    distr::Alphanumeric,
-    Rng,
-};
 use ::std::{
     path::PathBuf,
     sync::{
         Arc,
         OnceLock,
+    },
+    time::{
+        SystemTime,
+        UNIX_EPOCH,
     },
 };
 use ::tokio::fs;
@@ -64,9 +64,6 @@ const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
 #[cfg(not(feature = "single-process"))]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
-
-/// Length of temporary directory random suffix.
-const TMP_DIR_RANDOM_SUFFIX_LENGTH: usize = 4;
 
 //==================================================================================================
 // Global Variables
@@ -345,9 +342,9 @@ fn print_startup_info(args: &Args) {
 ///
 /// Creates a temporary directory for the sandbox cache.
 ///
-/// This function generates a random 4-character alphanumeric directory name under the specified
-/// tmp directory path. The directory will be automatically cleaned up when the returned
-/// `TemporaryDirectory` is dropped.
+/// This function generates a unique directory name using a timestamp encoded in base64
+/// (using filename-safe characters: A-Z, a-z, 0-9, -, _) with microsecond precision.
+/// The directory will be automatically cleaned up when the returned `TemporaryDirectory` is dropped.
 ///
 /// # Parameters
 ///
@@ -359,15 +356,22 @@ fn print_startup_info(args: &Args) {
 /// directory. On failure, returns an error describing what went wrong during directory creation.
 ///
 async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
-    let tmp_dirname: String = rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(TMP_DIR_RANDOM_SUFFIX_LENGTH)
-        .map(char::from)
-        .collect();
+    // Get current timestamp in microseconds.
+    let timestamp_micros: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| {
+            let reason: String = format!("failed to get system time: {e}");
+            error!("create_tmp_dir(): {reason}");
+            anyhow::anyhow!(reason)
+        })?
+        .as_micros() as u64;
+
+    // Encode timestamp in base64 using filename-safe characters.
+    let tmp_dirname: String = encode_base64_filename(timestamp_micros);
     let tmp_directory_path: PathBuf =
         PathBuf::from(tmp_directory).join(format!("{NAMED_RESOURCE_PREFIX}:{}", tmp_dirname));
 
-    // Check if temporary directory already exists (very unlikely).
+    // Check if temporary directory already exists (extremely unlikely with timestamp-based naming).
     if tmp_directory_path.exists() {
         let reason: String =
             format!("unique temporary directory already exists (path={tmp_directory_path:?})");
@@ -378,4 +382,45 @@ async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
     let tmp_directory: TemporaryDirectory = TemporaryDirectory::new(tmp_directory_path).await?;
 
     Ok(tmp_directory)
+}
+
+///
+/// # Description
+///
+/// Encodes a number in base64 using filename-safe characters.
+///
+/// This function converts a 64-bit unsigned integer to a base64 string representation
+/// using the filename-safe alphabet: A-Z, a-z, 0-9, -, _. These characters are safe
+/// to use in filenames across all common operating systems.
+///
+/// # Parameters
+///
+/// - `mut num`: The number to encode.
+///
+/// # Returns
+///
+/// A base64-encoded string representation of the input number using filename-safe characters.
+///
+fn encode_base64_filename(mut num: u64) -> String {
+    const BASE64_CHARS: &[char] = &[
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+        'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r',
+        's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '-', '_',
+    ];
+    const BASE: u64 = 64;
+
+    // Handle the zero case.
+    if num == 0 {
+        return "0".to_string();
+    }
+
+    let mut result: Vec<char> = Vec::new();
+    while num > 0 {
+        result.push(BASE64_CHARS[(num % BASE) as usize]);
+        num /= BASE;
+    }
+
+    result.reverse();
+    result.iter().collect()
 }
