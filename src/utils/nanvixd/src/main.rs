@@ -281,7 +281,7 @@ async fn ensure_all_binaries_available(
 
     log_info!("not all binaries found locally, fetching all from registry");
 
-    let registry: Registry = Registry::new();
+    let registry: Registry = Registry::new(None);
 
     let kernel_cached_path: String = registry
         .get_cached_binary(machine, deployment, KERNEL_BINARY_NAME)
