@@ -676,6 +676,23 @@ mod tests {
     ///
     /// # Description
     ///
+    /// Tests creating a Registry with a custom cache directory.
+    ///
+    #[tokio::test]
+    async fn test_custom_cache_directory() {
+        let custom_dir: PathBuf = ::std::env::temp_dir().join("nanvix-test-custom-cache");
+        let registry: Registry = Registry::new(Some(custom_dir.clone()));
+
+        let cache_dir: PathBuf = registry.get_cache_dir().await.unwrap();
+        assert_eq!(cache_dir, custom_dir);
+
+        // Cleanup
+        let _ = ::tokio::fs::remove_dir_all(&custom_dir).await;
+    }
+
+    ///
+    /// # Description
+    ///
     /// Tests that clear_cache works when cache doesn't exist.
     ///
     #[tokio::test]

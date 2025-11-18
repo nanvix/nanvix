@@ -337,9 +337,10 @@ fn print_startup_info(args: &Args) {
 ///
 /// Creates a temporary directory for the sandbox cache.
 ///
-/// This function generates a unique directory name using a timestamp encoded in base64
-/// (using filename-safe characters: A-Z, a-z, 0-9, -, _) with microsecond precision.
-/// The directory will be automatically cleaned up when the returned `TemporaryDirectory` is dropped.
+/// This function generates a unique directory name using a timestamp encoded in base64url
+/// format (RFC 4648 Section 5) with filename-safe characters: A-Z, a-z, 0-9, -, _.
+/// The timestamp is based on microseconds since UNIX_EPOCH. The directory will be
+/// automatically cleaned up when the returned `TemporaryDirectory` is dropped.
 ///
 /// # Parameters
 ///
@@ -352,16 +353,16 @@ fn print_startup_info(args: &Args) {
 ///
 async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
     // Get current timestamp in microseconds.
-    let timestamp_micros: u64 = SystemTime::now()
+    let timestamp_micros: u128 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| {
             let reason: String = format!("failed to get system time: {e}");
             error!("create_tmp_dir(): {reason}");
             anyhow::anyhow!(reason)
         })?
-        .as_micros() as u64;
+        .as_micros();
 
-    // Encode timestamp in base64 using filename-safe characters.
+    // Encode timestamp in base64url using RFC 4648 compliant filename-safe characters.
     let tmp_dirname: String = encode_base64_filename(timestamp_micros);
     let tmp_directory_path: PathBuf =
         PathBuf::from(tmp_directory).join(format!("{NAMED_RESOURCE_PREFIX}:{}", tmp_dirname));
@@ -382,11 +383,12 @@ async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
 ///
 /// # Description
 ///
-/// Encodes a number in base64 using filename-safe characters.
+/// Encodes a number in base64url format as defined in RFC 4648 Section 5.
 ///
-/// This function converts a 64-bit unsigned integer to a base64 string representation
-/// using the filename-safe alphabet: A-Z, a-z, 0-9, -, _. These characters are safe
-/// to use in filenames across all common operating systems.
+/// This function converts a 128-bit unsigned integer to a base64url string representation
+/// using the URL and filename-safe alphabet (RFC 4648 Table 2): A-Z (indices 0-25),
+/// a-z (indices 26-51), 0-9 (indices 52-61), - (index 62), and _ (index 63).
+/// These characters are safe to use in URLs and filenames across all common operating systems.
 ///
 /// # Parameters
 ///
@@ -394,20 +396,21 @@ async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
 ///
 /// # Returns
 ///
-/// A base64-encoded string representation of the input number using filename-safe characters.
+/// A base64url-encoded string representation of the input number using RFC 4648 compliant
+/// filename-safe characters. Zero is encoded as `"A"`.
 ///
-fn encode_base64_filename(mut num: u64) -> String {
+fn encode_base64_filename(mut num: u128) -> String {
     const BASE64_CHARS: &[char] = &[
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-        'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r',
-        's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '-', '_',
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+        'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
+        '2', '3', '4', '5', '6', '7', '8', '9', '-', '_',
     ];
-    const BASE: u64 = 64;
+    const BASE: u128 = 64;
 
     // Handle the zero case.
     if num == 0 {
-        return "0".to_string();
+        return "A".to_string();
     }
 
     let mut result: Vec<char> = Vec::new();
@@ -418,4 +421,177 @@ fn encode_base64_filename(mut num: u64) -> String {
 
     result.reverse();
     result.iter().collect()
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    ///
+    /// # Description
+    ///
+    /// Tests that encoding zero returns "A" as specified in the function documentation.
+    ///
+    #[test]
+    fn test_encode_base64_filename_zero() {
+        assert_eq!(encode_base64_filename(0), "A");
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests encoding of various numbers to verify correct base64url conversion.
+    ///
+    #[test]
+    fn test_encode_base64_filename_various_numbers() {
+        // Test first 64 values map to single characters in the alphabet.
+        assert_eq!(encode_base64_filename(1), "B");
+        assert_eq!(encode_base64_filename(25), "Z");
+        assert_eq!(encode_base64_filename(26), "a");
+        assert_eq!(encode_base64_filename(51), "z");
+        assert_eq!(encode_base64_filename(52), "0");
+        assert_eq!(encode_base64_filename(61), "9");
+        assert_eq!(encode_base64_filename(62), "-");
+        assert_eq!(encode_base64_filename(63), "_");
+
+        // Test multi-character encodings.
+        assert_eq!(encode_base64_filename(64), "BA");
+        assert_eq!(encode_base64_filename(65), "BB");
+        assert_eq!(encode_base64_filename(127), "B_");
+        assert_eq!(encode_base64_filename(128), "CA");
+        assert_eq!(encode_base64_filename(4095), "__");
+        assert_eq!(encode_base64_filename(4096), "BAA");
+
+        // Test larger values.
+        assert_eq!(encode_base64_filename(1000000), "D0JA");
+        assert_eq!(encode_base64_filename(u64::MAX as u128), "P__________");
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that character ordering in output follows RFC 4648 base64url alphabet ordering.
+    /// Verifies that sequential numbers produce lexicographically ordered strings when appropriate.
+    ///
+    #[test]
+    fn test_encode_base64_filename_character_ordering() {
+        // Verify RFC 4648 alphabet ordering: A-Z (0-25), a-z (26-51), 0-9 (52-61), - (62), _ (63).
+        let encodings: Vec<String> = (0..64).map(encode_base64_filename).collect();
+
+        // First 26 should be A-Z.
+        for i in 0..26 {
+            assert_eq!(encodings[i].len(), 1);
+            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'A' + i as u8);
+        }
+
+        // Next 26 should be a-z.
+        for i in 26..52 {
+            assert_eq!(encodings[i].len(), 1);
+            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'a' + (i - 26) as u8);
+        }
+
+        // Next 10 should be 0-9.
+        for i in 52..62 {
+            assert_eq!(encodings[i].len(), 1);
+            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'0' + (i - 52) as u8);
+        }
+
+        // Last two should be - and _.
+        assert_eq!(encodings[62], "-");
+        assert_eq!(encodings[63], "_");
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests uniqueness guarantees by verifying that different inputs produce different outputs.
+    /// This is critical for using the function to generate unique directory names.
+    ///
+    #[test]
+    fn test_encode_base64_filename_uniqueness() {
+        use ::std::collections::HashSet;
+
+        // Test uniqueness for a range of consecutive numbers.
+        let mut seen: HashSet<String> = HashSet::new();
+        for i in 0..10000 {
+            let encoded: String = encode_base64_filename(i);
+            assert!(seen.insert(encoded.clone()), "duplicate encoding for {}: {}", i, encoded);
+        }
+
+        // Test uniqueness for sparse large numbers.
+        let test_values: Vec<u128> = vec![
+            0,
+            1,
+            u64::MAX as u128,
+            u64::MAX as u128 + 1,
+            u128::MAX / 2,
+            u128::MAX - 1,
+            u128::MAX,
+        ];
+
+        let mut seen_large: HashSet<String> = HashSet::new();
+        for value in test_values {
+            let encoded: String = encode_base64_filename(value);
+            assert!(
+                seen_large.insert(encoded.clone()),
+                "duplicate encoding for {}: {}",
+                value,
+                encoded
+            );
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that encoded strings only contain RFC 4648 base64url filename-safe characters.
+    ///
+    #[test]
+    fn test_encode_base64_filename_valid_characters() {
+        use ::std::collections::HashSet;
+
+        let valid_chars: HashSet<char> =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                .chars()
+                .collect();
+
+        let test_values: Vec<u128> = vec![0, 1, 63, 64, 4095, 4096, 1000000, u128::MAX];
+
+        for value in test_values {
+            let encoded: String = encode_base64_filename(value);
+            for ch in encoded.chars() {
+                assert!(
+                    valid_chars.contains(&ch),
+                    "invalid character '{}' in encoding of {}",
+                    ch,
+                    value
+                );
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests boundary conditions and edge cases.
+    ///
+    #[test]
+    fn test_encode_base64_filename_boundary_conditions() {
+        // Minimum value.
+        assert_eq!(encode_base64_filename(0), "A");
+
+        // Maximum value.
+        let max_encoding: String = encode_base64_filename(u128::MAX);
+        assert!(!max_encoding.is_empty());
+        assert!(max_encoding.len() <= 22); // log64(2^128) ≈ 21.33.
+
+        // Power of 64 values.
+        assert_eq!(encode_base64_filename(64), "BA");
+        assert_eq!(encode_base64_filename(64 * 64), "BAA");
+        assert_eq!(encode_base64_filename(64 * 64 * 64), "BAAA");
+    }
 }
