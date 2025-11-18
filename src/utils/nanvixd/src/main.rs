@@ -26,7 +26,6 @@ use ::nanvix::{
     log,
     log::error,
     registry::Registry,
-    sandbox,
     sandbox::NAMED_RESOURCE_PREFIX,
     sandbox_cache::SandboxCacheConfig,
     terminal::Terminal,
@@ -171,10 +170,6 @@ pub async fn main() -> Result<()> {
             anyhow::anyhow!(reason)
         })?,
     );
-
-    // Remove dangling resources from previous runs. We do not expect concurrent instances of
-    // nanvixd running in the same tmp directory, so we will not have unexpected side effects.
-    sandbox::remove_dangling_resources(config.tmp_directory()).await?;
 
     // Check for interactive mode or HTTP mode.
     if let Some(true) = INTERACTIVE_MODE.get().copied() {
