@@ -39,7 +39,7 @@ core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core
 compiler_builtins = { workspace = true, optional = true }
 
 [features]
-default = ["syscall", "dlfcn", "sbrk"]
+default = ["syscall"]
 # Enable this, if this library is to be used as a static library.
 staticlib = ["dep:libc_stdlib"]
 syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall"]
@@ -50,6 +50,7 @@ rustc-dep-of-std = [
     "alloc",
     "sigaction",
     "sbrk",
+    "arch/rustc-dep-of-std",
     "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
