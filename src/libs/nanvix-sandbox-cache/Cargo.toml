@@ -19,8 +19,9 @@ syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = []
+default = ["microvm"]
 hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
+microvm = ["config/microvm", "nanvix-sandbox/microvm"]
 single-process = ["nanvix-sandbox/single-process"]
 
 [lints]

@@ -19,8 +19,9 @@ tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 
 [features]
-default = []
+default = ["microvm"]
 hyperlight = ["nanvix-sandbox-cache/hyperlight"]
+microvm = ["nanvix-sandbox-cache/microvm"]
 single-process = ["nanvix-sandbox-cache/single-process"]
 
 [lints]
