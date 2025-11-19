@@ -303,10 +303,17 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
 ALL_HOST_UTILS := echo-client
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
+else
+ALL_HOST_RUST_LIBS :=
+ALL_HOST_UTILS :=
+ALL_HOST_DAEMONS :=
+ALL_HOST_BINARIES :=
+endif
 
 #===================================================================================================
 # Top-Level Build Rules
@@ -322,12 +329,12 @@ all-nanvix: \
 	all-guest-binaries \
 	all-wasmd \
 	all-kernel \
-	all-nanvixd \
-	all-nanvix-bench \
 	all-wasm-binaries \
-	all-host-binaries \
-	all-snapshot \
-	all-uservm
+	all-snapshot
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-bench
+endif
 
 # Performs local initialization.
 init: init-repo init-opt
@@ -344,14 +351,14 @@ clean: \
 	clean-guest-binaries \
 	clean-wasmd \
 	clean-kernel \
-	clean-nanvixd \
-	clean-nanvix-bench \
 	clean-wasm-binaries \
-	clean-host-binaries \
 	clean-opt \
 	clean-snapshot \
-	clean-uservm \
 	image-clean
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-bench
+endif
 
 distclean: clean
 	$(FORCE_RM_CMD) Cargo.lock
@@ -368,13 +375,15 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 ifneq ($(SINGLE_PROCESS),yes)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
-	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
+endif
+	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 
@@ -449,30 +458,28 @@ lint-check: \
 # Runs clippy.
 rust-lint-check: \
 	rust-lint-check-kernel \
-	rust-lint-check-nanvixd \
-	rust-lint-check-nanvix-bench \
 	rust-lint-check-guest-binaries \
 	rust-lint-check-guest-rlibs \
 	rust-lint-check-guest-staticlibs \
 	rust-lint-check-wasmd \
-	rust-lint-check-wasm-binaries \
-	rust-lint-check-host-binaries \
-	rust-lint-check-host-rlibs \
-	rust-lint-check-uservm
+	rust-lint-check-wasm-binaries
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-bench
+endif
 
 # Fixes code linting issues.
 rust-lint: \
 	rust-lint-kernel \
-	rust-lint-nanvixd \
-	rust-lint-nanvix-bench \
 	rust-lint-guest-binaries \
 	rust-lint-guest-rlibs \
 	rust-lint-guest-staticlibs \
 	rust-lint-wasmd \
-	rust-lint-wasm-binaries \
-	rust-lint-host-binaries \
-	rust-lint-host-rlibs \
-	rust-lint-uservm
+	rust-lint-wasm-binaries
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-bench
+endif
 
 # Fixes spelling errors in source code and documentation.
 spellcheck-fix:
@@ -499,28 +506,26 @@ rust-format: \
 	format-guest-binaries \
 	format-guest-rlibs \
 	format-guest-staticlibs \
-	format-host-binaries \
-	format-host-rlibs \
 	format-kernel \
-	format-nanvixd \
-	format-nanvix-bench \
-	format-uservm \
 	format-wasmd \
 	format-wasm-binaries
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-bench
+endif
 
 # Checks Rust code formatting.
 rust-format-check: \
 	format-check-guest-binaries \
 	format-check-guest-rlibs \
 	format-check-guest-staticlibs \
-	format-check-host-binaries \
-	format-check-host-rlibs \
 	format-check-kernel \
-	format-check-nanvixd \
-	format-check-nanvix-bench \
-	format-check-uservm \
 	format-check-wasmd \
 	format-check-wasm-binaries
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-bench
+endif
 
 # Python lint variables
 PY_VERBOSE :=
@@ -560,16 +565,15 @@ clang-format:
 
 check: \
 	check-kernel \
-	check-nanvixd \
-	check-nanvix-bench \
 	check-guest-binaries \
 	check-guest-rlibs \
 	check-guest-staticlibs \
 	check-wasmd \
-	check-wasm-binaries \
-	check-host-binaries \
-	check-host-rlibs \
-	check-uservm
+	check-wasm-binaries
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-bench
+endif
 
 #===================================================================================================
 # Build Rules for Running and Debugging
@@ -610,9 +614,11 @@ endif
 # Build Rules for Running Tests
 #===================================================================================================
 
-run-unit-tests: all-nanvix \
-	test-guest-rlibs \
-	test-host-rlibs
+run-unit-tests: all-nanvix test-guest-rlibs
+
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+run-unit-tests: test-host-rlibs
+endif
 
 include build/make/test.mk
 
