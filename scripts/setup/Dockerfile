@@ -20,54 +20,23 @@ RUN if [ -z "$RUST_VERSION" ] || [ -z "$NANVIX_VERSION" ]; then \
     echo "RUST_VERSION and NANVIX_VERSION must be set"; exit 1; \
     fi
 
-# Update the package list and install dependencies
+# Install minimal dependencies to clone repository.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    bc \
-    bison \
-    bridge-utils \
-    build-essential \
-    clang-format \
-    cmake \
-    codespell \
-    cpio \
     curl \
-    dosfstools \
-    doxygen \
-    flex \
-    g++-multilib \
-    gcc-multilib \
     git \
-    graphviz \
-    grub2 \
-    iproute2 \
-    jq \
-    kpartx \
-    libelf-dev \
-    libglib2.0-dev \
-    libgmp-dev \
-    libgmp3-dev \
-    libmpc-dev \
-    libmpfr-dev \
-    libncurses5-dev \
-    libpixman-1-dev \
-    libsdl2-dev \
-    libvirt-clients \
-    libvirt-daemon-system \
-    mmdebstrap \
-    mtools \
-    netcat-openbsd \
-    ninja-build \
-    pkg-config \
-    python3-venv \
-    qemu-kvm \
-    qemu-system-x86 \
-    shellcheck \
-    texinfo \
-    wget \
-    xorriso && \
+    sudo && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Clone Nanvix repository.
+RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
+    cd /opt/nanvix/src/nanvix && \
+    git checkout -f $NANVIX_VERSION
+
+# Install dependencies for development tools.
+RUN cd /opt/nanvix/src/nanvix && \
+    ./scripts/setup/ubuntu.sh
 
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -77,8 +46,6 @@ ENV PATH=$HOME/.cargo/bin:$PATH
 RUN rustup toolchain install $RUST_VERSION && \
     rustup default $RUST_VERSION
 
-# Clone Nanvix repository and build toolchain.
-RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
-    cd /opt/nanvix/src/nanvix && \
-    git checkout -f $NANVIX_VERSION && \
-    scripts/setup/toolchain.sh /opt/nanvix
+# Build toolchain.
+RUN cd /opt/nanvix/src/nanvix && \
+    ./z setup --toolchain-dir /opt/nanvix
