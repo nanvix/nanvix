@@ -9,8 +9,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(never_type)] // pthread requires this.
 #![feature(c_variadic)] // fcntl requires this.
-#![cfg_attr(feature = "dlfcn", feature(btree_extract_if))]
-#![cfg_attr(feature = "dlfcn", feature(strict_overflow_ops))]
 
 //==================================================================================================
 // Modules
