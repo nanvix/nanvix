@@ -414,7 +414,7 @@ impl Registry {
         let artifact_cache_dir: PathBuf = cache_dir.join(&subdir_name);
 
         // Load or create the release registry.
-        let mut registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
+        let mut release_registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
             match ReleaseRegistry::load(&cache_dir).await {
                 Ok(reg) => reg,
                 Err(error) => {
@@ -431,7 +431,7 @@ impl Registry {
 
         // Check if we need to download this specific configuration.
         let needs_download: bool =
-            if let Some(cached_entry) = registry.get_release(machine, deployment) {
+            if let Some(cached_entry) = release_registry.get_release(machine, deployment) {
                 if cached_entry.commit_id() != commit_id.as_str() {
                     info!(
                         "New release detected for {}-{} (cached: {}, latest: {})",
@@ -469,8 +469,8 @@ impl Registry {
             let downloaded_url: String = release.download(&artifact_cache_dir).await?;
 
             // Update the registry with the new release.
-            registry.set_release(machine, deployment, downloaded_url, commit_id);
-            registry.save(&cache_dir).await?;
+            release_registry.set_release(machine, deployment, downloaded_url, commit_id);
+            release_registry.save(&cache_dir).await?;
         }
 
         // Now search for the artifact in the specified directory.
@@ -495,24 +495,24 @@ impl Registry {
     ///
     /// # Description
     ///
-    /// Extracts the build identifier from a GitHub release URL.
+    /// Extracts the commit ID from a GitHub release URL.
     ///
-    /// The build identifier is a numeric value (such as a workflow run ID or timestamp) encoded in
-    /// the release filename. It uniquely identifies a specific build of Nanvix artifacts.
+    /// The commit ID is encoded in the release filename and uniquely identifies a specific
+    /// build of Nanvix artifacts.
     ///
     /// Example URL format:
-    /// `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-19417333438.tar.bz2`
+    /// `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2`
     ///
-    /// This method parses the filename to extract the numeric identifier between "release-" and
-    /// the file extension (e.g., `19417333438` from the example above).
+    /// This method parses the filename to extract the commit ID between "release-" and
+    /// the file extension (e.g., `abc123def456` from the example above).
     ///
     /// # Parameters
     ///
-    /// - `url`: The GitHub release URL containing the build identifier.
+    /// - `url`: The GitHub release URL containing the commit ID.
     ///
     /// # Returns
     ///
-    /// An `Option<String>` containing the build identifier if found, or `None` if the URL format
+    /// An `Option<String>` containing the commit ID if found, or `None` if the URL format
     /// is invalid.
     ///
     fn extract_commit_id(url: &str) -> Option<String> {
@@ -530,7 +530,11 @@ impl Registry {
         // Extract and validate the commit ID.
         if start_idx < end_idx {
             let commit_id: &str = &filename[start_idx..end_idx];
-            Some(commit_id.to_string())
+            if !commit_id.is_empty() {
+                Some(commit_id.to_string())
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -1027,26 +1031,38 @@ mod tests {
     #[test]
     fn test_extract_commit_id() {
         // Test valid URL with commit ID.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-19417333438.tar.bz2";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
-        assert_eq!(commit_id.unwrap(), "19417333438");
+        assert_eq!(commit_id.unwrap(), "abc123def456");
 
         // Test another valid URL format.
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-12345678.tar.bz2";
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-1a2b3c4d5e6f.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
-        assert_eq!(commit_id.unwrap(), "12345678");
+        assert_eq!(commit_id.unwrap(), "1a2b3c4d5e6f");
+
+        // Test full 40-character commit ID (matches production GITHUB_SHA format).
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-a1b2c3d4e5f6789012345678901234567890abcd.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.unwrap(), "a1b2c3d4e5f6789012345678901234567890abcd");
 
         // Test URL without release prefix.
         let url: &str =
-            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-12345678.tar.bz2";
+            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-abc123def.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_none());
 
         // Test URL without file extension.
         let url: &str =
-            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-release-12345678";
+            "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-release-abc123def";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_none());
+
+        // Test empty commit ID (edge case: release-.tar.bz2).
+        let url: &str =
+            "https://github.com/nanvix/nanvix/releases/download/latest/release-.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_none());
 
