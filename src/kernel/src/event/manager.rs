@@ -882,7 +882,7 @@ impl EventManager {
             .notify_process_termination(info)
     }
 
-    fn try_borrow_mut(&self) -> Result<RefMut<EventManagerInner>, Error> {
+    fn try_borrow_mut(&self) -> Result<RefMut<'_, EventManagerInner>, Error> {
         match self.0.try_borrow_mut() {
             Ok(em) => Ok(em),
             Err(e) => {

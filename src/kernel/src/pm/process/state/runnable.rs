@@ -235,7 +235,7 @@ impl RunnableProcess {
     /// If a thread that matches the specified thread identifier is found, then a reference to it is
     /// returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
         // Search in the list of ready threads.
         if let Some(thread) = self.ready_threads.iter().find(|thread| thread.id() == tid) {
             return Some(ThreadRef::Ready(thread));
@@ -279,7 +279,7 @@ impl RunnableProcess {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
         // Search in the list of ready threads.
         if let Some(thread) = self
             .ready_threads

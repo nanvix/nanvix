@@ -200,7 +200,7 @@ impl SleepingProcess {
     /// If a thread that matches the specified thread identifier is found, then a reference to it is
     /// returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
         if let Some(thread) = self
             .sleeping_threads
             .iter()
@@ -232,7 +232,7 @@ impl SleepingProcess {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
         if let Some(thread) = self
             .sleeping_threads
             .iter_mut()
