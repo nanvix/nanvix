@@ -71,7 +71,7 @@ jobs:
       ) && needs.precheck.outputs.up_to_date == 'true'
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: "Check Code Format"
       uses: ./.github/actions/format
