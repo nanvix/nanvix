@@ -408,7 +408,7 @@ impl RunningProcess {
     /// If a thread that matches the specified thread identifier is found, then a reference to it is
     /// returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef> {
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
         // Check if the running thread matches.
         if self.running.id() == tid {
             return Some(ThreadRef::Running(&self.running));
@@ -459,7 +459,7 @@ impl RunningProcess {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut> {
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
         // Check if the running thread matches.
         if self.running.id() == tid {
             return Some(ThreadRefMut::Running(&mut self.running));
