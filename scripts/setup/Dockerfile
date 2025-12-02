@@ -23,6 +23,7 @@ RUN if [ -z "$RUST_VERSION" ] || [ -z "$NANVIX_VERSION" ]; then \
 # Install minimal dependencies to clone repository.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    ca-certificates \
     curl \
     git \
     sudo && \
