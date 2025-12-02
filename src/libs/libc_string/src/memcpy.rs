@@ -73,11 +73,11 @@ pub unsafe extern "C" fn memcpy(
     debug_assert!(!src.is_null(), "memcpy(): null source pointer");
     debug_assert!((len as usize) < isize::MAX as usize, "memcpy(): length too large");
     debug_assert!(
-        (dest as usize) % align_of::<c_uchar>() == 0,
+        (dest as usize).is_multiple_of(align_of::<c_uchar>()),
         "memcpy(): destination pointer is not properly aligned"
     );
     debug_assert!(
-        (src as usize) % align_of::<c_uchar>() == 0,
+        (src as usize).is_multiple_of(align_of::<c_uchar>()),
         "memcpy(): source pointer is not properly aligned"
     );
 

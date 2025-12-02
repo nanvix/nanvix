@@ -55,7 +55,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
     }
 
     // Check if `rwlock` is unaligned.
-    if (rwlock as usize) % align_of::<pthread_rwlock_t>() != 0 {
+    if !(rwlock as usize).is_multiple_of(align_of::<pthread_rwlock_t>()) {
         ::syslog::error!(
             "pthread_rwlock_init(): unaligned read-write lock (rwlock={rwlock:p}, attr={attr:p})"
         );
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
     // Check if custom attributes were passed in.
     if !attr.is_null() {
         // Check if `attr` is unaligned.
-        if (attr as usize) % align_of::<pthread_rwlockattr_t>() != 0 {
+        if !(attr as usize).is_multiple_of(align_of::<pthread_rwlockattr_t>()) {
             ::syslog::error!(
                 "pthread_rwlock_init(): unaligned read-write lock attribute (rwlock={rwlock:p}, \
                  attr={attr:p})"

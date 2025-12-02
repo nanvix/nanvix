@@ -260,7 +260,7 @@ impl VirtualMemory {
         }
 
         // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
-        if self.ptr as usize % PAGE_SIZE != 0 {
+        if !(self.ptr as usize).is_multiple_of(PAGE_SIZE) {
             let reason: &str = "memory pointer is not aligned to page size";
             error!("save_snapshot(): {reason}");
             anyhow::bail!(reason)

@@ -70,7 +70,7 @@ impl Eq for PageTableAddress {}
 
 impl PartialOrd for PageTableAddress {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.0.cmp(&other.0))
+        Some(self.cmp(other))
     }
 }
 

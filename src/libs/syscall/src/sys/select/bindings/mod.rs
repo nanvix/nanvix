@@ -82,7 +82,7 @@ pub unsafe extern "C" fn select(
         None
     } else {
         // Check if pointer is misaligned.
-        if (readfds as usize) % core::mem::align_of::<fd_set>() != 0 {
+        if !(readfds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
             ::syslog::error!("select(): misaligned readfds pointer (readfds={readfds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn select(
         None
     } else {
         // Check if pointer is misaligned.
-        if (writefds as usize) % core::mem::align_of::<fd_set>() != 0 {
+        if !(writefds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
             ::syslog::error!("select(): misaligned writefds pointer (writefds={writefds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn select(
         None
     } else {
         // Check if pointer is misaligned.
-        if (errorfds as usize) % core::mem::align_of::<fd_set>() != 0 {
+        if !(errorfds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
             ::syslog::error!("select(): misaligned errorfds pointer (errorfds={errorfds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {

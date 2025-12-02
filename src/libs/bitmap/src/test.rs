@@ -273,7 +273,8 @@ fn test_alloc_random_ranges_in_partial_bitmap() {
     for _ in 0..NUMBER_OF_ITERATIONS {
         // Choose a range that crosses a byte (word) boundary, e.g., bits 6..10 (crosses from byte 0 to byte 1)
         let start = ::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits();
-        let end = start + (::rand::thread_rng().gen::<usize>() % (bitmap.number_of_bits() - start)) + 1;
+        let end =
+            start + (::rand::thread_rng().gen::<usize>() % (bitmap.number_of_bits() - start)) + 1;
 
         // Set all bits that are not in the range.
         for i in 0..bitmap.number_of_bits() {
