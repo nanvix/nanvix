@@ -410,7 +410,7 @@ fn parse_acpiold(
 ///
 /// Upon success, returns RSDP structure. Otherwise, it returns an error.
 ///
-fn parse_acpinew(tag: &MbootTag) -> Result<MbootAcpi, Error> {
+fn parse_acpinew(tag: &MbootTag) -> Result<MbootAcpi<'_>, Error> {
     let acpi: MbootAcpi = unsafe {
         // Safety: `MbootAcpi` is a prefix of `MbootTag`.
         let ptr: *const MbootTag = tag as *const MbootTag;
@@ -434,7 +434,7 @@ fn parse_acpinew(tag: &MbootTag) -> Result<MbootAcpi, Error> {
 ///
 /// Upon success, returns BasicMeminfo structure. Otherwise, it returns an error.
 ///
-fn parse_basicmeminfo(tag: &MbootTag) -> Result<MbootBasicMeminfo, Error> {
+fn parse_basicmeminfo(tag: &MbootTag) -> Result<MbootBasicMeminfo<'_>, Error> {
     let basicmeminfo: MbootBasicMeminfo = unsafe {
         // Safety: `MbootBasicMeminfo` is a prefix of `MbootTag`.
         let ptr: *const MbootTag = tag as *const MbootTag;

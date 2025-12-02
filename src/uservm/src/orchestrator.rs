@@ -418,13 +418,12 @@ impl Orchestrator {
                 Ok(Continue(()))
             },
             IoControlCommand::_PauseMicroVm => {
-                if self.state == State::Running {
-                    if let Err(e) = self.pause_protocol().await {
-                        let reason: String =
-                            format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
-                        anyhow::bail!(reason);
-                    }
+                if self.state == State::Running
+                    && let Err(e) = self.pause_protocol().await
+                {
+                    let reason: String = format!("PauseMicroVm: failed to pause microvm: {e:?}");
+                    error!("try_receive_from_io_thread(): {reason}");
+                    anyhow::bail!(reason);
                 }
                 Ok(Continue(()))
             },

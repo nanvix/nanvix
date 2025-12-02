@@ -94,7 +94,7 @@ impl MemorySegment {
         }
 
         // Check if capacity is page-aligned.
-        if capacity % PAGE_SIZE != 0 {
+        if !capacity.is_multiple_of(PAGE_SIZE) {
             let reason: &str = "unaligned capacity";
             ::syslog::error!("new(): {}", reason);
             return Err(Error::new(ErrorCode::BadAddress, reason));

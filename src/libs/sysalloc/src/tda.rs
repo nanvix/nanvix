@@ -107,7 +107,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     }
 
     // Check if thread-local storage has an invalid alignment.
-    if tls_start_addr % tls_alignment != 0usize {
+    if !tls_start_addr.is_multiple_of(tls_alignment) {
         let reason: &'static str = "tls start address is not page-aligned";
         ::syslog::error!(
             "alloc(): {reason} (tls_start_addr={tls_start_addr:x?}, tls_alignment={tls_alignment})",

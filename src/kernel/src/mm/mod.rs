@@ -71,62 +71,78 @@ use ::sys::error::Error;
 //==================================================================================================
 
 // Ensure that the kernel pool size is multiple of a page size.
-::static_assert::assert_eq!(config::kernel::KPOOL_SIZE % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::kernel::KPOOL_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel pool size fits in a single page table.
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
-::static_assert::assert_eq!(config::kernel::KSTACK_SIZE % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(config::kernel::KSTACK_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel stack size is at least one page.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE >= mem::PAGE_SIZE);
 // Ensure that the kernel stack size fits in a single page table.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel base address is aligned to a page boundary.
-::static_assert::assert_eq!(config::memory_layout::KERNEL_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::KERNEL_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+);
 // Ensure that the kernel base address is aligned to a page table boundary.
-::static_assert::assert_eq!(config::memory_layout::KERNEL_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::KERNEL_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+);
 // Ensure that the kernel end address is aligned to a page boundary.
-::static_assert::assert_eq!(config::memory_layout::KERNEL_END_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::KERNEL_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+);
 // Ensure that the kernel end address is aligned to a page table boundary.
-::static_assert::assert_eq!(config::memory_layout::KERNEL_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::KERNEL_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+);
 // Ensure that the user base address is aligned to a page boundary.
-::static_assert::assert_eq!(config::memory_layout::USER_BASE_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+);
 // Ensure that the user base address is aligned to a page table boundary.
-::static_assert::assert_eq!(config::memory_layout::USER_BASE_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+);
 // Ensure that the user end address is aligned to a page boundary.
-::static_assert::assert_eq!(config::memory_layout::USER_END_RAW % PAGE_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+);
 // Ensure that the user end address is aligned to a page table boundary.
-::static_assert::assert_eq!(config::memory_layout::USER_END_RAW % PGTAB_ALIGNMENT as usize == 0);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+);
 // Ensure that the user stack base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_STACK_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+    config::memory_layout::USER_STACK_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
 // Ensure that the user stack base address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_STACK_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+    config::memory_layout::USER_STACK_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 // Ensure that the user heap base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
 // Ensure that the user heap base address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 //Ensure that the user libraries base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW % PAGE_ALIGNMENT as usize == 0
+    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
 // Ensure that the user libraries base address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW % PGTAB_ALIGNMENT as usize == 0
+    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 // Ensure that the user libraries end address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW % PAGE_ALIGNMENT as usize == 0
+    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
 // Ensure that the user libraries end address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW % PGTAB_ALIGNMENT as usize == 0
+    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 // Ensure that the user and kernel address spaces do not overlap.
 ::static_assert::assert_eq!(

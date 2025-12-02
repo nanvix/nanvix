@@ -46,7 +46,7 @@ pub unsafe extern "C" fn pthread_rwlock_unlock(rwlock: *mut pthread_rwlock_t) ->
     }
 
     // Check if `rwlock` is unaligned.
-    if (rwlock as usize) % align_of::<pthread_rwlock_t>() != 0 {
+    if !(rwlock as usize).is_multiple_of(align_of::<pthread_rwlock_t>()) {
         ::syslog::error!("pthread_rwlock_unlock(): unaligned read-write lock (rwlock={rwlock:p})");
         return ErrorCode::InvalidArgument.get();
     }

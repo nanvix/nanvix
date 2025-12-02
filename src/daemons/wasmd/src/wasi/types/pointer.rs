@@ -46,7 +46,7 @@ impl<T> Pointer<T> {
     /// Creates a new pointer to a region of memory.
     pub fn new(base: Address) -> Result<Self, UnalignedPointerError> {
         // Check if pointer is aligned.
-        if (base.value() as usize) % mem::align_of::<T>() != 0 {
+        if !(base.value() as usize).is_multiple_of(mem::align_of::<T>()) {
             return Err(UnalignedPointerError);
         }
 

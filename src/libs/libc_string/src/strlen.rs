@@ -49,7 +49,7 @@ pub unsafe extern "C" fn strlen(s: *const c_char) -> c_size_t {
     debug_assert!(!s.is_null(), "strlen(): null pointer");
     debug_assert!((s as usize) < isize::MAX as usize, "strlen(): pointer too large");
     debug_assert!(
-        (s as usize) % align_of::<c_char>() == 0,
+        (s as usize).is_multiple_of(align_of::<c_char>()),
         "strlen(): pointer is not properly aligned"
     );
 
