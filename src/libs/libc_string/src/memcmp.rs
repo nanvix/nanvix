@@ -71,11 +71,11 @@ pub unsafe extern "C" fn memcmp(ptr1: *const c_void, ptr2: *const c_void, len: c
     debug_assert!(!ptr2.is_null(), "memcmp(): null pointer");
     debug_assert!((len as usize) < isize::MAX as usize, "memcmp(): length too large");
     debug_assert!(
-        (ptr1 as usize) % align_of::<c_uchar>() == 0,
+        (ptr1 as usize).is_multiple_of(align_of::<c_uchar>()),
         "memcmp(): pointer is not properly aligned"
     );
     debug_assert!(
-        (ptr2 as usize) % align_of::<c_uchar>() == 0,
+        (ptr2 as usize).is_multiple_of(align_of::<c_uchar>()),
         "memcmp(): pointer is not properly aligned"
     );
 

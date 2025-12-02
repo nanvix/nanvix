@@ -16,6 +16,9 @@ crate-type = ["lib"]
 raw-array = { workspace = true }
 sys = { workspace = true }
 
+[dev-dependencies]
+rand = "0.8"
+
 [features]
 default = []
 std = ["sys/std"]

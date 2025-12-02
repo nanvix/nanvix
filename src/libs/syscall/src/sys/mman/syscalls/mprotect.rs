@@ -93,7 +93,7 @@ pub fn mprotect(
     };
 
     // Check if length is page-aligned.
-    if len % usize::from(PAGE_ALIGNMENT) != 0 {
+    if !len.is_multiple_of(usize::from(PAGE_ALIGNMENT)) {
         let reason: &'static str = "length is not page-aligned";
         ::syslog::error!("mprotect(): {reason} (base={base:?}, len={len}, prot={prot:?})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));

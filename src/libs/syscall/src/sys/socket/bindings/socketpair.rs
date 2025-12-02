@@ -79,7 +79,7 @@ pub unsafe extern "C" fn socketpair(
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
-    } else if socket_fds as usize % ::core::mem::size_of::<c_int>() != 0 {
+    } else if !(socket_fds as usize).is_multiple_of(::core::mem::size_of::<c_int>()) {
         ::syslog::error!(
             "socketpair(): invalid sockets array alignment (domain={domain:?}, typ={typ:?}, \
              protocol={protocol:?}, socket_fds={socket_fds:?})"

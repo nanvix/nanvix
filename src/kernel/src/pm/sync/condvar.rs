@@ -319,7 +319,7 @@ impl Condvar {
                 self.inner
                     .sleeping
                     .borrow_mut()
-                    .retain(|&(p, t)| p != pid || t != tid);
+                    .retain(|&mut (p, t)| p != pid || t != tid);
                 Err(error)
             },
         }

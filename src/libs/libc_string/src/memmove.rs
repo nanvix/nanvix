@@ -66,7 +66,7 @@ pub unsafe extern "C" fn memmove(
     debug_assert!(!src.is_null(), "memmove(): null source pointer");
     debug_assert!((len as usize) < isize::MAX as usize, "memmove(): length too large");
     debug_assert!(
-        (dest as usize) % align_of::<c_uchar>() == 0,
+        (dest as usize).is_multiple_of(align_of::<c_uchar>()),
         "memmove(): destination pointer is not properly aligned"
     );
 

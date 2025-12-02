@@ -257,8 +257,8 @@ read_cache() {
 #
 # Description
 #
-#   Checks if the specified directory resides on a supported file system (ext3/ext4). The toolchain
-#   build requires extended attributes support for setcap commands.
+#   Checks if the specified directory resides on a supported file system (ext3/ext4/overlay). The
+#   toolchain build requires extended attributes support for setcap commands.
 #
 # Arguments
 #
@@ -309,13 +309,13 @@ check_filesystem_support() {
 
     # Check if the file system supports extended attributes.
     case "${fs_type}" in
-        ext3|ext4)
+        ext3|ext4|overlay)
             return 0
             ;;
         *)
             print_warning "Unsupported file system '${fs_type}' detected for toolchain directory '${target_dir}'"
-            print_warning "Only ext3/ext4 are supported because extended attributes (xattr) are required for setcap commands."
-            print_warning "Consider moving the toolchain directory to a partition formatted with ext3 or ext4."
+            print_warning "Only ext3/ext4/overlay are supported because extended attributes (xattr) are required for setcap commands."
+            print_warning "Consider moving the toolchain directory to a partition formatted with ext3, ext4, or using Docker."
             return 4
             ;;
     esac

@@ -103,7 +103,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
                     let response: ReadResponse = ReadResponse::from_bytes(message.payload);
 
                     // Display progress if not STDIN.
-                    if fd != STDIN_FILENO && total_read % KILOBYTE as c_size_t == 0 {
+                    if fd != STDIN_FILENO && total_read.is_multiple_of(KILOBYTE as c_size_t) {
                         let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
                         ::syslog::trace!(
                             "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",

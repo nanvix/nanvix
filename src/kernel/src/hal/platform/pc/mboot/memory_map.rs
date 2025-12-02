@@ -248,7 +248,7 @@ impl MbootMemoryMap<'_> {
             let entries_size: usize = tag.size as usize - mem::size_of::<MbootMemoryMapTag>();
 
             // Check if `entries_size` is not a multiple of `tag.entry_size`.
-            if entries_size % tag.entry_size as usize != 0 {
+            if !entries_size.is_multiple_of(tag.entry_size as usize) {
                 return Err(Error::new(ErrorCode::BadAddress, "invalid size of entries"));
             }
 
