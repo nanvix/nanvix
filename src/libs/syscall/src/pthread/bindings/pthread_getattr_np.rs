@@ -64,7 +64,7 @@ pub unsafe extern "C" fn pthread_getattr_np(thread: pthread_t, attr: *mut pthrea
     }
 
     // Check if `attr` points to a misaligned address.
-    if (attr as usize) % core::mem::align_of::<pthread_attr_t>() != 0 {
+    if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
         ::syslog::error!(
             "pthread_getattr_np(): misaligned pointer to thread attributes object (attr={attr:p})"
         );

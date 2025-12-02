@@ -85,7 +85,7 @@ pub fn munmap(base: VirtualAddress, length: usize) -> Result<(), Error> {
     };
 
     // Check if length is page-aligned.
-    if length % usize::from(PAGE_ALIGNMENT) != 0 {
+    if !length.is_multiple_of(usize::from(PAGE_ALIGNMENT)) {
         let reason: &str = "length is not page-aligned";
         syslog::error!("munmap(): {reason} (base={base:?}, length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));

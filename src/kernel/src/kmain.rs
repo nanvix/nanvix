@@ -19,7 +19,6 @@
 #![feature(stmt_expr_attributes)] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
 #![feature(cold_path)] // performance hints.
-#![feature(btree_extract_if)] // pm uses this.
 #![feature(const_type_name)] // logging uses this for function name detection.
 #![no_std]
 #![no_main]

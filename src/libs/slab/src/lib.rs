@@ -109,27 +109,31 @@ impl Slab {
         }
 
         // Check if `start_addr` is aligned to `block_size`.
-        if (addr as usize) % block_size != 0 {
+        if !(addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
         }
 
         // Compute layout of the slab allocator.
         let total_num_blocks: usize = len / block_size;
         // info!("total number of blocks: {:?}", total_num_blocks);
-        if total_num_blocks % u8::BITS as usize != 0 {
+        if !total_num_blocks.is_multiple_of(u8::BITS as usize) {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
         }
         let index_len: usize = total_num_blocks / u8::BITS as usize;
         // info!("index length: {:?}", index_len);
-        let num_index_blocks: usize =
-            (index_len / block_size) + if index_len % block_size == 0 { 0 } else { 1 };
+        let num_index_blocks: usize = (index_len / block_size)
+            + if index_len.is_multiple_of(block_size) {
+                0
+            } else {
+                1
+            };
         // info!("number of index blocks: {:?}", num_index_blocks);
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
         // info!("number of data blocks: {:?}", num_data_blocks);
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
         // Check if `data_addr` is aligned to `block_size`.
-        if (data_addr as usize) % block_size != 0 {
+        if !(data_addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned data address"));
         }
 

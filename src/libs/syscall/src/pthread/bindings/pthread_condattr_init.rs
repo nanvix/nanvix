@@ -52,7 +52,7 @@ pub unsafe extern "C" fn pthread_condattr_init(attr: *mut pthread_condattr_t) ->
     }
 
     // Check if pointer to cond attribute object is properly aligned.
-    if (attr as usize) % ::core::mem::align_of::<pthread_condattr_t>() != 0 {
+    if !(attr as usize).is_multiple_of(::core::mem::align_of::<pthread_condattr_t>()) {
         ::syslog::error!(
             "pthread_condattr_init(): misaligned pointer to cond attribute object (attr={attr:p})"
         );

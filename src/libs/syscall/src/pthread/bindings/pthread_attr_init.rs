@@ -71,7 +71,7 @@ pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
     }
 
     // Check if `attr` points to a misaligned address.
-    if (attr as usize) % core::mem::align_of::<pthread_attr_t>() != 0 {
+    if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
         ::syslog::error!(
             "pthread_attr_init(): misaligned pointer to thread attributes object (attr={attr:p})"
         );

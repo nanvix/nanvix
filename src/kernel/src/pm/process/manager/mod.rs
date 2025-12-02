@@ -1386,7 +1386,7 @@ impl ProcessManagerInner {
         self.running.as_mut().expect("the kernel should be running")
     }
 
-    fn find_process(&self, pid: ProcessIdentifier) -> Result<ProcessRef, Error> {
+    fn find_process(&self, pid: ProcessIdentifier) -> Result<ProcessRef<'_>, Error> {
         if self.get_running().state().pid() == pid {
             Ok(ProcessRef::Running(self.get_running()))
         } else if let Some(process) = self.ready.iter().find(|p| p.state().pid() == pid) {
@@ -1404,7 +1404,7 @@ impl ProcessManagerInner {
         }
     }
 
-    fn find_process_mut(&mut self, pid: ProcessIdentifier) -> Result<ProcessRefMut, Error> {
+    fn find_process_mut(&mut self, pid: ProcessIdentifier) -> Result<ProcessRefMut<'_>, Error> {
         if self.get_running_mut().state().pid() == pid {
             Ok(ProcessRefMut::Running(self.get_running_mut()))
         } else if let Some(process) = self.ready.iter_mut().find(|p| p.state().pid() == pid) {
@@ -1436,7 +1436,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, a mutable reference to the process containing the thread is
     /// returned.  Otherwise, an error code is returned instead.
     ///
-    fn find_process_by_tid(&mut self, tid: ThreadIdentifier) -> Result<ProcessRefMut, Error> {
+    fn find_process_by_tid(&mut self, tid: ThreadIdentifier) -> Result<ProcessRefMut<'_>, Error> {
         if self.get_running_mut().find_thread(tid).is_some() {
             Ok(ProcessRefMut::Running(self.get_running_mut()))
         } else if let Some(process) = self.ready.iter_mut().find(|p| p.find_thread(tid).is_some()) {
@@ -1480,7 +1480,7 @@ impl ProcessManagerInner {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
-    fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ThreadRefMut, Error> {
+    fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Result<ThreadRefMut<'_>, Error> {
         // Search thread in the running process.
         if let Some(thread) = self.running.as_mut() {
             if let Some(thread) = thread.find_thread_mut(tid) {
@@ -1958,7 +1958,7 @@ impl ProcessManager {
         self.try_borrow_mut()?.handle_fpu_exception()
     }
 
-    fn try_borrow(&self) -> Result<Ref<ProcessManagerInner>, Error> {
+    fn try_borrow(&self) -> Result<Ref<'_, ProcessManagerInner>, Error> {
         match self.0.try_borrow() {
             Ok(pm) => Ok(pm),
             Err(_) => {
@@ -1969,7 +1969,7 @@ impl ProcessManager {
         }
     }
 
-    fn try_borrow_mut(&mut self) -> Result<RefMut<ProcessManagerInner>, Error> {
+    fn try_borrow_mut(&mut self) -> Result<RefMut<'_, ProcessManagerInner>, Error> {
         match self.0.try_borrow_mut() {
             Ok(pm) => Ok(pm),
             Err(_) => {

@@ -55,7 +55,7 @@ pub unsafe extern "C" fn memset(ptr: *mut c_void, val: c_int, len: c_size_t) -> 
     debug_assert!(!ptr.is_null(), "memset(): null pointer");
     debug_assert!((len as usize) < isize::MAX as usize, "memset(): length too large");
     debug_assert!(
-        (ptr as usize) % align_of::<c_uchar>() == 0,
+        (ptr as usize).is_multiple_of(align_of::<c_uchar>()),
         "memset(): pointer is not properly aligned"
     );
 

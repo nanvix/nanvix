@@ -118,12 +118,12 @@ impl Guest {
         let initrd: FileMapping = FileMapping::mmap(initrd_filename)?;
 
         // Check if initrd would overlap with kernel.
-        if let Some((kernel_base, kernel_size)) = self.kernel {
-            if (initrd.ptr() as usize) < (kernel_base + kernel_size) {
-                let reason: String = "initrd overlaps with kernel".to_string();
-                error!("load_initrd(): {reason}");
-                return Err(anyhow::anyhow!(reason));
-            }
+        if let Some((kernel_base, kernel_size)) = self.kernel
+            && (initrd.ptr() as usize) < (kernel_base + kernel_size)
+        {
+            let reason: String = "initrd overlaps with kernel".to_string();
+            error!("load_initrd(): {reason}");
+            return Err(anyhow::anyhow!(reason));
         }
 
         // Check if initrd fits into virtual memory.
@@ -166,7 +166,7 @@ impl Guest {
         debug!("load_initrd(): adjusting initrd size to page size");
 
         // Ensure initrd size is aligned to page size.
-        let initrd_size: usize = if initrd.size() % PAGE_SIZE != 0 {
+        let initrd_size: usize = if !initrd.size().is_multiple_of(PAGE_SIZE) {
             debug!("load_initrd(): aligning initrd size to page size");
             initrd.size() + (PAGE_SIZE - (initrd.size() % PAGE_SIZE))
         } else {
@@ -299,13 +299,13 @@ impl Guest {
         // Check if initrd is too large.
         let nzeros: usize = ::config::microvm::DEFAULT_INITRD_BASE.trailing_zeros() as usize;
         let max_initrd_size: usize = (1 << 12) * ((1 << nzeros) - 1);
-        if let Some((_, initrd_size)) = self.initrd {
-            if initrd_size > max_initrd_size {
-                return Err(anyhow::anyhow!(
-                    "initrd is too large (initrd_size={initrd_size}, \
-                     max_initrd_size={max_initrd_size:?})",
-                ));
-            }
+        if let Some((_, initrd_size)) = self.initrd
+            && initrd_size > max_initrd_size
+        {
+            return Err(anyhow::anyhow!(
+                "initrd is too large (initrd_size={initrd_size}, \
+                 max_initrd_size={max_initrd_size:?})",
+            ));
         }
 
         // Retrieve initrd information.

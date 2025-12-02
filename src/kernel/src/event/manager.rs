@@ -345,7 +345,7 @@ impl EventManagerInner {
     ) -> Result<Option<Message>, Error> {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
-            if ((self.nevents + i) % Self::NUMBER_EVENTS) == 0 {
+            if (self.nevents + i).is_multiple_of(Self::NUMBER_EVENTS) {
                 // FIXME: starvation.
                 for i in 0..usize::BITS {
                     if (interrupts & (1 << i)) != 0 {
@@ -882,7 +882,7 @@ impl EventManager {
             .notify_process_termination(info)
     }
 
-    fn try_borrow_mut(&self) -> Result<RefMut<EventManagerInner>, Error> {
+    fn try_borrow_mut(&self) -> Result<RefMut<'_, EventManagerInner>, Error> {
         match self.0.try_borrow_mut() {
             Ok(em) => Ok(em),
             Err(e) => {

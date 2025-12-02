@@ -417,11 +417,11 @@ impl Vmm {
             .unwrap_or_else(|| program_name.to_string());
 
         // Push arguments.
-        if let Some(program_args) = program_args {
-            if !program_args.is_empty() {
-                args_string.push(' ');
-                args_string.push_str(program_args);
-            }
+        if let Some(program_args) = program_args
+            && !program_args.is_empty()
+        {
+            args_string.push(' ');
+            args_string.push_str(program_args);
         }
 
         // Encode length-prefixed arguments.
