@@ -32,11 +32,8 @@ REPO_ROOT_DIR=$(git rev-parse --show-toplevel)   # /
 REPO_SCRIPTS_DIR="${REPO_ROOT_DIR}/scripts"      # /scripts
 REPO_LOGS_DIR="${REPO_ROOT_DIR}/logs"            # /logs
 
-# Default branch name.
-DEFAULT_BRANCH_NAME=$(git -C "${REPO_ROOT_DIR}" remote show origin | awk '/HEAD branch/ {print $NF}')
-
-# Latest commit hash made to the default branch.
-NANVIX_VERSION=$(git -C "${REPO_ROOT_DIR}" rev-parse origin/${DEFAULT_BRANCH_NAME})
+# Latest commit hash made to the current branch.
+NANVIX_VERSION=$(git -C "${REPO_ROOT_DIR}" rev-parse HEAD)
 
 # Dockerfile path.
 DOCKERFILE_PATH="${REPO_SCRIPTS_DIR}/setup/Dockerfile"
@@ -66,8 +63,8 @@ get_rust_version() {
     local rust_toolchain_file
     rust_toolchain_file=$(mktemp)
 
-    # Get rust-toolchain file from the default branch.
-    git -C "${REPO_ROOT_DIR}" show origin/${DEFAULT_BRANCH_NAME}:rust-toolchain > "${rust_toolchain_file}" 2>/dev/null || {
+    # Get rust-toolchain file from the current HEAD.
+    git -C "${REPO_ROOT_DIR}" show HEAD:rust-toolchain > "${rust_toolchain_file}" 2>/dev/null || {
         rm -f "${rust_toolchain_file}"
         print_warning "Could not find 'rust-toolchain' file in the repository."
         echo ""
@@ -117,12 +114,6 @@ main() {
     # Sanity check that we are running inside a git repository.
     if ! git rev-parse --is-inside-work-tree &> /dev/null; then
         print_error "This script must be run inside a Git repository."
-        exit 1
-    fi
-
-    # Sanity check that branch name was set correctly.
-    if [ -z "${DEFAULT_BRANCH_NAME}" ]; then
-        print_error "Could not determine the default branch name."
         exit 1
     fi
 
