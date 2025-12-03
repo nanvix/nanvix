@@ -149,7 +149,7 @@ mod startup {
 }
 
 /// Counts the number of cores online.
-static mut CORES_ONLINE: AtomicUsize = AtomicUsize::new(1);
+static CORES_ONLINE: AtomicUsize = AtomicUsize::new(1);
 
 /// Performance counter for the number of times the kernel was idle.
 static PERF_SCHED_KERNEL_IDLE: AtomicUsize = AtomicUsize::new(0);
@@ -379,7 +379,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
                 };
 
                 // Obtain a cached version of the number of cores online.
-                let cores_online: usize = unsafe { CORES_ONLINE.load(Ordering::Acquire) };
+                let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
 
                 // Start core.
                 if let Err(e) = hal
@@ -397,7 +397,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
                 // Wait for application core to come online.
                 info!("waiting for core {} to come online...", coreid);
-                while unsafe { CORES_ONLINE.load(Ordering::Acquire) } == cores_online {
+                while CORES_ONLINE.load(Ordering::Acquire) == cores_online {
                     ::arch::cpu::pause();
                 }
 
@@ -409,7 +409,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     }
 
     // Print number of cores online.
-    let cores_online: usize = unsafe { CORES_ONLINE.load(Ordering::Acquire) };
+    let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
 
     let status: ExitStatus = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
@@ -482,7 +482,7 @@ pub extern "C" fn do_ap_start(coreid: u32) {
 
     match hal::initialize_application_core(kstack) {
         Ok(_arch) => {
-            unsafe { CORES_ONLINE.fetch_add(1, Ordering::Acquire) };
+            CORES_ONLINE.fetch_add(1, Ordering::Acquire);
 
             trace!("core {} is now online (kstack={:?})", coreid, kstack);
 
