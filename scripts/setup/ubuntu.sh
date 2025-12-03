@@ -25,6 +25,7 @@ apt-get install -y        \
     doxygen               \
     flex                  \
     g++-multilib          \
+    gawk                  \
     gcc-multilib          \
     git                   \
     graphviz              \
