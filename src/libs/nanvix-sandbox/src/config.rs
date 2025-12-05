@@ -10,17 +10,20 @@
 // Imports
 //==================================================================================================
 
-use crate::tcp_port::TcpPort;
+#[cfg(not(feature = "single-process"))]
+use crate::{
+    netns::NetnsInfo,
+    tcp_port::TcpPort,
+};
 use ::anyhow::Result;
-use ::syslog::error;
-use ::tokio::time::Duration;
-use ::user_vm_api::UserVmIdentifier;
-
 #[cfg(not(feature = "single-process"))]
 use ::std::{
     fs,
     path::PathBuf,
 };
+use ::syslog::error;
+use ::tokio::time::Duration;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Constants
@@ -167,15 +170,23 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 /// - `tmp_str`: Temporary directory path.
 /// - `tenant_id`: Tenant ID.
-/// - `l2`: Flag indicating whether to deploy linuxd inside an L2 VM.
+/// - `netns_info`: Optional information about the network namespace (L2-mode only).
 ///
 /// # Returns
 ///
 /// On success, returns the control plane socket address. On failure, returns an error.
 ///
-pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
-    if l2 {
-        return Ok(format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT));
+pub fn control_plane_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
+) -> Result<String> {
+    // In an L2 deployment, linuxd and the user VM are deployed inside a separate network
+    // namespace. To connect to the control-plane socket in nanvixd, in the root namespace, they
+    // must use the host half of the VETH pair we include in the namespace.
+    #[cfg(not(feature = "single-process"))]
+    if let Some(netns_info) = netns_info {
+        return Ok(format!("{}:{}", netns_info.veth_host_ip(), config::linuxd::CONTROL_PLANE_PORT));
     }
 
     let unix_socket_name: String =
@@ -210,12 +221,22 @@ pub fn control_plane_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) 
 ///
 /// On success, returns the user VM socket address. On failure, returns an error.
 ///
-pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Result<String> {
+pub fn user_vm_sockaddr_builder(
+    tmp_str: &str,
+    tenant_id: &str,
+    #[cfg(not(feature = "single-process"))] l2: bool,
+) -> Result<String> {
+    // In an L2 deployment, both linuxd and the user VM are deployed inside the same network
+    // namespace, isolated from nanvixd and other tenants. Linuxd, however, runs inside a VM
+    // exposed to the host via a TAP device, so we need to connect to the guest-side of the TAP.
+    // Note that even though the TAP's IPs are hard-coded during snapshot/restore (and hence
+    // repeated among all linuxd instances), namespace isolation makes this reuse safe.
+    #[cfg(not(feature = "single-process"))]
     if l2 {
         return Ok(format!(
             "{}:{}",
-            config::linuxd::GUEST_TAP_IP_ADDRESS,
-            config::linuxd::USER_VM_PORT
+            ::config::linuxd::GUEST_TAP_IP_ADDRESS,
+            ::config::linuxd::USER_VM_PORT
         ));
     }
 
@@ -246,6 +267,7 @@ pub fn user_vm_sockaddr_builder(tmp_str: &str, tenant_id: &str, l2: bool) -> Res
 /// - `tmp_str`: Temporary directory path.
 /// - `tenant_id`: Tenant ID.
 /// - `sandbox_id`: Sandbox ID.
+/// - `netns_info`: Optional information about the network namespace (L2-mode only).
 /// - `l2_port`: Optional TCP port for the gateway in L2 deployment mode. If set, it indicates
 ///   deployment in an L2 VM and contains the TCP port for the gateway.
 ///
@@ -257,10 +279,26 @@ pub fn gateway_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
     sandbox_id: UserVmIdentifier,
-    l2_port: &Option<TcpPort>,
+    #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
+    #[cfg(not(feature = "single-process"))] l2_port: &Option<TcpPort>,
 ) -> Result<String> {
-    if let Some(l2_port) = l2_port {
-        return Ok(format!("{}:{:?}", config::linuxd::GUEST_TAP_IP_ADDRESS, l2_port));
+    // In an L2 deployment, we expose the gateway from linuxd inside a network namespace to the
+    // outside world. As a consequence, external clients must connect to the half of the VETH pair
+    // that is _inside_ the namespace.
+    #[cfg(not(feature = "single-process"))]
+    match (netns_info.clone(), l2_port) {
+        (Some(netns_info), Some(l2_port)) => {
+            return Ok(format!("{}:{:?}", netns_info.veth_ns_ip(), l2_port));
+        },
+        (None, None) => {},
+        _ => {
+            let reason: String = format!(
+                "incompatible combination of l2 options (netns_info={netns_info:?}, \
+                 l2_port={l2_port:?})"
+            );
+            error!("gateway_sockaddr_builder(): {reason}");
+            anyhow::bail!(reason);
+        },
     }
 
     let sandbox_id: u32 = sandbox_id.into();

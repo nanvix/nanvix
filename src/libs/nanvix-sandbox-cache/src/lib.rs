@@ -40,6 +40,14 @@ pub use ::nanvix_sandbox::SyscallTable;
 //==================================================================================================
 
 use ::anyhow::Result;
+#[cfg(not(feature = "single-process"))]
+use ::nanvix_sandbox::netns::{
+    NetnsHandle,
+    NetnsInfo,
+    NetnsPool,
+    NetnsPoolConfig,
+    NetnsPoolInitStrategy,
+};
 use ::nanvix_sandbox::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
@@ -48,10 +56,7 @@ use ::nanvix_sandbox::{
         SocketListener,
         SocketType,
     },
-    tcp_port::{
-        TcpPort,
-        TcpPortAllocator,
-    },
+    tcp_port::TcpPort,
     user_vm_sockaddr_builder,
     InitializedSandbox,
     RunningSandbox,
@@ -102,8 +107,9 @@ pub struct SandboxCache<T> {
     sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
     control_plane_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
-    /// TCP port allocator for gateway ports in L2 deployment mode.
-    tcp_port_allocator: TcpPortAllocator,
+    /// Network namespace pool for different L2 VMs.
+    #[cfg(not(feature = "single-process"))]
+    netns_pool: NetnsPool,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(feature = "single-process"))]
@@ -124,20 +130,28 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// A shared, mutex-protected sandbox cache ready for concurrent access.
     ///
-    pub fn new(config: SandboxCacheConfig<T>) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    /// # Errors
+    ///
+    /// This function returns an error if network namespace pool initialization fails.
+    ///
+    pub fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+        Ok(Arc::new(Mutex::new(Self {
             config,
             running_sandboxes: HashMap::new(),
             linuxd_instances: HashMap::new(),
             sandbox_index: HashMap::new(),
             control_plane_socket: None,
-            tcp_port_allocator: TcpPortAllocator::new(
-                ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
-                ::config::linuxd::GATEWAY_PORT_RANGE_END,
-            ),
+            #[cfg(not(feature = "single-process"))]
+            netns_pool: NetnsPool::new(
+                NetnsPoolConfig::new(
+                    ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
+                    ::config::linuxd::GATEWAY_PORT_RANGE_END,
+                )?,
+                NetnsPoolInitStrategy::Lazy,
+            )?,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
-        }))
+        })))
     }
 
     ///
@@ -193,49 +207,104 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             )),
             // Cache miss: sandbox not found.
             None => {
-                // Allocate a TCP port for the gateway if we are in L2 mode.
-                let gateway_l2_port: Option<TcpPort> = if self.config.l2() {
-                    match self.tcp_port_allocator.allocate() {
-                        Some(port) => Some(port),
-                        None => {
-                            let reason: String =
-                                "failed to allocate TCP port for gateway".to_string();
-                            error!("get(): {reason}");
-                            return Err(::anyhow::anyhow!("{reason}"));
-                        },
-                    }
-                } else {
-                    None
-                };
+                let uninitialized_sandbox: UninitializedSandbox<T> =
+                    UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
 
-                // Work-out socket addresses before allocating any resources.
+                let gateway_l2_port: Option<TcpPort> = None;
+
+                // Work-around gateway_l2_port only being mutated in multi-process mode. The
+                // long-term fix would be to properly gate all instances in the sandbox cache where
+                // we use TcpPort behind this feature flag.
+                #[cfg(not(feature = "single-process"))]
+                let mut gateway_l2_port: Option<TcpPort> = gateway_l2_port;
+
+                // Add Linux Daemon instance to sandbox if one exists for the tenant.
+                let uninitialized_sandbox: UninitializedSandbox<T> =
+                    if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
+                        #[cfg(not(feature = "single-process"))]
+                        let uninitialized_sandbox: UninitializedSandbox<T> = {
+                            // Clone ownership of the network namespace from linuxd (pre-existing) to
+                            // the new user VM (only in L2-mode).
+                            let netns_handle: Option<NetnsHandle> = linuxd.netns_handle();
+
+                            // Allocate new gateway port from the allocator inside the network
+                            // namespace.
+                            if let Some(netns_handle) = &netns_handle {
+                                let tcp_port: TcpPort =
+                                    netns_handle.allocate_gateway_port().map_err(|e| {
+                                        let reason: String =
+                                            format!("error allocating gateway port (error={e:?})");
+                                        error!("get(): {reason}");
+                                        anyhow::anyhow!(reason)
+                                    })?;
+
+                                // Pass ownership of the tcp_port to the outer scope.
+                                gateway_l2_port = Some(tcp_port);
+                            }
+
+                            uninitialized_sandbox.with_netns_handle(linuxd.netns_handle())
+                        };
+
+                        uninitialized_sandbox.with_linuxd(linuxd.clone())
+                    } else {
+                        // Allocate a network namespace for the new linuxd (and user VM) instance
+                        // in L2 deployments.
+                        #[cfg(not(feature = "single-process"))]
+                        if self.config.l2() {
+                            let netns_handle: NetnsHandle =
+                                self.netns_pool.allocate().map_err(|e| {
+                                    let reason: String =
+                                        format!("failed to allocate netns (error={e:?})");
+                                    error!("get(): {reason}");
+                                    anyhow::anyhow!("{reason}")
+                                })?;
+
+                            let tcp_port: TcpPort =
+                                netns_handle.allocate_gateway_port().map_err(|e| {
+                                    let reason: String =
+                                        format!("error allocating gateway port (error={e:?})");
+                                    error!("get(): {reason}");
+                                    anyhow::anyhow!(reason)
+                                })?;
+
+                            // Pass ownership of the tcp_port to the outer scope.
+                            gateway_l2_port = Some(tcp_port);
+
+                            // Pass ownership of the netns handle to the sandbox.
+                            uninitialized_sandbox.with_netns_handle(Some(netns_handle))
+                        } else {
+                            uninitialized_sandbox
+                        }
+
+                        #[cfg(feature = "single-process")]
+                        uninitialized_sandbox
+                    };
+
+                // Work-out socket addresses. In L2 deployments these addresses depend on the
+                // network namespace, so we assign them right after setting up the netns.
+                #[cfg(not(feature = "single-process"))]
+                let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
                 let control_plane_sockaddr: String = (control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
-                    self.config.l2(),
+                    #[cfg(not(feature = "single-process"))]
+                    netns_info.clone(),
                 )?;
                 let user_vm_sockaddr: String = (user_vm_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
+                    #[cfg(not(feature = "single-process"))]
                     self.config.l2(),
                 )?;
                 let gateway_sockaddr: String = (gateway_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     tag.sandbox_id(),
+                    #[cfg(not(feature = "single-process"))]
+                    netns_info.clone(),
+                    #[cfg(not(feature = "single-process"))]
                     &gateway_l2_port,
                 )?;
-
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
-
-                // Add Linux Daemon instance to sandbox if one exists for the tenant.
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
-                        uninitialized_sandbox.with_linuxd(linuxd.clone())
-                    } else {
-                        uninitialized_sandbox
-                    };
 
                 // Add control-plane socket if one exists.
                 let uninitialized_sandbox: UninitializedSandbox<T> =

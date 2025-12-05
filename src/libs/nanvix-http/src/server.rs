@@ -111,7 +111,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     pub async fn run(&mut self) -> Result<()> {
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone());
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
 
         loop {
             tokio::select! {
