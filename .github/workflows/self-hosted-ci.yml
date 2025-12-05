@@ -158,6 +158,11 @@ jobs:
         path: ${{ steps.release-archive.outputs.archive-path }}
         overwrite: true
 
+    - name: "Cleanup images directory"
+      if: always()
+      run: sudo rm -rf images
+      shell: bash
+
     - name: "Upload logs in case of failures"
       if: failure()
       uses: actions/upload-artifact@v5
@@ -170,11 +175,6 @@ jobs:
           **/*.log
           **/*.out
           **/*.err
-
-    - name: "Cleanup images directory"
-      if: always()
-      run: sudo rm -rf images
-      shell: bash
 
   publish-latest:
     name: "Publish Latest Release"
