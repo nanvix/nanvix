@@ -160,6 +160,9 @@ fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_p
     // Generate Rust constants from config.
     let mut constants: String = String::new();
     constants.push_str("pub mod linuxd {\n");
+    if let Some(tap_name) = linuxd_config_toml.get("tap_name") {
+        constants.push_str(&format!("pub const TAP_NAME: &str = \"{tap_name}\";\n"));
+    }
     if let Some(guest_tap_ip) = linuxd_config_toml.get("guest_tap_ip_address") {
         constants
             .push_str(&format!("pub const GUEST_TAP_IP_ADDRESS: &str = \"{guest_tap_ip}\";\n"));
