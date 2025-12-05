@@ -19,6 +19,14 @@ use crate::{
         CONTROL_PLANE_ACCEPT_TIMEOUT,
         SHUTDOWN_TIMEOUT,
     },
+    netns::{
+        NetnsHandle,
+        NetnsInfo,
+    },
+    netns_exec::{
+        command_in_netns,
+        spawn_in_netns,
+    },
     LinuxDaemonArgs,
 };
 use ::anyhow::Result;
@@ -28,18 +36,23 @@ use ::control_plane_api::{
 };
 use ::linuxd::{
     args,
-    config::{
-        restore_gate_sockaddr_builder,
-        CONTROL_PLANE_CONNECT_TIMEOUT,
-    },
+    config::restore_gate_sockaddr_builder,
 };
 use ::std::{
+    fs,
     io::ErrorKind,
     mem,
-    process::Stdio,
+    os::unix::fs::FileTypeExt,
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::{
+        ExitStatus,
+        Stdio,
+    },
 };
 use ::syscomm::{
-    ReadExact,
     SocketListener,
     SocketStream,
     SocketType,
@@ -57,7 +70,12 @@ use ::tokio::{
         Child,
         Command,
     },
-    time::timeout,
+    time::{
+        sleep,
+        timeout,
+        Duration,
+        Instant,
+    },
 };
 
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
@@ -78,6 +96,8 @@ pub struct LinuxDaemon {
     child: Child,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
+    /// RAII handle to the network namespace linuxd runs in (L2-mode only).
+    netns_handle: Option<NetnsHandle>,
 }
 
 //==================================================================================================
@@ -88,96 +108,130 @@ impl LinuxDaemon {
     ///
     /// # Description
     ///
+    /// Waits until a unix socket path appears, or times out.
+    ///
+    /// This only checks filesystem-level existence and that the node is a socket. It does *not*
+    /// actually connect to it. It can be used to poll for UNIX sockets to be ready even if they
+    /// are in a different network namespace (so we cannot `connect` to them).
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The path to the unix socket file.
+    /// - `timeout_duration`: The maximum duration to wait for the socket to appear.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns an empty tuple. On failure, returns an error.
+    ///
+    // FIXME(#1171): we will be able to get rid of this method once we have a programmatic way to
+    // spawn a task inside a namespace without spawning a different process.
+    async fn wait_for_unix_socket<P: AsRef<Path>>(
+        path: P,
+        timeout_duration: Duration,
+    ) -> Result<()> {
+        let path: PathBuf = path.as_ref().to_path_buf();
+        let deadline: Instant = Instant::now() + timeout_duration;
+        const SLEEP_DURATION: Duration = Duration::from_millis(1);
+
+        loop {
+            match fs::symlink_metadata(&path) {
+                Ok(meta) => {
+                    // Check file is a socket.
+                    if meta.file_type().is_socket() {
+                        return Ok(());
+                    } else {
+                        // Exists but is not a socket, raise error.
+                        let reason: String =
+                            format!("file available, but not a socket (path={path:?})");
+                        error!("wait_for_unix_socket(): {reason}");
+                        anyhow::bail!(reason);
+                    }
+                },
+                Err(e) if e.kind() == ErrorKind::NotFound => {},
+                Err(e) => {
+                    let reason: String =
+                        format!("error checking file metadata (path={path:?}, error={e:?})");
+                    error!("wait_for_unix_socket(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            }
+
+            if Instant::now() >= deadline {
+                let reason: String =
+                    format!("timed-out waiting for socket to be available (path={path:?})");
+                error!("wait_for_unix_socket(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            sleep(SLEEP_DURATION).await;
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Helper method to resume linuxd from a snapshot.
     ///
     /// We need to do two steps after we restore linuxd's state from a snapshot (in an L2 VM).
     /// First we need to actually resume the VM's execution using cloud-hypervisor's API socket.
     /// Then we need to "unlock" linuxd from a pre-snapshot gate that we use to control exactly
-    /// when the VM is snapshotted.
+    /// when the VM is snapshotted. Linuxd in an L2 VM executes in a separate network namespace, so
+    /// we need to keep that in mind during restore.
     ///
     /// # Parameters
     ///
+    /// - `netns_info`: Information about the L2 VM's network namespace.
+    /// - `ch_remote_path`: Path to the ch-remote binary.
     /// - `clh_api_socket_path`: Path to the cloud-hypervisor API socket.
     ///
     /// # Returns
     ///
     /// On success, an empty tuple is returned. On failure, an error is returned instead.
     ///
-    async fn resume_l2_vm(clh_api_socket_path: &str) -> Result<()> {
-        let resume_req: &str = concat!(
-            "PUT /api/v1/vm.resume HTTP/1.1\r\n",
-            "Host: localhost\r\n",
-            "Accept: */*\r\n",
-            "Content-Length: 0\r\n",
-            "\r\n",
-        );
+    async fn resume_l2_vm(
+        netns_info: &NetnsInfo,
+        ch_remote_path: &str,
+        clh_api_socket_path: &str,
+    ) -> Result<()> {
+        // Timeout between the ch-remote resume operation and the API socket becoming available.
+        const CLH_RESUME_TIMEOUT: Duration = Duration::from_millis(100);
 
-        let unbound_clh_api_socket: UnboundSocket = UnboundSocket::new(SocketType::Unix);
-        let now: tokio::time::Instant = tokio::time::Instant::now();
-        let mut clh_api_socket: SocketStream = loop {
-            match unbound_clh_api_socket
-                .clone()
-                .connect(clh_api_socket_path)
+        // Wait for CLH socket to be ready.
+        Self::wait_for_unix_socket(clh_api_socket_path, CLH_RESUME_TIMEOUT).await?;
+
+        // Resume the L2 VM inside the network namespace.
+        let ch_remote_args: Vec<String> = vec![
+            ch_remote_path.to_string(),
+            args::Args::OPT_CLH_API_SOCKET.to_string(),
+            clh_api_socket_path.to_string(),
+            args::Args::OPT_CH_REMOTE_RESUME.to_string(),
+        ];
+        trace!("ch-remote args: {ch_remote_args:?}");
+        let status: ExitStatus =
+            command_in_netns(netns_info, &ch_remote_args[0], &ch_remote_args[1..])
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()
                 .await
-            {
-                Ok(stream) => {
-                    debug!(
-                        "clh API socket appeared after {:?} (path={:?})",
-                        now.elapsed(),
-                        &clh_api_socket_path
-                    );
-                    break stream;
-                },
-                Err(e) => {
-                    // Tolerate transient connection errors.
-                    if matches!(
-                        e.kind(),
-                        ErrorKind::NotFound | ErrorKind::ConnectionRefused | ErrorKind::WouldBlock
-                    ) {
-                        if now.elapsed().as_secs() > CONTROL_PLANE_CONNECT_TIMEOUT.as_secs() {
-                            let reason: String = format!(
-                                "error connecting to CLH API socket (addr={}, error=timed-out)",
-                                clh_api_socket_path
-                            );
-                            error!("{reason}");
-                            return Err(anyhow::anyhow!(reason));
-                        } else {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-                            continue;
-                        }
-                    }
-
-                    // Bail on fatal errors.
+                .map_err(|e| {
                     let reason: String = format!(
-                        "error connecting to CLH API socket (addr={}, error={e:?})",
-                        clh_api_socket_path
+                        "error spawning ch remote process (args={ch_remote_args:?}, error={e:?})"
                     );
                     error!("{reason}");
-                    return Err(anyhow::anyhow!(reason));
-                },
-            }
-        };
-
-        // Write HTTP request.
-        // TODO: this request/response flow takes a considerable portion of the restore process
-        // (almost half). We should investigate why is this the case, and whether it is a
-        // fundamental limitation.
-        if let Err(e) = clh_api_socket.write_all(resume_req.as_bytes()).await {
-            error!("failed to write resume request to CLH API socket (error={e:?})");
-            return Err(e.into());
-        }
-
-        // Wait for at least one byte of the reply, otherwise cloud-hypervisor hangs.
-        let mut buf: [u8; 1] = [0u8; 1];
-        if let Err(e) = clh_api_socket.read_exact(&mut buf).await {
-            error!("failed to read resume response from CLH API socket (error={e:?})");
-            return Err(e.into());
+                    anyhow::anyhow!(reason)
+                })?;
+        if !status.success() {
+            let reason: String = format!(
+                "error running ch remote process (args={ch_remote_args:?}, status={status:?})"
+            );
+            error!("{reason}");
+            anyhow::bail!(reason);
         }
 
         // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
         let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
         let mut stream: SocketStream = unbound_socket
-            .connect(&restore_gate_sockaddr_builder())
+            .connect(&restore_gate_sockaddr_builder(Some(netns_info.veth_ns_ip())))
             .await?;
         if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
             error!("failed to write restore gate bytes (error={e:?})");
@@ -213,6 +267,7 @@ impl LinuxDaemon {
     ///
     /// - `args`: Linux Daemon arguments.
     /// - `control_plane_listener`: Control-plane socket listener.
+    /// - `netns_handle`: Optional handle to a network namespace (L2-mode only).
     ///
     /// # Returns
     ///
@@ -222,6 +277,7 @@ impl LinuxDaemon {
     pub async fn spawn<T: Sync + Send + 'static>(
         args: &LinuxDaemonArgs<T>,
         control_plane_listener: &mut SocketListener,
+        netns_handle: Option<NetnsHandle>,
     ) -> Result<Self> {
         debug!(
             "spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
@@ -232,12 +288,12 @@ impl LinuxDaemon {
 
         let clh_api_socket_path: String = get_clh_api_socket_path(args.tmp_directory());
         let mut linuxd_args: Vec<String> = if args.l2() {
-            match std::fs::remove_file(&clh_api_socket_path) {
+            match ::std::fs::remove_file(&clh_api_socket_path) {
                 Ok(()) => {},
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
                 Err(e) => {
                     let reason: String = format!("error removing clh socket file (error={e:?})");
-                    error!("{reason}");
+                    error!("spawn(): {reason}");
                     return Err(anyhow::anyhow!(reason));
                 },
             };
@@ -280,23 +336,51 @@ impl LinuxDaemon {
         }
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
-        let child: Child = Command::new(&linuxd_args[0])
-            .args(&linuxd_args[1..])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+        let child: Child = if let Some(netns_handle) = &netns_handle {
+            // In L2 deployments, we spawn linuxd inside a network namespace.
+            debug_assert!(args.l2());
 
-        if args.l2() {
-            if let Err(e) = Self::resume_l2_vm(&clh_api_socket_path).await {
+            let child: Child =
+                spawn_in_netns(&netns_handle.netns_info()?, &linuxd_args[0], &linuxd_args[1..])
+                    .await
+                    .map_err(|e| {
+                        let reason: String =
+                            format!("error spawning linuxd process in netns (error={e:?})");
+                        error!("spawn(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+
+            let ch_remote_path: String =
+                format!("{}/ch-remote", get_clh_bin_dir(args.toolchain_binary_directory())?);
+            if let Err(e) = Self::resume_l2_vm(
+                &netns_handle.netns_info()?,
+                &ch_remote_path,
+                &clh_api_socket_path,
+            )
+            .await
+            {
                 let reason: String = format!("error resuming L2 VM (error={e:?})");
-                error!("{reason}");
+                error!("spawn(): {reason}");
 
                 // Use a SIGKILL because the process is already faulty.
                 Self::send_sigkill_to_child(&child);
 
-                return Err(anyhow::anyhow!("{reason}"));
+                return Err(anyhow::anyhow!(reason));
             }
-        }
+
+            child
+        } else {
+            Command::new(&linuxd_args[0])
+                .args(&linuxd_args[1..])
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .map_err(|e| {
+                    let reason: String = format!("error spawning linuxd process (error={e:?})");
+                    error!("spawn(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+        };
 
         // After linuxd has started, accept the incoming connection and return the stream for
         // further use.
@@ -309,23 +393,23 @@ impl LinuxDaemon {
                     // and return an error.
                     let reason: String =
                         format!("error connecting control-plane to linuxd (error={e:?})");
-                    error!("{reason}");
+                    error!("spawn(): {reason}");
 
                     // Use a SIGKILL because the process is already faulty.
                     Self::send_sigkill_to_child(&child);
 
-                    anyhow::bail!("{reason}")
+                    anyhow::bail!(reason)
                 },
                 Err(e) => {
                     let reason: String = format!(
                         "timed-out waiting for linuxd to connect to control-plane (error={e:?})"
                     );
-                    error!("{reason}");
+                    error!("spawn(): {reason}");
 
                     // Use a SIGKILL because the process is already faulty.
                     Self::send_sigkill_to_child(&child);
 
-                    anyhow::bail!("{reason}")
+                    anyhow::bail!(reason)
                 },
             };
         debug!("nanvixd received connection from linuxd's control-plane socket");
@@ -333,6 +417,7 @@ impl LinuxDaemon {
         Ok(Self {
             child,
             control_plane_stream,
+            netns_handle,
         })
     }
 
@@ -379,5 +464,19 @@ impl LinuxDaemon {
                 Self::send_sigkill_to_child(&self.child);
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Share ownership of the network namespace by passing a copy. This method is used to share a
+    /// network namespace between linuxd and the user VMs mapped to it.
+    ///
+    /// # Returns
+    ///
+    /// A cloned handle to the network namespace if available, or `None` otherwise.
+    ///
+    pub fn netns_handle(&self) -> Option<NetnsHandle> {
+        self.netns_handle.clone()
     }
 }
