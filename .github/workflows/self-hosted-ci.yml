@@ -183,6 +183,19 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
 
     steps:
+    - uses: actions/checkout@v6
+
+    - name: "Extract Version"
+      id: version
+      run: |
+        version=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        if [ -z "${version}" ]; then
+          echo "Warning: Failed to extract version from Cargo.toml, using fallback"
+          version="?.?.?"
+        fi
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      shell: bash
+
     - name: "Download release artifacts"
       uses: actions/download-artifact@v6
       with:
@@ -194,7 +207,7 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: latest
-        name: Latest
+        name: Nanvix ${{ steps.version.outputs.version }}
         draft: false
         prerelease: false
         allowUpdates: true
@@ -202,4 +215,4 @@ jobs:
         removeArtifacts: true
         artifacts: release-artifacts/**/*.tar.bz2
         artifactContentType: application/x-bzip2
-        body: Automated release update for ${{ github.run_id }}.
+        body: Automated release for Nanvix ${{ steps.version.outputs.version }}.
