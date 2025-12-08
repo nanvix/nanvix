@@ -106,7 +106,7 @@
 //! - Core state types: [`UninitializedSandbox`], [`InitializedSandbox`], [`RunningSandbox`]
 //! - Configuration: [`SandboxConfig`], [`LinuxDaemonArgs`], [`UserVmArgs`]
 //! - Implementation: [`multi_process`] (default), [`single_process`] (feature-gated)
-//! - Utilities: [`tcp_port`] for managing TCP port allocations
+//! - Utilities: [`netns`] for managing network namespaces, [`tcp_port`] for managing TCP port allocations
 
 //==================================================================================================
 // Private Modules
@@ -132,6 +132,7 @@ mod uservm_args;
     }
 }
 
+pub mod netns;
 pub mod tcp_port;
 
 //==================================================================================================

@@ -1,3 +1,6 @@
+# Name of the TAP device in the L2 VM.
+tap_name = "vmtap0"
+
 # IP address of linuxd when running inside an L2 VM.
 guest_tap_ip_address = "192.168.249.2"
 
