@@ -235,9 +235,12 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 info!("Connected to control plane on: {:?}", self.control_plane_sockaddr);
                 Ok(socket)
             },
-            Ok(Err(_error)) => {
+            Ok(Err(error)) => {
                 let reason: &str = "failed to connect to control-plane";
-                error!("accept_control_plane_connection(): {reason}");
+                error!(
+                    "accept_control_plane_connection(): {reason} (addr={}, error={error:?})",
+                    self.control_plane_sockaddr
+                );
                 Err(Error::new(ErrorCode::TryAgain, reason))
             },
             Err(_elapsed) => {
@@ -253,13 +256,14 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     async fn trap_if_pending_snapshot(&self) -> Result<()> {
         if self.in_l2 {
             let trap_listener: TcpListener =
-                TcpListener::bind(restore_gate_sockaddr_builder()).await?;
+                TcpListener::bind(restore_gate_sockaddr_builder(None)).await?;
 
             // Deliberately print to stdout so that it can be captured by the snapshot creation
             // script.
             println!("{}", SNAPSHOT_MAGIC_STRING);
 
             trap_listener.accept().await?;
+            trace!("linuxd unblocked from restore gate");
         }
 
         Ok(())
@@ -273,8 +277,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         user_vm_event_tx: Sender<UserVmEvent>,
     ) -> Result<(UserVmIdentifier, UserVmHandle), Error> {
         trace!("accepted connection from user VM (addr={user_vm_stream:?})",);
-
-        debug!("waiting for user vm information");
 
         let mut payload: [u8; NEW_USER_VM_MESSAGE_LEN] = [0u8; NEW_USER_VM_MESSAGE_LEN];
         user_vm_stream.read_exact(&mut payload).await.map_err(|e| {
@@ -300,12 +302,39 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         let user_vm_reader_handle: JoinHandle<Result<()>> =
             tokio::spawn(Self::user_vm_reader_loop(user_vm_id, user_vm_reader, user_vm_event_tx));
 
+        // In an L2 deployment, linuxd is deployed inside a network namespace and the gateway
+        // address we receive from nanvixd is of the form <VETH_NS_IP>:<PER_USERVM_PORT>. This is
+        // because external clients need to send their requests to the VETH. However, linuxd is,
+        // itself, in a VM connected to the outside namespace via a TAP device. Linuxd cannot,
+        // therefore, bind to the <VETH_NS_IP> as it is not available inside the TAP. As a
+        // consequence, we translate here <VETH_NS_IP>:<PER_USER_VM_PORT> to
+        // <GUEST_TAP_IP>:<PER_USER_VM_PORT>. Note that the <VETH_NS_IP> -> <GUEST_TAP_IP>
+        // forwarding is set-up by nanvixd when creating the netns.
+        let mut gateway_sockaddr: String = new_msg.gateway_sockaddr().to_string();
+        if self.in_l2 {
+            let gateway_port: &str = gateway_sockaddr
+                .rsplit_once(":")
+                .ok_or_else(|| {
+                    let reason: &'static str = "failed to translate VETH IP to TAP IP";
+                    error!("{reason} (gateway_addr={gateway_sockaddr})");
+                    Error::new(ErrorCode::InvalidArgument, reason)
+                })?
+                .1;
+            let new_gateway_sockaddr: String =
+                format!("{}:{gateway_port}", ::config::linuxd::GUEST_TAP_IP_ADDRESS);
+            trace!(
+                "translating VETH NS IP to guest TAP IP for gateway (old={gateway_sockaddr}, \
+                 new={new_gateway_sockaddr})",
+            );
+            gateway_sockaddr = new_gateway_sockaddr;
+        }
+
         // Gateway listener for this user VM.
         Ok((
             user_vm_id,
             UserVmHandle::new(
                 user_vm_writer,
-                new_msg.gateway_sockaddr(),
+                &gateway_sockaddr,
                 new_msg.gateway_socket_type(),
                 user_vm_reader_handle,
             ),

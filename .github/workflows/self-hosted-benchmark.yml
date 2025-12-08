@@ -85,6 +85,11 @@ jobs:
           warm-start-vmm
 
 
+    - name: "Cleanup images directory"
+      if: always()
+      run: sudo rm -rf images
+      shell: bash
+
     - name: "Upload logs in case of benchmark failures"
       if: failure()
       uses: actions/upload-artifact@v5
@@ -98,8 +103,3 @@ jobs:
           **/*.out
           **/*.err
           bench_*.txt
-
-    - name: "Cleanup images directory"
-      if: always()
-      run: sudo rm -rf images
-      shell: bash

@@ -339,6 +339,65 @@ wait_for_tcp_socket() {
 #
 # Description
 #
+#   Wait for TCP connections in TIME_WAIT state to clear.
+#
+#   This function polls the system to check if there are lingering TCP connections
+#   in TIME_WAIT state (typically from previous L2 runs) and waits until
+#   they are cleared or the timeout is reached.
+#
+# Arguments
+#
+#   $1 - Maximum time to wait in seconds (default: 70).
+#   $2 - Port number to check (default: uses NANVIXD_PORT).
+#
+# Return Value
+#
+#   - On success (connections cleared), this function returns zero.
+#   - On timeout, this function returns non-zero.
+#
+wait_for_tcp_cleanup() {
+    local max_wait_seconds="${1:-70}"
+    local port="${2:-${NANVIXD_PORT}}"
+    local poll_interval=2
+    local start_time
+    start_time=$(date +%s)
+
+    while true; do
+        local current_time
+        current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+
+        if [ ${elapsed} -ge ${max_wait_seconds} ]; then
+            echo "Warning: timeout reached after ${max_wait_seconds}s, some connections may still be in TIME_WAIT" 1>&2
+            return 1
+        fi
+
+        # Count connections in TIME_WAIT state on the specified port.
+        local time_wait_count=0
+        if command -v ss &> /dev/null; then
+            # Use ss if available (preferred).
+            time_wait_count=$(ss -tan state time-wait sport "${port}" 2>/dev/null | tail -n +2 | wc -l)
+        elif command -v netstat &> /dev/null; then
+            # Fall back to netstat if ss is not available.
+            time_wait_count=$(netstat -tan | grep ":${port}" | grep -c TIME_WAIT || echo 0)
+        else
+            echo "Warning: neither 'ss' nor 'netstat' available, skipping TCP cleanup check" 1>&2
+            return 0
+        fi
+
+        if [ "${time_wait_count}" -eq 0 ]; then
+            echo "TCP connections cleared." 1>&2
+            return 0
+        fi
+
+        echo "Waiting for ${time_wait_count} TIME_WAIT connection(s) to clear... (${elapsed}s elapsed)" 1>&2
+        sleep ${poll_interval}
+    done
+}
+
+#
+# Description
+#
 #   Creates a user VM and prints nanvixd response.
 #
 # Arguments
@@ -425,10 +484,55 @@ cleanup() {
     if kill -0 -- "-${NANVIXD_PID}" 2>/dev/null; then
         echo "Killing nanvixd (pid=${NANVIXD_PID})..." 1>&2
 
-        # Make sure we force-clean any zombie processes, and ignore errors.
-        kill -s SIGKILL -- "-${NANVIXD_PID}" 2> /dev/null || true
+        # First try graceful shutdown with SIGTERM to allow Drop handlers to run.
+        kill -s SIGTERM -- "-${NANVIXD_PID}" 2> /dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown.
+        local count=0
+        while kill -0 -- "-${NANVIXD_PID}" 2>/dev/null && [ $count -lt 50 ]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
+
+        # If still running, force kill.
+        if kill -0 -- "-${NANVIXD_PID}" 2>/dev/null; then
+            echo "nanvixd did not exit gracefully, forcing kill..." 1>&2
+            kill -s SIGKILL -- "-${NANVIXD_PID}" 2> /dev/null || true
+        fi
 
         wait "${NANVIXD_PID}" 2>/dev/null || true
+    fi
+
+    # Clean up any stale Nanvix network namespaces.
+    cleanup_stale_netns
+
+    # If running in L2 mode, wait for TCP connections to clear for subsequent runs.
+    if [ "${L2_VM}" = "yes" ]; then
+        echo "Checking for lingering TCP connections..." 1>&2
+        wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
+    fi
+}
+
+#
+# Description
+#
+#   Cleans up any stale Nanvix network namespaces left from previous runs.
+#
+cleanup_stale_netns() {
+    # List all Nanvix network namespaces and delete them.
+    local netns_list
+    netns_list=$(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true)
+
+    if [ -n "${netns_list}" ]; then
+        echo "Cleaning up stale network namespaces..." 1>&2
+        for ns in ${netns_list}; do
+            # Delete veth pair first (host side).
+            local veth_name="nvxgw-h-${ns#nvxns-}"
+            sudo ip link del "${veth_name}" 2>/dev/null || true
+
+            # Delete the namespace.
+            sudo ip netns del "${ns}" 2>/dev/null || true
+        done
     fi
 }
 
@@ -451,6 +555,15 @@ main() {
 
     # Check if required tools are installed.
     check_tools || return 1
+
+    # Clean up any stale network namespaces from previous runs.
+    cleanup_stale_netns
+
+    # If running in L2 mode, wait for any lingering TCP connections from previous runs to clear.
+    if [ "${L2_VM}" = "yes" ]; then
+        echo "Checking for lingering TCP connections from previous runs..." 1>&2
+        wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
+    fi
 
     # Collect command line arguments.
     local program_name

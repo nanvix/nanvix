@@ -46,6 +46,7 @@ GUEST_BROADCAST_ADDRESS="192.168.249.1"
 MASK="255.255.255.0"
 
 LINUXD_CONFIG_TOML="${NANVIX_HOME}/build/linuxd_config.toml"
+TAP_NAME=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "tap_name")
 GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip_address")
 HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
 SNAPSHOT_MAGIC_STRING=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_magic_string")
@@ -64,8 +65,10 @@ SNAPSHOT_PATH="${IMAGES_DIR}/${SNAPSHOT_NAME}"
 L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 
 boot_clh_vm() {
-    rm -f ${CLH_API_SOCKET}
-    rm -f ${CLH_CONSOLE}
+    # FIXME(#1171): we need `sudo rm` because we restore the L2 VM in a netns using `sudo ip`. This
+    # won't be necessary once we support low-level netns management with CAP_NET_ADMIN.
+    sudo rm -f -- "${CLH_API_SOCKET}"
+    sudo rm -f -- "${CLH_CONSOLE}"
     # FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix release that
     # includes an updated cloud-hypervisor.
     ${CLOUD_HYPERVISOR_PATH} \
@@ -79,7 +82,7 @@ boot_clh_vm() {
         --cpus "boot=2" \
         --memory "size=512M" \
         --rng "src=/dev/urandom" \
-        --net "tap=vmtap0,mac=${GUEST_MAC_ADDRESS},ip=${HOST_TAP_IP_ADDRESS},mask=${MASK},num_queues=2,queue_size=256" > /dev/null 2>&1 &
+        --net "tap=${TAP_NAME},mac=${GUEST_MAC_ADDRESS},ip=${HOST_TAP_IP_ADDRESS},mask=${MASK},num_queues=2,queue_size=256" > /dev/null 2>&1 &
 
     # Return the PID
     echo $!

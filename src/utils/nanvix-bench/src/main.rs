@@ -358,6 +358,8 @@ impl Benchmark {
                     Err(e) => error!("error waiting for nanvixd: {e:?}"),
                 }
             }
+
+            self.nanvixd = None;
         }
     }
 
@@ -576,17 +578,77 @@ impl Benchmark {
         // Payload we are sending over the wire
         let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
-        for _ in 0..self.iterations {
-            self.run_user_vm_echo_once(
-                new_msg_headers.clone(),
-                new_msg.clone(),
-                l2,
-                pre_warm,
-                &mut latencies,
-                &mut None,
-            )
-            .await?;
-            pb.inc(1);
+
+        // When pre_warm is true, we setup nanvixd once and reuse it across iterations.
+        if pre_warm {
+            self.setup(l2);
+
+            // Start and kill a pre-warm VM to warm up the nanvixd instance.
+            let pw_new_msg_headers: HeaderMap = new_msg_headers.clone();
+            let mut pw_new_msg: New = new_msg.clone();
+            pw_new_msg.app_name = "prewarm-vm".to_string();
+
+            let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
+            let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
+
+            let (pw_user_vm_id, mut pw_gateway_stream): (UserVmIdentifier, SocketStream) =
+                self.start(pw_new_msg, pw_new_msg_headers, l2).await?;
+            pw_gateway_stream.write_all(&payload).await?;
+            pw_gateway_stream.read_exact(&mut response_payload).await?;
+            self.kill(pw_user_vm_id).await?;
+            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
+
+            // Now run the actual benchmark iterations, measuring only user VM startup.
+            for iter in 0..self.iterations {
+                let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
+                let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
+
+                // Update the app name to prevent collisions across iterations.
+                let mut new_msg_iter: New = new_msg.clone();
+                new_msg_iter.app_name = format!("bar-{iter}");
+
+                let start: Instant = Instant::now();
+                let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) = self
+                    .start(new_msg_iter, new_msg_headers.clone(), l2)
+                    .await?;
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut response_payload).await?;
+                latencies.push(start.elapsed().as_micros());
+
+                // Sanity-check the message to make sure is the same we sent.
+                if response_payload != payload {
+                    error!("received payload does not match sent payload!");
+                    error!(" - sent: {payload:?}");
+                    error!(" - got: {response_payload:?}");
+                }
+
+                self.kill(user_vm_id).await?;
+
+                if l2 {
+                    sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
+                } else {
+                    sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
+                }
+
+                pb.inc(1);
+            }
+
+            // Cleanup nanvixd after all iterations.
+            self.cleanup();
+        } else {
+            // When pre_warm is false, setup/cleanup happens on every iteration.
+            for _ in 0..self.iterations {
+                self.run_user_vm_echo_once(
+                    new_msg_headers.clone(),
+                    new_msg.clone(),
+                    l2,
+                    false,
+                    &mut latencies,
+                    &mut None,
+                )
+                .await?;
+                pb.inc(1);
+            }
         }
 
         pb.finish();

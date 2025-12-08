@@ -68,6 +68,9 @@ impl Args {
     /// Command-line option to indicate the seccomp option.
     #[allow(dead_code)]
     pub const OPT_CLH_SECCOMP: &'static str = "--seccomp";
+    /// Command-line option to indicate the resume operation to ch-remote.
+    #[allow(dead_code)]
+    pub const OPT_CH_REMOTE_RESUME: &'static str = "resume";
 
     ///
     /// # Description

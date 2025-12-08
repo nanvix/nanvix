@@ -54,6 +54,119 @@ NUM_CONCURRENT_VMS = 100
 # ======================================================================
 
 
+def wait_for_tcp_cleanup(max_wait_seconds=70):
+    """
+    Wait for TCP connections in TIME_WAIT state to clear.
+
+    This function polls the system to check if there are lingering TCP connections
+    in TIME_WAIT state (typically from previous L2 benchmark runs) and waits until
+    they are cleared or the timeout is reached.
+
+    # Parameters
+
+    - `max_wait_seconds`: Maximum time to wait in seconds (default: 70).
+
+    # Returns
+
+    True if connections cleared, False if timeout reached.
+    """
+    import time
+
+    start_time: float = time.time()
+    poll_interval: int = 2  # Check every 2 seconds.
+
+    while (time.time() - start_time) < max_wait_seconds:
+        try:
+            # Count connections in TIME_WAIT state on port 9999 (nanvixd default port).
+            result: subprocess.CompletedProcess = subprocess.run(
+                ["ss", "-tan", "state", "time-wait", "sport", "9999"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                # Count non-header lines.
+                lines: list = [
+                    line for line in result.stdout.splitlines() if line.strip()
+                ]
+                # First line is header, so subtract 1.
+                time_wait_count: int = max(0, len(lines) - 1)
+
+                if time_wait_count == 0:
+                    print("TCP connections cleared.")
+                    return True
+
+                elapsed: int = int(time.time() - start_time)
+                print(
+                    f"Waiting for {time_wait_count} TIME_WAIT connection(s) "
+                    f"to clear... ({elapsed}s elapsed)"
+                )
+
+        except Exception as e:
+            print(f"Warning: failed to check TCP connection state: {e}")
+            # Fall back to fixed wait if we can't check.
+            time.sleep(max_wait_seconds)
+            return False
+
+        time.sleep(poll_interval)
+
+    print(
+        f"Warning: timeout reached after {max_wait_seconds}s, "
+        f"some connections may still be in TIME_WAIT"
+    )
+    return False
+
+
+def cleanup_stale_netns():
+    """
+    Cleans up any stale Nanvix network namespaces left from previous runs.
+
+    This function removes network namespaces that match the Nanvix naming pattern
+    (nvxns-*) to prevent resource conflicts when running L2 benchmarks.
+    """
+    try:
+        # List all network namespaces and filter for Nanvix ones.
+        result = subprocess.run(
+            ["sudo", "ip", "netns", "list"], capture_output=True, text=True, check=False
+        )
+
+        if result.returncode != 0:
+            # If command fails, just continue (user may not have permissions).
+            return
+
+        # Extract Nanvix network namespace names (nvxns-*).
+        import re
+        import time
+
+        netns_list = re.findall(r"nvxns-\d+", result.stdout)
+
+        if netns_list:
+            print(f"Cleaning up {len(netns_list)} stale network namespace(s)...")
+            for ns in netns_list:
+                # Extract the namespace ID from the name.
+                ns_id = ns.replace("nvxns-", "")
+
+                # Delete veth pair first (host side).
+                veth_name = f"nvxgw-h-{ns_id}"
+                subprocess.run(
+                    ["sudo", "ip", "link", "del", veth_name],
+                    capture_output=True,
+                    check=False,
+                )
+
+                # Delete the namespace.
+                subprocess.run(
+                    ["sudo", "ip", "netns", "del", ns], capture_output=True, check=False
+                )
+
+            # Give the system time to fully release network resources.
+            time.sleep(1)
+    except Exception as e:
+        # Non-fatal: just log and continue.
+        print(f"Warning: failed to clean up stale network namespaces: {e}")
+
+
 def gen_filename_for_benchmark(benchmark, machine_type, arch):
     benchmark = benchmark.replace("-", "_")
     return f"nanvix_bench_{benchmark}_{machine_type}_{arch}.csv"
@@ -435,6 +548,11 @@ def run_benchmark(args):
         f"Running '{args.benchmark}' benchmark (machine={args.machine_type}, arch={X86_64_ARCH})"
     )
 
+    # Clean up any stale network namespaces before running all benchmarks.
+    # This prevents resource conflicts from previous runs, especially when running
+    # non-L2 benchmarks after L2 benchmarks in a sequence.
+    cleanup_stale_netns()
+
     # The concurrent benchmark takes slightly different command-line arguments than the other
     # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
     # a number of concurrent user VMs.
@@ -461,15 +579,33 @@ def run_benchmark(args):
             gen_filename_for_benchmark(args.benchmark, args.machine_type, X86_64_ARCH),
         )
 
-        # Run benchmark and capture raw stdout.
-        raw_stdout = subprocess.run(
-            nanvix_bench_cmd, shell=True, capture_output=True
-        ).stdout.decode("utf-8")
+        # Run benchmark and capture raw stdout/stderr.
+        result = subprocess.run(nanvix_bench_cmd, shell=True, capture_output=True)
+        if result.returncode != 0:
+            print(
+                f"ERROR: benchmark '{args.benchmark}' failed with exit code {result.returncode}"
+            )
+            print("STDOUT:")
+            print(result.stdout.decode("utf-8"))
+            print("STDERR:")
+            print(result.stderr.decode("utf-8"))
+            raise RuntimeError(
+                f"Benchmark '{args.benchmark}' failed with exit code {result.returncode}"
+            )
+
+        raw_stdout = result.stdout.decode("utf-8")
         filtered_stdout = filter_benchmark_stdout(args.benchmark, raw_stdout)
         with open(output_file, "w") as fh:
             fh.write(filtered_stdout)
     else:
         subprocess.run(nanvix_bench_cmd, shell=True, check=True)
+
+    # After L2 benchmarks, wait for TCP connections in TIME_WAIT to clear.
+    # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
+    # which can cause connection issues for subsequent benchmarks.
+    if args.benchmark.endswith(L2_SUFFIX):
+        print("Checking for lingering TCP connections...")
+        wait_for_tcp_cleanup()
 
 
 def copy_results(args):

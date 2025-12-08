@@ -46,12 +46,15 @@ runs:
           continue
         fi
 
+        # FIXME(1171): the current L2 deployment involves a very slow network
+        # namespace creation, particularly at high-churn, so we must temporarily
+        # reduce the number of iterations of the benchmarks.
         python3 ./scripts/benchmark.py \
           run \
           --benchmark ${bench} \
           --machine-type microvm \
           --hwloc $HOME/hwloc.json \
-          --iterations 1000 \
+          --iterations 100 \
           --toolchain-bin-dir $HOME/toolchain/bin \
           --output-dir $(pwd)
       done
@@ -133,12 +136,15 @@ runs:
           continue
         fi
 
+        # FIXME(1171): the current L2 deployment involves a very slow network
+        # namespace creation, particularly at high-churn, so we must temporarily
+        # reduce the number of iterations of the benchmarks.
         python3 ./scripts/benchmark.py \
           run \
           --benchmark ${bench} \
           --machine-type hyperlight \
           --hwloc $HOME/hwloc.json \
-          --iterations 1000 \
+          --iterations 100 \
           --toolchain-bin-dir $HOME/toolchain/bin \
           --output-dir $(pwd)
       done

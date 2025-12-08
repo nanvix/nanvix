@@ -11,6 +11,8 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "single-process"))]
+use crate::netns::NetnsHandle;
 use crate::{
     config::GATEWAY_CONNECT_TIMEOUT,
     linuxd::LinuxDaemon,
@@ -73,6 +75,9 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     pub(super) control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
+    /// Handle to the network namespace (only set in L2-mode).
+    #[cfg(not(feature = "single-process"))]
+    pub(super) netns_handle: Option<NetnsHandle>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(feature = "single-process"))]
@@ -91,7 +96,8 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
-    pub async fn start(self) -> Result<RunningSandbox> {
+    #[cfg_attr(feature = "single-process", allow(unused_mut))]
+    pub async fn start(mut self) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
@@ -134,6 +140,9 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     uservm_id,
                 ),
                 &mut locked_control_plane_socket_and_info.0,
+                // Pass ownership of the netns RAII handle to the user VM.
+                #[cfg(not(feature = "single-process"))]
+                self.netns_handle.take(),
             )
             .await
             {
