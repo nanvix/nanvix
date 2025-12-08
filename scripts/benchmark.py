@@ -548,6 +548,12 @@ def run_benchmark(args):
         f"Running '{args.benchmark}' benchmark (machine={args.machine_type}, arch={X86_64_ARCH})"
     )
 
+    # Before running L2 benchmarks, wait for TCP connections from previous runs to clear.
+    # This is critical when L2 benchmarks run after non-L2 benchmarks in sequence.
+    if args.benchmark.endswith(L2_SUFFIX):
+        print("Pre-benchmark: checking for lingering TCP connections...")
+        wait_for_tcp_cleanup()
+
     # Clean up any stale network namespaces before running all benchmarks.
     # This prevents resource conflicts from previous runs, especially when running
     # non-L2 benchmarks after L2 benchmarks in a sequence.
@@ -604,7 +610,7 @@ def run_benchmark(args):
     # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
     # which can cause connection issues for subsequent benchmarks.
     if args.benchmark.endswith(L2_SUFFIX):
-        print("Checking for lingering TCP connections...")
+        print("Post-benchmark: checking for lingering TCP connections...")
         wait_for_tcp_cleanup()
 
 
