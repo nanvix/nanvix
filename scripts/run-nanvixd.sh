@@ -362,13 +362,15 @@ wait_for_tcp_cleanup() {
     local start_time
     start_time=$(date +%s)
 
+    echo "[TCP-CLEANUP] Starting TCP cleanup check (max_wait=${max_wait_seconds}s, port=${port})" 1>&2
+
     while true; do
         local current_time
         current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
 
         if [ ${elapsed} -ge ${max_wait_seconds} ]; then
-            echo "Warning: timeout reached after ${max_wait_seconds}s, some connections may still be in TIME_WAIT" 1>&2
+            echo "[TCP-CLEANUP] WARNING: Timeout reached after ${max_wait_seconds}s, some connections may still be in TIME_WAIT" 1>&2
             return 1
         fi
 
@@ -381,16 +383,15 @@ wait_for_tcp_cleanup() {
             # Fall back to netstat if ss is not available.
             time_wait_count=$(netstat -tan | grep ":${port}" | grep -c TIME_WAIT || echo 0)
         else
-            echo "Warning: neither 'ss' nor 'netstat' available, skipping TCP cleanup check" 1>&2
+            echo "[TCP-CLEANUP] WARNING: Neither 'ss' nor 'netstat' available, skipping TCP cleanup check" 1>&2
             return 0
         fi
-
         if [ "${time_wait_count}" -eq 0 ]; then
-            echo "TCP connections cleared." 1>&2
+            echo "[TCP-CLEANUP] All TCP connections cleared successfully" 1>&2
             return 0
         fi
 
-        echo "Waiting for ${time_wait_count} TIME_WAIT connection(s) to clear... (${elapsed}s elapsed)" 1>&2
+        echo "[TCP-CLEANUP] Waiting for ${time_wait_count} TIME_WAIT connection(s) to clear... (${elapsed}s elapsed)" 1>&2
         sleep ${poll_interval}
     done
 }
@@ -480,14 +481,17 @@ kill_user_vm() {
 #   Cleans up resources on script exit.
 #
 cleanup() {
+    echo "[CLEANUP] Starting cleanup process..." 1>&2
     # Check if nanvixd is still running.
     if kill -0 -- "-${NANVIXD_PID}" 2>/dev/null; then
-        echo "Killing nanvixd (pid=${NANVIXD_PID})..." 1>&2
+        echo "[CLEANUP] Killing nanvixd (pid=${NANVIXD_PID})..." 1>&2
 
         # First try graceful shutdown with SIGTERM to allow Drop handlers to run.
+        echo "[CLEANUP] Sending SIGTERM for graceful shutdown..." 1>&2
         kill -s SIGTERM -- "-${NANVIXD_PID}" 2> /dev/null || true
 
         # Wait up to 5 seconds for graceful shutdown.
+        echo "[CLEANUP] Waiting up to 5s for graceful shutdown..." 1>&2
         local count=0
         while kill -0 -- "-${NANVIXD_PID}" 2>/dev/null && [ $count -lt 50 ]; do
             sleep 0.1
@@ -496,11 +500,15 @@ cleanup() {
 
         # If still running, force kill.
         if kill -0 -- "-${NANVIXD_PID}" 2>/dev/null; then
-            echo "nanvixd did not exit gracefully, forcing kill..." 1>&2
+            echo "[CLEANUP] nanvixd did not exit gracefully, forcing kill..." 1>&2
             kill -s SIGKILL -- "-${NANVIXD_PID}" 2> /dev/null || true
+        else
+            echo "[CLEANUP] nanvixd exited gracefully" 1>&2
         fi
 
         wait "${NANVIXD_PID}" 2>/dev/null || true
+    else
+        echo "[CLEANUP] nanvixd process is not running" 1>&2
     fi
 
     # Clean up any stale Nanvix network namespaces.
@@ -508,9 +516,11 @@ cleanup() {
 
     # If running in L2 mode, wait for TCP connections to clear for subsequent runs.
     if [ "${L2_VM}" = "yes" ]; then
-        echo "Checking for lingering TCP connections..." 1>&2
+        echo "[CLEANUP] Post-run: checking for lingering TCP connections..." 1>&2
         wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
     fi
+
+    echo "[CLEANUP] Cleanup completed" 1>&2
 }
 
 #
@@ -519,21 +529,42 @@ cleanup() {
 #   Cleans up any stale Nanvix network namespaces left from previous runs.
 #
 cleanup_stale_netns() {
+    echo "[NETNS-CLEANUP] Starting network namespace cleanup..." 1>&2
     # List all Nanvix network namespaces and delete them.
     local netns_list
     netns_list=$(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true)
 
     if [ -n "${netns_list}" ]; then
-        echo "Cleaning up stale network namespaces..." 1>&2
+        local count
+        count=$(echo "${netns_list}" | wc -w)
+        echo "[NETNS-CLEANUP] Found ${count} Nanvix namespace(s)" 1>&2
         for ns in ${netns_list}; do
+            local ns_id="${ns#nvxns-}"
+
             # Delete veth pair first (host side).
-            local veth_name="nvxgw-h-${ns#nvxns-}"
-            sudo ip link del "${veth_name}" 2>/dev/null || true
+            local veth_name="nvxgw-h-${ns_id}"
+            if ! sudo ip link del "${veth_name}" 2>/dev/null; then
+                echo "[NETNS-CLEANUP] WARNING: Failed to delete veth ${veth_name}" 1>&2
+            fi
 
             # Delete the namespace.
-            sudo ip netns del "${ns}" 2>/dev/null || true
+            if ! sudo ip netns del "${ns}" 2>/dev/null; then
+                echo "[NETNS-CLEANUP] WARNING: Failed to delete namespace ${ns}" 1>&2
+            fi
         done
+        echo "[NETNS-CLEANUP] Cleanup completed successfully" 1>&2
+    else
+        echo "[NETNS-CLEANUP] No stale namespaces found" 1>&2
     fi
+}
+
+#
+# Description
+#
+#   Cleans up any stale socket files left from previous runs.
+#
+cleanup_stale_sockets() {
+    rm -f /tmp/*.socket 2>/dev/null || true
 }
 
 #===================================================================================================
@@ -556,14 +587,21 @@ main() {
     # Check if required tools are installed.
     check_tools || return 1
 
-    # Clean up any stale network namespaces from previous runs.
-    cleanup_stale_netns
+    # Clean up any stale socket files from previous runs.
+    cleanup_stale_sockets
 
-    # If running in L2 mode, wait for any lingering TCP connections from previous runs to clear.
+    # Before running in L2 mode, wait for TCP connections from previous runs to clear.
+    # This is critical when L2 runs happen after non-L2 runs in sequence.
     if [ "${L2_VM}" = "yes" ]; then
-        echo "Checking for lingering TCP connections from previous runs..." 1>&2
+        echo "[MAIN] This is an L2 run, checking for lingering TCP connections..." 1>&2
         wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
     fi
+
+    # Clean up any stale network namespaces from previous runs.
+    # This prevents resource conflicts from previous runs, especially when running
+    # non-L2 runs after L2 runs in a sequence.
+    echo "[MAIN] Cleaning up stale network namespaces..." 1>&2
+    cleanup_stale_netns
 
     # Collect command line arguments.
     local program_name
@@ -601,6 +639,11 @@ main() {
     # Run nanvixd in a new session.
     local console_file_name
     console_file_name="${logs_dir}/kernel_$(date "+%Y_%m_%d_%H_%M").log"
+    echo "[MAIN] Starting nanvixd (log_level=${LOG_LEVEL}, l2_mode=${L2_VM:-no})" 1>&2
+    echo "[MAIN] nanvixd binary: ${nanvixd_binary_path}" 1>&2
+    echo "[MAIN] HTTP address: ${NANVIXD_SOCKADDR}" 1>&2
+    echo "[MAIN] Logs directory: ${logs_dir}" 1>&2
+    echo "[MAIN] Console file: ${console_file_name}" 1>&2
     RUST_LOG="${LOG_LEVEL},hyperlight_host=off" setsid "${nanvixd_binary_path}" \
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_BIN_DIR}" \
@@ -608,15 +651,19 @@ main() {
         "$([ "$L2_VM" = "yes" ] && echo "-l2")" \
         -console-file "${console_file_name}" &
     NANVIXD_PID=$!
+    echo "[MAIN] nanvixd started with PID: ${NANVIXD_PID}" 1>&2
     trap 'cleanup' EXIT
 
     # Wait for nanvixd to start by checking if the HTTP socket is listening.
+    echo "[MAIN] Waiting for nanvixd HTTP socket to be ready..." 1>&2
     wait_for_tcp_socket "${NANVIXD_HOST}" "${NANVIXD_PORT}" || {
-        echo "Error: nanvixd failed to start." 1>&2
+        echo "[MAIN] ERROR: nanvixd failed to start" 1>&2
         return 1
     }
+    echo "[MAIN] nanvixd is ready" 1>&2
 
     # Create a VM.
+    echo "[MAIN] Creating user VM (program=${program_name}, args='${program_args}')" 1>&2
     local new_response
     new_response=$(create_user_vm \
         "${TENANT_ID}" \
@@ -624,54 +671,63 @@ main() {
         "${program_name}" \
         "${program_args}" \
         "${NANVIXD_SOCKADDR}") || {
-        echo "Error: Failed to create VM." 1>&2
+        echo "[MAIN] ERROR: Failed to create VM" 1>&2
         return 1
     }
+    echo "[MAIN] VM creation response received" 1>&2
 
     # Extract VM id from response.
     local vm_id
     vm_id=$(echo "${new_response}" | jq -r '.user_vm_id')
     if [ -z "${vm_id}" ] || [ "${vm_id}" = "null" ]; then
-        echo "Error: nanvixd did not return a user_vm_id in its response: ${new_response}" 1>&2
+        echo "[MAIN] ERROR: nanvixd did not return a user_vm_id in its response: ${new_response}" 1>&2
         return 1
     fi
+    echo "[MAIN] VM ID: ${vm_id}" 1>&2
 
     # Extract gateway socket address from response.
     local gateway_sockaddr
     gateway_sockaddr=$(echo "${new_response}" | jq -r '.gateway_sockaddr')
     if [ -z "${gateway_sockaddr}" ] || [ "${gateway_sockaddr}" = "null" ]; then
-        echo "Error: nanvixd did not return a gateway_sockaddr in its response: ${new_response}" 1>&2
+        echo "[MAIN] ERROR: nanvixd did not return a gateway_sockaddr in its response: ${new_response}" 1>&2
         return 1
     fi
+    echo "[MAIN] Gateway socket address: ${gateway_sockaddr}" 1>&2
 
     # Connect to VM.
     if [[ "${L2_VM}" == "yes" ]]; then
         gateway_host=${gateway_sockaddr%:*}
         gateway_port=${gateway_sockaddr#*:}
+        echo "[MAIN] Connecting to VM via TCP at ${gateway_host}:${gateway_port} (L2 mode)" 1>&2
 
         nc -v -q 0 "${gateway_host}" "${gateway_port}" || {
-            echo "Error: Unable to connect VM at ${gateway_sockaddr} (L2)." 1>&2
+            echo "[MAIN] ERROR: Unable to connect VM at ${gateway_sockaddr} (L2)" 1>&2
             return 1
         }
     else
+        echo "[MAIN] Connecting to VM via Unix socket at ${gateway_sockaddr}" 1>&2
         nc -v -U -q 0 "${gateway_sockaddr}" || {
-            echo "Error: Unable to connect VM at ${gateway_sockaddr}." 1>&2
+            echo "[MAIN] ERROR: Unable to connect VM at ${gateway_sockaddr}" 1>&2
             return 1
         }
     fi
+    echo "[MAIN] VM connection completed" 1>&2
 
     # Kill the user VM.
+    echo "[MAIN] Requesting VM termination (vm_id=${vm_id})" 1>&2
     local kill_exit_code
     kill_exit_code=$(kill_user_vm "${vm_id}" "${NANVIXD_SOCKADDR}") || {
-        echo "Error: Failed to stop VM." 1>&2
+        echo "[MAIN] ERROR: Failed to stop VM" 1>&2
         return 1
     }
+    echo "[MAIN] VM termination response received (exit_code=${kill_exit_code})" 1>&2
 
     if [ -n "${kill_exit_code}" ] && [ "${kill_exit_code}" != "0" ]; then
-        echo "Error: VM exited with status code ${kill_exit_code}"
+        echo "[MAIN] ERROR: VM exited with status code ${kill_exit_code}" 1>&2
         return 1
     fi
 
+    echo "[MAIN] Script completed successfully" 1>&2
     return 0
 }
 

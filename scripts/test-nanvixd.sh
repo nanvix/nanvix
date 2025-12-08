@@ -69,17 +69,6 @@ LOGS_DIR=${NANVIX_HOME}/logs/nanvixd-$(basename "${PROGRAM_NAME}")
 # Temporary Directory.
 mkdir -p "${LOGS_DIR}"
 
-# Cleanup function to remove dangling socket files.
-cleanup_sockets() {
-    rm -f /tmp/*.socket 2>/dev/null || true
-}
-
-# Clean up any existing socket files before starting.
-cleanup_sockets
-
-# Set up trap to clean up on exit.
-trap cleanup_sockets EXIT
-
 # HTTP mode: Test programs via nanvixd's HTTP API.
 # In this mode, program arguments and input are sent as JSON payloads to the HTTP endpoint.
 if [ "${MODE}" = "http" ]; then
