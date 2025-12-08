@@ -508,7 +508,7 @@ cleanup() {
 
     # If running in L2 mode, wait for TCP connections to clear for subsequent runs.
     if [ "${L2_VM}" = "yes" ]; then
-        echo "Checking for lingering TCP connections..." 1>&2
+        echo "Post-run: checking for lingering TCP connections..." 1>&2
         wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
     fi
 }
@@ -536,6 +536,15 @@ cleanup_stale_netns() {
     fi
 }
 
+#
+# Description
+#
+#   Cleans up any stale socket files left from previous runs.
+#
+cleanup_stale_sockets() {
+    rm -f /tmp/*.socket 2>/dev/null || true
+}
+
 #===================================================================================================
 # Main Script
 #===================================================================================================
@@ -556,14 +565,20 @@ main() {
     # Check if required tools are installed.
     check_tools || return 1
 
-    # Clean up any stale network namespaces from previous runs.
-    cleanup_stale_netns
+    # Clean up any stale socket files from previous runs.
+    cleanup_stale_sockets
 
-    # If running in L2 mode, wait for any lingering TCP connections from previous runs to clear.
+    # Before running in L2 mode, wait for TCP connections from previous runs to clear.
+    # This is critical when L2 runs happen after non-L2 runs in sequence.
     if [ "${L2_VM}" = "yes" ]; then
-        echo "Checking for lingering TCP connections from previous runs..." 1>&2
+        echo "Pre-run: checking for lingering TCP connections..." 1>&2
         wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
     fi
+
+    # Clean up any stale network namespaces from previous runs.
+    # This prevents resource conflicts from previous runs, especially when running
+    # non-L2 runs after L2 runs in a sequence.
+    cleanup_stale_netns
 
     # Collect command line arguments.
     local program_name
