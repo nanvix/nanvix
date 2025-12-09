@@ -12,6 +12,9 @@ inputs:
   benchmark_list:
     description: "List of benchmarks to run"
     required: true
+  github-token:
+    description: "GitHub token for API access"
+    required: true
 
 runs:
   using: "composite"
@@ -226,6 +229,7 @@ runs:
     if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' }}
     id: fc
     with:
+      token: ${{ inputs.github-token }}
       issue-number: ${{ steps.pr.outputs.pr_number }}
       comment-author: "github-actions[bot]"
       body-includes: "Benchmark Results"
@@ -233,6 +237,7 @@ runs:
     if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
+      token: ${{ inputs.github-token }}
       issue-number: ${{ steps.pr.outputs.pr_number }}
       body: |
         ## 🔬 Benchmark Results
@@ -241,6 +246,7 @@ runs:
     if: ${{ github.event_name == 'pull_request' && steps.fc.outputs.comment-id != '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
+      token: ${{ inputs.github-token }}
       comment-id: ${{ steps.fc.outputs.comment-id }}
       edit-mode: replace
       body: |
