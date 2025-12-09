@@ -40,6 +40,9 @@ jobs:
         build-type: [release]
         arch: [X64]
     runs-on: [self-hosted, Linux, X64, baremetal]
+    permissions:
+      contents: read
+      pull-requests: write
 
     # Only run the benchmark for:
     # - Non-merge pushes to 'dev'.
