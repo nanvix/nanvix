@@ -64,6 +64,7 @@ jobs:
       uses: ./.github/actions/benchmark
       with:
         arch: '${{ matrix.arch }}'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
         benchmark_list: |
           boot-time
           cold-start
