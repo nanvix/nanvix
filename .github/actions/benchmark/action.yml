@@ -19,6 +19,23 @@ inputs:
 runs:
   using: "composite"
   steps:
+  # Verify permissions early for PR workflows
+  - name: Get PR number for permission check
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    id: pr-check
+    run: |
+      PR_NUM="${{ github.event.pull_request.number }}"
+      echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+    shell: bash
+  - name: Verify PR comment permissions
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr-check.outputs.pr_number != '' }}
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      token: ${{ inputs.github-token }}
+      issue-number: ${{ steps.pr-check.outputs.pr_number }}
+      body: |
+        🏁 Benchmark workflow started. Results will be posted here when complete.
+
   # MicroVM benchmarks
   - name: Build (MicroVM)
     run: |
@@ -232,7 +249,7 @@ runs:
       token: ${{ inputs.github-token }}
       issue-number: ${{ steps.pr.outputs.pr_number }}
       comment-author: "github-actions[bot]"
-      body-includes: "Benchmark Results"
+      body-includes: "🔬 Benchmark Results"
   - name: Post comment to PR (Create comment)
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
     uses: peter-evans/create-or-update-comment@v4
