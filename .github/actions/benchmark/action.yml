@@ -213,8 +213,8 @@ runs:
       echo "EOF" >> $GITHUB_OUTPUT
     shell: bash
   - name: Get PR number if this push relates to an open PR
-    # Only attempt to resolve a PR number when running for a pull_request event
-    if: ${{ github.event_name == 'pull_request' }}
+    # Only attempt to resolve a PR number when running for a pull_request or pull_request_target event
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     id: pr
     run: |
       PR_NUM="${{ github.event.pull_request.number }}"
@@ -226,7 +226,7 @@ runs:
   - name: Find benchmark results comment if it exists
     uses: peter-evans/find-comment@v3
     # Only on PR workflows, and only if we have a PR number
-    if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
     id: fc
     with:
       token: ${{ inputs.github-token }}
@@ -234,7 +234,7 @@ runs:
       comment-author: "github-actions[bot]"
       body-includes: "Benchmark Results"
   - name: Post comment to PR (Create comment)
-    if: ${{ github.event_name == 'pull_request' && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       token: ${{ inputs.github-token }}
@@ -243,7 +243,7 @@ runs:
         ## 🔬 Benchmark Results
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
   - name: Post comment to PR (Update comment)
-    if: ${{ github.event_name == 'pull_request' && steps.fc.outputs.comment-id != '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.fc.outputs.comment-id != '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       token: ${{ inputs.github-token }}
