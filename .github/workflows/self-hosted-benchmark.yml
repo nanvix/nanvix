@@ -53,7 +53,7 @@ jobs:
         github.event.head_commit == null ||
         !startsWith(github.event.head_commit.message, 'Merge ')
       ) && (
-        github.event_name != 'pull_request' ||
+        github.event_name != 'pull_request_target' ||
         !github.event.pull_request.draft
       ) && needs.precheck.outputs.up_to_date == 'true'
 
