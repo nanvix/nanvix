@@ -47,6 +47,8 @@ jobs:
           - machine-type: qemu-pc
             deployment-type: l2
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
 
     # Only run the CI for:
     # - Non-merge pushes to 'dev'.
@@ -172,6 +174,8 @@ jobs:
     needs: ci
     if: ${{ github.ref == 'refs/heads/dev' }}
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v6
