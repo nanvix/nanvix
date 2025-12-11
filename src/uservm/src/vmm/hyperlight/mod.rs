@@ -232,7 +232,7 @@ impl Vmm {
 
         // Creates Hyperlight sandbox.
         let mut sandbox: UninitializedSandbox = UninitializedSandbox::new(guest_env, Some(config))?;
-        let manager: SandboxMemoryManager<ExclusiveSharedMemory> = sandbox.mgr.unwrap_mgr().clone();
+        let manager: SandboxMemoryManager<ExclusiveSharedMemory> = sandbox.mgr.clone();
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory {
             manager: manager.clone(),
         }));
