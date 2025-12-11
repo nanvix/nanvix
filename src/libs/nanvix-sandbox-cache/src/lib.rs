@@ -460,3 +460,374 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         }
     }
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::nanvix_sandbox::syscomm::SocketType;
+
+    // Constant for test user VM identifier that is guaranteed to not exist.
+    const NONEXISTENT_USER_VM_ID: u32 = 99999;
+
+    ///
+    /// # Description
+    ///
+    /// Creates a test configuration for single-process mode.
+    ///
+    /// # Returns
+    ///
+    /// A sandbox cache configuration suitable for testing.
+    ///
+    #[cfg(feature = "single-process")]
+    fn create_test_config() -> SandboxCacheConfig<()> {
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        SandboxCacheConfig::new(
+            SocketType::Unix,
+            SocketType::Unix,
+            SocketType::Unix,
+            None,
+            None,
+            &format!("{}/kernel.elf", tmp_dir),
+            None,
+            &format!("{}/toolchain", tmp_dir),
+            &format!("{}/logs", tmp_dir),
+            false,
+            &format!("{}/snapshot", tmp_dir),
+            &tmp_dir,
+        )
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a test configuration for multi-process mode.
+    ///
+    /// # Returns
+    ///
+    /// A sandbox cache configuration suitable for testing.
+    ///
+    #[cfg(not(feature = "single-process"))]
+    fn create_test_config() -> SandboxCacheConfig<()> {
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        SandboxCacheConfig::new(
+            SocketType::Unix,
+            SocketType::Unix,
+            SocketType::Unix,
+            None,
+            None,
+            &format!("{}/kernel.elf", tmp_dir),
+            &format!("{}/linuxd.elf", tmp_dir),
+            &format!("{}/uservm.elf", tmp_dir),
+            &format!("{}/toolchain", tmp_dir),
+            &format!("{}/logs", tmp_dir),
+            false,
+            &format!("{}/snapshot", tmp_dir),
+            &tmp_dir,
+        )
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Helper function to create a test configuration with custom parameters.
+    ///
+    /// # Parameters
+    ///
+    /// - `console_file`: Optional console file path.
+    /// - `hwloc`: Optional hardware locality configuration.
+    /// - `socket_type`: Socket type for all connections.
+    /// - `l2`: Whether to enable L2 mode.
+    ///
+    /// # Returns
+    ///
+    /// A sandbox cache configuration suitable for testing.
+    ///
+    fn create_custom_test_config(
+        console_file: Option<String>,
+        hwloc: Option<HwLoc>,
+        socket_type: SocketType,
+        l2: bool,
+    ) -> SandboxCacheConfig<()> {
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+
+        #[cfg(feature = "single-process")]
+        {
+            SandboxCacheConfig::new(
+                socket_type,
+                socket_type,
+                socket_type,
+                console_file,
+                hwloc,
+                &format!("{}/kernel.elf", tmp_dir),
+                None,
+                &format!("{}/toolchain", tmp_dir),
+                &format!("{}/logs", tmp_dir),
+                l2,
+                &format!("{}/snapshot", tmp_dir),
+                &tmp_dir,
+            )
+        }
+
+        #[cfg(not(feature = "single-process"))]
+        {
+            SandboxCacheConfig::new(
+                socket_type,
+                socket_type,
+                socket_type,
+                console_file,
+                hwloc,
+                &format!("{}/kernel.elf", tmp_dir),
+                &format!("{}/linuxd.elf", tmp_dir),
+                &format!("{}/uservm.elf", tmp_dir),
+                &format!("{}/toolchain", tmp_dir),
+                &format!("{}/logs", tmp_dir),
+                l2,
+                &format!("{}/snapshot", tmp_dir),
+                &tmp_dir,
+            )
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests sandbox cache creation with default configuration.
+    ///
+    #[tokio::test]
+    async fn test_new_creates_cache() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        assert!(result.is_ok());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests sandbox cache creation with single-process configuration.
+    ///
+    #[tokio::test]
+    #[cfg(feature = "single-process")]
+    async fn test_new_single_process_mode() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        assert!(result.is_ok());
+
+        let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
+        let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
+        assert_eq!(cache_guard.running_sandboxes.len(), 0);
+        assert_eq!(cache_guard.linuxd_instances.len(), 0);
+        assert_eq!(cache_guard.sandbox_index.len(), 0);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests sandbox cache creation with multi-process configuration.
+    ///
+    #[tokio::test]
+    #[cfg(not(feature = "single-process"))]
+    async fn test_new_multi_process_mode() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        assert!(result.is_ok());
+
+        let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
+        let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
+        assert_eq!(cache_guard.running_sandboxes.len(), 0);
+        assert_eq!(cache_guard.linuxd_instances.len(), 0);
+        assert_eq!(cache_guard.sandbox_index.len(), 0);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests sandbox cache creation with L2 VM configuration.
+    ///
+    #[tokio::test]
+    #[cfg(not(feature = "single-process"))]
+    async fn test_new_l2_mode() {
+        let config: SandboxCacheConfig<()> =
+            create_custom_test_config(None, None, SocketType::Unix, true);
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        assert!(result.is_ok());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that cleanup properly empties all cache structures.
+    ///
+    #[tokio::test]
+    async fn test_cleanup_empties_cache() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).unwrap();
+
+        {
+            let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
+            cache_guard.cleanup().await;
+            assert_eq!(cache_guard.running_sandboxes.len(), 0);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that kill returns an error for non-existent sandbox.
+    ///
+    #[tokio::test]
+    async fn test_kill_nonexistent_sandbox_fails() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).unwrap();
+
+        let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
+        let nonexistent_id: UserVmIdentifier = UserVmIdentifier::new(NONEXISTENT_USER_VM_ID);
+        let result: Result<()> = cache_guard.kill(nonexistent_id).await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that SandboxTag creates unique identifiers.
+    ///
+    #[test]
+    fn test_sandbox_tag_creates_unique_ids() {
+        let tag1: SandboxTag =
+            SandboxTag::new("tenant1", "/bin/program", "app1", Some("arg1".to_string()));
+        let tag2: SandboxTag =
+            SandboxTag::new("tenant1", "/bin/program", "app1", Some("arg1".to_string()));
+
+        // Same parameters should create different sandbox IDs.
+        assert_ne!(tag1.sandbox_id(), tag2.sandbox_id());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that SandboxTag properly stores and retrieves attributes.
+    ///
+    #[test]
+    fn test_sandbox_tag_attributes() {
+        let tenant_id: &str = "tenant1";
+        let program: &str = "/bin/program";
+        let app_name: &str = "app1";
+        let program_args: Option<String> = Some("arg1".to_string());
+
+        let tag: SandboxTag = SandboxTag::new(tenant_id, program, app_name, program_args.clone());
+
+        assert_eq!(tag.tenant_id(), tenant_id);
+        assert_eq!(tag.program(), program);
+        assert_eq!(tag.program_args(), program_args.as_ref());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that SandboxTag works with no program arguments.
+    ///
+    #[test]
+    fn test_sandbox_tag_no_args() {
+        let tag: SandboxTag = SandboxTag::new("tenant1", "/bin/program", "app1", None);
+        assert!(tag.program_args().is_none());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig creation and getters.
+    ///
+    #[test]
+    #[cfg(feature = "single-process")]
+    fn test_config_single_process() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.kernel_binary_path(), format!("{}/kernel.elf", tmp_dir));
+        assert_eq!(config.toolchain_binary_directory(), format!("{}/toolchain", tmp_dir));
+        assert_eq!(config.log_directory(), format!("{}/logs", tmp_dir));
+        assert!(!config.l2());
+        assert_eq!(config.l2_snapshot_path(), format!("{}/snapshot", tmp_dir));
+        assert_eq!(config.tmp_directory(), tmp_dir);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig creation and getters for multi-process mode.
+    ///
+    #[test]
+    #[cfg(not(feature = "single-process"))]
+    fn test_config_multi_process() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
+        assert_eq!(config.kernel_binary_path(), format!("{}/kernel.elf", tmp_dir));
+        assert_eq!(config.linuxd_binary_path(), format!("{}/linuxd.elf", tmp_dir));
+        assert_eq!(config.uservm_binary_path(), format!("{}/uservm.elf", tmp_dir));
+        assert_eq!(config.toolchain_binary_directory(), format!("{}/toolchain", tmp_dir));
+        assert_eq!(config.log_directory(), format!("{}/logs", tmp_dir));
+        assert!(!config.l2());
+        assert_eq!(config.l2_snapshot_path(), format!("{}/snapshot", tmp_dir));
+        assert_eq!(config.tmp_directory(), tmp_dir);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig with console file option.
+    ///
+    #[test]
+    fn test_config_with_console_file() {
+        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        let console_file: String = format!("{}/console.log", tmp_dir);
+        let config: SandboxCacheConfig<()> =
+            create_custom_test_config(Some(console_file.clone()), None, SocketType::Unix, false);
+        assert_eq!(config.console_file(), Some(console_file.as_str()));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig with hwloc option set to None.
+    ///
+    #[test]
+    fn test_config_without_hwloc() {
+        let config: SandboxCacheConfig<()> = create_test_config();
+        assert!(config.hwloc().is_none());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig with L2 enabled.
+    ///
+    #[test]
+    #[cfg(not(feature = "single-process"))]
+    fn test_config_with_l2_enabled() {
+        let config: SandboxCacheConfig<()> =
+            create_custom_test_config(None, None, SocketType::Unix, true);
+        assert!(config.l2());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests SandboxCacheConfig with different socket types.
+    ///
+    #[test]
+    fn test_config_socket_types() {
+        let config: SandboxCacheConfig<()> =
+            create_custom_test_config(None, None, SocketType::Tcp, false);
+        assert_eq!(config.control_plane_sockaddr_type(), SocketType::Tcp);
+        assert_eq!(config.gateway_sockaddr_type(), SocketType::Tcp);
+        assert_eq!(config.system_vm_sockaddr_type(), SocketType::Tcp);
+    }
+}
