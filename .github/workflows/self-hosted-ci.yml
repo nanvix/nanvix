@@ -151,9 +151,12 @@ jobs:
         path: ${{ steps.release-archive.outputs.archive-path }}
         overwrite: true
 
-    - name: "Cleanup images directory"
+    - name: "Cleanup Dangling Resources"
       if: always()
-      run: sudo rm -rf images
+      run: |
+        sudo rm -rf images
+        sudo find /tmp -maxdepth 1 -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
+        sudo rm -rf /tmp/clh-console 2>/dev/null || true
       shell: bash
 
     - name: "Upload logs in case of failures"
