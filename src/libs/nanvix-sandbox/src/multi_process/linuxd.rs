@@ -23,10 +23,7 @@ use crate::{
         NetnsHandle,
         NetnsInfo,
     },
-    netns_exec::{
-        command_in_netns,
-        spawn_in_netns,
-    },
+    netns_exec::command_in_netns,
     LinuxDaemonArgs,
 };
 use ::anyhow::Result;
@@ -39,6 +36,8 @@ use ::linuxd::{
     config::restore_gate_sockaddr_builder,
 };
 use ::std::{
+    error::Error as StdError,
+    fmt,
     fs,
     io::ErrorKind,
     mem,
@@ -66,8 +65,14 @@ use ::syslog::{
     warn,
 };
 use ::tokio::{
+    fs as tokio_fs,
+    io::{
+        AsyncReadExt,
+        AsyncWriteExt,
+    },
     process::{
         Child,
+        ChildStderr,
         Command,
     },
     time::{
@@ -83,7 +88,62 @@ use ::tokio::{
 const RESTORE_GATE_BYTES: [u8; 1] = [0];
 
 //==================================================================================================
-// Structures
+// WaitForSocketError
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Error type returned when waiting for the Cloud Hypervisor API socket to show up.
+///
+#[derive(Debug)]
+enum WaitForSocketError {
+    /// Socket path exists but is not a socket.
+    NotSocket {
+        /// Path to the unexpected file.
+        path: PathBuf,
+    },
+    /// Metadata lookup failed.
+    Metadata {
+        /// Path that triggered the error.
+        path: PathBuf,
+        /// Underlying I/O error.
+        source: ::std::io::Error,
+    },
+    /// Socket never appeared within the allowed timeout.
+    TimedOut {
+        /// Path to the awaited socket.
+        path: PathBuf,
+    },
+}
+
+impl fmt::Display for WaitForSocketError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotSocket { path } => {
+                write!(f, "file available, but not a socket (path={path:?})")
+            },
+            Self::Metadata { path, source } => {
+                write!(f, "error checking file metadata (path={path:?}, error={source:?})")
+            },
+            Self::TimedOut { path } => {
+                write!(f, "timed-out waiting for socket to be available (path={path:?})")
+            },
+        }
+    }
+}
+
+impl StdError for WaitForSocketError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Metadata { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+//==================================================================================================
+// LinuxDaemon
 //==================================================================================================
 
 ///
@@ -99,10 +159,6 @@ pub struct LinuxDaemon {
     /// RAII handle to the network namespace linuxd runs in (L2-mode only).
     netns_handle: Option<NetnsHandle>,
 }
-
-//==================================================================================================
-// Implementations
-//==================================================================================================
 
 impl LinuxDaemon {
     ///
@@ -128,7 +184,7 @@ impl LinuxDaemon {
     async fn wait_for_unix_socket<P: AsRef<Path>>(
         path: P,
         timeout_duration: Duration,
-    ) -> Result<()> {
+    ) -> ::std::result::Result<(), WaitForSocketError> {
         let path: PathBuf = path.as_ref().to_path_buf();
         let deadline: Instant = Instant::now() + timeout_duration;
         const SLEEP_DURATION: Duration = Duration::from_millis(1);
@@ -141,26 +197,34 @@ impl LinuxDaemon {
                         return Ok(());
                     } else {
                         // Exists but is not a socket, raise error.
-                        let reason: String =
-                            format!("file available, but not a socket (path={path:?})");
-                        error!("wait_for_unix_socket(): {reason}");
-                        anyhow::bail!(reason);
+                        error!(
+                            "wait_for_unix_socket(): file available, but not a socket (path={:?})",
+                            path
+                        );
+                        return Err(WaitForSocketError::NotSocket { path: path.clone() });
                     }
                 },
                 Err(e) if e.kind() == ErrorKind::NotFound => {},
                 Err(e) => {
-                    let reason: String =
-                        format!("error checking file metadata (path={path:?}, error={e:?})");
-                    error!("wait_for_unix_socket(): {reason}");
-                    anyhow::bail!(reason);
+                    error!(
+                        "wait_for_unix_socket(): error checking file metadata (path={:?}, \
+                         error={:?})",
+                        path, e
+                    );
+                    return Err(WaitForSocketError::Metadata {
+                        path: path.clone(),
+                        source: e,
+                    });
                 },
             }
 
             if Instant::now() >= deadline {
-                let reason: String =
-                    format!("timed-out waiting for socket to be available (path={path:?})");
-                error!("wait_for_unix_socket(): {reason}");
-                anyhow::bail!(reason);
+                error!(
+                    "wait_for_unix_socket(): timed-out waiting for socket to be available \
+                     (path={:?})",
+                    path
+                );
+                return Err(WaitForSocketError::TimedOut { path });
             }
 
             sleep(SLEEP_DURATION).await;
@@ -183,6 +247,7 @@ impl LinuxDaemon {
     /// - `netns_info`: Information about the L2 VM's network namespace.
     /// - `ch_remote_path`: Path to the ch-remote binary.
     /// - `clh_api_socket_path`: Path to the cloud-hypervisor API socket.
+    /// - `clh_stderr_log_path`: Destination file where CLH stderr is captured.
     ///
     /// # Returns
     ///
@@ -192,12 +257,47 @@ impl LinuxDaemon {
         netns_info: &NetnsInfo,
         ch_remote_path: &str,
         clh_api_socket_path: &str,
+        clh_stderr_log_path: &Path,
     ) -> Result<()> {
         // Timeout between the ch-remote resume operation and the API socket becoming available.
-        const CLH_RESUME_TIMEOUT: Duration = Duration::from_millis(100);
+        const CLH_RESUME_TIMEOUT: Duration = Duration::from_secs(5);
+        const CLH_SOCKET_MAX_ATTEMPTS: usize = 5;
+        const CLH_SOCKET_BACKOFF_MS: u64 = 250;
 
-        // Wait for CLH socket to be ready.
-        Self::wait_for_unix_socket(clh_api_socket_path, CLH_RESUME_TIMEOUT).await?;
+        // Wait for CLH socket to be ready with retries to mask slow boots.
+        let mut attempt: usize = 0;
+        loop {
+            match Self::wait_for_unix_socket(clh_api_socket_path, CLH_RESUME_TIMEOUT).await {
+                Ok(()) => break,
+                Err(WaitForSocketError::TimedOut { ref path }) => {
+                    attempt += 1;
+                    if attempt > CLH_SOCKET_MAX_ATTEMPTS {
+                        let reason: String = format!(
+                            "timed-out waiting for socket to be available (path={path:?}, \
+                             attempts={attempt}, stderr_log={})",
+                            clh_stderr_log_path.display()
+                        );
+                        error!("resume_l2_vm(): {reason}");
+                        anyhow::bail!(reason);
+                    }
+
+                    warn!(
+                        "resume_l2_vm(): attempt {attempt} timed out while waiting for socket \
+                         (path={path:?}), retrying..."
+                    );
+                    let backoff_ms: u64 = CLH_SOCKET_BACKOFF_MS * attempt as u64;
+                    sleep(Duration::from_millis(backoff_ms)).await;
+                },
+                Err(e) => {
+                    let reason: String = format!(
+                        "error waiting for socket readiness (error={e}, stderr_log={})",
+                        clh_stderr_log_path.display()
+                    );
+                    error!("resume_l2_vm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            }
+        }
 
         // Resume the L2 VM inside the network namespace.
         let ch_remote_args: Vec<String> = vec![
@@ -238,6 +338,64 @@ impl LinuxDaemon {
             return Err(e.into());
         }
 
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Spawns a background task that persists the stderr stream emitted by cloud-hypervisor.
+    ///
+    /// # Parameters
+    ///
+    /// - `stderr`: Pipe containing the process stderr stream.
+    /// - `destination`: Path to the log file that will receive the captured output.
+    ///
+    fn spawn_stderr_capture_task(stderr: ChildStderr, destination: PathBuf) {
+        ::tokio::spawn(async move {
+            if let Err(error) = Self::persist_child_stderr(stderr, destination.clone()).await {
+                warn!(
+                    "spawn_stderr_capture_task(): failed to persist cloud-hypervisor stderr \
+                     (path={:?}, error={error:?})",
+                    destination
+                );
+            }
+        });
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Persists stderr output emitted by cloud-hypervisor into a log file for later inspection.
+    ///
+    /// # Parameters
+    ///
+    /// - `stderr`: Pipe containing the stderr stream.
+    /// - `destination`: Log file path.
+    ///
+    /// # Returns
+    ///
+    /// Returns success when all data is written. Errors indicate an I/O failure when reading from
+    /// the process or writing to disk.
+    ///
+    async fn persist_child_stderr(stderr: ChildStderr, destination: PathBuf) -> Result<()> {
+        if let Some(parent) = destination.parent() {
+            tokio_fs::create_dir_all(parent).await?;
+        }
+
+        let mut reader: ChildStderr = stderr;
+        let mut file: tokio_fs::File = tokio_fs::File::create(&destination).await?;
+        let mut buffer: [u8; 4096] = [0; 4096];
+
+        loop {
+            let bytes_read: usize = reader.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break;
+            }
+            file.write_all(&buffer[..bytes_read]).await?;
+        }
+
+        file.flush().await?;
         Ok(())
     }
 
@@ -340,15 +498,29 @@ impl LinuxDaemon {
             // In L2 deployments, we spawn linuxd inside a network namespace.
             debug_assert!(args.l2());
 
-            let child: Child =
-                spawn_in_netns(&netns_handle.netns_info()?, &linuxd_args[0], &linuxd_args[1..])
-                    .await
-                    .map_err(|e| {
-                        let reason: String =
-                            format!("error spawning linuxd process in netns (error={e:?})");
-                        error!("spawn(): {reason}");
-                        anyhow::anyhow!(reason)
-                    })?;
+            let clh_stderr_log_path: PathBuf =
+                PathBuf::from(format!("{}/cloud-hypervisor-stderr.log", args.log_directory()));
+
+            let mut cmd: Command =
+                command_in_netns(&netns_handle.netns_info()?, &linuxd_args[0], &linuxd_args[1..]);
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::piped());
+
+            let mut child: Child = cmd.spawn().map_err(|e| {
+                let reason: String =
+                    format!("error spawning linuxd process in netns (error={e:?})");
+                error!("spawn(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
+            if let Some(stderr) = child.stderr.take() {
+                Self::spawn_stderr_capture_task(stderr, clh_stderr_log_path.clone());
+            } else {
+                warn!(
+                    "spawn(): failed to capture cloud-hypervisor stderr (log_path={})",
+                    clh_stderr_log_path.display()
+                );
+            }
 
             let ch_remote_path: String =
                 format!("{}/ch-remote", get_clh_bin_dir(args.toolchain_binary_directory())?);
@@ -356,6 +528,7 @@ impl LinuxDaemon {
                 &netns_handle.netns_info()?,
                 &ch_remote_path,
                 &clh_api_socket_path,
+                &clh_stderr_log_path,
             )
             .await
             {
