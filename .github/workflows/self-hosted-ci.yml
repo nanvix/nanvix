@@ -76,6 +76,27 @@ jobs:
         set -Eeuo pipefail
         ln -sfn "${HOME}/toolchain" toolchain
 
+    - name: "Cache Cargo Target"
+      uses: actions/cache@v5
+      with:
+        path: target
+        key: ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
+        restore-keys: |
+          ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
+          ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          ${{ runner.os }}-ci-target
+
+    - name: "Cache Optional Sysroots"
+      uses: actions/cache@v5
+      with:
+        path: |
+          sysroot-debug
+          sysroot-release
+        key: ${{ runner.os }}-ci-sysroot-${{ matrix.build-type }}-${{ hashFiles('Makefile', 'scripts/build-opt.sh', 'scripts/common/logging.sh', 'scripts/common/utils.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-ci-sysroot-${{ matrix.build-type }}-
+          ${{ runner.os }}-ci-sysroot-
+
     - name: "Check Code Format"
       uses: ./.github/actions/format
       with:
