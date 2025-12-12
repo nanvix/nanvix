@@ -54,7 +54,7 @@ readonly LLVM_HOME="${CONTRIB_DIR}/llvm-project"
 
 # Rust
 readonly RUST_REPOSITORY="https://github.com/nanvix/rust"
-readonly RUST_COMMIT="8a5539dd2738dfc5fd42264b04bb09d1f742e4e0"
+readonly RUST_COMMIT="f258dd9b4e305d565a3c9bf73d1ddb8bae621040"
 readonly RUST_HOME="${CONTRIB_DIR}/rust"
 
 #===================================================================================================

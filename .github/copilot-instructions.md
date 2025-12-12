@@ -16,7 +16,7 @@ types and supports various runtimes.
 - **Target Machines:** microvm (default), hyperlight, qemu-pc, qemu-isapc, qemu-baremetal
 - **Runtimes:** Python 3.12.3, Libstdc++ v3, Newlib 4.4.0, WebAssembly (via QuickJS and wasmd) *(built externally)*
 - **Build System:** Bash Scripts + Make + Cargo (Rust) with custom toolchain
-- **Development Tools:** Binutils v2.40, GCC v12.4.0, G++ v12.4.0, GFortran v12.4.0, Rustc v1.87.0
+- **Development Tools:** Binutils v2.40, GCC v12.4.0, G++ v12.4.0, GFortran v12.4.0, Rustc v1.93.0
 - **Supported Libraries:** OpenBLAS v0.3.29, OpenSSL v3.5.0, SQLite v3.49.0, Zlib v1.3.1 *(built externally)*
 
 ## Repository Structure
