@@ -232,8 +232,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                             if let Some(netns_handle) = &netns_handle {
                                 let tcp_port: TcpPort =
                                     netns_handle.allocate_gateway_port().map_err(|e| {
-                                        let reason: String =
-                                            format!("error allocating gateway port (error={e:?})");
+                                        let reason: String = format!(
+                                            "error allocating gateway port (tenant_id={}, \
+                                             program={}, app_name={}, error={e:?})",
+                                            tag.tenant_id(),
+                                            tag.program(),
+                                            tag.app_name()
+                                        );
                                         error!("get(): {reason}");
                                         anyhow::anyhow!(reason)
                                     })?;
@@ -253,16 +258,26 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         if self.config.l2() {
                             let netns_handle: NetnsHandle =
                                 self.netns_pool.allocate().map_err(|e| {
-                                    let reason: String =
-                                        format!("failed to allocate netns (error={e:?})");
+                                    let reason: String = format!(
+                                        "failed to allocate netns (tenant_id={}, program={}, \
+                                         app_name={}, error={e:?})",
+                                        tag.tenant_id(),
+                                        tag.program(),
+                                        tag.app_name()
+                                    );
                                     error!("get(): {reason}");
                                     anyhow::anyhow!("{reason}")
                                 })?;
 
                             let tcp_port: TcpPort =
                                 netns_handle.allocate_gateway_port().map_err(|e| {
-                                    let reason: String =
-                                        format!("error allocating gateway port (error={e:?})");
+                                    let reason: String = format!(
+                                        "error allocating gateway port (tenant_id={}, program={}, \
+                                         app_name={}, error={e:?})",
+                                        tag.tenant_id(),
+                                        tag.program(),
+                                        tag.app_name()
+                                    );
                                     error!("get(): {reason}");
                                     anyhow::anyhow!(reason)
                                 })?;
@@ -349,7 +364,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     match uninitialized_sandbox.initialize().await {
                         Ok(sandbox) => sandbox,
                         Err(error) => {
-                            error!("get(): failed to initialize sandbox (error={error:?})");
+                            error!(
+                                "get(): failed to initialize sandbox (tenant_id={}, program={}, \
+                                 app_name={}, error={error:?})",
+                                tag.tenant_id(),
+                                tag.program(),
+                                tag.app_name()
+                            );
                             return Err(error);
                         },
                     };
@@ -369,7 +390,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         self.running_sandboxes.insert(tag.clone(), running_sandbox);
                     },
                     Err(error) => {
-                        error!("get(): failed to start sandbox (error={error:?})");
+                        error!(
+                            "get(): failed to start sandbox (tenant_id={}, program={}, \
+                             app_name={}, error={error:?})",
+                            tag.tenant_id(),
+                            tag.program(),
+                            tag.app_name()
+                        );
                         return Err(error);
                     },
                 };
