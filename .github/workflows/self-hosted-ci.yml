@@ -264,3 +264,41 @@ jobs:
         artifacts: release-artifacts/**/*.tar.bz2
         artifactContentType: application/x-bzip2
         body: Automated release for Nanvix ${{ steps.version.outputs.version }}.
+
+    - name: "Trigger Nanvix Release Dispatch"
+      env:
+        DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+      run: |
+        if [[ -z "${DISPATCH_TOKEN}" ]]; then
+          echo "::warning::DISPATCH_TOKEN secret is not configured; skipping release dispatch."
+          exit 0
+        fi
+
+        API_URL="https://api.github.com/repos/nanvix/rusty_v8/dispatches"
+        PAYLOAD=$(cat <<JSON
+        {
+          "event_type": "nanvix-release",
+          "client_payload": {
+            "source_repo": "nanvix/nanvix",
+            "ref": "${GITHUB_REF}",
+            "sha": "${GITHUB_SHA}",
+            "component": "rusty_v8",
+            "reason": "sync build from nanvix/nanvix"
+          }
+        }
+        JSON
+        )
+
+        http_response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "$API_URL" \
+          -d "${PAYLOAD}")
+
+        if [[ "${http_response}" -ge 200 && "${http_response}" -lt 300 ]]; then
+          echo "Dispatched nanvix-release event to nanvix/rusty_v8 (HTTP ${http_response})."
+        else
+          echo "::error::Failed to dispatch nanvix-release event to nanvix/rusty_v8 (HTTP ${http_response})."
+          exit 1
+        fi
