@@ -277,7 +277,7 @@ jobs:
         API_URL="https://api.github.com/repos/nanvix/rusty_v8/dispatches"
         PAYLOAD=$(cat <<JSON
         {
-          "event_type": "nanvix-release",
+          "event_type": "nanvix-minor-release",
           "client_payload": {
             "source_repo": "nanvix/nanvix",
             "ref": "${GITHUB_REF}",
