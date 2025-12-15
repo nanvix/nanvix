@@ -126,6 +126,19 @@ impl SandboxTag {
     ///
     /// # Description
     ///
+    /// Returns the application name.
+    ///
+    /// # Returns
+    ///
+    /// A string slice containing the application name.
+    ///
+    pub fn app_name(&self) -> &str {
+        &self.app_name
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the unique sandbox identifier.
     ///
     /// # Returns
