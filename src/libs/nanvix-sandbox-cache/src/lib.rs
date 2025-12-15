@@ -178,9 +178,63 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// # Error Recovery
     ///
     /// If sandbox initialization fails after allocating resources (e.g., Linux Daemon spawns but
-    /// User VM fails), the allocated TCP port is automatically released via RAII. The Linux Daemon
-    /// and control plane socket are reused for subsequent sandbox creation attempts within the
-    /// same tenant. The sandbox index is not updated, ensuring no partial state leaks into the cache.
+    /// User VM fails), resource cleanup follows these guarantees:
+    ///
+    /// ## RAII-Managed Resources (Automatic Cleanup)
+    ///
+    /// - **TcpPort**: Automatically released back to the port allocator when dropped. If gateway
+    ///   port allocation succeeds but initialization fails, the port is returned to the pool via
+    ///   RAII when the `TcpPort` instance goes out of scope.
+    ///
+    /// - **NetnsHandle**: Reference count is automatically decremented when dropped. When the last
+    ///   handle to a network namespace is dropped, the namespace is returned to the pool for
+    ///   reuse. If namespace allocation succeeds but initialization fails, the namespace is
+    ///   properly cleaned up via RAII semantics.
+    ///
+    /// ## Shared Resources (Retained for Reuse)
+    ///
+    /// - **LinuxDaemon**: Wrapped in `Arc<LinuxDaemon>` and stored in `linuxd_instances` map
+    ///   (indexed by tenant ID). If Linux Daemon spawns successfully but User VM initialization
+    ///   fails, the daemon is **kept** in the cache and reused for subsequent sandbox creation
+    ///   attempts within the same tenant. This is intentional: the daemon remains operational and
+    ///   can service future requests, avoiding the overhead of respawning.
+    ///
+    /// - **Control Plane Socket**: Wrapped in `Arc<Mutex<(SocketListener, String, SocketType)>>`
+    ///   and stored in `control_plane_socket`. Like the Linux Daemon, it is shared across all
+    ///   sandboxes for the same tenant. If created but initialization fails, the socket is
+    ///   **retained** and reused. The `SocketListener` Drop implementation ensures Unix socket
+    ///   files are removed when the last reference is dropped during cache cleanup.
+    ///
+    /// ## Cache State Guarantees
+    ///
+    /// - **sandbox_index**: Only updated after **successful** sandbox startup. If initialization
+    ///   or startup fails, the User VM identifier is never added to the index, preventing partial
+    ///   state from leaking into the cache.
+    ///
+    /// - **running_sandboxes**: Only updated after **successful** sandbox startup. Failures during
+    ///   initialization or startup do not pollute this map.
+    ///
+    /// - **linuxd_instances**: Updated after **successful** Linux Daemon spawn, even if User VM
+    ///   initialization fails later. This allows daemon reuse across retry attempts.
+    ///
+    /// ## Arc Reference Counting
+    ///
+    /// The `LinuxDaemon` and control plane socket are wrapped in `Arc` to enable safe sharing:
+    /// - One reference is held in `linuxd_instances` or `control_plane_socket`.
+    /// - Additional references are held by `InitializedSandbox` and `RunningSandbox` instances.
+    /// - When sandboxes are terminated via `kill()` or `cleanup()`, their references are dropped.
+    /// - The resources are only destroyed when the last `Arc` reference is dropped (typically
+    ///   during cache cleanup).
+    ///
+    /// ## Retry Safety
+    ///
+    /// After an initialization or startup error, it is **safe** to retry `get()` with the same
+    /// parameters:
+    /// - Shared resources (Linux Daemon, control plane socket) are already initialized and will
+    ///   be reused.
+    /// - RAII-managed resources (TCP ports, network namespaces) are automatically cleaned up and
+    ///   can be reallocated.
+    /// - No partial state is present in the cache maps that would interfere with retry attempts.
     ///
     pub async fn get(
         &mut self,
@@ -210,13 +264,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 let uninitialized_sandbox: UninitializedSandbox<T> =
                     UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
 
-                let gateway_l2_port: Option<TcpPort> = None;
-
-                // Work-around gateway_l2_port only being mutated in multi-process mode. The
-                // long-term fix would be to properly gate all instances in the sandbox cache where
-                // we use TcpPort behind this feature flag.
+                // Gateway port guard for L2 deployments.
                 #[cfg(not(feature = "single-process"))]
-                let mut gateway_l2_port: Option<TcpPort> = gateway_l2_port;
+                let mut gateway_l2_port: Option<TcpPort> = None;
+                #[cfg(feature = "single-process")]
+                let gateway_l2_port: Option<TcpPort> = None;
 
                 // Add Linux Daemon instance to sandbox if one exists for the tenant.
                 let uninitialized_sandbox: UninitializedSandbox<T> =
@@ -232,8 +284,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                             if let Some(netns_handle) = &netns_handle {
                                 let tcp_port: TcpPort =
                                     netns_handle.allocate_gateway_port().map_err(|e| {
-                                        let reason: String =
-                                            format!("error allocating gateway port (error={e:?})");
+                                        let reason: String = format!(
+                                            "error allocating gateway port (tenant_id={}, \
+                                             program={}, app_name={}, error={e:?})",
+                                            tag.tenant_id(),
+                                            tag.program(),
+                                            tag.app_name()
+                                        );
                                         error!("get(): {reason}");
                                         anyhow::anyhow!(reason)
                                     })?;
@@ -253,16 +310,26 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         if self.config.l2() {
                             let netns_handle: NetnsHandle =
                                 self.netns_pool.allocate().map_err(|e| {
-                                    let reason: String =
-                                        format!("failed to allocate netns (error={e:?})");
+                                    let reason: String = format!(
+                                        "failed to allocate netns (tenant_id={}, program={}, \
+                                         app_name={}, error={e:?})",
+                                        tag.tenant_id(),
+                                        tag.program(),
+                                        tag.app_name()
+                                    );
                                     error!("get(): {reason}");
                                     anyhow::anyhow!("{reason}")
                                 })?;
 
                             let tcp_port: TcpPort =
                                 netns_handle.allocate_gateway_port().map_err(|e| {
-                                    let reason: String =
-                                        format!("error allocating gateway port (error={e:?})");
+                                    let reason: String = format!(
+                                        "error allocating gateway port (tenant_id={}, program={}, \
+                                         app_name={}, error={e:?})",
+                                        tag.tenant_id(),
+                                        tag.program(),
+                                        tag.app_name()
+                                    );
                                     error!("get(): {reason}");
                                     anyhow::anyhow!(reason)
                                 })?;
@@ -349,7 +416,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     match uninitialized_sandbox.initialize().await {
                         Ok(sandbox) => sandbox,
                         Err(error) => {
-                            error!("get(): failed to initialize sandbox (error={error:?})");
+                            error!(
+                                "get(): failed to initialize sandbox (tenant_id={}, program={}, \
+                                 app_name={}, error={error:?})",
+                                tag.tenant_id(),
+                                tag.program(),
+                                tag.app_name()
+                            );
                             return Err(error);
                         },
                     };
@@ -369,7 +442,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         self.running_sandboxes.insert(tag.clone(), running_sandbox);
                     },
                     Err(error) => {
-                        error!("get(): failed to start sandbox (error={error:?})");
+                        error!(
+                            "get(): failed to start sandbox (tenant_id={}, program={}, \
+                             app_name={}, error={error:?})",
+                            tag.tenant_id(),
+                            tag.program(),
+                            tag.app_name()
+                        );
                         return Err(error);
                     },
                 };
