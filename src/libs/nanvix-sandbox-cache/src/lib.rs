@@ -210,13 +210,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 let uninitialized_sandbox: UninitializedSandbox<T> =
                     UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
 
-                let gateway_l2_port: Option<TcpPort> = None;
-
-                // Work-around gateway_l2_port only being mutated in multi-process mode. The
-                // long-term fix would be to properly gate all instances in the sandbox cache where
-                // we use TcpPort behind this feature flag.
+                // Gateway port guard for L2 deployments.
                 #[cfg(not(feature = "single-process"))]
-                let mut gateway_l2_port: Option<TcpPort> = gateway_l2_port;
+                let mut gateway_l2_port: Option<TcpPort> = None;
+                #[cfg(feature = "single-process")]
+                let gateway_l2_port: Option<TcpPort> = None;
 
                 // Add Linux Daemon instance to sandbox if one exists for the tenant.
                 let uninitialized_sandbox: UninitializedSandbox<T> =
