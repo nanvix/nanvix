@@ -1,0 +1,101 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix Major Release Dispatch"
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REPOSITORIES: |
+    rusty_v8
+    nanvix-registry
+    nanvix-sandbox
+
+jobs:
+  dispatch:
+    name: "Dispatch Major Release Events"
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+    - name: "Validate Tag Is Major Release"
+      id: validate
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+
+        tag_name="${GITHUB_REF_NAME}"
+        if [[ -z "${tag_name}" ]]; then
+          echo "::error::GITHUB_REF_NAME is empty; cannot infer tag name."
+          exit 1
+        fi
+
+        if [[ ! "${tag_name}" =~ ^v([0-9]+)\.0\.0$ ]]; then
+          echo "::notice::${tag_name} is not a vMAJOR.0.0 tag; skipping dispatch."
+          echo "should-dispatch=false" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        echo "::notice::Detected major release tag ${tag_name}."
+        echo "should-dispatch=true" >> "${GITHUB_OUTPUT}"
+
+    - name: "Dispatch nanvix-major-release Events"
+      if: steps.validate.outputs.should-dispatch == 'true'
+      env:
+        DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+
+        if [[ -z "${DISPATCH_TOKEN}" ]]; then
+          echo "::warning::DISPATCH_TOKEN secret is not configured; skipping dispatch."
+          exit 0
+        fi
+
+        tag_name="${GITHUB_REF_NAME}"
+        source_repo="nanvix/nanvix"
+        failed_repos=()
+
+        while IFS= read -r repo || [[ -n "${repo}" ]]; do
+          [[ -z "${repo}" ]] && continue
+          api_url="https://api.github.com/repos/nanvix/${repo}/dispatches"
+          payload=$(cat <<JSON
+        {
+          "event_type": "nanvix-major-release",
+          "client_payload": {
+            "source_repo": "${source_repo}",
+            "ref": "${tag_name}",
+            "sha": "${GITHUB_SHA}",
+            "target_repo": "nanvix/${repo}",
+            "reason": "major release ${tag_name}"
+          }
+        }
+JSON
+          )
+
+          http_response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_url}" \
+            -d "${payload}")
+
+          if [[ "${http_response}" -ge 200 && "${http_response}" -lt 300 ]]; then
+            echo "Dispatched nanvix-major-release to nanvix/${repo} (HTTP ${http_response})."
+          else
+            echo "::error::Failed to dispatch to nanvix/${repo} (HTTP ${http_response})."
+            failed_repos+=("nanvix/${repo}")
+          fi
+        done <<< "${TARGET_REPOSITORIES}"
+
+        if [[ ${#failed_repos[@]} -gt 0 ]]; then
+          printf '::error::Dispatch failed for: %s\n' "${failed_repos[*]}"
+          exit 1
+        fi
+
+        echo "All dispatch requests succeeded."
