@@ -64,19 +64,22 @@ jobs:
         while IFS= read -r repo || [[ -n "${repo}" ]]; do
           [[ -z "${repo}" ]] && continue
           api_url="https://api.github.com/repos/nanvix/${repo}/dispatches"
-          payload=$(cat <<JSON
-        {
-          "event_type": "nanvix-major-release",
-          "client_payload": {
-            "source_repo": "${source_repo}",
-            "ref": "${tag_name}",
-            "sha": "${GITHUB_SHA}",
-            "target_repo": "nanvix/${repo}",
-            "reason": "major release ${tag_name}"
-          }
-        }
-JSON
-          )
+          payload=$(jq -c -n \
+            --arg source_repo "${source_repo}" \
+            --arg ref "${tag_name}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg target_repo "nanvix/${repo}" \
+            --arg reason "major release ${tag_name}" \
+            '{
+              event_type: "nanvix-major-release",
+              client_payload: {
+                source_repo: $source_repo,
+                ref: $ref,
+                sha: $sha,
+                target_repo: $target_repo,
+                reason: $reason
+              }
+            }')
 
           http_response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
             -H "Accept: application/vnd.github+json" \
