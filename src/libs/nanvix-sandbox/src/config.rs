@@ -120,8 +120,14 @@ const UNIX_SOCKET_SUFFIX: &str = ".socket";
 ///
 #[cfg(not(feature = "single-process"))]
 pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
-    let clh_bin_dir_path: PathBuf = PathBuf::from(toolchain_bin_dir);
-    Ok(format!("{}", fs::canonicalize(clh_bin_dir_path)?.display()))
+    let clh_bin_dir_path: PathBuf =
+        fs::canonicalize(PathBuf::from(toolchain_bin_dir)).map_err(|e| {
+            let reason: String =
+                format!("error getting clh binary dir (path={toolchain_bin_dir}, error={e:?})");
+            error!("get_clh_bin_dir(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+    Ok(format!("{}", clh_bin_dir_path.display()))
 }
 
 ///
@@ -135,8 +141,14 @@ pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 ///
 #[cfg(not(feature = "single-process"))]
 pub(crate) fn get_clh_snapshot_path(l2_snapshot_path: &str) -> Result<String> {
-    let l2_snapshot_path: PathBuf = PathBuf::from(l2_snapshot_path);
-    Ok(format!("{}", fs::canonicalize(l2_snapshot_path)?.display()))
+    let l2_snapshot_path: PathBuf =
+        fs::canonicalize(PathBuf::from(l2_snapshot_path)).map_err(|e| {
+            let reason: String =
+                format!("error getting L2 snapshot path (path={l2_snapshot_path}, error={e:?})");
+            error!("get_clh_snapshot_path(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+    Ok(format!("{}", l2_snapshot_path.display()))
 }
 
 ///
