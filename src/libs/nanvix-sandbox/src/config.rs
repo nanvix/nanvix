@@ -83,6 +83,27 @@ pub const NAMED_RESOURCE_PREFIX: &str = "nvx";
 ///
 /// # Description
 ///
+/// Prefix for all Nanvix-created network namespaces.
+///
+pub const NETNS_NAME_PREFIX: &str = "nvxns-";
+
+///
+/// # Description
+///
+/// Prefix for all Nanvix-created veth-pairs (host-side).
+///
+pub const VETH_HOST_PREFIX: &str = "nvxgw-h-";
+
+///
+/// # Description
+///
+/// Prefix for all Nanvix-created veth-pairs (ns-side).
+///
+pub const VETH_NS_PREFIX: &str = "nvxgw-n-";
+
+///
+/// # Description
+///
 /// Suffix for Unix sockets in debug builds.
 ///
 #[cfg(debug_assertions)]
