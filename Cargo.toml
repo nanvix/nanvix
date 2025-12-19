@@ -67,7 +67,7 @@ homepage = "https://github.com/nanvix"
 arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.98"
 base64 = "0.22.1"
-bincode = "2.0.1"
+bincode = "3.0.0"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 cc = "1.2.26"
 cfg-if = "1.0.0"
