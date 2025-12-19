@@ -9,6 +9,7 @@ This document provides instructions on how to run Nanvix.
 - [Running Nanvix with `nanvixd` (Preferred Method)](#running-nanvix-with-nanvixd-preferred-method)
   - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
   - [Step 2: Run an Application](#step-2-run-an-application)
+  - [HTTP Error Responses](#http-error-responses)
 - [Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-uservm-machines-only)
   - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
   - [Step 2: Run the UserVM](#step-2-run-the-uservm)
@@ -85,6 +86,24 @@ curl \
 ```
 
 To gracefully shutdown nanvixd, you can just press `Ctrl-C` in its terminal.
+
+### HTTP Error Responses
+
+`nanvixd` returns structured errors using the `ErrorResponse` schema.  Every failure path assigns a
+short `code` plus a human-readable `message`, which allows callers to branch on stable identifiers
+instead of scraping log text. The handler currently emits the following values:
+
+| code                   | HTTP status               | When it is emitted                                                           |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------------------- |
+| `MISSING_MESSAGE_TYPE` | 400 Bad Request           | The `X-NVX-Message-Type` header is absent or invalid.                        |
+| `BODY_READ_FAILED`     | 500 Internal Server Error | Hyper could not stream the request body.                                     |
+| `INVALID_NEW_PAYLOAD`  | 400 Bad Request           | The body is not valid JSON for a `NEW` request.                              |
+| `NEW_REQUEST_FAILED`   | 500 Internal Server Error | Sandbox creation or cache insertion failed after successful deserialization. |
+| `INVALID_KILL_PAYLOAD` | 400 Bad Request           | The body is not valid JSON for a `KILL` request.                             |
+| `KILL_REQUEST_FAILED`  | 500 Internal Server Error | Terminating the requested sandbox failed after validation.                   |
+
+Client tooling (for example, `nanvix-test` and custom REST clients) should prefer inspecting `code`
+and then relaying the accompanying `message` for operator visibility.
 
 ## Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)
 

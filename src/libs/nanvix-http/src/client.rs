@@ -13,6 +13,8 @@
 
 use crate::message::{
     self,
+    ErrorCode,
+    ErrorResponse,
     MessageType,
     HTTP_HEADER_MESSAGE_TYPE,
 };
@@ -94,32 +96,81 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ///
     /// # Description
     ///
-    /// Helper function that creates an HTTP "Bad Request" (400) response.
+    /// Helper function that creates a JSON response with the provided payload.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: HTTP status code for the response.
+    /// - `payload`: Serializable payload to include in the response body.
     ///
     /// # Returns
     ///
-    /// An HTTP response with status code 400.
+    /// This function returns an HTTP response with a JSON body containing the serialized payload.
     ///
-    fn bad_request() -> Response<Full<Bytes>> {
-        let mut bad_request: Response<Full<Bytes>> = Response::new(Full::new(Bytes::new()));
-        *bad_request.status_mut() = hyper::StatusCode::BAD_REQUEST;
-        bad_request
+    fn json_response<R: serde::Serialize>(
+        status: StatusCode,
+        payload: &R,
+    ) -> Response<Full<Bytes>> {
+        match serde_json::to_vec(payload) {
+            Ok(body) => match Response::builder()
+                .status(status)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(body)))
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    error!("failed to build response (error={error})");
+                    Self::empty_response(StatusCode::INTERNAL_SERVER_ERROR)
+                },
+            },
+            Err(error) => {
+                error!("failed to serialize response (error={error})");
+                Self::empty_response(StatusCode::INTERNAL_SERVER_ERROR)
+            },
+        }
     }
 
     ///
     /// # Description
     ///
-    /// Helper function that creates an HTTP "Internal Server Error" (500) response.
+    /// Helper function that returns an empty response with a given status code.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: HTTP status code for the response.
     ///
     /// # Returns
     ///
-    /// An HTTP response with status code 500.
+    /// This function returns an HTTP response with no body and the specified status code.
     ///
-    fn internal_server_error() -> Response<Full<Bytes>> {
-        let mut internal_server_error: Response<Full<Bytes>> =
-            Response::new(Full::new(Bytes::new()));
-        *internal_server_error.status_mut() = hyper::StatusCode::INTERNAL_SERVER_ERROR;
-        internal_server_error
+    fn empty_response(status: StatusCode) -> Response<Full<Bytes>> {
+        let mut response: Response<Full<Bytes>> = Response::new(Full::new(Bytes::new()));
+        *response.status_mut() = status;
+        response
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Helper that wraps an `ErrorResponse` payload.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: HTTP status code for the response.
+    /// - `code`: Short machine-readable error code.
+    /// - `message`: Human-readable error message.
+    ///
+    /// # Returns
+    ///
+    /// This function returns an HTTP response with a JSON body containing the error details.
+    ///
+    fn error_response(
+        status: StatusCode,
+        code: ErrorCode,
+        message: String,
+    ) -> Response<Full<Bytes>> {
+        let payload: ErrorResponse = ErrorResponse { code, message };
+        Self::json_response(status, &payload)
     }
 
     ///
@@ -187,21 +238,25 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ///
     /// # Returns
     ///
-    /// On success, returns a KillResponse with exit code 0. On failure, returns a response
-    /// with a non-zero exit code.
+    /// On success, returns an acknowledgement for the terminated sandbox. On failure, this function
+    /// returns an object that describes the error.
     ///
     async fn serve_kill(
         sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
         message: &message::Kill,
     ) -> Result<message::KillResponse> {
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
-        let exit_code = match locked_sandbox_cache.kill(message.user_vm_id).await {
-            Ok(()) => 0,
-            // TODO: more advanced error codes.
-            Err(_) => 1,
-        };
-
-        Ok(message::KillResponse { exit_code })
+        match locked_sandbox_cache.kill(message.user_vm_id).await {
+            // TODO: return UserVM exit code.
+            Ok(()) => Ok(message::KillResponse { exit_code: 0 }),
+            Err(error) => {
+                error!(
+                    "failed to terminate sandbox (user_vm_id={} error={error})",
+                    message.user_vm_id,
+                );
+                Err(error)
+            },
+        }
     }
 }
 
@@ -223,8 +278,14 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
             {
                 Some(message_type) => message_type,
                 None => {
-                    error!("{} is a mandatory header", HTTP_HEADER_MESSAGE_TYPE);
-                    return Ok(Self::bad_request());
+                    let message: String =
+                        format!("{} is a mandatory header", HTTP_HEADER_MESSAGE_TYPE);
+                    error!("{message}");
+                    return Ok(Self::error_response(
+                        StatusCode::BAD_REQUEST,
+                        ErrorCode::MissingMessageType,
+                        message,
+                    ));
                 },
             };
 
@@ -233,7 +294,11 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
                 Err(_) => {
                     let reason: String = "failed to read body".to_string();
                     error!("{reason}");
-                    return Ok(Self::internal_server_error());
+                    return Ok(Self::error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ErrorCode::BodyReadFailed,
+                        reason,
+                    ));
                 },
             };
 
@@ -244,16 +309,27 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
                     let msg: message::New = match serde_json::from_slice(&body) {
                         Ok(msg) => msg,
                         Err(_) => {
-                            error!("failed to deserialize NEW message: {body:?}");
-                            return Ok(Self::bad_request());
+                            let reason: String =
+                                format!("failed to deserialize NEW message: {body:?}");
+                            error!("{reason}");
+                            return Ok(Self::error_response(
+                                StatusCode::BAD_REQUEST,
+                                ErrorCode::InvalidNewPayload,
+                                reason,
+                            ));
                         },
                     };
 
                     match Self::serve_new(sandbox_cache, &msg).await {
                         Ok(response) => message::MessageResponse::New(response),
-                        Err(_) => {
-                            error!("error processing NEW request");
-                            return Ok(Self::internal_server_error());
+                        Err(error) => {
+                            let reason: String = format!("failed to process NEW request: {error}");
+                            error!("{reason}");
+                            return Ok(Self::error_response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                ErrorCode::NewRequestFailed,
+                                reason,
+                            ));
                         },
                     }
                 },
@@ -261,8 +337,15 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
                     let msg: message::Kill = match serde_json::from_slice(&body) {
                         Ok(msg) => msg,
                         Err(e) => {
-                            error!("failed to deserialize KILL message (error={e:?}): {body:?}");
-                            return Ok(Self::bad_request());
+                            let reason: String = format!(
+                                "failed to deserialize KILL message (error={e:?}): {body:?}"
+                            );
+                            error!("{reason}");
+                            return Ok(Self::error_response(
+                                StatusCode::BAD_REQUEST,
+                                ErrorCode::InvalidKillPayload,
+                                reason,
+                            ));
                         },
                     };
 
@@ -271,35 +354,20 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 
                     match Self::serve_kill(sandbox_cache, &msg).await {
                         Ok(response) => message::MessageResponse::Kill(response),
-                        Err(_) => {
-                            error!("error processing KILL request");
-                            return Ok(Self::internal_server_error());
+                        Err(error) => {
+                            let reason: String = format!("failed to process KILL request: {error}");
+                            error!("{reason}");
+                            return Ok(Self::error_response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                ErrorCode::KillRequestFailed,
+                                reason,
+                            ));
                         },
                     }
                 },
             };
 
-            // Convert response JSON to string.
-            let response_string = match serde_json::to_string(&message_response) {
-                Ok(string) => Bytes::from(string),
-                Err(_) => {
-                    error!("failed to convert JSON response to string");
-                    return Ok(Self::internal_server_error());
-                },
-            };
-
-            match Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(Full::new(response_string))
-            {
-                Ok(response) => Ok(response),
-                Err(_) => {
-                    let reason: String = "failed to build response".to_string();
-                    error!("{reason}");
-                    Ok(Self::internal_server_error())
-                },
-            }
+            Ok(Self::json_response(StatusCode::OK, &message_response))
         };
         Box::pin(future)
     }
