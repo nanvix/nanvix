@@ -21,10 +21,17 @@
 // Imports
 //==================================================================================================
 
-use crate::tcp_port::{
-    RawTcpPortNum,
-    TcpPort,
-    TcpPortAllocator,
+use crate::{
+    config::{
+        NETNS_NAME_PREFIX,
+        VETH_HOST_PREFIX,
+        VETH_NS_PREFIX,
+    },
+    tcp_port::{
+        RawTcpPortNum,
+        TcpPort,
+        TcpPortAllocator,
+    },
 };
 use ::anyhow::Result;
 use ::std::{
@@ -46,27 +53,6 @@ use ::syslog::{
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Prefix for all Nanvix-created network namespaces.
-///
-const NETNS_NAME_PREFIX: &str = "nvxns-";
-
-///
-/// # Description
-///
-/// Prefix for all Nanvix-created veth-pairs (host-side).
-///
-const VETH_HOST_PREFIX: &str = "nvxgw-h-";
-
-///
-/// # Description
-///
-/// Prefix for all Nanvix-created veth-pairs (ns-side).
-///
-const VETH_NS_PREFIX: &str = "nvxgw-n-";
 
 ///
 /// # Description
