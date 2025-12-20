@@ -550,14 +550,7 @@ impl VirtualProcessor {
         Ok(VirtualProcessorState {
             regs,
             sregs,
-            cpuid: match serialize_fam_struct(&cpuid) {
-                Ok(cpuid) => cpuid,
-                Err(e) => {
-                    let reason: String = format!("failed serializing cpuid (error={e:?})");
-                    error!("save_state(): {reason}");
-                    anyhow::bail!(reason)
-                },
-            },
+            cpuid: serialize_fam_struct(&cpuid),
             lapic,
             mp_state,
             xcrs,
@@ -642,13 +635,11 @@ fn serialize_plain<T: Sized>(t: &T) -> Vec<u8> {
 ///
 /// A vector of bytes with the same contents as the original wrapper.
 ///
-fn serialize_fam_struct<T: Default + FamStruct>(
-    wrapper: &FamStructWrapper<T>,
-) -> Result<Vec<u8>, bincode::error::EncodeError> {
+fn serialize_fam_struct<T: Default + FamStruct>(wrapper: &FamStructWrapper<T>) -> Vec<u8> {
     let total_size: usize = mem::size_of_val(wrapper);
     // SAFETY: We're casting an object to a `&[u8]` of its own length, so the sizes match.
     let raw_bytes: &[u8] = unsafe {
         slice::from_raw_parts((wrapper as *const FamStructWrapper<T>).cast::<u8>(), total_size)
     };
-    bincode::serde::encode_to_vec(raw_bytes, bincode::config::standard())
+    raw_bytes.to_vec()
 }

@@ -120,14 +120,7 @@ impl Msrs {
         };
 
         Ok(MsrsState {
-            bytes: match serialize_fam_struct(&msrs) {
-                Ok(msrs) => msrs,
-                Err(e) => {
-                    let reason: String = format!("failed serializing msrs (error={e:?})");
-                    error!("get_state(): {reason}");
-                    anyhow::bail!(reason)
-                },
-            },
+            bytes: serialize_fam_struct(&msrs),
         })
     }
 }
