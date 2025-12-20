@@ -450,11 +450,21 @@ impl VirtualProcessor {
     /// virtual processor state. Otherwise, it returns an error.
     ///
     pub fn save_state(&self, kvm: &Kvm) -> Result<VirtualProcessorState> {
+        // Ordering requirements between `kvm_get` calls:
+        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L556
+
         trace!("save_state()");
 
         trace!("Saving VirtualPartition state");
 
-        // Plain getters:
+        let mp_state: kvm_mp_state = match self.fd.get_mp_state() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting mp_state (error={e:?})");
+                error!("save_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
         let regs: kvm_regs = match self.fd.get_regs() {
             Ok(v) => v,
             Err(e) => {
@@ -471,27 +481,10 @@ impl VirtualProcessor {
                 anyhow::bail!(reason)
             },
         };
-
-        let cpuid: FamStructWrapper<kvm_cpuid2> = match self.fd.get_cpuid2(KVM_MAX_CPUID_ENTRIES) {
+        let fpu_ext: FpuState = match self.fpu.save_state(&self.fd) {
             Ok(v) => v,
             Err(e) => {
-                let reason: String = format!("failed getting cpuid (error={e:?})");
-                error!("save_state(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
-        let lapic: kvm_lapic_state = match self.fd.get_lapic() {
-            Ok(v) => v,
-            Err(e) => {
-                let reason: String = format!("failed getting lapic (error={e:?})");
-                error!("save_state(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
-        let mp_state: kvm_mp_state = match self.fd.get_mp_state() {
-            Ok(v) => v,
-            Err(e) => {
-                let reason: String = format!("failed getting mp_state (error={e:?})");
+                let reason: String = format!("failed getting fpu_state (error={e:?})");
                 error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
@@ -512,10 +505,10 @@ impl VirtualProcessor {
                 anyhow::bail!(reason)
             },
         };
-        let vcpu_events: kvm_vcpu_events = match self.fd.get_vcpu_events() {
+        let lapic: kvm_lapic_state = match self.fd.get_lapic() {
             Ok(v) => v,
             Err(e) => {
-                let reason: String = format!("failed getting vcpu_events (error={e:?})");
+                let reason: String = format!("failed getting lapic (error={e:?})");
                 error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
@@ -528,20 +521,26 @@ impl VirtualProcessor {
                 anyhow::bail!(reason)
             },
         };
-
-        let fpu_ext: FpuState = match self.fpu.save_state(&self.fd) {
+        let cpuid: FamStructWrapper<kvm_cpuid2> = match self.fd.get_cpuid2(KVM_MAX_CPUID_ENTRIES) {
             Ok(v) => v,
             Err(e) => {
-                let reason: String = format!("failed getting fpu_state (error={e:?})");
+                let reason: String = format!("failed getting cpuid (error={e:?})");
                 error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
         };
-
         let msrs_state: MsrsState = match self.msrs.save_state(kvm, &self.fd) {
             Ok(v) => v,
             Err(e) => {
                 let reason: String = format!("failed getting msrs_state (error={e:?})");
+                error!("save_state(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let vcpu_events: kvm_vcpu_events = match self.fd.get_vcpu_events() {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed getting vcpu_events (error={e:?})");
                 error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
