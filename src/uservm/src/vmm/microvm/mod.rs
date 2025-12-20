@@ -552,74 +552,62 @@ impl Vmm {
         let mut file: File = File::create(kvm_filepath)?;
 
         let guest_state = self.guest.lock().await.save_state()?;
-        match bincode::serde::encode_into_std_write(
-            guest_state,
-            &mut file,
-            bincode::config::standard(),
-        ) {
-            Ok(n) => {
-                trace!("wrote {n} bytes to the snapshot file");
-            },
-            Err(e) => {
-                let reason: String = format!("failed writing guest snapshot (error={e:?})");
-                error!("create_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            },
-        }
+        Self::write_snapshot_component("guest", &guest_state, &mut file)?;
 
         let locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
 
         let vcpu_state: VirtualProcessorState =
             self.vcpu.lock().await.save_state(&locked_inner.kvm)?;
-        match bincode::serde::encode_into_std_write(
-            vcpu_state,
-            &mut file,
-            bincode::config::standard(),
-        ) {
-            Ok(n) => {
-                trace!("wrote {n} bytes to the snapshot file");
-            },
-            Err(e) => {
-                let reason: String = format!("failed writing vcpu snapshot (error={e:?})");
-                error!("create_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            },
-        }
+        Self::write_snapshot_component("vcpu", &vcpu_state, &mut file)?;
 
         let irqchip_state: IrqChipState = locked_inner.irqchip.save_state(&locked_inner.vm)?;
-        match bincode::serde::encode_into_std_write(
-            irqchip_state,
-            &mut file,
-            bincode::config::standard(),
-        ) {
-            Ok(n) => {
-                trace!("wrote {n} bytes to the snapshot file");
-            },
-            Err(e) => {
-                let reason: String = format!("failed writing irqchip snapshot (error={e:?})");
-                error!("create_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            },
-        }
+        Self::write_snapshot_component("irqchip", &irqchip_state, &mut file)?;
 
         let timer_state: TimerState = locked_inner.timer.save_state(&locked_inner.vm)?;
 
-        match bincode::serde::encode_into_std_write(
-            timer_state,
-            &mut file,
-            bincode::config::standard(),
-        ) {
-            Ok(n) => {
-                trace!("wrote {n} bytes to the snapshot file");
+        Self::write_snapshot_component("timer", &timer_state, &mut file)?;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes a snapshot component to the snapshot file.
+    ///
+    /// # Parameters
+    ///
+    /// - `component_name`: Name of the snapshot component.
+    /// - `component`: Reference to the snapshot component.
+    /// - `file`: Mutable reference to the snapshot file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    fn write_snapshot_component<T: ::serde::Serialize>(
+        component_name: &str,
+        component: &T,
+        file: &mut File,
+    ) -> Result<()> {
+        match ::serde_cbor::to_vec(component) {
+            Ok(buffer) => {
+                if let Err(e) = file.write_all(&buffer) {
+                    let reason: String =
+                        format!("failed writing {component_name} snapshot (error={e:?})",);
+                    error!("create_snapshot(): {reason}");
+                    anyhow::bail!(reason)
+                }
+                trace!("wrote {} bytes to the snapshot file", buffer.len());
+                Ok(())
             },
             Err(e) => {
-                let reason: String = format!("failed writing timer snapshot (error={e:?})");
+                let reason: String =
+                    format!("failed serializing {component_name} snapshot (error={e:?})",);
                 error!("create_snapshot(): {reason}");
                 anyhow::bail!(reason)
             },
         }
-
-        Ok(())
     }
 
     ///
@@ -652,27 +640,25 @@ impl Vmm {
                 anyhow::bail!(reason)
             },
         };
-        let state: VirtualProcessorState = match bincode::serde::decode_from_std_read::<
-            VirtualProcessorState,
-            _,
-            _,
-        >(&mut file, bincode::config::standard())
-        {
-            Ok(state) => {
-                if let Err(e) = state.validate() {
-                    let reason: String = format!("decoded vcpu snapshot is invalid (error={e:?})");
+        let state: VirtualProcessorState =
+            match ::serde_cbor::from_reader::<VirtualProcessorState, &mut File>(&mut file) {
+                Ok(state) => {
+                    if let Err(e) = state.validate() {
+                        let reason: String =
+                            format!("decoded vcpu snapshot is invalid (error={e:?})");
+                        error!("load_snapshot(): {reason}");
+                        anyhow::bail!(reason)
+                    } else {
+                        state
+                    }
+                },
+                Err(e) => {
+                    let reason: String =
+                        format!("failed decoding vcpu snapshot file (error={e:?})");
                     error!("load_snapshot(): {reason}");
                     anyhow::bail!(reason)
-                } else {
-                    state
-                }
-            },
-            Err(e) => {
-                let reason: String = format!("failed decoding vcpu snapshot file (error={e:?})");
-                error!("load_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
+                },
+            };
 
         if let Err(e) = self.vcpu.lock().await.load_state(&state) {
             let reason: String = format!("failed setting vcpu state (error={e:?})");
