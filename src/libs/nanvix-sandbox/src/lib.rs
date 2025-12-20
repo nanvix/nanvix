@@ -89,7 +89,8 @@
 //! // ... communicate with sandbox via gateway socket ...
 //!
 //! // Shutdown gracefully.
-//! running.shutdown().await;
+//! let exit_status = running.shutdown().await;
+//! // Inspect `exit_status` as needed for diagnostics.
 //! # Ok(())
 //! # }
 //! ```

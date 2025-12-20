@@ -25,7 +25,11 @@ use ::control_plane_api::{
 };
 use ::std::{
     mem,
-    process::ExitCode,
+    os::unix::process::ExitStatusExt,
+    process::{
+        ExitCode,
+        ExitStatus,
+    },
     str::FromStr,
 };
 use ::sys::ipc::Message;
@@ -81,7 +85,7 @@ use ::uservm::{
 ///
 pub struct UserVm {
     /// Underlying task.
-    task: Option<JoinHandle<Result<ExitCode>>>,
+    task: Option<JoinHandle<Result<u8>>>,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
 }
@@ -132,7 +136,7 @@ impl UserVm {
         let gateway_sockaddr_type: String = args.gateway_socket_info().1.to_str().to_string();
 
         // Spawn the User VM as a new task.
-        let uservm_task: JoinHandle<Result<ExitCode>> = task::spawn_blocking(move || {
+        let uservm_task: JoinHandle<Result<u8>> = task::spawn_blocking(move || {
             Handle::current().block_on(async move {
                 let (vcpu_thread_stdout_tx, io_thread_data_rx) =
                     mpsc::channel::<Message>(CHANNEL_CAPACITY);
@@ -265,17 +269,17 @@ impl UserVm {
                     });
 
                 // Wait for VMM thread to finish.
-                let result: Result<ExitCode> = match vmm_handle.await? {
+                let result: Result<u8> = match vmm_handle.await? {
                     Ok(exit_status) => {
                         if exit_status == 0 {
-                            return Ok(ExitCode::from(0));
+                            return Ok(0);
                         }
                         let exit_code_result: ::std::result::Result<
                             u8,
                             ::std::num::TryFromIntError,
                         > = exit_status.try_into();
                         match exit_code_result {
-                            Ok(code) => Ok(ExitCode::from(code)),
+                            Ok(code) => Ok(code),
                             Err(_) => {
                                 let reason: String = format!(
                                     "failed to convert exit status (exit_status={exit_status})"
@@ -335,7 +339,12 @@ impl UserVm {
     ///
     /// Shuts down the User VM instance.
     ///
-    pub async fn shutdown(&mut self) {
+    /// # Returns
+    ///
+    /// On successful shutdown, this function returns the exit status of the User VM process.
+    /// Otherwise, it returns no exit status.
+    ///
+    pub async fn shutdown(&mut self) -> Option<ExitStatus> {
         trace!("shutdown()");
 
         // Prepare shutdown message.
@@ -356,13 +365,16 @@ impl UserVm {
         if let Some(task) = self.task.take() {
             match timeout(CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
-                    Ok(Ok(exit_status)) => {
-                        if exit_status != ExitCode::SUCCESS {
+                    Ok(Ok(raw_code)) => {
+                        let exit_code: ExitCode = ExitCode::from(raw_code);
+                        if exit_code != ExitCode::SUCCESS {
                             warn!(
                                 "shutdown(): user VM returned with non-zero exit status \
-                                 (code={exit_status:?})",
+                                 (code={exit_code:?})",
                             );
                         }
+
+                        return Some(exit_status_from_exit_code(raw_code));
                     },
                     Ok(Err(error)) => {
                         warn!("shutdown(): user VM terminated with error (error={error:?})");
@@ -378,6 +390,8 @@ impl UserVm {
                 },
             }
         }
+
+        None
     }
 
     ///
@@ -396,4 +410,22 @@ impl UserVm {
             false
         }
     }
+}
+
+///
+/// # Description
+///
+/// Converts a raw exit code into an `ExitStatus`.
+///
+/// # Parameters
+///
+/// - `raw_code`: Raw exit code returned by the User VM.
+///
+/// # Returns
+///
+/// Returns the corresponding `ExitStatus`.
+///
+fn exit_status_from_exit_code(raw_code: u8) -> ExitStatus {
+    let code: i32 = i32::from(raw_code) & 0xff;
+    ExitStatus::from_raw(code << 8)
 }
