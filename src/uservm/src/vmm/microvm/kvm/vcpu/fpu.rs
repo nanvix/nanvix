@@ -155,14 +155,7 @@ impl Fpu {
                 error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             }
-            match serialize_fam_struct(&xsave2) {
-                Ok(xsave2) => xsave2,
-                Err(error) => {
-                    let reason: String = format!("failed serializing xsave2 (error={error:?})");
-                    error!("save_state(): {reason}");
-                    anyhow::bail!(reason)
-                },
-            }
+            serialize_fam_struct(&xsave2)
         } else {
             // Older kernel that only supports fixed 4KB kvm_xsave.
             let small_xsave: kvm_xsave = match fd.get_xsave() {
