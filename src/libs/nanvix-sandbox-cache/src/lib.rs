@@ -74,6 +74,7 @@ use ::syslog::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::tokio::sync::Mutex;
 
@@ -480,7 +481,27 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 
         if let Some(sandbox) = self.running_sandboxes.remove(tag) {
             self.sandbox_index.remove(&user_vm_id);
-            sandbox.shutdown().await;
+            match sandbox.shutdown().await {
+                Some(status) => {
+                    if status.success() {
+                        debug!(
+                            "kill(): sandbox exited successfully (user_vm_id={user_vm_id}, \
+                             status={status:?})"
+                        );
+                    } else {
+                        warn!(
+                            "kill(): sandbox exited with failure (user_vm_id={user_vm_id}, \
+                             status={status:?})"
+                        );
+                    }
+                },
+                None => {
+                    warn!(
+                        "kill(): sandbox shutdown did not complete before timeout \
+                         (user_vm_id={user_vm_id})"
+                    );
+                },
+            }
 
             Ok(())
         } else {
@@ -510,8 +531,22 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         // First shutdown all user VMs.
         for (tag, sandbox) in self.running_sandboxes.drain() {
             debug!("cleaning user vm instance (tag={tag:?})");
-            sandbox.shutdown().await;
+            match sandbox.shutdown().await {
+                Some(status) => {
+                    debug!(
+                        "cleanup(): sandbox reported exit status (tag={tag:?}, status={status:?})"
+                    );
+                },
+                None => {
+                    warn!(
+                        "cleanup(): sandbox shutdown did not complete before timeout (tag={tag:?})"
+                    );
+                },
+            }
         }
+
+        // After draining all running sandboxes, clear the index to keep it consistent.
+        self.sandbox_index.clear();
 
         // Shutdown all linuxd instances.
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
