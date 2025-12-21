@@ -59,8 +59,6 @@ pub struct Fpu {
 /// FPU state.
 #[derive(Serialize, Deserialize)]
 pub struct FpuState {
-    /// FPU/SIMD state.
-    fpu: Vec<u8>,
     /// XSAVE state.
     xsave_bytes: Vec<u8>,
 }
@@ -125,15 +123,6 @@ impl Fpu {
     pub fn save_state(&self, fd: &VcpuFd) -> Result<FpuState> {
         trace!("save_state()");
 
-        let fpu: kvm_fpu = match fd.get_fpu() {
-            Ok(v) => v,
-            Err(e) => {
-                let reason: String = format!("failed getting fpu (error={e:?})");
-                error!("save_state(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
-
         // xsave can be either `Xsave` or `kvm_xsave`. Declaring it as `Vec<u8>` fits both.
         let bytes: Vec<u8> = if self.xsave2_size > 0 {
             // Fam-wrapper type Xsave is a wrapper over kvm_xsave2 (post-5.17) or kvm_xsave.
@@ -169,9 +158,6 @@ impl Fpu {
             serialize_plain(&small_xsave)
         };
 
-        Ok(FpuState {
-            fpu: serialize_plain(&fpu),
-            xsave_bytes: bytes,
-        })
+        Ok(FpuState { xsave_bytes: bytes })
     }
 }
