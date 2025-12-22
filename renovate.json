@@ -19,13 +19,6 @@
   "separateMultipleMajor": false,
   "packageRules": [
     {
-      "description": "Enable Rust/Cargo updates",
-      "matchCategories": [
-        "rust"
-      ],
-      "enabled": true
-    },
-    {
       "description": "Group kvm-stack dependencies together",
       "matchManagers": [
         "cargo"
