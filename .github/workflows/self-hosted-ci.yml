@@ -250,6 +250,80 @@ jobs:
         pattern: release-*
         path: release-artifacts
 
+    - name: "Reset Latest Release"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -Eeuo pipefail
+
+        repo="${{ github.repository }}"
+        api_url="https://api.github.com/repos/${repo}"
+        common_headers=(
+          -H "Accept: application/vnd.github+json"
+          -H "Authorization: Bearer ${GH_TOKEN}"
+          -H "X-GitHub-Api-Version: 2022-11-28"
+        )
+
+        tmp_file=$(mktemp)
+        release_status=$(curl -sS "${common_headers[@]}" -w "%{http_code}" -o "${tmp_file}" "${api_url}/releases/tags/latest" || true)
+
+        if [[ -z "${release_status}" ]]; then
+          echo "::warning::Failed to query latest release (no HTTP status)."
+          if [[ -s "${tmp_file}" ]]; then
+            cat "${tmp_file}" || true
+          fi
+        elif [[ "${release_status}" =~ ^[0-9]+$ ]]; then
+          if [[ "${release_status}" -eq 200 ]]; then
+              release_id=$(python - "${tmp_file}" <<'PY'
+              import json
+              import sys
+
+              with open(sys.argv[1], 'r', encoding='utf-8') as handler:
+                data = json.load(handler)
+
+              release_id = data.get('id')
+              print(release_id if release_id is not None else '')
+              PY
+              )
+            if [[ -n "${release_id}" ]]; then
+              curl -sS "${common_headers[@]}" -X DELETE "${api_url}/releases/${release_id}"
+              echo "Deleted existing latest release (ID ${release_id})."
+            else
+              echo "Latest release response did not include an ID; skipping delete."
+            fi
+          elif [[ "${release_status}" -eq 404 ]]; then
+            echo "No existing latest release to delete."
+          else
+            echo "::warning::Failed to query latest release (HTTP ${release_status})."
+            if [[ -s "${tmp_file}" ]]; then
+              cat "${tmp_file}" || true
+            fi
+          fi
+        else
+          echo "::warning::Failed to query latest release (invalid HTTP status: ${release_status})."
+          if [[ -s "${tmp_file}" ]]; then
+            cat "${tmp_file}" || true
+          fi
+        fi
+
+        rm -f "${tmp_file}"
+
+        tag_status=$(curl -sS "${common_headers[@]}" -w "%{http_code}" -o /dev/null -X DELETE "${api_url}/git/refs/tags/latest" || true)
+        if [[ -z "${tag_status}" ]]; then
+          echo "::warning::Failed to delete refs/tags/latest (no HTTP status)."
+        elif [[ "${tag_status}" =~ ^[0-9]+$ ]]; then
+          if [[ "${tag_status}" -eq 204 ]]; then
+            echo "Deleted refs/tags/latest tag."
+          elif [[ "${tag_status}" -eq 404 ]]; then
+            echo "Tag refs/tags/latest not found; nothing to delete."
+          else
+            echo "::warning::Failed to delete refs/tags/latest (HTTP ${tag_status})."
+          fi
+        else
+          echo "::warning::Failed to delete refs/tags/latest (invalid HTTP status: ${tag_status})."
+        fi
+      shell: bash
+
     - name: "Update Latest Release"
       uses: ncipollo/release-action@v1
       with:
@@ -258,7 +332,7 @@ jobs:
         name: Nanvix ${{ steps.version.outputs.version }}
         draft: false
         prerelease: false
-        allowUpdates: true
+        allowUpdates: false
         makeLatest: true
         removeArtifacts: true
         artifacts: release-artifacts/**/*.tar.bz2
