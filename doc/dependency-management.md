@@ -21,7 +21,7 @@ Dependabot remains in use for GitHub Actions updates, as it works well for that 
 
 The Renovate configuration is defined in `renovate.json` at the repository root. Key features:
 
-- **Schedule**: Runs daily at 3:00 AM (same as Dependabot)
+- **Schedule**: Runs daily before 4:00 AM (similar timing to Dependabot)
 - **Labels**: All PRs are labeled with "enhancement"
 - **Grouping**: 
   - KVM-related dependencies (`kvm-ioctls`, `kvm-bindings`) are grouped together

@@ -64,8 +64,5 @@
       "semanticCommitType": "chore",
       "semanticCommitScope": "deps"
     }
-  ],
-  "cargo": {
-    "enabled": true
-  }
+  ]
 }
