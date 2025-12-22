@@ -1,0 +1,88 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix Benchmark Comment Dispatcher"
+
+on:
+  workflow_run:
+    workflows:
+      - "Nanvix Benchmark (Self-Hosted)"
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  post-benchmark-comment:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download benchmark comment payload
+      id: download
+      uses: dawidd6/action-download-artifact@v8
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        run_id: ${{ github.event.workflow_run.id }}
+        name: benchmark-comment-${{ github.event.workflow_run.id }}
+        path: payload
+      continue-on-error: true
+
+    - name: Validate payload
+      id: metadata
+      run: |
+        set -euo pipefail
+
+        if [[ "${{ steps.download.outcome }}" != "success" ]]; then
+          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ ! -f payload/metadata.json || ! -f payload/body.md ]]; then
+          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        needs_comment=$(jq -r '.needs_comment // "false"' payload/metadata.json)
+        pr_number=$(jq -r '.pr_number // ""' payload/metadata.json)
+
+        if [[ "${needs_comment}" != "true" || -z "${pr_number}" ]]; then
+          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "needs_comment=true" >> "$GITHUB_OUTPUT"
+        echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Find benchmark comment if it exists
+      if: ${{ steps.metadata.outputs.needs_comment == 'true' }}
+      id: fc
+      uses: peter-evans/find-comment@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        issue-number: ${{ steps.metadata.outputs.pr_number }}
+        comment-author: "github-actions[bot]"
+        body-includes: "🔬 Benchmark Results"
+
+    - name: Create benchmark comment
+      if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id == '' }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        issue-number: ${{ steps.metadata.outputs.pr_number }}
+        body-path: payload/body.md
+
+    - name: Update benchmark comment
+      if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id != '' }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        comment-id: ${{ steps.fc.outputs.comment-id }}
+        edit-mode: replace
+        body-path: payload/body.md
