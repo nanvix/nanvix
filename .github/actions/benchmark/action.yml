@@ -28,7 +28,11 @@ runs:
       echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
     shell: bash
   - name: Verify PR comment permissions
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr-check.outputs.pr_number != '' }}
+    if: ${{
+      (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') &&
+      steps.pr-check.outputs.pr_number != '' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       token: ${{ inputs.github-token }}
@@ -239,11 +243,28 @@ runs:
     shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
+  - name: Determine PR comment strategy
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+    id: comment-strategy
+    run: |
+      origin_repo="${{ github.repository }}"
+      head_repo="${{ github.event.pull_request.head.repo.full_name }}"
+
+      if [[ "${head_repo}" == "${origin_repo}" ]]; then
+        echo "can_comment_directly=true" >> "$GITHUB_OUTPUT"
+        echo "needs_deferred_comment=false" >> "$GITHUB_OUTPUT"
+      else
+        echo "can_comment_directly=false" >> "$GITHUB_OUTPUT"
+        echo "needs_deferred_comment=true" >> "$GITHUB_OUTPUT"
+      fi
+    shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
   # Check if we have already written a comment once, in order to update it.
   - name: Find benchmark results comment if it exists
     uses: peter-evans/find-comment@v3
     # Only on PR workflows, and only if we have a PR number
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' }}
     id: fc
     with:
       token: ${{ inputs.github-token }}
@@ -251,7 +272,7 @@ runs:
       comment-author: "github-actions[bot]"
       body-includes: "🔬 Benchmark Results"
   - name: Post comment to PR (Create comment)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.fc.outputs.comment-id == '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id == '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       token: ${{ inputs.github-token }}
@@ -260,7 +281,7 @@ runs:
         ## 🔬 Benchmark Results
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
   - name: Post comment to PR (Update comment)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.fc.outputs.comment-id != '' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id != '' }}
     uses: peter-evans/create-or-update-comment@v4
     with:
       token: ${{ inputs.github-token }}
@@ -269,6 +290,43 @@ runs:
       body: |
         ## 🔬 Benchmark Results
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
+
+  - name: Prepare benchmark comment payload
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+    id: benchmark-comment-payload
+    env:
+      BENCHMARK_RESULT: ${{ steps.format.outputs.BENCHMARK_RESULT }}
+      NEEDS_DEFERRED: ${{ steps.comment-strategy.outputs.needs_deferred_comment || 'false' }}
+    run: |
+      mkdir -p comment-payload
+
+      {
+        printf '## 🔬 Benchmark Results\n'
+        printf '%s\n' "${BENCHMARK_RESULT}"
+      } > comment-payload/body.md
+
+      if [[ "${NEEDS_DEFERRED}" == "true" ]]; then
+        needs_comment=true
+      else
+        needs_comment=false
+      fi
+
+      cat <<EOF > comment-payload/metadata.json
+      {
+        "pr_number": "${{ steps.pr.outputs.pr_number }}",
+        "needs_comment": ${needs_comment},
+        "workflow_run_id": "${{ github.run_id }}"
+      }
+      EOF
+    shell: bash
+
+  - name: Upload benchmark comment payload
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: benchmark-comment-${{ github.run_id }}
+      path: comment-payload
+      retention-days: 7
 
   # Persist the results if committing on `dev` branch (not a PR).
   - name: Run only on dev branch
