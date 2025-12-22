@@ -204,8 +204,9 @@ build_docker_command() {
         -v \"$(pwd):/mnt\" \
         ${image_name} \
         /bin/bash -l -c '\
+            set -e ; \
             cd /mnt ; \
-            git config --global --add safe.directory /mnt ; \
+            git config --global --add safe.directory \* ; \
             make TOOLCHAIN_DIR=${DOCKER_IMAGE_TOOLCHAIN_PATH} ${build_parameters} ; \
             chown -R \"${user_id}:${group_id}\" .\
         '"
@@ -487,7 +488,11 @@ main() {
     done
 
     # Collect build parameters.
-    local build_parameters=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
+    local build_parameters=()
+    # Only add TOOLCHAIN_DIR for local builds, not Docker builds
+    if ! ${BUILD_WITH_DOCKER}; then
+        build_parameters+=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
+    fi
     while [[ $# -gt 0 ]]; do
         build_parameters+=("$1")
         shift
