@@ -17,10 +17,60 @@ permissions:
   actions: read
 
 jobs:
+  gate-post-benchmark-comment:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.evaluate.outputs.should_run }}
+    steps:
+    - name: Evaluate dispatcher eligibility
+      id: evaluate
+      env:
+        EVENT: ${{ github.event.workflow_run.event }}
+        CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        if [[ "${EVENT}" != "pull_request" ]]; then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ "${CONCLUSION}" == "cancelled" ]]; then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ -z "${PULL_REQUESTS_JSON}" || "${PULL_REQUESTS_JSON}" == "null" || "${PULL_REQUESTS_JSON}" == "[]" ]]; then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        pr_number=$(jq -r '.[0].number // ""' <<< "${PULL_REQUESTS_JSON}")
+        if [[ -z "${pr_number}" ]]; then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if ! pr_payload=$(gh api \
+          --header "Accept: application/vnd.github+json" \
+          "/repos/${REPOSITORY}/pulls/${pr_number}"); then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if jq -e '.draft == true' <<< "${pr_payload}" >/dev/null; then
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "should_run=true" >> "$GITHUB_OUTPUT"
+
   post-benchmark-comment:
-    if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion != 'cancelled'
+    needs: gate-post-benchmark-comment
+    if: needs.gate-post-benchmark-comment.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Download benchmark comment payload
