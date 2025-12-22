@@ -54,14 +54,16 @@ jobs:
     # - Non-merge pushes to 'dev'.
     # - Non-draft PRs.
     if: |
-      (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      ) && needs.precheck.outputs.up_to_date == 'true'
+      github.repository == 'nanvix/nanvix' && (
+        (
+          github.event_name != 'push' ||
+          github.event.head_commit == null ||
+          !startsWith(github.event.head_commit.message, 'Merge ')
+        ) && (
+          github.event_name != 'pull_request' ||
+          !github.event.pull_request.draft
+        ) && needs.precheck.outputs.up_to_date == 'true'
+      )
 
     steps:
     - uses: actions/checkout@v6
@@ -241,7 +243,7 @@ jobs:
   publish-latest:
     name: "Publish Latest Release"
     needs: ci
-    if: ${{ github.ref == 'refs/heads/dev' }}
+    if: ${{ github.repository == 'nanvix/nanvix' && github.ref == 'refs/heads/dev' }}
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
