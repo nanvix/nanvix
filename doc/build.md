@@ -59,8 +59,9 @@ docker run \
   -it --rm -v"$(pwd):/mnt" \
   nanvix/toolchain \
   /bin/bash -l -c "\
+    set -e; \
     cd /mnt ; \
-    git config --global --add safe.directory /mnt ; \
+    git config --global --add safe.directory '*' ; \
     make TOOLCHAIN_DIR=/opt/nanvix all ; \
     chown -R $(id -u):$(id -g) . "
 ```
