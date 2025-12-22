@@ -19,335 +19,335 @@ inputs:
 runs:
   using: "composite"
   steps:
-  # Verify permissions early for PR workflows
-  - name: Get PR number for permission check
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
-    id: pr-check
-    run: |
-      PR_NUM="${{ github.event.pull_request.number }}"
-      echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
-    shell: bash
-  - name: Verify PR comment permissions
-    if: ${{
-      (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') &&
-      steps.pr-check.outputs.pr_number != '' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    }}
-    uses: peter-evans/create-or-update-comment@v4
-    with:
-      token: ${{ inputs.github-token }}
-      issue-number: ${{ steps.pr-check.outputs.pr_number }}
-      body: |
-        🏁 Benchmark workflow started. Results will be posted here when complete.
+    # Verify permissions early for PR workflows
+    - name: Get PR number for permission check
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      id: pr-check
+      run: |
+        PR_NUM="${{ github.event.pull_request.number }}"
+        echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+      shell: bash
+    - name: Verify PR comment permissions
+      if: ${{
+        (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') &&
+        steps.pr-check.outputs.pr_number != '' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ inputs.github-token }}
+        issue-number: ${{ steps.pr-check.outputs.pr_number }}
+        body: |
+          🏁 Benchmark workflow started. Results will be posted here when complete.
 
-  # MicroVM benchmarks
-  - name: Build (MicroVM)
-    run: |
-      python3 scripts/ci.py \
-        --toolchain-dir=$HOME/toolchain \
-        --target-arch=x86 \
-        --log-level=panic \
-        --target-machine=microvm \
-        --release \
-        --without-opt \
-        --build \
-        --sccache=${SCCACHE} \
-        --features L2_VM=yes
-    shell: bash
-  - name: Run micro-benchmarks (MicroVM)
-    id: run-microvm-benchmarks
-    run: |
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
+    # MicroVM benchmarks
+    - name: Build (MicroVM)
+      run: |
+        python3 scripts/ci.py \
+          --toolchain-dir=$HOME/toolchain \
+          --target-arch=x86 \
+          --log-level=panic \
+          --target-machine=microvm \
+          --release \
+          --without-opt \
+          --build \
+          --sccache=${SCCACHE} \
+          --features L2_VM=yes
+      shell: bash
+    - name: Run micro-benchmarks (MicroVM)
+      id: run-microvm-benchmarks
+      run: |
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
 
-      must_run_echo_breakdown=false
+        must_run_echo_breakdown=false
 
-      for bench in "${benchmarks[@]}"; do
-        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
-          must_run_echo_breakdown=true
-          continue
-        fi
+        for bench in "${benchmarks[@]}"; do
+          if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+            must_run_echo_breakdown=true
+            continue
+          fi
 
-        # FIXME(1171): the current L2 deployment involves a very slow network
-        # namespace creation, particularly at high-churn, so we must temporarily
-        # reduce the number of iterations of the benchmarks.
-        python3 ./scripts/benchmark.py \
-          run \
-          --benchmark ${bench} \
-          --machine-type microvm \
-          --hwloc $HOME/hwloc.json \
-          --iterations 100 \
-          --toolchain-bin-dir $HOME/toolchain/bin \
-          --output-dir $(pwd)
-      done
-
-      echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
-    shell: bash
-  - name: Run the echo-breakdown benchmarks (Microvm, require re-compilation)
-    if: steps.run-microvm-benchmarks.outputs.must_run_echo_breakdown == 'true'
-    shell: bash
-    run: |
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
-
-      # Re-compile.
-      python3 scripts/ci.py \
-        --toolchain-dir=$HOME/toolchain \
-        --target-arch=x86 \
-        --log-level=panic \
-        --target-machine=microvm \
-        --release \
-        --without-opt \
-        --build \
-        --sccache=${SCCACHE} \
-        --features L2_VM=yes,TIMESTAMP_MSG=yes
-
-      # Run only the specific benchmarks.
-      for bench in "${benchmarks[@]}"; do
-        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          # FIXME(1171): the current L2 deployment involves a very slow network
+          # namespace creation, particularly at high-churn, so we must temporarily
+          # reduce the number of iterations of the benchmarks.
           python3 ./scripts/benchmark.py \
             run \
             --benchmark ${bench} \
             --machine-type microvm \
             --hwloc $HOME/hwloc.json \
-            --iterations 1000 \
+            --iterations 100 \
             --toolchain-bin-dir $HOME/toolchain/bin \
             --output-dir $(pwd)
-        fi
-      done
+        done
 
-  # Hyperlight benchmarks
-  - name: Build (Hyperlight)
-    run: |
-      python3 scripts/ci.py \
-        --toolchain-dir=$HOME/toolchain \
-        --target-arch=x86 \
-        --log-level=panic \
-        --target-machine=hyperlight \
-        --release \
-        --without-opt \
-        --build \
-        --sccache=${SCCACHE} \
-        --features L2_VM=yes
-    shell: bash
-  - name: Run micro-benchmarks (Hyperlight)
-    id: run-hyperlight-benchmarks
-    run: |
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
+        echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Run the echo-breakdown benchmarks (Microvm, require re-compilation)
+      if: steps.run-microvm-benchmarks.outputs.must_run_echo_breakdown == 'true'
+      shell: bash
+      run: |
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
 
-      must_run_echo_breakdown=false
+        # Re-compile.
+        python3 scripts/ci.py \
+          --toolchain-dir=$HOME/toolchain \
+          --target-arch=x86 \
+          --log-level=panic \
+          --target-machine=microvm \
+          --release \
+          --without-opt \
+          --build \
+          --sccache=${SCCACHE} \
+          --features L2_VM=yes,TIMESTAMP_MSG=yes
 
-      for bench in "${benchmarks[@]}"; do
-        # FIXME (#709): warm-start-vmm is stuck on hyperlight
-        if [[ "$bench" == "warm-start-vmm" ]]; then
-          continue
-        fi
+        # Run only the specific benchmarks.
+        for bench in "${benchmarks[@]}"; do
+          if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+            python3 ./scripts/benchmark.py \
+              run \
+              --benchmark ${bench} \
+              --machine-type microvm \
+              --hwloc $HOME/hwloc.json \
+              --iterations 1000 \
+              --toolchain-bin-dir $HOME/toolchain/bin \
+              --output-dir $(pwd)
+          fi
+        done
 
-        # FIXME (#1016): boot-time is failing on hyperlight
-        if [[ "$bench" == "boot-time" ]]; then
-          continue
-        fi
+    # Hyperlight benchmarks
+    - name: Build (Hyperlight)
+      run: |
+        python3 scripts/ci.py \
+          --toolchain-dir=$HOME/toolchain \
+          --target-arch=x86 \
+          --log-level=panic \
+          --target-machine=hyperlight \
+          --release \
+          --without-opt \
+          --build \
+          --sccache=${SCCACHE} \
+          --features L2_VM=yes
+      shell: bash
+    - name: Run micro-benchmarks (Hyperlight)
+      id: run-hyperlight-benchmarks
+      run: |
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
 
-        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
-          must_run_echo_breakdown=true
-          continue
-        fi
+        must_run_echo_breakdown=false
 
-        # FIXME(1171): the current L2 deployment involves a very slow network
-        # namespace creation, particularly at high-churn, so we must temporarily
-        # reduce the number of iterations of the benchmarks.
-        python3 ./scripts/benchmark.py \
-          run \
-          --benchmark ${bench} \
-          --machine-type hyperlight \
-          --hwloc $HOME/hwloc.json \
-          --iterations 100 \
-          --toolchain-bin-dir $HOME/toolchain/bin \
-          --output-dir $(pwd)
-      done
+        for bench in "${benchmarks[@]}"; do
+          # FIXME (#709): warm-start-vmm is stuck on hyperlight
+          if [[ "$bench" == "warm-start-vmm" ]]; then
+            continue
+          fi
 
-      echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
-    shell: bash
-  - name: Run the echo-breakdown benchmarks (Hyperlight, require re-compilation)
-    if: steps.run-hyperlight-benchmarks.outputs.must_run_echo_breakdown == 'true'
-    shell: bash
-    run: |
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
+          # FIXME (#1016): boot-time is failing on hyperlight
+          if [[ "$bench" == "boot-time" ]]; then
+            continue
+          fi
 
-      # Re-compile.
-      python3 scripts/ci.py \
-        --toolchain-dir=$HOME/toolchain \
-        --target-arch=x86 \
-        --log-level=panic \
-        --target-machine=hyperlight \
-        --release \
-        --without-opt \
-        --build \
-        --sccache=${SCCACHE} \
-        --features L2_VM=yes,TIMESTAMP_MSG=yes
+          if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+            must_run_echo_breakdown=true
+            continue
+          fi
 
-      # Run only the specific benchmarks.
-      for bench in "${benchmarks[@]}"; do
-        if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+          # FIXME(1171): the current L2 deployment involves a very slow network
+          # namespace creation, particularly at high-churn, so we must temporarily
+          # reduce the number of iterations of the benchmarks.
           python3 ./scripts/benchmark.py \
             run \
             --benchmark ${bench} \
             --machine-type hyperlight \
             --hwloc $HOME/hwloc.json \
-            --iterations 1000 \
+            --iterations 100 \
             --toolchain-bin-dir $HOME/toolchain/bin \
             --output-dir $(pwd)
+        done
+
+        echo "must_run_echo_breakdown=$must_run_echo_breakdown" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Run the echo-breakdown benchmarks (Hyperlight, require re-compilation)
+      if: steps.run-hyperlight-benchmarks.outputs.must_run_echo_breakdown == 'true'
+      shell: bash
+      run: |
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
+
+        # Re-compile.
+        python3 scripts/ci.py \
+          --toolchain-dir=$HOME/toolchain \
+          --target-arch=x86 \
+          --log-level=panic \
+          --target-machine=hyperlight \
+          --release \
+          --without-opt \
+          --build \
+          --sccache=${SCCACHE} \
+          --features L2_VM=yes,TIMESTAMP_MSG=yes
+
+        # Run only the specific benchmarks.
+        for bench in "${benchmarks[@]}"; do
+          if [[ "$bench" == "echo-breakdown" || "$bench" == "echo-breakdown-l2" ]]; then
+            python3 ./scripts/benchmark.py \
+              run \
+              --benchmark ${bench} \
+              --machine-type hyperlight \
+              --hwloc $HOME/hwloc.json \
+              --iterations 1000 \
+              --toolchain-bin-dir $HOME/toolchain/bin \
+              --output-dir $(pwd)
+          fi
+        done
+
+    # Post-process the results
+    - name: Format benchmark results
+      id: format
+      run: |
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
+        comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
+
+        python3 ./scripts/benchmark.py \
+          ci-summary \
+          --dev-dir $HOME/ubench-results-dev \
+          --target-dir $(pwd) \
+          --benchmarks ${comma_separated_benchmarks} \
+          --machine-types microvm,hyperlight \
+          --archs X64 \
+          --output-file /tmp/comment.txt
+
+        echo "BENCHMARK_RESULT<<EOF" >> $GITHUB_OUTPUT
+        cat /tmp/comment.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      shell: bash
+    - name: Get PR number if this push relates to an open PR
+      # Only attempt to resolve a PR number when running for a pull_request or pull_request_target event
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      id: pr
+      run: |
+        PR_NUM="${{ github.event.pull_request.number }}"
+        echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Determine PR comment strategy
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+      id: comment-strategy
+      run: |
+        origin_repo="${{ github.repository }}"
+        head_repo="${{ github.event.pull_request.head.repo.full_name }}"
+
+        if [[ "${head_repo}" == "${origin_repo}" ]]; then
+          echo "can_comment_directly=true" >> "$GITHUB_OUTPUT"
+          echo "needs_deferred_comment=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "can_comment_directly=false" >> "$GITHUB_OUTPUT"
+          echo "needs_deferred_comment=true" >> "$GITHUB_OUTPUT"
         fi
-      done
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+    # Check if we have already written a comment once, in order to update it.
+    - name: Find benchmark results comment if it exists
+      uses: peter-evans/find-comment@v3
+      # Only on PR workflows, and only if we have a PR number
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' }}
+      id: fc
+      with:
+        token: ${{ inputs.github-token }}
+        issue-number: ${{ steps.pr.outputs.pr_number }}
+        comment-author: "github-actions[bot]"
+        body-includes: "🔬 Benchmark Results"
+    - name: Post comment to PR (Create comment)
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id == '' }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ inputs.github-token }}
+        issue-number: ${{ steps.pr.outputs.pr_number }}
+        body: |
+          ## 🔬 Benchmark Results
+          ${{ steps.format.outputs.BENCHMARK_RESULT }}
+    - name: Post comment to PR (Update comment)
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id != '' }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ inputs.github-token }}
+        comment-id: ${{ steps.fc.outputs.comment-id }}
+        edit-mode: replace
+        body: |
+          ## 🔬 Benchmark Results
+          ${{ steps.format.outputs.BENCHMARK_RESULT }}
 
-  # Post-process the results
-  - name: Format benchmark results
-    id: format
-    run: |
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
-      comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
+    - name: Prepare benchmark comment payload
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+      id: benchmark-comment-payload
+      env:
+        BENCHMARK_RESULT: ${{ steps.format.outputs.BENCHMARK_RESULT }}
+        NEEDS_DEFERRED: ${{ steps.comment-strategy.outputs.needs_deferred_comment || 'false' }}
+      run: |
+        mkdir -p comment-payload
 
-      python3 ./scripts/benchmark.py \
-        ci-summary \
-        --dev-dir $HOME/ubench-results-dev \
-        --target-dir $(pwd) \
-        --benchmarks ${comma_separated_benchmarks} \
-        --machine-types microvm,hyperlight \
-        --archs X64 \
-        --output-file /tmp/comment.txt
+        {
+          printf '## 🔬 Benchmark Results\n'
+          printf '%s\n' "${BENCHMARK_RESULT}"
+        } > comment-payload/body.md
 
-      echo "BENCHMARK_RESULT<<EOF" >> $GITHUB_OUTPUT
-      cat /tmp/comment.txt >> $GITHUB_OUTPUT
-      echo "EOF" >> $GITHUB_OUTPUT
-    shell: bash
-  - name: Get PR number if this push relates to an open PR
-    # Only attempt to resolve a PR number when running for a pull_request or pull_request_target event
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
-    id: pr
-    run: |
-      PR_NUM="${{ github.event.pull_request.number }}"
-      echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
-    shell: bash
-    env:
-      GH_TOKEN: ${{ github.token }}
-  - name: Determine PR comment strategy
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
-    id: comment-strategy
-    run: |
-      origin_repo="${{ github.repository }}"
-      head_repo="${{ github.event.pull_request.head.repo.full_name }}"
+        if [[ "${NEEDS_DEFERRED}" == "true" ]]; then
+          needs_comment=true
+        else
+          needs_comment=false
+        fi
 
-      if [[ "${head_repo}" == "${origin_repo}" ]]; then
-        echo "can_comment_directly=true" >> "$GITHUB_OUTPUT"
-        echo "needs_deferred_comment=false" >> "$GITHUB_OUTPUT"
-      else
-        echo "can_comment_directly=false" >> "$GITHUB_OUTPUT"
-        echo "needs_deferred_comment=true" >> "$GITHUB_OUTPUT"
-      fi
-    shell: bash
-    env:
-      GH_TOKEN: ${{ github.token }}
-  # Check if we have already written a comment once, in order to update it.
-  - name: Find benchmark results comment if it exists
-    uses: peter-evans/find-comment@v3
-    # Only on PR workflows, and only if we have a PR number
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' }}
-    id: fc
-    with:
-      token: ${{ inputs.github-token }}
-      issue-number: ${{ steps.pr.outputs.pr_number }}
-      comment-author: "github-actions[bot]"
-      body-includes: "🔬 Benchmark Results"
-  - name: Post comment to PR (Create comment)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id == '' }}
-    uses: peter-evans/create-or-update-comment@v4
-    with:
-      token: ${{ inputs.github-token }}
-      issue-number: ${{ steps.pr.outputs.pr_number }}
-      body: |
-        ## 🔬 Benchmark Results
-        ${{ steps.format.outputs.BENCHMARK_RESULT }}
-  - name: Post comment to PR (Update comment)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id != '' }}
-    uses: peter-evans/create-or-update-comment@v4
-    with:
-      token: ${{ inputs.github-token }}
-      comment-id: ${{ steps.fc.outputs.comment-id }}
-      edit-mode: replace
-      body: |
-        ## 🔬 Benchmark Results
-        ${{ steps.format.outputs.BENCHMARK_RESULT }}
+        cat <<EOF > comment-payload/metadata.json
+        {
+          "pr_number": "${{ steps.pr.outputs.pr_number }}",
+          "needs_comment": ${needs_comment},
+          "workflow_run_id": "${{ github.run_id }}"
+        }
+        EOF
+      shell: bash
 
-  - name: Prepare benchmark comment payload
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
-    id: benchmark-comment-payload
-    env:
-      BENCHMARK_RESULT: ${{ steps.format.outputs.BENCHMARK_RESULT }}
-      NEEDS_DEFERRED: ${{ steps.comment-strategy.outputs.needs_deferred_comment || 'false' }}
-    run: |
-      mkdir -p comment-payload
+    - name: Upload benchmark comment payload
+      if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-comment-${{ github.run_id }}
+        path: comment-payload
+        retention-days: 7
 
-      {
-        printf '## 🔬 Benchmark Results\n'
-        printf '%s\n' "${BENCHMARK_RESULT}"
-      } > comment-payload/body.md
+    # Persist the results if committing on `dev` branch (not a PR).
+    - name: Run only on dev branch
+      if: github.ref_name == 'dev'
+      run: |
+        target_dir=$HOME/ubench-results-dev
+        mkdir -p ${target_dir}
 
-      if [[ "${NEEDS_DEFERRED}" == "true" ]]; then
-        needs_comment=true
-      else
-        needs_comment=false
-      fi
+        # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
+        mapfile -t benchmarks < <(
+          printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
+        )
+        comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
+        comma_separated_machines=microvm,hyperlight
+        comma_separated_archs=X64
 
-      cat <<EOF > comment-payload/metadata.json
-      {
-        "pr_number": "${{ steps.pr.outputs.pr_number }}",
-        "needs_comment": ${needs_comment},
-        "workflow_run_id": "${{ github.run_id }}"
-      }
-      EOF
-    shell: bash
-
-  - name: Upload benchmark comment payload
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
-    uses: actions/upload-artifact@v4
-    with:
-      name: benchmark-comment-${{ github.run_id }}
-      path: comment-payload
-      retention-days: 7
-
-  # Persist the results if committing on `dev` branch (not a PR).
-  - name: Run only on dev branch
-    if: github.ref_name == 'dev'
-    run: |
-      target_dir=$HOME/ubench-results-dev
-      mkdir -p ${target_dir}
-
-      # Build array from lines, strip CRs, and drop blank/whitespace-only lines.
-      mapfile -t benchmarks < <(
-        printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
-      )
-      comma_separated_benchmarks=$(IFS=,; echo "${benchmarks[*]}")
-      comma_separated_machines=microvm,hyperlight
-      comma_separated_archs=X64
-
-      python3 ./scripts/benchmark.py \
-        copy-results \
-        --benchmarks ${comma_separated_benchmarks} \
-        --machine-types ${comma_separated_machines} \
-        --archs ${comma_separated_archs} \
-        --source-dir $(pwd) \
-        --target-dir ${target_dir}
-    shell: bash
+        python3 ./scripts/benchmark.py \
+          copy-results \
+          --benchmarks ${comma_separated_benchmarks} \
+          --machine-types ${comma_separated_machines} \
+          --archs ${comma_separated_archs} \
+          --source-dir $(pwd) \
+          --target-dir ${target_dir}
+      shell: bash
