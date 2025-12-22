@@ -1,0 +1,67 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "cargo"
+  ],
+  "labels": [
+    "enhancement"
+  ],
+  "schedule": [
+    "at 3am"
+  ],
+  "prConcurrentLimit": 20,
+  "prHourlyLimit": 0,
+  "separateMinorPatch": false,
+  "separateMajorMinor": true,
+  "separateMultipleMajor": false,
+  "packageRules": [
+    {
+      "description": "Group kvm-stack dependencies together",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "kvm-ioctls",
+        "kvm-bindings"
+      ],
+      "groupName": "kvm-stack"
+    },
+    {
+      "description": "Ignore hyperlight packages (managed externally)",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "hyperlight-common",
+        "hyperlight-host",
+        "hyperlight-guest"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Group workspace dependencies",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchFiles": [
+        "Cargo.toml"
+      ],
+      "matchDepTypes": [
+        "workspace.dependencies"
+      ],
+      "groupName": "cargo workspace dependencies",
+      "semanticCommits": "enabled",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    }
+  ],
+  "rust": {
+    "enabled": true
+  },
+  "cargo": {
+    "enabled": true
+  }
+}
