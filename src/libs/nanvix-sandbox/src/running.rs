@@ -16,7 +16,10 @@ use crate::{
     tcp_port::TcpPort,
     uservm::UserVm,
 };
-use ::std::sync::Arc;
+use ::std::{
+    process::ExitStatus,
+    sync::Arc,
+};
 use ::syscomm::{
     SocketListener,
     SocketType,
@@ -73,9 +76,10 @@ impl RunningSandbox {
     ///
     /// # Returns
     ///
-    /// This method does not return a value and completes when shutdown is finished.
+    /// Returns `Some(ExitStatus)` if the User VM task or process finished gracefully, and
+    /// `None` otherwise.
     ///
-    pub async fn shutdown(mut self) {
-        self.uservm.shutdown().await;
+    pub async fn shutdown(mut self) -> Option<ExitStatus> {
+        self.uservm.shutdown().await
     }
 }
