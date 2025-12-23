@@ -1,0 +1,66 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix Test"
+description: "Run nanvix-test with the appropriate configuration file"
+
+inputs:
+  deployment-type:
+    description: "Deployment mode that determines which test config to run"
+    required: true
+  machine-type:
+    description: "Machine type that is allowed to run nanvix-test"
+    required: true
+  nanvix-test-path:
+    description: "Path to the nanvix-test binary"
+    required: false
+    default: "./bin/nanvix-test.elf"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run nanvix-test"
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+
+        deployment_type="${{ inputs.deployment-type }}"
+        case "${deployment_type}" in
+          single-process)
+            config_path="test/test-single_process.toml"
+            ;;
+          multi-process)
+            config_path="test/test-multi_process.toml"
+            ;;
+          l2)
+            config_path="test/test-l2.toml"
+            ;;
+          *)
+            echo "Unsupported deployment type: ${deployment_type}" >&2
+            exit 1
+            ;;
+        esac
+
+        machine_type="${{ inputs.machine-type }}"
+        case "${machine_type}" in
+          microvm|hyperlight)
+            ;;
+          *)
+            echo "Skipping nanvix-test for unsupported machine type: ${machine_type}" >&2
+            exit 0
+            ;;
+        esac
+
+        binary_path="${{ inputs.nanvix-test-path }}"
+        if [[ ! -x "${binary_path}" ]]; then
+          echo "nanvix-test binary is missing or not executable (path=${binary_path})" >&2
+          exit 1
+        fi
+
+        if [[ ! -f "${config_path}" ]]; then
+          echo "nanvix-test configuration file missing (path=${config_path})" >&2
+          exit 1
+        fi
+
+        echo "Running nanvix-test (${deployment_type}, ${machine_type}) with ${config_path}"
+        RUST_LOG=trace "${binary_path}" "${config_path}"

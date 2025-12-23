@@ -66,6 +66,14 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    # Create a link to the toolchain directory, as tests files assume the toolchain is at
+    # ${GITHUB_WORKSPACE}/toolchain.
+    - name: "Link Toolchain Directory"
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        ln -sfn "${HOME}/toolchain" toolchain
+
     - name: "Check Code Format"
       uses: ./.github/actions/format
       with:
@@ -95,6 +103,11 @@ jobs:
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
+    - name: "Test (New) (${{ matrix.deployment-type }})"
+      uses: ./.github/actions/nanvix-test
+      with:
+        deployment-type: '${{ matrix.deployment-type }}'
+        machine-type: '${{ matrix.machine-type }}'
     - name: "Test"
       uses: ./.github/actions/test
       with:
@@ -165,9 +178,12 @@ jobs:
         # Ensure a clean build.
         git clean -fdx
 
+        # Recreate toolchain symlink removed by git clean.
+        ln -sfn "${HOME}/toolchain" toolchain
+
         # Build the release archive.
         ./z build \
-          --toolchain-dir $HOME/toolchain \
+          --toolchain-dir "${GITHUB_WORKSPACE}/toolchain" \
           -- \
           MACHINE="${{ matrix.machine-type }}" \
           SINGLE_PROCESS="${single_process}" \
