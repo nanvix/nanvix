@@ -59,6 +59,17 @@ pub const DEFAULT_L2_SNAPSHOT_DIRECTORY: &str = "images";
 ///
 /// # Description
 ///
+/// Default name for snapshot files.
+///
+/// # Notes
+///
+/// - This file must be synced with `generate-l2-snapshot.sh` script.
+///
+pub const DEFAULT_SNAPSHOT_FILE_NAME: &str = "l2_sysvm_initramfs.img";
+
+///
+/// # Description
+///
 /// Default path for the L2 snapshot.
 ///
 /// We cannot define this variable as a pub const &str because it depends on
