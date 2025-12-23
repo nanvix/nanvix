@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-test"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Test Utility for Nanvix"
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+nanvixd = { workspace = true }
+nanvix = { workspace = true, features = ["internal-api"] }
+no_fail = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["full"] }
+libc = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+shell-words = { workspace = true }
+
+[features]
+default = ["microvm"]
+single-process = ["nanvix/single-process"]
+hyperlight = ["nanvix/hyperlight"]
+microvm = ["nanvix/microvm"]
+
+[lints]
+workspace = true

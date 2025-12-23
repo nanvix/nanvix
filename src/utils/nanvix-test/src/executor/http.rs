@@ -1,0 +1,313 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    DEFAULT_TENANT_ID,
+    config::RunnerConfig,
+    log_layout::{
+        GuestLogTracker,
+        RunnerLogPaths,
+        TestLogLayout,
+    },
+    nanvixd::{
+        NanvixdHttp,
+        NanvixdHttpArgs,
+    },
+    uservm::{
+        UserVm,
+        UserVmArgs,
+    },
+};
+use ::anyhow::Result;
+use ::nanvix::{
+    log::{
+        error,
+        trace,
+    },
+    syscomm::{
+        ReadExact,
+        WriteAll,
+    },
+};
+use ::std::{
+    io::ErrorKind,
+    path::Path,
+    time::{
+        Duration,
+        SystemTime,
+        UNIX_EPOCH,
+    },
+};
+use ::tokio::time::timeout;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests a program in Nanvix using the HTTP executor.
+///
+/// # Parameters
+///
+/// - `runner_config`: Configuration required to spawn the Nanvix Daemon and User VMs.
+/// - `iterations`: Number of times the start/run/stop cycle should execute.
+/// - `program_path`: Absolute path to the executable launched inside the User VM.
+/// - `program_args`: Optional command-line arguments forwarded to the workload.
+/// - `input`: Optional payload forwarded to the workload.
+/// - `expected_output`: Optional payload that should be received back from the workload.
+/// - `log_layout`: Layout that controls how runner/program logs are timestamped and stored.
+///
+/// # Return Value
+///
+/// Returns `Ok(())` after each iteration successfully spawns the Nanvix Daemon, launches the User
+/// VM, optionally injects the custom payload, validates the received bytes, and persists the
+/// sanitized stdout capture; returns an error when any lifecycle step fails.
+///
+pub(crate) async fn test_with_http_executor(
+    runner_config: &RunnerConfig,
+    iterations: usize,
+    program_path: &str,
+    program_args: Option<&str>,
+    input: Option<&str>,
+    expected_output: Option<&str>,
+    log_layout: &TestLogLayout,
+) -> Result<()> {
+    let l2_enabled: bool = runner_config.l2_enabled;
+    let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
+    let program_path: String = program_path.to_string();
+    let request_payload: Option<Vec<u8>> = input.map(|value| value.as_bytes().to_vec());
+    let response_timeout: Duration =
+        Duration::from_millis(runner_config.stream_collection_timeout_ms);
+    let log_root: &Path = Path::new(runner_config.log_directory.as_str());
+    let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
+    let execution_epoch_ms: u128 = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_millis(),
+        Err(error) => {
+            let reason: String = format!(
+                "failed to compute execution timestamp (program_path={}, error={error})",
+                program_path
+            );
+            error!("test_with_http_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        },
+    };
+
+    let RunnerLogPaths {
+        stdout: stdout_file_path,
+        stderr: stderr_file_path,
+    } = log_layout.allocate_runner_logs(None);
+
+    let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
+        stdout_file_path.as_path(),
+        stderr_file_path.as_path(),
+        runner_config.ipv4_addr.as_str(),
+        runner_config.port_num,
+        hwloc_file_path.clone(),
+        l2_enabled,
+        log_layout.test_directory(),
+    )?;
+
+    // Run tests within a scoped block to ensure logs are captured before moving them.
+    {
+        let _nanvixd_handle: NanvixdHttp = NanvixdHttp::spawn(runner_config, &nanvixd_args).await?;
+
+        for iteration in 0..iterations {
+            let app_name: String = format!("{execution_epoch_ms}-{iteration}");
+            let uservm_args: UserVmArgs = UserVmArgs::new(
+                DEFAULT_TENANT_ID,
+                app_name.as_str(),
+                program_path.as_str(),
+                program_args,
+                l2_enabled,
+            )?;
+
+            let mut user_vm: UserVm = UserVm::spawn(runner_config, &uservm_args).await?;
+
+            if let Some(payload) = request_payload.as_ref() {
+                send_payload(&mut user_vm, payload.as_slice()).await?;
+            }
+
+            close_gateway_input(&mut user_vm).await?;
+
+            let expected_pattern: Option<&[u8]> = expected_output.and_then(|value| {
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.as_bytes())
+                }
+            });
+
+            let payload: Vec<u8> =
+                receive_payload(&mut user_vm, expected_pattern, response_timeout).await?;
+            log_layout.persist_program_output(iteration, payload.as_slice())?;
+        }
+    }
+
+    let last_iteration: usize = iterations.saturating_sub(1);
+    guest_log_tracker.move_new_logs(log_layout.test_directory())?;
+    log_layout.normalize_component_logs(last_iteration)?;
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Writes the provided payload to the User VM gateway stream.
+///
+/// # Parameters
+///
+/// - `user_vm`: Handle to the running User VM gateway stream.
+/// - `payload`: Bytes forwarded to the workload over the gateway stream.
+///
+/// # Return Value
+///
+/// Returns `Ok(())` after the bytes are written successfully; returns an error on socket write
+/// failures.
+///
+async fn send_payload(user_vm: &mut UserVm, payload: &[u8]) -> Result<()> {
+    trace!("send_payload(): payload_len={}, payload={:?}", payload.len(), payload);
+    if let Err(error) = user_vm.gateway_stream().write_all(payload).await {
+        error!("send_payload(): failed to send payload (error={error})");
+        return Err(error.into());
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Signals end-of-input to the running User VM by shutting down the gateway write half.
+///
+/// # Return Value
+///
+/// Returns `Ok(())` when the shutdown succeeds; returns an error if the gateway cannot be closed.
+///
+async fn close_gateway_input(user_vm: &mut UserVm) -> Result<()> {
+    if let Err(error) = user_vm.gateway_stream().shutdown_write().await {
+        let reason: String =
+            format!("failed to shutdown uservm gateway write half (error={error})");
+        error!("close_gateway_input(): {reason}");
+        return Err(::anyhow::anyhow!(reason));
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Reads a payload from the User VM gateway stream and returns the captured bytes.
+///
+/// # Parameters
+///
+/// - `user_vm`: Handle to the running User VM gateway stream.
+/// - `expected_pattern`: Byte pattern that must appear in the payload.
+/// - `timeout_duration`: Maximum time allowed while waiting for the expected payload.
+///
+/// # Return Value
+///
+/// Returns the captured bytes when the read succeeds; returns an error on socket read failures,
+/// pattern mismatches, or timeout expiration.
+///
+async fn receive_payload(
+    user_vm: &mut UserVm,
+    expected_pattern: Option<&[u8]>,
+    timeout_duration: Duration,
+) -> Result<Vec<u8>> {
+    match timeout(timeout_duration, collect_uservm_payload(user_vm, expected_pattern)).await {
+        Ok(result) => result,
+        Err(_elapsed) => {
+            let reason: String = match expected_pattern {
+                Some(pattern) => format!(
+                    "uservm payload timed out (timeout_ms={}, expected_pattern={:?})",
+                    timeout_duration.as_millis(),
+                    pattern
+                ),
+                None => format!(
+                    "uservm payload timed out (timeout_ms={}, expectation=none)",
+                    timeout_duration.as_millis()
+                ),
+            };
+            error!("receive_payload(): {reason}");
+            Err(::anyhow::anyhow!(reason))
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Collects bytes from the User VM gateway stream until the expected pattern is observed.
+///
+/// # Parameters
+///
+/// - `user_vm`: Handle to the running User VM gateway stream.
+/// - `expected_pattern`: Byte sequence that must appear in the collected payload.
+///
+/// # Return Value
+///
+/// Returns the captured bytes when the expected pattern is found or the stream closes; returns an
+/// error on socket failures or when the pattern never appears.
+///
+async fn collect_uservm_payload(
+    user_vm: &mut UserVm,
+    expected_pattern: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    trace!(
+        "collect_uservm_payload(): expected_len={}, expected_pattern={:?}",
+        expected_pattern.map_or(0, |pattern| pattern.len()),
+        expected_pattern
+    );
+    let mut response_payload: Vec<u8> = Vec::new();
+    let mut pattern_found: bool = expected_pattern.is_none();
+
+    loop {
+        let mut byte: [u8; 1] = [0u8; 1];
+        match user_vm.gateway_stream().read_exact(&mut byte).await {
+            Ok(_) => {
+                response_payload.push(byte[0]);
+            },
+            Err(error) => {
+                if error.kind() == ErrorKind::UnexpectedEof {
+                    break;
+                }
+                error!("collect_uservm_payload(): failed to read payload (error={error})");
+                return Err(error.into());
+            },
+        }
+
+        if let Some(pattern) = expected_pattern
+            && response_payload.ends_with(pattern)
+        {
+            pattern_found = true;
+            break;
+        }
+    }
+
+    if let Some(pattern) = expected_pattern
+        && !pattern_found
+    {
+        let reason: String = format!(
+            "echo payload mismatch (expected_pattern={:?}, received={:?})",
+            pattern, response_payload
+        );
+        error!("collect_uservm_payload(): {reason}");
+        return Err(::anyhow::anyhow!(reason));
+    }
+
+    trace!(
+        "collect_uservm_payload(): response_len={}, response={:?}",
+        response_payload.len(),
+        response_payload
+    );
+
+    Ok(response_payload)
+}

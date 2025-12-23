@@ -1,0 +1,484 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod http;
+mod terminal;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+pub use self::{
+    http::{
+        NanvixdHttp,
+        NanvixdHttpArgs,
+    },
+    terminal::{
+        NanvixdTerminal,
+        NanvixdTerminalArgs,
+    },
+};
+use crate::{
+    config::RunnerConfig,
+    environment,
+    warn_with_policy,
+};
+use ::anyhow::Result;
+use ::libc;
+use ::nanvix::log::{
+    debug,
+    error,
+    trace,
+};
+use ::std::{
+    path::{
+        Path,
+        PathBuf,
+    },
+    thread,
+    time::Duration,
+};
+use ::tokio::process::{
+    Child,
+    ChildStderr,
+    ChildStdin,
+    ChildStdout,
+    Command,
+};
+
+//==================================================================================================
+// Nanvix Daemon Shared State
+//==================================================================================================
+
+///
+/// Internal structure that encapsulates shared Nanvix Daemon lifecycle management.
+///
+struct Nanvixd {
+    /// Child process handle for the Nanvix Daemon binary.
+    cmd: Child,
+    /// Maximum number of attempts to wait for a graceful shutdown.
+    shutdown_attempts_max: usize,
+    /// Delay (in milliseconds) between shutdown polling attempts.
+    shutdown_retry_interval_ms: u64,
+    /// Label describing the runtime context, used in log messages.
+    context_label: String,
+    /// Guard that sanitizes Nanvix artifacts when the daemon drops.
+    _cleanup_guard: EnvironmentCleanupGuard,
+}
+
+impl Nanvixd {
+    ///
+    /// # Description
+    ///
+    /// Creates a new shared daemon handle from the spawned child process.
+    ///
+    /// # Parameters
+    ///
+    /// - `cmd`: Spawned Nanvix Daemon child process.
+    /// - `shutdown_attempts_max`: Maximum number of graceful-shutdown polls.
+    /// - `shutdown_retry_interval_ms`: Delay, in milliseconds, between polling attempts.
+    /// - `context_label`: Label used when emitting log messages.
+    /// - `cleanup_guard`: Guard that sanitizes Nanvix artifacts on drop.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a `Nanvixd` handle initialized with the provided process metadata.
+    ///
+    fn new(
+        cmd: Child,
+        shutdown_attempts_max: usize,
+        shutdown_retry_interval_ms: u64,
+        context_label: &str,
+        cleanup_guard: EnvironmentCleanupGuard,
+    ) -> Self {
+        Self {
+            cmd,
+            shutdown_attempts_max,
+            shutdown_retry_interval_ms,
+            context_label: context_label.to_string(),
+            _cleanup_guard: cleanup_guard,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds the base command used to spawn the Nanvix Daemon, populating shared arguments.
+    ///
+    /// # Parameters
+    ///
+    /// - `config`: Runner configuration that provides binary paths.
+    /// - `hwloc_file_path`: Optional hwloc topology forwarded to the Nanvix Daemon.
+    /// - `l2_enabled`: Whether L2 networking should be enabled.
+    /// - `log_directory`: Directory where the Nanvix Daemon should persist component logs.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a configured command ready for Nanvix Daemon-specific arguments.
+    ///
+    fn build_base_command(
+        config: &RunnerConfig,
+        hwloc_file_path: Option<&str>,
+        l2_enabled: bool,
+        log_directory: &Path,
+    ) -> Command {
+        let mut command: Command = Command::new(config.nanvixd_binary_path.as_str());
+        command.current_dir(&config.working_directory);
+        command.arg(::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY);
+        command.arg(format!("{}/bin", config.toolchain_path));
+
+        if let Some(hwloc_file) = hwloc_file_path {
+            command.arg(::nanvixd::args::Args::OPT_HWLOC);
+            command.arg(hwloc_file);
+        }
+
+        if l2_enabled {
+            command.arg(::nanvixd::args::Args::OPT_L2);
+        }
+
+        command.arg(::nanvixd::args::Args::OPT_LOG_DIRECTORY);
+        command.arg(log_directory);
+
+        command
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a human-readable label describing the runtime context used in log messages.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the context label string.
+    ///
+    fn context_label(&self) -> &str {
+        self.context_label.as_str()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends a Unix signal to the target Nanvix Daemon process.
+    ///
+    /// # Parameters
+    ///
+    /// - `signal`: Signal number to deliver.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `Ok(())` if the signal is delivered; returns an error when delivery fails.
+    ///
+    fn signal(&self, signal: libc::c_int) -> Result<()> {
+        let context: String = self.context_label().to_string();
+        trace!("signal(): signal={signal}, context={context}");
+
+        // Get Nanvix Daemon PID.
+        let Some(pid) = self.cmd.id() else {
+            let reason: String = "nanvixd pid is unavailable".to_string();
+            error!("signal(): {reason} (signal={signal}, context={context})");
+            return Err(::anyhow::anyhow!(reason));
+        };
+
+        // Try to convert PID.
+        let pid: libc::pid_t = match pid.try_into() {
+            Err(error) => {
+                let reason: String = format!(
+                    "failed to convert nanvixd pid (error={error}, signal={signal}, pid={pid}, \
+                     context={context})"
+                );
+                error!("signal(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            Ok(pid) => pid,
+        };
+
+        // Send signal to the Nanvix Daemon process and check for errors.
+        debug!("signal(): sending {signal} to nanvixd (pid={pid}, context={context})");
+        let ret: libc::c_int = unsafe { libc::kill(pid, signal) };
+        if ret != 0 {
+            let os_error: ::std::io::Error = ::std::io::Error::last_os_error();
+            let reason: String = format!(
+                "failed to send {signal} to nanvixd (pid={pid}, errno={os_error}, \
+                 context={context})"
+            );
+            error!("signal(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for the Nanvix Daemon process to exit.
+    ///
+    /// This function retries at fixed intervals until either the process terminates or the
+    /// configured number of attempts is exhausted.
+    ///
+    /// # Parameters
+    ///
+    /// - `sleep_duration`: Duration to sleep between successive `try_wait_exit()` calls.
+    /// - `max_attempts`: Maximum number of polling attempts before giving up.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` if the process exits before the attempt limit, `false` if it is still
+    /// running after all attempts, and an error if the wait operation itself fails.
+    ///
+    fn try_wait_exit(&mut self, sleep_duration: Duration, max_attempts: usize) -> Result<bool> {
+        let mut attempts: usize = 0;
+        let context: String = self.context_label().to_string();
+        loop {
+            match self.cmd.try_wait() {
+                Err(error) => {
+                    let reason: String =
+                        format!("failed to wait for nanvixd (error={error}, context={context})");
+                    error!("try_wait_exit(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+                Ok(Some(_status)) => {
+                    debug!(
+                        "try_wait_exit(): nanvixd process exited after {attempts} attempts \
+                         (context={context})"
+                    );
+                    return Ok(true);
+                },
+                Ok(None) => {
+                    if attempts >= max_attempts {
+                        let reason: String = format!(
+                            "nanvixd process failed to exit after {attempts} attempts \
+                             (context={context})"
+                        );
+                        debug!("try_wait_exit(): {reason}");
+                        return Ok(false);
+                    }
+
+                    attempts += 1;
+                    thread::sleep(sleep_duration);
+                },
+            }
+        }
+    }
+
+    ///
+    ///
+    /// # Description
+    ///
+    /// Takes ownership of the stdin handle when the daemon is running in interactive mode.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the stdin handle if available; otherwise returns `None` when stdin was already
+    /// taken.
+    ///
+    fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.cmd.stdin.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes ownership of the stdout handle for interactive mode consumers.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the stdout handle if it exists; otherwise returns `None` when previously taken.
+    ///
+    fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.cmd.stdout.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes ownership of the stderr handle for interactive mode consumers.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the stderr handle if it exists; otherwise returns `None` when previously taken.
+    ///
+    fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.cmd.stderr.take()
+    }
+}
+
+impl Drop for Nanvixd {
+    ///
+    /// # Description
+    ///
+    /// Cleans up the Nanvix Daemon process by attempting a graceful shutdown via SIGINT,
+    /// followed by a forced shutdown via SIGKILL if the former fails.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `()`; logs errors when cleanup attempts fail.
+    ///
+    fn drop(&mut self) {
+        let context: String = self.context_label().to_string();
+        match self.cmd.try_wait() {
+            Ok(Some(_status)) => {
+                trace!(
+                    "drop(): skipping cleanup because process already exited (context={context})"
+                );
+                return;
+            },
+            Ok(None) => {
+                trace!("drop(): context={context}");
+            },
+            Err(error) => {
+                warn_with_policy!(
+                    "drop(): failed to probe nanvixd status before cleanup (context={context}, \
+                     error={error})"
+                );
+                trace!("drop(): context={context}");
+            },
+        }
+
+        let wait_duration: Duration = Duration::from_millis(self.shutdown_retry_interval_ms);
+        let max_attempts: usize = self.shutdown_attempts_max;
+
+        match self.try_wait_exit(wait_duration, max_attempts) {
+            Err(error) => {
+                warn_with_policy!(
+                    "drop(): failed to wait for nanvixd exit before sending signals \
+                     (context={context}, error={error})"
+                );
+            },
+            Ok(true) => {
+                debug!(
+                    "drop(): nanvixd exited while waiting for natural shutdown (context={context})"
+                );
+                return;
+            },
+            Ok(false) => {
+                trace!(
+                    "drop(): nanvixd still running after natural shutdown wait (context={context})"
+                );
+            },
+        }
+
+        // Send SIGINT for graceful shutdown and check for errors.
+        let sigint_sent: bool = match self.signal(libc::SIGINT) {
+            Err(error) => {
+                error!(
+                    "drop(): failed to send SIGINT to nanvixd (context={context}, error={error})"
+                );
+                false
+            },
+            Ok(()) => true,
+        };
+
+        // Try to wait for graceful shutdown.
+        match self.try_wait_exit(wait_duration, max_attempts) {
+            Err(error) => {
+                error!("drop(): SIGINT wait failed (error={error})");
+            },
+            Ok(exited) => {
+                if exited {
+                    debug!("drop(): nanvixd exited gracefully after SIGINT");
+                    return;
+                }
+                if sigint_sent {
+                    warn_with_policy!(
+                        "drop(): nanvixd did not exit after SIGINT, sending SIGKILL \
+                         (context={context})"
+                    );
+                } else {
+                    warn_with_policy!(
+                        "drop(): nanvixd still running and SIGINT could not be delivered, sending \
+                         SIGKILL (context={context})"
+                    );
+                }
+            },
+        }
+
+        // Send SIGKILL for forced shutdown and check for errors.
+        if let Err(error) = self.signal(libc::SIGKILL) {
+            error!("drop(): failed to send SIGKILL to nanvixd (context={context}, error={error})");
+            return;
+        }
+
+        // Try to wait for forced shutdown.
+        match self.try_wait_exit(wait_duration, max_attempts) {
+            Err(error) => {
+                error!("drop(): SIGKILL wait failed (error={error})");
+            },
+            Ok(exited) => {
+                if exited {
+                    debug!("drop(): nanvixd exited after SIGKILL (context={context})");
+                } else {
+                    error!("drop(): nanvixd failed to exit after SIGKILL (context={context})");
+                }
+            },
+        }
+    }
+}
+
+//==================================================================================================
+// Environment Cleanup Guard
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Helper that guarantees host cleanup runs even when the Nanvixd drop handler exits early.
+struct EnvironmentCleanupGuard {
+    /// Indicates whether Nanvixd was launched with L2 enabled.
+    l2_enabled: bool,
+    /// Optional HTTP port used for TIME_WAIT cleanup.
+    http_port: Option<u16>,
+    /// Directory sanitized when removing Nanvix artifacts.
+    tmp_directory: PathBuf,
+    /// Maximum seconds spent waiting for lingering TIME_WAIT sockets.
+    tcp_cleanup_max_wait_seconds: u64,
+    /// Seconds between TIME_WAIT socket inspections.
+    tcp_cleanup_poll_interval_seconds: u64,
+}
+
+impl EnvironmentCleanupGuard {
+    ///
+    /// # Description
+    ///
+    /// Creates a new guard that sanitizes the host environment when dropped.
+    ///
+    /// # Parameters
+    ///
+    /// - `l2_enabled`: Indicates whether Nanvixd used L2 networking.
+    /// - `http_port`: Optional HTTP port monitored for lingering TIME_WAIT sockets.
+    /// - `tmp_directory`: Directory sanitized when removing Nanvix artifacts.
+    /// - `tcp_cleanup_max_wait_seconds`: Maximum seconds spent waiting for lingering TIME_WAIT
+    ///   sockets.
+    /// - `tcp_cleanup_poll_interval_seconds`: Seconds between TIME_WAIT socket inspections.
+    fn new(
+        l2_enabled: bool,
+        http_port: Option<u16>,
+        tmp_directory: PathBuf,
+        tcp_cleanup_max_wait_seconds: u64,
+        tcp_cleanup_poll_interval_seconds: u64,
+    ) -> Self {
+        Self {
+            l2_enabled,
+            http_port,
+            tmp_directory,
+            tcp_cleanup_max_wait_seconds,
+            tcp_cleanup_poll_interval_seconds,
+        }
+    }
+}
+
+impl Drop for EnvironmentCleanupGuard {
+    fn drop(&mut self) {
+        environment::cleanup_after_run(
+            self.l2_enabled,
+            self.http_port,
+            self.tmp_directory.as_path(),
+            self.tcp_cleanup_max_wait_seconds,
+            self.tcp_cleanup_poll_interval_seconds,
+        );
+    }
+}
