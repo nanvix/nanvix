@@ -167,6 +167,7 @@ pub use config::{
     user_vm_sockaddr_builder,
     NAMED_RESOURCE_PREFIX,
     NETNS_NAME_PREFIX,
+    UNIX_SOCKET_SUFFIX,
     VETH_HOST_PREFIX,
     VETH_NS_PREFIX,
 };
