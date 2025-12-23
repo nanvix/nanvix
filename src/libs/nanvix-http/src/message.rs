@@ -93,6 +93,59 @@ pub struct KillResponse {
 ///
 /// # Description
 ///
+/// Structured error payload returned by Nanvix Daemon when a request cannot be fulfilled.
+///
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ErrorResponse {
+    /// Short machine-readable code that identifies the failing subsystem.
+    pub code: ErrorCode,
+    /// Human-readable message that provides additional diagnostic context.
+    pub message: String,
+}
+
+///
+/// # Description
+///
+/// Enumerates the short machine-readable error codes exposed by the Nanvix Daemon HTTP API.
+///
+/// These codes allow clients to branch on stable identifiers while still relaying descriptive
+/// messages for operators. They serialize as SCREAMING_SNAKE_CASE strings for compatibility with
+/// existing tooling.
+///
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ErrorCode {
+    /// The `X-NVX-Message-Type` header is missing or invalid.
+    MissingMessageType,
+    /// Hyper failed to read the HTTP request body.
+    BodyReadFailed,
+    /// The provided payload cannot be parsed as a NEW message.
+    InvalidNewPayload,
+    /// The daemon failed while processing a valid NEW request.
+    NewRequestFailed,
+    /// The provided payload cannot be parsed as a KILL message.
+    InvalidKillPayload,
+    /// The daemon failed while processing a valid KILL request.
+    KillRequestFailed,
+}
+
+impl ::std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        let code: &str = match self {
+            Self::MissingMessageType => "MISSING_MESSAGE_TYPE",
+            Self::BodyReadFailed => "BODY_READ_FAILED",
+            Self::InvalidNewPayload => "INVALID_NEW_PAYLOAD",
+            Self::NewRequestFailed => "NEW_REQUEST_FAILED",
+            Self::InvalidKillPayload => "INVALID_KILL_PAYLOAD",
+            Self::KillRequestFailed => "KILL_REQUEST_FAILED",
+        };
+        f.write_str(code)
+    }
+}
+
+///
+/// # Description
+///
 /// Unified response type for all message types.
 ///
 /// This enum wraps the specific response types to allow returning different response
