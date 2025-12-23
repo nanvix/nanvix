@@ -473,42 +473,48 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// identifier was not found in the cache.
     ///
     pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
-        let tag = self
-            .sandbox_index
-            .get(&user_vm_id)
-            .ok_or_else(|| anyhow::anyhow!("user VM instance not found in cache"))?;
-
-        self.kill_internal(&tag.clone()).await
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Internal helper to terminate and remove a sandbox by its tag.
-    ///
-    /// # Parameters
-    ///
-    /// - `tag`: Tag identifying the sandbox to terminate.
-    ///
-    /// # Returns
-    ///
-    /// On success, returns an empty tuple. On failure, returns an error.
-    ///
-    async fn kill_internal(&mut self, tag: &SandboxTag) -> Result<()> {
-        let user_vm_id: UserVmIdentifier = tag.sandbox_id();
-
-        if !self.running_sandboxes.contains_key(tag) {
-            warn!("trying to kill user VM that is not in the cache (tag={tag:?})");
-            return Ok(());
-        }
+        let tag: &SandboxTag = self.sandbox_index.get(&user_vm_id).ok_or_else(|| {
+            let reason: &str = "user VM instance not found in cache";
+            error!("kill(): {reason} (user_vm_id={user_vm_id})");
+            anyhow::anyhow!("{reason}")
+        })?;
 
         if let Some(sandbox) = self.running_sandboxes.remove(tag) {
-            sandbox.shutdown().await;
+            self.sandbox_index.remove(&user_vm_id);
+            match sandbox.shutdown().await {
+                Some(status) => {
+                    if status.success() {
+                        debug!(
+                            "kill(): sandbox exited successfully (user_vm_id={user_vm_id}, \
+                             status={status:?})"
+                        );
+                    } else {
+                        warn!(
+                            "kill(): sandbox exited with failure (user_vm_id={user_vm_id}, \
+                             status={status:?})"
+                        );
+                    }
+                },
+                None => {
+                    warn!(
+                        "kill(): sandbox shutdown did not complete before timeout \
+                         (user_vm_id={user_vm_id})"
+                    );
+                },
+            }
+
+            Ok(())
+        } else {
+            // This is unlikely to happen because every time we insert a new sandbox tag in the
+            // cache index we also insert the corresponding running sandbox in the running sandboxes
+            // map. Conversely, every time we remove a running sandbox from the running sandboxes
+            // map we also remove the corresponding tag from the cache index. Instead of panicking,
+            // we log an error message and fail to maintain backward compatibility.
+            let reason: String =
+                format!("trying to kill user VM that is not in the cache (tag={tag:?})");
+            error!("kill(): {reason}");
+            Err(anyhow::anyhow!(reason))
         }
-
-        self.sandbox_index.remove(&user_vm_id);
-
-        Ok(())
     }
 
     ///
@@ -525,8 +531,22 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         // First shutdown all user VMs.
         for (tag, sandbox) in self.running_sandboxes.drain() {
             debug!("cleaning user vm instance (tag={tag:?})");
-            sandbox.shutdown().await;
+            match sandbox.shutdown().await {
+                Some(status) => {
+                    debug!(
+                        "cleanup(): sandbox reported exit status (tag={tag:?}, status={status:?})"
+                    );
+                },
+                None => {
+                    warn!(
+                        "cleanup(): sandbox shutdown did not complete before timeout (tag={tag:?})"
+                    );
+                },
+            }
         }
+
+        // After draining all running sandboxes, clear the index to keep it consistent.
+        self.sandbox_index.clear();
 
         // Shutdown all linuxd instances.
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {

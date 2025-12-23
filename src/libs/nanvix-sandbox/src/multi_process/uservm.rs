@@ -30,7 +30,10 @@ use ::control_plane_api::{
 };
 use ::std::{
     mem,
-    process::Stdio,
+    process::{
+        ExitStatus,
+        Stdio,
+    },
 };
 use ::syscomm::{
     SocketListener,
@@ -233,7 +236,12 @@ impl UserVm {
     ///
     /// Shuts down the User VM instance.
     ///
-    pub async fn shutdown(&mut self) {
+    /// # Returns
+    ///
+    /// Returns `Some(ExitStatus)` if the child process finished before the cleanup timeout.
+    /// Returns `None` otherwise.
+    ///
+    pub async fn shutdown(&mut self) -> Option<ExitStatus> {
         trace!("shutdown()");
 
         // Prepare shutdown message.
@@ -260,6 +268,8 @@ impl UserVm {
                             exit_status.code()
                         );
                     }
+
+                    return Some(exit_status);
                 },
                 // If we encounter any errors while waiting for the user VM to gracefully shutdown,
                 // make sure we kill the underlying instance.
@@ -275,6 +285,8 @@ impl UserVm {
                 },
             }
         }
+
+        None
     }
 
     ///
