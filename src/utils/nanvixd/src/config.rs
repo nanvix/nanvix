@@ -65,5 +65,5 @@ pub const DEFAULT_L2_SNAPSHOT_DIRECTORY: &str = "images";
 /// SNAPSHOT_NAME which is another build-time constant.
 ///
 pub fn default_l2_snapshot_path() -> String {
-    format!("./images/{}", ::nanvix::config::linuxd::SNAPSHOT_NAME)
+    format!("./{}/{}", DEFAULT_L2_SNAPSHOT_DIRECTORY, ::nanvix::config::linuxd::SNAPSHOT_NAME)
 }
