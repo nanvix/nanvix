@@ -1,0 +1,20 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "no_fail"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Compile-time helper macro for infallible constructions"
+homepage.workspace = true
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+
+[lints]
+workspace = true
