@@ -92,6 +92,7 @@ export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
+export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 export SCCACHE       ?= $(shell which sccache 2>/dev/null)
@@ -316,11 +317,25 @@ ALL_HOST_BINARIES :=
 endif
 
 #===================================================================================================
+# Sysroot Symlink Management
+#===================================================================================================
+
+.PHONY: update-sysroot-link
+update-sysroot-link:
+	@if [ -d "$(SYSROOT_DIR)" ]; then \
+		ln -sfn "$(SYSROOT_DIR)" "$(SYSROOT_LINK)"; \
+		echo "Linked sysroot -> $(notdir $(SYSROOT_DIR))"; \
+	else \
+		echo "Warning: Sysroot directory '$(SYSROOT_DIR)' not found; skipping symlink update."; \
+	fi
+
+#===================================================================================================
 # Top-Level Build Rules
 #===================================================================================================
 
 # Builds everything.
 all: all-nanvix all-opt
+	@$(MAKE) update-sysroot-link
 
 # Builds all Nanvix components.
 all-nanvix: \
@@ -386,6 +401,7 @@ endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
+	@$(MAKE) update-sysroot-link
 
 release: all install
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
