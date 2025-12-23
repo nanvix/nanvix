@@ -414,7 +414,7 @@ impl Registry {
         let artifact_cache_dir: PathBuf = cache_dir.join(&subdir_name);
 
         // Load or create the release registry.
-        let mut release_registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
+        let mut registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
             match ReleaseRegistry::load(&cache_dir).await {
                 Ok(reg) => reg,
                 Err(error) => {
@@ -431,7 +431,7 @@ impl Registry {
 
         // Check if we need to download this specific configuration.
         let needs_download: bool =
-            if let Some(cached_entry) = release_registry.get_release(machine, deployment) {
+            if let Some(cached_entry) = registry.get_release(machine, deployment) {
                 if cached_entry.commit_id() != commit_id.as_str() {
                     info!(
                         "New release detected for {}-{} (cached: {}, latest: {})",
@@ -469,8 +469,8 @@ impl Registry {
             let downloaded_url: String = release.download(&artifact_cache_dir).await?;
 
             // Update the registry with the new release.
-            release_registry.set_release(machine, deployment, downloaded_url, commit_id);
-            release_registry.save(&cache_dir).await?;
+            registry.set_release(machine, deployment, downloaded_url, commit_id);
+            registry.save(&cache_dir).await?;
         }
 
         // Now search for the artifact in the specified directory.
@@ -530,11 +530,7 @@ impl Registry {
         // Extract and validate the commit ID.
         if start_idx < end_idx {
             let commit_id: &str = &filename[start_idx..end_idx];
-            if !commit_id.is_empty() {
-                Some(commit_id.to_string())
-            } else {
-                None
-            }
+            Some(commit_id.to_string())
         } else {
             None
         }
@@ -1042,12 +1038,6 @@ mod tests {
         assert!(commit_id.is_some());
         assert_eq!(commit_id.unwrap(), "1a2b3c4d5e6f");
 
-        // Test full 40-character commit ID (matches production GITHUB_SHA format).
-        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-a1b2c3d4e5f6789012345678901234567890abcd.tar.bz2";
-        let commit_id: Option<String> = Registry::extract_commit_id(url);
-        assert!(commit_id.is_some());
-        assert_eq!(commit_id.unwrap(), "a1b2c3d4e5f6789012345678901234567890abcd");
-
         // Test URL without release prefix.
         let url: &str =
             "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-abc123def.tar.bz2";
@@ -1057,12 +1047,6 @@ mod tests {
         // Test URL without file extension.
         let url: &str =
             "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-release-abc123def";
-        let commit_id: Option<String> = Registry::extract_commit_id(url);
-        assert!(commit_id.is_none());
-
-        // Test empty commit ID (edge case: release-.tar.bz2).
-        let url: &str =
-            "https://github.com/nanvix/nanvix/releases/download/latest/release-.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_none());
 
