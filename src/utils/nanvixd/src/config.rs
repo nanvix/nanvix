@@ -52,6 +52,13 @@ pub const DEFAULT_CONSOLE_FILENAME: &str = "guest";
 ///
 /// # Description
 ///
+/// Default directory name for storing L2 snapshots.
+///
+pub const DEFAULT_L2_SNAPSHOT_DIRECTORY: &str = "images";
+
+///
+/// # Description
+///
 /// Default path for the L2 snapshot.
 ///
 /// We cannot define this variable as a pub const &str because it depends on
