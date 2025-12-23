@@ -1,0 +1,103 @@
+[runner]
+nanvixd_binary_path = "./bin/nanvixd.elf"
+working_directory = "."
+log_directory = "logs"
+tmp_directory = "/tmp"
+ipv4_addr = "127.0.0.1"
+port_num = 9999
+hwloc_file_path = ""
+l2_enabled = true
+fatal = true
+toolchain_path = "toolchain"
+sysroot_path = "./sysroot"
+nanvixd_shutdown_attempts_max = 10
+nanvixd_shutdown_retry_interval_ms = 100
+nanvixd_ready_attempts_max = 50
+nanvixd_ready_retry_interval_ms = 100
+cleanup_uservm_sleep_duration_ms = 10
+cleanup_l2_uservm_sleep_duration_ms = 100
+stream_collection_timeout_ms = 300000
+tcp_cleanup_max_wait_seconds = 70
+tcp_cleanup_poll_interval_seconds = 2
+gateway_connect_max_attempts = 100
+gateway_connect_initial_backoff_ms = 10
+gateway_connect_max_backoff_ms = 500
+gateway_connect_timeout_ms = 15000
+
+[[tests]]
+executor = "empty"
+iterations = 1
+
+[[tests]]
+executor = "empty"
+iterations = 2
+
+#===================================================================================================
+# HTTP Executor Tests (Non-Interactive Mode)
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-c.elf"
+input = "hello world!"
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-cpp.elf"
+input = '["hello world!"]'
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-rust-nostd.elf"
+input = '["hello world!"]'
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/hello-c.elf"
+input = "[]"
+expected_output = "Hello, world from C!"
+
+[[tests]]
+executor = "http"
+program = "./bin/hello-cpp.elf"
+input = "[]"
+expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "http"
+program = "./bin/linux-app.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/thread-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/network-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/misc-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/memory-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/arch-rust.elf"
+input = "[]"
+expected_output = "ok"
