@@ -16,6 +16,7 @@ target/
 venv/
 /sysroot-debug/
 /sysroot-release/
+sysroot
 *.a
 *.elf
 *.exe
