@@ -72,7 +72,7 @@ jobs:
 
     - name: Create benchmark comment
       if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id == '' }}
-      uses: peter-evans/create-or-update-comment@v4
+      uses: peter-evans/create-or-update-comment@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ steps.metadata.outputs.pr_number }}
@@ -80,7 +80,7 @@ jobs:
 
     - name: Update benchmark comment
       if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id != '' }}
-      uses: peter-evans/create-or-update-comment@v4
+      uses: peter-evans/create-or-update-comment@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         comment-id: ${{ steps.fc.outputs.comment-id }}
