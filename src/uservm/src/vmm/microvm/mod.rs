@@ -23,15 +23,9 @@ use crate::vmm::{
     MicroVmArgs,
     guest::Guest,
     kvm::{
-        irqchip::{
-            IrqChip,
-            IrqChipState,
-        },
-        timer::{
-            Timer,
-            TimerState,
-        },
-        vcpu::VirtualProcessorState,
+        KvmSnapshot,
+        irqchip::IrqChip,
+        timer::Timer,
     },
 };
 #[cfg(target_os = "linux")]
@@ -551,50 +545,18 @@ impl Vmm {
 
         let mut file: File = File::create(kvm_filepath)?;
 
-        let guest_state = self.guest.lock().await.save_state()?;
-        Self::write_snapshot_component("guest", &guest_state, &mut file)?;
-
         let locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
+        let kvm_snapshot: KvmSnapshot = KvmSnapshot::new(
+            self.guest.lock().await.save_state()?,
+            self.vcpu.lock().await.save_state(&locked_inner.kvm)?,
+            locked_inner.irqchip.save_state(&locked_inner.vm)?,
+            locked_inner.timer.save_state(&locked_inner.vm)?,
+        );
 
-        let vcpu_state: VirtualProcessorState =
-            self.vcpu.lock().await.save_state(&locked_inner.kvm)?;
-        Self::write_snapshot_component("vcpu", &vcpu_state, &mut file)?;
-
-        let irqchip_state: IrqChipState = locked_inner.irqchip.save_state(&locked_inner.vm)?;
-        Self::write_snapshot_component("irqchip", &irqchip_state, &mut file)?;
-
-        let timer_state: TimerState = locked_inner.timer.save_state(&locked_inner.vm)?;
-
-        Self::write_snapshot_component("timer", &timer_state, &mut file)?;
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Writes a snapshot component to the snapshot file.
-    ///
-    /// # Parameters
-    ///
-    /// - `component_name`: Name of the snapshot component.
-    /// - `component`: Reference to the snapshot component.
-    /// - `file`: Mutable reference to the snapshot file.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, returns empty. Otherwise, returns an error.
-    ///
-    fn write_snapshot_component<T: ::serde::Serialize>(
-        component_name: &str,
-        component: &T,
-        file: &mut File,
-    ) -> Result<()> {
-        match ::serde_cbor::to_vec(component) {
+        match ::serde_cbor::to_vec(&kvm_snapshot) {
             Ok(buffer) => {
                 if let Err(e) = file.write_all(&buffer) {
-                    let reason: String =
-                        format!("failed writing {component_name} snapshot (error={e:?})",);
+                    let reason: String = format!("failed writing kvm snapshot (error={e:?})",);
                     error!("create_snapshot(): {reason}");
                     anyhow::bail!(reason)
                 }
@@ -602,8 +564,7 @@ impl Vmm {
                 Ok(())
             },
             Err(e) => {
-                let reason: String =
-                    format!("failed serializing {component_name} snapshot (error={e:?})",);
+                let reason: String = format!("failed serializing kvm snapshot (error={e:?})",);
                 error!("create_snapshot(): {reason}");
                 anyhow::bail!(reason)
             },
@@ -635,37 +596,72 @@ impl Vmm {
         let mut file: File = match File::open(kvm_filepath) {
             Ok(f) => f,
             Err(e) => {
-                let reason: String = format!("failed opening vcpu snapshot file (error={e:?})");
+                let reason: String = format!("failed opening kvm snapshot file (error={e:?})");
                 error!("load_snapshot(): {reason}");
                 anyhow::bail!(reason)
             },
         };
-        let state: VirtualProcessorState =
-            match ::serde_cbor::from_reader::<VirtualProcessorState, &mut File>(&mut file) {
-                Ok(state) => {
-                    if let Err(e) = state.validate() {
+
+        let kvm_snapshot: KvmSnapshot =
+            match ::serde_cbor::from_reader::<KvmSnapshot, &mut File>(&mut file) {
+                Ok(snapshot) => {
+                    if let Err(e) = snapshot.validate() {
                         let reason: String =
-                            format!("decoded vcpu snapshot is invalid (error={e:?})");
+                            format!("decoded kvm snapshot is invalid (error={e:?})");
                         error!("load_snapshot(): {reason}");
                         anyhow::bail!(reason)
                     } else {
-                        state
+                        snapshot
                     }
                 },
                 Err(e) => {
-                    let reason: String =
-                        format!("failed decoding vcpu snapshot file (error={e:?})");
+                    let reason: String = format!("failed decoding kvm snapshot file (error={e:?})");
                     error!("load_snapshot(): {reason}");
                     anyhow::bail!(reason)
                 },
             };
 
-        if let Err(e) = self.vcpu.lock().await.load_state(&state) {
+        // Load the snapshot.
+        if let Err(e) = self
+            .guest
+            .lock()
+            .await
+            .restore_state(kvm_snapshot.get_guest_state())
+        {
+            let reason: String = format!("failed setting guest state (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = self
+            .vcpu
+            .lock()
+            .await
+            .load_state(kvm_snapshot.get_vcpu_state())
+        {
             let reason: String = format!("failed setting vcpu state (error={e:?})");
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
-        } else {
-            Ok(())
         }
+
+        // Destructure `locked_inner` to get the borrow checker to comply.
+        let mut locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
+        let InteriorMicroVmHandle {
+            vm, timer, irqchip, ..
+        } = &mut *locked_inner;
+
+        if let Err(e) = timer.restore_state(vm, kvm_snapshot.get_timer_state()) {
+            let reason: String = format!("failed setting timer state (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if let Err(e) = irqchip.restore_state(vm, kvm_snapshot.get_irqchip_state()) {
+            let reason: String = format!("failed setting irqchip state (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        Ok(())
     }
 }
