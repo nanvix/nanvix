@@ -63,7 +63,7 @@ jobs:
     - name: Find benchmark comment if it exists
       if: ${{ steps.metadata.outputs.needs_comment == 'true' }}
       id: fc
-      uses: peter-evans/find-comment@v3
+      uses: peter-evans/find-comment@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ steps.metadata.outputs.pr_number }}
