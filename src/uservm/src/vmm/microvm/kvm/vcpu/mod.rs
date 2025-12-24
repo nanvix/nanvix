@@ -581,23 +581,6 @@ impl VirtualProcessor {
     }
 }
 
-impl VirtualProcessorState {
-    ///
-    /// # Description
-    ///
-    /// Validates the internal consistency of the virtual processor state.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns empty. Otherwise, it
-    /// returns an error.
-    ///
-    pub fn validate(&self) -> Result<()> {
-        trace!("validate()");
-        Ok(())
-    }
-}
-
 //==================================================================================================
 // Standalone functions
 //==================================================================================================
