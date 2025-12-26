@@ -25,7 +25,7 @@ jobs:
     steps:
     - name: Download benchmark comment payload
       id: download
-      uses: dawidd6/action-download-artifact@v11
+      uses: dawidd6/action-download-artifact@v12
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         run_id: ${{ github.event.workflow_run.id }}
