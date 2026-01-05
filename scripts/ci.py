@@ -7,6 +7,7 @@
 
 import subprocess
 import argparse
+from pathlib import Path
 from typing import List, Optional
 
 # ======================================================================================================================
@@ -32,12 +33,23 @@ LOG_LEVELS: List[str] = ["trace", "debug", "info", "warning", "error"]
 # Magic string used for asserting test success.
 MAGIC_STRING: str = "hello, world!"
 
+# Absolute path to the repository root.
+REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+
+# Absolute path to the z utility script.
+Z_SCRIPT_PATH: str = str(REPO_ROOT / "z")
+
 # ======================================================================================================================
 # Standalone Functions
 # ======================================================================================================================
 
 
-def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) -> int:
+def run_command(
+    command: List[str],
+    stdout_log_file: str,
+    stderr_log_file: str,
+    cwd: Optional[str] = None,
+) -> int:
     """
     Runs a command and tees the output to separate files for stdout and stderr.
 
@@ -45,6 +57,7 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
         command (List[str]): Command to run.
         stdout_log_file (str): Path to the stdout log file.
         stderr_log_file (str): Path to the stderr log file.
+        cwd (str, optional): Directory to execute the command from.
 
     Returns:
         int: Command return code.
@@ -55,7 +68,11 @@ def run_command(command: List[str], stdout_log_file: str, stderr_log_file: str) 
 
     with open(stdout_log_file, "w") as stdout_file, open(stderr_log_file, "w"):
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=cwd,
         )
 
         # Poll stdout and stderr
@@ -95,8 +112,8 @@ def make(
     features: Optional[List[str]] = None,
 ) -> None:
     """
-    Runs make command.
-
+    Runs Nanvix build targets through the Z utility.
+        target (str): Build target passed to the Z utility (e.g., "all", "lint").
     Args:
         target (str): Make target.
         machine (str): Target machine.
@@ -109,13 +126,18 @@ def make(
         features (List[str], optional): List of feature toggles. Defaults to None.
     """
 
-    command = ["make", target, f"MACHINE={machine}", f"TARGET={arch}"]
+    command: List[str] = [Z_SCRIPT_PATH, "build"]
+
+    if toolchain_dir:
+        command.extend(["--toolchain-dir", toolchain_dir])
+
+    command.append("--")
+    command.append(target)
+    command.append(f"MACHINE={machine}")
+    command.append(f"TARGET={arch}")
 
     if log_level:
         command.append(f"LOG_LEVEL={log_level}")
-
-    if toolchain_dir:
-        command.append(f"TOOLCHAIN_DIR={toolchain_dir}")
 
     if verbose:
         command.append("VERBOSE=yes")
@@ -137,10 +159,15 @@ def make(
             if feature:
                 command.append(feature)
 
-    return_code = run_command(command, f"{target}-stdout.log", f"{target}-stderr.log")
+    return_code = run_command(
+        command,
+        f"{target}-stdout.log",
+        f"{target}-stderr.log",
+        cwd=str(REPO_ROOT),
+    )
 
     if return_code:
-        print(f"Make failed with code={return_code}.")
+        print(f"Z build failed with code={return_code}.")
         exit(1)
 
 
