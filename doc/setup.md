@@ -155,7 +155,7 @@ To build a Docker image with the required tools:
 
 ```bash
 # Ensure you are in the project's root directory.
-docker build --no-cache -t nanvix/toolchain ./scripts/setup/
+./scripts/setup/docker.sh
 ```
 
 ## Updating Your Development Tools
