@@ -22,7 +22,7 @@ user-vm-api = { workspace = true }
 default = ["microvm"]
 hyperlight = ["nanvix-sandbox-cache/hyperlight"]
 microvm = ["nanvix-sandbox-cache/microvm"]
-single-process = ["nanvix-sandbox-cache/single-process"]
+multi-process = ["nanvix-sandbox-cache/multi-process"]
 
 [lints]
 workspace = true

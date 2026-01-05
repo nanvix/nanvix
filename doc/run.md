@@ -7,6 +7,7 @@ This document provides instructions on how to run Nanvix.
 ## Table of Contents
 
 - [Running Nanvix with `nanvixd` (Preferred Method)](#running-nanvix-with-nanvixd-preferred-method)
+  - [Choosing Single vs Multi-Process Mode](#choosing-single-vs-multi-process-mode)
   - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
   - [Step 2: Run an Application](#step-2-run-an-application)
   - [HTTP Error Responses](#http-error-responses)
@@ -21,6 +22,35 @@ This document provides instructions on how to run Nanvix.
 Nanvixd is a utility script that manages the deployment of User VMs in Nanvix, and their corresponding linuxd instances.
 
 Nanvixd exposes a unified RESTful API to interact with your deployment. To follow this guide we assume you have `jq` and `curl` installed.
+
+### Choosing Single vs Multi-Process Mode
+
+Nanvix builds default to the single-process deployment. No additional flags are required—`nanvixd`
+will log a banner similar to the following when it starts:
+
+```
+nanvixd X.Y.Z, single-process deployment, http mode
+```
+
+Set `SINGLE_PROCESS=no` during your build to exercise the multi-process deployment, which runs the
+Linux Daemon and UserVM as separate host processes and enables the `multi-process` Cargo feature
+across all crates:
+
+```bash
+./z build -- all SINGLE_PROCESS=no
+# or
+make SINGLE_PROCESS=no all
+```
+
+When the binaries were produced with multi-process support, the startup log switches accordingly and
+also reports the Layer-2 (L2) setting that was compiled in:
+
+```
+nanvixd X.Y.Z, multi-process deployment, http mode, l2 disabled
+```
+
+Whichever deployment mode was built most recently is the one that `nanvixd`, `make run`, and the test
+targets will use.
 
 ### Step 1: Run `nanvixd`
 

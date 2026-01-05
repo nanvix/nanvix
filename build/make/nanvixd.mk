@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 NANVIXD_FEATURES :=
-NANVIXD_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
+NANVIXD_FEATURES += $(if $(filter no,$(SINGLE_PROCESS)),multi-process,)
 NANVIXD_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))

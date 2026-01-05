@@ -222,9 +222,9 @@ jobs:
       name: "Create Release Archive"
       if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' &&  matrix.deployment-type != 'l2' }}
       run: |
-        single_process="no"
-        if [[ "${{ matrix.deployment-type }}" == "single-process" ]]; then
-          single_process="yes"
+        single_process="yes"
+        if [[ "${{ matrix.deployment-type }}" == "multi-process" ]]; then
+          single_process="no"
         fi
 
         # Ensure a clean build.

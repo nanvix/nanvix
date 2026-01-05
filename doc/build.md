@@ -13,6 +13,7 @@ simplified build process or do it manually.
   - [Getting Started with `z`](#getting-started-with-z)
   - [Using `z` to Build Nanvix with Docker](#using-z-to-build-nanvix-with-docker)
   - [Using `z` to Build Nanvix with a Local Toolchain](#using-z-to-build-nanvix-with-a-local-toolchain)
+  - [Selecting a Deployment Mode](#selecting-a-deployment-mode)
 - [Building Nanvix Manually](#building-nanvix-manually)
   - [Manually Building Nanvix with Docker](#manually-building-nanvix-with-docker)
   - [Manually Building Nanvix with a Local Toolchain](#manually-building-nanvix-with-a-local-toolchain)
@@ -45,6 +46,32 @@ To build Nanvix using your local toolchain and default build parameters, run:
 ```bash
 ./z build -- all
 ```
+
+### Selecting a Deployment Mode
+
+Nanvix builds default to the single-process deployment path (`SINGLE_PROCESS=yes`). In this mode the
+Linux Daemon and UserVM execute within the same process, which is ideal for local development and
+faster iteration cycles. Set `SINGLE_PROCESS=no` whenever you need the multi-process deployment, which
+enables the `multi-process` Cargo feature, builds the standalone `linuxd` and `uservm` binaries, and
+matches the production topology.
+
+#### Examples
+
+Build multi-process artifacts with the `z` helper:
+
+```bash
+./z build -- all SINGLE_PROCESS=no
+```
+
+Or do the same through the raw Makefile interface:
+
+```bash
+make SINGLE_PROCESS=no all
+```
+
+You can freely switch between deployment modes by rebuilding with the desired `SINGLE_PROCESS`
+setting; subsequent `make run` or `nanvixd` invocations will use the binaries produced by the latest
+build.
 
 ## Building Nanvix Manually
 

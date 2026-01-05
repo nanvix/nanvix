@@ -20,9 +20,8 @@ tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = ["microvm"]
-# If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
-# into Nanvix Daemon (nanvixd).
-single-process = ["nanvix/single-process"]
+# If this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) run as separate processes.
+multi-process = ["nanvix/multi-process"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 

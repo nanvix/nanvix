@@ -37,15 +37,15 @@
 //!
 //! ## Deployment Modes
 //!
-//! ### Multi-Process Mode (default)
+//! ### Single-Process Mode (default)
 //!
-//! Linux Daemon and User VM run as separate OS processes. This is the production mode
-//! used by Nanvix Daemon for isolation and robustness.
+//! Linux Daemon and User VM run as tasks within the same process. This mode is primarily used for
+//! development, testing, and fast iteration and does not require spawning external binaries.
 //!
-//! ### Single-Process Mode
+//! ### Multi-Process Mode
 //!
-//! Linux Daemon and User VM run as tasks within the same process. Enabled via the
-//! `single-process` feature flag. This mode is primarily used for testing and development.
+//! Linux Daemon and User VM run as separate OS processes. Enable the `multi-process` feature to
+//! opt into this production-grade configuration where isolation and robustness take priority.
 //!
 //! ## Basic Usage Example
 //!
@@ -65,12 +65,12 @@
 //!     None,  // console_file
 //!     None,  // hwloc
 //!     "/path/to/kernel.elf",  // kernel_binary_path
-//!     #[cfg(not(feature = "single-process"))]
+//!     #[cfg(feature = "multi-process")]
 //!     "/path/to/linuxd.elf",  // linuxd_binary_path
-//!     #[cfg(not(feature = "single-process"))]
+//!     #[cfg(feature = "multi-process")]
 //!     "/path/to/uservm.elf",  // uservm_binary_path
 //!     "/path/to/logs",  // log_directory
-//!     #[cfg(feature = "single-process")]
+//!     #[cfg(not(feature = "multi-process"))]
 //!     None,  // syscall_table
 //!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_bind_socket_info
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // control_plane_connect_socket_info
@@ -112,7 +112,7 @@
 //!
 //! ## Features
 //!
-//! - **`single-process`**: Enable single-process deployment mode
+//! - **`multi-process`**: Enable multi-process deployment mode
 //! - **`hyperlight`**: Enable Hyperlight virtualization backend support
 //!
 //! ## Architecture
@@ -121,7 +121,7 @@
 //!
 //! - Core state types: [`UninitializedSandbox`], [`InitializedSandbox`], [`RunningSandbox`]
 //! - Configuration: [`SandboxConfig`], [`LinuxDaemonArgs`], [`UserVmArgs`]
-//! - Implementation: [`multi_process`] (default), [`single_process`] (feature-gated)
+//! - Implementation: [`multi_process`] (feature-gated), [`single_process`] (default)
 //! - Utilities: [`netns`] for managing network namespaces, [`tcp_port`] for managing TCP port allocations
 
 //==================================================================================================
@@ -141,7 +141,7 @@ mod uservm_args;
 //==================================================================================================
 
 ::cfg_if::cfg_if! {
-    if #[cfg(feature = "single-process")] {
+    if #[cfg(not(feature = "multi-process"))] {
         pub mod single_process;
     } else {
         pub mod multi_process;
@@ -156,7 +156,7 @@ pub mod tcp_port;
 //==================================================================================================
 
 ::cfg_if::cfg_if! {
-    if #[cfg(feature = "single-process")] {
+    if #[cfg(not(feature = "multi-process"))] {
         pub use self::single_process::*;
         pub use ::linuxd::syscalls::SyscallAction;
         pub use ::linuxd::syscalls::SyscallTable;

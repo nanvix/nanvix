@@ -125,7 +125,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                             debug!("accepted connection from {sockaddr:?}");
                             let sandbox_cache_clone: Arc<Mutex<SandboxCache<T>>> = sandbox_cache.clone();
                             // In single-process mode, handle connections sequentially.
-                            #[cfg(feature = "single-process")]
+                            #[cfg(not(feature = "multi-process"))]
                             {
                                 let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);
                                 let io: TokioIo<TcpStream> = TokioIo::new(stream);
@@ -133,7 +133,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                                     error!("failed to serve connection (error={e:?})");
                                 }
                             }
-                            #[cfg(not(feature = "single-process"))]
+                            #[cfg(feature = "multi-process")]
                             {
                                 tokio::spawn(async move {
                                     let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);

@@ -17,10 +17,9 @@ http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
-linuxd = { workspace = true, optional = true }
+linuxd = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
-nanvix-terminal = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
@@ -31,23 +30,13 @@ user-vm-api = { workspace = true }
 
 [features]
 default = ["microvm"]
-single-process = [
-    "linuxd",
-    "nanvix-sandbox-cache/single-process",
-    "nanvix-terminal/single-process",
-]
+multi-process = ["nanvix-sandbox-cache/multi-process"]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",
     "nanvix-sandbox-cache/hyperlight",
-    "nanvix-terminal/hyperlight",
 ]
-microvm = [
-    "config/microvm",
-    "uservm/microvm",
-    "nanvix-sandbox-cache/microvm",
-    "nanvix-terminal/microvm",
-]
+microvm = ["config/microvm", "uservm/microvm", "nanvix-sandbox-cache/microvm"]
 
 [lints]
 workspace = true

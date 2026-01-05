@@ -44,7 +44,7 @@ pub struct UserVmArgs {
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the User VM binary.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     uservm_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
@@ -92,7 +92,7 @@ impl UserVmArgs {
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
         kernel_binary_path: String,
-        #[cfg(not(feature = "single-process"))] uservm_binary_path: String,
+        #[cfg(feature = "multi-process")] uservm_binary_path: String,
         log_directory: String,
         uservm_id: UserVmIdentifier,
     ) -> Self {
@@ -106,7 +106,7 @@ impl UserVmArgs {
             console_file,
             hwloc,
             kernel_binary_path,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(feature = "multi-process")]
             uservm_binary_path,
             log_directory,
             uservm_id,
@@ -239,7 +239,7 @@ impl UserVmArgs {
     ///
     /// The path to the User VM binary.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     pub fn uservm_binary_path(&self) -> &str {
         &self.uservm_binary_path
     }

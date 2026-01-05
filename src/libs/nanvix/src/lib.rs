@@ -44,10 +44,11 @@
 //! **Warning:** This feature provides direct access to unsafe system interfaces and should only
 //! be used by trusted system components.
 //!
-//! #### `single-process`
+//! #### `multi-process`
 //!
-//! Enables single-process execution mode where all daemons run within a single process. This
-//! feature is useful for development, testing, and resource-constrained environments.
+//! Enables the multi-process deployment mode where core daemons execute as separate processes for
+//! improved isolation. When this feature is disabled (default), Nanvix runs in single-process mode
+//! which is useful for development, testing, and resource-constrained environments.
 //!
 //! #### `hyperlight`
 //!

@@ -18,7 +18,7 @@ use crate::{
     },
     UserVmArgs,
 };
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use crate::{
     netns::NetnsHandle,
     netns_exec::command_in_netns,
@@ -70,7 +70,7 @@ pub struct UserVm {
     control_plane_stream: SocketStream,
     /// Optional RAII handle to the network namespace the user VM is spawned in. Even if unused, we
     /// tie its lifecycle to the user VM.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     _netns_handle: Option<NetnsHandle>,
 }
 
@@ -98,7 +98,7 @@ impl UserVm {
     pub async fn spawn(
         args: &UserVmArgs,
         control_plane_listener: &mut SocketListener,
-        #[cfg(not(feature = "single-process"))] netns_handle: Option<NetnsHandle>,
+        #[cfg(feature = "multi-process")] netns_handle: Option<NetnsHandle>,
     ) -> Result<Self> {
         trace!("spawn(): args={args:?}");
 
@@ -158,7 +158,7 @@ impl UserVm {
 
         let mut cmd: Command = {
             // In an L2-deployment, spawn the user VM inside a network namespace.
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(feature = "multi-process")]
             if let Some(netns_handle) = &netns_handle {
                 command_in_netns(&netns_handle.netns_info()?, &user_vm_args[0], &user_vm_args[1..])
             } else {
@@ -222,7 +222,7 @@ impl UserVm {
         Ok(Self {
             child: Some(child),
             control_plane_stream,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(feature = "multi-process")]
             _netns_handle: netns_handle,
         })
     }

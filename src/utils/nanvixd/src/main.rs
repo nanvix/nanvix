@@ -58,10 +58,10 @@ const DEFAULT_LOG_LEVEL: &str = "info";
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
 /// Binary name for Linux Daemon.
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
 
 //==================================================================================================
@@ -127,20 +127,20 @@ pub async fn main() -> Result<()> {
     print_startup_info(&args);
 
     // Determine deployment type based on feature flag.
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     let deployment: &str = "single-process";
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     let deployment: &str = "multi-process";
 
     // Determine target machine type from config.
     let machine: &str = DEFAULT_MACHINE_NAME;
 
     // Ensure all required binaries are available.
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     let (kernel_binary_path, _, _) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
@@ -156,11 +156,11 @@ pub async fn main() -> Result<()> {
         args.hwloc().clone(),
         args.netns_pool_size(),
         &kernel_binary_path,
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(feature = "multi-process")]
         &linuxd_binary_path,
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(feature = "multi-process")]
         &uservm_binary_path,
-        #[cfg(feature = "single-process")]
+        #[cfg(not(feature = "multi-process"))]
         None,
         args.toolchain_binary_directory(),
         args.log_directory(),
@@ -240,19 +240,19 @@ async fn ensure_all_binaries_available(
 ) -> Result<(String, String, String)> {
     let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     let linuxd_binary_path: String = format!("{}/{}", args.binary_directory(), LINUXD_BINARY_NAME);
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     let uservm_binary_path: String = format!("{}/{}", args.binary_directory(), USERVM_BINARY_NAME);
 
     // Check if all binaries are available locally.
     let kernel_available: bool = fs::metadata(&kernel_binary_path).await.is_ok();
 
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     let all_available: bool = kernel_available;
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     let all_available: bool = {
         let linuxd_available: bool = fs::metadata(&linuxd_binary_path).await.is_ok();
         let uservm_available: bool = fs::metadata(&uservm_binary_path).await.is_ok();
@@ -263,16 +263,16 @@ async fn ensure_all_binaries_available(
     if all_available {
         log_info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(feature = "multi-process")]
         {
             log_info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
             log_info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
         }
 
-        #[cfg(feature = "single-process")]
+        #[cfg(not(feature = "multi-process"))]
         return Ok((kernel_binary_path, String::new(), String::new()));
 
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(feature = "multi-process")]
         return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
     }
 
@@ -285,10 +285,10 @@ async fn ensure_all_binaries_available(
         .await?;
     log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     return Ok((kernel_cached_path, String::new(), String::new()));
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     {
         let linuxd_cached_path: String = registry
             .get_cached_binary(machine, deployment, LINUXD_BINARY_NAME)
@@ -322,7 +322,7 @@ fn print_startup_info(args: &Args) {
         "http"
     };
 
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     log_info!(
         "nanvixd {}, single-process deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
@@ -330,7 +330,7 @@ fn print_startup_info(args: &Args) {
         DEFAULT_MACHINE_NAME
     );
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     log_info!(
         "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),

@@ -10,13 +10,13 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use crate::{
     netns::NetnsInfo,
     tcp_port::TcpPort,
 };
 use ::anyhow::Result;
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use ::std::{
     fs,
     path::PathBuf,
@@ -139,7 +139,7 @@ pub const UNIX_SOCKET_SUFFIX: &str = ".socket";
 /// On success, the absolute path to cloud-hypervisor's binary directory. On failure, an error is
 /// returned instead.
 ///
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
     let clh_bin_dir_path: PathBuf =
         fs::canonicalize(PathBuf::from(toolchain_bin_dir)).map_err(|e| {
@@ -160,7 +160,7 @@ pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
 ///
 /// The absolute path to cloud-hypervisor's snapshot directory.
 ///
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 pub(crate) fn get_clh_snapshot_path(l2_snapshot_path: &str) -> Result<String> {
     let l2_snapshot_path: PathBuf =
         fs::canonicalize(PathBuf::from(l2_snapshot_path)).map_err(|e| {
@@ -185,7 +185,7 @@ pub(crate) fn get_clh_snapshot_path(l2_snapshot_path: &str) -> Result<String> {
 ///
 /// The absolute path to cloud-hypervisor's API socket.
 ///
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
     format!("{tmp_dir}/nanvixd-clh{UNIX_SOCKET_SUFFIX}")
 }
@@ -213,12 +213,12 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 pub fn control_plane_sockaddr_builder(
     tmp_str: &str,
-    #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
+    #[cfg(feature = "multi-process")] netns_info: Option<NetnsInfo>,
 ) -> Result<(String, String)> {
     // In an L2 deployment, linuxd and the user VM are deployed inside a separate network
     // namespace. To connect to the control-plane socket in nanvixd, in the root namespace, they
     // must use the host half of the VETH pair we include in the namespace.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     if let Some(netns_info) = netns_info {
         let bind_addr: String = format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT);
         let connect_addr: String =
@@ -262,14 +262,14 @@ pub fn control_plane_sockaddr_builder(
 pub fn user_vm_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
-    #[cfg(not(feature = "single-process"))] l2: bool,
+    #[cfg(feature = "multi-process")] l2: bool,
 ) -> Result<String> {
     // In an L2 deployment, both linuxd and the user VM are deployed inside the same network
     // namespace, isolated from nanvixd and other tenants. Linuxd, however, runs inside a VM
     // exposed to the host via a TAP device, so we need to connect to the guest-side of the TAP.
     // Note that even though the TAP's IPs are hard-coded during snapshot/restore (and hence
     // repeated among all linuxd instances), namespace isolation makes this reuse safe.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     if l2 {
         return Ok(format!(
             "{}:{}",
@@ -317,13 +317,13 @@ pub fn gateway_sockaddr_builder(
     tmp_str: &str,
     tenant_id: &str,
     sandbox_id: UserVmIdentifier,
-    #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
-    #[cfg(not(feature = "single-process"))] l2_port: &Option<TcpPort>,
+    #[cfg(feature = "multi-process")] netns_info: Option<NetnsInfo>,
+    #[cfg(feature = "multi-process")] l2_port: &Option<TcpPort>,
 ) -> Result<String> {
     // In an L2 deployment, we expose the gateway from linuxd inside a network namespace to the
     // outside world. As a consequence, external clients must connect to the half of the VETH pair
     // that is _inside_ the namespace.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     match (netns_info.clone(), l2_port) {
         (Some(netns_info), Some(l2_port)) => {
             return Ok(format!("{}:{:?}", netns_info.veth_ns_ip(), l2_port));

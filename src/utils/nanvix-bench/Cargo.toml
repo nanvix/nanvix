@@ -14,8 +14,8 @@ homepage.workspace = true
 anyhow = { workspace = true }
 indicatif = { workspace = true }
 libc = { workspace = true }
-nanvixd = { workspace = true }
-nanvix = { workspace = true, features = ["internal-api"] }
+nanvixd = { workspace = true, features = ["multi-process"] }
+nanvix = { workspace = true, features = ["internal-api", "multi-process"] }
 profiler = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
@@ -25,7 +25,6 @@ tokio = { workspace = true, features = ["full"] }
 [features]
 default = ["microvm"]
 timestamp-messages = ["profiler/timestamp-messages"]
-single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 

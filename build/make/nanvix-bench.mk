@@ -2,12 +2,37 @@
 # Licensed under the MIT License.
 
 NANVIX_BENCH_FEATURES :=
-NANVIX_BENCH_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
 NANVIX_BENCH_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 NANVIX_BENCH_FEATURES := $(strip $(NANVIX_BENCH_FEATURES))
 NANVIX_BENCH_CARGO_FEATURES := $(if $(NANVIX_BENCH_FEATURES),--features "$(NANVIX_BENCH_FEATURES)")
+
+ifeq ($(filter yes,$(SINGLE_PROCESS)),yes)
+$(warning nanvix-bench targets require multi-process mode; skipping nanvix-bench build targets.)
+
+all-nanvix-bench:
+	@true
+
+check-nanvix-bench:
+	@true
+
+format-nanvix-bench:
+	@true
+
+format-check-nanvix-bench:
+	@true
+
+rust-lint-nanvix-bench:
+	@true
+
+rust-lint-check-nanvix-bench:
+	@true
+
+clean-nanvix-bench:
+	@true
+
+else
 
 all-nanvix-bench: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
@@ -31,3 +56,5 @@ rust-lint-nanvix-bench:
 
 rust-lint-check-nanvix-bench:
 	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench -- -D warnings
+
+endif

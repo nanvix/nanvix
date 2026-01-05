@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use ::std::marker::PhantomData;
 use ::syscomm::SocketType;
 
@@ -37,7 +37,7 @@ pub struct LinuxDaemonArgs<T> {
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<hwloc::HwLoc>,
     /// Path to Linux Daemon binary.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     linuxd_binary_path: String,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
@@ -50,11 +50,11 @@ pub struct LinuxDaemonArgs<T> {
     /// Path to the L2 snapshot path.
     l2_snapshot_path: String,
     /// Optional system call table for overriding default system call behavior.
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     _phantom: PhantomData<T>,
 }
 
@@ -90,13 +90,13 @@ impl<T> LinuxDaemonArgs<T> {
         control_plane_connect_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
-        #[cfg(not(feature = "single-process"))] linuxd_binary_path: String,
+        #[cfg(feature = "multi-process")] linuxd_binary_path: String,
         toolchain_binary_directory: String,
         log_directory: String,
         tmp_directory: String,
         l2: bool,
         l2_snapshot_path: String,
-        #[cfg(feature = "single-process")] syscall_table: Option<
+        #[cfg(not(feature = "multi-process"))] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
         >,
     ) -> Self {
@@ -104,16 +104,16 @@ impl<T> LinuxDaemonArgs<T> {
             control_plane_connect_socket_info,
             system_vm_socket_info,
             hwloc,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(feature = "multi-process")]
             linuxd_binary_path,
             toolchain_binary_directory,
             log_directory,
             tmp_directory,
             l2,
             l2_snapshot_path,
-            #[cfg(feature = "single-process")]
+            #[cfg(not(feature = "multi-process"))]
             syscall_table,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(feature = "multi-process")]
             _phantom: PhantomData,
         }
     }
@@ -166,7 +166,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// The path to the Linux Daemon binary.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     pub fn linuxd_binary_path(&self) -> &str {
         &self.linuxd_binary_path
     }
@@ -245,7 +245,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// An optional reference to the system call table.
     ///
-    #[cfg(feature = "single-process")]
+    #[cfg(not(feature = "multi-process"))]
     pub fn syscall_table(&self) -> Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>> {
         self.syscall_table.clone()
     }

@@ -14,7 +14,7 @@ homepage.workspace = true
 anyhow = { workspace = true }
 config = { workspace = true }
 hwloc = { workspace = true }
-linuxd = { workspace = true, optional = true }
+linuxd = { workspace = true }
 nanvix-http = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true }
@@ -29,12 +29,11 @@ uservm = { workspace = true, optional = true }
 [features]
 default = ["microvm"]
 internal-api = ["sys", "syscall", "uservm"]
-single-process = [
-    "linuxd",
-    "nanvix-http/single-process",
-    "nanvix-sandbox/single-process",
-    "nanvix-sandbox-cache/single-process",
-    "nanvix-terminal/single-process",
+multi-process = [
+    "nanvix-http/multi-process",
+    "nanvix-sandbox/multi-process",
+    "nanvix-sandbox-cache/multi-process",
+    "nanvix-terminal/multi-process",
 ]
 hyperlight = [
     "config/hyperlight",

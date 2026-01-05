@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use crate::netns::NetnsHandle;
 use crate::{
     config::GATEWAY_CONNECT_TIMEOUT,
@@ -23,7 +23,7 @@ use crate::{
     UserVmArgs,
 };
 use ::anyhow::Result;
-#[cfg(not(feature = "single-process"))]
+#[cfg(feature = "multi-process")]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
 use ::syscomm::{
@@ -78,11 +78,11 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
     /// Handle to the network namespace (only set in L2-mode).
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     pub(super) netns_handle: Option<NetnsHandle>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "multi-process")]
     pub(super) _phantom: PhantomData<T>,
 }
 
@@ -98,7 +98,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
-    #[cfg_attr(feature = "single-process", allow(unused_mut))]
+    #[cfg_attr(not(feature = "multi-process"), allow(unused_mut))]
     pub async fn start(mut self) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
@@ -114,7 +114,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         let hwloc: Option<hwloc::HwLoc> = self.sandbox_config.hwloc();
         let log_directory: String = self.sandbox_config.log_directory().to_string();
         let uservm_id: ::user_vm_api::UserVmIdentifier = self.sandbox_config.uservm_id();
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(feature = "multi-process")]
         let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
 
         // Extract gateway socket info (consumes the config to get ownership of TcpPort).
@@ -143,7 +143,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     console_file,
                     hwloc,
                     self.kernel_binary_path.clone(),
-                    #[cfg(not(feature = "single-process"))]
+                    #[cfg(feature = "multi-process")]
                     uservm_binary_path,
                     log_directory,
                     uservm_id,
@@ -152,7 +152,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                 // one connection from the new user VM.
                 &mut locked_control_plane_bind_socket_and_info.0,
                 // Pass ownership of the netns RAII handle to the user VM.
-                #[cfg(not(feature = "single-process"))]
+                #[cfg(feature = "multi-process")]
                 self.netns_handle.take(),
             )
             .await

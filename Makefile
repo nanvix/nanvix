@@ -36,7 +36,7 @@ export BUILD_OPT ?= yes
 export L2_VM ?= no
 
 # Single-process deployment?
-export SINGLE_PROCESS ?= no
+export SINGLE_PROCESS ?= yes
 
 # Log Level
 export LOG_LEVEL ?= warn
