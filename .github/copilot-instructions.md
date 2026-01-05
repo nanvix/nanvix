@@ -86,6 +86,12 @@ To get started with the `z` utility, run:
 ./z build -- kernel          # Build kernel only
 ./z build -- all-nanvixd     # Build nanvixd only
 ./z build -- all-uservm      # Build uservm only
+
+# Full build (includes optional components)
+./z build -- BUILD_OPT=yes all
+
+# Fast build (skips optional components)
+./z build -- BUILD_OPT=no all
 ```
 
 ### Build Parameters
