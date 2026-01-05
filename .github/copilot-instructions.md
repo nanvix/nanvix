@@ -73,14 +73,14 @@ To get started with the `z` utility, run:
 ### Build Commands
 
 ```bash
-# Build with Docker (recommended)
+# Build with previous build parameters/options (recommended)
+./z build --with-cached-options -- all
+
+# Build with Docker
 ./z build --with-docker -- all
 
 # Build with local toolchain
 ./z build -- all
-
-# Build with cached options (reuses previous build parameters)
-./z build --with-cached-options -- all
 
 # Build specific targets
 ./z build -- kernel          # Build kernel only
