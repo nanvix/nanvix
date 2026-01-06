@@ -120,7 +120,7 @@ serde_cbor = { version = "0.11.2", default-features = false, features = [
 serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
-signal-hook = "0.3.18"
+signal-hook = "0.4.1"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
