@@ -19,6 +19,7 @@ use ::hyper_util::rt::TokioIo;
 use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
+    SandboxCacheStateSummary,
 };
 use ::std::sync::Arc;
 use ::syslog::{
@@ -147,12 +148,19 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                 },
                 _ = signals.recv() => {
                     info!("received exit signal, stopping...");
-                    sandbox_cache
-                        .clone()
-                        .lock()
-                        .await
-                        .cleanup()
-                        .await;
+                    let sandbox_cache_clone: Arc<Mutex<SandboxCache<T>>> = sandbox_cache.clone();
+                    let mut cache_guard = sandbox_cache_clone.lock().await;
+                    let summary: SandboxCacheStateSummary = cache_guard.state_summary();
+                    info!(
+                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, sandbox_index_entries={}, \
+                         control_plane_socket={}, l2_enabled={}",
+                        summary.running_sandboxes(),
+                        summary.linuxd_instances(),
+                        summary.sandbox_index_entries(),
+                        summary.has_control_plane_socket(),
+                        summary.l2_enabled()
+                    );
+                    cache_guard.cleanup().await;
                     break Ok(());
                 },
             }
