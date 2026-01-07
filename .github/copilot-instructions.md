@@ -73,19 +73,25 @@ To get started with the `z` utility, run:
 ### Build Commands
 
 ```bash
-# Build with Docker (recommended)
+# Build with previous build parameters/options (recommended)
+./z build --with-cached-options -- all
+
+# Build with Docker
 ./z build --with-docker -- all
 
 # Build with local toolchain
 ./z build -- all
 
-# Build with cached options (reuses previous build parameters)
-./z build --with-cached-options -- all
-
 # Build specific targets
 ./z build -- kernel          # Build kernel only
 ./z build -- all-nanvixd     # Build nanvixd only
 ./z build -- all-uservm      # Build uservm only
+
+# Full build (includes optional components)
+./z build -- BUILD_OPT=yes all
+
+# Fast build (skips optional components)
+./z build -- BUILD_OPT=no all
 ```
 
 ### Build Parameters
