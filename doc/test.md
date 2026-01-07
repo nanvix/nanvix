@@ -14,6 +14,7 @@ This document guides you through testing Nanvix.
   - [HTTP Mode Tests](#http-mode-tests)
   - [Terminal Mode Tests](#terminal-mode-tests)
   - [Understanding Test Modes](#understanding-test-modes)
+- [Running All Tests](#running-all-tests)
 
 ## Running Full CI Pipeline
 
@@ -77,3 +78,15 @@ To run all tests (both HTTP and terminal modes):
 ```bash
 make run-nanvixd-tests
 ```
+
+## Running All Tests
+
+> ℹ️ This target sequentially invokes each underlying test suite using independent `make` calls.
+
+```bash
+make test
+```
+
+`make test` first runs `run-unit-tests` and then executes `run-nanvixd-tests` (HTTP and terminal
+modes) when running on `microvm` or `hyperlight`. For other machines, Nanvix skips the nanvixd
+tests automatically and reports that system tests are unavailable.
