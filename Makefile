@@ -155,11 +155,20 @@ export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
 export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
 
 # SCCACHE integration for C/C++ compilation (optional)
+# Wrap every compiler entrypoint exactly once so both host and cross builds
+# benefit from the cache without re-prefixing values that already include it.
 ifneq ($(SCCACHE),)
-export CC := $(SCCACHE) $(CC)
-export CXX := $(SCCACHE) $(CXX)
-export NANVIX_CC := $(SCCACHE) $(NANVIX_CC)
-export NANVIX_CXX := $(SCCACHE) $(NANVIX_CXX)
+
+# This helper ensures every compiler entrypoint picks up sccache exactly once.
+define wrap_with_sccache
+$(strip $(if $(filter $(SCCACHE),$(firstword $1)),$1,$(SCCACHE) $1))
+endef
+
+export CC := $(call wrap_with_sccache,$(CC))
+export CXX := $(call wrap_with_sccache,$(CXX))
+export NANVIX_CC := $(call wrap_with_sccache,$(NANVIX_CC))
+export NANVIX_CXX := $(call wrap_with_sccache,$(NANVIX_CXX))
+undefine wrap_with_sccache
 endif
 
 # C Compiler Options
