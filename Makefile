@@ -445,6 +445,7 @@ help:
 	@echo "  clean        Remove build artifacts and intermediate files"
 	@echo "  distclean    Cleans everything"
 	@echo "  help         Show this help message"
+	@echo "  test         Run unit and system tests sequentially"
 	@echo ""
 	@echo "Development Targets"
 	@echo "  check           Run all validation checks (syntax, compilation)"
@@ -661,6 +662,15 @@ endif
 #===================================================================================================
 # Build Rules for Running Tests
 #===================================================================================================
+
+.PHONY: test
+test:
+	@$(MAKE) run-unit-tests
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	@$(MAKE) run-nanvixd-tests
+else
+	@echo "Skipping run-nanvixd-tests; MACHINE=$(MACHINE) does not support nanvixd system tests."
+endif
 
 run-unit-tests: all-nanvix test-guest-rlibs
 
