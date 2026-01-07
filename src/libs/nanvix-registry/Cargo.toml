@@ -16,7 +16,7 @@ syslog = { workspace = true, features = ["std"] }
 dirs = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = [
     "json",
-    "rustls-tls",
+    "rustls",
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
