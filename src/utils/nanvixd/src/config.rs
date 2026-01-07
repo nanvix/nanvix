@@ -52,11 +52,29 @@ pub const DEFAULT_CONSOLE_FILENAME: &str = "guest";
 ///
 /// # Description
 ///
+/// Default directory name for storing L2 snapshots.
+///
+pub const DEFAULT_L2_SNAPSHOT_DIRECTORY: &str = "images";
+
+///
+/// # Description
+///
+/// Default name for snapshot files.
+///
+/// # Notes
+///
+/// - This file must be synced with `generate-l2-snapshot.sh` script.
+///
+pub const DEFAULT_SNAPSHOT_FILE_NAME: &str = "l2_sysvm_initramfs.img";
+
+///
+/// # Description
+///
 /// Default path for the L2 snapshot.
 ///
 /// We cannot define this variable as a pub const &str because it depends on
 /// SNAPSHOT_NAME which is another build-time constant.
 ///
 pub fn default_l2_snapshot_path() -> String {
-    format!("./images/{}", ::nanvix::config::linuxd::SNAPSHOT_NAME)
+    format!("./{}/{}", DEFAULT_L2_SNAPSHOT_DIRECTORY, ::nanvix::config::linuxd::SNAPSHOT_NAME)
 }

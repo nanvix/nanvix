@@ -92,6 +92,7 @@ export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
+export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 export SCCACHE       ?= $(shell which sccache 2>/dev/null)
@@ -316,11 +317,25 @@ ALL_HOST_BINARIES :=
 endif
 
 #===================================================================================================
+# Sysroot Symlink Management
+#===================================================================================================
+
+.PHONY: update-sysroot-link
+update-sysroot-link:
+	@if [ -d "$(SYSROOT_DIR)" ]; then \
+		ln -sfn "$(SYSROOT_DIR)" "$(SYSROOT_LINK)"; \
+		echo "Linked sysroot -> $(notdir $(SYSROOT_DIR))"; \
+	else \
+		echo "Warning: Sysroot directory '$(SYSROOT_DIR)' not found; skipping symlink update."; \
+	fi
+
+#===================================================================================================
 # Top-Level Build Rules
 #===================================================================================================
 
 # Builds everything.
 all: all-nanvix all-opt
+	@$(MAKE) update-sysroot-link
 
 # Builds all Nanvix components.
 all-nanvix: \
@@ -333,7 +348,7 @@ all-nanvix: \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-bench
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-bench all-nanvix-test
 endif
 
 # Performs local initialization.
@@ -357,7 +372,7 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-bench
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-bench clean-nanvix-test
 endif
 
 distclean: clean
@@ -386,6 +401,7 @@ endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
+	@$(MAKE) update-sysroot-link
 
 release: all install
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
@@ -465,7 +481,7 @@ rust-lint-check: \
 	rust-lint-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-bench
+rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-bench rust-lint-check-nanvix-test
 endif
 
 # Fixes code linting issues.
@@ -478,7 +494,7 @@ rust-lint: \
 	rust-lint-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-bench
+rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-bench rust-lint-nanvix-test
 endif
 
 # Fixes spelling errors in source code and documentation.
@@ -511,7 +527,7 @@ rust-format: \
 	format-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-bench
+rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-bench format-nanvix-test
 endif
 
 # Checks Rust code formatting.
@@ -524,7 +540,7 @@ rust-format-check: \
 	format-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-bench
+rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-bench format-check-nanvix-test
 endif
 
 # Python lint variables
@@ -572,7 +588,7 @@ check: \
 	check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-bench
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-bench check-nanvix-test
 endif
 
 #===================================================================================================
@@ -681,6 +697,12 @@ include build/make/generic-host-rlibs.mk
 #===================================================================================================
 
 include build/make/nanvix-bench.mk
+
+#===================================================================================================
+# Build Rules for Nanvix Test
+#===================================================================================================
+
+include build/make/nanvix-test.mk
 
 #===================================================================================================
 # Build Rules for Nanvix Daemon
