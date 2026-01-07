@@ -78,10 +78,6 @@ use ::syslog::{
 };
 use ::tokio::sync::Mutex;
 
-//==================================================================================================
-// Structures
-//==================================================================================================
-
 ///
 /// # Description
 ///
@@ -114,6 +110,74 @@ pub struct SandboxCache<T> {
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(feature = "single-process"))]
     _phantom: PhantomData<T>,
+}
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Snapshot of the sandbox cache state captured before shutdown.
+///
+/// This structure records high-level counters that help diagnose why the daemon is
+/// still running when the test harness expects it to exit. The data is lightweight
+/// enough to log on every shutdown sequence without impacting performance.
+///
+pub struct SandboxCacheStateSummary {
+    running_sandboxes: usize,
+    linuxd_instances: usize,
+    sandbox_index_entries: usize,
+    has_control_plane_socket: bool,
+    l2_enabled: bool,
+}
+
+impl SandboxCacheStateSummary {
+    ///
+    /// # Description
+    ///
+    /// Returns the number of active sandboxes tracked in the cache.
+    ///
+    pub fn running_sandboxes(&self) -> usize {
+        self.running_sandboxes
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of cached linuxd instances.
+    ///
+    pub fn linuxd_instances(&self) -> usize {
+        self.linuxd_instances
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of sandbox index entries.
+    ///
+    pub fn sandbox_index_entries(&self) -> usize {
+        self.sandbox_index_entries
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns `true` when a control-plane socket listener is cached.
+    ///
+    pub fn has_control_plane_socket(&self) -> bool {
+        self.has_control_plane_socket
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the daemon is running with L2 mode enabled.
+    ///
+    pub fn l2_enabled(&self) -> bool {
+        self.l2_enabled
+    }
 }
 
 impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
@@ -152,6 +216,25 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         })))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Produces a snapshot summarizing the cache state for logging purposes.
+    ///
+    /// # Returns
+    ///
+    /// A `SandboxCacheStateSummary` instance describing key counters.
+    ///
+    pub fn state_summary(&self) -> SandboxCacheStateSummary {
+        SandboxCacheStateSummary {
+            running_sandboxes: self.running_sandboxes.len(),
+            linuxd_instances: self.linuxd_instances.len(),
+            sandbox_index_entries: self.sandbox_index.len(),
+            has_control_plane_socket: self.control_plane_socket.is_some(),
+            l2_enabled: self.config.l2(),
+        }
     }
 
     ///
@@ -557,6 +640,17 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 error!("error cleaning-up linuxd instance: not found (tenant_id={tenant_id})");
             }
         }
+
+        let summary: SandboxCacheStateSummary = self.state_summary();
+        debug!(
+            "cleanup summary: running_sandboxes={}, linuxd_instances={}, \
+             sandbox_index_entries={}, control_plane_socket={}, l2_enabled={}",
+            summary.running_sandboxes(),
+            summary.linuxd_instances(),
+            summary.sandbox_index_entries(),
+            summary.has_control_plane_socket(),
+            summary.l2_enabled()
+        );
     }
 }
 

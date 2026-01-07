@@ -27,6 +27,7 @@ members = [
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
         "src/libs/nanvix-terminal",
+        "src/libs/no_fail",
         "src/libs/nvx",
         "src/libs/posix",
         "src/libs/proc",
@@ -53,6 +54,7 @@ members = [
         "src/user/hello-wasm",
         "src/utils/echo-client",
         "src/utils/nanvix-bench",
+        "src/utils/nanvix-test",
         "src/utils/nanvixd",
 ]
 
@@ -104,6 +106,7 @@ nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
 nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
+no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
 profiler = { path = "src/libs/profiler", default-features = false }
@@ -120,6 +123,7 @@ serde_cbor = { version = "0.11.2", default-features = false, features = [
 serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
+shell-words = "1.1"
 signal-hook = "0.4.1"
 slab = { path = "src/libs/slab", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
@@ -134,6 +138,7 @@ syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 tokio = { version = "1.45.1", default-features = false }
+toml = { version = "0.8.19", default-features = false, features = ["parse"] }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
 uuid = { version = "1.18.1", default-features = false }

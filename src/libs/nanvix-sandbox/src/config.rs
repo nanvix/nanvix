@@ -107,7 +107,7 @@ pub const VETH_NS_PREFIX: &str = "nvxgw-n-";
 /// Suffix for Unix sockets in debug builds.
 ///
 #[cfg(debug_assertions)]
-const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
+pub const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 
 ///
 /// # Description
@@ -115,7 +115,7 @@ const UNIX_SOCKET_SUFFIX: &str = ".debug.socket";
 /// Suffix for Unix sockets in release builds.
 ///
 #[cfg(not(debug_assertions))]
-const UNIX_SOCKET_SUFFIX: &str = ".socket";
+pub const UNIX_SOCKET_SUFFIX: &str = ".socket";
 
 //==================================================================================================
 // Standalone Functions

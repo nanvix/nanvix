@@ -161,6 +161,32 @@ impl SocketStream {
     ///
     /// # Description
     ///
+    /// Shuts down the write half of the socket stream so that peers observe an EOF.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `Ok(())` when the shutdown succeeds; returns an error if the underlying
+    /// transport refuses the request.
+    ///
+    pub async fn shutdown_write(&mut self) -> Result<()> {
+        let result: Result<()> = match self {
+            SocketStream::Tcp(stream) => stream.shutdown().await,
+            SocketStream::Unix(stream) => stream.shutdown().await,
+        };
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let reason: String = format!("shutdown_write(): {error}");
+                error!("shutdown_write(): {reason}");
+                Err(error)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Gets the peer address of a socket stream.
     ///
     /// # Returns
