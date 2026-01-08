@@ -193,11 +193,14 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 /// # Description
 ///
-/// Builds the control plane socket address. If nanvixd is configured to spawn linuxd in an L2 VM, it
-/// will return a TCP socket address, otherwise a Unix socket one.
+/// Builds the control plane socket addresses for nanvixd (bind) and for all linuxd and
+/// user VM instances. If components are deployed inside a network namespace, this method will
+/// return TCP socket addresses. Otherwise it will return UNIX socket ones.
 ///
-/// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
-/// to 0.0.0.0.
+/// We differentiate between `bind` and `connect` socket addresses because, when deployed inside a
+/// namespace, the user VM/linuxd needs to connect to the host-half of a VETH pair that we attach to the
+/// namespace. The `bind` address, however, must remain the same (and in particular we must bind to
+/// all interfaces).
 ///
 /// # Parameters
 ///
@@ -206,18 +209,21 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 /// # Returns
 ///
-/// On success, returns the control plane socket address. On failure, returns an error.
+/// On success, returns the (bind, connect) control plane socket addresses pair. On failure, returns an error.
 ///
 pub fn control_plane_sockaddr_builder(
     tmp_str: &str,
     #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
-) -> Result<String> {
+) -> Result<(String, String)> {
     // In an L2 deployment, linuxd and the user VM are deployed inside a separate network
     // namespace. To connect to the control-plane socket in nanvixd, in the root namespace, they
     // must use the host half of the VETH pair we include in the namespace.
     #[cfg(not(feature = "single-process"))]
     if let Some(netns_info) = netns_info {
-        return Ok(format!("{}:{}", netns_info.veth_host_ip(), config::linuxd::CONTROL_PLANE_PORT));
+        let bind_addr: String = format!("0.0.0.0:{}", config::linuxd::CONTROL_PLANE_PORT);
+        let connect_addr: String =
+            format!("{}:{}", netns_info.veth_host_ip(), config::linuxd::CONTROL_PLANE_PORT);
+        return Ok((bind_addr, connect_addr));
     }
 
     let unix_socket_name: String =
@@ -234,7 +240,8 @@ pub fn control_plane_sockaddr_builder(
         anyhow::bail!(error);
     }
 
-    Ok(unix_socket_name)
+    // In non-L2 deployments, bind and connect socket addresses are the same.
+    Ok((unix_socket_name.clone(), unix_socket_name))
 }
 
 ///

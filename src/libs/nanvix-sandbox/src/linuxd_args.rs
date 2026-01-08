@@ -30,8 +30,8 @@ use ::syscomm::SocketType;
 ///   single-process mode. Use `()` if no custom state is required.
 ///
 pub struct LinuxDaemonArgs<T> {
-    /// Information on control plane socket (address, socket type).
-    control_plane_socket_info: (String, SocketType),
+    /// Information on control plane connect socket (address, socket type).
+    control_plane_connect_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type).
     system_vm_socket_info: (String, SocketType),
     /// Optional hardware locality configuration for CPU affinity and topology information.
@@ -70,7 +70,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// # Parameters
     ///
-    /// - `control_plane_socket_info`: Information on control plane socket (address, socket type).
+    /// - `control_plane_connect_socket_info`: Information on control plane socket (address, socket type).
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `hwloc`: Optional hardware locality configuration for CPU affinity and topology information.
     /// - `linuxd_binary_path`: Path to Linux Daemon binary (only if not in single-process mode).
@@ -87,7 +87,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        control_plane_socket_info: (String, SocketType),
+        control_plane_connect_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: String,
@@ -101,7 +101,7 @@ impl<T> LinuxDaemonArgs<T> {
         >,
     ) -> Self {
         Self {
-            control_plane_socket_info,
+            control_plane_connect_socket_info,
             system_vm_socket_info,
             hwloc,
             #[cfg(not(feature = "single-process"))]
@@ -127,8 +127,8 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// A reference to the control plane socket information.
     ///
-    pub fn control_plane_socket_info(&self) -> &(String, SocketType) {
-        &self.control_plane_socket_info
+    pub fn control_plane_connect_socket_info(&self) -> &(String, SocketType) {
+        &self.control_plane_connect_socket_info
     }
 
     ///

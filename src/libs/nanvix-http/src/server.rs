@@ -157,7 +157,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                         summary.running_sandboxes(),
                         summary.linuxd_instances(),
                         summary.sandbox_index_entries(),
-                        summary.has_control_plane_socket(),
+                        summary.has_control_plane_bind_socket(),
                         summary.l2_enabled()
                     );
                     cache_guard.cleanup().await;
