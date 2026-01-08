@@ -7,6 +7,7 @@
 
 mod dispatcher;
 mod handler;
+mod kcall_args;
 mod kcall_error;
 mod kcall_result;
 mod kcall_success;
@@ -25,7 +26,6 @@ use crate::pm::{
     },
     SleepError,
 };
-use ::core::fmt::Debug;
 use ::sys::{
     error::{
         Error,
@@ -42,6 +42,7 @@ use ::sys::{
 //==================================================================================================
 
 pub use handler::kcall_handler as handler;
+pub use kcall_args::KcallArgs;
 pub use kcall_error::KcallError;
 pub use kcall_result::KcallResult;
 pub use kcall_success::KcallSuccess;
@@ -51,27 +52,6 @@ pub use kcall_success::KcallSuccess;
 //==================================================================================================
 
 static mut SCOREBOARD: Option<ScoreBoard> = None;
-
-pub struct KcallArgs {
-    pub pid: ProcessIdentifier,
-    pub tid: ThreadIdentifier,
-    pub number: u32,
-    pub arg0: u32,
-    pub arg1: u32,
-    pub arg2: u32,
-    pub arg3: u32,
-}
-
-impl Debug for KcallArgs {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(
-            f,
-            "KcallArgs {{ pid: {:?}, tid: {:?}, number: {}, arg0: {:#010x}, arg1: {:#010x}, arg2: \
-             {:#010x}, arg3: {:#010x} }}",
-            self.pid, self.tid, self.number, self.arg0, self.arg1, self.arg2, self.arg3
-        )
-    }
-}
 
 struct ScoreBoard {
     lock: Mutex,
