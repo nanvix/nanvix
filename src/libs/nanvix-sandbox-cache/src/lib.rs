@@ -436,7 +436,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
                 let control_plane_sockaddr: String = (control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
-                    tag.tenant_id(),
                     #[cfg(not(feature = "single-process"))]
                     netns_info.clone(),
                 )?;
