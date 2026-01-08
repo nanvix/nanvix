@@ -193,8 +193,8 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 /// # Description
 ///
-/// Builds the control plane socket address for a given tenant ID. If nanvixd is configured to
-/// spawn linuxd in an L2 VM, it will return a TCP socket address, otherwise a Unix socket one.
+/// Builds the control plane socket address. If nanvixd is configured to spawn linuxd in an L2 VM, it
+/// will return a TCP socket address, otherwise a Unix socket one.
 ///
 /// When binding to a TCP address we want to make sure that any L2 VM can connect to us, so we bind
 /// to 0.0.0.0.
@@ -202,7 +202,6 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 /// # Parameters
 ///
 /// - `tmp_str`: Temporary directory path.
-/// - `tenant_id`: Tenant ID.
 /// - `netns_info`: Optional information about the network namespace (L2-mode only).
 ///
 /// # Returns
@@ -211,7 +210,6 @@ pub(crate) fn get_clh_api_socket_path(tmp_dir: &str) -> String {
 ///
 pub fn control_plane_sockaddr_builder(
     tmp_str: &str,
-    tenant_id: &str,
     #[cfg(not(feature = "single-process"))] netns_info: Option<NetnsInfo>,
 ) -> Result<String> {
     // In an L2 deployment, linuxd and the user VM are deployed inside a separate network
@@ -223,7 +221,7 @@ pub fn control_plane_sockaddr_builder(
     }
 
     let unix_socket_name: String =
-        format!("{tmp_str}/{NAMED_RESOURCE_PREFIX}:{tenant_id}:cp{UNIX_SOCKET_SUFFIX}");
+        format!("{tmp_str}/{NAMED_RESOURCE_PREFIX}:cp{UNIX_SOCKET_SUFFIX}");
 
     // Check if socket name exceeds the maximum length.
     if unix_socket_name.len() > UNIX_PATH_MAX {
