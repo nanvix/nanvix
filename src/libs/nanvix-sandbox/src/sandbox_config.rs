@@ -60,10 +60,15 @@ pub struct SandboxConfig<T> {
     #[cfg(feature = "single-process")]
     syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
 
-    /// Optional information on control plane socket (address, socket type).
-    /// This must be provided if the control plane socket is not already initialized before
-    /// sandbox initialization. If both socket and info are provided, the existing socket is used.
-    control_plane_socket_info: Option<(String, SocketType)>,
+    /// Optional information on the control plane listener socket (address, socket type).
+    /// This must be provided if the control plane listener socket is not already initialized
+    /// before sandbox initialization. There is one listener socket per deployment. If both socket
+    /// and info are provided, the existing socket is used.
+    control_plane_bind_socket_info: Option<(String, SocketType)>,
+
+    /// Information on the control plane connecting socket (address, socket type).
+    /// This changes for every sandbox, and thus must be provided every time.
+    control_plane_connect_socket_info: (String, SocketType),
 
     /// Optional path to the toolchain binary directory containing cloud-hypervisor and other tools.
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
@@ -108,7 +113,8 @@ impl<T> SandboxConfig<T> {
     /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
     /// - `log_directory`: Path to the log directory.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
-    /// - `control_plane_socket_info`: Optional information on control plane socket (address, socket type).
+    /// - `control_plane_bind_socket_info`: Optional information on control plane listener socket (address, socket type).
+    /// - `control_plane_connect_socket_info`: Optional information on control plane connect socket (address, socket type).
     /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
     /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
@@ -132,7 +138,8 @@ impl<T> SandboxConfig<T> {
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
         >,
-        control_plane_socket_info: Option<(String, SocketType)>,
+        control_plane_bind_socket_info: Option<(String, SocketType)>,
+        control_plane_connect_socket_info: (String, SocketType),
         toolchain_binary_directory: Option<String>,
         tmp_directory: Option<String>,
         l2: Option<bool>,
@@ -152,7 +159,8 @@ impl<T> SandboxConfig<T> {
             log_directory: log_directory.to_string(),
             #[cfg(feature = "single-process")]
             syscall_table,
-            control_plane_socket_info,
+            control_plane_bind_socket_info,
+            control_plane_connect_socket_info,
             toolchain_binary_directory,
             tmp_directory,
             l2,
@@ -298,14 +306,27 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the optional control plane socket information.
+    /// Returns the optional control plane listener socket information.
     ///
     /// # Returns
     ///
-    /// An optional reference to the control plane socket information tuple.
+    /// An optional reference to the control plane listener socket information tuple.
     ///
-    pub fn control_plane_socket_info(&self) -> Option<&(String, SocketType)> {
-        self.control_plane_socket_info.as_ref()
+    pub fn control_plane_bind_socket_info(&self) -> Option<&(String, SocketType)> {
+        self.control_plane_bind_socket_info.as_ref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional control plane connect socket information.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the control plane connect socket information tuple.
+    ///
+    pub fn control_plane_connect_socket_info(&self) -> &(String, SocketType) {
+        &self.control_plane_connect_socket_info
     }
 
     ///
