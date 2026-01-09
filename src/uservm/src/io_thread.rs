@@ -228,9 +228,12 @@ impl IoThread {
                                 control_plane_buf_len = 0;
 
                                 match msg.cmd() {
-                                    NanvixdCommand::Shutdown => {
-                                        control_tx.send(IoControlCommand::Shutdown).await?;
-                                    },
+                                    NanvixdCommand::Shutdown => {control_tx.send(IoControlCommand::Shutdown).await?;},
+                                    NanvixdCommand::Pause => {control_tx.send(IoControlCommand::Pause).await?;},
+                                    NanvixdCommand::CreateSnapshot => {control_tx.send(IoControlCommand::CreateSnapshot).await?;},
+                                    NanvixdCommand::Resume => {control_tx.send(IoControlCommand::Resume).await?;},
+                                    NanvixdCommand::LoadSnapshot => {control_tx.send(IoControlCommand::LoadSnapshot).await?;},
+                                    NanvixdCommand::Start => {control_tx.send(IoControlCommand::StartMicroVm).await?;},
                                 }
                             }
                         },
@@ -246,15 +249,6 @@ impl IoThread {
                     match result {
                         Some(response) => {
                             match response {
-                                IoControlResponse::FlushInput => {
-                                    debug!("input flush completed");
-                                    // Messages are no longer buffer, nothing to flush. We should remove this.
-                                    control_tx.send(IoControlCommand::LinuxDaemonFlushed).await?;
-                                },
-                                IoControlResponse::FlushOutput => {
-                                    // Messages are no longer buffer, nothing to flush. We should remove this.
-                                    debug!("output flush completed");
-                                },
                                 IoControlResponse::MicroVmPaused => {
                                     debug!("microvm pause acknowledged");
                                 },
@@ -264,6 +258,15 @@ impl IoThread {
                                 IoControlResponse::Shutdown => {
                                     debug!("shutdown completed");
                                     break Ok(());
+                                },
+                                IoControlResponse::CreateSnapshotMarker => {
+                                    // Drain the vCPU's channel and forward it to system VM.
+                                    // TODO (#1241): for now we assume the channel is empty.
+                                    debug!("vcpu's output drained");
+
+                                    // Forward the marker to system VM.
+                                    // TODO (#1241): create a new syscall that echoes a marker.
+                                    debug!("marker forwarded to system VM");
                                 },
                             }
                         },

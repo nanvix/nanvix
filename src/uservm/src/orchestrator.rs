@@ -90,8 +90,6 @@ pub struct Orchestrator {
     pause_microvm: Box<PauseFn>,
     /// Callback function to erase a pause request from the kernel's memory.
     resume_microvm: Box<ResumeFn>,
-    /// Callback function to create a snapshot.
-    _create_snapshot: Box<CreateSnapshotFn>,
     /// Callback function to load a snapshot.
     load_snapshot: Box<LoadSnapshotFn>,
 }
@@ -124,12 +122,11 @@ enum State {
 ///
 #[derive(PartialEq)]
 pub enum IoControlCommand {
-    _StartMicroVm,
-    _LoadSnapshotAndRun,
-    _PauseMicroVm,
-    _CreateSnapshot(String),
-    _ResumeMicroVm,
-    LinuxDaemonFlushed,
+    StartMicroVm,
+    LoadSnapshot,
+    Pause,
+    CreateSnapshot,
+    Resume,
     Shutdown,
 }
 
@@ -140,10 +137,9 @@ pub enum IoControlCommand {
 ///
 #[derive(Debug, PartialEq)]
 pub enum IoControlResponse {
+    CreateSnapshotMarker,
     MicroVmPaused,
     SnapshotCreated,
-    FlushOutput,
-    FlushInput,
     Shutdown,
 }
 
@@ -172,7 +168,7 @@ pub enum MemoryControlResponse {}
 ///
 #[derive(PartialEq)]
 pub enum VcpuControlCommand {
-    CreateSnapshot(String),
+    CreateSnapshot,
     Resume,
 }
 
@@ -206,7 +202,6 @@ impl Orchestrator {
         vcpu_control_tx: Sender<VcpuControlCommand>,
         pause_microvm: Box<PauseFn>,
         resume_microvm: Box<ResumeFn>,
-        create_snapshot: Box<CreateSnapshotFn>,
         load_snapshot: Box<LoadSnapshotFn>,
     ) -> Self {
         Self {
@@ -220,7 +215,6 @@ impl Orchestrator {
             vcpu_control_tx,
             pause_microvm,
             resume_microvm,
-            _create_snapshot: create_snapshot,
             load_snapshot,
         }
     }
@@ -386,7 +380,7 @@ impl Orchestrator {
         command: IoControlCommand,
     ) -> Result<ControlFlow<()>> {
         match command {
-            IoControlCommand::_StartMicroVm => {
+            IoControlCommand::StartMicroVm => {
                 if self.state == State::PreBoot {
                     // TODO: separate starting logic from `spawn()` and put it here
                     // This only makes sense when snapshots can already be loaded https://github.com/nanvix/nanvix/issues/948
@@ -395,29 +389,20 @@ impl Orchestrator {
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::_LoadSnapshotAndRun => {
+            IoControlCommand::LoadSnapshot => {
                 if self.state == State::PreBoot {
                     if let Err(e) = (self.load_snapshot)().await {
                         let reason: String =
-                            format!("LoadSnapshotAndRun: failed to load snapshot: {e:?}");
-                        error!("handle_command(): {reason}");
-                        anyhow::bail!(reason);
-                    }
-                    trace!("State: PreBoot -> Paused");
-
-                    // The Linux daemon should send messages to PreBoot VMMs by default,
-                    // so there's no need to tell it to resume sending messages.
-
-                    if let Err(e) = self.resume_protocol().await {
-                        let reason: String =
-                            format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
+                            format!("LoadSnapshot: failed to load snapshot: {e:?}");
                         error!("try_receive_from_io_thread(): {reason}");
                         anyhow::bail!(reason);
                     }
+                    self.state = State::Paused;
+                    trace!("State: PreBoot -> Paused");
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::_PauseMicroVm => {
+            IoControlCommand::Pause => {
                 if self.state == State::Running
                     && let Err(e) = self.pause_protocol().await
                 {
@@ -427,64 +412,26 @@ impl Orchestrator {
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::_CreateSnapshot(filepath) => {
-                if self.state == State::Paused {
-                    if let Err(error) = self
-                        .vcpu_control_tx
-                        .send(VcpuControlCommand::CreateSnapshot(filepath))
-                        .await
-                    {
-                        let reason: String = format!(
-                            "CreateSnapshot: failed to send CreateSnapshot command to vCPU: \
-                             {error:?}"
-                        );
-                        error!("try_receive_from_io_thread(): {reason}");
-                        anyhow::bail!(reason);
-                    }
-
-                    match self.vcpu_control_rx.recv().await {
-                        Some(VcpuControlResponse::SnapshotCreated) => {
-                            trace!("Snapshot created");
-                        },
-                        Some(VcpuControlResponse::SnapshotCreationFailed) => {
-                            let reason: String =
-                                "vCPU reported snapshot creation failure".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        Some(other) => {
-                            let reason: String = format!(
-                                "unexpected vCPU response during snapshot creation: {other:?}"
-                            );
-                            error!("try_receive_from_io_thread(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        None => {
-                            let reason: String =
-                                "disconnected from the vCPU control response channel".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                    }
+            IoControlCommand::CreateSnapshot => {
+                if self.state == State::Paused
+                    && let Err(e) = self.create_snapshot_protocol().await
+                {
+                    let reason: String =
+                        format!("CreateSnapshot: failed to create snapshot: {e:?}");
+                    error!("try_receive_from_io_thread(): {reason}");
+                    anyhow::bail!(reason);
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::_ResumeMicroVm => {
-                if self.state == State::Paused {
-                    // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
-                    if let Err(error) = self.resume_protocol().await {
-                        let reason: String =
-                            format!("ResumeMicroVm: failed to resume microvm: {error:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
-                        anyhow::bail!(reason);
-                    }
+            IoControlCommand::Resume => {
+                if self.state == State::Paused
+                    && let Err(error) = self.resume_protocol().await
+                {
+                    let reason: String =
+                        format!("ResumeMicroVm: failed to resume microvm: {error:?}");
+                    error!("try_receive_from_io_thread(): {reason}");
+                    anyhow::bail!(reason);
                 }
-                Ok(Continue(()))
-            },
-            IoControlCommand::LinuxDaemonFlushed => {
-                // NOTE: this will be unreachable once the communication is fully implemented
-                // `LinuxDaemonFlushed` should only be sent in the middle of `pause_protocol`.
-                // In fact, it should already be unreachable, but it cannot be tested ATM.
                 Ok(Continue(()))
             },
             IoControlCommand::Shutdown => {
@@ -569,7 +516,6 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     async fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
         (self.pause_microvm)().await?;
         // Wait for the MicroVM to confirm it has paused without busy spinning.
         let start: Instant = Instant::now();
@@ -603,17 +549,6 @@ impl Orchestrator {
                 },
             }
         }
-        trace!("MicroVM paused");
-        // Flush output to linuxd
-        self.io_control_tx
-            .send(IoControlResponse::FlushOutput)
-            .await?;
-        // TODO: tell linuxd to stop sending messages (Flushing -> Paused) https://github.com/nanvix/nanvix/issues/945
-        // TODO: get a response from linuxd https://github.com/nanvix/nanvix/issues/945
-        self.io_control_tx
-            .send(IoControlResponse::FlushInput)
-            .await?;
-        self.receive_linux_daemon_flushed().await?;
         self.state = State::Paused;
         trace!("State: Running -> Paused");
         self.io_control_tx
@@ -625,36 +560,84 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to receive a `LinuxDaemonFlushed` message from the control input.
+    /// Attempts to create a snapshot of a paused MicroVM and the channel state.
     ///
     /// # Returns
     ///
-    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    async fn receive_linux_daemon_flushed(&mut self) -> Result<()> {
-        let start: Instant = Instant::now();
-        let warn_interval: Duration = Duration::from_millis(TIMEOUT_WARNING_INTERVAL_IN_MS as u64);
-        loop {
-            match timeout(warn_interval, self.io_control_rx.recv()).await {
-                Ok(Some(IoControlCommand::LinuxDaemonFlushed)) => break,
-                Ok(Some(_other)) => {
-                    // Ignore unrelated messages during flushing.
-                    continue;
-                },
-                Ok(None) => {
-                    let reason: String =
-                        "io_control_rx closed while waiting for LinuxDaemonFlushed".to_string();
-                    error!("receive_linux_daemon_flushed(): {reason}");
-                    anyhow::bail!(reason)
-                },
-                Err(_) => {
-                    let elapsed_ms: usize = start.elapsed().as_millis() as usize;
-                    warn!("{}ms have passed waiting for `LinuxDaemonFlushed`", elapsed_ms);
-                    continue;
-                },
-            }
+    async fn create_snapshot_protocol(&mut self) -> Result<()> {
+        // At this point, two conditions must be achieved, and they can happen
+        // concurrently:
+        //
+        // A) the vCPU must save the local state; and
+        // B) the entire distributed system must pool all outstanding messages in a
+        // single spot. This pool is the `channel state` in the snapshot. The channel
+        // state must be saved.
+        //
+        // "B" is already in progress either way, so start "A":
+        if let Err(error) = self
+            .vcpu_control_tx
+            .send(VcpuControlCommand::CreateSnapshot)
+            .await
+        {
+            let reason: String =
+                format!("CreateSnapshot: failed to send CreateSnapshot command to vCPU: {error:?}");
+            error!("create_snapshot_protocol(): {reason}");
+            anyhow::bail!(reason);
         }
-        Ok(())
+
+        // Now send a round-trip marker to ensure all channels are drained. Send to the
+        // I/O thread, but receive from the vCPU. This starts the final step in "B".
+        if let Err(error) = self
+            .io_control_tx
+            .send(IoControlResponse::CreateSnapshotMarker)
+            .await
+        {
+            let reason: String = format!(
+                "CreateSnapshot: failed to send CreateSnapshotMarker to I/O thread: {error:?}"
+            );
+            error!("create_snapshot_protocol(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // Receiving from the vCPU means it has saved the local state and the channel
+        // state as files.
+        match self.vcpu_control_rx.recv().await {
+            Some(VcpuControlResponse::SnapshotCreated) => {
+                trace!("Snapshot created");
+                if let Err(error) = self
+                    .io_control_tx
+                    .send(IoControlResponse::SnapshotCreated)
+                    .await
+                {
+                    let reason: String = format!(
+                        "CreateSnapshot: failed to send SnapshotCreated response to I/O thread: \
+                         {error:?}"
+                    );
+                    error!("create_snapshot_protocol(): {reason}");
+                    anyhow::bail!(reason);
+                }
+                Ok(())
+            },
+            Some(VcpuControlResponse::SnapshotCreationFailed) => {
+                let reason: String = "vCPU reported snapshot creation failure".to_string();
+                error!("create_snapshot_protocol(): {reason}");
+                anyhow::bail!(reason);
+            },
+            Some(other) => {
+                let reason: String =
+                    format!("unexpected vCPU response during snapshot creation: {other:?}");
+                error!("create_snapshot_protocol(): {reason}");
+                anyhow::bail!(reason);
+            },
+            None => {
+                let reason: String =
+                    "disconnected from the vCPU control response channel".to_string();
+                error!("create_snapshot_protocol(): {reason}");
+                anyhow::bail!(reason);
+            },
+        }
     }
 
     ///
@@ -764,13 +747,6 @@ mod tests {
                     Ok(())
                 })
             }),
-            Box::new(move || {
-                let flag = snapshot_flag.clone();
-                Box::pin(async move {
-                    flag.store(true, Ordering::SeqCst);
-                    Ok(())
-                })
-            }),
         );
 
         Harness {
@@ -824,35 +800,35 @@ mod tests {
         let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
 
         // Move to Running state.
-        h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+        h.io_cmd_tx
+            .send(IoControlCommand::StartMicroVm)
+            .await
+            .expect("send StartMicroVm");
         // Request pause.
-        h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+        h.io_cmd_tx
+            .send(IoControlCommand::Pause)
+            .await
+            .expect("send Pause");
 
-        // Simulate vCPU acknowledging pause and linux daemon flush.
+        // Simulate vCPU acknowledging pause.
         let vcpu_resp_tx_clone: mpsc::Sender<VcpuControlResponse> = h.vcpu_resp_tx.clone();
         let io_cmd_tx_clone: mpsc::Sender<IoControlCommand> = h.io_cmd_tx.clone();
         tokio::spawn(async move {
             // Allow orchestrator to enter pause_protocol loop.
             sleep(Duration::from_millis(5)).await;
             let _ = vcpu_resp_tx_clone.send(VcpuControlResponse::Paused).await;
-            // Allow orchestrator to send FlushOutput & FlushInput, then provide LinuxDaemonFlushed.
-            sleep(Duration::from_millis(5)).await;
-            let _ = io_cmd_tx_clone
-                .send(IoControlCommand::LinuxDaemonFlushed)
-                .await;
         });
 
-        // Expect FlushOutput, FlushInput, MicroVmPaused in order.
-        let r1 = recv_io_resp(&mut h.io_resp_rx).await;
-        assert!(matches!(r1, IoControlResponse::FlushOutput));
-        let r2 = recv_io_resp(&mut h.io_resp_rx).await;
-        assert!(matches!(r2, IoControlResponse::FlushInput));
-        let r3 = recv_io_resp(&mut h.io_resp_rx).await;
-        assert!(matches!(r3, IoControlResponse::MicroVmPaused));
+        // Expect MicroVmPaused.
+        let r = recv_io_resp(&mut h.io_resp_rx).await;
+        assert!(matches!(r, IoControlResponse::MicroVmPaused));
         assert!(h.pause_called.load(Ordering::SeqCst));
 
         // Resume.
-        h.io_cmd_tx.send(IoControlCommand::_ResumeMicroVm).await?;
+        h.io_cmd_tx
+            .send(IoControlCommand::Resume)
+            .await
+            .expect("send Resume");
         // Expect a Resume command sent to vCPU thread.
         let resume_cmd: VcpuControlCommand =
             timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
@@ -862,7 +838,10 @@ mod tests {
         assert!(h.resume_called.load(Ordering::SeqCst));
 
         // Now shut everything down.
-        h.vcpu_resp_tx.send(VcpuControlResponse::Shutdown).await?;
+        h.vcpu_resp_tx
+            .send(VcpuControlResponse::Shutdown)
+            .await
+            .expect("send Shutdown");
         let _mem_cmd = timeout(Duration::from_millis(500), h.mem_cmd_rx.recv()).await?;
         let _shutdown_resp = recv_io_resp(&mut h.io_resp_rx).await; // Shutdown
 

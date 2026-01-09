@@ -61,6 +61,16 @@ use ::syslog::error;
 pub enum NanvixdCommand {
     /// Shutdown.
     Shutdown,
+    /// Pause.
+    Pause,
+    /// CreateSnapshot.
+    CreateSnapshot,
+    /// Resume.
+    Resume,
+    /// LoadSnapshot.
+    LoadSnapshot,
+    /// Start.
+    Start,
 }
 
 ///

@@ -305,7 +305,6 @@ impl UserVm {
             vcpu_control_tx,
             pause_microvm(guest.clone(), vmem.clone()),
             resume_microvm(guest.clone(), vmem.clone()),
-            create_snapshot_fn(microvm.clone(), filename.clone()),
             load_snapshot_fn(microvm.clone(), filename.clone()),
         );
 
@@ -332,14 +331,6 @@ impl UserVm {
 
         exit_code
     }
-}
-
-fn create_snapshot_fn(microvm: Vmm, filename: String) -> Box<LoadSnapshotFn> {
-    Box::new(move || {
-        let microvm = microvm.clone();
-        let filename = filename.clone();
-        Box::pin(async move { microvm.create_snapshot(filename).await })
-    })
 }
 
 fn load_snapshot_fn(microvm: Vmm, filename: String) -> Box<LoadSnapshotFn> {

@@ -31,6 +31,7 @@ use crate::vmm::{
 #[cfg(target_os = "linux")]
 use crate::{
     orchestrator::{
+        SHUTDOWN_TIMEOUT,
         VcpuControlCommand,
         VcpuControlResponse,
     },
@@ -99,6 +100,21 @@ pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 /// Signal used to kill the vCPU thread.
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 
+/// Filename used for snapshot files when no name is provided.
+const DEFAULT_SNAPSHOT_FILENAME: &str = "default";
+
+/// Exit status for success.
+const EXIT_SUCCESS: u16 = 0;
+
+/// Extension for files holding the virtual memory contents from a snapshot.
+const VMEM_EXTENSION: &str = "vmem";
+
+/// Extension for files holding the KVM state contents from a snapshot.
+const KVM_EXTENSION: &str = "kvm";
+
+/// Check for shutdown every TIMEOUT / TIMEOUT_TOLERANCE interval.
+const TIMEOUT_TOLERANCE: u32 = 10;
+
 //==================================================================================================
 // Thread-Local Variables
 //==================================================================================================
@@ -108,12 +124,29 @@ thread_local! {
     /// # Description
     ///
     /// Shutdown flag, set to true when the vCPU thread receives a shutdown signal.
-    /// This will prevent the vCPU from entering KVM_RUN again and blocking indefinitely.
+    /// This will prevent the vCPU from entering KVM_RUN again and blocking indefinitely,
+    /// or from waiting indefinitely for a `Resume` command while paused.
     ///
     /// This variable must be thread-safe to enable multiple VMM instances to co-exist in the same
     /// process.
     ///
     static SHUTDOWN: AtomicBool = const { AtomicBool::new(false) };
+}
+
+//==================================================================================================
+// Enums
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An enumeration of the cases for exiting the pause loop.
+///
+pub enum VmPauseReturn {
+    /// Exited the loop to resume execution.
+    Resumed,
+    /// Exited the loop to shutdown.
+    ShutdownRequested,
 }
 
 //==================================================================================================
@@ -301,7 +334,7 @@ impl Vmm {
         loop {
             // Check shutdown flag before entering KVM_RUN, and blocking indefinitely.
             if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
-                let exit_status: u16 = 0;
+                let exit_status: u16 = EXIT_SUCCESS;
                 Handle::current().block_on(self.handle_shutdown(exit_status));
                 break Ok(exit_status);
             }
@@ -330,8 +363,21 @@ impl Vmm {
 
                             break Ok(exit_status);
                         } else {
-                            Handle::current().block_on(self.handle_pause())?;
-                            trace!("VMM resumed");
+                            match Handle::current().block_on(self.handle_pause()) {
+                                Ok(pause_return) => match pause_return {
+                                    VmPauseReturn::Resumed => trace!("VMM resumed"),
+                                    VmPauseReturn::ShutdownRequested => {
+                                        let exit_status: u16 = EXIT_SUCCESS;
+                                        Handle::current()
+                                            .block_on(self.handle_shutdown(exit_status));
+                                        break Ok(exit_status);
+                                    },
+                                },
+                                Err(error) => {
+                                    error!("run(): failed to handle pause: {error:?}");
+                                    return Err(error);
+                                },
+                            }
                         }
                     }
                 },
@@ -420,23 +466,24 @@ impl Vmm {
 
         let stem: &OsStr = Path::new(filepath)
             .file_stem()
-            .unwrap_or(OsStr::new("default"));
+            .unwrap_or(OsStr::new(DEFAULT_SNAPSHOT_FILENAME));
 
-        let vmem_filepath: PathBuf = snapshots_dir.join(stem).with_extension("vmem");
-        let kvm_filepath: PathBuf = snapshots_dir.join(stem).with_extension("kvm.json");
+        let vmem_filepath: PathBuf = snapshots_dir.join(stem).with_extension(VMEM_EXTENSION);
+        let kvm_filepath: PathBuf = snapshots_dir.join(stem).with_extension(KVM_EXTENSION);
         (vmem_filepath, kvm_filepath)
     }
 
     ///
     /// # Description
     ///
-    /// Acknowledges a pause request and waits for the next command, either `Resume` or `CreateSnapshot`.
+    /// Acknowledges a pause request and waits for the next command, either `Resume` or
+    /// `CreateSnapshot`.
     ///
     /// # Returns
     ///
-    /// Upon success, return empty. Otherwise, returns an error.
+    /// Upon success, returns an enum specifying why it exited the loop. Otherwise, returns an error.
     ///
-    async fn handle_pause(&mut self) -> Result<()> {
+    async fn handle_pause(&mut self) -> Result<VmPauseReturn> {
         self.inner
             .lock()
             .await
@@ -444,19 +491,38 @@ impl Vmm {
             .send(VcpuControlResponse::Paused)
             .await?;
 
-        match self.inner.lock().await.control_rx.recv().await {
-            Some(VcpuControlCommand::Resume) => Ok(()),
-            Some(VcpuControlCommand::CreateSnapshot(filepath)) => {
-                self.handle_create_snapshot(filepath).await?;
-                Ok(())
-            },
-            // NOTE: Should we add an option for shutting down? Like so:
-            // Some(VcpuControlCommand::Shutdown) => self.vcpu.poweroff(0),
-            None => {
-                let reason: String = "the vmm has disconnected".to_string();
-                error!("run(): {reason}");
-                anyhow::bail!(reason)
-            },
+        // We should not exit this loop when creating a snapshot.
+        loop {
+            tokio::select! {
+                cmd = async {
+                    self.inner.lock().await.control_rx.recv().await
+                } => {
+                    match cmd {
+                        Some(VcpuControlCommand::Resume) => {
+                            // TODO (#1241): if buffered messages exist, we must ingest them as if they were
+                            // in the `input_queue`, writing them to virtual memory.
+                            return Ok(VmPauseReturn::Resumed);
+                        },
+                        Some(VcpuControlCommand::CreateSnapshot) => {
+                            self.handle_create_snapshot(DEFAULT_SNAPSHOT_FILENAME.to_string())
+                            .await?;
+                        },
+                        None => {
+                            let reason: String = "the vmm has disconnected".to_string();
+                            error!("handle_pause(): {reason}");
+                            anyhow::bail!(reason)
+                        },
+                    }
+                }
+                // Check shutdown flag for exiting the loop.
+                _ = async {
+                    while !SHUTDOWN.with(|s| s.load(Ordering::SeqCst)) {
+                        tokio::time::sleep(SHUTDOWN_TIMEOUT / TIMEOUT_TOLERANCE).await;
+                    }
+                } => {
+                    return Ok(VmPauseReturn::ShutdownRequested);
+                }
+            }
         }
     }
 
@@ -526,6 +592,13 @@ impl Vmm {
     ///
     /// Saves the virtual memory and the KVM state to files.
     ///
+    /// Creating a snapshot is designed to have 3 stages for the vCPU thread:
+    /// 1) Save the virtual memory and the KVM state to files (currently implemented);
+    /// 2) Drain every message and buffer them until we receive a marker (planned, not yet implemented);
+    /// 3) Save the buffered messages to a file (planned, not yet implemented).
+    ///
+    /// At present, this function only performs stage 1.
+    ///
     /// # Parameters
     ///
     /// - `filepath`: Path to the executable file.
@@ -535,6 +608,7 @@ impl Vmm {
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
     pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        // 1) Save files.
         let (vmem_filepath, kvm_filepath) = Self::make_snapshot_paths(&filepath);
 
         if let Err(e) = self.vmem.lock().await.save_snapshot(&vmem_filepath) {
@@ -569,6 +643,16 @@ impl Vmm {
                 anyhow::bail!(reason)
             },
         }
+
+        // 2) Drain messages to buffer.
+        // TODO (#1241): This requires a significant refactor to get the `input_queue` channel here.
+        // It is currently accessed through `Emulator.stdin_fn`, but we want to read it without
+        // writing it to the virtual memory. We will split it into two functions, one that reads
+        // from the channel, and another that writes to the virtual memory, so we decouple the two
+        // operations.
+
+        // 3) Save the buffer to a file.
+        // TODO (#1241): we must have the buffer in order to save it.
     }
 
     ///
