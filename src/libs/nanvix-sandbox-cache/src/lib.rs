@@ -102,7 +102,7 @@ pub struct SandboxCache<T> {
     /// Reverse index mapping User VM identifiers to their sandbox tags.
     sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
-    control_plane_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
+    control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Network namespace pool for different L2 VMs.
     #[cfg(not(feature = "single-process"))]
     netns_pool: NetnsPool,
@@ -129,7 +129,7 @@ pub struct SandboxCacheStateSummary {
     running_sandboxes: usize,
     linuxd_instances: usize,
     sandbox_index_entries: usize,
-    has_control_plane_socket: bool,
+    has_control_plane_bind_socket: bool,
     l2_enabled: bool,
 }
 
@@ -166,8 +166,8 @@ impl SandboxCacheStateSummary {
     ///
     /// Returns `true` when a control-plane socket listener is cached.
     ///
-    pub fn has_control_plane_socket(&self) -> bool {
-        self.has_control_plane_socket
+    pub fn has_control_plane_bind_socket(&self) -> bool {
+        self.has_control_plane_bind_socket
     }
 
     ///
@@ -204,7 +204,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             running_sandboxes: HashMap::new(),
             linuxd_instances: HashMap::new(),
             sandbox_index: HashMap::new(),
-            control_plane_socket: None,
+            control_plane_bind_socket: None,
             #[cfg(not(feature = "single-process"))]
             netns_pool: NetnsPool::new(
                 NetnsPoolConfig::new(
@@ -232,7 +232,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             running_sandboxes: self.running_sandboxes.len(),
             linuxd_instances: self.linuxd_instances.len(),
             sandbox_index_entries: self.sandbox_index.len(),
-            has_control_plane_socket: self.control_plane_socket.is_some(),
+            has_control_plane_bind_socket: self.control_plane_bind_socket.is_some(),
             l2_enabled: self.config.l2(),
         }
     }
@@ -434,7 +434,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 // network namespace, so we assign them right after setting up the netns.
                 #[cfg(not(feature = "single-process"))]
                 let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
-                let control_plane_sockaddr: String = (control_plane_sockaddr_builder)(
+                let (control_plane_bind_sockaddr, control_plane_connect_sockaddr): (
+                    String,
+                    String,
+                ) = (control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
                     #[cfg(not(feature = "single-process"))]
                     netns_info.clone(),
@@ -455,11 +458,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     &gateway_l2_port,
                 )?;
 
-                // Add control-plane socket if one exists.
+                // Add control-plane listener socket if one exists.
                 let uninitialized_sandbox: UninitializedSandbox<T> =
-                    if let Some(control_plane_socket) = &self.control_plane_socket {
+                    if let Some(control_plane_bind_socket) = &self.control_plane_bind_socket {
                         uninitialized_sandbox
-                            .with_control_plane_socket(control_plane_socket.clone())
+                            .with_control_plane_bind_socket(control_plane_bind_socket.clone())
                     } else {
                         uninitialized_sandbox
                     };
@@ -482,9 +485,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     #[cfg(feature = "single-process")]
                     self.config.syscall_table(),
                     Some((
-                        control_plane_sockaddr.clone(),
+                        control_plane_bind_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),
                     )),
+                    (
+                        control_plane_connect_sockaddr.clone(),
+                        self.config.control_plane_sockaddr_type(),
+                    ),
                     Some(self.config.toolchain_binary_directory().to_string()),
                     Some(self.config.tmp_directory().to_string()),
                     Some(self.config.l2()),
@@ -509,9 +516,9 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         },
                     };
 
-                // Update control-plane socket.
-                self.control_plane_socket
-                    .replace(initialized_sandbox.control_plane_socket_info());
+                // Update control-plane listener socket (re-used across all sandboxes).
+                self.control_plane_bind_socket
+                    .replace(initialized_sandbox.control_plane_bind_socket_info());
 
                 // Update Linux Daemon instance.
                 self.linuxd_instances
@@ -647,7 +654,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             summary.running_sandboxes(),
             summary.linuxd_instances(),
             summary.sandbox_index_entries(),
-            summary.has_control_plane_socket(),
+            summary.has_control_plane_bind_socket(),
             summary.l2_enabled()
         );
     }

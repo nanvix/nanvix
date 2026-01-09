@@ -89,8 +89,8 @@ impl LinuxDaemon {
         control_plane_listener: &mut SocketListener,
     ) -> Result<Self> {
         trace!(
-            "spawn(): control_plane_socket_address={:?}, user_vm_sockaddr={:?}",
-            args.control_plane_socket_info(),
+            "spawn(): control_plane_connect_socket_address={:?}, user_vm_sockaddr={:?}",
+            args.control_plane_connect_socket_info(),
             args.system_vm_socket_info()
         );
 
@@ -126,8 +126,8 @@ impl LinuxDaemon {
 
         let linuxd: EmbeddedLinuxd<T> = EmbeddedLinuxd::init(
             syscall_table,
-            &args.control_plane_socket_info().0,
-            args.control_plane_socket_info().1.to_str(),
+            &args.control_plane_connect_socket_info().0,
+            args.control_plane_connect_socket_info().1.to_str(),
             user_vm_listener,
             args.l2(),
         )

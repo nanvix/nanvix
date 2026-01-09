@@ -66,7 +66,7 @@ pub struct UninitializedSandbox<T> {
     #[cfg(not(feature = "single-process"))]
     netns_handle: Option<NetnsHandle>,
     /// Optional control plane listener socket, address, and socket type.
-    control_plane_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
+    control_plane_bind_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Optional sandbox configuration parameters.
     config: Option<SandboxConfig<T>>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
@@ -101,7 +101,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             linuxd: None,
             #[cfg(not(feature = "single-process"))]
             netns_handle: None,
-            control_plane_socket_and_info: None,
+            control_plane_bind_socket_and_info: None,
             config: None,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
@@ -170,17 +170,17 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// # Parameters
     ///
-    /// - `control_plane_socket_and_info`: Control plane socket listener, address, and socket type.
+    /// - `control_plane_bind_socket_and_info`: Control plane socket listener, address, and socket type.
     ///
     /// # Returns
     ///
     /// The modified uninitialized sandbox with the control plane socket attached.
     ///
-    pub fn with_control_plane_socket(
+    pub fn with_control_plane_bind_socket(
         mut self,
-        control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
+        control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
     ) -> Self {
-        self.control_plane_socket_and_info = Some(control_plane_socket_and_info);
+        self.control_plane_bind_socket_and_info = Some(control_plane_bind_socket_and_info);
         self
     }
 
@@ -229,17 +229,18 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             Some(config) => config,
         };
 
-        // Get control-plane socket.
-        let control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>> =
-            match self.control_plane_socket_and_info.take() {
-                // Control-plane socket not yet initialized.
+        // Get the control-plane listener socket.
+        let control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>> =
+            match self.control_plane_bind_socket_and_info.take() {
+                // Control-plane listener socket not yet initialized.
                 None => {
-                    // Get control-plane socket info.
-                    let (control_plane_socket_address, control_plane_socket_type) =
-                        match config.control_plane_socket_info() {
+                    // Get control-plane listener socket info.
+                    let (control_plane_bind_socket_address, control_plane_bind_socket_type) =
+                        match config.control_plane_bind_socket_info() {
                             None => {
-                                let reason: &str = "control plane socket info not provided and \
-                                                    control plane socket not initialized";
+                                let reason: &str = "control plane listener socket info not \
+                                                    provided and control plane listener socket \
+                                                    not initialized";
                                 error!("initialize(): {reason}");
                                 anyhow::bail!(reason);
                             },
@@ -247,38 +248,40 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         };
 
                     let unbound_socket: UnboundSocket =
-                        UnboundSocket::new(control_plane_socket_type.to_owned());
-                    let control_plane_socket: SocketListener =
-                        match unbound_socket.bind(&control_plane_socket_address).await {
-                            Ok(listener) => listener,
-                            Err(error) => {
-                                let reason: String = format!(
+                        UnboundSocket::new(control_plane_bind_socket_type.to_owned());
+                    let control_plane_bind_socket: SocketListener = match unbound_socket
+                        .bind(&control_plane_bind_socket_address)
+                        .await
+                    {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            let reason: String = format!(
                                     "failed to bind control-plane socket \
-                                     (control_plane_socket_address={control_plane_socket_address}, \
+                                     (control_plane_bind_socket_address={control_plane_bind_socket_address}, \
                                      error={error:?})"
                                 );
-                                error!("initialize(): {reason}");
-                                anyhow::bail!(reason);
-                            },
-                        };
+                            error!("initialize(): {reason}");
+                            anyhow::bail!(reason);
+                        },
+                    };
 
                     Arc::new(Mutex::new((
-                        control_plane_socket,
-                        control_plane_socket_address,
-                        control_plane_socket_type,
+                        control_plane_bind_socket,
+                        control_plane_bind_socket_address,
+                        control_plane_bind_socket_type,
                     )))
                 },
-                Some(control_plane_socket_and_info) => control_plane_socket_and_info,
+                Some(control_plane_bind_socket_and_info) => control_plane_bind_socket_and_info,
             };
 
         // Get Linux Daemon.
         let linuxd: Arc<LinuxDaemon> = match self.linuxd.take() {
             // Linux Daemon not yet initialized.
             None => {
-                let mut locked_control_plane_socket_and_info: MutexGuard<
+                let mut locked_control_plane_bind_socket_and_info: MutexGuard<
                     '_,
                     (SocketListener, String, SocketType),
-                > = control_plane_socket_and_info.lock().await;
+                > = control_plane_bind_socket_and_info.lock().await;
 
                 // Build Linux Daemon arguments.
                 let linuxd_args: LinuxDaemonArgs<T> = {
@@ -327,9 +330,11 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     };
 
                     LinuxDaemonArgs::new(
+                        // We pass linuxd the control plane socket's connect address, which may
+                        // depend on the network namespace.
                         (
-                            locked_control_plane_socket_and_info.1.clone(),
-                            locked_control_plane_socket_and_info.2,
+                            config.control_plane_connect_socket_info().0.clone(),
+                            config.control_plane_connect_socket_info().1,
                         ),
                         config.system_vm_socket_info().clone(),
                         config.hwloc(),
@@ -348,7 +353,9 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                 // Spawn Linux Daemon.
                 match LinuxDaemon::spawn(
                     &linuxd_args,
-                    &mut locked_control_plane_socket_and_info.0,
+                    // Pass a mutable reference to the shared listener socket to accept one
+                    // incoming connection from the newly spawned linuxd instance.
+                    &mut locked_control_plane_bind_socket_and_info.0,
                     // Share ownership of netns handle with linux daemon process. The netns is
                     // provisioned upstream, if it is not but we are in L2 mode, spawn will fail.
                     #[cfg(not(feature = "single-process"))]
@@ -372,7 +379,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             kernel_binary_path: config.kernel_binary_path().to_string(),
             program_args: self.program_args,
             linuxd,
-            control_plane_socket_and_info,
+            control_plane_bind_socket_and_info,
             sandbox_config: config,
             // Pass ownership of the network namespace to the initialized sandbox.
             #[cfg(not(feature = "single-process"))]

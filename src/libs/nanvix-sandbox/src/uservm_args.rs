@@ -25,8 +25,8 @@ use ::user_vm_api::UserVmIdentifier;
 ///
 #[derive(Debug)]
 pub struct UserVmArgs {
-    /// Information on control plane socket (address, socket type) for nanvixd <-> linuxd communication.
-    control_plane_socket_info: (String, SocketType),
+    /// Information on control plane connect socket (address, socket type) for nanvixd <-> linuxd communication.
+    control_plane_connect_socket_info: (String, SocketType),
     /// Information on gateway socket (address, socket type) for client <-> linuxd stdin/stdout communication.
     gateway_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type) for linuxd <-> uservm communication.
@@ -62,7 +62,7 @@ impl UserVmArgs {
     ///
     /// # Parameters
     ///
-    /// - `control_plane_socket_info`: Socket information for control plane communication.
+    /// - `control_plane_connect_socket_info`: Socket information for control plane communication.
     /// - `gateway_socket_info`: Socket information for gateway communication.
     /// - `system_vm_socket_info`: Socket information for system VM communication.
     /// - `program`: Path to the guest program binary.
@@ -80,7 +80,7 @@ impl UserVmArgs {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        control_plane_socket_info: (String, SocketType),
+        control_plane_connect_socket_info: (String, SocketType),
         gateway_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         program: String,
@@ -93,7 +93,7 @@ impl UserVmArgs {
         uservm_id: UserVmIdentifier,
     ) -> Self {
         Self {
-            control_plane_socket_info,
+            control_plane_connect_socket_info,
             gateway_socket_info,
             system_vm_socket_info,
             program,
@@ -111,14 +111,14 @@ impl UserVmArgs {
     ///
     /// # Description
     ///
-    /// Returns the control plane socket information.
+    /// Returns the control plane connect socket information.
     ///
     /// # Returns
     ///
-    /// A reference to the control plane socket information tuple.
+    /// A reference to the control plane connect socket information tuple.
     ///
-    pub fn control_plane_socket_info(&self) -> &(String, SocketType) {
-        &self.control_plane_socket_info
+    pub fn control_plane_connect_socket_info(&self) -> &(String, SocketType) {
+        &self.control_plane_connect_socket_info
     }
 
     ///
