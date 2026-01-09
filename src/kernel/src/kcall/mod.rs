@@ -1,8 +1,6 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![allow(unused_imports)]
-
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -24,7 +22,7 @@ pub use kcall_args::KcallArgs;
 pub use kcall_error::KcallError;
 pub use kcall_result::KcallResult;
 pub use kcall_success::KcallSuccess;
-pub use scoreboard::NewScoreBoard;
+pub use scoreboard::ScoreBoard;
 
 //==================================================================================================
 // Standalone Functions
@@ -32,5 +30,5 @@ pub use scoreboard::NewScoreBoard;
 
 pub fn init() {
     info!("initializing kernel call handler...");
-    unsafe { NewScoreBoard::init() };
+    unsafe { ScoreBoard::init() };
 }

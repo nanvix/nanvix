@@ -16,7 +16,7 @@ use crate::{
     ipc,
     kcall::{
         KcallResult,
-        NewScoreBoard,
+        ScoreBoard,
     },
     mm::VirtMemoryManager,
     pm::{
@@ -56,7 +56,7 @@ pub fn kcall_handler(
     let status: ExitStatus = loop {
         // Attempt to handle a kernel call.
         let mut kcall_handled: bool = false;
-        match unsafe { NewScoreBoard::handle() } {
+        match unsafe { ScoreBoard::handle() } {
             Ok((slot_index, args)) => {
                 let ret: KcallResult = match KcallNumber::from(args.number) {
                     KcallNumber::Debug => debug::debug(pm, args),
@@ -97,7 +97,7 @@ pub fn kcall_handler(
                 };
 
                 // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
-                if let Err(e) = unsafe { NewScoreBoard::handled(slot_index, ret) } {
+                if let Err(e) = unsafe { ScoreBoard::handled(slot_index, ret) } {
                     warn!("failed to signal kernel call handled: {:?}", e)
                 }
 

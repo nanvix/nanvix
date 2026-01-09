@@ -10,7 +10,7 @@ use crate::{
     ipc,
     kcall::{
         KcallResult,
-        NewScoreBoard,
+        ScoreBoard,
     },
     pm::{
         self,
@@ -131,7 +131,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
 
         // Dispatch kernel call for remote execution.
-        _ => match unsafe { NewScoreBoard::dispatch(number, pid, tid, arg0, arg1, arg2, arg3) } {
+        _ => match unsafe { ScoreBoard::dispatch(number, pid, tid, arg0, arg1, arg2, arg3) } {
             Ok(result) => result,
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },
