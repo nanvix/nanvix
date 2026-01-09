@@ -105,6 +105,16 @@ jobs:
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
+    - name: "Dump SCCACHE Statistics"
+      if: always()
+      shell: bash
+      run: |
+        if [[ -n "${SCCACHE}" ]] && [[ -x "${SCCACHE}" ]]; then
+          echo "SCCACHE Statistics:"
+          "${SCCACHE}" --show-stats || echo "Failed to retrieve sccache statistics"
+        else
+          echo "SCCACHE not configured or not available"
+        fi
     - name: "Test (New) (${{ matrix.deployment-type }})"
       uses: ./.github/actions/nanvix-test
       with:

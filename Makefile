@@ -339,12 +339,32 @@ update-sysroot-link:
 	fi
 
 #===================================================================================================
+# SCCACHE Statistics
+#===================================================================================================
+
+# Dumps SCCACHE statistics if SCCACHE is available.
+.PHONY: dump-sccache-stats
+dump-sccache-stats:
+	@echo ""
+	@echo "================================================================================"
+	@echo "SCCACHE Statistics"
+	@echo "================================================================================"
+	@if [ -n "$(SCCACHE)" ] && [ -x "$(SCCACHE)" ]; then \
+		$(SCCACHE) --show-stats || echo "Failed to retrieve sccache statistics."; \
+	else \
+		echo "SCCACHE not available or not configured."; \
+	fi
+	@echo "================================================================================"
+	@echo ""
+
+#===================================================================================================
 # Top-Level Build Rules
 #===================================================================================================
 
 # Builds everything.
 all: all-nanvix all-opt
 	@$(MAKE) update-sysroot-link
+	@$(MAKE) dump-sccache-stats
 
 # Builds all Nanvix components.
 all-nanvix: \
