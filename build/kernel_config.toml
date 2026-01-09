@@ -44,5 +44,10 @@ mutex_open_max = 32
 # - This number was arbitrarily chosen.
 cond_open_max = 32
 
+# Number of scoreboard slots used by the kernel call dispatcher/handler rendezvous.
+# Notes:
+# - This number should reflect expected kernel call concurrency.
+scoreboard_slots = 32
+
 # Number of IKC messages to poll at a time.
 ikc_poll_batch_size = 1

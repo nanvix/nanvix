@@ -132,6 +132,11 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
             constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {val};\n"));
         }
     }
+    if let Some(scoreboard_slots) = kernel_config_toml.get("scoreboard_slots") {
+        if let Ok(val) = scoreboard_slots.parse::<usize>() {
+            constants.push_str(&format!("pub const SCOREBOARD_SLOTS: usize = {val};\n"));
+        }
+    }
     if let Some(ikc_poll_batch_size) = kernel_config_toml.get("ikc_poll_batch_size") {
         if let Ok(val) = ikc_poll_batch_size.parse::<usize>() {
             constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));

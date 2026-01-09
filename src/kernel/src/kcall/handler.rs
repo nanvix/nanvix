@@ -16,7 +16,7 @@ use crate::{
     ipc,
     kcall::{
         KcallResult,
-        ScoreBoard,
+        NewScoreBoard,
     },
     mm::VirtMemoryManager,
     pm::{
@@ -56,67 +56,60 @@ pub fn kcall_handler(
     let status: ExitStatus = loop {
         // Attempt to handle a kernel call.
         let mut kcall_handled: bool = false;
-        match ScoreBoard::get_mut() {
-            Ok(scoreboard) => match scoreboard.handle() {
-                Ok(args) => {
-                    let ret: KcallResult = match KcallNumber::from(args.number) {
-                        KcallNumber::Debug => debug::debug(pm, args),
-                        KcallNumber::GetPid => {
-                            // NOTE: this should be handled by the dispatcher.
-                            // However we emit an invalid system call, just in case.
-                            error!("cannot handle getpid()");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                        KcallNumber::GetTid => {
-                            // NOTE: this should be handled by the dispatcher.
-                            // However we emit an invalid system call, just in case.
-                            error!("cannot handle gettid()");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                        KcallNumber::CapCtl => pm::capctl(pm, args),
-                        KcallNumber::Terminate => pm::terminate(pm, args),
-                        KcallNumber::EventCtrl => event::evctrl(pm, args),
-                        KcallNumber::MemoryMap => pm::mmap(pm, mm, args),
-                        KcallNumber::MemoryUnmap => pm::munmap(pm, mm, args),
-                        KcallNumber::MemoryCtrl => pm::mctrl(pm, mm, args),
-                        KcallNumber::MemoryCopy => pm::mcopy(pm, mm, args),
-                        KcallNumber::Send => ipc::send(pm, args),
-                        KcallNumber::AllocMmio => io::mmio_alloc(hal, pm, args),
-                        KcallNumber::FreeMmio => io::mmio_free(pm, args),
-                        KcallNumber::AllocPmio => io::pmio_alloc(hal, pm, args),
-                        KcallNumber::FreePmio => io::pmio_free(pm, args),
-                        KcallNumber::ReadPmio => io::pmio_read(pm, args),
-                        KcallNumber::WritePmio => io::pmio_write(pm, args),
-                        KcallNumber::GetTime => pm::gettime(pm, args),
-                        KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
-                        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pm, args),
-                        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pm, args),
-                        _ => {
-                            error!("invalid kernel call");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                    };
-
-                    // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
-                    if let Err(e) = unsafe { scoreboard.handled(ret) } {
-                        warn!("failed to signal kernel call handled: {:?}", e)
-                    }
-
-                    kcall_handled = true;
-                },
-                Err(error) => match error.code {
-                    ErrorCode::TryAgain => {},
-                    _ => {
-                        // This condition should never happen because the only error that should
-                        // happen for `ScoreBoard::handle()` is `OperationWouldBlock`.
-                        unreachable!("failed to handle kernel call (error={:?})", error);
+        match unsafe { NewScoreBoard::handle() } {
+            Ok((slot_index, args)) => {
+                let ret: KcallResult = match KcallNumber::from(args.number) {
+                    KcallNumber::Debug => debug::debug(pm, args),
+                    KcallNumber::GetPid => {
+                        // NOTE: this should be handled by the dispatcher.
+                        // However we emit an invalid system call, just in case.
+                        error!("cannot handle getpid()");
+                        KcallResult::Error(ErrorCode::InvalidSysCall.into())
                     },
-                },
+                    KcallNumber::GetTid => {
+                        // NOTE: this should be handled by the dispatcher.
+                        // However we emit an invalid system call, just in case.
+                        error!("cannot handle gettid()");
+                        KcallResult::Error(ErrorCode::InvalidSysCall.into())
+                    },
+                    KcallNumber::CapCtl => pm::capctl(pm, args),
+                    KcallNumber::Terminate => pm::terminate(pm, args),
+                    KcallNumber::EventCtrl => event::evctrl(pm, args),
+                    KcallNumber::MemoryMap => pm::mmap(pm, mm, args),
+                    KcallNumber::MemoryUnmap => pm::munmap(pm, mm, args),
+                    KcallNumber::MemoryCtrl => pm::mctrl(pm, mm, args),
+                    KcallNumber::MemoryCopy => pm::mcopy(pm, mm, args),
+                    KcallNumber::Send => ipc::send(pm, args),
+                    KcallNumber::AllocMmio => io::mmio_alloc(hal, pm, args),
+                    KcallNumber::FreeMmio => io::mmio_free(pm, args),
+                    KcallNumber::AllocPmio => io::pmio_alloc(hal, pm, args),
+                    KcallNumber::FreePmio => io::pmio_free(pm, args),
+                    KcallNumber::ReadPmio => io::pmio_read(pm, args),
+                    KcallNumber::WritePmio => io::pmio_write(pm, args),
+                    KcallNumber::GetTime => pm::gettime(pm, args),
+                    KcallNumber::CreateThread => pm::create_thread(pm, mm, args),
+                    KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pm, args),
+                    KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pm, args),
+                    _ => {
+                        error!("invalid kernel call");
+                        KcallResult::Error(ErrorCode::InvalidSysCall.into())
+                    },
+                };
+
+                // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
+                if let Err(e) = unsafe { NewScoreBoard::handled(slot_index, ret) } {
+                    warn!("failed to signal kernel call handled: {:?}", e)
+                }
+
+                kcall_handled = true;
             },
-            Err(error) => {
-                // This condition should never occur because the scoreboard is accessed exclusively,
-                // and no process should block while holding a reference to it.
-                unreachable!("failed to get scoreboard (error={:?})", error);
+            Err(error) => match error.code {
+                ErrorCode::TryAgain => {},
+                _ => {
+                    // This condition should never happen because the only error that should
+                    // happen for `NewScoreBoard::handle()` is `OperationWouldBlock`.
+                    unreachable!("failed to handle kernel call (error={:?})", error);
+                },
             },
         };
 
