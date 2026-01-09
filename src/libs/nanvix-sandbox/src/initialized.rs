@@ -72,7 +72,7 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     /// Shared handle to the Linux Daemon instance managing this sandbox.
     pub(super) linuxd: Arc<LinuxDaemon>,
     /// Control plane listener socket, address, and socket type.
-    pub(super) control_plane_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
+    pub(super) control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
     /// Handle to the network namespace (only set in L2-mode).
@@ -101,6 +101,10 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
+        let control_plane_connect_socket_info: (String, SocketType) = self
+            .sandbox_config
+            .control_plane_connect_socket_info()
+            .clone();
         let system_vm_socket_info: (String, SocketType) =
             self.sandbox_config.system_vm_socket_info().clone();
         let console_file: Option<String> =
@@ -117,15 +121,17 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
 
         // Spawn User VM.
         let mut uservm: UserVm = {
-            let mut locked_control_plane_socket_and_info: MutexGuard<
+            let mut locked_control_plane_bind_socket_and_info: MutexGuard<
                 '_,
                 (SocketListener, String, SocketType),
-            > = self.control_plane_socket_and_info.lock().await;
+            > = self.control_plane_bind_socket_and_info.lock().await;
             match UserVm::spawn(
                 &UserVmArgs::new(
+                    // We pass to the user VM, as argument, the control plane socket's connect
+                    // address, which may depend on the network namespace.
                     (
-                        locked_control_plane_socket_and_info.1.clone(),
-                        locked_control_plane_socket_and_info.2,
+                        control_plane_connect_socket_info.0.clone(),
+                        control_plane_connect_socket_info.1,
                     ),
                     (gateway_sockaddr.clone(), gateway_socket_type),
                     system_vm_socket_info,
@@ -139,7 +145,9 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     log_directory,
                     uservm_id,
                 ),
-                &mut locked_control_plane_socket_and_info.0,
+                // Pass a mutable reference to the unique control-plane listener socket to accept
+                // one connection from the new user VM.
+                &mut locked_control_plane_bind_socket_and_info.0,
                 // Pass ownership of the netns RAII handle to the user VM.
                 #[cfg(not(feature = "single-process"))]
                 self.netns_handle.take(),
@@ -165,7 +173,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         Ok(RunningSandbox {
             uservm,
             _linuxd: self.linuxd,
-            _control_plane_socket_and_info: self.control_plane_socket_and_info,
+            _control_plane_socket_and_info: self.control_plane_bind_socket_and_info,
             gateway_socket_info: gateway_socket_info_with_port,
         })
     }
@@ -191,10 +199,12 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     ///
     /// # Returns
     ///
-    /// A shared handle to the control plane socket information.
+    /// A shared handle to the control plane listener socket information.
     ///
-    pub fn control_plane_socket_info(&self) -> Arc<Mutex<(SocketListener, String, SocketType)>> {
-        self.control_plane_socket_and_info.clone()
+    pub fn control_plane_bind_socket_info(
+        &self,
+    ) -> Arc<Mutex<(SocketListener, String, SocketType)>> {
+        self.control_plane_bind_socket_and_info.clone()
     }
 }
 

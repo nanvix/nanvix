@@ -106,3 +106,29 @@ pub struct Benchmark {
     pub nanvixd_toolchain_bin_dir: String,
     pub user_vm_id: Option<String>,
 }
+
+///
+/// # Description
+///
+/// Linuxd deployment mode.
+///
+#[derive(PartialEq)]
+pub enum LinuxdDeployment {
+    /// Linuxd deployed inside an L2 VM.
+    L2Vm,
+    /// Linuxd deployed as a userspace process.
+    Process,
+}
+
+///
+/// # Description
+///
+/// User VM deployment mode.
+///
+#[derive(PartialEq)]
+pub enum UserVmDeployment {
+    /// Ensure each user VM gets a different linuxd instance.
+    OneToOne,
+    /// Start a pre-warm user VM with the same configuration and kill it.
+    PreWarm,
+}

@@ -439,7 +439,7 @@ impl LinuxDaemon {
     ) -> Result<Self> {
         debug!(
             "spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
-            args.control_plane_socket_info(),
+            args.control_plane_connect_socket_info(),
             args.system_vm_socket_info(),
             args.l2()
         );
@@ -474,9 +474,9 @@ impl LinuxDaemon {
                 args::Args::OPT_LOGDIR.to_string(),
                 args.log_directory().to_string(),
                 args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
-                args.control_plane_socket_info().0.clone(),
+                args.control_plane_connect_socket_info().0.clone(),
                 args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
-                args.control_plane_socket_info().1.to_str().to_string(),
+                args.control_plane_connect_socket_info().1.to_str().to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
                 args.system_vm_socket_info().0.clone(),
                 args::Args::OPT_USER_VM_BIND_SOCKET_TYPE.to_string(),

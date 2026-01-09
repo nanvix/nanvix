@@ -70,7 +70,8 @@
 //!     "/path/to/logs",  // log_directory
 //!     #[cfg(feature = "single-process")]
 //!     None,  // syscall_table
-//!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_socket_info
+//!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_bind_socket_info
+//!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // control_plane_connect_socket_info
 //!     Some("/path/to/toolchain".to_string()),  // toolchain_binary_directory
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2

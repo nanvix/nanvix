@@ -122,7 +122,7 @@ impl UserVm {
         }
 
         // Clone configuration values to move to User VM task.
-        let control_plane_addr: String = args.control_plane_socket_info().0.clone();
+        let control_plane_connect_addr: String = args.control_plane_connect_socket_info().0.clone();
         let system_vm_addr: String = args.system_vm_socket_info().0.clone();
         let gateway_sockaddr: String = args.gateway_socket_info().0.clone();
         let kernel_filename: String = args.kernel_binary_path().to_string();
@@ -130,8 +130,8 @@ impl UserVm {
         let initrd_args: Option<String> = args.program_args().map(|s| s.to_string());
         let stderr_file: Option<String> = args.console_file().map(|s| s.to_string());
         let user_vm_id: UserVmIdentifier = args.uservm_id();
-        let control_plane_sockaddr_type: String =
-            args.control_plane_socket_info().1.to_str().to_string();
+        let control_plane_connect_sockaddr_type: String =
+            args.control_plane_connect_socket_info().1.to_str().to_string();
         let system_vm_sockaddr_type: String = args.system_vm_socket_info().1.to_str().to_string();
         let gateway_sockaddr_type: String = args.gateway_socket_info().1.to_str().to_string();
 
@@ -152,22 +152,22 @@ impl UserVm {
 
                 // Connect to the control-plane socket.
                 let unbound_socket: UnboundSocket =
-                    UnboundSocket::new(SocketType::from_str(&control_plane_sockaddr_type)?);
+                    UnboundSocket::new(SocketType::from_str(&control_plane_connect_sockaddr_type)?);
                 let control_plane_stream: SocketStream = match timeout(
                     CONTROL_PLANE_CONNECT_TIMEOUT,
-                    unbound_socket.connect(&control_plane_addr),
+                    unbound_socket.connect(&control_plane_connect_addr),
                 )
                 .await
                 {
                     Ok(Ok(stream)) => {
-                        debug!("user VM connected to control-plane (addr={control_plane_addr})");
+                        debug!("user VM connected to control-plane (addr={control_plane_connect_addr})");
                         stream
                     },
                     Ok(Err(e)) => {
                         let reason: String = format!(
-                            "failed to connect to control plane (control_plane_addr={:?}, \
+                            "failed to connect to control plane (control_plane_connect_addr={:?}, \
                              error={e:?})",
-                            control_plane_addr
+                            control_plane_connect_addr
                         );
                         error!("spawn(): {reason}");
                         return Err(anyhow::anyhow!("{reason}"));
@@ -175,8 +175,8 @@ impl UserVm {
                     Err(_elapsed) => {
                         let reason: String = format!(
                             "timed out trying to connect to control plane \
-                             (control_plane_addr={:?})",
-                            control_plane_addr
+                             (control_plane_connect_addr={:?})",
+                            control_plane_connect_addr
                         );
                         error!("spawn(): {reason}");
                         return Err(anyhow::anyhow!("{reason}"));

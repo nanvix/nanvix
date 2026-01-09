@@ -28,6 +28,8 @@ use crate::{
     benchmark::{
         Benchmark,
         BenchmarkFlavour,
+        LinuxdDeployment,
+        UserVmDeployment,
     },
     env::get_proj_root,
 };
@@ -160,20 +162,27 @@ const NANVIXD_ADDRESS: &str = "127.0.0.1:9999";
 /// Default size of the message we are sending to the user VM.
 const DEFAULT_PAYLOAD_SIZE: usize = 32;
 
+const DEFAULT_TENANT_ID: &str = "foo";
+const DEFAULT_APP_NAME: &str = "bar";
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl Benchmark {
-    fn prepare_new_message(&self) -> Result<(HeaderMap, message::New)> {
+    fn prepare_new_message(
+        &self,
+        tenant_id: Option<String>,
+        app_name: Option<String>,
+    ) -> Result<(HeaderMap, message::New)> {
         let mut new_msg_headers = HeaderMap::new();
         new_msg_headers.insert(CONTENT_TYPE, "application/json".parse()?);
         new_msg_headers
             .insert(HTTP_HEADER_MESSAGE_TYPE, format!("{}", message::MessageType::New).parse()?);
 
         let new_msg = message::New {
-            tenant_id: "foo".to_string(),
-            app_name: "bar".to_string(),
+            tenant_id: tenant_id.unwrap_or(DEFAULT_TENANT_ID.to_string()),
+            app_name: app_name.unwrap_or(DEFAULT_APP_NAME.to_string()),
             program: self.flavour.get_program(),
             program_args: "".to_string(),
         };
@@ -182,7 +191,7 @@ impl Benchmark {
     }
 
     /// Start nanvixd and, optionally, configure it to deploy linuxd inside an L2 VM.
-    fn start_nanvixd(&self, l2: bool) -> Result<Child> {
+    fn start_nanvixd(&self, linuxd_deployment: &LinuxdDeployment) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
             format!("{}/bin/nanvixd.elf", get_proj_root()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
@@ -194,7 +203,7 @@ impl Benchmark {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
             nanvixd_args.push(hwloc_file.clone());
         }
-        if l2 {
+        if *linuxd_deployment == LinuxdDeployment::L2Vm {
             nanvixd_args.push(::nanvixd::args::Args::OPT_L2.to_string());
         }
 
@@ -246,8 +255,8 @@ impl Benchmark {
     }
 
     /// Configures the set-up by starting linuxd and the gateway server.
-    pub fn setup(&mut self, l2: bool) {
-        match self.start_nanvixd(l2) {
+    pub fn setup(&mut self, linuxd_deployment: &LinuxdDeployment) {
+        match self.start_nanvixd(linuxd_deployment) {
             Ok(nanvixd) => self.nanvixd = Some(nanvixd),
             Err(_) => {
                 error!("error starting up nanvixd");
@@ -274,7 +283,7 @@ impl Benchmark {
         &mut self,
         payload: message::New,
         headers: HeaderMap,
-        l2: bool,
+        linuxd_deployment: &LinuxdDeployment,
     ) -> Result<(UserVmIdentifier, SocketStream)> {
         let response: message::NewResponse = self
             .nanvixd_client
@@ -291,7 +300,7 @@ impl Benchmark {
         // TODO: we need to connect the SocketStream after creating the user VM (and thus adding to
         // the cold-start time) because currently nanvixd determines the gateway address at
         // deployment time.
-        let gateway_socktype: SocketType = if l2 {
+        let gateway_socktype: SocketType = if *linuxd_deployment == LinuxdDeployment::L2Vm {
             SocketType::Tcp
         } else {
             SocketType::Unix
@@ -366,55 +375,33 @@ impl Benchmark {
     ///
     /// # Description
     ///
+    /// This method spawns a user VM with the request deployment characteristics, sends an echo
+    /// message and, optionally, records the time it all took, and persists the user VM's stream.
+    ///
     async fn run_user_vm_echo_once(
         &mut self,
         new_msg_headers: HeaderMap,
         new_msg: New,
-        l2: bool,
-        pre_warm: bool,
-        latencies: &mut Vec<u128>,
+        linuxd_deployment: &LinuxdDeployment,
+        cleanup_duration: Duration,
+        latencies: Option<&mut Vec<u128>>,
         in_flight_uvms: &mut Option<Vec<(UserVmIdentifier, SocketStream)>>,
     ) -> Result<()> {
-        let must_persist: bool = in_flight_uvms.is_some();
-
-        if must_persist & pre_warm {
-            let reason: &str = "inconsistent set of flags pre_warm AND must_persist";
-            error!("{reason}");
-            anyhow::bail!(reason);
-        }
-
-        // If we don't need to persist, run the setup first. Otherwise we expect the caller to have
-        // called setup already.
-        if !must_persist {
-            self.setup(l2);
-        }
-
         let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
         let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
 
-        if pre_warm {
-            let pw_new_msg_headers: HeaderMap = new_msg_headers.clone();
-            let mut pw_new_msg: New = new_msg.clone();
-
-            // Give the pre-warmed app a distinct name.
-            pw_new_msg.app_name = "prewarm-vm".to_string();
-
-            let (pw_user_vm_id, _): (UserVmIdentifier, SocketStream) =
-                self.start(pw_new_msg, pw_new_msg_headers, l2).await?;
-
-            // Kill the warm-up VM straight away.
-            self.kill(pw_user_vm_id).await?;
-
-            // Give some time to prevent interference.
-            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
-        };
-
         let start: Instant = Instant::now();
-        let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) =
-            self.start(new_msg, new_msg_headers, l2).await?;
+        let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) = self
+            .start(new_msg, new_msg_headers, linuxd_deployment)
+            .await?;
         gateway_stream.write_all(&payload).await?;
         gateway_stream.read_exact(&mut response_payload).await?;
-        latencies.push(start.elapsed().as_micros());
+        let elapsed_micros: u128 = start.elapsed().as_micros();
+
+        // Only record latency if requested to.
+        if let Some(latencies) = latencies {
+            latencies.push(elapsed_micros);
+        }
 
         // Sanity-check the message to make sure is the same we sent.
         if response_payload != payload {
@@ -429,17 +416,9 @@ impl Benchmark {
         } else {
             // Kill the user VM.
             self.kill(user_vm_id).await?;
-
-            // Stop nanvixd.
-            self.cleanup();
         }
 
-        // Need to give some time to clean-up (a bit longer for L2 benchmarks).
-        if l2 {
-            sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
-        } else {
-            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
-        }
+        sleep(cleanup_duration).await;
 
         Ok(())
     }
@@ -561,10 +540,14 @@ impl Benchmark {
     ///
     /// # Arguments
     ///
-    /// - `l2`: whether to deploy linuxd inside an L2 VM.
-    /// - `pre_warm`: whether to start a warm-up user VM connected to the same linuxd instance.
+    /// - `linuxd_deployment`: deployment mode for linuxd.
+    /// - `uservm_deployment`: deployment mode for the user VM.
     ///
-    pub async fn run_cold_start(&mut self, l2: bool, pre_warm: bool) -> Result<()> {
+    pub async fn run_cold_start(
+        &mut self,
+        linuxd_deployment: &LinuxdDeployment,
+        user_vm_deployment: &UserVmDeployment,
+    ) -> Result<()> {
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -575,80 +558,51 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        // Payload we are sending over the wire
-        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
-        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        // Start nanvixd once.
+        self.setup(linuxd_deployment);
 
-        // When pre_warm is true, we setup nanvixd once and reuse it across iterations.
-        if pre_warm {
-            self.setup(l2);
-
-            // Start and kill a pre-warm VM to warm up the nanvixd instance.
-            let pw_new_msg_headers: HeaderMap = new_msg_headers.clone();
-            let mut pw_new_msg: New = new_msg.clone();
-            pw_new_msg.app_name = "prewarm-vm".to_string();
-
-            let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
-            let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
-
-            let (pw_user_vm_id, mut pw_gateway_stream): (UserVmIdentifier, SocketStream) =
-                self.start(pw_new_msg, pw_new_msg_headers, l2).await?;
-            pw_gateway_stream.write_all(&payload).await?;
-            pw_gateway_stream.read_exact(&mut response_payload).await?;
-            self.kill(pw_user_vm_id).await?;
-            sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
-
-            // Now run the actual benchmark iterations, measuring only user VM startup.
-            for iter in 0..self.iterations {
-                let payload: [u8; DEFAULT_PAYLOAD_SIZE] = [7u8; DEFAULT_PAYLOAD_SIZE];
-                let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
-
-                // Update the app name to prevent collisions across iterations.
-                let mut new_msg_iter: New = new_msg.clone();
-                new_msg_iter.app_name = format!("bar-{iter}");
-
-                let start: Instant = Instant::now();
-                let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) = self
-                    .start(new_msg_iter, new_msg_headers.clone(), l2)
-                    .await?;
-                gateway_stream.write_all(&payload).await?;
-                gateway_stream.read_exact(&mut response_payload).await?;
-                latencies.push(start.elapsed().as_micros());
-
-                // Sanity-check the message to make sure is the same we sent.
-                if response_payload != payload {
-                    error!("received payload does not match sent payload!");
-                    error!(" - sent: {payload:?}");
-                    error!(" - got: {response_payload:?}");
-                }
-
-                self.kill(user_vm_id).await?;
-
-                if l2 {
-                    sleep(Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)).await;
-                } else {
-                    sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
-                }
-
-                pb.inc(1);
-            }
-
-            // Cleanup nanvixd after all iterations.
-            self.cleanup();
+        // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
+        let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {
+            Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)
         } else {
-            // When pre_warm is false, setup/cleanup happens on every iteration.
-            for _ in 0..self.iterations {
+            Duration::from_millis(CLEANUP_SLEEP_DURATION)
+        };
+
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        for iter in 0..self.iterations {
+            // In this benchmark we measure the time to start both linuxd and the user VM, so we
+            // give each iteration a different tenant id and application name.
+            let tenant_id = format!("{DEFAULT_TENANT_ID}-{iter}");
+            let app_name = format!("{DEFAULT_APP_NAME}-{iter}");
+
+            // Get the right message for this new user VM.
+            let (new_msg_headers, new_msg): (HeaderMap, New) =
+                self.prepare_new_message(Some(tenant_id), Some(app_name))?;
+
+            // In case we are pre-warming, we will run the user VM once without keeping track of
+            // the time-elapsed.
+            if *user_vm_deployment == UserVmDeployment::PreWarm {
                 self.run_user_vm_echo_once(
                     new_msg_headers.clone(),
                     new_msg.clone(),
-                    l2,
-                    false,
-                    &mut latencies,
+                    linuxd_deployment,
+                    cleanup_sleep_duration,
+                    None,
                     &mut None,
                 )
                 .await?;
-                pb.inc(1);
             }
+
+            self.run_user_vm_echo_once(
+                new_msg_headers.clone(),
+                new_msg.clone(),
+                linuxd_deployment,
+                cleanup_sleep_duration,
+                Some(&mut latencies),
+                &mut None,
+            )
+            .await?;
+            pb.inc(1);
         }
 
         pb.finish();
@@ -659,6 +613,7 @@ impl Benchmark {
         println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         print!("Cleaning up...");
+        self.cleanup();
         println!("done!");
 
         Ok(())
@@ -672,10 +627,14 @@ impl Benchmark {
     ///
     /// # Arguments
     ///
-    /// - `l2`: whether to deploy linuxd in an L2 VM or not.
+    /// - `linuxd_deployment`: deployment mode for linuxd.
     /// - `num_concurrent_vms`: number of VMs to start concurrently.
     ///
-    pub async fn run_concurrent(&mut self, l2: bool, num_concurrent_vms: usize) -> Result<()> {
+    pub async fn run_concurrent(
+        &mut self,
+        linuxd_deployment: &LinuxdDeployment,
+        num_concurrent_vms: usize,
+    ) -> Result<()> {
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(num_concurrent_vms.try_into().unwrap());
         pb.set_style(
@@ -686,26 +645,35 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        // Prepare message headers.
-        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
-
         // Start nanvixd once.
-        self.setup(l2);
+        self.setup(linuxd_deployment);
+
+        // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
+        let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {
+            Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)
+        } else {
+            Duration::from_millis(CLEANUP_SLEEP_DURATION)
+        };
 
         let mut latencies: Vec<u128> = Vec::with_capacity(num_concurrent_vms);
         let mut in_flight_uvms: Option<Vec<(UserVmIdentifier, SocketStream)>> =
             Some(Vec::with_capacity(num_concurrent_vms));
         for iter in 0..num_concurrent_vms {
-            // Update the function name to prevent collisions.
-            let mut new_msg: New = new_msg.clone();
-            new_msg.app_name = format!("bar-{iter}");
+            // In this benchmark we want all user VMs to share the same linuxd instance, so they
+            // run concurrently. We therefore keep the tenant id constant (default) and give
+            // each user VM a different name.
+            let app_name: String = format!("bar-{iter}");
+            let (new_msg_headers, new_msg): (HeaderMap, New) =
+                self.prepare_new_message(None, Some(app_name))?;
 
+            // We want all user VMs to run concurrently, so we pass an in-flight map to keep them
+            // around instead of killing them after getting the echo.
             self.run_user_vm_echo_once(
-                new_msg_headers.clone(),
-                new_msg.clone(),
-                l2,
-                false,
-                &mut latencies,
+                new_msg_headers,
+                new_msg,
+                linuxd_deployment,
+                cleanup_sleep_duration,
+                Some(&mut latencies),
                 &mut in_flight_uvms,
             )
             .await?;
@@ -749,10 +717,13 @@ impl Benchmark {
     ///
     /// # Arguments
     ///
-    /// - `l2`: whether to deploy linuxd in an L2 VM or not.
+    /// - `linuxd_deployment`: deployment mode for linuxd.
     /// - `percentile`: what percentile to report.
     ///
-    pub async fn run_round_trip_latency(&mut self, l2: bool) -> Result<()> {
+    pub async fn run_round_trip_latency(
+        &mut self,
+        linuxd_deployment: &LinuxdDeployment,
+    ) -> Result<()> {
         let message_sizes: Vec<(&str, u64)> = vec![
             ("32 B", 32),
             ("64 B", 64),
@@ -774,15 +745,17 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message()?;
+        let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message(None, None)?;
 
         // Start nanvixd.
-        self.setup(l2);
+        self.setup(linuxd_deployment);
 
         let mut latencies: HashMap<&str, Vec<u128>> = HashMap::new();
         let user_vm_id = {
             // Start User VM.
-            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
+            let (user_vm_id, mut gateway_stream) = self
+                .start(new_msg, new_msg_headers, linuxd_deployment)
+                .await?;
 
             // Iterate over all possible message sizes.
             for (label, message_size) in &message_sizes {
@@ -840,7 +813,7 @@ impl Benchmark {
 
     /// This function runs the warm start benchmark, where we measure the time to send a request
     /// into the VM once it has started executing.
-    pub async fn run_warm_start(&mut self, l2: bool) -> Result<()> {
+    pub async fn run_warm_start(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
         // Display a progress bar
         let pb = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -854,15 +827,17 @@ impl Benchmark {
         // Payload we are sending over the wire
         let payload = [7u8; DEFAULT_PAYLOAD_SIZE];
 
-        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
+        let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
 
         // Start nanvixd.
-        self.setup(l2);
+        self.setup(linuxd_deployment);
 
         // Start User VM.
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         let user_vm_id = {
-            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
+            let (user_vm_id, mut gateway_stream) = self
+                .start(new_msg, new_msg_headers, linuxd_deployment)
+                .await?;
 
             for _ in 0..self.iterations {
                 let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
@@ -1056,11 +1031,13 @@ impl Benchmark {
     }
 
     #[cfg(feature = "timestamp-messages")]
-    pub async fn run_echo_breakdown(&mut self, l2: bool) -> Result<()> {
+    pub async fn run_echo_breakdown(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
         // First start nanvixd and the user VM.
-        let (new_msg_headers, new_msg) = self.prepare_new_message()?;
-        self.setup(l2);
-        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers, l2).await?;
+        let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
+        self.setup(linuxd_deployment);
+        let (user_vm_id, mut gateway_stream) = self
+            .start(new_msg, new_msg_headers, linuxd_deployment)
+            .await?;
 
         // The labels in this array are also added as comments to the line of code where the
         // timestamp is added.
@@ -1267,7 +1244,9 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start(false, false).await
+                benchmark
+                    .run_cold_start(&LinuxdDeployment::Process, &UserVmDeployment::OneToOne)
+                    .await
             }
         },
         BenchmarkFlavour::ColdStartL2 => {
@@ -1280,7 +1259,9 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start(true, false).await
+                benchmark
+                    .run_cold_start(&LinuxdDeployment::L2Vm, &UserVmDeployment::OneToOne)
+                    .await
             }
         },
         BenchmarkFlavour::ColdStartUvm => {
@@ -1293,7 +1274,9 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_cold_start(false, true).await
+                benchmark
+                    .run_cold_start(&LinuxdDeployment::Process, &UserVmDeployment::PreWarm)
+                    .await
             }
         },
         BenchmarkFlavour::EchoBreakdown => {
@@ -1307,7 +1290,9 @@ async fn main() -> Result<()> {
 
             #[cfg(feature = "timestamp-messages")]
             {
-                benchmark.run_echo_breakdown(false).await
+                benchmark
+                    .run_echo_breakdown(&LinuxdDeployment::Process)
+                    .await
             }
         },
         BenchmarkFlavour::EchoBreakdownL2 => {
@@ -1321,7 +1306,7 @@ async fn main() -> Result<()> {
 
             #[cfg(feature = "timestamp-messages")]
             {
-                benchmark.run_echo_breakdown(true).await
+                benchmark.run_echo_breakdown(&LinuxdDeployment::L2Vm).await
             }
         },
         BenchmarkFlavour::RoundTripLatency => {
@@ -1334,7 +1319,9 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_round_trip_latency(false).await
+                benchmark
+                    .run_round_trip_latency(&LinuxdDeployment::Process)
+                    .await
             }
         },
         BenchmarkFlavour::Concurrent => {
@@ -1348,7 +1335,9 @@ async fn main() -> Result<()> {
             #[cfg(not(feature = "timestamp-messages"))]
             {
                 if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
-                    benchmark.run_concurrent(false, num_concurrent_vms).await
+                    benchmark
+                        .run_concurrent(&LinuxdDeployment::Process, num_concurrent_vms)
+                        .await
                 } else {
                     anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
                 }
@@ -1364,7 +1353,13 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_concurrent(true, args.iterations()).await
+                if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
+                    benchmark
+                        .run_concurrent(&LinuxdDeployment::L2Vm, num_concurrent_vms)
+                        .await
+                } else {
+                    anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
+                }
             }
         },
         BenchmarkFlavour::WarmStart => {
@@ -1377,7 +1372,7 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_warm_start(false).await
+                benchmark.run_warm_start(&LinuxdDeployment::Process).await
             }
         },
         BenchmarkFlavour::WarmStartL2 => {
@@ -1390,7 +1385,7 @@ async fn main() -> Result<()> {
 
             #[cfg(not(feature = "timestamp-messages"))]
             {
-                benchmark.run_warm_start(true).await
+                benchmark.run_warm_start(&LinuxdDeployment::L2Vm).await
             }
         },
         BenchmarkFlavour::WarmStartVMM => {
