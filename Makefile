@@ -580,7 +580,10 @@ endif
 PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/venv
 
 python-init:
-	@if [ ! -d $(PYTHON_VENV_DIRECTORY) ]; then python3 -m venv $(PYTHON_VENV_DIRECTORY); fi
+	@if [ ! -f $(PYTHON_VENV_DIRECTORY)/bin/pip3 ]; then \
+		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
+		python3 -m venv $(PYTHON_VENV_DIRECTORY); \
+	fi
 	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
 
 python-format: python-init
