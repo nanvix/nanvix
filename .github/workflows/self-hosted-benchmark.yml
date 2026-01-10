@@ -82,6 +82,17 @@ jobs:
           warm-start-l2
           warm-start-vmm
 
+    - name: "Dump SCCACHE Statistics"
+      if: always()
+      shell: bash
+      run: |
+        if [[ -n "${SCCACHE}" ]] && [[ -x "${SCCACHE}" ]]; then
+          echo "SCCACHE Statistics:"
+          "${SCCACHE}" --show-stats || echo "Failed to retrieve sccache statistics"
+        else
+          echo "SCCACHE not configured or not available"
+        fi
+
     - name: "Collect L2 diagnostics"
       if: failure()
       shell: bash
