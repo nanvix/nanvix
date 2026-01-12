@@ -154,6 +154,9 @@ impl Semaphore {
     pub unsafe fn up(&self) -> Result<(), Error> {
         self.value.fetch_add(1, Ordering::SeqCst);
 
+        // Note: The rollback pattern below is safe because this function is called with interrupts
+        // disabled (per safety preconditions), preventing other threads from observing or acting on
+        // the incremented value before we complete or roll back the operation.
         if let Err(error) = self.sleeping.notify_first().map(|_awakened| ()) {
             self.value.fetch_sub(1, Ordering::SeqCst);
             return Err(error);

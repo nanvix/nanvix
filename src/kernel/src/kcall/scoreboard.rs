@@ -238,7 +238,10 @@ impl ScoreBoard {
 
         // Attempt to signal slot availability. If we fail, we mark the slot as aborted to prevent
         // other dispatchers from reusing it prematurely. We do not fail the dispatching at this
-        // point, as the kernel call was already handled successfully.
+        // point, as the kernel call was already handled successfully. Note that unlike the earlier
+        // failure path at pending_kcalls.up(), we do not attempt to roll back the result retrieval
+        // because the kernel call has already completed and the result must be returned to the
+        // caller.
         if let Err(error) = unsafe { scoreboard.available_slots.up() } {
             slot.mark_aborted(AbortedDisposition::BeforeSignal);
             let reason: &str = "failed to signal available scoreboard slots";
@@ -374,6 +377,11 @@ impl ScoreBoard {
             ScoreBoardSlotState::Aborted(AbortedDisposition::AfterSignal) => {
                 slot.result = None;
 
+                // Release the slot back to the available pool. This is safe because when the
+                // dispatcher aborted with AfterSignal, it did not release the slot to ensure
+                // the handler could process it exactly once. We perform the release here to
+                // maintain the invariant that each slot acquisition has exactly one corresponding
+                // release.
                 if let Err(error) = unsafe { scoreboard.available_slots.up() } {
                     slot.mark_aborted(AbortedDisposition::BeforeSignal);
                     let reason: &str = "failed to recycle aborted scoreboard slot";
