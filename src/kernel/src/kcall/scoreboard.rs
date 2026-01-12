@@ -52,13 +52,13 @@ static mut SCOREBOARD: Option<ScoreBoard> = None;
 /// Coordinates kernel call dispatching and completion signaling between user and kernel threads.
 ///
 pub struct ScoreBoard {
-    // Synchronizes number slots available for kernel call dispatching.
+    /// Synchronizes number slots available for kernel call dispatching.
     available_slots: Semaphore,
-    // Synchronizes number of kernel calls ready to be handled.
+    /// Synchronizes number of kernel calls ready to be handled.
     pending_kcalls: Semaphore,
-    // Slots for kernel call dispatching.
+    /// Slots for kernel call dispatching.
     slots: [ScoreBoardSlot; SCOREBOARD_SLOTS],
-    // Next slot index to inspect when searching for pending kernel calls.
+    /// Next slot index to inspect when searching for pending kernel calls.
     next_handle_index: usize,
 }
 
@@ -90,7 +90,7 @@ impl ScoreBoard {
     ///
     /// Gets a mutable reference to the global scoreboard instance.
     ///
-    /// # Return
+    /// # Returns
     ///
     /// On successful completion, this function returns a mutable reference to the global scoreboard.
     /// On failure, it returns an object that describes the error encountered.
@@ -194,7 +194,6 @@ impl ScoreBoard {
 
         // Signal that a new kernel call is pending.
         let slot: &mut ScoreBoardSlot = &mut scoreboard.slots[slot_index];
-        slot.mark_signaled();
 
         if let Err(error) = unsafe { scoreboard.pending_kcalls.up() } {
             let reason: &str = "failed to signal pending kernel calls";
@@ -214,6 +213,9 @@ impl ScoreBoard {
 
             return Err(SleepError::Generic(error));
         }
+
+        // Mark the slot as signaled after successfully incrementing the pending_kcalls semaphore.
+        slot.mark_signaled();
 
         // Wait for the kernel call to be handled.
         let wait_result: Result<(), SleepError> = {
@@ -280,7 +282,8 @@ impl ScoreBoard {
 
         // Wait for a pending kernel call.
         if let Err(error) = scoreboard.pending_kcalls.try_down() {
-            // Only log actual errors.
+            // Only log actual errors. ErrorCode::TryAgain is the expected non-error case when no
+            // kernel calls are pending, so we skip logging for it.
             if error.code != ErrorCode::TryAgain {
                 error!("failed to wait for pending kernel calls (error={error:?})");
             }
@@ -434,9 +437,13 @@ impl ScoreBoard {
 ///
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScoreBoardSlotState {
+    /// Slot is available for a new kernel call.
     Free,
+    /// Slot has been acquired but not yet signaled to the kernel.
     InUse,
+    /// Slot has been signaled and is ready for the kernel to process.
     Signaled,
+    /// Slot was abandoned by the dispatcher and requires reclamation.
     Aborted(AbortedDisposition),
 }
 
@@ -447,7 +454,9 @@ enum ScoreBoardSlotState {
 ///
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AbortedDisposition {
+    /// Slot was aborted before signaling the pending kernel calls semaphore.
     BeforeSignal,
+    /// Slot was aborted after signaling the pending kernel calls semaphore.
     AfterSignal,
 }
 
@@ -459,6 +468,10 @@ enum AbortedDisposition {
 /// # Description
 ///
 /// Identifies a slot within the scoreboard storage.
+///
+/// This is a wrapper around a `usize` that provides type safety and prevents accidental misuse of
+/// raw indices. It is returned by `ScoreBoard::handle()` and must be passed back to
+/// `ScoreBoard::handled()` to complete the kernel call handling cycle.
 ///
 pub struct ScoreBoardSlotIndex(usize);
 
@@ -483,9 +496,13 @@ impl ScoreBoardSlotIndex {
 /// Tracks the arguments, result, and synchronization primitive for a single slot.
 ///
 struct ScoreBoardSlot {
+    /// Current lifecycle state of the slot.
     state: ScoreBoardSlotState,
+    /// Kernel call arguments provided by the dispatcher.
     args: KcallArgs,
+    /// Kernel call result set by the handler, or `None` if not yet handled.
     result: Option<KcallResult>,
+    /// Condition variable used to wake the dispatcher when the kernel call is handled.
     handled: Condvar,
 }
 

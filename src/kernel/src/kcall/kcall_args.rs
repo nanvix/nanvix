@@ -25,12 +25,19 @@ use ::sys::pm::{
 /// Stores identifiers and up to four raw arguments describing a kernel call request.
 ///
 pub struct KcallArgs {
+    /// Identifier of the calling process.
     pub pid: ProcessIdentifier,
+    /// Identifier of the calling thread.
     pub tid: ThreadIdentifier,
+    /// Kernel call number to execute.
     pub number: u32,
+    /// First kernel call argument.
     pub arg0: u32,
+    /// Second kernel call argument.
     pub arg1: u32,
+    /// Third kernel call argument.
     pub arg2: u32,
+    /// Fourth kernel call argument.
     pub arg3: u32,
 }
 

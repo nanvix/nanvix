@@ -107,7 +107,7 @@ pub fn kcall_handler(
                 ErrorCode::TryAgain => {},
                 _ => {
                     // This condition should never happen because the only error that should
-                    // happen for `NewScoreBoard::handle()` is `OperationWouldBlock`.
+                    // happen for `ScoreBoard::handle()` is `ErrorCode::TryAgain`.
                     unreachable!("failed to handle kernel call (error={:?})", error);
                 },
             },

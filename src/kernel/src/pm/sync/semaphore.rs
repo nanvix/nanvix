@@ -144,12 +144,12 @@ impl Semaphore {
     ///
     /// This function is safe to use if and only if the following conditions are met:
     ///
-    /// - The caller is runner with interrupts disabled.
+    /// - The caller is running with interrupts disabled.
     /// - The calling process does not hold a reference to the process manager.
     ///
     /// # Notes
     ///
-    /// - This function does not trigger in an immediate context switch.
+    /// - This function does not trigger an immediate context switch.
     ///
     pub unsafe fn up(&self) -> Result<(), Error> {
         self.value.fetch_add(1, Ordering::SeqCst);
