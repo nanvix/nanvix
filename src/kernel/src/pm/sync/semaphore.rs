@@ -80,17 +80,23 @@ impl Semaphore {
     /// - This function is invoked without holding any resources.
     ///
     pub unsafe fn down(&self) -> Result<(), SleepError> {
-        let value: usize = loop {
-            let value = self.value.load(Ordering::SeqCst);
-            if value > 0 {
-                break value;
+        loop {
+            if self
+                .value
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                    if value == 0 {
+                        None
+                    } else {
+                        Some(value - 1)
+                    }
+                })
+                .is_ok()
+            {
+                return Ok(());
             }
+
             self.sleeping.wait(None)?;
-        };
-
-        self.value.store(value - 1, Ordering::SeqCst);
-
-        Ok(())
+        }
     }
 
     ///
@@ -105,15 +111,21 @@ impl Semaphore {
     /// occurs, an error is returned instead.
     ///
     pub fn try_down(&self) -> Result<(), Error> {
-        let value: usize = self.value.load(Ordering::SeqCst);
-
-        if value == 0 {
-            return Err(Error::new(ErrorCode::TryAgain, "semaphore is busy"));
+        if self
+            .value
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                if value == 0 {
+                    None
+                } else {
+                    Some(value - 1)
+                }
+            })
+            .is_ok()
+        {
+            return Ok(());
         }
 
-        self.value.store(value - 1, Ordering::SeqCst);
-
-        Ok(())
+        Err(Error::new(ErrorCode::TryAgain, "semaphore is busy"))
     }
 
     ///
@@ -127,14 +139,26 @@ impl Semaphore {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it operates on global variables.
+    /// This function is unsafe because:
+    /// - It mutates global variables without explicit synchronization.
     ///
     /// This function is safe to use if and only if the following conditions are met:
     ///
+    /// - The caller is runner with interrupts disabled.
     /// - The calling process does not hold a reference to the process manager.
+    ///
+    /// # Notes
+    ///
+    /// - This function does not trigger in an immediate context switch.
     ///
     pub unsafe fn up(&self) -> Result<(), Error> {
         self.value.fetch_add(1, Ordering::SeqCst);
-        self.sleeping.notify_first().map(|_awakened| ())
+
+        if let Err(error) = self.sleeping.notify_first().map(|_awakened| ()) {
+            self.value.fetch_sub(1, Ordering::SeqCst);
+            return Err(error);
+        }
+
+        Ok(())
     }
 }

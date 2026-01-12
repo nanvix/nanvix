@@ -128,7 +128,7 @@ impl ScoreBoard {
     /// - `arg2`: Third kernel call argument.
     /// - `arg3`: Fourth kernel call argument.
     ///
-    /// # Returns
+    /// # Return
     ///
     /// On successful completion, this function returns the result of the kernel call. On failure,
     /// it returns an object that describes the error encountered.
@@ -158,6 +158,8 @@ impl ScoreBoard {
         let scoreboard: &'static mut ScoreBoard =
             unsafe { Self::get_mut() }.map_err(SleepError::Generic)?;
 
+        // Attempt to reclaim any aborted slots. If we fail, we don't proceed with the dispatching,
+        // as we could block indefinitely.
         scoreboard.reclaim_aborted_slots()?;
 
         // Wait for a scoreboard slot to become available.
@@ -191,15 +193,23 @@ impl ScoreBoard {
         };
 
         // Signal that a new kernel call is pending.
+        let slot: &mut ScoreBoardSlot = &mut scoreboard.slots[slot_index];
+        slot.mark_signaled();
+
         if let Err(error) = unsafe { scoreboard.pending_kcalls.up() } {
             let reason: &str = "failed to signal pending kernel calls";
-            error!("{reason}");
+            error!("{reason} (error={error:?})");
 
-            scoreboard.release_failed_dispatch_slot(slot_index);
-
+            // Attempt to rollback the slot acquisition. We first attempt to signal that a slot
+            // became available and only if that succeeds we mark the slot as free again. If the
+            // signaling fails, the slot is marked as aborted, preventing other dispatchers from
+            // reusing it prematurely.
             if let Err(rollback_error) = unsafe { scoreboard.available_slots.up() } {
                 let rollback_reason: &str = "failed to rollback available scoreboard slots";
                 warn!("{rollback_reason}: {rollback_error:?}");
+                slot.mark_aborted(AbortedDisposition::BeforeSignal);
+            } else {
+                slot.mark_free();
             }
 
             return Err(SleepError::Generic(error));
@@ -211,32 +221,29 @@ impl ScoreBoard {
             unsafe { handled.wait(None) }
         };
 
-        if let Err(error) = wait_result {
-            let slot: &mut ScoreBoardSlot = &mut scoreboard.slots[slot_index];
-            slot.mark_aborted();
-
-            let reason: &str = "failed to wait for kernel call handling";
-            error!("{reason}");
-            return Err(error);
-        }
-
-        // Signal slot availability before freeing it; if signaling fails the slot is still marked
-        // as in use, preventing other dispatchers from reusing it prematurely. This is safe because
-        // the up() operation does not incur in a context switch.
-        if let Err(error) = unsafe { scoreboard.available_slots.up() } {
-            let reason: &str = "failed to signal available scoreboard slots";
-            error!("{reason}");
-            return Err(SleepError::Generic(error));
-        }
-
         // Get the slot.
         let slot: &mut ScoreBoardSlot = &mut scoreboard.slots[slot_index];
+
+        if let Err(error) = wait_result {
+            slot.mark_aborted(AbortedDisposition::AfterSignal);
+            let reason: &str = "failed to wait for kernel call handling";
+            warn!("{reason} (error={error:?})");
+            return Err(error);
+        }
 
         // Retrieve the result.
         let result: Option<KcallResult> = slot.result.take();
 
-        // Free the slot.
-        slot.mark_free();
+        // Attempt to signal slot availability. If we fail, we mark the slot as aborted to prevent
+        // other dispatchers from reusing it prematurely. We do not fail the dispatching at this
+        // point, as the kernel call was already handled successfully.
+        if let Err(error) = unsafe { scoreboard.available_slots.up() } {
+            slot.mark_aborted(AbortedDisposition::BeforeSignal);
+            let reason: &str = "failed to signal available scoreboard slots";
+            warn!("{reason} (error={error:?})");
+        } else {
+            slot.mark_free();
+        }
 
         match result {
             Some(ret) => Ok(ret),
@@ -253,10 +260,10 @@ impl ScoreBoard {
     ///
     /// Acquires the next pending slot and returns its arguments for processing.
     ///
-    /// # Returns
+    /// # Return
     ///
     /// On successful completion, this function returns the slot index paired with its corresponding
-    /// kernel arguments. On failure, it returns an object that describes the error
+    /// kernel arguments. On failure, it returns an object that describes the error.
     ///
     /// # Safety
     ///
@@ -273,8 +280,10 @@ impl ScoreBoard {
 
         // Wait for a pending kernel call.
         if let Err(error) = scoreboard.pending_kcalls.try_down() {
-            let reason: &str = "no pending kernel calls";
-            error!("{reason}");
+            // Only log actual errors.
+            if error.code != ErrorCode::TryAgain {
+                error!("failed to wait for pending kernel calls (error={error:?})");
+            }
             return Err(error);
         }
 
@@ -347,7 +356,7 @@ impl ScoreBoard {
             })?;
 
         match slot.state {
-            ScoreBoardSlotState::InUse => {
+            ScoreBoardSlotState::Signaled => {
                 slot.result = Some(ret);
 
                 // Notify the waiting dispatcher.
@@ -359,12 +368,28 @@ impl ScoreBoard {
 
                 Ok(())
             },
-            ScoreBoardSlotState::Aborted => {
+            ScoreBoardSlotState::Aborted(AbortedDisposition::AfterSignal) => {
                 slot.result = None;
+
+                if let Err(error) = unsafe { scoreboard.available_slots.up() } {
+                    slot.mark_aborted(AbortedDisposition::BeforeSignal);
+                    let reason: &str = "failed to recycle aborted scoreboard slot";
+                    error!("{reason}");
+                    return Err(error);
+                }
+
+                slot.mark_free();
+
                 Ok(())
             },
-            ScoreBoardSlotState::Free => {
-                let reason: &str = "slot is not in use";
+            ScoreBoardSlotState::Aborted(AbortedDisposition::BeforeSignal) => {
+                slot.result = None;
+                slot.mark_free();
+                warn!("kernel handled slot aborted before signaling");
+                Ok(())
+            },
+            _ => {
+                let reason: &str = "slot is not in a signalable state";
                 error!("{reason}");
                 Err(Error::new(ErrorCode::TryAgain, reason))
             },
@@ -374,45 +399,23 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Releases a scoreboard slot when dispatch fails after acquiring it but before the kernel
-    /// thread can process the request.
-    ///
-    /// # Parameters
-    ///
-    /// - `slot_index`: Index of the slot that must be rolled back.
-    ///
-    /// # Returns
-    ///
-    /// This function does not return a value.
-    ///
-    fn release_failed_dispatch_slot(&mut self, slot_index: usize) {
-        if let Some(slot) = self.slots.get_mut(slot_index) {
-            slot.mark_free();
-        } else {
-            warn!("failed to rollback scoreboard slot: invalid index (slot_index={slot_index})");
-        }
-    }
-
-    ///
-    /// # Description
-    ///
     /// Reclaims slots that were marked as aborted by dispatchers and releases them back to the
     /// available pool.
     ///
-    /// # Returns
+    /// # Return
     ///
     /// On successful completion, this function returns empty. Otherwise, it returns a sleep error
     /// describing why the reclamation failed.
     ///
     fn reclaim_aborted_slots(&mut self) -> Result<(), SleepError> {
         for slot in self.slots.iter_mut() {
-            if matches!(slot.state, ScoreBoardSlotState::Aborted) {
-                slot.mark_free();
+            if slot.aborted_before_signal() {
                 if let Err(error) = unsafe { self.available_slots.up() } {
                     let reason: &str = "failed to recycle aborted scoreboard slot";
                     error!("{reason}");
                     return Err(SleepError::Generic(error));
                 }
+                slot.mark_free();
             }
         }
 
@@ -433,7 +436,19 @@ impl ScoreBoard {
 enum ScoreBoardSlotState {
     Free,
     InUse,
-    Aborted,
+    Signaled,
+    Aborted(AbortedDisposition),
+}
+
+///
+/// # Description
+///
+/// Captures how an aborted slot should be reclaimed.
+///
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AbortedDisposition {
+    BeforeSignal,
+    AfterSignal,
 }
 
 //==================================================================================================
@@ -452,14 +467,6 @@ impl ScoreBoardSlotIndex {
     /// # Description
     ///
     /// Converts the slot index into a `usize` for array access.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because the returned index is consumed by code that mutates the
-    /// scoreboard without locking, relying on interrupts being disabled for exclusivity.
-    ///
-    /// It is safe to call this function if and only if the following conditions are met:
-    /// - Interrupts remain disabled while the returned index is used.
     ///
     fn as_usize(&self) -> usize {
         self.0
@@ -532,8 +539,11 @@ impl ScoreBoardSlot {
     /// True if the slot is pending processing, false otherwise.
     ///
     fn is_pending(&self) -> bool {
-        matches!(self.state, ScoreBoardSlotState::InUse | ScoreBoardSlotState::Aborted)
-            && self.result.is_none()
+        matches!(
+            self.state,
+            ScoreBoardSlotState::Signaled
+                | ScoreBoardSlotState::Aborted(AbortedDisposition::AfterSignal)
+        ) && self.result.is_none()
     }
 
     ///
@@ -590,8 +600,26 @@ impl ScoreBoardSlot {
     ///
     /// Marks the slot as aborted so the kernel handler can recycle it safely.
     ///
-    fn mark_aborted(&mut self) {
-        self.state = ScoreBoardSlotState::Aborted;
+    fn mark_aborted(&mut self, disposition: AbortedDisposition) {
+        self.state = ScoreBoardSlotState::Aborted(disposition);
         self.result = None;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the slot as visible to the kernel thread after the pending semaphore is signaled.
+    ///
+    fn mark_signaled(&mut self) {
+        self.state = ScoreBoardSlotState::Signaled;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether the slot was aborted before the kernel handler observed it.
+    ///
+    fn aborted_before_signal(&self) -> bool {
+        matches!(self.state, ScoreBoardSlotState::Aborted(AbortedDisposition::BeforeSignal))
     }
 }
