@@ -9,6 +9,7 @@ use crate::{
     event,
     ipc,
     kcall::{
+        KcallArgs,
         KcallResult,
         ScoreBoard,
     },
@@ -125,15 +126,20 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
 
         // Dispatch kernel call for remote execution.
-        _ => match ScoreBoard::get_mut() {
-            // SAFETY: The calling thread is not the kernel and no resources are held.
-            Ok(scoreboard) => {
-                match unsafe { scoreboard.dispatch(number, pid, tid, arg0, arg1, arg2, arg3) } {
-                    Ok(result) => result,
-                    Err(sleep_error) => handle_sleep_error(sleep_error),
-                }
-            },
-            Err(e) => KcallResult::Error(e.code.into()),
+        _ => {
+            let args: KcallArgs = KcallArgs {
+                number,
+                pid,
+                tid,
+                arg0,
+                arg1,
+                arg2,
+                arg3,
+            };
+            match unsafe { ScoreBoard::dispatch(args) } {
+                Ok(result) => result,
+                Err(sleep_error) => handle_sleep_error(sleep_error),
+            }
         },
     }
     .into()

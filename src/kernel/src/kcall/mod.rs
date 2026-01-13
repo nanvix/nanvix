@@ -28,7 +28,13 @@ pub(crate) use scoreboard::ScoreBoard;
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Initializes the kernel call subsystem, including the global scoreboard used for dispatching
+/// kernel calls to the handler thread.
+///
 pub fn init() {
     info!("initializing kernel call handler...");
-    ScoreBoard::init();
+    unsafe { ScoreBoard::init() };
 }

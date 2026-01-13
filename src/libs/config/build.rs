@@ -148,6 +148,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     constants.push_str(&format!("pub const COND_OPEN_MAX: usize = {val};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "scoreboard_slots"),
+        "scoreboard_slots",
+    );
+    constants.push_str(&format!("pub const SCOREBOARD_SLOTS: usize = {val};\n"));
+
+    let val: usize = parse_hex_or_decimal_usize(
         required_key(&kernel_config_toml, "ikc_poll_batch_size"),
         "ikc_poll_batch_size",
     );
