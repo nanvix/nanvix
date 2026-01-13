@@ -28,9 +28,9 @@ use ::sys::error::{
 /// A type that represents a semaphore.
 ///
 pub struct Semaphore {
-    /// Value.
+    /// Current count of available resources.
     value: AtomicUsize,
-    /// Threads that are sleeping on the semaphore.
+    /// Condition variable for threads waiting on the semaphore.
     sleeping: Condvar,
 }
 
@@ -71,26 +71,33 @@ impl Semaphore {
     ///
     /// This function panics if the kernel process tries to sleep.
     ///
-    /// This function is unsafe because it blocks the calling thread until it is woken up by another
-    /// thread.
+    /// This function is unsafe because:
+    /// - It mutates global variables without explicit synchronization.
+    /// - It may block the calling thread until it is woken up by another thread.
     ///
     /// This function is safe to use if and only if the following conditions are met:
-    ///
+    /// - The caller is running with interrupts disabled.
     /// - The calling process is not the kernel process.
     /// - This function is invoked without holding any resources.
     ///
     pub unsafe fn down(&self) -> Result<(), SleepError> {
-        let value: usize = loop {
-            let value = self.value.load(Ordering::SeqCst);
-            if value > 0 {
-                break value;
+        loop {
+            if self
+                .value
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                    if value == 0 {
+                        None
+                    } else {
+                        Some(value - 1)
+                    }
+                })
+                .is_ok()
+            {
+                return Ok(());
             }
+
             self.sleeping.wait(None)?;
-        };
-
-        self.value.store(value - 1, Ordering::SeqCst);
-
-        Ok(())
+        }
     }
 
     ///
@@ -101,19 +108,25 @@ impl Semaphore {
     /// # Returns
     ///
     /// If the semaphore is not busy, it is acquired and an empty result is returned. If the
-    /// semaphore is busy, [`ErrorCode::OperationWouldBlock`] is returned instead. If an error
-    /// occurs, an error is returned instead.
+    /// semaphore is busy, [`ErrorCode::TryAgain`] is returned instead. If an error occurs, an error
+    /// is returned instead.
     ///
     pub fn try_down(&self) -> Result<(), Error> {
-        let value: usize = self.value.load(Ordering::SeqCst);
-
-        if value == 0 {
-            return Err(Error::new(ErrorCode::TryAgain, "semaphore is busy"));
+        if self
+            .value
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                if value == 0 {
+                    None
+                } else {
+                    Some(value - 1)
+                }
+            })
+            .is_ok()
+        {
+            return Ok(());
         }
 
-        self.value.store(value - 1, Ordering::SeqCst);
-
-        Ok(())
+        Err(Error::new(ErrorCode::TryAgain, "semaphore is busy"))
     }
 
     ///
@@ -127,11 +140,16 @@ impl Semaphore {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it operates on global variables.
+    /// This function is unsafe because:
+    /// - It mutates global variables without explicit synchronization.
     ///
     /// This function is safe to use if and only if the following conditions are met:
-    ///
+    /// - The caller is running with interrupts disabled.
     /// - The calling process does not hold a reference to the process manager.
+    ///
+    /// # Notes
+    ///
+    /// - This function does not trigger an immediate context switch.
     ///
     pub unsafe fn up(&self) -> Result<(), Error> {
         self.value.fetch_add(1, Ordering::SeqCst);
