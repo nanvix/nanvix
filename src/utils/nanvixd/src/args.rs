@@ -52,6 +52,8 @@ pub struct Args {
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
+    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
+    netns_pool_size: usize,
     /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM.
@@ -91,6 +93,10 @@ impl Args {
     pub const OPT_HWLOC: &'static str = "-hwloc";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
+    /// Command-line option that sets the network namespace pool size.
+    pub const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
+    /// Default netns pool size for prefill mode.
+    pub const DEFAULT_NETNS_POOL_SIZE: usize = 128;
     /// Command-line flag that enables L2 deployment mode.
     pub const OPT_L2: &'static str = "-l2";
     /// Command-line option that sets the control plane socket type.
@@ -132,6 +138,7 @@ impl Args {
             Local::now().format("%Y_%m_%d_%H_%M")
         ));
         let mut hwloc: Option<HwLoc> = None;
+        let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
         let mut l2_snapshot_path: String = String::new();
@@ -214,6 +221,10 @@ impl Args {
                     i += 1;
                     log_directory = args[i].clone();
                 },
+                Self::OPT_NETNS_POOL_SIZE => {
+                    i += 1;
+                    netns_pool_size = args[i].parse()?;
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -287,6 +298,7 @@ impl Args {
             l2_snapshot_path,
             console_file,
             hwloc,
+            netns_pool_size,
             log_directory,
             l2,
             control_plane_socket_type,
@@ -326,6 +338,8 @@ Options:
              affinity/topology.
   {log_dir} <log_dir>                       Directory for log files (Default: \
              {DEFAULT_LOG_DIRECTORY}).
+  {netns_pool_size} <size>                  Netns pool prefill size (Default: \
+             {default_netns_pool_size}; 0 enables lazy initialization).
   {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
              <-> linuxd).
   {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
@@ -343,6 +357,8 @@ Options:
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             hwloc = Self::OPT_HWLOC,
             log_dir = Self::OPT_LOG_DIRECTORY,
+            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
+            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
             control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
             system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
@@ -453,6 +469,19 @@ Options:
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the netns pool prefill size.
+    ///
+    /// # Returns
+    ///
+    /// The prefill size (0 for lazy initialization).
+    ///
+    pub fn netns_pool_size(&self) -> usize {
+        self.netns_pool_size
     }
 
     ///
