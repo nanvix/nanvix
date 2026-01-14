@@ -307,7 +307,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error type-safe proc raw
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust linux-app arch-rust
+ALL_GUEST_TESTS := testd file-rust thread-rust linux-app arch-rust
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 

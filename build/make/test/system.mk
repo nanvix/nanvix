@@ -6,7 +6,7 @@ comma:=,
 # List of supported functions in the L2 VM.
 # FIXME (#986): modify tests such that they don't rely on linuxd being invoked
 # from the root of the source tree.
-MICROVM_L2_BLOCKLIST := dlfcn-c file-c file-rust python3 qjs
+MICROVM_L2_BLOCKLIST := dlfcn-c file-c file-rust thread-rust python3 qjs
 
 # HTTP mode test rule: Runs tests through nanvixd's HTTP API.
 # Parameters: (binary_dir, test_name, extension, program_args, program_input, expected_output)
@@ -43,6 +43,7 @@ $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,'','[]','ok'
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok'))
+$(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),thread-rust,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
@@ -76,6 +77,7 @@ $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),linux-app,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),file-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,,ok))
+$(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),thread-rust,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),network-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,,ok))
