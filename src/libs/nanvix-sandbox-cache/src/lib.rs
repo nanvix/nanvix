@@ -199,6 +199,12 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// This function returns an error if network namespace pool initialization fails.
     ///
     pub fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+        #[cfg(not(feature = "single-process"))]
+        let netns_init_strategy: NetnsPoolInitStrategy = match config.netns_pool_size() {
+            0 => NetnsPoolInitStrategy::Lazy,
+            size => NetnsPoolInitStrategy::Prefill(size),
+        };
+
         Ok(Arc::new(Mutex::new(Self {
             config,
             running_sandboxes: HashMap::new(),
@@ -211,7 +217,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
                     ::config::linuxd::GATEWAY_PORT_RANGE_END,
                 )?,
-                NetnsPoolInitStrategy::Lazy,
+                netns_init_strategy,
             )?,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
@@ -690,6 +696,7 @@ mod tests {
             SocketType::Unix,
             None,
             None,
+            128,
             &format!("{}/kernel.elf", tmp_dir),
             None,
             &format!("{}/toolchain", tmp_dir),
@@ -718,6 +725,7 @@ mod tests {
             SocketType::Unix,
             None,
             None,
+            0,
             &format!("{}/kernel.elf", tmp_dir),
             &format!("{}/linuxd.elf", tmp_dir),
             &format!("{}/uservm.elf", tmp_dir),
@@ -761,6 +769,7 @@ mod tests {
                 socket_type,
                 console_file,
                 hwloc,
+                128,
                 &format!("{}/kernel.elf", tmp_dir),
                 None,
                 &format!("{}/toolchain", tmp_dir),
@@ -779,6 +788,7 @@ mod tests {
                 socket_type,
                 console_file,
                 hwloc,
+                128,
                 &format!("{}/kernel.elf", tmp_dir),
                 &format!("{}/linuxd.elf", tmp_dir),
                 &format!("{}/uservm.elf", tmp_dir),
