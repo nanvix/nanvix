@@ -47,6 +47,7 @@ members = [
         "src/libs/user-vm-api",
         "src/tests/arch-rust",
         "src/tests/file-rust",
+        "src/tests/thread-rust",
         "src/tests/linux-app",
         "src/tests/testd",
         "src/uservm",
