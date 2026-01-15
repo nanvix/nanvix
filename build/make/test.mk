@@ -16,6 +16,7 @@ run-nanvixd-http-tests: | \
 	test-nanvixd-http-file-c \
 	test-nanvixd-http-file-rust \
 	test-nanvixd-http-thread-rust \
+	test-nanvixd-http-stress-rust \
 	test-nanvixd-http-hello-c \
 	test-nanvixd-http-hello-cpp \
 	test-nanvixd-http-hello-wasm \
@@ -43,6 +44,7 @@ run-nanvixd-terminal-tests: | \
 	test-nanvixd-terminal-file-c \
 	test-nanvixd-terminal-file-rust \
 	test-nanvixd-terminal-thread-rust \
+	test-nanvixd-terminal-stress-rust \
 	test-nanvixd-terminal-thread-c \
 	test-nanvixd-terminal-network-c \
 	test-nanvixd-terminal-misc-c \

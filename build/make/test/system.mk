@@ -6,7 +6,7 @@ comma:=,
 # List of supported functions in the L2 VM.
 # FIXME (#986): modify tests such that they don't rely on linuxd being invoked
 # from the root of the source tree.
-MICROVM_L2_BLOCKLIST := dlfcn-c file-c file-rust thread-rust python3 qjs
+MICROVM_L2_BLOCKLIST := dlfcn-c file-c file-rust thread-rust stress-rust python3 qjs
 
 # HTTP mode test rule: Runs tests through nanvixd's HTTP API.
 # Parameters: (binary_dir, test_name, extension, program_args, program_input, expected_output)
@@ -44,6 +44,7 @@ $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),file-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),thread-rust,.elf,'','[]','ok'))
+$(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),stress-rust,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),network-c,.elf,'','[]','ok'))
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,'','[]','ok'))
@@ -61,9 +62,9 @@ test-nanvixd-terminal-$(2): $(1)/$(2)$(3)
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ifneq ($(L2_VM),yes)
 	@echo "Running terminal $(2) test..."
-	@rm -f /tmp/*.socket || true
+	@find /tmp -maxdepth 1 -type d -name 'nvx:*' -mmin +5 -exec rm -rf {} + >/dev/null 2>&1 || true
 	@$(SCRIPTS_DIR)/test-nanvixd.sh terminal '' "$(1)/$(2)$(3)" '' '$(4)' '$(5)' $(TIMEOUT)
-	@rm -f /tmp/*.socket || true
+	@find /tmp -maxdepth 1 -type d -name 'nvx:*' -mmin +5 -exec rm -rf {} + >/dev/null 2>&1 || true
 endif
 endif
 endef
@@ -78,6 +79,7 @@ $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),dlfcn-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),file-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),file-rust,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),thread-rust,.elf,,ok))
+$(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),stress-rust,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),thread-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),network-c,.elf,,ok))
 $(eval $(call NANVIXD_TERMINAL_TEST_RULE,$(BINARIES_DIR),misc-c,.elf,,ok))
