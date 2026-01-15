@@ -330,15 +330,35 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
 
         // Gateway listener for this user VM.
-        Ok((
-            user_vm_id,
-            UserVmHandle::new(
-                user_vm_writer,
-                &gateway_sockaddr,
-                new_msg.gateway_socket_type(),
-                user_vm_reader_handle,
-            ),
-        ))
+        let user_vm_handle: UserVmHandle = UserVmHandle::new(
+            user_vm_writer,
+            &gateway_sockaddr,
+            new_msg.gateway_socket_type(),
+            user_vm_reader_handle,
+        );
+
+        {
+            let gateway_user_vm_id: UserVmIdentifier = user_vm_id;
+            let gateway_handle: UserVmHandle = user_vm_handle.clone();
+            tokio::spawn(async move {
+                trace!(
+                    "accept_connections(): priming gateway listener (uvm_id={gateway_user_vm_id})"
+                );
+                if let Err(error) = gateway_handle.get_gateway_vm_stream().await {
+                    error!(
+                        "accept_connections(): failed to prime gateway listener \
+                         (uvm_id={gateway_user_vm_id}, error={error:?})"
+                    );
+                } else {
+                    trace!(
+                        "accept_connections(): gateway listener primed \
+                         (uvm_id={gateway_user_vm_id})"
+                    );
+                }
+            });
+        }
+
+        Ok((user_vm_id, user_vm_handle))
     }
 
     ///
