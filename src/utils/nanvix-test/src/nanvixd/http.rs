@@ -113,6 +113,8 @@ impl NanvixdHttp {
         command.stdin(Stdio::null());
         command.stdout(Stdio::from(stdout_file));
         command.stderr(Stdio::from(stderr_file));
+        command.arg(::nanvixd::args::Args::OPT_NETNS_POOL_SIZE);
+        command.arg(nanvixd_args.netns_pool_size().to_string());
         command.arg(::nanvixd::args::Args::OPT_HTTP_SOCKADDR);
         command.arg(http_address.as_str());
 
@@ -238,6 +240,8 @@ pub struct NanvixdHttpArgs {
     ipv4_addr: String,
     /// TCP port bound by the daemon instance.
     port_num: u16,
+    /// Netns pool prefill size forwarded to the Nanvix Daemon.
+    netns_pool_size: usize,
     /// Directory where Nanvix Daemon components should emit logs.
     log_directory: PathBuf,
 }
@@ -256,6 +260,7 @@ impl NanvixdHttpArgs {
     /// - `port_num`: TCP port used by the Nanvix Daemon HTTP interface.
     /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
     /// - `l2`: Flag indicating whether the Nanvix Daemon should enable L2 deployment mode.
+    /// - `netns_pool_size`: Netns pool prefill size forwarded to the Nanvix Daemon.
     /// - `log_directory`: Path where component logs should be persisted.
     ///
     /// # Return Value
@@ -263,6 +268,7 @@ impl NanvixdHttpArgs {
     /// Returns a ready-to-use argument bundle when both log files can be created; returns an error
     /// when the stdout or stderr log file cannot be opened.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         stdout_file_path: &Path,
         stderr_file_path: &Path,
@@ -270,6 +276,7 @@ impl NanvixdHttpArgs {
         port_num: u16,
         hwloc_file_path: Option<String>,
         l2: bool,
+        netns_pool_size: usize,
         log_directory: &Path,
     ) -> Result<Self> {
         let stdout_file_handle: File = match OpenOptions::new()
@@ -313,6 +320,7 @@ impl NanvixdHttpArgs {
             l2,
             ipv4_addr: ipv4_addr.to_string(),
             port_num,
+            netns_pool_size,
             log_directory: log_directory.to_path_buf(),
         })
     }
@@ -380,6 +388,19 @@ impl NanvixdHttpArgs {
     ///
     fn port_num(&self) -> u16 {
         self.port_num
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the netns pool prefill size forwarded to the Nanvix Daemon.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the netns pool size.
+    ///
+    fn netns_pool_size(&self) -> usize {
+        self.netns_pool_size
     }
 
     ///
