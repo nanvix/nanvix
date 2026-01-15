@@ -130,8 +130,11 @@ impl UserVm {
         let initrd_args: Option<String> = args.program_args().map(|s| s.to_string());
         let stderr_file: Option<String> = args.console_file().map(|s| s.to_string());
         let user_vm_id: UserVmIdentifier = args.uservm_id();
-        let control_plane_connect_sockaddr_type: String =
-            args.control_plane_connect_socket_info().1.to_str().to_string();
+        let control_plane_connect_sockaddr_type: String = args
+            .control_plane_connect_socket_info()
+            .1
+            .to_str()
+            .to_string();
         let system_vm_sockaddr_type: String = args.system_vm_socket_info().1.to_str().to_string();
         let gateway_sockaddr_type: String = args.gateway_socket_info().1.to_str().to_string();
 
@@ -160,7 +163,10 @@ impl UserVm {
                 .await
                 {
                     Ok(Ok(stream)) => {
-                        debug!("user VM connected to control-plane (addr={control_plane_connect_addr})");
+                        debug!(
+                            "user VM connected to control-plane \
+                             (addr={control_plane_connect_addr})"
+                        );
                         stream
                     },
                     Ok(Err(e)) => {
@@ -269,7 +275,16 @@ impl UserVm {
                     });
 
                 // Wait for VMM thread to finish.
-                let result: Result<u8> = match vmm_handle.await? {
+                let vm_exit_status: Result<u16> = vmm_handle.await?;
+
+                // Wait for I/O thread to finish before deriving the final status.
+                let io_result: Result<()> = io_thread.await?;
+                if let Err(error) = io_result {
+                    let reason: String = format!("I/O thread failed (error={error:?})");
+                    error!("spawn(): {reason}");
+                }
+
+                let result: Result<u8> = match vm_exit_status {
                     Ok(exit_status) => {
                         if exit_status == 0 {
                             return Ok(0);
@@ -295,12 +310,6 @@ impl UserVm {
                         Err(anyhow::anyhow!(reason))
                     },
                 };
-
-                // Wait for I/O thread to finish.
-                if let Err(error) = io_thread.await? {
-                    error!("spawn(): I/O thread failed (error={error:?})");
-                    // Don't bail as we want to return the VM's exit code.
-                }
 
                 result
             })
