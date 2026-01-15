@@ -78,20 +78,28 @@ impl UserVmHandle {
     pub async fn get_gateway_vm_stream(
         &self,
     ) -> Result<(Arc<Mutex<SocketStreamReader>>, Arc<Mutex<SocketStreamWriter>>)> {
-        // Fast path: if reader already initialized, attempt to reuse both halves.
-        if let Some(reader_arc) = self.gateway_reader.lock().await.as_ref().cloned() {
-            trace!("Reusing existing gateway stream reader");
-            if let Some(writer_arc) = self.gateway_writer.lock().await.as_ref().cloned() {
-                trace!("Reusing existing gateway stream");
-                return Ok((reader_arc, writer_arc));
-            }
-            unreachable!("gateway reader initialized but writer not");
-        }
-        // Slow path: need to establish the gateway connection.
+        // Acquire reader and writer locks upfront to avoid races between fast and slow paths.
         let mut reader_slot: MutexGuard<'_, Option<Arc<Mutex<SocketStreamReader>>>> =
             self.gateway_reader.lock().await;
         let mut writer_slot: MutexGuard<'_, Option<Arc<Mutex<SocketStreamWriter>>>> =
             self.gateway_writer.lock().await;
+
+        // Fast path: if reader already initialized, attempt to reuse both halves.
+        match (reader_slot.as_ref().cloned(), writer_slot.as_ref().cloned()) {
+            (Some(reader_arc), Some(writer_arc)) => {
+                trace!("reusing existing gateway stream");
+                return Ok((reader_arc, writer_arc));
+            },
+            (Some(_), None) | (None, Some(_)) => {
+                unreachable!("gateway reader/writer initialized asymmetrically");
+            },
+            (None, None) => {
+                trace!("gateway stream not initialized; binding new listener");
+            },
+        };
+
+        // Slow path: need to establish the gateway connection.
+
         let mut gateway_listener_slot: MutexGuard<'_, Option<SocketListener>> =
             self.gateway_listener.lock().await;
 
