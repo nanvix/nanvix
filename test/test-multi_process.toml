@@ -99,6 +99,12 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/stress-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/thread-c.elf"
 input = "[]"
 expected_output = "ok"
@@ -254,6 +260,11 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/thread-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/stress-rust.elf"
 expected_output = "ok"
 
 [[tests]]
