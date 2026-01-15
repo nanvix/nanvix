@@ -94,9 +94,10 @@ jobs:
         path: |
           sysroot-debug
           sysroot-release
-        key: ${{ runner.os }}-ci-sysroot-${{ matrix.build-type }}-${{ hashFiles('Makefile', 'scripts/build-opt.sh', 'scripts/common/logging.sh', 'scripts/common/utils.sh') }}
+        key: ${{ runner.os }}-ci-sysroot-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}-${{ hashFiles('Makefile', 'scripts/build-opt.sh', 'scripts/common/logging.sh', 'scripts/common/utils.sh') }}
         restore-keys: |
-          ${{ runner.os }}-ci-sysroot-${{ matrix.build-type }}-
+          ${{ runner.os }}-ci-sysroot-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}-
+          ${{ runner.os }}-ci-sysroot-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-
           ${{ runner.os }}-ci-sysroot-
 
     - name: "Check Code Format"
@@ -215,7 +216,7 @@ jobs:
         path: |
           sysroot-debug
           sysroot-release
-        key: ${{ runner.os }}-ci-sysroot-${{ matrix.build-type }}-${{ hashFiles('Makefile', 'scripts/build-opt.sh', 'scripts/common/logging.sh', 'scripts/common/utils.sh') }}
+        key: ${{ runner.os }}-ci-sysroot-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}-${{ hashFiles('Makefile', 'scripts/build-opt.sh', 'scripts/common/logging.sh', 'scripts/common/utils.sh') }}
 
     - id: release-archive
       name: "Create Release Archive"
