@@ -228,6 +228,8 @@ pub struct RunnerConfig {
     pub nanvixd_ready_attempts_max: usize,
     /// Interval (in milliseconds) between readiness probes for the Nanvix Daemon HTTP endpoint.
     pub nanvixd_ready_retry_interval_ms: u64,
+    /// Netns pool prefill size forwarded to the Nanvix Daemon.
+    pub netns_pool_size: usize,
     /// Milliseconds to wait after tearing down a User VM before spawning the next workload.
     pub cleanup_uservm_sleep_duration_ms: u64,
     /// Milliseconds to wait after tearing down a User VM when L2 mode is enabled.
@@ -318,6 +320,12 @@ impl RunnerConfig {
                 "nanvixd_ready_retry_interval_ms",
                 "runner.nanvixd_ready_retry_interval_ms",
                 default_nanvixd_ready_retry_interval_ms(),
+            )?,
+            netns_pool_size: read_usize_with_default(
+                table,
+                "netns_pool_size",
+                "runner.netns_pool_size",
+                default_netns_pool_size(),
             )?,
             cleanup_uservm_sleep_duration_ms: read_u64_with_default(
                 table,
@@ -665,6 +673,19 @@ fn default_nanvixd_ready_attempts_max() -> usize {
 ///
 fn default_nanvixd_ready_retry_interval_ms() -> u64 {
     DEFAULT_NANVIXD_READY_RETRY_INTERVAL_MS
+}
+
+///
+/// # Description
+///
+/// Returns the default netns pool prefill size for the Nanvix Daemon.
+///
+/// # Return Value
+///
+/// Returns the netns pool size applied when the field is omitted.
+///
+fn default_netns_pool_size() -> usize {
+    ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE
 }
 
 ///

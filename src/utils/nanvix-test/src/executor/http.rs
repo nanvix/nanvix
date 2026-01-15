@@ -110,6 +110,7 @@ pub(crate) async fn test_with_http_executor(
         runner_config.port_num,
         hwloc_file_path.clone(),
         l2_enabled,
+        runner_config.netns_pool_size,
         log_layout.test_directory(),
     )?;
 
