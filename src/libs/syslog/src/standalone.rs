@@ -15,13 +15,22 @@ use ::core::{
 //==================================================================================================
 
 #[macro_export]
-macro_rules! trace{
-    ( $($arg:tt)* ) => ({
-		if $crate::MAX_LEVEL >= $crate::LogLevel::Trace {
+macro_rules! trace {
+    (target: $target:expr, $($arg:tt)+) => ({
+        if $crate::MAX_LEVEL >= $crate::LogLevel::Trace {
+            use core::fmt::Write;
+            let _ = writeln!(
+                &mut $crate::Logger::get($target, $crate::LogLevel::Trace),
+                $($arg)+
+            );
+        }
+    });
+    ( $($arg:tt)+ ) => ({
+        if $crate::MAX_LEVEL >= $crate::LogLevel::Trace {
             use core::fmt::Write;
             let _ = writeln!(
                 &mut $crate::Logger::get(module_path!(), $crate::LogLevel::Trace),
-                $($arg)*
+                $($arg)+
             );
         }
     })
