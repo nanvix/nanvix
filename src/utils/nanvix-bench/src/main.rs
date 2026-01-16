@@ -548,6 +548,9 @@ impl Benchmark {
         linuxd_deployment: &LinuxdDeployment,
         user_vm_deployment: &UserVmDeployment,
     ) -> Result<()> {
+        // Start nanvixd once.
+        self.setup(linuxd_deployment);
+
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -557,9 +560,6 @@ impl Benchmark {
                 .progress_chars("#>-"),
         );
         pb.set_message("Benchmark progress:");
-
-        // Start nanvixd once.
-        self.setup(linuxd_deployment);
 
         // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
         let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {

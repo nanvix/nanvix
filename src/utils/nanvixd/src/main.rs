@@ -153,6 +153,7 @@ pub async fn main() -> Result<()> {
         args.system_vm_socket_type(),
         args.console_file().clone(),
         args.hwloc().clone(),
+        args.netns_pool_size(),
         &kernel_binary_path,
         #[cfg(not(feature = "single-process"))]
         &linuxd_binary_path,

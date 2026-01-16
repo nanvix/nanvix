@@ -14,6 +14,7 @@ nanvixd_shutdown_attempts_max = 10
 nanvixd_shutdown_retry_interval_ms = 100
 nanvixd_ready_attempts_max = 50
 nanvixd_ready_retry_interval_ms = 100
+netns_pool_size = 0
 cleanup_uservm_sleep_duration_ms = 10
 cleanup_l2_uservm_sleep_duration_ms = 100
 stream_collection_timeout_ms = 300000
