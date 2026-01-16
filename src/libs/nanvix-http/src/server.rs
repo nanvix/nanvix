@@ -110,9 +110,11 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     /// describing what went wrong during server operation.
     ///
     pub async fn run(&mut self) -> Result<()> {
+        // Initialize the sandbox cache before binding the socket, as some setups may use socket
+        // readiness to probe nanvixd's readiness.
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
 
         loop {
             tokio::select! {

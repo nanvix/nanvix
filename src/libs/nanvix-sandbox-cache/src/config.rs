@@ -48,6 +48,8 @@ pub struct SandboxCacheConfig<T> {
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<HwLoc>,
+    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
+    netns_pool_size: usize,
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the Linux Daemon binary.
@@ -92,6 +94,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     /// - `system_vm_socket_type`: Socket type for system VM communication.
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
+    /// - `netns_pool_size`: Number of network namespaces to prefill (0 for lazy initialization).
     /// - `kernel_binary_path`: Path to kernel binary.
     /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
     /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
@@ -113,6 +116,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
         system_vm_socket_type: SocketType,
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
+        netns_pool_size: usize,
         kernel_binary_path: &str,
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
         #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
@@ -131,6 +135,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
             system_vm_socket_type,
             console_file,
             hwloc,
+            netns_pool_size,
             kernel_binary_path: kernel_binary_path.to_string(),
             #[cfg(not(feature = "single-process"))]
             linuxd_binary_path: linuxd_binary_path.to_string(),
@@ -211,6 +216,19 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     pub fn hwloc(&self) -> Option<HwLoc> {
         self.hwloc.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the size of the prefilled network namespace pool.
+    ///
+    /// # Returns
+    ///
+    /// The number of namespaces to prefill (0 for lazy initialization).
+    ///
+    pub fn netns_pool_size(&self) -> usize {
+        self.netns_pool_size
     }
 
     ///
