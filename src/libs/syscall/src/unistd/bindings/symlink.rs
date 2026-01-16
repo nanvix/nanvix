@@ -44,8 +44,6 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
-    syslog::trace!("symlink(): target={target:?}, linkpath={linkpath:?}");
-
     // Attempt to convert `target`.
     let target: &str = {
         // Check if `target` is invalid.
