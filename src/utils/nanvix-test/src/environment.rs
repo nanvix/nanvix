@@ -439,19 +439,31 @@ fn cleanup_stale_netns() {
             .arg("link")
             .arg("del")
             .arg(&veth_name)
-            .status()
+            .output()
         {
             Err(error) => warn_with_policy!(
                 "cleanup_stale_netns(): failed to delete veth {} (error={})",
                 veth_name,
                 error
             ),
-            Ok(status) if !status.success() => warn_with_policy!(
-                "cleanup_stale_netns(): ip link del {} exited with status {}",
-                veth_name,
-                status
-            ),
-            Ok(_) => {},
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr: String = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    if stderr.contains("Cannot find device") {
+                        // Missing host veth should not be a warning because stale namespaces may
+                        // already be cleaned.
+                        info!("cleanup_stale_netns(): host veth {} already absent", veth_name);
+                    } else {
+                        warn_with_policy!(
+                            "cleanup_stale_netns(): ip link del {} exited with status {} \
+                             (stderr={})",
+                            veth_name,
+                            output.status,
+                            stderr
+                        );
+                    }
+                }
+            },
         }
 
         match Command::new("sudo")
