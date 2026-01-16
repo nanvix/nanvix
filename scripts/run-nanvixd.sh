@@ -648,6 +648,7 @@ main() {
         -http-addr "${NANVIXD_SOCKADDR}" \
         -toolchain-bin-dir "${TOOLCHAIN_BIN_DIR}" \
         -log-dir "${logs_dir}" \
+        -netns-pool-size "0" \
         "$([ "$L2_VM" = "yes" ] && echo "-l2")" \
         -console-file "${console_file_name}" &
     NANVIXD_PID=$!
