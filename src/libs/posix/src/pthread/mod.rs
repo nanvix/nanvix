@@ -484,13 +484,12 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ///
 /// # Description
 ///
-/// Sets the scheduling parameters of a thread.
+/// Sets the scheduling parameters stored in a thread attributes object.
 ///
 /// # Parameters
 ///
-/// - `thread`: Thread identifier.
-/// - `policy`: Scheduling policy.
-/// - `param`: Scheduling parameters.
+/// - `attr`: Thread attributes object to update.
+/// - `param`: Scheduling parameters to store in `attr`.
 ///
 /// # Returns
 ///
@@ -502,15 +501,21 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ///
 /// It is safe to call this function if the following conditions are met:
 ///
+/// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `param` points to a valid `sched_param` structure.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setschedparam(
-    thread: pthread_t,
-    policy: c_int,
+    attr: *mut pthread_attr_t,
     param: *const sched_param,
 ) -> c_int {
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::error!("pthread_attr_setschedparam(): invalid attribute pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
     // Check if `param` is not valid.
     if param.is_null() {
         ::syslog::error!("pthread_attr_setschedparam(): invalid sched param pointer");
