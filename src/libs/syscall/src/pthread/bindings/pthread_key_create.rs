@@ -13,6 +13,7 @@ use ::sysapi::{
     },
     sys_types::pthread_key_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -20,6 +21,7 @@ use ::sysapi::{
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_key_create(
     key_ptr: *mut pthread_key_t,
     destructor: Option<extern "C" fn(*mut c_void)>,

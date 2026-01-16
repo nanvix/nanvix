@@ -16,6 +16,7 @@ use ::sysapi::ffi::{
     c_int,
     c_long,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -43,10 +44,9 @@ use ::sysapi::ffi::{
 /// - [`sys::error::ErrorCode::ValueOutOfRange`] if the value of the specified system configuration variable
 ///   cannot be represented by the return type.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub extern "C" fn sysconf(name: c_int) -> c_long {
-    ::syslog::trace!("sysconf(): name={name:?}");
-
     // Attempt to convert `name` to `SysConfigName`.
     let name: SysConfigName = match SysConfigName::try_from(name) {
         Ok(name) => name,

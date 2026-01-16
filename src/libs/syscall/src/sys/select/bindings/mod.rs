@@ -18,6 +18,7 @@ use ::sysapi::{
         FD_SETSIZE,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Structures
@@ -52,6 +53,7 @@ use ::sysapi::{
 /// - If `timeout` is not null, it points to a valid `timeval` structure
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn select(
     nfds: c_int,
     readfds: *mut fd_set,
@@ -59,11 +61,6 @@ pub unsafe extern "C" fn select(
     errorfds: *mut fd_set,
     timeout: *const timeval,
 ) -> c_int {
-    ::syslog::trace!(
-        "select(): nfds={nfds:?}, readfds={readfds:?}, writefds={writefds:?}, \
-         errorfds={errorfds:?}, timeout={timeout:?}"
-    );
-
     // Check if `nfds` is not valid.
     if nfds < 0 || nfds as usize > FD_SETSIZE {
         ::syslog::error!(

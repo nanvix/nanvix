@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,6 +50,7 @@ use ::sysapi::ffi::c_int;
 /// - The process is not holding locks or resources that require explicit cleanup.
 /// - The exit status value is meaningful to the parent process or system.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _exit(status: c_int) -> ! {
     match sys::kcall::pm::exit(status) {

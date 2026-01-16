@@ -25,6 +25,10 @@ use ::sysapi::{
     time::timespec,
 };
 use ::syscall::sys::stat;
+use ::syslog::{
+    trace_libcall,
+    trace_syscall,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -53,8 +57,8 @@ use ::syscall::sys::stat;
 /// - `path` points to a valid null-terminated C string.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
-    ::syslog::trace!("chmod(): path={:?}, mode={}", path, mode);
     fchmodat(AT_FDCWD, path, mode, 0)
 }
 
@@ -81,9 +85,8 @@ pub unsafe extern "C" fn chmod(path: *const c_char, mode: mode_t) -> c_int {
 /// - No other thread calls this function at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
-    ::syslog::trace!("fchmod(): fd={}, mode={}", fd, mode);
-
     // Attempt to change the mode and parse the result.
     match stat::fchmod(fd, mode) {
         Ok(()) => 0,
@@ -120,20 +123,13 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
 /// - `path` points to a valid null-terminated C string.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn fchmodat(
     dirfd: c_int,
     path: *const c_char,
     mode: mode_t,
     flag: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "fchmodat(): dirfd={:?}, path={:?}, mode={:?}, flag={:?}",
-        dirfd,
-        path,
-        mode,
-        flag
-    );
-
     // Attempt to convert `path`.
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
@@ -194,9 +190,8 @@ pub unsafe extern "C" fn fchmodat(
 /// - This function is not called by multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
-    ::syslog::trace!("futimens(): fd={}, times={:p}", fd, times);
-
     // Check if `times` is invalid.
     if times.is_null() {
         ::syslog::error!("futimens(): fd={}, times={:p}", fd, times);
@@ -251,8 +246,8 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
 ///
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
-    ::syslog::trace!("lchmod(): path={:?}, mode={}", path, mode);
     fchmodat(AT_FDCWD, path, mode, AT_SYMLINK_NOFOLLOW)
 }
 
@@ -280,6 +275,7 @@ pub unsafe extern "C" fn lchmod(path: *const c_char, mode: mode_t) -> c_int {
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
@@ -331,8 +327,8 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::
 /// - `pathname` points to a valid null-terminated C string.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
-    ::syslog::trace!("mkdir(): pathname={:?}, mode={}", pathname, mode);
     mkdirat(AT_FDCWD, pathname, mode)
 }
 
@@ -360,9 +356,8 @@ pub unsafe extern "C" fn mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
 /// - `pathname` points to a valid null-terminated C string.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mode_t) -> c_int {
-    ::syslog::trace!("mkdirat(): dirfd={}, pathname={:?}, mode={}", dirfd, pathname, mode);
-
     // Attempt to convert `pathname`.
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
@@ -392,6 +387,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
     ::syslog::debug!("truncate(): not implemented");
@@ -417,8 +413,8 @@ pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
 /// This function is safe to call with any valid `mask`.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn umask(mask: u16) -> u16 {
-    ::syslog::trace!("umask(): mask={mask:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/597.
     ::syslog::debug!("umask(): not implemented");
     0
@@ -450,20 +446,13 @@ pub unsafe extern "C" fn umask(mask: u16) -> u16 {
 /// - `times` points to a valid array of length 2 of `timespec` structures.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn utimensat(
     dirfd: c_int,
     filename: *const c_char,
     times: *const timespec,
     flags: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "utimensat(): dirfd={}, filename={:?}, times={:?}, flags={}",
-        dirfd,
-        filename,
-        times,
-        flags
-    );
-
     // Convert C string to Rust string.
     let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
         Ok(pathname) => pathname,

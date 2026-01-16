@@ -7,6 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -44,9 +45,8 @@ use ::sysapi::ffi::c_int;
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn listen(sockfd: c_int, backlog: c_int) -> c_int {
-    ::syslog::trace!("listen(): sockfd={sockfd:?}, backlog={backlog:?}");
-
     // Call listen and check for errors.
     match crate::sys::socket::syscall::listen(sockfd, backlog) {
         Ok(()) => 0,

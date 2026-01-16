@@ -14,6 +14,7 @@ use ::sysapi::{
         c_ssize_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -43,12 +44,12 @@ use ::sysapi::{
 /// - `path` points to a valid null-terminated string.
 /// - `buf` points to a valid memory location of `bufsize` bytes.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readlink(
     path: *const c_char,
     buf: *mut c_char,
     bufsize: c_size_t,
 ) -> c_ssize_t {
-    ::syslog::trace!("readlink(): path={path:?}, buf={buf:?}, bufsize={bufsize}");
     unistd::bindings::readlinkat::readlinkat(AT_FDCWD, path, buf, bufsize)
 }

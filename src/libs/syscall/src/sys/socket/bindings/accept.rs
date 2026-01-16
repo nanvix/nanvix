@@ -16,6 +16,7 @@ use ::sysapi::{
         socklen_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,13 +56,12 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn accept(
     sockfd: c_int,
     sockaddr: *mut sockaddr,
     len: *mut socklen_t,
 ) -> c_int {
-    ::syslog::trace!("accept(): sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?}");
-
     // Check if sockaddr and len is invalid.
     if !sockaddr.is_null() && len.is_null() {
         ::syslog::error!(

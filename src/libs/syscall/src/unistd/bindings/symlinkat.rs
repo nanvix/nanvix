@@ -16,6 +16,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -45,6 +46,7 @@ use ::sysapi::ffi::{
 /// - `target` points to a valid null-terminated string.
 /// - `linkpath` points to a valid null-terminated string.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn symlinkat(
     target: *const c_char,

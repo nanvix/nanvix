@@ -12,6 +12,7 @@ use ::sysapi::{
     },
     sys_types::pthread_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,14 +41,8 @@ use ::sysapi::{
 /// - If `retval_ptr` is not null, it points to a valid pointer.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_join(thread: pthread_t, retval_ptr: *mut *mut c_void) -> c_int {
-    ::syslog::trace!(
-        "pthread_join(): _thread={:?}, retval_ptr={:?}, *retval={:?}",
-        thread,
-        retval_ptr,
-        *retval_ptr
-    );
-
     match crate::pthread::pthread_join(thread) {
         Ok(retval) => {
             ::syslog::trace!("pthread_join(): retval={:#x?}", retval);

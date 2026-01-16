@@ -19,6 +19,7 @@ mod bindings {
         time::timespec,
         utime::utimbuf,
     };
+    use ::syslog::trace_syscall;
 
     ///
     /// # Description
@@ -44,9 +45,8 @@ mod bindings {
     /// - `times` points to a valid `utimbuf` structures.
     ///
     #[unsafe(no_mangle)]
+    #[trace_syscall]
     pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
-        ::syslog::trace!("utime(): filename={:?}, times={:?}", filename, times);
-
         // Check if `times` is invalid.
         if times.is_null() {
             ::syslog::error!("utime(): invalid times (filename={:?}, times={:?})", filename, times);

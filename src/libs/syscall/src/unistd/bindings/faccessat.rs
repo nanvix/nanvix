@@ -12,6 +12,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -56,6 +57,7 @@ use ::sysapi::ffi::{
 /// - `dirfd` refers to a valid directory file descriptor or is `AT_FDCWD`.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn faccessat(
     dirfd: c_int,
@@ -63,8 +65,6 @@ pub unsafe extern "C" fn faccessat(
     mode: c_int,
     flag: c_int,
 ) -> c_int {
-    ::syslog::trace!("faccessat(): dirfd={dirfd:?}, path={path:?}, mode={mode:?}, flag={flag:?}");
-
     // Check if `path` is invalid.
     if path.is_null() {
         ::syslog::error!(

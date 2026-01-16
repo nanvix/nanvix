@@ -13,6 +13,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -42,9 +43,8 @@ use ::sysapi::{
 /// - This function is not called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
-    ::syslog::trace!("lseek(): fd={fd:?}, offset={offset:?}, whence={whence:?}");
-
     // Attempt to seek the file descriptor and check for errors.
     match unistd::lseek(fd, offset, whence) {
         Ok(offset) => offset,

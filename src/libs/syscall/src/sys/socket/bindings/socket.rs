@@ -14,6 +14,7 @@ use crate::{
     },
 };
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,9 +56,8 @@ use ::sysapi::ffi::c_int;
 ///
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c_int {
-    ::syslog::trace!("socket(): domain={domain:?}, type={typ:?}, protocol={protocol:?}");
-
     // Attempt to convert socket address family.
     let domain: AddressFamily = match AddressFamily::try_from(domain) {
         Ok(domain) => domain,

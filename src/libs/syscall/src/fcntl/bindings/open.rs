@@ -18,6 +18,7 @@ use ::sysapi::{
     },
     sys_types::mode_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,10 +49,9 @@ use ::sysapi::{
 ///
 /// - `path` points to a valid null-terminated C string.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-    ::syslog::trace!("open(): path={path:?}, flags={flags:?}, mode={mode:?}");
-
     // Check if `path` is null.
     if path.is_null() {
         ::syslog::error!(

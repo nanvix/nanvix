@@ -15,6 +15,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,9 +41,8 @@ use ::sysapi::ffi::{
 ///
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
+#[trace_syscall]
 pub unsafe extern "C" fn unlink(path: *const c_char) -> c_int {
-    ::syslog::trace!("unlink(): path={path:?}");
-
     // Attempt to convert `path`.
     let path: &str = {
         // Check if `path` is invalid.

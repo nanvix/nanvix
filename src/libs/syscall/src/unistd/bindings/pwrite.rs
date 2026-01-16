@@ -22,6 +22,7 @@ use ::sysapi::{
         off_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -54,6 +55,7 @@ use ::sysapi::{
 /// - `buffer` points to a valid memory location.
 /// - This function is not called from multiple threads at the same time.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pwrite(
     fd: c_int,
@@ -61,8 +63,6 @@ pub unsafe extern "C" fn pwrite(
     count: c_size_t,
     offset: off_t,
 ) -> c_ssize_t {
-    ::syslog::trace!("pwrite(): fd={fd:?}, buffer={buffer:?}, count={count:?}, offset={offset:?}");
-
     // Check if buffer is invalid.
     if buffer.is_null() {
         ::syslog::error!(

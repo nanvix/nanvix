@@ -14,6 +14,7 @@ use ::sysapi::{
         msghdr,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -61,8 +62,8 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> c_ssize_t {
-    ::syslog::trace!("recvmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/600
     ::syslog::debug!("recvmsg(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();

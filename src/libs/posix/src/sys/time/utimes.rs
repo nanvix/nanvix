@@ -20,6 +20,7 @@ use ::sysapi::{
     sys_select::timeval,
     time::timespec,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,9 +50,8 @@ use ::sysapi::{
 /// - `times` points to a valid array of length 2 of `timeval` structures.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {
-    ::syslog::trace!("utimes(): filename={:?}, times={:?}", filename, times);
-
     // Check if `times` is invalid.
     if times.is_null() {
         ::syslog::error!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);

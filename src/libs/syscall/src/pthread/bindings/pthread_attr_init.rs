@@ -11,6 +11,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pthread_attr_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -59,9 +60,8 @@ use ::sysapi::{
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int {
-    ::syslog::trace!("pthread_attr_init(): attr={attr:p}");
-
     // Check if `attr` is points to an invalid address.
     if attr.is_null() {
         ::syslog::error!(

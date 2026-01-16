@@ -15,6 +15,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -39,8 +40,9 @@ use ::sysapi::ffi::{
 ///
 /// - [`crate::unistd::syscall::symlink()`]
 ///
-#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
+#[trace_syscall]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int {
     syslog::trace!("symlink(): target={target:?}, linkpath={linkpath:?}");
 

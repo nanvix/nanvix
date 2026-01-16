@@ -14,6 +14,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::uid_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,6 +41,7 @@ use ::sysapi::{
 /// This function is safe to use if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn seteuid(uid: uid_t) -> c_int {
     ::syslog::error!("seteuid(): uid={uid:?}");

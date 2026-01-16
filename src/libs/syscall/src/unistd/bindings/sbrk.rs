@@ -9,6 +9,7 @@ use crate::{
     errno::__errno_location,
     unistd,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -32,6 +33,7 @@ use crate::{
 ///
 /// - [`crate::unistd::syscall::sbrk()`]
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub extern "C" fn sbrk(size: isize) -> *mut u8 {
     match unistd::sbrk(size) {

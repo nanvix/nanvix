@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pthread_mutex_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -37,6 +38,7 @@ use ::sysapi::{
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {

@@ -16,6 +16,7 @@ use ::sysapi::{
         uid_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,7 +61,7 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn chown(path: *const c_char, owner: uid_t, group: gid_t) -> c_int {
-    ::syslog::trace!("chown(): path={path:?}, owner={owner:?}, group={group:?}");
     crate::unistd::bindings::fchownat::fchownat(AT_FDCWD, path, owner, group, 0)
 }

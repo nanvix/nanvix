@@ -9,6 +9,7 @@ use ::sysapi::ffi::{
     c_int,
     c_void,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -17,7 +18,8 @@ use ::sysapi::ffi::{
 // TODO: add description
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sem_destroy(_sem: *mut c_void) -> c_int {
+#[trace_libcall]
+pub unsafe extern "C" fn sem_destroy(sem: *mut c_void) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/722
     ::syslog::debug!("sem_destroy(): not implemented");
     0

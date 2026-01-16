@@ -22,6 +22,7 @@ use ::sysapi::{
         pollfd,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -52,9 +53,8 @@ use ::sysapi::{
 /// - `fds` points to a valid array of pollfd structures of length `nfds`.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int {
-    ::syslog::trace!("poll(): fds={fds:?}, nfds={nfds:?}, timeout={timeout:?}");
-
     let fds: &mut [pollfd] = core::slice::from_raw_parts_mut(fds, nfds as usize);
     let poll_fds: Vec<PollFd> = fds
         .iter()

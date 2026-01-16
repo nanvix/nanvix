@@ -9,6 +9,7 @@ use crate::unistd::{
     self,
 };
 use ::sysapi::sys_types::gid_t;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -37,10 +38,9 @@ use ::sysapi::sys_types::gid_t;
 /// or internal failures, and such errors are logged but do not set `errno` to maintain POSIX
 /// compatibility.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn getegid() -> gid_t {
-    ::syslog::trace!("getegid()");
-
     // Get the effective group ID of the calling process and check for errors.
     match unistd::getegid() {
         // Success.

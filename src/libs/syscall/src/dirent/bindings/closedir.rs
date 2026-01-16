@@ -15,6 +15,7 @@ use crate::{
 use ::alloc::boxed::Box;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -50,10 +51,9 @@ use ::sysapi::ffi::c_int;
 /// `DirectoryStream` object will be deallocated and any subsequent use of the pointer results
 /// in undefined behavior.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
-    ::syslog::trace!("closedir(): dirp={dirp:?}");
-
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::syslog::error!("closedir(): invalid directory stream (dirp={dirp:?})");
