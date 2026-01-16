@@ -1,0 +1,26 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "syslog-macros"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Proc-macro helpers for syslog instrumentation"
+homepage.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
+
+[lints]
+workspace = true
