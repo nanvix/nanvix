@@ -52,8 +52,6 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
-    ::syslog::error!("chdir(): path={path:?}");
-
     // Check if `path` is invalid.
     if path.is_null() {
         ::syslog::error!("chdir(): path is null (path={path:?})");

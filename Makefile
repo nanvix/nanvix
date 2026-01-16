@@ -327,7 +327,7 @@ ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client
+ALL_HOST_UTILS := echo-client strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 else
