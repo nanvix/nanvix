@@ -93,6 +93,15 @@ pub async fn main() -> Result<ExitCode> {
         Some(format!("uservm{}", u32::from(user_vm_id))),
     );
 
+    debug!(
+        "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, \
+         memory_size_bytes={})",
+        user_vm_id,
+        &kernel_filename,
+        initrd_filename.as_deref().unwrap_or("none"),
+        memory_size
+    );
+
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
     let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
@@ -105,6 +114,11 @@ pub async fn main() -> Result<ExitCode> {
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
+    debug!(
+        "main(): attempting control plane connection (control_plane_addr={:?}, timeout_ms={})",
+        args.control_plane_addr(),
+        CONTROL_PLANE_CONNECT_TIMEOUT.as_millis()
+    );
     let control_plane_stream: SocketStream = match timeout(
         CONTROL_PLANE_CONNECT_TIMEOUT,
         unbound_socket.connect(args.control_plane_addr()),
@@ -139,6 +153,11 @@ pub async fn main() -> Result<ExitCode> {
     // Connect to the system VM.
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.system_vm_socket_type())?);
+    debug!(
+        "main(): attempting system VM connection (system_vm_addr={:?}, timeout_ms={})",
+        args.system_vm_addr(),
+        SYSTEM_VM_CONNECT_TIMEOUT.as_millis()
+    );
     let system_vm_stream: SocketStream =
         match timeout(SYSTEM_VM_CONNECT_TIMEOUT, unbound_socket.connect(args.system_vm_addr()))
             .await
@@ -163,6 +182,12 @@ pub async fn main() -> Result<ExitCode> {
                     },
                 };
 
+                debug!(
+                    "main(): registering gateway with system VM (gateway_addr={:?}, \
+                     gateway_socket_type={:?})",
+                    args.gateway_addr(),
+                    args.gateway_socket_type()
+                );
                 debug!("forwarding user vm information to system vm");
                 let new_msg_bytes: [u8; NEW_USER_VM_MESSAGE_LEN] = new_msg.to_bytes();
                 if let Err(e) = stream.write_all(&new_msg_bytes).await {
@@ -201,8 +226,15 @@ pub async fn main() -> Result<ExitCode> {
         control_plane_stream,
         counters.clone(),
     )?;
+    debug!("main(): spawned I/O thread (channel_capacity={})", CHANNEL_CAPACITY);
 
     // Run virtual machine and check exit status code.
+    debug!(
+        "main(): launching uservm (kernel={:?}, initrd={:?}, memory_size_bytes={})",
+        &kernel_filename,
+        initrd_filename.as_deref().unwrap_or("none"),
+        memory_size
+    );
     let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
         memory_size,
         initrd_filename,
@@ -216,7 +248,16 @@ pub async fn main() -> Result<ExitCode> {
         counters,
     });
 
-    let result: Result<ExitCode> = match vmm_handle.await? {
+    let vm_exit_status: Result<u16> = vmm_handle.await?;
+    debug!("main(): uservm completed (exit_status={vm_exit_status:?})");
+
+    if let Err(error) = io_thread.await? {
+        // Don't bail as we want to return the VM's exit code.
+        let reason: String = format!("I/O thread failed (error={error:?})");
+        error!("main(): {reason}");
+    }
+
+    let result: Result<ExitCode> = match vm_exit_status {
         Ok(0) => Ok(ExitCode::from(0)),
         Ok(exit_status) if exit_status != 0 => {
             let exit_code_result: ::std::result::Result<u8, ::std::num::TryFromIntError> =
@@ -237,11 +278,6 @@ pub async fn main() -> Result<ExitCode> {
             Err(anyhow::anyhow!(reason))
         },
     };
-
-    if let Err(error) = io_thread.await? {
-        error!("main(): I/O thread failed (error={error:?})");
-        // Don't bail as we want to return the VM's exit code.
-    }
 
     result
 }
