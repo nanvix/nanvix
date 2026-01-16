@@ -13,6 +13,7 @@ use ::sysapi::{
         pthread_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -45,20 +46,13 @@ use ::sysapi::{
 /// - `start_routine` is a valid function pointer.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_create(
     thread: *mut pthread_t,
     attr: *const pthread_attr_t,
     start_routine: extern "C" fn(usize) -> usize,
     arg: usize,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_create(): thread={:?}, attr={:?}, start_routine={:#x?}, arg={:#x?}",
-        thread,
-        attr,
-        start_routine as usize,
-        arg
-    );
-
     // Check if `thread` is not valid.
     if thread.is_null() {
         ::syslog::error!("pthread_create(): invalid thread pointer");

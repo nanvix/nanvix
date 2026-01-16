@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -59,9 +60,8 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn ftruncate(fd: c_int, length: off_t) -> c_int {
-    ::syslog::trace!("ftruncate(): fd={fd:?}, length={length:?}");
-
     // Attempt to truncate the file and check the result.
     match crate::unistd::ftruncate(fd, length) {
         Ok(()) => 0,

@@ -14,15 +14,16 @@ use ::sysapi::{
         gid_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 #[allow(clippy::missing_safety_doc)]
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn setgroups(size: c_size_t, list: *const gid_t) -> c_int {
-    ::syslog::trace!("setgroups(): size={size}, list={list:p}");
     // TODO: https://github.com/nanvix/nanvix/issues/523
     ::syslog::debug!("setgroups(): not implemented");
     unsafe {

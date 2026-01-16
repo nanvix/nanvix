@@ -2,6 +2,13 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+#[cfg(feature = "syscall")]
+use ::syslog::trace_libcall;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
@@ -26,6 +33,7 @@ cfg_if::cfg_if! {
         ///
         /// This function is unsafe because it may interoperate with external code.
         ///
+        #[cfg_attr(feature = "syscall", trace_libcall)]
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn __errno_location() -> *mut c_int {
             __errno()
@@ -49,6 +57,7 @@ cfg_if::cfg_if! {
         ///
         /// This function is unsafe because it may interoperate with external code.
         ///
+        #[cfg_attr(feature = "syscall", trace_libcall)]
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn __errno_location() -> *mut c_int {
             &raw mut errno as *mut c_int

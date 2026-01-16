@@ -16,6 +16,7 @@ use ::core::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::dirent::dirent;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -59,10 +60,9 @@ use ::sysapi::dirent::dirent;
 /// `readdir()` on the same directory stream. The caller should not attempt to free the returned
 /// pointer, as it points to internally managed memory.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readdir(dirp: *mut DirectoryStream) -> *mut dirent {
-    ::syslog::trace!("readdir(): dirp={dirp:?}");
-
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::syslog::error!("readdir(): invalid directory stream (dirp={dirp:?})");

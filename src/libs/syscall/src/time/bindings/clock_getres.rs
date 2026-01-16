@@ -9,6 +9,7 @@ use ::sysapi::{
     ffi::c_int,
     time::timespec,
 };
+use ::syslog::trace_syscall;
 use sysapi::{
     errno::__errno_location,
     sys_types::clockid_t,
@@ -43,10 +44,9 @@ use sysapi::{
 /// - `res` points to a valid `timespec` structure.
 /// - This function is not called by multiple threads at the same time.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -> c_int {
-    ::syslog::trace!("clock_getres(): clock_id={:?}, res={:?}", clock_id, res);
-
     // Convert `res` pointer to a reference.
     let mut res: Option<&mut timespec> = if res.is_null() { None } else { Some(&mut *res) };
 

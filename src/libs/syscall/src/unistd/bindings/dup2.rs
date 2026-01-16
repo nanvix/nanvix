@@ -8,6 +8,7 @@
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,9 +49,9 @@ use ::sysapi::ffi::c_int;
 /// - `newfd` is within the valid range of file descriptor numbers.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dup2(oldfd: c_int, newfd: c_int) -> c_int {
-    ::syslog::trace!("dup2(): oldfd={oldfd:?}, newfd={newfd:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/354
     ::syslog::debug!("dup2(): not implemented");
     unsafe {

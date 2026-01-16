@@ -7,6 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -52,9 +53,8 @@ use ::sysapi::ffi::c_int;
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn fsync(fd: c_int) -> c_int {
-    ::syslog::trace!("fsync(): fd={fd:?}");
-
     match crate::unistd::fsync(fd) {
         Ok(_) => 0,
         Err(error) => {

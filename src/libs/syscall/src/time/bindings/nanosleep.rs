@@ -10,17 +10,17 @@ use ::sysapi::{
     ffi::c_int,
     time::timespec,
 };
+use ::syslog::trace_syscall;
 use sysapi::errno::__errno_location;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
+#[trace_syscall]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nanosleep(req: *const timespec, rem: *mut timespec) -> c_int {
-    ::syslog::trace!("nanosleep(): req={:?}, rem={:?}", req, rem);
-
     // Check if `req` is valid.
     if req.is_null() {
         ::syslog::error!("nanosleep(): invalid req pointer");

@@ -18,6 +18,7 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -62,10 +63,9 @@ use ::sysapi::{
 /// - `namelen` is greater than `0` and does not exceed `isize::MAX`.
 /// - The memory referenced by `name` is not concurrently accessed by other threads.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_int {
-    ::syslog::trace!("gethostname(): name={name:?}, namelen={namelen:?}");
-
     let buf: &mut [u8] = {
         // Check if the buffer is invalid.
         if name.is_null() {

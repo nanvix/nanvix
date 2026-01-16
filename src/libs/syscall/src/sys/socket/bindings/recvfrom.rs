@@ -21,6 +21,7 @@ use ::sysapi::{
         c_ssize_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -68,6 +69,7 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn recvfrom(
     sockfd: c_int,
     buf: *mut c_void,
@@ -76,10 +78,6 @@ pub unsafe extern "C" fn recvfrom(
     sockaddr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> c_ssize_t {
-    ::syslog::trace!(
-        "recvfrom(): sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?}, \
-         sockaddr={sockaddr:?}, addrlen={addrlen:?}"
-    );
     // TODO: https://github.com/nanvix/nanvix/issues/590
     ::syslog::debug!("recvfrom(): not implemented");
     unsafe {

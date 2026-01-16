@@ -18,6 +18,9 @@ extern crate nvx;
 
 extern crate alloc;
 
+#[cfg(feature = "syscall")]
+extern crate syslog;
+
 // Address and routing parameter area.
 pub mod arpa;
 

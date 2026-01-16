@@ -14,6 +14,7 @@ use ::sysapi::{
         msghdr,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,8 +61,8 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
-    ::syslog::trace!("sendmsg(): sockfd={sockfd:?}, msg={msg:?}, flags={flags:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/599.
     ::syslog::debug!("sendmsg(): not implemented");
     unsafe {

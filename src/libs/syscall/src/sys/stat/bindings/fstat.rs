@@ -9,6 +9,7 @@ use ::sysapi::{
     errno::__errno_location,
     sys_stat,
 };
+use ::syslog::trace_syscall;
 use sysapi::ffi::c_int;
 
 //==================================================================================================
@@ -21,8 +22,8 @@ use sysapi::ffi::c_int;
 /// This function has undefined behavior if buf points to an invalid memory location.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
-    ::syslog::trace!("fstat(): fd = {}, buf = {:?}", fd, buf);
     match crate::sys::stat::fstat(fd, &mut *buf) {
         Ok(_) => 0,
         Err(error) => {

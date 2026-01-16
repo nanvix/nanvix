@@ -15,6 +15,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -44,10 +45,9 @@ use ::sysapi::ffi::{
 /// - This function is not called from multiple threads at the same time.
 /// - `pathname` points to a valid null-terminated C string.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn unlinkat(dirfd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
-    ::syslog::trace!("unlinkat(): dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?}");
-
     // Check if `pathname` is null.
     if pathname.is_null() {
         ::syslog::error!(

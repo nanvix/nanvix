@@ -23,6 +23,7 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -30,9 +31,8 @@ use ::sysapi::{
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn mprotect(addr: *mut c_char, length: c_size_t, prot: c_int) -> isize {
-    ::syslog::trace!("mprotect(): addr={addr:?}, length={length}, prot={prot}");
-
     // Check if address is invalid.
     if addr.is_null() {
         ::syslog::error!(

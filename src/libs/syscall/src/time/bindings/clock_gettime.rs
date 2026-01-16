@@ -9,6 +9,7 @@ use ::sysapi::{
     ffi::c_int,
     time::timespec,
 };
+use ::syslog::trace_syscall;
 use sysapi::{
     errno::__errno_location,
     sys_types::clockid_t,
@@ -37,9 +38,9 @@ use sysapi::{
 ///
 /// This function is unsafe because it may deference raw pointers.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -> c_int {
-    ::syslog::trace!("clock_gettime(): clock_id={:?}, tp={:?}", clock_id, tp);
     let mut tp: Option<&mut timespec> = if tp.is_null() {
         None
     } else {

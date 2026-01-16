@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pthread_condattr_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,9 +41,8 @@ use ::sysapi::{
 /// `pthread_condattr_t` structure and is properly aligned.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_condattr_init(attr: *mut pthread_condattr_t) -> c_int {
-    ::syslog::trace!("pthread_condattr_init(): attr={attr:p}");
-
     // Check if pointer to cond attribute object is valid.
     if attr.is_null() {
         ::syslog::error!(

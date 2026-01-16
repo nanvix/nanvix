@@ -17,6 +17,9 @@
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
+#[cfg(any(feature = "syscall", feature = "rustc-dep-of-std"))]
+extern crate syslog;
+
 #[cfg(any(feature = "rustc-dep-of-std", feature = "staticlib"))]
 #[allow(unused_extern_crates)]
 extern crate libc_stdlib;

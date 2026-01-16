@@ -17,6 +17,7 @@ use ::sysapi::{
         pthread_attr_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -62,15 +63,12 @@ use ::sysapi::{
 /// - `stacksize` points to a valid `c_size_t`.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getstack(
     attr: *const pthread_attr_t,
     stackaddr: *mut *mut c_void,
     stacksize: *mut c_size_t,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_attr_getstack(): attr={attr:p}, stackaddr={stackaddr:p}, stacksize={stacksize:p}"
-    );
-
     // Check if `attr` points to an invalid address.
     if attr.is_null() {
         ::syslog::error!(

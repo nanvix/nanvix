@@ -13,6 +13,7 @@ use ::sysapi::{
         c_int,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -41,8 +42,8 @@ use ::sysapi::{
 /// - `oldpath` points to a valid null-terminated string.
 /// - `newpath` points to a valid null-terminated string.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
-    ::syslog::trace!("link(): oldpath={oldpath:?}, newpath={newpath:?}");
     unistd::bindings::linkat::linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }

@@ -7,6 +7,7 @@
 
 use crate::unistd;
 use ::sysapi::sys_types::uid_t;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -34,10 +35,9 @@ use ::sysapi::sys_types::uid_t;
 /// or internal failures, and such errors are logged but do not set `errno` to maintain POSIX
 /// compatibility.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn getuid() -> uid_t {
-    ::syslog::trace!("getuid()");
-
     // Get the user ID of the calling process and check for errors.
     match unistd::getuid() {
         // Success.

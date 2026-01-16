@@ -7,6 +7,7 @@
 
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -15,6 +16,7 @@ use ::sysapi::ffi::c_int;
 // TODO: add description
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_atfork(
     prepare: Option<extern "C" fn()>,
     parent: Option<extern "C" fn()>,
