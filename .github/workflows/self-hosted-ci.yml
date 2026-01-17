@@ -203,14 +203,14 @@ jobs:
         echo '::endgroup::'
 
     - name: "Save Cargo Target Cache"
-      if: ${{ always() && steps.cache-target.outputs.cache-hit != 'true' }}
+      if: ${{ always() && github.ref == 'refs/heads/dev' && steps.cache-target.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: target
         key: ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
 
     - name: "Save Optional Sysroots Cache"
-      if: ${{ always() && steps.cache-sysroot.outputs.cache-hit != 'true' }}
+      if: ${{ always() && github.ref == 'refs/heads/dev' && steps.cache-sysroot.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: |
