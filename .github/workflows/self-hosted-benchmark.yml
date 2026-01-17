@@ -155,7 +155,7 @@ jobs:
         echo '::endgroup::'
 
     - name: "Save Cargo Target Cache"
-      if: ${{ always() && steps.cache-target.outputs.cache-hit != 'true' }}
+      if: ${{ always() && github.ref == 'refs/heads/dev' && steps.cache-target.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: target
