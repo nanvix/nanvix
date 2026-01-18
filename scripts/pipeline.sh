@@ -104,7 +104,7 @@ get_make_target() {
             echo "all"
             ;;
         test)
-            echo "run-unit-tests run-nanvixd-tests"
+            echo "test"
             ;;
         *)
             print_error "(pipeline) Invalid step type: ${step}"
