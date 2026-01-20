@@ -199,10 +199,16 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// This function returns an error if network namespace pool initialization fails.
     ///
     pub fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+        // Only pre-allocate network namespaces when L2 is enabled; otherwise keep it lazy so
+        // non-L2 deployments do not try to create netns at startup (which triggers sudo+sysctl).
         #[cfg(not(feature = "single-process"))]
-        let netns_init_strategy: NetnsPoolInitStrategy = match config.netns_pool_size() {
-            0 => NetnsPoolInitStrategy::Lazy,
-            size => NetnsPoolInitStrategy::Prefill(size),
+        let netns_init_strategy: NetnsPoolInitStrategy = if config.l2() {
+            match config.netns_pool_size() {
+                0 => NetnsPoolInitStrategy::Lazy,
+                size => NetnsPoolInitStrategy::Prefill(size),
+            }
+        } else {
+            NetnsPoolInitStrategy::Lazy
         };
 
         Ok(Arc::new(Mutex::new(Self {
