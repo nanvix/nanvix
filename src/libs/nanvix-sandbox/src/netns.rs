@@ -974,6 +974,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
             .arg("exec")
             .arg(info.ns_name())
             .arg("sysctl")
+            .arg("-q")
             .arg("-w")
             .arg("net.ipv4.ip_forward=1"),
     )?;
