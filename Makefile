@@ -56,6 +56,16 @@ export IMAGE ?= nanvix.iso
 endif
 
 #===================================================================================================
+# Make Configuration
+#===================================================================================================
+
+# Suppress directory printing in recursive make calls?
+export MAKE_NO_PRINT ?= yes
+
+# Make command for recursive invocations (adds --no-print-directory if MAKE_NO_PRINT=yes)
+export MAKE_QUIET := $(MAKE) $(if $(filter yes,$(MAKE_NO_PRINT)),--no-print-directory)
+
+#===================================================================================================
 # Optional Software Repositories (URLs and pinned commits)
 #===================================================================================================
 
@@ -363,8 +373,8 @@ dump-sccache-stats:
 
 # Builds everything.
 all: all-nanvix all-opt
-	@$(MAKE) update-sysroot-link
-	@$(MAKE) dump-sccache-stats
+	@$(MAKE_QUIET) update-sysroot-link
+	@$(MAKE_QUIET) dump-sccache-stats
 
 # Builds all Nanvix components.
 all-nanvix: \
@@ -431,7 +441,7 @@ endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
-	@$(MAKE) update-sysroot-link
+	@$(MAKE_QUIET) update-sysroot-link
 
 release: all install
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
@@ -473,6 +483,7 @@ help:
 	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
 	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
 	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
+	@echo "  MAKE_NO_PRINT    Suppress directory printing in recursive make (default: $(MAKE_NO_PRINT))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
@@ -483,13 +494,14 @@ help:
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
 	@echo ""
 	@echo "Parameter Values"
-	@echo "  MACHINE      hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
-	@echo "  TARGET       x86"
-	@echo "  RELEASE      yes, no"
-	@echo "  LOG_LEVEL    trace, debug, info, warn, error"
-	@echo "  PROFILER     yes, no"
-	@echo "  BUILD_OPT    yes, no"
-	@echo "  L2_VM        yes, no"
+	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
+	@echo "  TARGET          x86"
+	@echo "  RELEASE         yes, no"
+	@echo "  LOG_LEVEL       trace, debug, info, warn, error"
+	@echo "  PROFILER        yes, no"
+	@echo "  BUILD_OPT       yes, no"
+	@echo "  L2_VM           yes, no"
+	@echo "  MAKE_NO_PRINT   yes, no"
 
 # Fixes code linting issues.
 lint: \
