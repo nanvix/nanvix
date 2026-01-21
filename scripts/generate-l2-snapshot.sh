@@ -65,10 +65,8 @@ SNAPSHOT_PATH="${IMAGES_DIR}/${SNAPSHOT_NAME}"
 L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 
 boot_clh_vm() {
-    # FIXME(#1171): we need `sudo rm` because we restore the L2 VM in a netns using `sudo ip`. This
-    # won't be necessary once we support low-level netns management with CAP_NET_ADMIN.
-    sudo rm -f -- "${CLH_API_SOCKET}"
-    sudo rm -f -- "${CLH_CONSOLE}"
+    rm -f -- "${CLH_API_SOCKET}"
+    rm -f -- "${CLH_CONSOLE}"
     # FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix release that
     # includes an updated cloud-hypervisor.
     ${CLOUD_HYPERVISOR_PATH} \
