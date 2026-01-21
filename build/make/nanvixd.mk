@@ -11,6 +11,13 @@ NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURE
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd $(BINARIES_DIR)/nanvixd.elf
+	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
+	# network namespaces. This is only the case in L2 (multi-process) deployments.
+ifeq ($(SINGLE_PROCESS),no)
+ifeq ($(L2_VM),yes)
+	$(SUDO_CMD) $(SETCAP_CMD) cap_sys_admin,cap_net_admin+ep $(BINARIES_DIR)/nanvixd.elf
+endif
+endif
 
 check-nanvixd:
 	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
