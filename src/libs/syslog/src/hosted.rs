@@ -53,6 +53,7 @@ pub fn init(
     INIT_LOG.call_once(|| {
         let logger: Logger = Logger::try_with_env_or_str(default_level)
             .expect("malformed RUST_LOG environment variable")
+            .format(::flexi_logger::colored_detailed_format)
             .write_mode(::flexi_logger::WriteMode::Direct);
         if log_to_file {
             let mut file_spec: FileSpec = FileSpec::default().directory(log_dir);
