@@ -44,6 +44,7 @@ CMD_NAME_HELP="help"
 # Option names.
 OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
+OPT_NAME_WITH_MINIMAL_DOCKER="--with-minimal-docker"
 OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
 OPT_NAME_TOOLCHAIN_DIR="--toolchain-dir"
 
@@ -67,10 +68,12 @@ UBUNTU_SETUP_SCRIPT="${REPO_ROOT_DIR}/scripts/setup/ubuntu.sh"
 #==================================================================================================
 
 # Options from cache.
-LAST_BUILD_WITH_DOCKER=false  # Was the last build done with Docker?
+LAST_BUILD_WITH_DOCKER=false          # Was the last build done with Docker?
+LAST_BUILD_WITH_MINIMAL_DOCKER=false  # Was the last build done with the minimal Docker image?
 
 # Current options.
 BUILD_WITH_DOCKER=false                         # Build with Docker?
+BUILD_WITH_MINIMAL_DOCKER=false                 # Use minimal Docker image?
 WITH_CACHED_OPTIONS=false                       # Use cached options (if any)?
 TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 
@@ -106,6 +109,7 @@ Commands
 
 Options
   ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the local toolchain.
+  ${OPT_NAME_WITH_MINIMAL_DOCKER}   Build Nanvix using the minimal Docker image (implies ${OPT_NAME_WITH_DOCKER}).
   ${OPT_NAME_WITH_CACHED_OPTIONS}   Use cached options from the last build.
   ${OPT_NAME_TOOLCHAIN_DIR} <path>  Specify the toolchain directory for setup (default: ${DEFAULT_LOCAL_TOOLCHAIN_DIR}).
 EOF
@@ -156,6 +160,7 @@ check_docker_image_available() {
 #
 # Arguments
 #  $1 - The version of the Docker image to use.
+#  $2 - (Optional, default: false) Set to true to use the minimal Docker image.
 #
 # Usage Example
 #   get_docker_image_name "v1.0.0"
@@ -163,8 +168,15 @@ check_docker_image_available() {
 get_docker_image_name() {
     # Build image tag version by replacing patch with "x".
     local image_tag_version
+    local use_minimal=${2:-false}
     image_tag_version="${1%.*}.x"
-    echo "${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}"
+
+    local suffix=""
+    if ${use_minimal}; then
+        suffix="-minimal"
+    fi
+
+    echo "${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}${suffix}"
 }
 
 #
@@ -195,7 +207,7 @@ build_docker_command() {
 
     # Get the Docker image name.
     local image_name
-    image_name=$(get_docker_image_name "${current_version}")
+    image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
 
     # Check if the Docker image is available.
     check_docker_image_available "${image_name}"
@@ -237,6 +249,9 @@ write_cache() {
 #   read_cache
 #
 read_cache() {
+    LAST_BUILD_WITH_DOCKER=false
+    LAST_BUILD_WITH_MINIMAL_DOCKER=false
+
     if [[ -f "${Z_CACHE_FILE}" ]]; then
         local cache_lines
         mapfile -t cache_lines < "${Z_CACHE_FILE}"
@@ -246,7 +261,10 @@ read_cache() {
         fi
         # Process the cache lines to determine the last build options.
         for arg in "${cache_lines[@]}"; do
-            if [[ "$arg" == "${OPT_NAME_WITH_DOCKER}" ]]; then
+            if [[ "$arg" == "${OPT_NAME_WITH_MINIMAL_DOCKER}" ]]; then
+                LAST_BUILD_WITH_DOCKER=true
+                LAST_BUILD_WITH_MINIMAL_DOCKER=true
+            elif [[ "$arg" == "${OPT_NAME_WITH_DOCKER}" ]]; then
                 LAST_BUILD_WITH_DOCKER=true
             elif [[ "$arg" == "${OPT_NAME_SEPARATOR}" ]]; then
                 break
@@ -359,12 +377,17 @@ check_toolchain() {
     local expected_tag
     expected_tag="${current_version%.*}.x"
 
+    local expected_image_tag="${expected_tag}"
+    if ${BUILD_WITH_MINIMAL_DOCKER}; then
+        expected_image_tag="${expected_image_tag}-minimal"
+    fi
+
     if ${BUILD_WITH_DOCKER}; then
         # Docker-based toolchain validation.
         check_docker_installed
 
         local image_name
-        image_name=$(get_docker_image_name "${current_version}")
+        image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
 
         # Check image availability.
         if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
@@ -376,13 +399,13 @@ check_toolchain() {
         local image_tag
         image_tag="${image_name##*:v}"
 
-        # Sanity check on tag consistency (defensive; should always match expected_tag).
-        if [[ "${image_tag}" != "${expected_tag}" ]]; then
-            print_error "Docker toolchain version mismatch (found tag '${image_tag}', expected '${expected_tag}'). Run './z setup --with-docker' to update the toolchain image."
+        # Sanity check on tag consistency (defensive; should always match expected_image_tag).
+        if [[ "${image_tag}" != "${expected_image_tag}" ]]; then
+            print_error "Docker toolchain version mismatch (found tag '${image_tag}', expected '${expected_image_tag}'). Run './z setup --with-docker' or './z setup --with-minimal-docker' to update the toolchain image."
             return 1
         fi
 
-        print_info "Docker toolchain version '${image_tag}' matches expected '${expected_tag}'."
+        print_info "Docker toolchain version '${image_tag}' matches expected '${expected_image_tag}'."
     else
         # Local toolchain validation.
         local version_file
@@ -457,11 +480,22 @@ main() {
     # Read last build info from cache
     read_cache
 
+    local docker_option_set=false
+    local minimal_option_set=false
+
     # Parse command options.
     while [[ $# -gt 0 ]]; do
         case "$1" in
             "${OPT_NAME_WITH_DOCKER}")
                 BUILD_WITH_DOCKER=true
+                docker_option_set=true
+                shift
+                ;;
+            "${OPT_NAME_WITH_MINIMAL_DOCKER}")
+                BUILD_WITH_DOCKER=true
+                BUILD_WITH_MINIMAL_DOCKER=true
+                docker_option_set=true
+                minimal_option_set=true
                 shift
                 ;;
             "${OPT_NAME_WITH_CACHED_OPTIONS}")
@@ -487,24 +521,31 @@ main() {
         esac
     done
 
-    # Collect build parameters.
-    local build_parameters=()
-    # Only add TOOLCHAIN_DIR for local builds, not Docker builds
-    if ! ${BUILD_WITH_DOCKER}; then
-        build_parameters+=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
-    fi
+    # Collect raw build parameters.
+    local user_build_parameters=()
     while [[ $# -gt 0 ]]; do
-        build_parameters+=("$1")
+        user_build_parameters+=("$1")
         shift
     done
 
-    # If using cache, restore variables from cache if not set by command line
+    # If using cache, restore variables from cache when not overridden by command line options.
     if ${WITH_CACHED_OPTIONS}; then
         print_info "Using cached build options."
-        # Only override if not set by command line
-        if ! ${BUILD_WITH_DOCKER}; then
-            BUILD_WITH_DOCKER=${LAST_BUILD_WITH_DOCKER}
+        if ! ${minimal_option_set} && ${LAST_BUILD_WITH_MINIMAL_DOCKER}; then
+            BUILD_WITH_MINIMAL_DOCKER=true
+            BUILD_WITH_DOCKER=true
+        elif ! ${docker_option_set} && ${LAST_BUILD_WITH_DOCKER}; then
+            BUILD_WITH_DOCKER=true
         fi
+    fi
+
+    # Only add TOOLCHAIN_DIR for local builds, not Docker builds.
+    local build_parameters=()
+    if ! ${BUILD_WITH_DOCKER}; then
+        build_parameters+=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
+    fi
+    if [[ ${#user_build_parameters[@]} -gt 0 ]]; then
+        build_parameters+=("${user_build_parameters[@]}")
     fi
 
     case "${command}" in
@@ -553,7 +594,11 @@ main() {
 
             # Save current build command and options to cache.
             cache_args=("${command}")
-            ${BUILD_WITH_DOCKER} && cache_args+=("${OPT_NAME_WITH_DOCKER}")
+            if ${BUILD_WITH_MINIMAL_DOCKER}; then
+                cache_args+=("${OPT_NAME_WITH_MINIMAL_DOCKER}")
+            elif ${BUILD_WITH_DOCKER}; then
+                cache_args+=("${OPT_NAME_WITH_DOCKER}")
+            fi
             cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
             write_cache "${cache_args[@]}"
 
@@ -634,7 +679,7 @@ main() {
 
                 # Get the Docker image name.
                 local image_name
-                image_name=$(get_docker_image_name "${current_version}")
+                image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
 
                 # Pull the Docker image.
                 print_info "Pulling Docker image: ${image_name}"

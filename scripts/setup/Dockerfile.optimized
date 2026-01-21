@@ -2,8 +2,7 @@
 # Licensed under the MIT License.
 
 #===================================================================================================
-# Optimized Image - Demo Version (Extract from existing image)
-# This version extracts the toolchain from the existing image and applies optimizations.
+# Optimized Image - Minimal Runtime Configuration (Extract from existing image).
 #===================================================================================================
 
 ARG TOOLCHAIN_IMAGE=nanvix/toolchain:latest
@@ -55,18 +54,18 @@ COPY --from=source /opt/nanvix/src/rust/library /opt/nanvix/rust-toolchain/lib/r
 
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
-ENV PATH=$HOME/.cargo/bin:$PATH
+ENV PATH="$HOME/.cargo/bin:$PATH"
 
 # Install Rust toolchain and components.
-RUN rustup toolchain install $RUST_VERSION && \
-    rustup default $RUST_VERSION && \
+RUN rustup toolchain install "$RUST_VERSION" && \
+    rustup default "$RUST_VERSION" && \
     # Link custom Rust toolchain for Nanvix.
     rustup toolchain link nanvix-x86 /opt/nanvix/rust-toolchain && \
     # Copy cargo and other tools to stage2/bin so they're accessible.
     cp /opt/nanvix/rust-toolchain/bin-tools/* /opt/nanvix/rust-toolchain/bin/ && \
     # Clean Rust artifacts.
-    rm -rf $HOME/.cargo/registry/cache && \
-    rm -rf $HOME/.cargo/git/db
+    rm -rf "$HOME/.cargo/registry/cache" && \
+    rm -rf "$HOME/.cargo/git/db"
 
 # Set environment variables for toolchain.
 ENV PATH=/opt/nanvix/bin:$PATH

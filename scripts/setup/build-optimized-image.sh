@@ -46,7 +46,10 @@ TAG=${1:-"${DEFAULT_TAG}"}
 # Build
 #===================================================================================================
 
-RUST_VERSION=$(grep "^channel" "${REPO_ROOT_DIR}/rust-toolchain" | cut -d'"' -f2)
+RUST_VERSION=$(grep "^channel" "${REPO_ROOT_DIR}/rust-toolchain" | cut -d'"' -f2) || {
+    echo "ERROR: Failed to extract Rust version from rust-toolchain file: ${REPO_ROOT_DIR}/rust-toolchain" >&2
+    exit 1
+}
 
 echo "Building minimal Docker image..."
 echo "  Base image : ${TOOLCHAIN_IMAGE}"
@@ -55,12 +58,12 @@ echo "  Rust toolchain: ${RUST_VERSION}"
 echo ""
 
 docker build \
-    --file "${REPO_ROOT_DIR}/scripts/setup/Dockerfile.optimized" \
+    --file "${SCRIPT_DIR}/Dockerfile.optimized" \
     --build-arg RUST_VERSION="${RUST_VERSION}" \
     --build-arg TOOLCHAIN_IMAGE="${TOOLCHAIN_IMAGE}" \
     --tag "${TAG}" \
     --progress=plain \
-    "${REPO_ROOT_DIR}"
+    "${SCRIPT_DIR}"
 
 echo ""
 echo "✅ Successfully built: ${TAG}"
