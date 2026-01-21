@@ -21,7 +21,7 @@ use crate::{
 #[cfg(not(feature = "single-process"))]
 use crate::{
     netns::NetnsHandle,
-    netns_exec::netns_command_args,
+    netns_exec::command_in_netns,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -148,19 +148,28 @@ impl UserVm {
             user_vm_args.splice(0..0, taskset);
         }
 
-        // In an L2-deployment, spawn the user VM inside a network namespace.
-        #[cfg(not(feature = "single-process"))]
-        if let Some(netns_handle) = &netns_handle {
-            user_vm_args = netns_command_args(
-                &netns_handle.netns_info()?,
-                &user_vm_args[0],
-                &user_vm_args[1..],
-            );
-        }
+        let mut cmd: Command = {
+            // In an L2-deployment, spawn the user VM inside a network namespace.
+            #[cfg(not(feature = "single-process"))]
+            if let Some(netns_handle) = &netns_handle {
+                command_in_netns(
+                    &netns_handle.netns_info()?,
+                    &user_vm_args[0],
+                    &user_vm_args[1..],
+                )
+            } else {
+                let mut cmd: Command = Command::new(&user_vm_args[0]);
+                cmd.args(&user_vm_args[1..]);
+
+                cmd
+            }
+
+            #[cfg(feature = "single-process")]
+            Command::new(&user_vm_args[0]).args(&user_vm_args[1..])
+        };
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
-        let child = Command::new(&user_vm_args[0])
-            .args(&user_vm_args[1..])
+        let child: Child = cmd
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()?;
