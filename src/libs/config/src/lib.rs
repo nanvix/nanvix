@@ -230,6 +230,12 @@ pub mod microvm {
     /// Default base address for MicroVM pause-requested register (32-bit wide read-only register)
     pub const DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED: usize = 0x00000008;
 
+    /// Default base address for RAMFS base register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_RAMFS_BASE: usize = 0x0000000c;
+
+    /// Default base address for RAMFS size register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_RAMFS_SIZE: usize = 0x00000010;
+
     /// Magic value that identifies the running state in the pause-requested register.
     pub const RUNNING: u32 = 0x00000000;
 
