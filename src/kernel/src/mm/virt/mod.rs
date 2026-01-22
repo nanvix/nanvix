@@ -198,6 +198,7 @@ pub fn init(
                 false,
                 AccessPermission::RDWR,
             )?;
+            root_pagetables.push_back((page_table_addr, page_table));
             if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
                 break;
             }
@@ -216,8 +217,6 @@ pub fn init(
                     PhysicalAddress::from_raw_value(raw_vaddr)?,
                 )?),
             };
-
-            root_pagetables.push_back((page_table_addr, page_table));
         }
     }
 
