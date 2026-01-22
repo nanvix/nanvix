@@ -121,7 +121,7 @@ pub unsafe fn timer_handler(_intnum: InterruptNumber) {
     // Determine if a context switch is required. The kernel's running state is checked first to
     // prevent reentrant calls to the scheduler, which could lead to undefined behavior.
     if !ProcessManager::is_kernel_running() {
-        if let Err(error) = ProcessManager::giveup() {
+        if let Err(error) = ProcessManager::tick() {
             error!("context switch failed: {:?}", error);
         }
     }
