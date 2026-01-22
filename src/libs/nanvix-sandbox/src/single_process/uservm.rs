@@ -128,6 +128,7 @@ impl UserVm {
         let kernel_filename: String = args.kernel_binary_path().to_string();
         let initrd_filename: String = args.program().to_string();
         let initrd_args: Option<String> = args.program_args().map(|s| s.to_string());
+        let ramfs_filename: Option<String> = args.ramfs_filename().map(|s| s.to_string());
         let stderr_file: Option<String> = args.console_file().map(|s| s.to_string());
         let user_vm_id: UserVmIdentifier = args.uservm_id();
         let control_plane_connect_sockaddr_type: String = args
@@ -266,6 +267,7 @@ impl UserVm {
                         kernel_filename,
                         initrd_filename: Some(initrd_filename.clone()),
                         initrd_args,
+                        ramfs_filename,
                         stderr: stderr_file,
                         vcpu_thread_stdout_tx,
                         memory_thread_data_rx,

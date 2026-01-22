@@ -151,6 +151,8 @@ pub struct UserVmArgs {
     pub initrd_filename: Option<String>,
     /// Optional string of arguments forwarded to the initrd payload.
     pub initrd_args: Option<String>,
+    /// Optional path to a RAM filesystem image exposed to the guest.
+    pub ramfs_filename: Option<String>,
     /// Optional path to a file used to capture the guest's stderr stream.
     pub stderr: Option<String>,
     /// Channel used to forward port-I/O writes from the guest to the Linux daemon.
@@ -253,6 +255,7 @@ impl UserVm {
             kernel_filename: args.kernel_filename,
             initrd_filename: args.initrd_filename.clone(),
             initrd_args: args.initrd_args.clone(),
+            ramfs_filename: args.ramfs_filename.clone(),
         })?;
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
