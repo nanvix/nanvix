@@ -179,8 +179,6 @@ impl LinuxDaemon {
     ///
     /// On success, returns an empty tuple. On failure, returns an error.
     ///
-    // FIXME(#1171): we will be able to get rid of this method once we have a programmatic way to
-    // spawn a task inside a namespace without spawning a different process.
     async fn wait_for_unix_socket<P: AsRef<Path>>(
         path: P,
         timeout_duration: Duration,

@@ -299,6 +299,8 @@ export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
 export CP_CMD := cp -f --preserve
 export GRUB_CMD := grub-mkrescue
+export SUDO_CMD := sudo
+export SETCAP_CMD := setcap
 
 #===================================================================================================
 # Configuration for Tests
