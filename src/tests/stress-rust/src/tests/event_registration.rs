@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use super::common::StressError;
+use super::common::{
+    CapabilityGuard,
+    StressError,
+};
 use ::sys::{
     event::{
         Event,
@@ -14,47 +17,10 @@ use ::sys::{
     },
     kcall::{
         event::evctrl,
-        pm::capctl,
         sched::sched_yield,
     },
     pm::Capability,
 };
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-struct CapabilityGuard {
-    capability: Capability,
-    released: bool,
-}
-
-impl CapabilityGuard {
-    fn enable(capability: Capability) -> Result<Self, StressError> {
-        capctl(capability, true)?;
-        Ok(Self {
-            capability,
-            released: false,
-        })
-    }
-
-    fn disable(&mut self) -> Result<(), StressError> {
-        if !self.released {
-            capctl(self.capability, false)?;
-            self.released = true;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for CapabilityGuard {
-    fn drop(&mut self) {
-        if !self.released {
-            let _ = capctl(self.capability, false);
-            self.released = true;
-        }
-    }
-}
 
 //==================================================================================================
 // Constants

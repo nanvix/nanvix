@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use super::common::{
+    CapabilityGuard,
     StressError,
     exposed_addr_to_mut_u8,
 };
@@ -23,10 +24,7 @@ use ::sys::{
             mprotect,
             munmap,
         },
-        pm::{
-            capctl,
-            getpid,
-        },
+        pm::getpid,
     },
     mm::{
         AccessPermission,
@@ -37,42 +35,6 @@ use ::sys::{
         ProcessIdentifier,
     },
 };
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-struct CapabilityGuard {
-    capability: Capability,
-    released: bool,
-}
-
-impl CapabilityGuard {
-    fn enable(capability: Capability) -> Result<Self, StressError> {
-        capctl(capability, true)?;
-        Ok(Self {
-            capability,
-            released: false,
-        })
-    }
-
-    fn disable(&mut self) -> Result<(), StressError> {
-        if !self.released {
-            capctl(self.capability, false)?;
-            self.released = true;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for CapabilityGuard {
-    fn drop(&mut self) {
-        if !self.released {
-            let _ = capctl(self.capability, false);
-            self.released = true;
-        }
-    }
-}
 
 //==================================================================================================
 // Constants
