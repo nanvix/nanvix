@@ -76,11 +76,14 @@ jobs:
         set -Eeuo pipefail
         ln -sfn "${HOME}/toolchain" toolchain
 
-    - name: "Cache Cargo Target"
+    - name: "Cache Cargo Artifacts"
       id: cache-target
       uses: actions/cache@v5
       with:
-        path: target
+        path: |
+          target
+          ~/.cargo/registry
+          ~/.cargo/git
         key: ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
         restore-keys: |
           ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
@@ -115,6 +118,7 @@ jobs:
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
+
     - name: "Spellcheck"
       uses: ./.github/actions/spellcheck
       with:
@@ -122,6 +126,7 @@ jobs:
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
+
     - name: "Build"
       uses: ./.github/actions/build
       with:
@@ -206,7 +211,10 @@ jobs:
       if: ${{ always() && github.ref == 'refs/heads/dev' && steps.cache-target.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
-        path: target
+        path: |
+          target
+          ~/.cargo/registry
+          ~/.cargo/git
         key: ${{ runner.os }}-ci-target-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.build-type }}
 
     - name: "Save Optional Sysroots Cache"
