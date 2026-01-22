@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use super::common::{
+    CapabilityGuard,
     StressError,
     WorkerStack,
     error_code_from_usize,
@@ -35,7 +36,6 @@ use ::sys::{
             munmap,
         },
         pm::{
-            capctl,
             create_thread,
             getpid,
             join_thread,
@@ -53,42 +53,6 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-struct CapabilityGuard {
-    capability: Capability,
-    released: bool,
-}
-
-impl CapabilityGuard {
-    fn enable(capability: Capability) -> Result<Self, StressError> {
-        capctl(capability, true)?;
-        Ok(Self {
-            capability,
-            released: false,
-        })
-    }
-
-    fn disable(&mut self) -> Result<(), StressError> {
-        if !self.released {
-            capctl(self.capability, false)?;
-            self.released = true;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for CapabilityGuard {
-    fn drop(&mut self) {
-        if !self.released {
-            let _ = capctl(self.capability, false);
-            self.released = true;
-        }
-    }
-}
 
 //==================================================================================================
 // Constants

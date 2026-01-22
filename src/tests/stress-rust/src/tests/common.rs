@@ -9,9 +9,13 @@ use ::core::{
     convert::TryFrom,
     ptr,
 };
-use ::sys::pm::{
-    MutexAddress,
-    ThreadCreateArgs,
+use ::sys::{
+    kcall::pm::capctl,
+    pm::{
+        Capability,
+        MutexAddress,
+        ThreadCreateArgs,
+    },
 };
 use ::sysapi::{
     pthread::PTHREAD_MUTEX_INITIALIZER,
@@ -24,6 +28,85 @@ use ::syscall::safe::mem::stack::Stack;
 //==================================================================================================
 
 static mut STRESS_MUTEX: pthread_mutex_t = PTHREAD_MUTEX_INITIALIZER;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// RAII guard that enables a capability upon creation and disables it when dropped.
+///
+/// # Parameters
+///
+/// - `capability`: Capability toggled for the lifetime of the guard.
+///
+/// # Errors
+///
+/// Propagates capability control errors from the underlying kernel call.
+///
+pub struct CapabilityGuard {
+    capability: Capability,
+    released: bool,
+}
+
+impl CapabilityGuard {
+    ///
+    /// # Description
+    ///
+    /// Enables the provided capability and returns a guard that will disable it on drop.
+    ///
+    /// # Parameters
+    ///
+    /// - `capability`: Capability to enable.
+    ///
+    /// # Returns
+    ///
+    /// Guard managing the capability lifetime.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the capability cannot be enabled.
+    ///
+    pub fn enable(capability: Capability) -> Result<Self, StressError> {
+        capctl(capability, true)?;
+        Ok(Self {
+            capability,
+            released: false,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Explicitly disables the capability if it is still active.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the capability is disabled or already released.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors from the capability control call.
+    ///
+    pub fn disable(&mut self) -> Result<(), StressError> {
+        if !self.released {
+            capctl(self.capability, false)?;
+            self.released = true;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CapabilityGuard {
+    fn drop(&mut self) {
+        if !self.released {
+            let _ = capctl(self.capability, false);
+            self.released = true;
+        }
+    }
+}
 
 //==================================================================================================
 // Standalone Functions
