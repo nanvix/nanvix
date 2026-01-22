@@ -471,7 +471,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Gives up the processor and schedules another ready thread to run.
+    /// Ticks the scheduler, performing a context switch if the current thread's quantum has
+    /// expired.
     ///
     /// # Returns
     ///
@@ -491,7 +492,7 @@ impl ProcessManager {
     /// - The processor is running with interrupts disabled.
     /// - The processor is running in privileged mode.
     ///
-    pub unsafe fn giveup() -> Result<(), Error> {
+    pub unsafe fn tick() -> Result<(), Error> {
         // Check the remaining quantum for the current thread to decide whether to perform a context switch.
         let remaining_ticks: usize = REMAINING_QUANTUM.load(ORDER);
         if remaining_ticks > 1 {
@@ -499,24 +500,53 @@ impl ProcessManager {
             REMAINING_QUANTUM.store(remaining_ticks - 1, ORDER);
         } else {
             // The current thread has no remaining quantum, perform a context switch.
-
             cold_path();
-
-            // Re-schedule the calling thread and select another thread to run next.
-            let (next_pid, next_tid, from, to, user_tda): (
-                ProcessIdentifier,
-                ThreadIdentifier,
-                *mut ContextInformation,
-                *mut ContextInformation,
-                Option<VirtualAddress>,
-            ) = Self::get_mut().try_borrow_mut()?.schedule();
-
-            // Switch to the next thread and updating the remaining quantum accordingly.
-            // SAFETY: `from` and `to` point to valid context information structures, and the
-            // processor is running with interrupts disabled.
-            PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-            Self::switch(next_pid, next_tid, from, to, user_tda);
+            Self::giveup()?
         }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gives up the processor and schedules another ready thread to run.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    /// This function may not return immediately, as the scheduler algorithm may select another
+    /// thread to run before the calling thread.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, suspending the execution of
+    /// the current thread until it is re-scheduled for execution.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
+    ///
+    pub unsafe fn giveup() -> Result<(), Error> {
+        REMAINING_QUANTUM.store(0, ORDER);
+
+        // Re-schedule the calling thread and select another thread to run next.
+        let (next_pid, next_tid, from, to, user_tda): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ) = Self::get_mut().try_borrow_mut()?.schedule();
+
+        // Switch to the next thread and updating the remaining quantum accordingly.
+        // SAFETY: `from` and `to` point to valid context information structures, and the
+        // processor is running with interrupts disabled.
+        PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         Ok(())
     }
