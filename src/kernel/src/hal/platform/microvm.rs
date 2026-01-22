@@ -283,6 +283,42 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
 }
 
+///
+/// # Description
+///
+/// Logs the values of the MicroVM control registers.
+///
+fn log_control_registers() {
+    // SAFETY: The MicroVM control registers reside in a read-only MMIO page that is mapped into the
+    // host kernel during platform initialization, so reading them with `read_volatile` is safe.
+    unsafe {
+        let null_value: u32 =
+            core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_NULL as *const u32);
+        let credits_value: u32 =
+            core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32);
+        let pause_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as *const u32,
+        );
+        let ramfs_base_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE as *const u32,
+        );
+        let ramfs_size_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE as *const u32,
+        );
+
+        info!(
+            "microvm ctrl registers: base={:#010x}, null={:#010x}, credits={:#010x}, \
+             pause={:#010x}, ramfs_base={:#010x}, ramfs_size={:#010x}",
+            ::config::microvm::DEFAULT_MICROVM_CTRL_BASE,
+            null_value,
+            credits_value,
+            pause_value,
+            ramfs_base_value,
+            ramfs_size_value
+        );
+    }
+}
+
 #[cfg(feature = "pic")]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
@@ -323,6 +359,8 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(scratch_region);
+
+    log_control_registers();
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
