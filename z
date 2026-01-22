@@ -196,8 +196,10 @@ build_docker_command() {
     local build_parameters="${*}"
     local user_id
     local group_id
+    local host_workspace_path
     user_id="$(id -u)"
     group_id="$(id -g)"
+    host_workspace_path="$(pwd -P)"
 
     # Check if Docker is installed.
     check_docker_installed
@@ -213,11 +215,11 @@ build_docker_command() {
     check_docker_image_available "${image_name}"
 
     echo "docker run --rm \
-        -v \"$(pwd):/mnt\" \
+        -v \"${host_workspace_path}:${host_workspace_path}\" \
+        -w \"${host_workspace_path}\" \
         ${image_name} \
         /bin/bash -l -c '\
             set -e ; \
-            cd /mnt ; \
             git config --global --add safe.directory \* ; \
             make TOOLCHAIN_DIR=${DOCKER_IMAGE_TOOLCHAIN_PATH} ${build_parameters} ; \
             chown -R \"${user_id}:${group_id}\" .\
