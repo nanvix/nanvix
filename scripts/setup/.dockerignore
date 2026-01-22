@@ -1,0 +1,43 @@
+# Build artifacts
+target/
+bin/
+lib/
+*.o
+*.a
+*.so
+*.dylib
+
+# Version control
+.git/
+.github/
+.githooks/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+
+# Documentation
+doc/
+
+# Test files
+test/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Cache files
+.z.cache
+__pycache__/
+*.pyc
+.cargo/
