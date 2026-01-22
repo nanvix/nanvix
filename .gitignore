@@ -1,6 +1,15 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# Workspace path artifacts (created by Docker builds with WORKSPACE_PATH).
+# When building with Docker, the WORKSPACE_PATH arg mirrors the host's absolute
+# path inside the container. The --output directive then extracts artifacts,
+# which may include these path prefixes. Ignore them to avoid committing
+# host-specific path structures. These patterns only match at the repo root.
+/home/*/
+/Users/*/
+/root/*/
+
 # Toolchain Directories
 build-binutils
 build-gcc

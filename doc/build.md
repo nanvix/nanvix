@@ -55,17 +55,21 @@ Instead of using the `z` utility, you can build Nanvix manually.
 To build Nanvix using the latest Docker image and default build parameters, run:
 
 ```bash
-docker run \
-  -it --rm \
-  -v"$(pwd -P):$(pwd -P)" \
-  -w"$(pwd -P)" \
-  nanvix/toolchain \
-  /bin/bash -l -c "\
-    set -e; \
-    git config --global --add safe.directory '*' ; \
-    make TOOLCHAIN_DIR=/opt/nanvix all ; \
-    chown -R $(id -u):$(id -g) . "
+DOCKER_BUILDKIT=1 docker build \
+    --build-arg BASE_IMAGE="nanvix/toolchain:v1.0.x-minimal" \
+    --build-arg BUILD_PARAMS="all" \
+    --build-arg SYSROOT_SUFFIX="debug" \
+    --build-arg WORKSPACE_PATH="$(pwd -P)" \
+    --output type=local,dest=. \
+    --progress=plain \
+    -f scripts/setup/Dockerfile.build \
+    .
 ```
+
+> ℹ️ The `SYSROOT_SUFFIX` and `WORKSPACE_PATH` arguments are optional. `SYSROOT_SUFFIX`
+> defaults to `debug` (use `release` for release builds). `WORKSPACE_PATH` defaults
+> to `/mnt`, but should be set to `$(pwd -P)` so that Python and other binaries with
+> embedded absolute paths can find their libraries at runtime.
 
 ### Manually Building Nanvix with a Local Toolchain
 

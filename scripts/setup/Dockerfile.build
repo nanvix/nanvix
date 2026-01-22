@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1.4
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Dockerfile for building Nanvix using BuildKit cache mounts.
+# This Dockerfile is used by the `./z build --with-docker` command.
+#
+# The WORKSPACE_PATH arg allows the build to use the same absolute path inside
+# Docker as on the host. This is critical for binaries like Python that embed
+# the absolute prefix path at compile time. When WORKSPACE_PATH matches the host
+# workspace, the compiled Python binary can find its stdlib without symlinks.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS builder
+
+ARG BUILD_PARAMS
+ARG SYSROOT_SUFFIX=debug
+# WORKSPACE_PATH: The absolute path to the workspace on the host filesystem.
+# Defaults to /mnt for backwards compatibility, but should be set to $(pwd -P)
+# for proper Python stdlib path resolution.
+ARG WORKSPACE_PATH=/mnt
+
+WORKDIR ${WORKSPACE_PATH}
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
+    --mount=type=cache,target=${WORKSPACE_PATH}/target,sharing=locked \
+    --mount=type=cache,target=/opt/contrib-src,sharing=locked \
+    set -e && \
+    SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
+    make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
+
+# Create output directories to ensure they exist even if build produces no artifacts.
+RUN mkdir -p ${WORKSPACE_PATH}/bin ${WORKSPACE_PATH}/lib ${WORKSPACE_PATH}/images \
+    ${WORKSPACE_PATH}/sysroot-debug ${WORKSPACE_PATH}/sysroot-release
+
+# Output stage: only copy the actual build artifacts, not intermediate files.
+# NOTE: With --output type=local,dest=., all paths here become relative to the
+# workspace root. We only export each artifact once to minimize export time.
+# NOTE: The `sysroot` symlink is created by the `z` script after the Docker build
+# completes, since Docker COPY cannot preserve symlinks across the export boundary.
+FROM scratch
+ARG SYSROOT_SUFFIX=debug
+ARG WORKSPACE_PATH=/mnt
+COPY --from=builder ${WORKSPACE_PATH}/bin /bin
+COPY --from=builder ${WORKSPACE_PATH}/lib /lib
+COPY --from=builder ${WORKSPACE_PATH}/sysroot-${SYSROOT_SUFFIX} /sysroot-${SYSROOT_SUFFIX}
+COPY --from=builder ${WORKSPACE_PATH}/images /images
