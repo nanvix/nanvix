@@ -193,6 +193,19 @@ impl Guest {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the base address and size (in bytes) of the initrd currently loaded in memory.
+    ///
+    /// # Returns
+    ///
+    /// `Some((base, size))` if an initrd is present, or `None` otherwise.
+    ///
+    pub fn initrd_region(&self) -> Option<(usize, usize)> {
+        self.initrd
+    }
+
     /// # Description
     ///
     /// Writes command line arguments into the virtual memory, right after the initrd file.
