@@ -152,6 +152,7 @@ pub async fn main() -> Result<()> {
         args.gateway_socket_type(),
         args.system_vm_socket_type(),
         args.console_file().clone(),
+        args.ramfs_filename().map(|s| s.to_string()),
         args.hwloc().clone(),
         args.netns_pool_size(),
         &kernel_binary_path,

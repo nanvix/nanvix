@@ -35,6 +35,8 @@ pub struct UserVmArgs {
     program: String,
     /// Optional command-line arguments to pass to the program.
     program_args: Option<String>,
+    /// Optional RAM filesystem image that should be exposed to the guest.
+    ramfs_filename: Option<String>,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology information.
@@ -67,6 +69,7 @@ impl UserVmArgs {
     /// - `system_vm_socket_info`: Socket information for system VM communication.
     /// - `program`: Path to the guest program binary.
     /// - `program_args`: Optional command-line arguments for the program.
+    /// - `ramfs_filename`: Optional RAM filesystem image filename passed to the guest.
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
     /// - `kernel_binary_path`: Path to kernel binary.
@@ -85,6 +88,7 @@ impl UserVmArgs {
         system_vm_socket_info: (String, SocketType),
         program: String,
         program_args: Option<String>,
+        ramfs_filename: Option<String>,
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
         kernel_binary_path: String,
@@ -98,6 +102,7 @@ impl UserVmArgs {
             system_vm_socket_info,
             program,
             program_args,
+            ramfs_filename,
             console_file,
             hwloc,
             kernel_binary_path,
@@ -171,6 +176,19 @@ impl UserVmArgs {
     ///
     pub fn program_args(&self) -> Option<&str> {
         self.program_args.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional RAM filesystem image filename passed to the guest.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the RAM filesystem filename.
+    ///
+    pub fn ramfs_filename(&self) -> Option<&str> {
+        self.ramfs_filename.as_deref()
     }
 
     ///
