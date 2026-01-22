@@ -36,6 +36,7 @@ use ::reqwest::{
     Client,
     StatusCode,
     header::{
+        CONNECTION,
         CONTENT_TYPE,
         HeaderMap,
         HeaderValue,
@@ -60,8 +61,6 @@ use ::tokio::{
 /// Handle to a User VM started through the Nanvix Daemon REST API.
 ///
 pub struct UserVm {
-    /// HTTP client reused for Nanvix Daemon requests.
-    client: Client,
     /// Fully qualified Nanvix Daemon endpoint used when talking to the control plane.
     request_url: String,
     /// Identifier assigned to this User VM by the Nanvix Daemon.
@@ -95,9 +94,9 @@ impl UserVm {
     /// connection succeed; returns an error when the request or socket setup fails.
     ///
     pub async fn spawn(config: &RunnerConfig, uservm_args: &UserVmArgs) -> Result<Self> {
-        let client: Client = Client::new();
         let http_endpoint: String = config.http_endpoint();
         let request_url: String = format!("http://{http_endpoint}");
+        let client: Client = Self::build_control_plane_client()?;
         let l2_enabled: bool = uservm_args.l2_enabled();
         trace!("spawn(): http_endpoint={}, l2_enabled={}", http_endpoint, l2_enabled);
 
@@ -108,9 +107,12 @@ impl UserVm {
             program_args: uservm_args.program_args.clone().unwrap_or_default(),
         };
 
+        let mut request_headers: HeaderMap = uservm_args.headers();
+        request_headers.insert(CONNECTION, HeaderValue::from_static("close"));
+
         let http_response: ::reqwest::Response = match client
             .post(request_url.as_str())
-            .headers(uservm_args.headers())
+            .headers(request_headers)
             .json(&payload)
             .send()
             .await
@@ -162,7 +164,6 @@ impl UserVm {
         debug!("spawn(): connected to uservm gateway stream");
 
         Ok(Self {
-            client,
             request_url,
             user_vm_id: response.user_vm_id,
             gateway_stream,
@@ -239,6 +240,30 @@ impl UserVm {
     ///
     /// # Description
     ///
+    /// Builds an HTTP client with connection pooling disabled so each control-plane request uses
+    /// a fresh TCP session. This avoids reusing stale keep-alive sockets between the `New` and
+    /// `Kill` requests issued by the test harness.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a configured HTTP client on success; returns an error if the builder fails.
+    ///
+    fn build_control_plane_client() -> Result<Client> {
+        Client::builder()
+            .pool_idle_timeout(Duration::from_secs(0))
+            .pool_max_idle_per_host(0)
+            .build()
+            .map_err(|error| {
+                let reason: String =
+                    format!("failed to build control-plane client without pooling (error={error})");
+                error!("build_control_plane_client(): {reason}");
+                ::anyhow::anyhow!(reason)
+            })
+    }
+
+    ///
+    /// # Description
+    ///
     /// Provides mutable access to the gateway stream used for User VM I/O.
     ///
     /// # Return Value
@@ -303,7 +328,6 @@ impl UserVm {
     ///
     /// # Parameters
     ///
-    /// - `client`: HTTP client reused for the shutdown request.
     /// - `request_url`: Endpoint used to reach the Nanvix Daemon.
     /// - `user_vm_id`: Identifier of the User VM that should be terminated.
     ///
@@ -312,13 +336,10 @@ impl UserVm {
     /// Returns `Ok(())` once the Nanvix Daemon confirms the User VM termination response; returns
     /// an error if the request or response handling fails.
     ///
-    async fn kill(
-        &self,
-        client: Client,
-        request_url: String,
-        user_vm_id: UserVmIdentifier,
-    ) -> Result<()> {
+    async fn kill(&self, request_url: String, user_vm_id: UserVmIdentifier) -> Result<()> {
         trace!("kill(): user_vm_id={user_vm_id}");
+
+        let client: Client = Self::build_control_plane_client()?;
 
         let mut headers: HeaderMap = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -333,6 +354,7 @@ impl UserVm {
                 },
             };
         headers.insert(HTTP_HEADER_MESSAGE_TYPE, message_type_value);
+        headers.insert(CONNECTION, HeaderValue::from_static("close"));
 
         let kill_msg: Kill = Kill { user_vm_id };
 
@@ -408,12 +430,11 @@ impl Drop for UserVm {
         trace!("drop(): user_vm_id={}", self.user_vm_id);
 
         if let Ok(handle) = ::tokio::runtime::Handle::try_current() {
-            let client: Client = self.client.clone();
             let request_url: String = self.request_url.clone();
             let user_vm_id: UserVmIdentifier = self.user_vm_id;
 
             let kill_result: Result<()> =
-                block_in_place(|| handle.block_on(self.kill(client, request_url, user_vm_id)));
+                block_in_place(|| handle.block_on(self.kill(request_url, user_vm_id)));
 
             if let Err(error) = kill_result {
                 error!(
@@ -423,11 +444,9 @@ impl Drop for UserVm {
             }
         } else {
             match ::tokio::runtime::Runtime::new() {
-                Ok(runtime) => match runtime.block_on(self.kill(
-                    self.client.clone(),
-                    self.request_url.clone(),
-                    self.user_vm_id,
-                )) {
+                Ok(runtime) => match runtime
+                    .block_on(self.kill(self.request_url.clone(), self.user_vm_id))
+                {
                     Ok(()) => {},
                     Err(error) => {
                         error!(
