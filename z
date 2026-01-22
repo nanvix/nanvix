@@ -391,7 +391,11 @@ check_toolchain() {
 
         # Check image availability.
         if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
-            print_error "Required Docker toolchain image '${image_name}' not found. Run './z setup --with-docker' to fetch it."
+            local setup_cmd="./z setup --with-docker"
+            if ${BUILD_WITH_MINIMAL_DOCKER}; then
+                setup_cmd="./z setup --with-minimal-docker"
+            fi
+            print_error "Required Docker toolchain image '${image_name}' not found. Run '${setup_cmd}' to fetch it."
             return 1
         fi
 
