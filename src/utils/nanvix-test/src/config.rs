@@ -486,6 +486,8 @@ pub struct TestCaseConfig {
     pub input: Option<String>,
     /// Optional output payload used when validating the workload response.
     pub expected_output: Option<String>,
+    /// Flag indicating that the workload must not produce any stdout output.
+    pub expect_empty_output: bool,
 }
 
 impl TestCaseConfig {
@@ -513,6 +515,7 @@ impl TestCaseConfig {
         let program_args_field: String = format!("{entry_prefix}.program_args");
         let input_field: String = format!("{entry_prefix}.input");
         let expected_output_field: String = format!("{entry_prefix}.expected_output");
+        let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -529,6 +532,12 @@ impl TestCaseConfig {
                 table,
                 "expected_output",
                 expected_output_field.as_str(),
+            )?,
+            expect_empty_output: read_bool_with_default(
+                table,
+                "expect_empty_output",
+                expect_empty_output_field.as_str(),
+                false,
             )?,
         })
     }
@@ -560,6 +569,20 @@ impl TestCaseConfig {
             let reason: String = format!(
                 "tests[{index}] requires the 'program' field when executor is '{}'",
                 self.executor
+            );
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        if self.expect_empty_output
+            && self
+                .expected_output
+                .as_ref()
+                .map(|output| !output.is_empty())
+                .unwrap_or(false)
+        {
+            let reason: String = format!(
+                "tests[{index}] cannot set 'expect_empty_output=true' while also providing a \
+                 non-empty expected_output"
             );
             return Err(::anyhow::anyhow!(reason));
         }

@@ -58,8 +58,7 @@ pub(crate) async fn empty(
         } = log_layout.allocate_runner_logs(Some(iteration));
 
         let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
-            stdout_file_path.as_path(),
-            stderr_file_path.as_path(),
+            (stdout_file_path.as_path(), stderr_file_path.as_path()),
             runner_config.ipv4_addr.as_str(),
             runner_config.port_num,
             hwloc_file_path.clone(),
