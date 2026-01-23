@@ -236,6 +236,12 @@ pub mod microvm {
     /// Default base address for RAMFS size register (32-bit wide read-only register)
     pub const DEFAULT_MICROVM_CTRL_RAMFS_SIZE: usize = 0x00000010;
 
+    /// Default base address for the Local APIC MMIO window.
+    pub const DEFAULT_LAPIC_BASE: usize = 0xfee0_0000;
+
+    /// Size of the Local APIC MMIO window (bytes).
+    pub const DEFAULT_LAPIC_SIZE: usize = 0x1000;
+
     /// Magic value that identifies the running state in the pause-requested register.
     pub const RUNNING: u32 = 0x00000000;
 

@@ -16,14 +16,19 @@ use crate::{
             IoPortAllocator,
         },
         mem::{
+            AccessPermission,
             MemoryRegion,
             MemoryRegionType,
+            PageAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
         },
         platform::{
             bootinfo::BootInfo,
-            madt::MadtInfo,
+            madt::{
+                MadtEntry,
+                MadtInfo,
+            },
         },
     },
     kmod::KernelModule,
@@ -33,7 +38,16 @@ use ::alloc::{
     string::ToString,
 };
 use ::arch::{
-    cpu::pic,
+    cpu::{
+        acpi::AcpiSdtHeader,
+        madt::{
+            Madt,
+            MadtEntryHeader,
+            MadtEntryLocalApic,
+            MadtEntryType,
+        },
+        pic,
+    },
     mem,
 };
 use ::sys::{
@@ -42,7 +56,6 @@ use ::sys::{
         ErrorCode,
     },
     mm::{
-        AccessPermission,
         Address,
         VirtualAddress,
     },
@@ -338,11 +351,65 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }
 
+fn register_lapic_mmio(
+    ioaddresses: &mut IoMemoryAllocator,
+    mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Result<TruncatedMemoryRegion<VirtualAddress>, Error> {
+    let base: PageAligned<VirtualAddress> =
+        PageAligned::from_raw_value(::config::microvm::DEFAULT_LAPIC_BASE)?;
+
+    let lapic_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+        "lapic",
+        base,
+        ::config::microvm::DEFAULT_LAPIC_SIZE,
+        MemoryRegionType::Mmio,
+        AccessPermission::RDWR,
+    )?;
+
+    ioaddresses.register(lapic_region.clone())?;
+    mmio_regions.push_back(lapic_region.clone());
+
+    Ok(lapic_region)
+}
+
+fn build_synthetic_madt() -> MadtInfo {
+    let mut entries: LinkedList<MadtEntry> = LinkedList::new();
+
+    entries.push_back(MadtEntry::LocalApic(MadtEntryLocalApic {
+        header: MadtEntryHeader {
+            typ: MadtEntryType::LocalApic as u8,
+            len: core::mem::size_of::<MadtEntryLocalApic>() as u8,
+        },
+        processor_id: 0,
+        apic_id: 0,
+        flags: MadtEntryLocalApic::ENABLED,
+    }));
+
+    let sdt: AcpiSdtHeader = AcpiSdtHeader {
+        signature: [b'A' as i8, b'P' as i8, b'I' as i8, b'C' as i8],
+        length: (core::mem::size_of::<Madt>() + core::mem::size_of::<MadtEntryLocalApic>()) as u32,
+        revision: 1,
+        checksum: 0,
+        oem_id: [0; 6],
+        oem_table_id: [0; 8],
+        oem_revision: 0,
+        creator_id: 0,
+        creator_rev: 0,
+    };
+
+    MadtInfo {
+        sdt,
+        local_apic_addr: ::config::microvm::DEFAULT_LAPIC_BASE as u32,
+        flags: 0,
+        entries,
+    }
+}
+
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
-    _mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
@@ -360,8 +427,24 @@ pub fn init(
 
     log_control_registers();
 
+    // Ensure the Local APIC MMIO window is registered so the kernel can attach to it even when
+    // firmware does not advertise ACPI tables (e.g., the MicroVM machine type).
+    let _lapic_region: TruncatedMemoryRegion<VirtualAddress> =
+        register_lapic_mmio(ioaddresses, mmio_regions)?;
+
+    // Build a minimal MADT describing a single enabled LAPIC if firmware did not supply one.
+    let mut synthetic_madt: Option<MadtInfo> = None;
+    if madt.is_none() {
+        synthetic_madt = Some(build_synthetic_madt());
+    }
+
+    let madt_to_use: &Option<MadtInfo> = match madt {
+        Some(_) => madt,
+        None => &synthetic_madt,
+    };
+
     Ok(Platform {
-        arch: x86::init(ioports, ioaddresses, madt)?,
+        arch: x86::init(ioports, ioaddresses, madt_to_use)?,
         #[cfg(feature = "pit")]
         _pit: register_pit(ioports)?,
     })
