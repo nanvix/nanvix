@@ -55,15 +55,13 @@ Instead of using the `z` utility, you can build Nanvix manually.
 To build Nanvix using the latest Docker image and default build parameters, run:
 
 ```bash
-docker run \
-  -it --rm -v"$(pwd):/mnt" \
-  nanvix/toolchain \
-  /bin/bash -l -c "\
-    set -e; \
-    cd /mnt ; \
-    git config --global --add safe.directory '*' ; \
-    make TOOLCHAIN_DIR=/opt/nanvix all ; \
-    chown -R $(id -u):$(id -g) . "
+DOCKER_BUILDKIT=1 docker build \
+    --build-arg BASE_IMAGE="nanvix/toolchain:v1.0.x-minimal" \
+    --build-arg BUILD_PARAMS="all" \
+    --output type=local,dest=. \
+    --progress=plain \
+    -f scripts/setup/Dockerfile.build \
+    .
 ```
 
 ### Manually Building Nanvix with a Local Toolchain

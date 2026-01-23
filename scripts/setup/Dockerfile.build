@@ -18,7 +18,6 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     --mount=type=cache,target=/mnt/target,sharing=locked \
     set -e && \
-    git config --global --add safe.directory '*' && \
     SCCACHE_DIR=/root/.cache/sccache make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
 
 # Create output directories to ensure they exist even if build produces no artifacts.
@@ -30,4 +29,4 @@ COPY --from=builder /mnt/bin /bin
 COPY --from=builder /mnt/lib /lib
 COPY --from=builder /mnt/sysroot-debug /sysroot-debug
 COPY --from=builder /mnt/sysroot-release /sysroot-release
-
+COPY --from=builder /mnt/images /images
