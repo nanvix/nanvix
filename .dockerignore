@@ -1,11 +1,22 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 # Build artifacts
 target/
+toolchain/
+sysroot*/
 bin/
 lib/
 *.o
 *.a
 *.so
 *.dylib
+
+# Archives and images
+*.tar
+*.tar.gz
+*.tar.bz2
+*.iso
 
 # Version control
 .git/

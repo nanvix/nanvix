@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1.4
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Dockerfile for building Nanvix using BuildKit cache mounts.
+# This Dockerfile is used by the `./z build --with-docker` command.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS builder
+
+ARG BUILD_PARAMS
+
+WORKDIR /mnt
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
+    --mount=type=cache,target=/mnt/target,sharing=locked \
+    set -e && \
+    git config --global --add safe.directory '*' && \
+    SCCACHE_DIR=/root/.cache/sccache make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
+
+# Create output directories to ensure they exist even if build produces no artifacts.
+RUN mkdir -p /mnt/sysroot-debug /mnt/sysroot-release /mnt/bin /mnt/lib
+
+# Output stage: only copy the actual build artifacts, not intermediate files.
+FROM scratch
+COPY --from=builder /mnt/bin /bin
+COPY --from=builder /mnt/lib /lib
+COPY --from=builder /mnt/sysroot-debug /sysroot-debug
+COPY --from=builder /mnt/sysroot-release /sysroot-release
+

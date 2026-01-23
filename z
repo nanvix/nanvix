@@ -181,23 +181,20 @@ get_docker_image_name() {
 
 #
 # Description
-#   Builds the Docker command to run the build process.
+#   Builds Nanvix using Docker with BuildKit cache mounts.
+#   Uses 'docker build' with --mount=type=cache for efficient caching.
 #
 # Arguments
-#   $* - The build parameters to pass to the Docker command.
+#   $* - The build parameters to pass to make.
 #
 # Return
-#   A string containing the Docker command to run.
+#   0 on success, non-zero on failure.
 #
 # Usage Example
 #   build_docker_command "all"
 #
 build_docker_command() {
     local build_parameters="${*}"
-    local user_id
-    local group_id
-    user_id="$(id -u)"
-    group_id="$(id -g)"
 
     # Check if Docker is installed.
     check_docker_installed
@@ -212,16 +209,23 @@ build_docker_command() {
     # Check if the Docker image is available.
     check_docker_image_available "${image_name}"
 
-    echo "docker run --rm \
-        -v \"$(pwd):/mnt\" \
-        ${image_name} \
-        /bin/bash -l -c '\
-            set -e ; \
-            cd /mnt ; \
-            git config --global --add safe.directory \* ; \
-            make TOOLCHAIN_DIR=${DOCKER_IMAGE_TOOLCHAIN_PATH} ${build_parameters} ; \
-            chown -R \"${user_id}:${group_id}\" .\
-        '"
+    # Path to the build Dockerfile.
+    local dockerfile_path="${REPO_ROOT_DIR}/scripts/setup/Dockerfile.build"
+
+    # Check if the Dockerfile exists.
+    if [[ ! -f "${dockerfile_path}" ]]; then
+        print_error "Build Dockerfile not found: ${dockerfile_path}"
+        return 1
+    fi
+
+    # Run the build with BuildKit using the external Dockerfile.
+    DOCKER_BUILDKIT=1 docker build \
+        --build-arg BASE_IMAGE="${image_name}" \
+        --build-arg BUILD_PARAMS="${build_parameters}" \
+        --output type=local,dest=. \
+        --progress=plain \
+        -f "${dockerfile_path}" \
+        .
 }
 
 #
@@ -559,14 +563,10 @@ main() {
             print_info "Build Parameters: ${build_parameters[*]}"
 
             # Check if we are switching build modes.
-            if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to Docker build, forcing cleanup."
-                # Force a cleanup.
-                if ! eval "$(build_docker_command distclean)" ; then
-                    print_error "Cleanup failed with Docker."
-                    exit 1
-                fi
-            elif ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
+            # Note: When switching TO Docker, we don't need to clean because Docker builds
+            # use isolated cache mounts. We only need to clean local artifacts when switching
+            # FROM Docker to local toolchain.
+            if ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
                 print_warning "Switching to local toolchain build, forcing cleanup."
                 # Force a cleanup.
                 if ! make distclean ; then
@@ -583,8 +583,8 @@ main() {
 
             # Build Nanvix.
             if ${BUILD_WITH_DOCKER}; then
-                print_info "Building with Docker..."
-                if ! eval "$(build_docker_command "${build_parameters[@]}")"; then
+                print_info "Building with Docker (using BuildKit cache)..."
+                if ! build_docker_command "${build_parameters[@]}"; then
                     print_error "Build failed with Docker."
                     exit 1
                 fi
@@ -612,7 +612,7 @@ main() {
         "${CMD_NAME_CLEAN}")
             if ${BUILD_WITH_DOCKER}; then
                 print_info "Running quick cleanup with Docker..."
-                if ! eval "$(build_docker_command clean)"; then
+                if ! build_docker_command clean; then
                     print_error "Quick clean failed with Docker."
                     exit 1
                 fi
@@ -636,7 +636,7 @@ main() {
         "${CMD_NAME_DISTCLEAN}")
             if ${BUILD_WITH_DOCKER}; then
                 print_info "Running full cleanup with Docker..."
-                if ! eval "$(build_docker_command distclean)"; then
+                if ! build_docker_command distclean; then
                     print_error "Full cleanup failed with Docker."
                     exit 1
                 fi
