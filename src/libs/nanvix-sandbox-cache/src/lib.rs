@@ -95,12 +95,10 @@ use ::tokio::sync::Mutex;
 pub struct SandboxCache<T> {
     /// Configuration parameters for all sandboxes.
     config: SandboxCacheConfig<T>,
-    /// Registry of all currently running sandboxes indexed by their unique tag.
-    running_sandboxes: HashMap<SandboxTag, RunningSandbox>,
+    /// Registry of all currently running sandboxes indexed by their unique User VM identifier.
+    running_sandboxes: HashMap<UserVmIdentifier, RunningSandbox>,
     /// Registry of Linux Daemon instances indexed by tenant ID (one per tenant).
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
-    /// Reverse index mapping User VM identifiers to their sandbox tags.
-    sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
     control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Network namespace pool for different L2 VMs.
@@ -128,7 +126,6 @@ pub struct SandboxCache<T> {
 pub struct SandboxCacheStateSummary {
     running_sandboxes: usize,
     linuxd_instances: usize,
-    sandbox_index_entries: usize,
     has_control_plane_bind_socket: bool,
     l2_enabled: bool,
 }
@@ -150,15 +147,6 @@ impl SandboxCacheStateSummary {
     ///
     pub fn linuxd_instances(&self) -> usize {
         self.linuxd_instances
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the number of sandbox index entries.
-    ///
-    pub fn sandbox_index_entries(&self) -> usize {
-        self.sandbox_index_entries
     }
 
     ///
@@ -215,7 +203,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             config,
             running_sandboxes: HashMap::new(),
             linuxd_instances: HashMap::new(),
-            sandbox_index: HashMap::new(),
             control_plane_bind_socket: None,
             #[cfg(not(feature = "single-process"))]
             netns_pool: NetnsPool::new(
@@ -243,7 +230,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         SandboxCacheStateSummary {
             running_sandboxes: self.running_sandboxes.len(),
             linuxd_instances: self.linuxd_instances.len(),
-            sandbox_index_entries: self.sandbox_index.len(),
             has_control_plane_bind_socket: self.control_plane_bind_socket.is_some(),
             l2_enabled: self.config.l2(),
         }
@@ -347,7 +333,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         let tag: SandboxTag = SandboxTag::new(tenant_id, program, app_name, program_args);
 
         // Check if sandbox is in cache.
-        match self.running_sandboxes.get(&tag) {
+        match self.running_sandboxes.get(&tag.sandbox_id()) {
             // Cache hit: sandbox found.
             Some(sandbox) => Ok((
                 tag.sandbox_id(),
@@ -538,12 +524,12 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 // Update Linux Daemon instance.
                 self.linuxd_instances
                     .insert(tag.tenant_id().to_string(), initialized_sandbox.linuxd());
-                self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
 
                 // Run sandbox.
                 match initialized_sandbox.start().await {
                     Ok(running_sandbox) => {
-                        self.running_sandboxes.insert(tag.clone(), running_sandbox);
+                        self.running_sandboxes
+                            .insert(tag.sandbox_id(), running_sandbox);
                     },
                     Err(error) => {
                         error!(
@@ -577,14 +563,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// identifier was not found in the cache.
     ///
     pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
-        let tag: &SandboxTag = self.sandbox_index.get(&user_vm_id).ok_or_else(|| {
-            let reason: &str = "user VM instance not found in cache";
-            error!("kill(): {reason} (user_vm_id={user_vm_id})");
-            anyhow::anyhow!("{reason}")
-        })?;
-
-        if let Some(sandbox) = self.running_sandboxes.remove(tag) {
-            self.sandbox_index.remove(&user_vm_id);
+        if let Some(sandbox) = self.running_sandboxes.remove(&user_vm_id) {
             match sandbox.shutdown().await {
                 Some(status) => {
                     if status.success() {
@@ -609,15 +588,9 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 
             Ok(())
         } else {
-            // This is unlikely to happen because every time we insert a new sandbox tag in the
-            // cache index we also insert the corresponding running sandbox in the running sandboxes
-            // map. Conversely, every time we remove a running sandbox from the running sandboxes
-            // map we also remove the corresponding tag from the cache index. Instead of panicking,
-            // we log an error message and fail to maintain backward compatibility.
-            let reason: String =
-                format!("trying to kill user VM that is not in the cache (tag={tag:?})");
-            error!("kill(): {reason}");
-            Err(anyhow::anyhow!(reason))
+            let reason: &str = "user VM instance not found in cache";
+            error!("kill(): {reason} (user_vm_id={user_vm_id})");
+            Err(anyhow::anyhow!("{reason}"))
         }
     }
 
@@ -649,9 +622,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             }
         }
 
-        // After draining all running sandboxes, clear the index to keep it consistent.
-        self.sandbox_index.clear();
-
         // Shutdown all linuxd instances.
         for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
             debug!("cleaning linuxd instance (tenant_id={tenant_id:?})");
@@ -664,11 +634,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 
         let summary: SandboxCacheStateSummary = self.state_summary();
         debug!(
-            "cleanup summary: running_sandboxes={}, linuxd_instances={}, \
-             sandbox_index_entries={}, control_plane_socket={}, l2_enabled={}",
+            "cleanup summary: running_sandboxes={}, linuxd_instances={}, control_plane_socket={}, \
+             l2_enabled={}",
             summary.running_sandboxes(),
             summary.linuxd_instances(),
-            summary.sandbox_index_entries(),
             summary.has_control_plane_bind_socket(),
             summary.l2_enabled()
         );
@@ -861,7 +830,6 @@ mod tests {
         let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         assert_eq!(cache_guard.running_sandboxes.len(), 0);
         assert_eq!(cache_guard.linuxd_instances.len(), 0);
-        assert_eq!(cache_guard.sandbox_index.len(), 0);
     }
 
     ///

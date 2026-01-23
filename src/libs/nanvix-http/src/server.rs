@@ -154,11 +154,10 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     let mut cache_guard = sandbox_cache_clone.lock().await;
                     let summary: SandboxCacheStateSummary = cache_guard.state_summary();
                     info!(
-                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, sandbox_index_entries={}, \
+                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
                          control_plane_socket={}, l2_enabled={}",
                         summary.running_sandboxes(),
                         summary.linuxd_instances(),
-                        summary.sandbox_index_entries(),
                         summary.has_control_plane_bind_socket(),
                         summary.l2_enabled()
                     );
