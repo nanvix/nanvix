@@ -39,6 +39,8 @@ pub struct Args {
     kernel_filename: String,
     /// Initrd filename.
     initrd_filename: Option<String>,
+    /// Ramfs filename.
+    ramfs_filename: Option<String>,
     /// Arguments to be passed to the initrd.
     initrd_args: Option<String>,
     /// Memory size.
@@ -94,6 +96,8 @@ impl Args {
     pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
+    /// Command-line option for the ramfs file.
+    pub const OPT_RAMFS: &'static str = "-ramfs";
     /// Log to file.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
     /// Log directory
@@ -122,6 +126,7 @@ impl Args {
         let mut user_vm_id_raw: Option<u32> = None;
         let mut kernel_filename: String = String::new();
         let mut initrd_filename: Option<String> = None;
+        let mut ramfs_filename: Option<String> = None;
         let mut initrd_args: Option<String> = None;
         let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
@@ -164,6 +169,11 @@ impl Args {
                 // Set initrd arguments.
                 Self::OPT_INITRD_ARGS if i + 1 < args.len() => {
                     initrd_args = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set ramfs file.
+                Self::OPT_RAMFS if i + 1 < args.len() => {
+                    ramfs_filename = Some(args[i + 1].clone());
                     i += 1;
                 },
                 // Set kernel file.
@@ -380,6 +390,7 @@ impl Args {
             user_vm_id,
             kernel_filename,
             initrd_filename,
+            ramfs_filename,
             initrd_args,
             memory_size,
             vm_stderr,
@@ -403,7 +414,7 @@ impl Args {
         eprintln!(
             "Usage: {} {} <id> {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} \
              <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
-             <args>]",
+             <args>] [{} <file>]",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -416,6 +427,7 @@ impl Args {
             Self::OPT_LOGFILE,
             Self::OPT_LOGDIR,
             Self::OPT_INITRD_ARGS,
+            Self::OPT_RAMFS,
         );
     }
 
@@ -444,6 +456,20 @@ impl Args {
     ///
     pub fn initrd_filename(&mut self) -> Option<String> {
         self.initrd_filename.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the ramfs filename that was passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The ramfs filename that was passed as a command-line argument to the program. If no ramfs
+    /// filename was passed, this method returns `None`.
+    ///
+    pub fn ramfs_filename(&mut self) -> Option<String> {
+        self.ramfs_filename.take()
     }
 
     ///
@@ -676,6 +702,8 @@ mod tests {
         args_vec.push(String::from("initrd.img"));
         args_vec.push(Args::OPT_INITRD_ARGS.to_string());
         args_vec.push(String::from("--flag=value"));
+        args_vec.push(Args::OPT_RAMFS.to_string());
+        args_vec.push(String::from("ramfs.img"));
         args_vec.push(Args::OPT_STDERR.to_string());
         args_vec.push(String::from("stderr.log"));
         args_vec.push(Args::OPT_LOGFILE.to_string());
@@ -689,6 +717,8 @@ mod tests {
         assert_eq!(parsed_args.memory_size(), 64 * 1024 * 1024);
         let initrd: Option<String> = parsed_args.initrd_filename();
         assert!(matches!(initrd, Some(ref value) if value == "initrd.img"));
+        let ramfs: Option<String> = parsed_args.ramfs_filename();
+        assert!(matches!(ramfs, Some(ref value) if value == "ramfs.img"));
         let initrd_args: Option<String> = parsed_args.initrd_args();
         assert!(matches!(initrd_args, Some(ref value) if value == "--flag=value"));
         let stderr_path: Option<String> = parsed_args.take_vm_stderr();

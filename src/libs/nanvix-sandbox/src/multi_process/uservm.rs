@@ -120,7 +120,10 @@ impl UserVm {
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             args.control_plane_connect_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
-            args.control_plane_connect_socket_info().1.to_str().to_string(),
+            args.control_plane_connect_socket_info()
+                .1
+                .to_str()
+                .to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
             args.gateway_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string(),
@@ -132,6 +135,11 @@ impl UserVm {
         if let Some(program_args) = args.program_args() {
             user_vm_args.push(::uservm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
+        }
+
+        if let Some(ramfs_filename) = args.ramfs_filename() {
+            user_vm_args.push(::uservm::args::Args::OPT_RAMFS.to_string());
+            user_vm_args.push(ramfs_filename.to_string());
         }
 
         if let Some(stderr_file) = args.console_file() {
@@ -152,11 +160,7 @@ impl UserVm {
             // In an L2-deployment, spawn the user VM inside a network namespace.
             #[cfg(not(feature = "single-process"))]
             if let Some(netns_handle) = &netns_handle {
-                command_in_netns(
-                    &netns_handle.netns_info()?,
-                    &user_vm_args[0],
-                    &user_vm_args[1..],
-                )
+                command_in_netns(&netns_handle.netns_info()?, &user_vm_args[0], &user_vm_args[1..])
             } else {
                 let mut cmd: Command = Command::new(&user_vm_args[0]);
                 cmd.args(&user_vm_args[1..]);

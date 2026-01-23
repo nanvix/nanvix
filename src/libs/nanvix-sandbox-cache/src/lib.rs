@@ -356,8 +356,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             )),
             // Cache miss: sandbox not found.
             None => {
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
+                let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
+                    tag.program(),
+                    tag.program_args().cloned(),
+                    self.config.ramfs_filename().map(|s| s.to_string()),
+                );
 
                 // Gateway port guard for L2 deployments.
                 #[cfg(not(feature = "single-process"))]
@@ -702,6 +705,7 @@ mod tests {
             SocketType::Unix,
             None,
             None,
+            None,
             128,
             &format!("{}/kernel.elf", tmp_dir),
             None,
@@ -729,6 +733,7 @@ mod tests {
             SocketType::Unix,
             SocketType::Unix,
             SocketType::Unix,
+            None,
             None,
             None,
             0,
@@ -774,6 +779,7 @@ mod tests {
                 socket_type,
                 socket_type,
                 console_file,
+                None,
                 hwloc,
                 128,
                 &format!("{}/kernel.elf", tmp_dir),
@@ -793,6 +799,7 @@ mod tests {
                 socket_type,
                 socket_type,
                 console_file,
+                None,
                 hwloc,
                 128,
                 &format!("{}/kernel.elf", tmp_dir),

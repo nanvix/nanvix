@@ -81,6 +81,7 @@ pub async fn main() -> Result<ExitCode> {
     let kernel_filename: String = args.kernel_filename().to_string();
     let initrd_filename: Option<String> = args.initrd_filename();
     let initrd_args: Option<String> = args.initrd_args();
+    let ramfs_filename: Option<String> = args.ramfs_filename();
     let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
@@ -94,11 +95,12 @@ pub async fn main() -> Result<ExitCode> {
     );
 
     debug!(
-        "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, \
+        "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
          memory_size_bytes={})",
         user_vm_id,
         &kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
+        ramfs_filename.as_deref().unwrap_or("none"),
         memory_size
     );
 
@@ -230,15 +232,17 @@ pub async fn main() -> Result<ExitCode> {
 
     // Run virtual machine and check exit status code.
     debug!(
-        "main(): launching uservm (kernel={:?}, initrd={:?}, memory_size_bytes={})",
+        "main(): launching uservm (kernel={:?}, initrd={:?}, ramfs={:?}, memory_size_bytes={})",
         &kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
+        ramfs_filename.as_deref().unwrap_or("none"),
         memory_size
     );
     let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
         memory_size,
         initrd_filename,
         initrd_args,
+        ramfs_filename,
         stderr,
         vcpu_thread_stdout_tx,
         memory_thread_data_rx,
