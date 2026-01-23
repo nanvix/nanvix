@@ -56,11 +56,12 @@ To build Nanvix using the latest Docker image and default build parameters, run:
 
 ```bash
 docker run \
-  -it --rm -v"$(pwd):/mnt" \
+  -it --rm \
+  -v"$(pwd -P):$(pwd -P)" \
+  -w"$(pwd -P)" \
   nanvix/toolchain \
   /bin/bash -l -c "\
     set -e; \
-    cd /mnt ; \
     git config --global --add safe.directory '*' ; \
     make TOOLCHAIN_DIR=/opt/nanvix all ; \
     chown -R $(id -u):$(id -g) . "
