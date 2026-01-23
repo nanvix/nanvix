@@ -9,6 +9,7 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS builder
 
 ARG BUILD_PARAMS
+ARG SYSROOT_SUFFIX=debug
 
 WORKDIR /mnt
 COPY . .
@@ -17,16 +18,18 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     --mount=type=cache,target=/mnt/target,sharing=locked \
+    --mount=type=cache,target=/opt/contrib-src,sharing=locked \
     set -e && \
-    SCCACHE_DIR=/root/.cache/sccache make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
+    SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
+    make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
 
 # Create output directories to ensure they exist even if build produces no artifacts.
-RUN mkdir -p /mnt/sysroot-debug /mnt/sysroot-release /mnt/bin /mnt/lib
+RUN mkdir -p /mnt/bin /mnt/lib /mnt/images /mnt/sysroot-debug /mnt/sysroot-release
 
 # Output stage: only copy the actual build artifacts, not intermediate files.
 FROM scratch
+ARG SYSROOT_SUFFIX=debug
 COPY --from=builder /mnt/bin /bin
 COPY --from=builder /mnt/lib /lib
-COPY --from=builder /mnt/sysroot-debug /sysroot-debug
-COPY --from=builder /mnt/sysroot-release /sysroot-release
+COPY --from=builder /mnt/sysroot-${SYSROOT_SUFFIX} /sysroot
 COPY --from=builder /mnt/images /images

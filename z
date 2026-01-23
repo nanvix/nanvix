@@ -218,10 +218,17 @@ build_docker_command() {
         return 1
     fi
 
+    # Extract RELEASE value from build parameters to determine sysroot suffix.
+    local sysroot_suffix="debug"
+    if [[ "${build_parameters}" =~ RELEASE=yes ]]; then
+        sysroot_suffix="release"
+    fi
+
     # Run the build with BuildKit using the external Dockerfile.
     DOCKER_BUILDKIT=1 docker build \
         --build-arg BASE_IMAGE="${image_name}" \
         --build-arg BUILD_PARAMS="${build_parameters}" \
+        --build-arg SYSROOT_SUFFIX="${sysroot_suffix}" \
         --output type=local,dest=. \
         --progress=plain \
         -f "${dockerfile_path}" \

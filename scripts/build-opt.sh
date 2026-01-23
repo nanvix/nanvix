@@ -40,8 +40,10 @@ DIRNAME=$6
 # Global Variables
 #===================================================================================================
 
-NANVIX_HOME="$(git rev-parse --show-toplevel)"
-CONTRIB_DIR="${SYSROOT_DIR}/src"
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+NANVIX_HOME="$(realpath "${SCRIPT_DIR}/..")"
+# Use CONTRIB_SRC_DIR if set (e.g., in Docker builds), otherwise fall back to sysroot/src.
+CONTRIB_DIR="${CONTRIB_SRC_DIR:-${SYSROOT_DIR}/src}"
 REPOSITORY_HOME="${CONTRIB_DIR}/${DIRNAME}"
 
 #===================================================================================================
