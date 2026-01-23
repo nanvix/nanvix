@@ -69,6 +69,8 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     pub(super) kernel_binary_path: String,
     /// Optional command-line arguments for the program.
     pub(super) program_args: Option<String>,
+    /// Optional RAM filesystem image exposed to the guest program.
+    pub(super) ramfs_filename: Option<String>,
     /// Shared handle to the Linux Daemon instance managing this sandbox.
     pub(super) linuxd: Arc<LinuxDaemon>,
     /// Control plane listener socket, address, and socket type.
@@ -137,6 +139,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     system_vm_socket_info,
                     self.guest_binary_path.clone(),
                     self.program_args.clone(),
+                    self.ramfs_filename.clone(),
                     console_file,
                     hwloc,
                     self.kernel_binary_path.clone(),

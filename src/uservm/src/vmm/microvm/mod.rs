@@ -14,6 +14,7 @@
 pub mod emulator;
 pub mod guest;
 pub mod kvm;
+pub mod ramfs;
 
 //==================================================================================================
 // Imports
@@ -88,6 +89,7 @@ use ::tokio::{
 };
 
 pub use kvm::vmem::VirtualMemory;
+pub use ramfs::RamFs;
 
 //==================================================================================================
 // Constants
@@ -215,6 +217,33 @@ impl Vmm {
                     guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
                 })
                 .transpose()?;
+
+            let ramfs_region: Option<(usize, usize)> =
+                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
+                    let initrd_end: usize = match guest.initrd_region() {
+                        Some((base, size)) => match base.checked_add(size) {
+                            Some(end) => end,
+                            None => {
+                                let reason: String = "initrd region overflowed while computing \
+                                                      ramfs placement"
+                                    .to_string();
+                                error!("new(): {reason}");
+                                anyhow::bail!(reason)
+                            },
+                        },
+                        None => ::config::microvm::DEFAULT_INITRD_BASE,
+                    };
+
+                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
+                    let (ramfs_base, ramfs_size) =
+                        ramfs.map_into_virtual_memory(&mut vmem, initrd_end)?;
+                    vmem.attach_ramfs(ramfs);
+                    Some((ramfs_base, ramfs_size))
+                } else {
+                    None
+                };
+
+            RamFs::write_registers(&mut vmem, ramfs_region)?;
 
             guest.reset(&mut vmem, &mut vcpu)?;
 

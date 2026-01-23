@@ -50,6 +50,8 @@ pub struct Args {
     toolchain_binary_directory: String,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
+    /// Optional RAM filesystem image exposed to the guest.
+    ramfs_filename: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
     /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
@@ -95,6 +97,8 @@ impl Args {
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
     /// Command-line option that sets the network namespace pool size.
     pub const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
+    /// Command-line option that sets the RAM filesystem image filename.
+    pub const OPT_RAMFS_FILENAME: &'static str = "-ramfs";
     /// Default netns pool size for prefill mode.
     pub const DEFAULT_NETNS_POOL_SIZE: usize = 128;
     /// Command-line flag that enables L2 deployment mode.
@@ -137,6 +141,7 @@ impl Args {
             DEFAULT_CONSOLE_FILENAME,
             Local::now().format("%Y_%m_%d_%H_%M")
         ));
+        let mut ramfs_filename: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
         let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
@@ -225,6 +230,10 @@ impl Args {
                     i += 1;
                     netns_pool_size = args[i].parse()?;
                 },
+                Self::OPT_RAMFS_FILENAME => {
+                    i += 1;
+                    ramfs_filename = Some(args[i].clone());
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -297,6 +306,7 @@ impl Args {
             toolchain_binary_directory,
             l2_snapshot_path,
             console_file,
+            ramfs_filename,
             hwloc,
             netns_pool_size,
             log_directory,
@@ -331,6 +341,7 @@ Usage (Interactive mode):
 
 Options:
   {console_file} <file>                     Redirect console output to a file.
+  {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
   {toolchain_bin_dir} <toolchain_bin_dir>   Directory containing toolchain binaries \
              (cloud-hypervisor, etc.).
@@ -353,6 +364,7 @@ Options:
             http_addr = Self::OPT_HTTP_SOCKADDR,
             separator = Self::OPT_SEPARATOR,
             console_file = Self::OPT_CONSOLE_FILE,
+            ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             hwloc = Self::OPT_HWLOC,
@@ -430,6 +442,19 @@ Options:
     ///
     pub fn console_file(&self) -> Option<String> {
         self.console_file.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional RAM filesystem filename.
+    ///
+    /// # Returns
+    ///
+    /// The RAM filesystem filename, if present.
+    ///
+    pub fn ramfs_filename(&self) -> Option<&str> {
+        self.ramfs_filename.as_deref()
     }
 
     ///

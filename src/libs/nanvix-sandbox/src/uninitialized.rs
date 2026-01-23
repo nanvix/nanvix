@@ -60,6 +60,8 @@ pub struct UninitializedSandbox<T> {
     guest_binary_path: String,
     /// Optional command-line arguments for the program.
     program_args: Option<String>,
+    /// Optional RAM filesystem image exposed to the guest program.
+    ramfs_filename: Option<String>,
     /// Optional handle to an existing Linux Daemon instance.
     linuxd: Option<Arc<LinuxDaemon>>,
     /// Optional handle to a network namespace. Only used in L2 deployments.
@@ -89,15 +91,21 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// - `guest_binary_path`: Path to the guest binary file to execute.
     /// - `program_args`: Optional command-line arguments for the program.
+    /// - `ramfs_filename`: Optional RAM filesystem image filename to expose to the guest.
     ///
     /// # Returns
     ///
     /// A new instance of an uninitialized sandbox.
     ///
-    pub fn new(guest_binary_path: &str, program_args: Option<String>) -> Self {
+    pub fn new(
+        guest_binary_path: &str,
+        program_args: Option<String>,
+        ramfs_filename: Option<String>,
+    ) -> Self {
         UninitializedSandbox {
             guest_binary_path: guest_binary_path.to_string(),
             program_args,
+            ramfs_filename,
             linuxd: None,
             #[cfg(not(feature = "single-process"))]
             netns_handle: None,
@@ -378,6 +386,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             guest_binary_path: self.guest_binary_path,
             kernel_binary_path: config.kernel_binary_path().to_string(),
             program_args: self.program_args,
+            ramfs_filename: self.ramfs_filename,
             linuxd,
             control_plane_bind_socket_and_info,
             sandbox_config: config,

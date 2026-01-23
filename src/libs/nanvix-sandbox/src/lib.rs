@@ -79,7 +79,7 @@
 //! );
 //!
 //! // Create and initialize sandbox.
-//! let sandbox = UninitializedSandbox::new("/path/to/guest.elf", None)
+//! let sandbox = UninitializedSandbox::new("/path/to/guest.elf", None, None)
 //!     .with_config(config)
 //!     .initialize()
 //!     .await?;
