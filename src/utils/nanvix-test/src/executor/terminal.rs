@@ -7,6 +7,7 @@
 
 use crate::{
     config::RunnerConfig,
+    executor::WorkloadSpec,
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -88,10 +89,7 @@ type StreamCollectors = (
 ///
 /// - `runner_config`: Configuration required to spawn the Nanvix Daemon.
 /// - `iterations`: Number of times to run the workflow.
-/// - `program_path`: Path to the program executed by the daemon.
-/// - `program_args`: Optional argument string passed to the workload.
-/// - `input`: Optional payload sent over stdin.
-/// - `expected_output`: Optional substring expected in stdout.
+/// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that defines the target directory for stdout/stderr/program logs.
 ///
 /// # Return Value
@@ -103,10 +101,7 @@ type StreamCollectors = (
 pub async fn test_with_terminal_executor(
     runner_config: &RunnerConfig,
     iterations: usize,
-    program_path: &str,
-    program_args: Option<&str>,
-    input: Option<&str>,
-    expected_output: Option<&str>,
+    workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
 ) -> Result<()> {
     if runner_config.l2_enabled {
@@ -116,7 +111,7 @@ pub async fn test_with_terminal_executor(
     }
 
     let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
-    let parsed_program_args: Vec<String> = match program_args {
+    let parsed_program_args: Vec<String> = match workload.program_args() {
         Some(args) => match shell_words::split(args) {
             Ok(values) => values,
             Err(error) => {
@@ -141,7 +136,7 @@ pub async fn test_with_terminal_executor(
 
         let nanvixd_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
             hwloc_file_path.clone(),
-            program_path,
+            workload.program_path(),
             parsed_program_args.as_slice(),
             log_layout.test_directory(),
         )?;
@@ -183,7 +178,7 @@ pub async fn test_with_terminal_executor(
                 ::anyhow::anyhow!(reason)
             })?;
 
-            send_interactive_input(stdin_pipe, input).await?;
+            send_interactive_input(stdin_pipe, workload.input()).await?;
 
             (nanvixd, (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer))
         };
@@ -228,13 +223,22 @@ pub async fn test_with_terminal_executor(
 
         log_layout.persist_program_output(iteration, stdout_bytes.as_slice())?;
 
-        if let Some(expected) = expected_output
+        if let Some(expected) = workload.expected_output()
             && !buffer_contains_pattern(stdout_bytes.as_slice(), expected.as_bytes())
         {
             let reason: String = format!(
                 "interactive output mismatch (expected='{}', log={}, iteration={iteration})",
                 expected,
                 stdout_file_path.display()
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        if workload.expect_empty_output() && !stdout_bytes.is_empty() {
+            let reason: String = format!(
+                "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
+                stdout_bytes
             );
             error!("test_with_terminal_executor(): {reason}");
             return Err(::anyhow::anyhow!(reason));
