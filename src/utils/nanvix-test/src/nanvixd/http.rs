@@ -254,8 +254,7 @@ impl NanvixdHttpArgs {
     ///
     /// # Parameters
     ///
-    /// - `stdout_file_path`: Path to the file that captures Nanvix Daemon standard output.
-    /// - `stderr_file_path`: Path to the file that captures Nanvix Daemon standard error.
+    /// - `log_files`: Tuple containing stdout and stderr log file paths.
     /// - `ipv4_addr`: IPv4 address where the Nanvix Daemon should expose its HTTP interface.
     /// - `port_num`: TCP port used by the Nanvix Daemon HTTP interface.
     /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
@@ -268,10 +267,8 @@ impl NanvixdHttpArgs {
     /// Returns a ready-to-use argument bundle when both log files can be created; returns an error
     /// when the stdout or stderr log file cannot be opened.
     ///
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        stdout_file_path: &Path,
-        stderr_file_path: &Path,
+        log_files: (&Path, &Path),
         ipv4_addr: &str,
         port_num: u16,
         hwloc_file_path: Option<String>,
@@ -279,6 +276,7 @@ impl NanvixdHttpArgs {
         netns_pool_size: usize,
         log_directory: &Path,
     ) -> Result<Self> {
+        let (stdout_file_path, stderr_file_path): (&Path, &Path) = log_files;
         let stdout_file_handle: File = match OpenOptions::new()
             .create(true)
             .write(true)
