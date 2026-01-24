@@ -319,7 +319,6 @@ fn log_control_registers() {
     }
 }
 
-#[cfg(feature = "pic")]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
@@ -347,7 +346,6 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
-    #[cfg(feature = "pic")]
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.

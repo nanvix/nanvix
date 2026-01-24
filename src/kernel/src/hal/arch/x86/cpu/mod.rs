@@ -122,7 +122,6 @@ pub fn init(
     let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
     unsafe { idt::init() };
 
-    #[cfg(feature = "pic")]
     let controller: Option<InterruptController> = match interrupt::init(ioports, ioaddresses, madt)
     {
         Ok(controller) => Some(controller),
@@ -131,8 +130,6 @@ pub fn init(
             None
         },
     };
-    #[cfg(not(feature = "pic"))]
-    let controller: Option<InterruptController> = None;
 
     Ok((gdtr, tss, controller))
 }
