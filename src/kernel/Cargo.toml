@@ -39,14 +39,7 @@ hyperlight = [
     "arch/hyperlight",
     "puts",
     "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
     "pit",
-    "xapic",
     "dep:hyperlight-common",
     "dep:hyperlight-guest",
     "dep:config",
@@ -56,14 +49,7 @@ microvm = [
     "arch/microvm",
     "putb",
     "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
     "pit",
-    "xapic",
     "dep:config",
     "config/microvm",
 ]
@@ -75,13 +61,6 @@ pc = [
     "mboot",
     "pit",
     "warn",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "xapic",
     "dep:config",
     "config/pc",
 ]
@@ -90,15 +69,6 @@ qemu-pc-smp = ["arch/qemu-pc-smp", "qemu-pc", "smp"]
 qemu-baremetal = ["arch/qemu-baremetal", "pc"]
 qemu-baremetal-smp = ["arch/qemu-baremetal-smp", "qemu-baremetal", "smp"]
 qemu-isapc = ["arch/qemu-isapc", "pc"]
-
-# Architecture Features
-acpi = []
-cpuid = []
-ioapic = []
-madt = []
-msr = []
-pic = []
-xapic = []
 
 # Platform Features
 smp = []
