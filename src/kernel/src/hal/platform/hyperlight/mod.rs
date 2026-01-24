@@ -277,7 +277,6 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
 }
 
-#[cfg(feature = "pic")]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(::arch::cpu::pic::PIC_CTRL_MASTER as u16)?;
@@ -305,7 +304,6 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
-    #[cfg(feature = "pic")]
     register_pic_ioports(ioports)?;
 
     extern "C" {
