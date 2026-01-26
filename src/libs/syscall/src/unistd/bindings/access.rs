@@ -13,6 +13,7 @@ use ::sysapi::{
         c_int,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -51,8 +52,8 @@ use ::sysapi::{
 /// - `path` remains valid for the duration of the function call.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
-    ::syslog::trace!("access(): path={path:?}, mode={mode:?}");
     unistd::bindings::faccessat::faccessat(AT_FDCWD, path, mode, 0)
 }

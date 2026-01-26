@@ -19,6 +19,7 @@ use ::sysapi::{
     },
     sys_types::size_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -85,10 +86,9 @@ fn prng() -> i32 {
 /// - `buffer` is properly aligned for byte access.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getentropy(buffer: *mut c_void, length: size_t) -> c_int {
-    ::syslog::trace!("getentropy(): buffer={buffer:?}, length={length:?}");
-
     // Check if buffer is null.
     if buffer.is_null() {
         ::syslog::error!("getentropy(): invalid buffer (buffer={buffer:?}, length={length:?})");

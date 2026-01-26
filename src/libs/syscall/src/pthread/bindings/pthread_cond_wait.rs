@@ -13,6 +13,7 @@ use ::sysapi::{
         pthread_mutex_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -42,6 +43,7 @@ use ::sysapi::{
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_cond_wait(
     cond: *const pthread_cond_t,
     mutex: *mut pthread_mutex_t,

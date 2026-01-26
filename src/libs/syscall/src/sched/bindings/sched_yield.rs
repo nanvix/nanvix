@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -13,6 +14,7 @@ use ::sysapi::ffi::c_int;
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn sched_yield() -> c_int {
     match crate::sched::sched_yield() {
         Ok(()) => 0,

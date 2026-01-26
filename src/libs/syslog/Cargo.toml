@@ -17,6 +17,7 @@ compiler_builtins = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 flexi_logger = { workspace = true, optional = true }
 sys = { workspace = true, features = ["kcall"], optional = true }
+syslog-macros = { workspace = true }
 
 [features]
 default = ["dep:cfg-if", "dep:sys", "error"]

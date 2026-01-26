@@ -11,6 +11,7 @@ use ::sysapi::{
     ffi::c_char,
     sys_stat,
 };
+use ::syslog::trace_syscall;
 use sysapi::ffi::c_int;
 
 //==================================================================================================
@@ -41,6 +42,7 @@ use sysapi::ffi::c_int;
 /// This function has undefined because it dereferences a raw pointer (ie. `statbuf`).
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int {
     // Convert C string to Rust string.
     let pathname: &str = match core::ffi::CStr::from_ptr(pathname).to_str() {

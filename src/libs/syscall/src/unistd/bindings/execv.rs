@@ -11,6 +11,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -61,9 +62,9 @@ use ::sysapi::ffi::{
 /// - All strings referenced by `argv` remain valid for the duration of the function call.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn execv(path: *const c_char, argv: *const *const c_char) -> c_int {
-    ::syslog::trace!("execv(): path={path:?}, argv={argv:?}");
     // TODO:https://github.com/nanvix/nanvix/issues/588
     ::syslog::debug!("execv(): not implemented");
     unsafe {

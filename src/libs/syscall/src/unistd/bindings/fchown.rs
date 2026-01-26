@@ -13,6 +13,7 @@ use ::sysapi::{
         uid_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -62,10 +63,9 @@ use ::sysapi::{
 /// - The calling process has appropriate permissions to change ownership of the file.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int {
-    ::syslog::trace!("fchown(): fd={fd:?}, owner={owner:?}, group={group:?}");
-
     // Attempt to change file ownership and check the result.
     match crate::unistd::fchown(fd, owner, group) {
         Ok(()) => 0,

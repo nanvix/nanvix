@@ -21,6 +21,7 @@ use ::sysapi::{
         c_ssize_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,14 +61,13 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn recv(
     sockfd: c_int,
     buf: *mut c_void,
     len: c_size_t,
     flags: c_int,
 ) -> c_ssize_t {
-    ::syslog::trace!("recv(): sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?}");
-
     // Check if `buf` is valid.
     if buf.is_null() {
         ::syslog::error!(

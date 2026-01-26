@@ -13,6 +13,7 @@ use ::sys::error::{
 };
 use ::sysapi::ffi::c_int;
 use ::syscall::unistd;
+use ::syslog::trace_syscall;
 use sysapi::{
     limits::IOV_MAX,
     sys_types::{
@@ -56,14 +57,13 @@ use sysapi::{
 /// - This function is called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn pwritev(
     fd: i32,
     iov: *const iovec,
     iovcnt: c_int,
     offset: off_t,
 ) -> c_ssize_t {
-    ::syslog::trace!("pwritev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
-
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
         ::syslog::error!("pwritev(): invalid iovcnt {iovcnt}");
@@ -188,14 +188,13 @@ pub unsafe extern "C" fn pwritev(
 /// // - This function is called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn preadv(
     fd: i32,
     iov: *const iovec,
     iovcnt: i32,
     offset: off_t,
 ) -> c_ssize_t {
-    ::syslog::trace!("preadv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}, offset={offset}");
-
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > IOV_MAX as i32) {
         ::syslog::error!("preadv(): invalid iovcnt {iovcnt}");
@@ -311,9 +310,8 @@ pub unsafe extern "C" fn preadv(
 /// - This function is called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> c_ssize_t {
-    ::syslog::trace!("readv(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
-
     // Check if number of elements in the vector is valid.
     if (iovcnt < 0) || (iovcnt > IOV_MAX as i32) {
         ::syslog::error!("readv(): invalid iovcnt {iovcnt}");
@@ -423,9 +421,8 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> c_ssi
 /// - This function is called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> c_ssize_t {
-    ::syslog::trace!("writev(): fd={fd}, iov={iov:?}, iovcnt={iovcnt}");
-
     // Check if number of elements in the vector is valid.
     if iovcnt < 0 {
         ::syslog::error!("writev(): invalid iovcnt {iovcnt}");

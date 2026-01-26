@@ -25,6 +25,7 @@ use ::sysapi::{
         off_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -73,6 +74,7 @@ use ::sysapi::{
 /// - Any flags other than `MAP_PRIVATE | MAP_ANONYMOUS` are not supported.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn mmap(
     addr: *mut u8,
     length: c_size_t,
@@ -81,11 +83,6 @@ pub unsafe extern "C" fn mmap(
     fd: c_int,
     offset: off_t,
 ) -> *mut u8 {
-    ::syslog::trace!(
-        "mmap(): addr={addr:?}, length={length}, prot={prot}, flags={flags}, fd={fd}, \
-         offset={offset}"
-    );
-
     // Check if mapping length is invalid.
     if length == 0 {
         ::syslog::error!(

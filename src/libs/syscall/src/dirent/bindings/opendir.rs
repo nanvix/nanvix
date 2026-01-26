@@ -18,6 +18,7 @@ use ::core::{
     ptr,
 };
 use ::sys::error::ErrorCode;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,10 +49,9 @@ use ::sys::error::ErrorCode;
 /// The returned pointer is owned by the caller and must be deallocated using the appropriate
 /// function (such as `closedir`). Failing to do so will result in a memory leak.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
-    ::syslog::trace!("opendir(): dirname={dirname:?}");
-
     // Check if `dirname` is null.
     if dirname.is_null() {
         ::syslog::error!("opendir(): null dirname (dirname={dirname:?})");

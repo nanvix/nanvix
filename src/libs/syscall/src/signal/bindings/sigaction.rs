@@ -11,18 +11,19 @@ use ::sysapi::{
     errno::__errno_location,
     ffi::c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub extern "C" fn sigaction(
     signum: c_int,
     act: *const sigaction_t,
     oldact: *mut sigaction_t,
 ) -> c_int {
-    ::syslog::trace!("sigaction(): signum={signum}, act={act:p}, oldact = {oldact:p}");
     unsafe {
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }

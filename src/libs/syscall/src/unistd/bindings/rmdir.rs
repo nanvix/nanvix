@@ -11,6 +11,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -18,8 +19,8 @@ use ::sysapi::ffi::{
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
-    ::syslog::trace!("rmdir(): path={path:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/348
     ::syslog::debug!("rmdir(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();

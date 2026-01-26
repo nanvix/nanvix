@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -39,6 +40,7 @@ use ::sysapi::{
 /// It is safe to call this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn posix_fadvise(
     fd: c_int,
@@ -46,10 +48,6 @@ pub unsafe extern "C" fn posix_fadvise(
     len: off_t,
     advice: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "posix_fadvise(): fd={fd:?}, offset={offset:?}, len={len:?}, advice={advice:?}"
-    );
-
     // Run system call and check for errors.
     match fcntl::posix_fadvise(fd, offset, len, advice) {
         Ok(()) => 0,

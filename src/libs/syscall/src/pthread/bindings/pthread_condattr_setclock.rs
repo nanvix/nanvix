@@ -13,6 +13,7 @@ use ::sysapi::{
         pthread_condattr_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,6 +41,7 @@ use ::sysapi::{
 /// - `attr` is a valid pointer to a `pthread_condattr_t` object.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_condattr_setclock(
     attr: *mut pthread_condattr_t,
     clock_id: clockid_t,

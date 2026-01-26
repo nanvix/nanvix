@@ -18,6 +18,7 @@ use ::sysapi::{
         uid_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -64,6 +65,7 @@ use ::sysapi::{
 /// - `path` remains valid for the duration of the function call.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchownat(
     dirfd: c_int,
@@ -72,11 +74,6 @@ pub unsafe extern "C" fn fchownat(
     group: gid_t,
     flag: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "fchownat(): dirfd={dirfd:?}, path={path:?}, owner={owner:?}, group={group:?}, \
-         flag={flag:?}"
-    );
-
     // Check if `path` is invalid.
     if path.is_null() {
         ::syslog::error!(

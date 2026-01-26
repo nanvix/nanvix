@@ -13,9 +13,11 @@ mod bindings {
         ffi::c_int,
         pwd::passwd,
     };
+    use ::syslog::trace_libcall;
 
     #[allow(clippy::missing_safety_doc)]
     #[unsafe(no_mangle)]
+    #[trace_libcall]
     pub unsafe extern "C" fn getpwuid(_uid: c_int) -> *mut passwd {
         ::syslog::debug!("getpwuid(): not implemented");
         unsafe {

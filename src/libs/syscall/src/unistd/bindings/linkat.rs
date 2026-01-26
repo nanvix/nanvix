@@ -15,6 +15,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -81,6 +82,7 @@ use ::sysapi::ffi::{
 /// - Access to the global `errno` variable is properly synchronized in multithreaded programs
 ///   to prevent race conditions during error reporting.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn linkat(
     olddirfd: c_int,
@@ -89,11 +91,6 @@ pub unsafe extern "C" fn linkat(
     newpath: *const c_char,
     flags: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "linkat(): olddirfd={olddirfd:?}, oldpath={oldpath:?}, newdirfd={newdirfd:?}, \
-         newpath={newpath:?}, flags={flags:?}"
-    );
-
     // Convert `oldpath`.
     let oldpath: &str = {
         // Check if `oldpath` is invalid.

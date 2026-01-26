@@ -19,11 +19,8 @@ use ::sysapi::{
         c_size_t,
         c_ssize_t,
     },
-    unistd::{
-        STDERR_FILENO,
-        STDOUT_FILENO,
-    },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -65,13 +62,9 @@ use ::sysapi::{
 /// - `fd` refers to a valid, open file descriptor with write permissions.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t) -> c_ssize_t {
-    // Skip logging for stdout and stderr to avoid spamming the output.
-    if fd != STDOUT_FILENO && fd != STDERR_FILENO {
-        ::syslog::trace!("write(): fd={fd:?}, buffer={buffer:?}, count={count:?}");
-    }
-
     // Check if buffer is invalid.
     if buffer.is_null() {
         ::syslog::error!("write(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");

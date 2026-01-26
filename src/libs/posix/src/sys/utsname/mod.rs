@@ -9,6 +9,7 @@ use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
 use ::syscall::sys::utsname;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -37,6 +38,7 @@ use ::syscall::sys::utsname;
 /// - The `name` points to a valid [`utsname`] structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn uname(name: *mut utsname::utsname) -> c_int {
     // Check if name is not valid.
     if name.is_null() {

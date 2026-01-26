@@ -14,6 +14,7 @@ use crate::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -56,9 +57,8 @@ use ::sysapi::ffi::c_int;
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn shutdown(sockfd: c_int, how: c_int) -> c_int {
-    ::syslog::trace!("shutdown(): sockfd={sockfd:?}, how={how:?}");
-
     // Attempt to convert shutdown mode.
     let how: Shutdown = match Shutdown::try_from(how) {
         Ok(how) => how,

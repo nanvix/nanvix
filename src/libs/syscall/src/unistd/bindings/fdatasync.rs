@@ -7,6 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,10 +50,9 @@ use ::sysapi::ffi::c_int;
 /// - The underlying storage device is accessible and functioning properly.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdatasync(fd: c_int) -> c_int {
-    ::syslog::trace!("fdatasync(): fd={fd:?}");
-
     // Attempt to synchronize the file and check the result.
     match crate::unistd::fdatasync(fd) {
         Ok(()) => 0,

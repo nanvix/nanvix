@@ -16,6 +16,7 @@ use ::sysapi::{
     netinet_in::in_addr_t,
     sys_socket::socklen_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -43,8 +44,8 @@ use ::sysapi::{
 /// - `cp` points to a valid null-terminated string.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn inet_addr(cp: *const c_char) -> in_addr_t {
-    ::syslog::trace!("inet_addr(): cp={cp:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/594.
     ::syslog::debug!("inet_addr(): not implemented");
     in_addr_t::MAX
@@ -69,8 +70,8 @@ pub unsafe extern "C" fn inet_addr(cp: *const c_char) -> in_addr_t {
 /// This function is unsafe because it may return a pointer to a static buffer and does not guarantee thread safety.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn inet_ntoa(in_addr: in_addr_t) -> *const c_char {
-    ::syslog::trace!("inet_ntoa(): in_addr={in_addr:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/595.
     ::syslog::debug!("inet_ntoa(): not implemented");
     core::ptr::null()
@@ -102,13 +103,13 @@ pub unsafe extern "C" fn inet_ntoa(in_addr: in_addr_t) -> *const c_char {
 /// - `dst` points to a valid buffer of at least `size` bytes.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn inet_ntop(
     af: c_int,
     src: *const c_void,
     dst: *mut c_char,
     size: socklen_t,
 ) -> *const c_char {
-    ::syslog::trace!("inet_ntop(): af={af:?}, src={src:?}, dst={dst:?}, size={size:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/592.
     ::syslog::debug!("inet_ntop(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
@@ -140,8 +141,8 @@ pub unsafe extern "C" fn inet_ntop(
 /// - `dst` points to a valid buffer for the binary address.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int {
-    ::syslog::trace!("inet_pton(): af={af:?}, src={src:?}, dst={dst:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/593.
     ::syslog::debug!("inet_pton(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
