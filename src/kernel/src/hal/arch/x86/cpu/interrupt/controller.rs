@@ -83,7 +83,7 @@ impl InterruptController {
         if let Some(mut xapic) = xapic {
             // Check if IOAPIC is available.
             match ioapic {
-                Some(mut ioapic) => {
+                Some(ioapic) => {
                     info!("using xapic and ioapic");
 
                     // Enable APIC.

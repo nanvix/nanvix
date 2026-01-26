@@ -32,6 +32,7 @@ extern crate alloc;
 
 use crate::{
     hal::{
+        io::IoMemoryAllocator,
         mem::{
             AccessPermission,
             Address,
@@ -265,15 +266,17 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         Option<usize>,
         LinkedList<MemoryRegion<VirtualAddress>>,
         LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+        IoMemoryAllocator,
         LinkedList<KernelModule>,
     );
-    let (madt, mem_lower, mut memory_regions, mut mmio_regions, kernel_modules): KernelArgs =
-        match kargs.parse() {
+    let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
+        KernelArgs = match kargs.parse() {
             Ok(bootinfo) => (
                 bootinfo.madt,
                 bootinfo.mem_lower,
                 bootinfo.memory_regions,
                 bootinfo.mmio_regions,
+                bootinfo.ioaddresses,
                 bootinfo.kernel_modules,
             ),
             Err(err) => {
@@ -309,12 +312,14 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let mut hal: Hal = match hal::init(&mut memory_regions, &mut mmio_regions, &madt, mem_lower) {
-        Ok(hal) => hal,
-        Err(err) => {
-            panic!("failed to initialize hardware abstraction layer: {:?}", err);
-        },
-    };
+    let mut hal: Hal =
+        match hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
+        {
+            Ok(hal) => hal,
+            Err(err) => {
+                panic!("failed to initialize hardware abstraction layer: {:?}", err);
+            },
+        };
 
     // Initialize the memory manager.
     let (root, mut mm): (Vmem, VirtMemoryManager) =

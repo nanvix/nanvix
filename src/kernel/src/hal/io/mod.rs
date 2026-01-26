@@ -15,6 +15,7 @@ mod pmio;
 pub use mmio::{
     IoMemoryAllocator,
     IoMemoryRegion,
+    MmioTag,
 };
 pub use pmio::{
     AnyIoPort,

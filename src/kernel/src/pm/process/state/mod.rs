@@ -29,6 +29,7 @@ use crate::{
             AnyIoPort,
             IoMemoryRegion,
             IoPortWidth,
+            MmioTag,
         },
         mem::{
             PageAligned,
@@ -230,8 +231,8 @@ impl ProcessState {
         self.mmio.push_back(region)
     }
 
-    pub fn remove_mmio(&mut self, addr: PageAligned<VirtualAddress>) {
-        self.mmio.retain(|r| r.base() != addr)
+    pub fn remove_mmio(&mut self, tag: MmioTag, addr: PageAligned<VirtualAddress>) {
+        self.mmio.retain(|r| r.tag() != tag || r.base() != addr)
     }
 
     pub fn add_pmio(&mut self, port: AnyIoPort) {

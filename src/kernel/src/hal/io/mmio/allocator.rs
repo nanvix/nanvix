@@ -6,75 +6,321 @@
 //==================================================================================================
 
 use crate::hal::{
-    io::IoMemoryRegion,
+    io::{
+        IoMemoryRegion,
+        MmioTag,
+    },
     mem::{
         TruncatedMemoryRegion,
         VirtualAddress,
     },
 };
-use ::alloc::collections::linked_list::LinkedList;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::alloc::{
+    collections::{
+        btree_map::BTreeMap,
+        VecDeque,
+    },
+    rc::Rc,
 };
+use ::core::cell::RefCell;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    mm::Address,
+};
+
+//==================================================================================================
+// Type Aliases
+//==================================================================================================
+
+/// Shared channel for returning deallocated regions.
+pub(super) type ReturnChannel =
+    Rc<RefCell<VecDeque<(MmioTag, TruncatedMemoryRegion<VirtualAddress>)>>>;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// I/O memory allocator that tracks and hands out registered I/O regions.
+///
 pub struct IoMemoryAllocator {
-    regions: LinkedList<IoMemoryRegion>,
+    /// Regions available for allocation.
+    available: BTreeMap<MmioTag, TruncatedMemoryRegion<VirtualAddress>>,
+    /// Currently allocated regions (tracked for overlap checking).
+    allocated: BTreeMap<MmioTag, TruncatedMemoryRegion<VirtualAddress>>,
+    /// Channel for receiving returned regions.
+    return_channel: ReturnChannel,
 }
 
+//==================================================================================================
+// Trait Implementations
+//==================================================================================================
+
+impl Default for IoMemoryAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for IoMemoryAllocator {
+    fn drop(&mut self) {
+        // Reclaim any pending regions before dropping.
+        self.reclaim();
+    }
+}
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl IoMemoryAllocator {
+    ///
+    /// # Description
+    ///
+    /// Creates a new I/O memory allocator instance with an empty region list.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a fresh [`IoMemoryAllocator`].
+    ///
     pub fn new() -> Self {
         Self {
-            regions: LinkedList::new(),
+            available: BTreeMap::new(),
+            allocated: BTreeMap::new(),
+            return_channel: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
 
-    #[allow(dead_code)] // TODO: Remove this attribute.
-    pub fn register(&mut self, region: TruncatedMemoryRegion<VirtualAddress>) -> Result<(), Error> {
-        trace!("region={:?}", region);
+    ///
+    /// # Description
+    ///
+    /// Registers an I/O memory region that can be allocated later.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Unique tag that identifies the region.
+    /// - `region`: The truncated memory region to register.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `Ok(())` on success or an [`Error`] when the region is already
+    /// registered.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::EntryExists`]: The region tag is already registered or the region overlaps
+    ///   with an existing one.
+    ///
+    pub fn register(
+        &mut self,
+        tag: MmioTag,
+        region: TruncatedMemoryRegion<VirtualAddress>,
+    ) -> Result<(), Error> {
+        trace!("tag={:?}, region={:?}", tag, region);
 
-        // TODO: Check regions overlap.
+        // Reclaim any pending returned regions first.
+        self.reclaim();
 
-        // TODO: Keep the list sorted.
+        // Check if tag already registered in available or allocated maps.
+        if self.available.contains_key(&tag) || self.allocated.contains_key(&tag) {
+            let reason: &str = "tag already registered";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::EntryExists, reason));
+        }
 
-        // Check if address is already registered.
-        for reg in self.regions.iter() {
-            if reg.base() == region.start() {
-                let reason: &str = "address already registered";
+        // Check for overlapping regions (inclusive ranges) in both maps.
+        let start: usize = region.start().into_raw_value();
+        let end: usize = compute_inclusive_end(start, region.size())?;
+
+        let all_regions: core::iter::Chain<
+            alloc::collections::btree_map::Values<
+                '_,
+                MmioTag,
+                TruncatedMemoryRegion<VirtualAddress>,
+            >,
+            alloc::collections::btree_map::Values<
+                '_,
+                MmioTag,
+                TruncatedMemoryRegion<VirtualAddress>,
+            >,
+        > = self.available.values().chain(self.allocated.values());
+        for reg in all_regions {
+            let reg_start: usize = reg.start().into_raw_value();
+            let reg_end: usize = compute_inclusive_end(reg_start, reg.size())?;
+            let overlaps: bool = !(end < reg_start || start > reg_end);
+            if overlaps {
+                let reason: &str = "region overlaps existing entry";
                 error!("{reason}");
                 return Err(Error::new(ErrorCode::EntryExists, reason));
             }
         }
 
-        self.regions.push_back(IoMemoryRegion::new(region));
+        self.available.insert(tag, region);
+        trace!("registered mmio region: tag={:?}", tag);
 
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
     /// Allocates an I/O address from the memory allocator.
-    pub fn allocate(&mut self, addr: VirtualAddress) -> Result<IoMemoryRegion, Error> {
-        for region in self.regions.iter() {
-            if region.base().into_inner() == addr {
-                if region.ref_count() > 1 {
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: The unique tag of the I/O region to allocate.
+    ///
+    /// # Returns
+    ///
+    /// This function returns the corresponding [`IoMemoryRegion`] when the tag is registered and
+    /// not already allocated.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::EntryExists`]: The region is already allocated.
+    /// - [`ErrorCode::NoSuchEntry`]: The region is not registered.
+    ///
+    pub fn allocate(&mut self, tag: MmioTag) -> Result<IoMemoryRegion, Error> {
+        // Reclaim any pending returned regions first.
+        self.reclaim();
+
+        // Try to move region from available to allocated.
+        match self.available.remove(&tag) {
+            Some(region) => {
+                self.allocated.insert(tag, region.clone());
+                Ok(IoMemoryRegion::new(tag, region, Rc::clone(&self.return_channel)))
+            },
+            None => {
+                // Check if it's already allocated or simply not registered.
+                if self.allocated.contains_key(&tag) {
                     let reason: &str = "region already allocated";
                     error!("{reason}");
-                    return Err(Error::new(ErrorCode::EntryExists, reason));
+                    Err(Error::new(ErrorCode::EntryExists, reason))
+                } else {
+                    let reason: &str = "region not registered";
+                    error!("{reason}");
+                    Err(Error::new(ErrorCode::NoSuchEntry, reason))
                 }
-
-                return Ok(region.clone());
-            }
+            },
         }
+    }
 
-        let reason: &str = "region not registered";
-        error!("{reason}");
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+    ///
+    /// # Description
+    ///
+    /// Reclaims regions that have been returned via the return channel.
+    ///
+    /// This function processes all pending returned regions and moves them back to the available
+    /// pool. It is called automatically during allocation and registration operations.
+    ///
+    fn reclaim(&mut self) {
+        let mut channel: core::cell::RefMut<
+            '_,
+            VecDeque<(MmioTag, TruncatedMemoryRegion<VirtualAddress>)>,
+        > = self.return_channel.borrow_mut();
+        while let Some((tag, region)) = channel.pop_front() {
+            trace!("reclaiming region: tag={:?}", tag);
+            // Remove from allocated and add back to available.
+            self.allocated.remove(&tag);
+            self.available.insert(tag, region);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of registered I/O memory regions (both available and allocated).
+    ///
+    /// # Returns
+    ///
+    /// The total count of registered regions.
+    ///
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.available.len() + self.allocated.len()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether the allocator has no registered regions.
+    ///
+    /// # Returns
+    ///
+    /// `true` if there are no registered regions, `false` otherwise.
+    ///
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.available.is_empty() && self.allocated.is_empty()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of available (unallocated) I/O memory regions.
+    ///
+    /// # Returns
+    ///
+    /// The count of available regions.
+    ///
+    #[must_use]
+    pub fn available_count(&self) -> usize {
+        self.available.len()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of currently allocated I/O memory regions.
+    ///
+    /// # Returns
+    ///
+    /// The count of allocated regions.
+    ///
+    #[must_use]
+    pub fn allocated_count(&self) -> usize {
+        self.allocated.len()
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Computes the inclusive end address of a memory region.
+///
+/// # Parameters
+///
+/// - `start`: The start address of the region.
+/// - `size`: The size of the region in bytes.
+///
+/// # Returns
+///
+/// This function returns the inclusive end address on success, or an [`Error`] if arithmetic
+/// overflow or underflow occurs.
+///
+fn compute_inclusive_end(start: usize, size: usize) -> Result<usize, Error> {
+    let size_minus_one: usize = match size.checked_sub(1) {
+        Some(val) => val,
+        None => {
+            let reason: &str = "region size underflow";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+    };
+    match start.checked_add(size_minus_one) {
+        Some(end) => Ok(end),
+        None => {
+            let reason: &str = "region end address overflow";
+            error!("{reason}");
+            Err(Error::new(ErrorCode::InvalidArgument, reason))
+        },
     }
 }
