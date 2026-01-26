@@ -20,6 +20,7 @@ use crate::{
             Address,
             MemoryRegion,
             MemoryRegionType,
+            PageAligned,
             PhysicalAddress,
             TruncatedMemoryRegion,
             VirtualAddress,
@@ -27,6 +28,8 @@ use crate::{
         platform::{
             bootinfo::BootInfo,
             madt::MadtInfo,
+            region_names::RAMFS_REGION_NAME,
+            region_tags::RAMFS_MMIO_TAG,
         },
     },
     kmod::KernelModule,
@@ -322,6 +325,80 @@ fn log_control_registers() {
     }
 }
 
+fn register_ramfs_mmio_region(
+    ioaddresses: &mut IoMemoryAllocator,
+    mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Result<(), Error> {
+    if let Some((ramfs_base, ramfs_size)) = read_ramfs_registers() {
+        trace!("ramfs region detected: base={:#010x}, size={:#x}", ramfs_base, ramfs_size);
+
+        let ramfs_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+            RAMFS_REGION_NAME,
+            PageAligned::from_raw_value(ramfs_base)?,
+            ramfs_size,
+            MemoryRegionType::Mmio,
+            AccessPermission::RDONLY,
+        )?;
+
+        ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
+        mmio_regions.push_back(ramfs_region);
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Reads the RAMFS base and size from MicroVM control registers.
+///
+/// # Safety
+///
+/// This function reads from memory-mapped control registers at addresses defined by
+/// `DEFAULT_MICROVM_CTRL_BASE`. The caller must ensure that the MicroVM platform is
+/// initialized and these addresses are valid and mapped.
+///
+fn read_ramfs_registers() -> Option<(usize, usize)> {
+    // SAFETY: The control registers are memory-mapped at fixed addresses defined by the
+    // MicroVM specification. These addresses are guaranteed to be valid when running on
+    // the MicroVM platform.
+    unsafe {
+        let base_value: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE) as usize;
+        let size_value: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE) as usize;
+
+        if base_value == 0 || size_value == 0 {
+            None
+        } else {
+            Some((base_value, size_value))
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Reads a 32-bit value from a MicroVM control register.
+///
+/// # Parameters
+///
+/// - `offset`: Offset from `DEFAULT_MICROVM_CTRL_BASE` to read.
+///
+/// # Returns
+///
+/// The 32-bit value at the specified control register.
+///
+/// # Safety
+///
+/// The caller must ensure that `DEFAULT_MICROVM_CTRL_BASE + offset` points to a valid,
+/// mapped memory-mapped I/O register. This function performs a volatile read.
+///
+unsafe fn read_control_register(offset: usize) -> u32 {
+    let addr: *const u32 = (::config::microvm::DEFAULT_MICROVM_CTRL_BASE + offset) as *const u32;
+    core::ptr::read_volatile(addr)
+}
+
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
@@ -345,7 +422,7 @@ pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
-    _mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
@@ -362,6 +439,7 @@ pub fn init(
     memory_regions.push_back(scratch_region);
 
     log_control_registers();
+    register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
