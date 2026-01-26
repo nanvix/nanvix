@@ -28,3 +28,7 @@ pub const LAPIC_REGION_NAME: &str = "local_apic";
     feature = "qemu-baremetal"
 ))]
 pub const VIDEO_MMIO_REGION_NAME: &str = "video display memory";
+
+/// Name used for the RAMFS MMIO region.
+#[cfg(feature = "microvm")]
+pub const RAMFS_REGION_NAME: &str = "ramfs";
