@@ -10,6 +10,7 @@ use crate::{
     unistd,
 };
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -51,10 +52,9 @@ use ::sysapi::ffi::c_int;
 /// - The directory referenced by `fd` has appropriate search permissions for the calling process.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fchdir(fd: c_int) -> c_int {
-    ::syslog::trace!("fchdir(): fd={fd:?}");
-
     // Process system call and check for errors.
     match unistd::fchdir(fd) {
         Ok(()) => 0,

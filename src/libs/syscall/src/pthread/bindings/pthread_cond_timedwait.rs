@@ -17,6 +17,7 @@ use ::sysapi::{
     },
     time::timespec,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -47,6 +48,7 @@ use ::sysapi::{
 /// - `abstime` points to a valid `timespec` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_cond_timedwait(
     cond: *const pthread_cond_t,
     mutex: *mut pthread_mutex_t,

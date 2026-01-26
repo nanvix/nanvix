@@ -73,6 +73,7 @@ pub fn pipe() -> Result<[i32; 2], Error> {
 pub mod bindings {
     use crate::errno::__errno_location;
     use ::sysapi::ffi::c_int;
+    use ::syslog::trace_syscall;
 
     ///
     /// # Description
@@ -89,9 +90,8 @@ pub mod bindings {
     /// indicate the error.
     ///
     #[unsafe(no_mangle)]
+    #[trace_syscall]
     pub unsafe extern "C" fn pipe(fds: *mut c_int) -> c_int {
-        ::syslog::trace!("pipe(): fds={fds:?}");
-
         match super::pipe() {
             Ok([read_fd, write_fd]) => {
                 ::syslog::trace!("pipe(): read_fd={read_fd:?}, write_fd={write_fd:?}");

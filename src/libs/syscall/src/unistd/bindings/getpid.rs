@@ -7,6 +7,7 @@
 
 use crate::unistd;
 use ::sysapi::sys_types::pid_t;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -33,10 +34,9 @@ use ::sysapi::sys_types::pid_t;
 /// may occur due to system constraints or internal failures, and such errors are logged but do
 /// not set `errno` to maintain POSIX compatibility.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn getpid() -> pid_t {
-    ::syslog::trace!("getpid()");
-
     match unistd::getpid() {
         Ok(pid) => pid.into(),
         Err(e) => {

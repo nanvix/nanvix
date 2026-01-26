@@ -7,6 +7,7 @@
 
 use crate::errno::__errno_location;
 use ::syscall::sys::times;
+use ::syslog::trace_syscall;
 use sysapi::{
     sys_times::tms,
     sys_types::clock_t,
@@ -41,9 +42,8 @@ use sysapi::{
 /// - This function is not called from multiple threads at the same time.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn times(buffer: *mut tms) -> clock_t {
-    ::syslog::trace!("times(): {:?}", buffer);
-
     // Convert `buffer` pointer to a reference.
     // NOTE: We provide same semantics of Linux: `buffer` can be a null pointer.
     let mut buffer: Option<&mut tms> = if buffer.is_null() {

@@ -19,6 +19,7 @@ use ::sysapi::{
     ffi::c_char,
     sys_types::c_size_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -65,10 +66,9 @@ use ::sysapi::{
 /// - `size` is greater than `0` and accurately represents the size of the buffer.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char {
-    ::syslog::trace!("getcwd(): buf = {buf:?}, size = {size:?}");
-
     // Check if the buffer is valid.
     if buf.is_null() {
         ::syslog::error!("getcwd(): invalid buffer (buf={buf:?}, size={size:?})");

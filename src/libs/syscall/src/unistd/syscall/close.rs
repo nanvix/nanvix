@@ -67,10 +67,11 @@ pub fn close(fd: i32) -> Result<(), Error> {
 pub mod bindings {
     use crate::errno::__errno_location;
     use ::sysapi::ffi::c_int;
+    use ::syslog::trace_syscall;
 
     #[unsafe(no_mangle)]
+    #[trace_syscall]
     pub extern "C" fn close(fd: c_int) -> c_int {
-        ::syslog::trace!("close(): fd = {}", fd);
         match crate::unistd::close(fd) {
             Ok(()) => 0,
             Err(error) => {

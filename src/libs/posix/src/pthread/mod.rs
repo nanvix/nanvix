@@ -25,6 +25,7 @@ use ::sysapi::{
 use ::syscall::pthread::{
     self,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Modules
@@ -64,16 +65,11 @@ pub mod tda;
 /// - `detachstate` points to a valid `c_int` variable.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getdetachstate(
     attr: *const pthread_attr_t,
     detachstate: *mut c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_attr_getdetachstate(): attr={:?}, detachstate={:?}",
-        attr,
-        detachstate
-    );
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_getdetachstate(): invalid attribute pointer");
@@ -120,12 +116,11 @@ pub unsafe extern "C" fn pthread_attr_getdetachstate(
 /// - `guardsize` points to a valid `size_t` variable.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getguardsize(
     attr: *const pthread_attr_t,
     guardsize: *mut c_size_t,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_getguardsize(): attr={:?}, guardsize={:?}", attr, guardsize);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_getguardsize(): invalid attribute pointer");
@@ -172,12 +167,11 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
 /// - `param` points to a valid `sched_param` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getschedparam(
     attr: *const pthread_attr_t,
     param: *mut sched_param,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_getschedparam(): attr={:?}, param={:?}", attr, param);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_getschedparam(): invalid attribute pointer");
@@ -224,12 +218,11 @@ pub unsafe extern "C" fn pthread_attr_getschedparam(
 /// - `stackaddr` points to a valid `*mut c_void` variable.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getstackaddr(
     attr: *const pthread_attr_t,
     stackaddr: *mut *mut c_void,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_getstackaddr(): attr={:?}, stackaddr={:?}", attr, stackaddr);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_getstackaddr(): invalid attribute pointer");
@@ -276,12 +269,11 @@ pub unsafe extern "C" fn pthread_attr_getstackaddr(
 /// - `stacksize` points to a valid `size_t` variable.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_getstacksize(
     attr: *const pthread_attr_t,
     stacksize: *mut c_size_t,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_getstacksize(): attr={:?}, stacksize={:?}", attr, stacksize);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_getstacksize(): invalid attribute pointer");
@@ -306,6 +298,7 @@ pub unsafe extern "C" fn pthread_attr_getstacksize(
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/502
     ::syslog::debug!("pthread_detach(): not implemented");
@@ -326,6 +319,7 @@ pub extern "C" fn pthread_detach(_thread: pthread_t) -> c_int {
 /// - `retval`: Return value of the thread.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
     let error: Error = pthread::pthread_exit(retval as usize).unwrap_err();
     panic!("pthread_exit(): {:?}", error);
@@ -351,9 +345,8 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
 /// If either t1 or t2 is not a valid thread ID and is not equal to `PTHREAD_NULL`, the behavior is undefined.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub extern "C" fn pthread_equal(thread1: pthread_t, thread2: pthread_t) -> c_int {
-    ::syslog::trace!("pthread_equal(): thread1={:?}, thread2={:?}", thread1, thread2);
-
     if thread1 == thread2 {
         1
     } else {
@@ -388,14 +381,11 @@ pub extern "C" fn pthread_equal(thread1: pthread_t, thread2: pthread_t) -> c_int
 /// - `init_routine` is a valid function pointer.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_once(
     once_control: *mut pthread_once_t,
     init_routine: Option<unsafe extern "C" fn()>,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_once(): once_control={once_control:?}, init_routine={:?}",
-        init_routine
-    );
     // TODO: https://github.com/nanvix/nanvix/issues/513
     ::syslog::debug!("pthread_once(): not implemented");
     0
@@ -428,16 +418,11 @@ pub unsafe extern "C" fn pthread_once(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setdetachstate(
     attr: *mut pthread_attr_t,
     detachstate: c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_attr_setdetachstate(): attr={:?}, detachstate={:?}",
-        attr,
-        detachstate
-    );
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_setdetachstate(): invalid attribute pointer");
@@ -476,12 +461,11 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setguardsize(
     attr: *mut pthread_attr_t,
     guardsize: c_size_t,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_setguardsize(): attr={:?}, guardsize={:?}", attr, guardsize);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_setguardsize(): invalid attribute pointer");
@@ -500,13 +484,12 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ///
 /// # Description
 ///
-/// Sets the scheduling parameters of a thread.
+/// Sets the scheduling parameters stored in a thread attributes object.
 ///
 /// # Parameters
 ///
-/// - `thread`: Thread identifier.
-/// - `policy`: Scheduling policy.
-/// - `param`: Scheduling parameters.
+/// - `attr`: Thread attributes object to update.
+/// - `param`: Scheduling parameters to store in `attr`.
 ///
 /// # Returns
 ///
@@ -518,20 +501,20 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
 ///
 /// It is safe to call this function if the following conditions are met:
 ///
+/// - `attr` points to a valid `pthread_attr_t` structure.
 /// - `param` points to a valid `sched_param` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setschedparam(
-    thread: pthread_t,
-    policy: c_int,
+    attr: *mut pthread_attr_t,
     param: *const sched_param,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_attr_setschedparam(): thread={:?}, policy={}, param={:?}",
-        thread,
-        policy,
-        param
-    );
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::error!("pthread_attr_setschedparam(): invalid attribute pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
 
     // Check if `param` is not valid.
     if param.is_null() {
@@ -572,18 +555,12 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setstack(
     attr: *mut pthread_attr_t,
     stackaddr: *mut c_void,
     stacksize: c_size_t,
 ) -> c_int {
-    ::syslog::trace!(
-        "pthread_attr_setstack(): attr={:?}, stackaddr={:?}, stacksize={:?}",
-        attr,
-        stackaddr,
-        stacksize
-    );
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_setstack(): invalid attribute pointer");
@@ -622,12 +599,11 @@ pub unsafe extern "C" fn pthread_attr_setstack(
 /// - `attr` points to a valid `pthread_attr_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_attr_setstackaddr(
     attr: *mut pthread_attr_t,
     stackaddr: *mut c_void,
 ) -> c_int {
-    ::syslog::trace!("pthread_attr_setstackaddr(): attr={:?}, stackaddr={:?}", attr, stackaddr);
-
     // Check if `attr` is not valid.
     if attr.is_null() {
         ::syslog::error!("pthread_attr_setstackaddr(): invalid attribute pointer");
@@ -666,6 +642,7 @@ pub unsafe extern "C" fn pthread_attr_setstackaddr(
 /// - `oldtype` points to a valid `c_int` variable.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_setcanceltype(_type_: c_int, oldtype: *mut c_int) -> c_int {
     // Check if `oldtype` is not valid.
     if oldtype.is_null() {

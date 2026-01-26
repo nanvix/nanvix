@@ -20,6 +20,7 @@ use ::sysapi::{
         socklen_t,
     },
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -57,13 +58,12 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn connect(
     sockfd: c_int,
     sockaddr: *const sockaddr,
     len: socklen_t,
 ) -> c_int {
-    ::syslog::trace!("connect(): sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?}");
-
     // Check if `sockaddr` is valid.
     if sockaddr.is_null() {
         let reason: &str = "invalid socket address";

@@ -11,6 +11,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pid_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,8 +41,8 @@ use ::sysapi::{
 /// - `status` points to a valid `c_int`.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t {
-    ::syslog::trace!("waitpid(): pid={pid:?}, status={status:?}, options={options:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/336.
     ::syslog::debug!("waitpid(): not implemented");
     unsafe {

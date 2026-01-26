@@ -37,6 +37,7 @@ use ::tokio::{
         Sender,
     },
     task::JoinHandle,
+    time::Instant,
 };
 
 //==================================================================================================
@@ -119,6 +120,7 @@ impl IoThread {
         control_plane_stream: SocketStream,
         counters: MessageCounters,
     ) -> Result<()> {
+        let start_instant: Instant = Instant::now();
         let mut buf: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
         let mut buf_len: usize = 0;
         let mut control_plane_buf: [u8; ::std::mem::size_of::<NanvixdControlMessage>()] =
@@ -201,7 +203,10 @@ impl IoThread {
                             })?;
                         },
                         None => {
-                            debug!("User VM channel closed, exiting I/O thread");
+                            debug!(
+                                "User VM channel closed, exiting I/O thread (elapsed_ms={})",
+                                start_instant.elapsed().as_millis()
+                            );
                             break Ok(());
                         },
                     }
@@ -229,7 +234,19 @@ impl IoThread {
 
                                 match msg.cmd() {
                                     NanvixdCommand::Shutdown => {
-                                        control_tx.send(IoControlCommand::Shutdown).await?;
+                                        if let Err(error) =
+                                            control_tx.send(IoControlCommand::Shutdown).await
+                                        {
+                                            debug!(
+                                                "control channel closed while relaying shutdown: {error} (elapsed_ms={})",
+                                                start_instant.elapsed().as_millis()
+                                            );
+                                            break Ok(());
+                                        }
+                                        debug!(
+                                            "received shutdown from control-plane (elapsed_ms={})",
+                                            start_instant.elapsed().as_millis()
+                                        );
                                     },
                                 }
                             }
@@ -249,7 +266,14 @@ impl IoThread {
                                 IoControlResponse::FlushInput => {
                                     debug!("input flush completed");
                                     // Messages are no longer buffer, nothing to flush. We should remove this.
-                                    control_tx.send(IoControlCommand::LinuxDaemonFlushed).await?;
+                                    if let Err(error) =
+                                        control_tx.send(IoControlCommand::LinuxDaemonFlushed).await
+                                    {
+                                        debug!(
+                                            "control channel closed while sending flush ack: {error}"
+                                        );
+                                        break Ok(());
+                                    }
                                 },
                                 IoControlResponse::FlushOutput => {
                                     // Messages are no longer buffer, nothing to flush. We should remove this.
@@ -262,13 +286,19 @@ impl IoThread {
                                     debug!("snapshot created");
                                 },
                                 IoControlResponse::Shutdown => {
-                                    debug!("shutdown completed");
+                                    debug!(
+                                        "shutdown completed (elapsed_ms={})",
+                                        start_instant.elapsed().as_millis()
+                                    );
                                     break Ok(());
                                 },
                             }
                         },
                         None => {
-                            error!("VMM control channel closed unexpectedly");
+                            error!(
+                                "VMM control channel closed unexpectedly (elapsed_ms={})",
+                                start_instant.elapsed().as_millis()
+                            );
                             break Err(anyhow::Error::msg("VMM control channel closed unexpectedly"));
                         },
                     }

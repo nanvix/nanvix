@@ -12,6 +12,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,10 +49,9 @@ use ::sysapi::ffi::{
 /// - `path` remains valid for the duration of the function call.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
-    ::syslog::error!("chdir(): path={path:?}");
-
     // Check if `path` is invalid.
     if path.is_null() {
         ::syslog::error!("chdir(): path is null (path={path:?})");

@@ -16,6 +16,7 @@ use ::sysapi::{
     },
     sys_socket::socklen_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -58,6 +59,7 @@ use ::sysapi::{
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn setsockopt(
     sockfd: c_int,
     level: c_int,
@@ -65,10 +67,6 @@ pub unsafe extern "C" fn setsockopt(
     optval: *const c_void,
     optlen: socklen_t,
 ) -> c_int {
-    ::syslog::trace!(
-        "setsockopt(): sockfd={sockfd:?}, level={level:?}, optname={optname:?}, \
-         optval={optval:?}, optlen={optlen:?}"
-    );
     // TODO: https://github.com/nanvix/nanvix/issues/471
     ::syslog::debug!("setsockopt(): not implemented");
     unsafe {

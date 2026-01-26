@@ -11,6 +11,7 @@ use crate::{
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -55,10 +56,9 @@ use ::sysapi::ffi::c_int;
 /// It is safe to use this function if the following conditions are met:
 /// - Access to the global `errno` variable is properly synchronized in multithreaded programs.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
-    ::syslog::trace!("isatty(): fd={fd:?}");
-
     match unistd::isatty(fd) {
         Ok(true) => 1,
         Ok(false) => {

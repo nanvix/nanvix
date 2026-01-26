@@ -11,6 +11,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,10 +49,9 @@ use ::sysapi::ffi::{
 /// - `path` remains valid for the duration of the function call.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chroot(path: *const c_char) -> c_int {
-    ::syslog::trace!("chroot(): path={path:?}");
-
     // TODO: https://github.com/nanvix/nanvix/issues/517
     ::syslog::debug!("chroot(): not implemented");
     unsafe {

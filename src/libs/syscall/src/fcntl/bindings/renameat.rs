@@ -15,6 +15,7 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -46,6 +47,7 @@ use ::sysapi::ffi::{
 /// - `oldpath` points to a valid null-terminated C string.
 /// - `newpath` points to a valid null-terminated C string.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn renameat(
     olddirfd: c_int,
@@ -53,11 +55,6 @@ pub unsafe extern "C" fn renameat(
     newdirfd: c_int,
     newpath: *const c_char,
 ) -> c_int {
-    ::syslog::trace!(
-        "renameat(): olddirfd={olddirfd:?}, oldpath={oldpath:?}, newdirfd={newdirfd:?}, \
-         newpath={newpath:?}"
-    );
-
     // Check if `oldpath` is null.
     if oldpath.is_null() {
         ::syslog::error!(

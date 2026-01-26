@@ -16,8 +16,8 @@ use ::sysapi::{
         c_size_t,
         c_ssize_t,
     },
-    unistd::STDIN_FILENO,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,13 +60,9 @@ use ::sysapi::{
 /// - `fd` refers to a valid, open file descriptor with read permissions.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -> c_ssize_t {
-    // Skip logging for stdin to avoid spamming the output.
-    if fd != STDIN_FILENO {
-        ::syslog::trace!("read(): fd={fd:?}, buffer={buffer:?}, count={count:?}");
-    }
-
     // Check if buffer is invalid.
     if buffer.is_null() {
         ::syslog::error!("read(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");

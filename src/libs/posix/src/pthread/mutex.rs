@@ -18,6 +18,7 @@ use ::sysapi::{
     time::timespec,
 };
 use ::syscall::pthread;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // pthread_mutexattr_init()
@@ -44,8 +45,8 @@ use ::syscall::pthread;
 /// - `attr` points to a valid `pthread_mutexattr_t` object.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) -> c_int {
-    ::syslog::trace!("pthread_mutexattr_init(): attr={attr:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/511.
     0
 }
@@ -75,8 +76,8 @@ pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) 
 /// - `attr` points to a valid `pthread_mutexattr_t` object.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_t) -> c_int {
-    ::syslog::trace!("pthread_mutexattr_destroy(): attr={attr:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/509
     0
 }
@@ -108,6 +109,7 @@ pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_
 /// - `abstime` points to a valid `timespec` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_mutex_timedlock(
     mutex: *mut pthread_mutex_t,
     abstime: *const timespec,
@@ -176,6 +178,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 /// - `mutex` points to a valid `pthread_mutex_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {

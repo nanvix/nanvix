@@ -12,6 +12,7 @@ use ::sysapi::ffi::{
     c_int,
     c_void,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -45,8 +46,8 @@ use ::sysapi::ffi::{
 /// null-terminated C strings.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn popen(command: *const c_char, mode: *const c_char) -> *mut c_void {
-    ::syslog::trace!("popen(): command={command:?}, mode={mode:?}");
     ::syslog::debug!("popen(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
@@ -79,8 +80,8 @@ pub unsafe extern "C" fn popen(command: *const c_char, mode: *const c_char) -> *
 /// returned by [`popen()`] in a future, fully implemented version.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
-    ::syslog::trace!("pclose(): stream={stream:?}");
     ::syslog::debug!("pclose(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
@@ -114,8 +115,8 @@ pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
 /// enough to hold a termios structure in a future, fully implemented version.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
-    ::syslog::trace!("tcgetattr(): fd={fd}, termios_p={termios_p:?}");
     ::syslog::debug!("tcgetattr(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
@@ -150,14 +151,12 @@ pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
 /// a termios structure in a future, fully implemented version.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn tcsetattr(
     fd: c_int,
     optional_actions: c_int,
     termios_p: *const c_void,
 ) -> c_int {
-    ::syslog::trace!(
-        "tcsetattr(): fd={fd}, optional_actions={optional_actions}, termios_p={termios_p:?}"
-    );
     ::syslog::debug!("tcsetattr(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
@@ -193,8 +192,8 @@ pub unsafe extern "C" fn tcsetattr(
 /// C strings and a null-terminated vector, respectively.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
-    ::syslog::trace!("execvp(): file={file:?}, argv={argv:?}");
     ::syslog::debug!("execvp(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
@@ -231,8 +230,8 @@ pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char)
 /// canonical path in a future, fully implemented version.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_char) -> *mut c_char {
-    ::syslog::trace!("realpath(): path={path:?}, resolved_path={resolved_path:?}");
     ::syslog::debug!("realpath(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
@@ -278,12 +277,12 @@ pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_cha
 /// function with the expected signature in a future, fully implemented version.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn ftw(
     dirpath: *const c_char,
     fn_cb: Option<unsafe extern "C" fn(*const c_char, *const c_void, c_int) -> c_int>,
     nopenfd: c_int,
 ) -> c_int {
-    ::syslog::trace!("ftw(): dirpath={dirpath:?}, fn_cb={:?}, nopenfd={nopenfd}", fn_cb);
     ::syslog::debug!("ftw(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1

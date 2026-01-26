@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -38,10 +39,9 @@ use ::sysapi::{
 /// It is safe to call this function if the following conditions are met:
 /// - This function is not called from multiple threads at the same time.
 ///
+#[trace_libcall]
 #[no_mangle]
 pub unsafe extern "C" fn posix_fallocate(fd: c_int, offset: off_t, len: off_t) -> c_int {
-    ::syslog::trace!("posix_fallocate(): fd={fd:?}, offset={offset:?}, len={len:?}");
-
     // Run system call and check for errors.
     match fcntl::posix_fallocate(fd, offset, len) {
         Ok(()) => 0,

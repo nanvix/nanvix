@@ -10,6 +10,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pthread_cond_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -37,6 +38,7 @@ use ::sysapi::{
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_cond_broadcast(cond: *const pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {

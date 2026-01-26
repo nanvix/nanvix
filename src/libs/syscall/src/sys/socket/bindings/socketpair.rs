@@ -16,6 +16,7 @@ use crate::{
 };
 use ::core::slice;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,17 +61,13 @@ use ::sysapi::ffi::c_int;
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn socketpair(
     domain: c_int,
     typ: c_int,
     protocol: c_int,
     socket_fds: *mut c_int,
 ) -> c_int {
-    ::syslog::trace!(
-        "socketpair(): domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
-         socket_fds={socket_fds:?}"
-    );
-
     // Check if `socket_fds` is invalid.
     if socket_fds.is_null() {
         ::syslog::error!(

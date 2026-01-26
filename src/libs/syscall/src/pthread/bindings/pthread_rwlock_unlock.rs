@@ -11,6 +11,7 @@ use ::sysapi::{
     ffi::c_int,
     sys_types::pthread_rwlock_t,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -38,6 +39,7 @@ use ::sysapi::{
 /// - `rwlock` points to a valid `pthread_rwlock_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_rwlock_unlock(rwlock: *mut pthread_rwlock_t) -> c_int {
     // Check if `rwlock` object is invalid.
     if rwlock.is_null() {

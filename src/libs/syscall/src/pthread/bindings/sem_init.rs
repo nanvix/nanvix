@@ -9,6 +9,7 @@ use ::sysapi::ffi::{
     c_int,
     c_void,
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -17,7 +18,8 @@ use ::sysapi::ffi::{
 // TODO: add description
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sem_init(_sem: *mut c_void, _pshared: c_int, _value: u32) -> c_int {
+#[trace_libcall]
+pub unsafe extern "C" fn sem_init(sem: *mut c_void, pshared: c_int, value: u32) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/721
     ::syslog::debug!("sem_init(): not implemented");
     0

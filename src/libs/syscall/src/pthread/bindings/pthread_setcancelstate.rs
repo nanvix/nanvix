@@ -7,6 +7,7 @@
 
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -35,7 +36,8 @@ use ::sysapi::ffi::c_int;
 /// - `oldstate` points to a valid `c_int` variable.
 ///
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pthread_setcancelstate(_state: c_int, oldstate: *mut c_int) -> c_int {
+#[trace_libcall]
+pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
     // Check if `oldstate` is not valid.
     if oldstate.is_null() {
         ::syslog::error!("pthread_setcancelstate(): invalid old state pointer");

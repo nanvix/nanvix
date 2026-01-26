@@ -14,6 +14,7 @@ use ::sysapi::{
         pthread_rwlockattr_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -42,6 +43,7 @@ use ::sysapi::{
 /// - `rwlock` points to a valid `pthread_rwlock_t` object.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_rwlock_init(
     rwlock: *mut pthread_rwlock_t,
     attr: *const pthread_rwlockattr_t,

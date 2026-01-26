@@ -13,6 +13,7 @@ use ::alloc::boxed::Box;
 use ::core::mem::ManuallyDrop;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -48,10 +49,9 @@ use ::sysapi::ffi::c_int;
 /// the file descriptor directly may lead to undefined behavior when using other directory stream
 /// functions.
 ///
+#[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dirfd(dirp: *mut DirectoryStream) -> c_int {
-    ::syslog::trace!("dirfd(): dirp={dirp:?}");
-
     // Check if directory stream is invalid.
     if dirp.is_null() {
         ::syslog::error!("dirfd(): invalid directory stream");

@@ -8,6 +8,7 @@
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -44,9 +45,9 @@ use ::sysapi::ffi::c_int;
 /// - `fd` is a valid file descriptor.
 /// - Access to `errno` is synchronized with other threads that may modify it.
 ///
+#[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dup(fd: c_int) -> c_int {
-    ::syslog::trace!("dup(): fd={fd:?}");
     // TODO: https://github.com/nanvix/nanvix/issues/587
     ::syslog::debug!("dup(): not implemented");
     unsafe {

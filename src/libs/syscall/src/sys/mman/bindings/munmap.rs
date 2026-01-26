@@ -15,6 +15,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
+use ::syslog::trace_syscall;
 
 //==================================================================================================
 // Standalone Functions
@@ -49,9 +50,8 @@ use ::sysapi::{
 /// - Partial unmapping is not supported.
 ///
 #[unsafe(no_mangle)]
+#[trace_syscall]
 pub unsafe extern "C" fn munmap(addr: *mut c_void, length: c_size_t) -> isize {
-    ::syslog::trace!("munmap(): addr={addr:?}, length={length}");
-
     // Check if address is invalid.
     if addr.is_null() {
         ::syslog::error!("munmap(): invalid base address (addr={addr:?}, length={length})");

@@ -13,6 +13,7 @@ use ::sysapi::{
         pthread_condattr_t,
     },
 };
+use ::syslog::trace_libcall;
 
 //==================================================================================================
 // Standalone Functions
@@ -41,6 +42,7 @@ use ::sysapi::{
 /// - `cond` points to a valid `pthread_cond_t` structure.
 ///
 #[unsafe(no_mangle)]
+#[trace_libcall]
 pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut pthread_cond_t,
     attr: *const pthread_condattr_t,
