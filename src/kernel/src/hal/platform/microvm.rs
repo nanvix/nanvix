@@ -16,10 +16,13 @@ use crate::{
             IoPortAllocator,
         },
         mem::{
+            AccessPermission,
+            Address,
             MemoryRegion,
             MemoryRegionType,
             PhysicalAddress,
             TruncatedMemoryRegion,
+            VirtualAddress,
         },
         platform::{
             bootinfo::BootInfo,
@@ -29,23 +32,16 @@ use crate::{
     kmod::KernelModule,
 };
 use ::alloc::{
-    collections::linked_list::LinkedList,
+    collections::LinkedList,
     string::ToString,
 };
 use ::arch::{
     cpu::pic,
     mem,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    mm::{
-        AccessPermission,
-        Address,
-        VirtualAddress,
-    },
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 
 #[cfg(feature = "pit")]
@@ -280,7 +276,14 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         kernel_modules.push_back(module);
     }
 
-    Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
+    Ok(BootInfo::new(
+        None,
+        None,
+        LinkedList::new(),
+        LinkedList::new(),
+        IoMemoryAllocator::new(),
+        kernel_modules,
+    ))
 }
 
 ///

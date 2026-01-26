@@ -10,7 +10,6 @@ use crate::{
         Error,
         ErrorCode,
     },
-    kcall1,
     kcall2,
     kcall3,
     mm::{
@@ -90,18 +89,20 @@ pub fn mprotect(
 ///
 /// # Description
 ///
-/// Allocates a memory-mapped I/O region at the specified virtual address.
+/// Allocates a memory-mapped I/O region identified by the given tag.
 ///
 /// # Parameters
 ///
-/// - `vaddr`: Virtual address of the memory-mapped I/O region.
+/// - `tag`: A 64-bit tag that uniquely identifies the MMIO region (e.g., 8-byte ASCII name).
 ///
 /// # Returns
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn mmio_alloc(vaddr: VirtualAddress) -> Result<(), Error> {
-    let result: i64 = kcall1!(KcallNumber::AllocMmio.into(), vaddr.into_raw_value() as u32);
+pub fn mmio_alloc(tag: u64) -> Result<(), Error> {
+    let tag_lo: u32 = tag as u32;
+    let tag_hi: u32 = (tag >> 32) as u32;
+    let result: i64 = kcall2!(KcallNumber::AllocMmio.into(), tag_lo, tag_hi);
 
     if result == 0 {
         Ok(())
@@ -117,18 +118,22 @@ pub fn mmio_alloc(vaddr: VirtualAddress) -> Result<(), Error> {
 ///
 /// # Description
 ///
-/// Frees a memory-mapped I/O region at the specified virtual address.
+/// Frees a memory-mapped I/O region identified by the given tag and address.
 ///
 /// # Parameters
 ///
+/// - `tag`: A 64-bit tag that uniquely identifies the MMIO region.
 /// - `vaddr`: Virtual address of the memory-mapped I/O region.
 ///
 /// # Returns
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-pub fn mmio_free(vaddr: VirtualAddress) -> Result<(), Error> {
-    let result: i64 = kcall1!(KcallNumber::FreeMmio.into(), vaddr.into_raw_value() as u32);
+pub fn mmio_free(tag: u64, vaddr: VirtualAddress) -> Result<(), Error> {
+    let tag_lo: u32 = tag as u32;
+    let tag_hi: u32 = (tag >> 32) as u32;
+    let result: i64 =
+        kcall3!(KcallNumber::FreeMmio.into(), tag_lo, tag_hi, vaddr.into_raw_value() as u32);
 
     if result == 0 {
         Ok(())

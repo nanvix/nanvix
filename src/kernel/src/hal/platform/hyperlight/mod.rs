@@ -291,7 +291,14 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
     kernel_modules.push_back(module);
 
-    Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
+    Ok(BootInfo::new(
+        None,
+        None,
+        LinkedList::new(),
+        LinkedList::new(),
+        IoMemoryAllocator::new(),
+        kernel_modules,
+    ))
 }
 
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
