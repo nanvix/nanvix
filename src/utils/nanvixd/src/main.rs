@@ -309,7 +309,7 @@ async fn ensure_all_binaries_available(
 ///
 /// Prints startup information for the Nanvix Daemon.
 ///
-/// This function displays the version, deployment type, operation mode, and L2 status.
+/// This function displays the version, deployment type, operation mode, L2 status, and machine type.
 ///
 /// # Parameters
 ///
