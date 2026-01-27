@@ -5,17 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    arch::mem,
-    hal::{
-        arch::x86::mem::mmu,
-        mem::{
-            Address,
-            PageAligned,
-            PhysicalAddress,
-            VirtualAddress,
-        },
-    },
+use crate::hal::mem::{
+    Address,
+    PageAligned,
+    PhysicalAddress,
+    VirtualAddress,
+};
+use ::arch::mem::{
+    PAGE_ALIGNMENT,
+    PAGE_SIZE,
+    PGTAB_ALIGNMENT,
 };
 use ::sys::{
     error::ErrorCode,
@@ -141,7 +140,7 @@ fn test_page_aligned_physical_address_new_unaligned() -> bool {
 
 /// Tests if [`Address::is_aligned()`] asserts an aligned address as aligned.
 fn test_is_aligned_aligned<T: Address>() -> bool {
-    let raw_addr: usize = mem::PAGE_SIZE;
+    let raw_addr: usize = PAGE_SIZE;
     let aligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -150,7 +149,7 @@ fn test_is_aligned_aligned<T: Address>() -> bool {
             return false;
         },
     };
-    match aligned_address.is_aligned(mmu::PAGE_ALIGNMENT) {
+    match aligned_address.is_aligned(PAGE_ALIGNMENT) {
         // An aligned address was asserted as aligned.
         Ok(true) => true,
         // An aligned address was not asserted as aligned.
@@ -184,7 +183,7 @@ fn test_page_aligned_physical_address_is_aligned_aligned() -> bool {
 
 /// Tests if [`VirtualAddress::is_aligned()`] asserts a non-aligned address as not aligned.
 fn test_is_aligned_unaligned<T: Address>() -> bool {
-    let raw_addr: usize = mem::PAGE_SIZE;
+    let raw_addr: usize = PAGE_SIZE;
     let unaligned_address: T = match T::from_raw_value(raw_addr + 1) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -193,7 +192,7 @@ fn test_is_aligned_unaligned<T: Address>() -> bool {
             return false;
         },
     };
-    match unaligned_address.is_aligned(mmu::PAGE_ALIGNMENT) {
+    match unaligned_address.is_aligned(PAGE_ALIGNMENT) {
         // A non-aligned address was asserted as not aligned.
         Ok(false) => true,
         // A non-aligned address was asserted as aligned.
@@ -219,8 +218,8 @@ fn test_physical_address_is_aligned_unaligned() -> bool {
 
 /// Tests if [`VirtualAddress::is_aligned()`] asserts a mismatched-aligned address as not aligned.
 fn test_is_aligned_mismatched_alignment<T: Address>() -> bool {
-    let align: Alignment = mmu::PGTAB_ALIGNMENT;
-    let raw_addr: usize = mmu::PAGE_ALIGNMENT as usize;
+    let align: Alignment = PGTAB_ALIGNMENT;
+    let raw_addr: usize = PAGE_ALIGNMENT as usize;
     let mismatched_aligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -266,8 +265,8 @@ fn test_page_aligned_physical_address_is_aligned_mismatched_alignment() -> bool 
 
 /// Tests if [`VirtualAddress::align_up()`] aligns a non-aligned address upwards.
 fn test_align_up_unaligned<T: Address>() -> bool {
-    let align: Alignment = mmu::PAGE_ALIGNMENT;
-    let raw_addr: usize = mem::PAGE_SIZE + 1;
+    let align: Alignment = PAGE_ALIGNMENT;
+    let raw_addr: usize = PAGE_SIZE + 1;
     let unaligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -323,8 +322,8 @@ fn test_physical_address_align_up_unaligned() -> bool {
 
 /// Tests if [`VirtualAddress::align_up()`] leaves an aligned address as is.
 fn test_align_up_aligned<T: Address>() -> bool {
-    let align: Alignment = mmu::PAGE_ALIGNMENT;
-    let raw_addr: usize = mem::PAGE_SIZE;
+    let align: Alignment = PAGE_ALIGNMENT;
+    let raw_addr: usize = PAGE_SIZE;
     let aligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -388,8 +387,8 @@ fn test_page_aligned_physical_address_align_up_aligned() -> bool {
 
 /// Tests if [`VirtualAddress::align_down()`] aligns a non-aligned address downwards.
 fn test_align_down_unaligned<T: Address>() -> bool {
-    let align: Alignment = mmu::PAGE_ALIGNMENT;
-    let raw_addr: usize = mem::PAGE_SIZE - 1;
+    let align: Alignment = PAGE_ALIGNMENT;
+    let raw_addr: usize = PAGE_SIZE - 1;
     let unaligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
@@ -445,8 +444,8 @@ fn test_physical_address_align_down_unaligned() -> bool {
 
 /// Tests if [`VirtualAddress::align_down()`] leaves an aligned address as is.
 fn test_align_down_aligned<T: Address>() -> bool {
-    let align: Alignment = mmu::PAGE_ALIGNMENT;
-    let raw_addr: usize = mem::PAGE_SIZE;
+    let align: Alignment = PAGE_ALIGNMENT;
+    let raw_addr: usize = PAGE_SIZE;
     let aligned_address: T = match T::from_raw_value(raw_addr) {
         Ok(addr) => addr,
         // Some unexpected error occurred.
