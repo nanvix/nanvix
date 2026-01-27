@@ -199,7 +199,6 @@ macro_rules! error{
 macro_rules! run_test {
     ($test_func:ident) => {{
         let result: bool = $test_func();
-        #[cfg(test)]
         info!("{}: {}", if result { "passed" } else { "FAILED" }, stringify!($test_func));
         assert!(result);
         result
