@@ -146,7 +146,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         guest_binary_path: &str,
         guest_binary_args: &str,
     ) -> Result<()> {
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
+            SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
         let tenant_id: String = match tenant_id {

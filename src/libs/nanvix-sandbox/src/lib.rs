@@ -51,8 +51,10 @@
 //!
 //! ```rust,no_run
 //! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig};
-//! use ::syscomm::SocketType;
+//! use ::syscomm::{SocketListener, SocketType, UnboundSocket};
 //! use ::user_vm_api::UserVmIdentifier;
+//! use ::std::sync::Arc;
+//! use ::tokio::sync::Mutex;
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create configuration.
@@ -78,8 +80,20 @@
 //!     Some("/path/to/l2/snapshot".to_string()), // l2_snapshot_path
 //! );
 //!
+//! // Create and bind control plane socket.
+//! let control_plane_bind_sockaddr: String = "/tmp/nvx:cp.socket".to_string();
+//! let control_plane_socket: SocketListener =
+//!     UnboundSocket::new(SocketType::Unix).bind(&control_plane_bind_sockaddr).await?;
+//! let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
+//!     Arc::new(Mutex::new((control_plane_socket, control_plane_bind_sockaddr, SocketType::Unix)));
+//!
 //! // Create and initialize sandbox.
-//! let sandbox = UninitializedSandbox::new("/path/to/guest.elf", None, None)
+//! let sandbox = UninitializedSandbox::new(
+//!     "/path/to/guest.elf",
+//!     None,
+//!     None,
+//!     control_plane_bind_socket,
+//! )
 //!     .with_config(config)
 //!     .initialize()
 //!     .await?;
