@@ -29,7 +29,6 @@ use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
     SocketType,
-    UnboundSocket,
 };
 use ::syslog::error;
 use ::tokio::sync::{
@@ -92,6 +91,8 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     /// - `guest_binary_path`: Path to the guest binary file to execute.
     /// - `program_args`: Optional command-line arguments for the program.
     /// - `ramfs_filename`: Optional RAM filesystem image filename to expose to the guest.
+    /// - `control_plane_bind_socket_and_info`: Shared control plane socket listener, address, and
+    ///   socket type.
     ///
     /// # Returns
     ///
@@ -101,6 +102,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
         guest_binary_path: &str,
         program_args: Option<String>,
         ramfs_filename: Option<String>,
+        control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
     ) -> Self {
         UninitializedSandbox {
             guest_binary_path: guest_binary_path.to_string(),
@@ -109,7 +111,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             linuxd: None,
             #[cfg(not(feature = "single-process"))]
             netns_handle: None,
-            control_plane_bind_socket_and_info: None,
+            control_plane_bind_socket_and_info: Some(control_plane_bind_socket_and_info),
             config: None,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
@@ -174,27 +176,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// # Description
     ///
-    /// Adds a control plane socket and info to the target uninitialized sandbox.
-    ///
-    /// # Parameters
-    ///
-    /// - `control_plane_bind_socket_and_info`: Control plane socket listener, address, and socket type.
-    ///
-    /// # Returns
-    ///
-    /// The modified uninitialized sandbox with the control plane socket attached.
-    ///
-    pub fn with_control_plane_bind_socket(
-        mut self,
-        control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
-    ) -> Self {
-        self.control_plane_bind_socket_and_info = Some(control_plane_bind_socket_and_info);
-        self
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the network namespace information for this sandbox.
     ///
     /// # Returns
@@ -213,9 +194,11 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// # Description
     ///
-    /// Initializes the sandbox by setting up the control plane socket and spawning the Linux
-    /// Daemon if not already provided. This transitions the sandbox from uninitialized to
-    /// initialized state.
+    /// Initializes the sandbox by spawning the Linux Daemon if not already provided. This
+    /// transitions the sandbox from uninitialized to initialized state.
+    ///
+    /// The control plane socket must be provided via `new()` before calling this method. The
+    /// socket is expected to be pre-bound by the caller (typically `SandboxCache::new()`).
     ///
     /// # Returns
     ///
@@ -224,7 +207,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     /// # Errors
     ///
     /// This function returns an error if the sandbox configuration is not provided, if the
-    /// control plane socket cannot be bound, or if the Linux Daemon fails to spawn.
+    /// control plane socket was not provided, or if the Linux Daemon fails to spawn.
     ///
     pub async fn initialize(mut self) -> Result<InitializedSandbox<T>> {
         // Get sandbox configuration.
@@ -237,49 +220,15 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             Some(config) => config,
         };
 
-        // Get the control-plane listener socket.
+        // Get the control-plane listener socket (must be provided via new()).
         let control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>> =
             match self.control_plane_bind_socket_and_info.take() {
-                // Control-plane listener socket not yet initialized.
-                None => {
-                    // Get control-plane listener socket info.
-                    let (control_plane_bind_socket_address, control_plane_bind_socket_type) =
-                        match config.control_plane_bind_socket_info() {
-                            None => {
-                                let reason: &str = "control plane listener socket info not \
-                                                    provided and control plane listener socket \
-                                                    not initialized";
-                                error!("initialize(): {reason}");
-                                anyhow::bail!(reason);
-                            },
-                            Some((addr, stype)) => (addr.clone(), *stype),
-                        };
-
-                    let unbound_socket: UnboundSocket =
-                        UnboundSocket::new(control_plane_bind_socket_type.to_owned());
-                    let control_plane_bind_socket: SocketListener = match unbound_socket
-                        .bind(&control_plane_bind_socket_address)
-                        .await
-                    {
-                        Ok(listener) => listener,
-                        Err(error) => {
-                            let reason: String = format!(
-                                    "failed to bind control-plane socket \
-                                     (control_plane_bind_socket_address={control_plane_bind_socket_address}, \
-                                     error={error:?})"
-                                );
-                            error!("initialize(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                    };
-
-                    Arc::new(Mutex::new((
-                        control_plane_bind_socket,
-                        control_plane_bind_socket_address,
-                        control_plane_bind_socket_type,
-                    )))
-                },
                 Some(control_plane_bind_socket_and_info) => control_plane_bind_socket_and_info,
+                None => {
+                    let reason: &str = "control plane listener socket not provided via new()";
+                    error!("initialize(): {reason}");
+                    anyhow::bail!(reason);
+                },
             };
 
         // Get Linux Daemon.
