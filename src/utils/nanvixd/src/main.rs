@@ -323,14 +323,20 @@ fn print_startup_info(args: &Args) {
     };
 
     #[cfg(feature = "single-process")]
-    log_info!("nanvixd {}, single-process deployment, {} mode", env!("CARGO_PKG_VERSION"), mode);
+    log_info!(
+        "nanvixd {}, single-process deployment, {} mode, machine {}",
+        env!("CARGO_PKG_VERSION"),
+        mode,
+        DEFAULT_MACHINE_NAME
+    );
 
     #[cfg(not(feature = "single-process"))]
     log_info!(
-        "nanvixd {}, multi-process deployment, {} mode, l2 {}",
+        "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
-        if args.l2() { "enabled" } else { "disabled" }
+        if args.l2() { "enabled" } else { "disabled" },
+        DEFAULT_MACHINE_NAME
     );
 }
 
