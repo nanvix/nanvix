@@ -22,9 +22,12 @@ use ::arch::mem::{
     paging::FrameNumber,
 };
 use ::config::constants;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    mm::Address,
 };
 
 //==================================================================================================
@@ -183,7 +186,15 @@ impl FrameAllocator {
             match self.bitmap.test(index) {
                 Ok(false) => continue,
                 Ok(true) => {
-                    return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
+                    let conflicting_addr: usize = index * mem::FRAME_SIZE;
+                    let region_start: usize = region.start().into_raw_value();
+                    let region_end: usize = region_start.saturating_add(region.size());
+                    let reason: &str = "frame is already allocated";
+                    error!(
+                        "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
+                        reason, conflicting_addr, region_start, region_end
+                    );
+                    return Err(Error::new(ErrorCode::OutOfMemory, reason));
                 },
                 Err(err) => return Err(err),
             }
