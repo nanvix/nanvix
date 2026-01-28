@@ -193,3 +193,70 @@ clone_repo() {
 
     return 0
 }
+
+#===================================================================================================
+# Socket Address and Port Utilities
+#===================================================================================================
+
+#
+# Description
+#
+#   Validates that a string is a valid socket address in HOST:PORT format.
+#
+# Arguments
+#
+#   $1 - The socket address to validate.
+#
+# Return Value
+#
+#   - Returns zero if the socket address is valid.
+#   - Returns non-zero if the socket address is invalid or empty.
+#
+# Usage Example
+#
+#   if validate_sockaddr "127.0.0.1:8181"; then
+#       echo "Valid socket address"
+#   fi
+#
+validate_sockaddr() {
+    local sockaddr=$1
+
+    # Check if socket address is empty.
+    if [ -z "${sockaddr}" ]; then
+        return 1
+    fi
+
+    # Check if socket address contains a colon separator.
+    if [[ "${sockaddr}" != *:* ]]; then
+        return 1
+    fi
+
+    # Ensure there is exactly one colon separator (HOST:PORT format).
+    local colon_only
+    colon_only=${sockaddr//[^:]/}
+    if [[ "${#colon_only}" -ne 1 ]]; then
+        return 1
+    fi
+
+    local host
+    local port
+    host=${sockaddr%%:*}
+    port=${sockaddr##*:}
+
+    # Check if host is empty.
+    if [ -z "${host}" ]; then
+        return 1
+    fi
+
+    # Check if port is empty or not numeric.
+    if [ -z "${port}" ] || ! [[ ${port} =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    # Check if port is in valid range (1-65535).
+    if [ "${port}" -lt 1 ] || [ "${port}" -gt 65535 ]; then
+        return 1
+    fi
+
+    return 0
+}
