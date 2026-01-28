@@ -322,8 +322,13 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
-    // Register host function definitions
-    let host_function_definitions_base: usize = peb_base + PEB_SIZE;
+    // Register host function definitions.
+    let host_function_definitions_base: usize =
+        peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
+            let reason: &str = "host function definitions base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     const HOST_FUNCTION_DEFINITIONS_SIZE: usize = mem::PAGE_SIZE;
     let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host function definitions",
@@ -335,7 +340,13 @@ pub fn init(
     memory_regions.push_back(host_function_definitions);
 
     // Register input data buffer.
-    let input_data_base: usize = host_function_definitions_base + HOST_FUNCTION_DEFINITIONS_SIZE;
+    let input_data_base: usize = host_function_definitions_base
+        .checked_add(HOST_FUNCTION_DEFINITIONS_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "input data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
@@ -347,7 +358,13 @@ pub fn init(
     memory_regions.push_back(input_data_buffer);
 
     // Register output data buffer.
-    let output_data_base: usize = input_data_base + INPUT_DATA_BUFFER_SIZE;
+    let output_data_base: usize = input_data_base
+        .checked_add(INPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "output data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     const OUTPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "output data buffer",
@@ -359,9 +376,23 @@ pub fn init(
     memory_regions.push_back(output_data_buffer);
 
     // Register reserved area for heap padding.
-    let heap_padding_base: usize = output_data_base + OUTPUT_DATA_BUFFER_SIZE;
+    let heap_padding_base: usize = output_data_base
+        .checked_add(OUTPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "heap padding base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
-    let heap_padding_size: usize = memory_layout::KPOOL_BASE.into_raw_value() - heap_padding_base;
+    let kpool_base: usize = memory_layout::KPOOL_BASE.into_raw_value();
+    let heap_padding_size: usize = kpool_base.checked_sub(heap_padding_base).ok_or_else(|| {
+        let reason: &str = "kernel image exceeds KPOOL_BASE, memory regions overlap";
+        error!(
+            "init(): {} (heap_padding_base={:#010x}, kpool_base={:#010x})",
+            reason, heap_padding_base, kpool_base
+        );
+        Error::new(ErrorCode::OutOfMemory, reason)
+    })?;
     let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "heap padding",
         VirtualAddress::from_raw_value(heap_padding_base),
@@ -372,8 +403,13 @@ pub fn init(
     memory_regions.push_back(heap_padding);
 
     // Register kpool guard page.
-    let kpool_guard_base: usize =
-        memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
+    let kpool_guard_base: usize = kpool_base
+        .checked_add(config::kernel::KPOOL_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "kpool guard base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let kpool_guard_size: usize = mem::PAGE_SIZE;
     let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "kpool guard",
@@ -385,7 +421,14 @@ pub fn init(
     memory_regions.push_back(kpool_guard);
 
     // Register hyperlight guest user stack.
-    let guest_user_stack_base: usize = kpool_guard_base + kpool_guard_size;
+    let guest_user_stack_base: usize =
+        kpool_guard_base
+            .checked_add(kpool_guard_size)
+            .ok_or_else(|| {
+                let reason: &str = "guest user stack base address overflow";
+                error!("init(): {}", reason);
+                Error::new(ErrorCode::OutOfMemory, reason)
+            })?;
     let guest_user_stack_size: usize = mem::PAGE_SIZE;
     let guest_user_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest user stack",
