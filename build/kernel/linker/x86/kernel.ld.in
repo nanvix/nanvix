@@ -102,6 +102,12 @@ SECTIONS
 
 	__KERNEL_END = .;
 
+	/*
+	 * Ensure the kernel image plus machine-reserved space fits before KPOOL_BASE.
+	 */
+	ASSERT(__KERNEL_END + MACHINE_RESERVED < KPOOL_BASE,
+		"Kernel too large: __KERNEL_END + MACHINE_RESERVED must be < KPOOL_BASE")
+
 	/* Discarded. */
 	/DISCARD/ :
 	{
