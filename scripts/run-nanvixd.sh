@@ -21,6 +21,17 @@ readonly SLEEP_INTERVAL=0.1
 readonly DEFAULT_TOOLCHAIN_BIN_DIR="${PWD}/toolchain/bin"
 readonly DEFAULT_BIN_DIR="${PWD}/bin"
 readonly DEFAULT_LOG_LEVEL="warn"
+# Timeout for waiting for port availability (in seconds).
+readonly PORT_AVAILABILITY_TIMEOUT=120
+# Poll interval for port availability checks (in seconds).
+readonly PORT_POLL_INTERVAL=2
+# Timeout for cleanup operations (in seconds).
+readonly CLEANUP_GRACEFUL_TIMEOUT=10
+# Poll interval for cleanup operations (in deciseconds, i.e., tenths of a second).
+# Valid range: 1-9 (used as 0.N seconds, e.g., 1 -> 0.1s, 5 -> 0.5s).
+readonly CLEANUP_POLL_INTERVAL_DECISECONDS=1
+# Timeout for TCP connections cleanup (in seconds).
+readonly TCP_CLEANUP_TIMEOUT=120
 readonly OPTION_APP_NAME="--app-name"
 readonly OPTION_BIN_DIR="--bin-dir"
 readonly OPTION_HELP="--help"
@@ -111,12 +122,9 @@ die() {
 set_nanvixd_endpoint() {
     local sockaddr="$1"
 
-    if ! validate_sockaddr "${sockaddr}"; then
+    if ! parse_sockaddr "${sockaddr}" NANVIXD_HOST NANVIXD_PORT; then
         die "Invalid nanvixd socket address '${sockaddr}'. Expected HOST:PORT."
     fi
-
-    NANVIXD_HOST=${sockaddr%%:*}
-    NANVIXD_PORT=${sockaddr##*:}
 }
 
 #
@@ -363,7 +371,7 @@ wait_for_tcp_cleanup() {
         current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
 
-        if [ ${elapsed} -ge ${max_wait_seconds} ]; then
+        if [ "${elapsed}" -ge "${max_wait_seconds}" ]; then
             echo "[TCP-CLEANUP] WARNING: Timeout reached after ${max_wait_seconds}s, some connections may still be in TIME_WAIT" 1>&2
             return 1
         fi
@@ -372,10 +380,10 @@ wait_for_tcp_cleanup() {
         local time_wait_count=0
         if command -v ss &> /dev/null; then
             # Use ss if available (preferred).
-            time_wait_count=$(ss -tan state time-wait sport "${port}" 2>/dev/null | tail -n +2 | wc -l)
+            time_wait_count=$(ss -tan state time-wait "sport = :${port}" 2>/dev/null | tail -n +2 | wc -l)
         elif command -v netstat &> /dev/null; then
             # Fall back to netstat if ss is not available.
-            time_wait_count=$(netstat -tan | grep ":${port}" | grep -c TIME_WAIT || echo 0)
+            time_wait_count=$(netstat -tan | grep -E ":${port}[[:space:]]+" | grep -c TIME_WAIT || echo 0)
         else
             echo "[TCP-CLEANUP] WARNING: Neither 'ss' nor 'netstat' available, skipping TCP cleanup check" 1>&2
             return 0
@@ -484,11 +492,13 @@ cleanup() {
         echo "[CLEANUP] Sending SIGTERM for graceful shutdown..." 1>&2
         kill -s SIGTERM -- "-${NANVIXD_PID}" 2> /dev/null || true
 
-        # Wait up to 5 seconds for graceful shutdown.
-        echo "[CLEANUP] Waiting up to 5s for graceful shutdown..." 1>&2
+        # Wait for graceful shutdown (using configurable timeout).
+        # Calculate iterations: timeout_seconds * 10 / poll_interval_deciseconds.
+        local max_wait_count="$(( (CLEANUP_GRACEFUL_TIMEOUT * 10) / CLEANUP_POLL_INTERVAL_DECISECONDS ))"
+        echo "[CLEANUP] Waiting up to ${CLEANUP_GRACEFUL_TIMEOUT}s for graceful shutdown..." 1>&2
         local count=0
-        while kill -0 -- "-${NANVIXD_PID}" 2>/dev/null && [ $count -lt 50 ]; do
-            sleep 0.1
+        while kill -0 -- "-${NANVIXD_PID}" 2>/dev/null && [ "${count}" -lt "${max_wait_count}" ]; do
+            sleep "0.${CLEANUP_POLL_INTERVAL_DECISECONDS}"
             count=$((count + 1))
         done
 
@@ -508,11 +518,10 @@ cleanup() {
     # Clean up any stale Nanvix network namespaces.
     cleanup_stale_netns
 
-    # If running in L2 mode, wait for TCP connections to clear for subsequent runs.
-    if [ "${L2_VM}" = "yes" ]; then
-        echo "[CLEANUP] Post-run: checking for lingering TCP connections..." 1>&2
-        wait_for_tcp_cleanup 70 "${NANVIXD_PORT}"
-    fi
+    # Wait for TCP connections to clear for subsequent runs.
+    # This is important to prevent port conflicts between consecutive test runs.
+    echo "[CLEANUP] Post-run: checking for lingering TCP connections..." 1>&2
+    wait_for_tcp_cleanup "${TCP_CLEANUP_TIMEOUT}" "${NANVIXD_PORT}"
 
     echo "[CLEANUP] Cleanup completed" 1>&2
 }
@@ -629,6 +638,16 @@ main() {
         echo "Error: Unable to create logs directory at ${logs_dir}." 1>&2
         return 1
     }
+
+    # Check if port is available before starting nanvixd.
+    # This prevents "Address already in use" errors from previous runs.
+    echo "[MAIN] Checking if port ${NANVIXD_PORT} is available..." 1>&2
+    if ! wait_for_port_available "${NANVIXD_HOST}" "${NANVIXD_PORT}" "${PORT_AVAILABILITY_TIMEOUT}" "${PORT_POLL_INTERVAL}" 1>&2; then
+        echo "[MAIN] ERROR: Port ${NANVIXD_PORT} is not available after waiting ${PORT_AVAILABILITY_TIMEOUT}s" 1>&2
+        echo "[MAIN] This may be caused by a previous test run that did not clean up properly." 1>&2
+        echo "[MAIN] Try running: ss -tlnp sport = :${NANVIXD_PORT}" 1>&2
+        return 1
+    fi
 
     # Run nanvixd in a new session.
     local console_file_name
