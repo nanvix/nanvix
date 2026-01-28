@@ -30,6 +30,13 @@ readonly OPTION_TENANT_ID="--tenant-id"
 readonly OPTION_TOOLCHAIN_BIN_DIR="--toolchain-bin-dir"
 
 #===================================================================================================
+# Imports
+#===================================================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/common/utils.sh"
+
+#===================================================================================================
 # Global Variables
 #===================================================================================================
 
@@ -104,25 +111,12 @@ die() {
 set_nanvixd_endpoint() {
     local sockaddr="$1"
 
-    if [[ "${sockaddr}" != *:* ]]; then
+    if ! validate_sockaddr "${sockaddr}"; then
         die "Invalid nanvixd socket address '${sockaddr}'. Expected HOST:PORT."
     fi
 
-    local host
-    local port
-    host=${sockaddr%%:*}
-    port=${sockaddr##*:}
-
-    if [ -z "${host}" ]; then
-        die "Invalid nanvixd socket address '${sockaddr}'. Host cannot be empty."
-    fi
-
-    if [ -z "${port}" ] || ! [[ ${port} =~ ^[0-9]+$ ]]; then
-        die "Invalid nanvixd socket address '${sockaddr}'. Port must be numeric."
-    fi
-
-    NANVIXD_HOST="${host}"
-    NANVIXD_PORT="${port}"
+    NANVIXD_HOST=${sockaddr%%:*}
+    NANVIXD_PORT=${sockaddr##*:}
 }
 
 #
