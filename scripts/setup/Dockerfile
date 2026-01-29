@@ -47,6 +47,12 @@ ENV PATH=$HOME/.cargo/bin:$PATH
 RUN rustup toolchain install $RUST_VERSION && \
     rustup default $RUST_VERSION
 
+# Install sccache for build caching.
+ARG SCCACHE_VERSION=0.10.0
+RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    | tar xz -C /usr/local/bin --strip-components=1 --wildcards '*/sccache' && \
+    chmod +x /usr/local/bin/sccache
+
 # Build toolchain.
 RUN cd /opt/nanvix/src/nanvix && \
     ./z setup --toolchain-dir /opt/nanvix

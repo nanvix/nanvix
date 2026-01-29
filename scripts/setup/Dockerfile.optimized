@@ -52,6 +52,12 @@ COPY --from=source /opt/nanvix/src/rust/build/x86_64-unknown-linux-gnu/stage2-to
 # Copy Rust library source code (needed for -Zbuild-std).
 COPY --from=source /opt/nanvix/src/rust/library /opt/nanvix/rust-toolchain/lib/rustlib/src/rust/library
 
+# Install sccache for build caching.
+ARG SCCACHE_VERSION=0.10.0
+RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    | tar xz -C /usr/local/bin --strip-components=1 --wildcards '*/sccache' && \
+    chmod +x /usr/local/bin/sccache
+
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
 ENV PATH="$HOME/.cargo/bin:$PATH"

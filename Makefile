@@ -399,7 +399,7 @@ init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
 	$(MKDIR_CMD) $(LIBRARIES_DIR)
 	$(MKDIR_CMD) $(LOGS_DIR)
-	git config --local core.hooksPath .githooks
+	@if [ -d .git ]; then git config --local core.hooksPath .githooks; fi
 
 # Cleans build.
 clean: \
