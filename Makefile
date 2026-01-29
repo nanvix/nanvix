@@ -70,22 +70,22 @@ export MAKE_QUIET := $(MAKE) $(if $(filter yes,$(MAKE_NO_PRINT)),--no-print-dire
 #===================================================================================================
 
 OPENBLAS_REPOSITORY := https://github.com/nanvix/OpenBLAS
-OPENBLAS_COMMIT := 3230819ef84ab9340c61e0b1ae0917ec436000a4
+OPENBLAS_COMMIT := b10d27dd5d491cee83ea9f19d4d9db070389d9d9
 
 OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
-OPENSSL_COMMIT := a94f3958e16321bab0b9b2b68b89ee7c59734c13
+OPENSSL_COMMIT := 4ad6f7a980172cc5314c5f0fbe008e6a020e4441
 
 PYTHON_REPOSITORY := https://github.com/nanvix/cpython
-PYTHON_COMMIT := faed6d55cb7e6332021bb9e5727f1337154aa801
+PYTHON_COMMIT := 98288af34dbeb4beacd56c5097f62e798b0a25ae
 
 SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
-SQLITE_COMMIT := 6a29fea94d2514ac56b1bcbddf18c62361362431
+SQLITE_COMMIT := c5b9f35226d11c3833c2538af629b78c69e62629
 
 ZLIB_REPOSITORY := https://github.com/nanvix/zlib
-ZLIB_COMMIT := 5166ca8c8b563b55fb3e8e2e0b157e36a3bbdcf6
+ZLIB_COMMIT := b1c1f88a2a1b5feb29d6f09efd3a31ac05ded44d
 
 QUICKJS_REPOSITORY := https://github.com/nanvix/quickjs
-QUICKJS_COMMIT := efaa09fa2a28f6884185c27e74b3a731936058b5
+QUICKJS_COMMIT := 0c5006c20897be41569d40fcd97990b8a3563d46
 
 #===================================================================================================
 # Directories
