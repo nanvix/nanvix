@@ -673,13 +673,16 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         }
 
         // Shutdown all linuxd instances.
-        for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
-            debug!("cleaning linuxd instance (tenant_id={tenant_id:?})");
-            if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
-                linuxd_instance_mut.shutdown().await;
-            } else {
-                error!("error cleaning-up linuxd instance: not found (tenant_id={tenant_id})");
+        for (tenant_id, linuxd_instance) in self.linuxd_instances.drain() {
+            debug!("cleanup(): cleaning linuxd instance (tenant_id={tenant_id:?})");
+            let strong_count: usize = Arc::strong_count(&linuxd_instance);
+            if strong_count > 1 {
+                warn!(
+                    "cleanup(): linuxd has {} outstanding Arc references (tenant_id={tenant_id})",
+                    strong_count - 1
+                );
             }
+            linuxd_instance.shutdown().await;
         }
 
         let summary: SandboxCacheStateSummary = self.state_summary();
