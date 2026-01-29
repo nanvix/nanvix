@@ -55,13 +55,23 @@ use ::tokio::{
 ///
 /// # Description
 ///
+/// Interior mutable state for a Linux Daemon instance.
+///
+struct LinuxDaemonInner {
+    /// Underlying task.
+    linuxd_task: JoinHandle<Result<()>>,
+    /// Control-plane socket stream.
+    control_plane_stream: SocketStream,
+}
+
+///
+/// # Description
+///
 /// Handle to a running Linux Daemon instance.
 ///
 pub struct LinuxDaemon {
-    /// Underlying task.
-    linuxd_task: Mutex<Option<JoinHandle<Result<()>>>>,
-    /// Control-plane socket stream.
-    control_plane_stream: SocketStream,
+    /// Interior mutable state.
+    inner: Mutex<Option<LinuxDaemonInner>>,
 }
 
 //==================================================================================================
@@ -172,8 +182,10 @@ impl LinuxDaemon {
         debug!("spawn(): nanvixd received connection from linuxd control-plane socket");
 
         Ok(Self {
-            linuxd_task: Mutex::new(Some(linuxd_task)),
-            control_plane_stream,
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                linuxd_task,
+                control_plane_stream,
+            })),
         })
     }
 
@@ -182,8 +194,23 @@ impl LinuxDaemon {
     ///
     /// Shuts down the Linux Daemon instance.
     ///
-    pub async fn shutdown(&mut self) {
+    /// # Notes
+    ///
+    /// - The method is idempotent - calling it multiple times is safe and has no effect after the
+    ///   first successful shutdown.
+    ///
+    pub async fn shutdown(&self) {
         trace!("shutdown()");
+
+        // Proceed with shutdown if we have the inner state.
+        let Some(LinuxDaemonInner {
+            mut control_plane_stream,
+            linuxd_task,
+        }) = self.inner.lock().await.take()
+        else {
+            warn!("shutdown(): inner state already taken, skipping shutdown");
+            return;
+        };
 
         // Prepare shutdown message.
         let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
@@ -195,29 +222,24 @@ impl LinuxDaemon {
         };
 
         // Send shutdown command to Linux Daemon.
-        if let Err(error) = self.control_plane_stream.write_all(&msg_bytes).await {
+        if let Err(error) = control_plane_stream.write_all(&msg_bytes).await {
             warn!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
         }
 
         // Wait for the Linux Daemon to finish.
-        if let Some(linuxd_task) = self.linuxd_task.lock().await.take() {
-            match timeout(SHUTDOWN_TIMEOUT, linuxd_task).await {
-                Ok(join_result) => match join_result {
-                    Ok(Ok(())) => {},
-                    Ok(Err(error)) => {
-                        warn!("shutdown(): linuxd terminated with error (error={error:?})");
-                    },
-                    Err(join_error) => {
-                        warn!("shutdown(): failed to join linuxd task (error={join_error:?})");
-                    },
+        match timeout(SHUTDOWN_TIMEOUT, linuxd_task).await {
+            Ok(join_result) => match join_result {
+                Ok(Ok(())) => {},
+                Ok(Err(error)) => {
+                    warn!("shutdown(): linuxd terminated with error (error={error:?})");
                 },
-                Err(elapsed) => {
-                    warn!(
-                        "shutdown(): timed-out waiting for linuxd to shutdown \
-                         (elapsed={elapsed:?})"
-                    );
+                Err(join_error) => {
+                    warn!("shutdown(): failed to join linuxd task (error={join_error:?})");
                 },
-            }
+            },
+            Err(elapsed) => {
+                warn!("shutdown(): timed-out waiting for linuxd to shutdown (elapsed={elapsed:?})");
+            },
         }
     }
 }
