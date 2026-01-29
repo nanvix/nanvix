@@ -21,6 +21,25 @@ BOOT_ADDR = 0x00100000;
  */
 TRAMPOLINE_ADDR = 0x00008000;
 
+/*
+ * Kernel Pool Base Address
+ *
+ * This must match config::memory_layout::KPOOL_BASE_RAW in src/libs/config/src/lib.rs.
+ *
+ * TODO (https://github.com/nanvix/nanvix/issues/1301): Replace this hardcoded value with a
+ * build-time generated value using build.rs, similar to how MACHINE_RESERVED is handled via the
+ * @MACHINE_RESERVED@ placeholder.
+ */
+KPOOL_BASE = 0x00400000;
+
+/*
+ * Machine Reserved Space
+ *
+ * Space reserved after __KERNEL_END for machine-specific structures.
+ * This value is set by build.rs based on the target machine.
+ */
+MACHINE_RESERVED = @MACHINE_RESERVED@;
+
 SECTIONS
 {
 	/* Pad with zeroes. */
