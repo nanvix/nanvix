@@ -378,7 +378,7 @@ pub fn init(
     )?;
     memory_regions.push_back(output_data_buffer);
 
-    // Register reserved area for heap padding.
+    // Compute heap padding between output data buffer and kernel pool.
     let heap_padding_base: usize = output_data_base
         .checked_add(OUTPUT_DATA_BUFFER_SIZE)
         .ok_or_else(|| {
@@ -388,22 +388,29 @@ pub fn init(
         })?;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
     let kpool_base: usize = memory_layout::KPOOL_BASE.into_raw_value();
-    let heap_padding_size: usize = kpool_base.checked_sub(heap_padding_base).ok_or_else(|| {
-        let reason: &str = "kernel image exceeds KPOOL_BASE, memory regions overlap";
-        error!(
-            "init(): {} (heap_padding_base={:#010x}, kpool_base={:#010x})",
-            reason, heap_padding_base, kpool_base
-        );
-        Error::new(ErrorCode::OutOfMemory, reason)
-    })?;
-    let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "heap padding",
-        VirtualAddress::from_raw_value(heap_padding_base),
-        heap_padding_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(heap_padding);
+    match kpool_base.checked_sub(heap_padding_base) {
+        None => {
+            let reason: &str = "kernel image exceeds KPOOL_BASE, memory regions overlap";
+            error!(
+                "init(): {} (heap_padding_base={:#010x}, kpool_base={:#010x})",
+                reason, heap_padding_base, kpool_base
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        },
+        Some(0) => {
+            debug!("init(): no heap padding needed");
+        },
+        Some(heap_padding_size) => {
+            let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                "heap padding",
+                VirtualAddress::from_raw_value(heap_padding_base),
+                heap_padding_size,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDONLY,
+            )?;
+            memory_regions.push_back(heap_padding);
+        },
+    }
 
     // Register kpool guard page.
     let kpool_guard_base: usize = kpool_base
