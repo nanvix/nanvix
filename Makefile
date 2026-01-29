@@ -441,7 +441,8 @@ endif
 	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
 endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
-	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/
+	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common
+	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/common/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 	@$(MAKE_QUIET) update-sysroot-link
 
