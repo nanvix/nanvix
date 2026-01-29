@@ -23,6 +23,13 @@
 set -euo pipefail
 
 #===================================================================================================
+# Constants
+#===================================================================================================
+
+# Number of ports to search when finding an available alternative port.
+readonly PORT_RANGE_SIZE=1000
+
+#===================================================================================================
 # Global Variables
 #===================================================================================================
 
@@ -56,7 +63,13 @@ fi
 
 # Check if expected program output is empty.
 if [ -z "${PROGRAM_EXPECTED_OUTPUT}" ]; then
-    print_error "expected program output is empty and it cannot."
+    print_error "Expected program output cannot be empty."
+    exit 1
+fi
+
+# For HTTP mode, validate socket address format.
+if [ "${MODE}" = "http" ] && ! validate_sockaddr "${NANVIXD_SOCKADDR}"; then
+    print_error "Invalid socket address format: '${NANVIXD_SOCKADDR}'. Expected format: <HOST>:<PORT>."
     exit 1
 fi
 
@@ -72,6 +85,37 @@ mkdir -p "${LOGS_DIR}"
 # HTTP mode: Test programs via nanvixd's HTTP API.
 # In this mode, program arguments and input are sent as JSON payloads to the HTTP endpoint.
 if [ "${MODE}" = "http" ]; then
+    # Parse socket address into host and port components.
+    # Note: validation already performed above, so parse_sockaddr should not fail.
+    parse_sockaddr "${NANVIXD_SOCKADDR}" NANVIXD_HOST NANVIXD_PORT
+
+    # Force base-10 parsing to avoid octal interpretation for leading zeros.
+    NANVIXD_PORT_INT=$((10#${NANVIXD_PORT}))
+
+    if ! is_port_available "${NANVIXD_HOST}" "${NANVIXD_PORT_INT}"; then
+        print_info "Port ${NANVIXD_PORT} is in use, searching for available port..."
+
+        # Define port range based on original port.
+        # Note: There is a TOCTOU (time-of-check-time-of-use) race condition between finding
+        # an available port and actually binding to it. Another process could bind to the port
+        # in between. This is acceptable as the probability is low and retries will handle it.
+        PORT_RANGE_START="${NANVIXD_PORT_INT}"
+        PORT_RANGE_END=$((NANVIXD_PORT_INT + PORT_RANGE_SIZE))
+
+        # Clamp port range end to maximum valid port number.
+        if [ "${PORT_RANGE_END}" -gt 65535 ]; then
+            PORT_RANGE_END=65535
+        fi
+
+        if ! AVAILABLE_PORT=$(find_available_port "${NANVIXD_HOST}" "${PORT_RANGE_START}" "${PORT_RANGE_END}"); then
+            print_error "No available port found in range ${PORT_RANGE_START}-${PORT_RANGE_END}"
+            exit 1
+        fi
+
+        print_info "Using alternative port: ${AVAILABLE_PORT}"
+        NANVIXD_SOCKADDR="${NANVIXD_HOST}:${AVAILABLE_PORT}"
+    fi
+
     # Parameters for the requests to nanvixd.
     TENANT_ID="foo"
     APP_NAME="bar"
