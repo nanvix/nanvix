@@ -48,6 +48,13 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
+use ::config::hyperlight::{
+    HOST_FUNCTION_DEFINITIONS_SIZE,
+    INITRD_SIZE_BYTES,
+    INPUT_DATA_BUFFER_SIZE,
+    OUTPUT_DATA_BUFFER_SIZE,
+    PEB_SIZE,
+};
 use ::hyperlight_common::mem::HyperlightPEB;
 use ::sys::{
     config::memory_layout,
@@ -312,7 +319,6 @@ pub fn init(
     // Register PEB structure.
     let peb_base: usize =
         ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, PAGE_ALIGNMENT);
-    const PEB_SIZE: usize = mem::PAGE_SIZE;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",
         VirtualAddress::from_raw_value(peb_base),
@@ -329,7 +335,6 @@ pub fn init(
             error!("init(): {}", reason);
             Error::new(ErrorCode::OutOfMemory, reason)
         })?;
-    const HOST_FUNCTION_DEFINITIONS_SIZE: usize = mem::PAGE_SIZE;
     let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host function definitions",
         VirtualAddress::from_raw_value(host_function_definitions_base),
@@ -347,7 +352,6 @@ pub fn init(
             error!("init(): {}", reason);
             Error::new(ErrorCode::OutOfMemory, reason)
         })?;
-    const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
         VirtualAddress::from_raw_value(input_data_base),
@@ -365,7 +369,6 @@ pub fn init(
             error!("init(): {}", reason);
             Error::new(ErrorCode::OutOfMemory, reason)
         })?;
-    const OUTPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
     let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "output data buffer",
         VirtualAddress::from_raw_value(output_data_base),
@@ -475,17 +478,15 @@ unsafe fn parse_initrd_image(
     total_allocation_size: usize,
 ) -> Result<(usize, usize, (u8, String)), Error> {
     // Check if allocation is too small to hold the initrd header.
-    if total_allocation_size < ::config::hyperlight::INITRD_SIZE_BYTES {
+    if total_allocation_size < INITRD_SIZE_BYTES {
         let reason: &str = "insufficient initrd allocation size";
         error!("parse_initrd_image(): {reason} (total_allocation_size={total_allocation_size})");
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
     // Read actual size and relocate only that amount
-    let initrd_header: &[u8] = core::slice::from_raw_parts(
-        init_data_start as *const u8,
-        ::config::hyperlight::INITRD_SIZE_BYTES,
-    );
+    let initrd_header: &[u8] =
+        core::slice::from_raw_parts(init_data_start as *const u8, INITRD_SIZE_BYTES);
     let actual_initrd_size: usize = u64::from_le_bytes([
         initrd_header[0],
         initrd_header[1],
@@ -498,7 +499,7 @@ unsafe fn parse_initrd_image(
     ]) as usize;
 
     // Compute offsets and check for overflows.
-    let payload_offset: usize = ::config::hyperlight::INITRD_SIZE_BYTES;
+    let payload_offset: usize = INITRD_SIZE_BYTES;
     let current_initrd_start: usize = match init_data_start.checked_add(payload_offset) {
         Some(value) => value,
         None => {

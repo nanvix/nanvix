@@ -204,6 +204,180 @@ fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_p
     fs::write(linuxd_config_output_path, constants).expect("Failed to write linuxd_config.rs");
 }
 
+///
+/// # Description
+///
+/// Converts a page count to a size expression string for code generation.
+///
+/// # Arguments
+///
+/// - `pages`: Number of pages.
+///
+/// # Returns
+///
+/// A string representing the size expression (e.g., "PAGE_SIZE" or "N * PAGE_SIZE").
+///
+fn pages_to_size_expr(pages: usize) -> String {
+    assert!(pages > 0, "pages must be positive, got: {}", pages);
+    if pages == 1 {
+        "PAGE_SIZE".to_string()
+    } else {
+        format!("{pages} * PAGE_SIZE")
+    }
+}
+
+/// Macro to generate type-specific hex/decimal parsing functions.
+///
+/// This avoids code duplication while not requiring external dependencies like `num_traits`.
+macro_rules! define_parse_hex_or_decimal {
+    ($fn_name:ident, $type:ty) => {
+        fn $fn_name(value: &str, key: &str) -> $type {
+            if let Some(stripped) = value.strip_prefix("0x") {
+                <$type>::from_str_radix(stripped, 16)
+                    .unwrap_or_else(|_| panic!("Invalid hex value for {}: '{}'", key, value))
+            } else {
+                value
+                    .parse()
+                    .unwrap_or_else(|_| panic!("Invalid decimal value for {}: '{}'", key, value))
+            }
+        }
+    };
+}
+
+define_parse_hex_or_decimal!(parse_hex_or_decimal_usize, usize);
+define_parse_hex_or_decimal!(parse_hex_or_decimal_u32, u32);
+define_parse_hex_or_decimal!(parse_hex_or_decimal_u8, u8);
+
+///
+/// # Description
+///
+/// This method converts a TOML file with build-time constants for Hyperlight into a file with rust
+/// constants that can be consumed by rust code. It uses a template file with placeholders that are
+/// replaced with values from the TOML configuration.
+///
+/// # Arguments
+///
+/// - `hyperlight_config_toml_path`: Path to the TOML file to load.
+/// - `hyperlight_template_path`: Path to the template file.
+/// - `hyperlight_config_output_path`: Path to output the rust source file.
+///
+fn generate_hyperlight_config(
+    hyperlight_config_toml_path: &Path,
+    hyperlight_template_path: &Path,
+    hyperlight_config_output_path: &Path,
+) {
+    let config: HashMap<String, String> = load_toml(hyperlight_config_toml_path);
+
+    // Read template file.
+    let mut template: String =
+        fs::read_to_string(hyperlight_template_path).expect("Failed to read hyperlight template");
+
+    // Page size constant.
+    let page_size: &str = config
+        .get("page_size")
+        .expect("page_size not found in hyperlight_constants.toml");
+    let page_size_val: usize = page_size
+        .parse()
+        .expect("Failed to parse page_size as usize");
+    assert!(page_size_val > 0, "page_size must be positive, got: {}", page_size_val);
+    assert!(
+        page_size_val.is_power_of_two(),
+        "page_size must be a power of two, got: {}",
+        page_size_val
+    );
+    template = template.replace("{{PAGE_SIZE}}", &page_size_val.to_string());
+
+    // Boot magic.
+    let boot_magic: &str = config
+        .get("default_boot_magic")
+        .expect("default_boot_magic not found in hyperlight_constants.toml");
+    let boot_magic_val: u32 = parse_hex_or_decimal_u32(boot_magic, "default_boot_magic");
+    template = template.replace("{{DEFAULT_BOOT_MAGIC}}", &format!("{boot_magic_val:#x}"));
+
+    // Initrd base address.
+    let initrd_base: &str = config
+        .get("default_initrd_base")
+        .expect("default_initrd_base not found in hyperlight_constants.toml");
+    let initrd_base_val: usize = parse_hex_or_decimal_usize(initrd_base, "default_initrd_base");
+    template = template.replace("{{DEFAULT_INITRD_BASE}}", &format!("{initrd_base_val:#x}"));
+
+    // Initrd size bytes.
+    let initrd_size_bytes: &str = config
+        .get("initrd_size_bytes")
+        .expect("initrd_size_bytes not found in hyperlight_constants.toml");
+    let initrd_size_val: usize = initrd_size_bytes
+        .parse()
+        .expect("Failed to parse initrd_size_bytes as usize");
+    template = template.replace("{{INITRD_SIZE_BYTES}}", &initrd_size_val.to_string());
+
+    // VMM shutdown command.
+    let shutdown_cmd: &str = config
+        .get("default_vmm_shutdown_cmd")
+        .expect("default_vmm_shutdown_cmd not found in hyperlight_constants.toml");
+    let shutdown_cmd_val: u8 = parse_hex_or_decimal_u8(shutdown_cmd, "default_vmm_shutdown_cmd");
+    template = template.replace("{{DEFAULT_VMM_SHUTDOWN_CMD}}", &format!("{shutdown_cmd_val:#x}"));
+
+    // PEB size (in pages -> bytes).
+    let peb_pages: &str = config
+        .get("peb_pages")
+        .expect("peb_pages not found in hyperlight_constants.toml");
+    let peb_pages_val: usize = peb_pages
+        .parse()
+        .expect("Failed to parse peb_pages as usize");
+    assert!(peb_pages_val > 0, "peb_pages must be positive, got: {}", peb_pages_val);
+    template = template.replace("{{PEB_SIZE}}", &pages_to_size_expr(peb_pages_val));
+
+    // Host function definitions size (in pages -> bytes).
+    let hfd_pages: &str = config
+        .get("host_function_definitions_pages")
+        .expect("host_function_definitions_pages not found in hyperlight_constants.toml");
+    let hfd_pages_val: usize = hfd_pages
+        .parse()
+        .expect("Failed to parse host_function_definitions_pages as usize");
+    assert!(
+        hfd_pages_val > 0,
+        "host_function_definitions_pages must be positive, got: {}",
+        hfd_pages_val
+    );
+    template =
+        template.replace("{{HOST_FUNCTION_DEFINITIONS_SIZE}}", &pages_to_size_expr(hfd_pages_val));
+
+    // Input data buffer size (in pages -> bytes).
+    let input_pages: &str = config
+        .get("input_data_buffer_pages")
+        .expect("input_data_buffer_pages not found in hyperlight_constants.toml");
+    let input_pages_val: usize = input_pages
+        .parse()
+        .expect("Failed to parse input_data_buffer_pages as usize");
+    assert!(
+        input_pages_val > 0,
+        "input_data_buffer_pages must be positive, got: {}",
+        input_pages_val
+    );
+    template = template.replace("{{INPUT_DATA_BUFFER_SIZE}}", &pages_to_size_expr(input_pages_val));
+
+    // Output data buffer size (in pages -> bytes).
+    let output_pages: &str = config
+        .get("output_data_buffer_pages")
+        .expect("output_data_buffer_pages not found in hyperlight_constants.toml");
+    let output_pages_val: usize = output_pages
+        .parse()
+        .expect("Failed to parse output_data_buffer_pages as usize");
+    assert!(
+        output_pages_val > 0,
+        "output_data_buffer_pages must be positive, got: {}",
+        output_pages_val
+    );
+    template =
+        template.replace("{{OUTPUT_DATA_BUFFER_SIZE}}", &pages_to_size_expr(output_pages_val));
+
+    // Verify all placeholders were substituted.
+    assert!(!template.contains("{{"), "Template contains unsubstituted placeholders");
+
+    fs::write(hyperlight_config_output_path, template)
+        .expect("Failed to write hyperlight_config.rs");
+}
+
 fn main() {
     // Read the TOML file using the workspace root for a reliable path
     let manifest_dir: String =
@@ -225,7 +399,54 @@ fn main() {
     let linuxd_dst_path: PathBuf = Path::new(&out_dir).join("linuxd_config.rs");
     generate_linuxd_config(&linuxd_config_path, &linuxd_dst_path);
 
-    // Inform Cargo to rerun the build script if the TOML changes
-    println!("cargo:rerun-if-changed=build/kernel_config.toml");
-    println!("cargo:rerun-if-changed=build/linuxd_config.toml");
+    // Parse hyperlight configuration file.
+    let hyperlight_config_path: PathBuf =
+        Path::new(&workspace_dir).join("build/hyperlight_constants.toml");
+    let hyperlight_template_path: PathBuf =
+        Path::new(&workspace_dir).join("build/hyperlight_config.rs.template");
+    let hyperlight_dst_path: PathBuf = Path::new(&out_dir).join("hyperlight_config.rs");
+    generate_hyperlight_config(
+        &hyperlight_config_path,
+        &hyperlight_template_path,
+        &hyperlight_dst_path,
+    );
+
+    // Inform Cargo to rerun the build script if the TOML changes.
+    println!("cargo::rerun-if-changed=build/kernel_config.toml");
+    println!("cargo::rerun-if-changed=build/linuxd_config.toml");
+    println!("cargo::rerun-if-changed=build/hyperlight_constants.toml");
+    println!("cargo::rerun-if-changed=build/hyperlight_config.rs.template");
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pages_to_size_expr_single_page() {
+        let result: String = pages_to_size_expr(1);
+        assert_eq!(result, "PAGE_SIZE");
+    }
+
+    #[test]
+    fn test_pages_to_size_expr_multiple_pages() {
+        let result: String = pages_to_size_expr(4);
+        assert_eq!(result, "4 * PAGE_SIZE");
+    }
+
+    #[test]
+    fn test_pages_to_size_expr_large_value() {
+        let result: String = pages_to_size_expr(256);
+        assert_eq!(result, "256 * PAGE_SIZE");
+    }
+
+    #[test]
+    #[should_panic(expected = "pages must be positive")]
+    fn test_pages_to_size_expr_zero_pages_panics() {
+        pages_to_size_expr(0);
+    }
 }
