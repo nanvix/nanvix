@@ -181,25 +181,20 @@ get_docker_image_name() {
 
 #
 # Description
-#   Builds the Docker command to run the build process.
+#   Builds Nanvix using Docker with BuildKit cache mounts.
+#   Uses 'docker build' with --mount=type=cache for efficient caching.
 #
 # Arguments
-#   $* - The build parameters to pass to the Docker command.
+#   $* - The build parameters to pass to make.
 #
 # Return
-#   A string containing the Docker command to run.
+#   0 on success, non-zero on failure.
 #
 # Usage Example
-#   build_docker_command "all"
+#   run_docker_build "all"
 #
-build_docker_command() {
+run_docker_build() {
     local build_parameters="${*}"
-    local user_id
-    local group_id
-    local host_workspace_path
-    user_id="$(id -u)"
-    group_id="$(id -g)"
-    host_workspace_path="$(pwd -P)"
 
     # Check if Docker is installed.
     check_docker_installed
@@ -214,16 +209,37 @@ build_docker_command() {
     # Check if the Docker image is available.
     check_docker_image_available "${image_name}"
 
-    echo "docker run --rm \
-        -v \"${host_workspace_path}:${host_workspace_path}\" \
-        -w \"${host_workspace_path}\" \
-        ${image_name} \
-        /bin/bash -l -c '\
-            set -e ; \
-            git config --global --add safe.directory \* ; \
-            make TOOLCHAIN_DIR=${DOCKER_IMAGE_TOOLCHAIN_PATH} ${build_parameters} ; \
-            chown -R \"${user_id}:${group_id}\" .\
-        '"
+    # Path to the build Dockerfile.
+    local dockerfile_path="${REPO_ROOT_DIR}/scripts/setup/Dockerfile.build"
+
+    # Check if the Dockerfile exists.
+    if [[ ! -f "${dockerfile_path}" ]]; then
+        print_error "Build Dockerfile not found: ${dockerfile_path}"
+        return 1
+    fi
+
+    # Extract RELEASE value from build parameters to determine sysroot suffix.
+    local sysroot_suffix="debug"
+    if [[ "${build_parameters}" =~ RELEASE=yes ]]; then
+        sysroot_suffix="release"
+    fi
+
+    # Get the absolute workspace path. This is passed to Docker so that Python
+    # and other binaries with embedded absolute paths can find their libraries
+    # at runtime without requiring symlinks on the host filesystem.
+    local workspace_path
+    workspace_path="$(pwd -P)"
+
+    # Run the build with BuildKit using the external Dockerfile.
+    DOCKER_BUILDKIT=1 docker build \
+        --build-arg BASE_IMAGE="${image_name}" \
+        --build-arg BUILD_PARAMS="${build_parameters}" \
+        --build-arg SYSROOT_SUFFIX="${sysroot_suffix}" \
+        --build-arg WORKSPACE_PATH="${workspace_path}" \
+        --output type=local,dest=. \
+        --progress=plain \
+        -f "${dockerfile_path}" \
+        .
 }
 
 #
@@ -393,7 +409,11 @@ check_toolchain() {
 
         # Check image availability.
         if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
-            print_error "Required Docker toolchain image '${image_name}' not found. Run './z setup --with-docker' to fetch it."
+            local setup_cmd="./z setup --with-docker"
+            if ${BUILD_WITH_MINIMAL_DOCKER}; then
+                setup_cmd="./z setup --with-minimal-docker"
+            fi
+            print_error "Required Docker toolchain image '${image_name}' not found. Run '${setup_cmd}' to fetch it."
             return 1
         fi
 
@@ -557,14 +577,10 @@ main() {
             print_info "Build Parameters: ${build_parameters[*]}"
 
             # Check if we are switching build modes.
-            if ${BUILD_WITH_DOCKER} && ! ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to Docker build, forcing cleanup."
-                # Force a cleanup.
-                if ! eval "$(build_docker_command distclean)" ; then
-                    print_error "Cleanup failed with Docker."
-                    exit 1
-                fi
-            elif ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
+            # Note: When switching TO Docker, we don't need to clean because Docker builds
+            # use isolated cache mounts. We only need to clean local artifacts when switching
+            # FROM Docker to local toolchain.
+            if ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
                 print_warning "Switching to local toolchain build, forcing cleanup."
                 # Force a cleanup.
                 if ! make distclean ; then
@@ -581,11 +597,19 @@ main() {
 
             # Build Nanvix.
             if ${BUILD_WITH_DOCKER}; then
-                print_info "Building with Docker..."
-                if ! eval "$(build_docker_command "${build_parameters[@]}")"; then
+                print_info "Building with Docker (using BuildKit cache)..."
+                if ! run_docker_build "${build_parameters[@]}"; then
                     print_error "Build failed with Docker."
                     exit 1
                 fi
+                # Create sysroot symlink after Docker build.
+                # Docker COPY cannot preserve symlinks across the export boundary,
+                # so we create the symlink here to point to the correct sysroot.
+                local sysroot_suffix="debug"
+                if [[ "${build_parameters[*]}" =~ RELEASE=yes ]]; then
+                    sysroot_suffix="release"
+                fi
+                ln -sfn "sysroot-${sysroot_suffix}" sysroot
             else
                 print_info "Building with local toolchain..."
                 if ! make "${build_parameters[@]}"; then
@@ -610,7 +634,7 @@ main() {
         "${CMD_NAME_CLEAN}")
             if ${BUILD_WITH_DOCKER}; then
                 print_info "Running quick cleanup with Docker..."
-                if ! eval "$(build_docker_command clean)"; then
+                if ! run_docker_build clean; then
                     print_error "Quick clean failed with Docker."
                     exit 1
                 fi
@@ -634,7 +658,7 @@ main() {
         "${CMD_NAME_DISTCLEAN}")
             if ${BUILD_WITH_DOCKER}; then
                 print_info "Running full cleanup with Docker..."
-                if ! eval "$(build_docker_command distclean)"; then
+                if ! run_docker_build distclean; then
                     print_error "Full cleanup failed with Docker."
                     exit 1
                 fi
@@ -675,7 +699,7 @@ main() {
                 # Check if Docker is installed.
                 check_docker_installed
 
-                # Get the Docker image name using the same logic as build_docker_command
+                # Get the Docker image name using the same logic as run_docker_build.
                 local current_version
                 current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
 
