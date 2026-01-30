@@ -48,6 +48,13 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
+use ::config::hyperlight::{
+    HOST_FUNCTION_DEFINITIONS_SIZE,
+    INITRD_SIZE_BYTES,
+    INPUT_DATA_BUFFER_SIZE,
+    OUTPUT_DATA_BUFFER_SIZE,
+    PEB_SIZE,
+};
 use ::hyperlight_common::mem::HyperlightPEB;
 use ::sys::{
     config::memory_layout,
@@ -312,7 +319,6 @@ pub fn init(
     // Register PEB structure.
     let peb_base: usize =
         ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, PAGE_ALIGNMENT);
-    const PEB_SIZE: usize = mem::PAGE_SIZE;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",
         VirtualAddress::from_raw_value(peb_base),
@@ -322,9 +328,13 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
-    // Register host function definitions
-    let host_function_definitions_base: usize = peb_base + PEB_SIZE;
-    const HOST_FUNCTION_DEFINITIONS_SIZE: usize = mem::PAGE_SIZE;
+    // Register host function definitions.
+    let host_function_definitions_base: usize =
+        peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
+            let reason: &str = "host function definitions base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host function definitions",
         VirtualAddress::from_raw_value(host_function_definitions_base),
@@ -335,8 +345,13 @@ pub fn init(
     memory_regions.push_back(host_function_definitions);
 
     // Register input data buffer.
-    let input_data_base: usize = host_function_definitions_base + HOST_FUNCTION_DEFINITIONS_SIZE;
-    const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
+    let input_data_base: usize = host_function_definitions_base
+        .checked_add(HOST_FUNCTION_DEFINITIONS_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "input data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
         VirtualAddress::from_raw_value(input_data_base),
@@ -347,8 +362,13 @@ pub fn init(
     memory_regions.push_back(input_data_buffer);
 
     // Register output data buffer.
-    let output_data_base: usize = input_data_base + INPUT_DATA_BUFFER_SIZE;
-    const OUTPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
+    let output_data_base: usize = input_data_base
+        .checked_add(INPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "output data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "output data buffer",
         VirtualAddress::from_raw_value(output_data_base),
@@ -359,9 +379,23 @@ pub fn init(
     memory_regions.push_back(output_data_buffer);
 
     // Register reserved area for heap padding.
-    let heap_padding_base: usize = output_data_base + OUTPUT_DATA_BUFFER_SIZE;
+    let heap_padding_base: usize = output_data_base
+        .checked_add(OUTPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "heap padding base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
-    let heap_padding_size: usize = memory_layout::KPOOL_BASE.into_raw_value() - heap_padding_base;
+    let kpool_base: usize = memory_layout::KPOOL_BASE.into_raw_value();
+    let heap_padding_size: usize = kpool_base.checked_sub(heap_padding_base).ok_or_else(|| {
+        let reason: &str = "kernel image exceeds KPOOL_BASE, memory regions overlap";
+        error!(
+            "init(): {} (heap_padding_base={:#010x}, kpool_base={:#010x})",
+            reason, heap_padding_base, kpool_base
+        );
+        Error::new(ErrorCode::OutOfMemory, reason)
+    })?;
     let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "heap padding",
         VirtualAddress::from_raw_value(heap_padding_base),
@@ -372,8 +406,13 @@ pub fn init(
     memory_regions.push_back(heap_padding);
 
     // Register kpool guard page.
-    let kpool_guard_base: usize =
-        memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
+    let kpool_guard_base: usize = kpool_base
+        .checked_add(config::kernel::KPOOL_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "kpool guard base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let kpool_guard_size: usize = mem::PAGE_SIZE;
     let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "kpool guard",
@@ -385,7 +424,14 @@ pub fn init(
     memory_regions.push_back(kpool_guard);
 
     // Register hyperlight guest user stack.
-    let guest_user_stack_base: usize = kpool_guard_base + kpool_guard_size;
+    let guest_user_stack_base: usize =
+        kpool_guard_base
+            .checked_add(kpool_guard_size)
+            .ok_or_else(|| {
+                let reason: &str = "guest user stack base address overflow";
+                error!("init(): {}", reason);
+                Error::new(ErrorCode::OutOfMemory, reason)
+            })?;
     let guest_user_stack_size: usize = mem::PAGE_SIZE;
     let guest_user_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest user stack",
@@ -432,17 +478,15 @@ unsafe fn parse_initrd_image(
     total_allocation_size: usize,
 ) -> Result<(usize, usize, (u8, String)), Error> {
     // Check if allocation is too small to hold the initrd header.
-    if total_allocation_size < ::config::hyperlight::INITRD_SIZE_BYTES {
+    if total_allocation_size < INITRD_SIZE_BYTES {
         let reason: &str = "insufficient initrd allocation size";
         error!("parse_initrd_image(): {reason} (total_allocation_size={total_allocation_size})");
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
     // Read actual size and relocate only that amount
-    let initrd_header: &[u8] = core::slice::from_raw_parts(
-        init_data_start as *const u8,
-        ::config::hyperlight::INITRD_SIZE_BYTES,
-    );
+    let initrd_header: &[u8] =
+        core::slice::from_raw_parts(init_data_start as *const u8, INITRD_SIZE_BYTES);
     let actual_initrd_size: usize = u64::from_le_bytes([
         initrd_header[0],
         initrd_header[1],
@@ -455,7 +499,7 @@ unsafe fn parse_initrd_image(
     ]) as usize;
 
     // Compute offsets and check for overflows.
-    let payload_offset: usize = ::config::hyperlight::INITRD_SIZE_BYTES;
+    let payload_offset: usize = INITRD_SIZE_BYTES;
     let current_initrd_start: usize = match init_data_start.checked_add(payload_offset) {
         Some(value) => value,
         None => {
