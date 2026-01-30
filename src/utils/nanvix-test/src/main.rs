@@ -154,6 +154,7 @@ async fn run() -> Result<()> {
             runner_config.toolchain_path.as_str(),
             Path::new(runner_config.working_directory.as_str()),
         )
+        .await
     {
         let reason: String = format!(
             "failed to prepare L2 artifacts (working_directory={}, toolchain={}, error={error})",
@@ -169,7 +170,8 @@ async fn run() -> Result<()> {
         Path::new(runner_config.tmp_directory.as_str()),
         runner_config.tcp_cleanup_max_wait_seconds,
         runner_config.tcp_cleanup_poll_interval_seconds,
-    );
+    )
+    .await;
     warning::fail_if_triggered("prepare_runner_environment")?;
 
     // Detect machine type at compile time based on enabled Cargo features.
