@@ -11,7 +11,7 @@
 // Lint Exceptions
 //==================================================================================================
 
-// Not all functions are used.
+// Not all constants are used.
 #![allow(dead_code)]
 
 //==================================================================================================
@@ -19,6 +19,7 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::core::ptr;
 use ::std::mem;
 use ::syslog::{
     debug,
@@ -134,11 +135,208 @@ impl Elf32Fhdr {
             || self.e_ident[2] != ELFMAG2 as u8
             || self.e_ident[3] != ELFMAG3 as u8
         {
-            error!("header is NULL or invalid magic");
+            error!("header is null or invalid magic");
             return false;
         }
         true
     }
+}
+
+///
+/// # Description
+///
+/// Represents the virtual memory range occupied by an ELF's loadable segments.
+///
+/// This structure captures the lowest and highest virtual addresses used by the loadable segments
+/// of an ELF file. It is useful for pre-validating memory layout requirements before loading the
+/// ELF into a guest.
+///
+pub struct MemoryFootprint {
+    start: usize,
+    end: usize,
+}
+
+impl MemoryFootprint {
+    ///
+    /// # Description
+    ///
+    /// Returns the lowest virtual address used by any loadable segment in the ELF file.
+    ///
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the highest virtual address used by the loadable segments in the ELF file.
+    ///
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the total virtual address span occupied by the loadable segments.
+    ///
+    pub const fn size(&self) -> usize {
+        self.end.saturating_sub(self.start)
+    }
+}
+
+///
+/// # Description
+///
+/// Computes the memory footprint of an ELF file.
+///
+/// This function parses the ELF header and program headers to determine the lowest and highest
+/// virtual addresses that will be occupied when the ELF is loaded into memory. This is useful for
+/// calculating memory layout requirements before actually loading the ELF.
+///
+/// # Parameters
+///
+/// - `source`: ELF file bytes in memory.
+///
+/// # Returns
+///
+/// Upon successful completion, this function returns the memory footprint of the loadable
+/// segments. Otherwise, it returns an error.
+///
+pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
+    trace!("memory_footprint(): source_len={}", source.len());
+
+    let source_len: usize = source.len();
+    let fh_size: usize = mem::size_of::<Elf32Fhdr>();
+
+    // Check if buffer is too small to contain ELF header.
+    if source_len < fh_size {
+        let reason: &str = "buffer too small for ELF header";
+        error!("memory_footprint(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Safety: the buffer size check above guarantees that `source` contains at least
+    // `size_of::<Elf32Fhdr>()` bytes, so the read is within bounds.
+    let ehdr: Elf32Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf32Fhdr>()) };
+
+    // Check if ELF magic number is valid.
+    if !ehdr.is_valid() {
+        let reason: &str = "header is null or invalid magic";
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Check ELF class.
+    if ehdr.e_ident[4] != ELFCLASS32 {
+        let reason: &str = "invalid elf class";
+        error!("memory_footprint(): {reason} (e_ident={:?})", ehdr.e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = ehdr.e_phoff as usize;
+    let phentsize: usize = ehdr.e_phentsize as usize;
+    let phnum: usize = ehdr.e_phnum as usize;
+
+    // Check if program header has an invalid size.
+    if phentsize != mem::size_of::<Elf32Phdr>() {
+        let reason: &str = "invalid program header entry size";
+        error!("memory_footprint(): {reason} (e_phentsize={})", ehdr.e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Calculate program header table size.
+    let ph_table_size: usize = phentsize.checked_mul(phnum).ok_or_else(|| {
+        let reason: &str = "program header table size overflow";
+        error!("memory_footprint(): {reason} (e_phnum={})", ehdr.e_phnum);
+        anyhow::anyhow!(reason)
+    })?;
+
+    // Calculate end of program header table.
+    let ph_table_end: usize = phoff.checked_add(ph_table_size).ok_or_else(|| {
+        let reason: &str = "program header table offset overflow";
+        error!("memory_footprint(): {reason} (e_phoff={})", ehdr.e_phoff);
+        anyhow::anyhow!(reason)
+    })?;
+
+    // Check if program header table exceeds buffer.
+    if ph_table_end > source_len {
+        let reason: &str = "program header table exceeds buffer";
+        error!(
+            "memory_footprint(): {reason} (phoff={}, size={}, len={})",
+            phoff, ph_table_size, source_len
+        );
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Find the lowest and highest virtual addresses across all loadable segments.
+    let mut end_address: usize = 0;
+    let mut start_address: usize = usize::MAX;
+    let mut found_loadable: bool = false;
+
+    for i in 0..phnum {
+        let entry_offset: usize = phoff + (i * phentsize);
+        let entry_end: usize = entry_offset + phentsize;
+
+        // Check if program header entry exceeds buffer.
+        if entry_end > source_len {
+            let reason: &str = "program header entry exceeds buffer";
+            error!(
+                "memory_footprint(): {reason} (offset={}, phentsize={}, len={})",
+                entry_offset, phentsize, source_len
+            );
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Safety: the bounds check above ensures `entry_offset + phentsize <= source_len`,
+        // so the pointer arithmetic and subsequent read are within the buffer.
+        let phdr_ptr: *const Elf32Phdr =
+            unsafe { source.as_ptr().add(entry_offset) }.cast::<Elf32Phdr>();
+        let phdr: Elf32Phdr = unsafe { ptr::read_unaligned(phdr_ptr) };
+
+        // Loadable segment.
+        if phdr.p_type == PT_LOAD {
+            let vaddr: usize = phdr.p_vaddr as usize;
+            let memsz: usize = phdr.p_memsz as usize;
+            let segment_end: usize = vaddr.checked_add(memsz).ok_or_else(|| {
+                let reason: &str = "segment end address overflow";
+                error!("memory_footprint(): {reason} (vaddr={vaddr:#010x}, memsz={memsz})");
+                anyhow::anyhow!(reason)
+            })?;
+
+            // Update start addresses.
+            if vaddr < start_address {
+                start_address = vaddr;
+            }
+            // Update end address.
+            if segment_end > end_address {
+                end_address = segment_end;
+            }
+            found_loadable = true;
+        }
+    }
+
+    // Check if no loadable segments were found.
+    if !found_loadable {
+        let reason: &str = "no loadable segments found";
+        error!("memory_footprint(): {reason} (e_phnum={})", ehdr.e_phnum);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Check if segment layout is invalid.
+    if end_address < start_address {
+        let reason: &str = "invalid segment layout: start after end";
+        error!(
+            "memory_footprint(): {reason} (start={start_address:#010x}, end={end_address:#010x})"
+        );
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    debug!("memory_footprint(): start={start_address:#010x}, end={end_address:#010x}");
+
+    Ok(MemoryFootprint {
+        start: start_address,
+        end: end_address,
+    })
 }
 
 ///
@@ -500,5 +698,389 @@ mod tests {
             unsafe { load(destination, image.as_ptr(), memory.len()) };
 
         assert!(result.is_err());
+    }
+
+    //==============================================================================================
+    // Tests for memory_footprint()
+    //==============================================================================================
+
+    /// Tests that memory_footprint correctly computes start/end for a single loadable segment.
+    #[test]
+    fn memory_footprint_single_segment() -> Result<()> {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+        let segment_offset: usize = header_size + phdr_size;
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: phdr_size as u16,
+            e_phnum: 1,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        let phdr: Elf32Phdr = Elf32Phdr {
+            p_type: PT_LOAD,
+            p_offset: segment_offset as u32,
+            p_vaddr: VADDR as u32,
+            p_paddr: 0,
+            p_filesz: 0x100,
+            p_memsz: 0x200,
+            p_flags: PF_R | PF_W,
+            p_align: 1,
+        };
+
+        let mut image: Vec<u8> = vec![0; segment_offset + 0x100];
+        unsafe {
+            write_struct(&mut image[..header_size], &header);
+            write_struct(&mut image[header_size..segment_offset], &phdr);
+        }
+
+        let footprint: MemoryFootprint = memory_footprint(&image)?;
+
+        assert_eq!(footprint.start(), VADDR);
+        assert_eq!(footprint.end(), VADDR + 0x200);
+        assert_eq!(footprint.size(), 0x200);
+
+        Ok(())
+    }
+
+    /// Tests that memory_footprint correctly handles multiple loadable segments.
+    #[test]
+    fn memory_footprint_multiple_segments() -> Result<()> {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: phdr_size as u16,
+            e_phnum: 2,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        // First segment: starts at 0x1000, size 0x100.
+        let phdr1: Elf32Phdr = Elf32Phdr {
+            p_type: PT_LOAD,
+            p_offset: 0,
+            p_vaddr: 0x1000,
+            p_paddr: 0,
+            p_filesz: 0x100,
+            p_memsz: 0x100,
+            p_flags: PF_R | PF_X,
+            p_align: 1,
+        };
+
+        // Second segment: starts at 0x2000, size 0x500.
+        let phdr2: Elf32Phdr = Elf32Phdr {
+            p_type: PT_LOAD,
+            p_offset: 0,
+            p_vaddr: 0x2000,
+            p_paddr: 0,
+            p_filesz: 0x200,
+            p_memsz: 0x500,
+            p_flags: PF_R | PF_W,
+            p_align: 1,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size + 2 * phdr_size];
+        unsafe {
+            write_struct(&mut image[..header_size], &header);
+            write_struct(&mut image[header_size..header_size + phdr_size], &phdr1);
+            write_struct(&mut image[header_size + phdr_size..], &phdr2);
+        }
+
+        let footprint: MemoryFootprint = memory_footprint(&image)?;
+
+        assert_eq!(footprint.start(), 0x1000);
+        assert_eq!(footprint.end(), 0x2500);
+        assert_eq!(footprint.size(), 0x1500);
+
+        Ok(())
+    }
+
+    /// Tests that memory_footprint rejects a buffer too small for ELF header.
+    #[test]
+    fn memory_footprint_rejects_small_buffer() {
+        let small_buffer: [u8; 10] = [0; 10];
+
+        let result: Result<MemoryFootprint> = memory_footprint(&small_buffer);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint rejects invalid ELF magic.
+    #[test]
+    fn memory_footprint_rejects_invalid_magic() {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let mut ident: [u8; EI_NIDENT] = [0; EI_NIDENT];
+        ident[0] = 0x00; // Invalid magic.
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: ident,
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: mem::size_of::<Elf32Phdr>() as u16,
+            e_phnum: 1,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size];
+        unsafe {
+            write_struct(&mut image[..], &header);
+        }
+
+        let result: Result<MemoryFootprint> = memory_footprint(&image);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint rejects invalid ELF class (64-bit).
+    #[test]
+    fn memory_footprint_rejects_invalid_class() {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let mut ident: [u8; EI_NIDENT] = make_ident();
+        ident[4] = ELFCLASS64; // 64-bit class, not supported.
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: ident,
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: mem::size_of::<Elf32Phdr>() as u16,
+            e_phnum: 1,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size];
+        unsafe {
+            write_struct(&mut image[..], &header);
+        }
+
+        let result: Result<MemoryFootprint> = memory_footprint(&image);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint rejects invalid program header entry size.
+    #[test]
+    fn memory_footprint_rejects_invalid_phentsize() {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: 1, // Invalid size.
+            e_phnum: 1,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size];
+        unsafe {
+            write_struct(&mut image[..], &header);
+        }
+
+        let result: Result<MemoryFootprint> = memory_footprint(&image);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint rejects when program header table exceeds buffer.
+    #[test]
+    fn memory_footprint_rejects_phdr_exceeds_buffer() {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: phdr_size as u16,
+            e_phnum: 10, // Claims 10 segments but buffer is too small.
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        // Buffer only has header, no room for program headers.
+        let mut image: Vec<u8> = vec![0; header_size];
+        unsafe {
+            write_struct(&mut image[..], &header);
+        }
+
+        let result: Result<MemoryFootprint> = memory_footprint(&image);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint rejects when no loadable segments are found.
+    #[test]
+    fn memory_footprint_rejects_no_loadable_segments() {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: phdr_size as u16,
+            e_phnum: 1,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        // Non-loadable segment (PT_NOTE instead of PT_LOAD).
+        let phdr: Elf32Phdr = Elf32Phdr {
+            p_type: PT_NOTE,
+            p_offset: 0,
+            p_vaddr: VADDR as u32,
+            p_paddr: 0,
+            p_filesz: 0x100,
+            p_memsz: 0x100,
+            p_flags: PF_R,
+            p_align: 1,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size + phdr_size];
+        unsafe {
+            write_struct(&mut image[..header_size], &header);
+            write_struct(&mut image[header_size..], &phdr);
+        }
+
+        let result: Result<MemoryFootprint> = memory_footprint(&image);
+
+        assert!(result.is_err());
+    }
+
+    /// Tests that memory_footprint correctly skips non-loadable segments.
+    #[test]
+    fn memory_footprint_skips_non_loadable_segments() -> Result<()> {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+
+        let header: Elf32Fhdr = Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: header_size as u32,
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: header_size as u16,
+            e_phentsize: phdr_size as u16,
+            e_phnum: 3,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        };
+
+        // Non-loadable segment (should be skipped).
+        let phdr1: Elf32Phdr = Elf32Phdr {
+            p_type: PT_NOTE,
+            p_offset: 0,
+            p_vaddr: 0x500,
+            p_paddr: 0,
+            p_filesz: 0x100,
+            p_memsz: 0x100,
+            p_flags: PF_R,
+            p_align: 1,
+        };
+
+        // Loadable segment.
+        let phdr2: Elf32Phdr = Elf32Phdr {
+            p_type: PT_LOAD,
+            p_offset: 0,
+            p_vaddr: 0x1000,
+            p_paddr: 0,
+            p_filesz: 0x200,
+            p_memsz: 0x300,
+            p_flags: PF_R | PF_X,
+            p_align: 1,
+        };
+
+        // Another non-loadable segment (should be skipped).
+        let phdr3: Elf32Phdr = Elf32Phdr {
+            p_type: PT_DYNAMIC,
+            p_offset: 0,
+            p_vaddr: 0x5000,
+            p_paddr: 0,
+            p_filesz: 0x50,
+            p_memsz: 0x50,
+            p_flags: PF_R | PF_W,
+            p_align: 1,
+        };
+
+        let mut image: Vec<u8> = vec![0; header_size + 3 * phdr_size];
+        unsafe {
+            write_struct(&mut image[..header_size], &header);
+            write_struct(&mut image[header_size..header_size + phdr_size], &phdr1);
+            write_struct(&mut image[header_size + phdr_size..header_size + 2 * phdr_size], &phdr2);
+            write_struct(&mut image[header_size + 2 * phdr_size..], &phdr3);
+        }
+
+        let footprint: MemoryFootprint = memory_footprint(&image)?;
+
+        // Should only consider the PT_LOAD segment (phdr2).
+        assert_eq!(footprint.start(), 0x1000);
+        assert_eq!(footprint.end(), 0x1300);
+        assert_eq!(footprint.size(), 0x300);
+
+        Ok(())
     }
 }
