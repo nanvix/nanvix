@@ -73,7 +73,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_BASE`], which can be used in constant-value expressions.
     ///
-    pub const KPOOL_BASE_RAW: usize = 0x00400000;
+    pub const KPOOL_BASE_RAW: usize = 0x00800000;
 
     ///
     /// # Description
@@ -201,7 +201,7 @@ pub mod microvm {
     pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
 
     /// Base address of the RAM disk.
-    pub const DEFAULT_INITRD_BASE: usize = 0x00800000;
+    pub const DEFAULT_INITRD_BASE: usize = 0x00c00000;
 
     /// I/O port that is connected to the standard output of the virtual machine.
     pub const DEFAULT_STDOUT_PORT: u16 = 0xe9;
