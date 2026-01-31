@@ -14,7 +14,7 @@ page_size = 4096
 default_boot_magic = 0x0c00ffee
 
 # Base address of the RAM disk.
-default_initrd_base = 0x00802000
+default_initrd_base = 0x00c02000
 
 # Number of bytes used to store initrd's size.
 initrd_size_bytes = 8

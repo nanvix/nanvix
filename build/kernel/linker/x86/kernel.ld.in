@@ -30,7 +30,7 @@ TRAMPOLINE_ADDR = 0x00008000;
  * build-time generated value using build.rs, similar to how MACHINE_RESERVED is handled via the
  * @MACHINE_RESERVED@ placeholder.
  */
-KPOOL_BASE = 0x00400000;
+KPOOL_BASE = 0x00800000;
 
 /*
  * Machine Reserved Space
