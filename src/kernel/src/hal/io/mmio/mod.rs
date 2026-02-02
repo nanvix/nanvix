@@ -7,6 +7,7 @@
 
 mod allocator;
 mod region;
+mod tag;
 
 //==================================================================================================
 // Exports
@@ -14,3 +15,4 @@ mod region;
 
 pub use allocator::IoMemoryAllocator;
 pub use region::IoMemoryRegion;
+pub use tag::MmioTag;

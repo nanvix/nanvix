@@ -16,26 +16,30 @@ mod xapic;
 // Imports
 //==================================================================================================
 
+use self::{
+    ioapic::UninitIoapic,
+    map::InterruptMap,
+    pic::UninitPic,
+    xapic::UninitXapic,
+};
 use crate::hal::{
     arch::x86::{
-        cpu::{
-            idt,
-            interrupt::{
-                ioapic::UninitIoapic,
-                map::InterruptMap,
-                pic::UninitPic,
-                xapic::UninitXapic,
-            },
-        },
-        mem::gdt,
+        cpu::idt,
+        mem::gdt::SegmentSelector,
     },
     io::{
         IoMemoryAllocator,
         IoMemoryRegion,
         IoPortAllocator,
     },
-    mem::VirtualAddress,
-    platform::madt::MadtInfo,
+    mem::Address,
+    platform::{
+        madt::MadtInfo,
+        region_tags::{
+            IOAPIC_MMIO_TAG,
+            LAPIC_MMIO_TAG,
+        },
+    },
 };
 use ::alloc::collections::LinkedList;
 use ::arch::cpu::{
@@ -48,7 +52,10 @@ use ::arch::cpu::{
         MadtEntryLocalApic,
     },
 };
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Exports
@@ -107,7 +114,7 @@ pub unsafe fn forge_user_stack(
 
     // Push User DS on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = gdt::SegmentSelector::UserData as u32;
+    *kstackp = SegmentSelector::UserData as u32;
 
     // Push User ESP on the kernel stack.
     kstackp = kstackp.offset(-1);
@@ -125,7 +132,7 @@ pub unsafe fn forge_user_stack(
 
     // Push User CS on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = gdt::SegmentSelector::UserCode as u32;
+    *kstackp = SegmentSelector::UserCode as u32;
 
     // Push User EIP on the kernel stack.
     kstackp = kstackp.offset(-1);
@@ -133,7 +140,7 @@ pub unsafe fn forge_user_stack(
 
     // Push the segment selector for the users-space thread data area on the kernel stack.
     kstackp = kstackp.offset(-1);
-    *kstackp = gdt::SegmentSelector::UserThreadDataArea as u32;
+    *kstackp = SegmentSelector::UserThreadDataArea as u32;
 
     // Push first argument to user function on the kernel stack.
     kstackp = kstackp.offset(-1);
@@ -195,8 +202,19 @@ pub fn init(
                     let id: u8 = ioapic_info.io_apic_id;
                     let addr: u32 = ioapic_info.io_apic_addr;
                     let gsi: u32 = ioapic_info.global_sys_int_base;
-                    let base: IoMemoryRegion =
-                        ioaddresses.allocate(VirtualAddress::new(addr as usize))?;
+                    let base: IoMemoryRegion = ioaddresses.allocate(IOAPIC_MMIO_TAG)?;
+
+                    // Ensure that the allocated region matches the parsed MADT information.
+                    if base.base().into_raw_value() != addr as usize {
+                        let reason: &str = "ioapic region does not match madt";
+                        error!(
+                            "{reason} (expected={:#x}, found={:#x})",
+                            addr,
+                            base.base().into_raw_value()
+                        );
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    }
+
                     Some(UninitIoapic::new(idt::INT_OFF, id, base, gsi))
                 },
                 None => {
@@ -230,8 +248,19 @@ pub fn init(
                             || (local_apic_info.flags & MadtEntryLocalApic::ENABLED) != 0
                     );
 
-                    let base: IoMemoryRegion =
-                        ioaddresses.allocate(VirtualAddress::new(madt.local_apic_addr as usize))?;
+                    let base: IoMemoryRegion = ioaddresses.allocate(LAPIC_MMIO_TAG)?;
+
+                    // Ensure that the allocated region matches the parsed MADT information.
+                    if base.base().into_raw_value() != madt.local_apic_addr as usize {
+                        let reason: &str = "lapic region does not match madt";
+                        error!(
+                            "{reason} (expected={:#x}, found={:#x})",
+                            madt.local_apic_addr,
+                            base.base().into_raw_value()
+                        );
+                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                    }
+
                     Some(UninitXapic::new(local_apic_info.apic_id, base))
                 },
                 None => {

@@ -191,9 +191,9 @@ impl UninitXapic {
     ///
     /// Returns the base address of the target xAPIC.
     ///
-    /// # Return Values
+    /// # Returns
     ///
-    /// The base address of the target xAPIC.
+    /// This function returns the base address of the target xAPIC.
     ///
     pub fn base(&self) -> usize {
         self.base.base().into_raw_value()
