@@ -106,8 +106,7 @@ impl Vmm {
 
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size: usize = config::kernel::KPOOL_SIZE;
-        // TODO (#1306): Replace this hardcoded value with a constant.
-        let stack_size: usize = 4 * 1024;
+        let stack_size: usize = ::config::hyperlight::STACK_SIZE;
         let memory_size: usize = args.memory_size;
 
         let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {

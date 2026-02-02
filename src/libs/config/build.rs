@@ -371,6 +371,16 @@ fn generate_hyperlight_config(
     template =
         template.replace("{{OUTPUT_DATA_BUFFER_SIZE}}", &pages_to_size_expr(output_pages_val));
 
+    // Stack size (in pages -> bytes)
+    let stack_pages: &str = config
+        .get("stack_pages")
+        .expect("stack_pages not found in hyperlight_constants.toml");
+    let stack_pages_val: usize = stack_pages
+        .parse()
+        .expect("Failed to parse stack_pages as usize");
+    assert!(stack_pages_val > 0, "stack_pages must be positive, got: {}", stack_pages_val);
+    template = template.replace("{{STACK_SIZE}}", &pages_to_size_expr(stack_pages_val));
+
     // Verify all placeholders were substituted.
     assert!(!template.contains("{{"), "Template contains unsubstituted placeholders");
 
