@@ -158,6 +158,21 @@ pub(crate) async fn test_with_http_executor(
                 return Err(::anyhow::anyhow!(reason));
             }
             log_layout.persist_program_output(iteration, payload.as_slice())?;
+
+            // Explicitly terminate the User VM to get the exit code.
+            let exit_code: i32 = user_vm.terminate().await?;
+
+            // Validate exit code if expected_exit_code is specified.
+            if let Some(expected) = workload.expected_exit_code()
+                && exit_code != expected
+            {
+                let reason: String = format!(
+                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                    expected, exit_code, program_path, iteration
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
         }
     }
 

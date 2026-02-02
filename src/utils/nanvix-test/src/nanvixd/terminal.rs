@@ -168,6 +168,20 @@ impl NanvixdTerminal {
     pub fn take_stderr(&mut self) -> Option<ChildStderr> {
         self.inner.take_stderr()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for the Nanvix Daemon process to exit and returns its exit code.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the exit code of the process on success; returns an error if waiting fails or
+    /// the process was terminated by a signal.
+    ///
+    pub async fn wait_exit_code(&mut self) -> Result<i32> {
+        self.inner.wait_exit_code().await
+    }
 }
 
 //==================================================================================================
