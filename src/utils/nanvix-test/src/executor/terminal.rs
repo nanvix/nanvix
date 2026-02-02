@@ -91,6 +91,7 @@ type StreamCollectors = (
 /// - `iterations`: Number of times to run the workflow.
 /// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that defines the target directory for stdout/stderr/program logs.
+/// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
 ///
 /// # Return Value
 ///
@@ -103,6 +104,7 @@ pub async fn test_with_terminal_executor(
     iterations: usize,
     workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
+    extra_nanvixd_args: &[String],
 ) -> Result<()> {
     if runner_config.l2_enabled {
         let reason: String = "terminal executor does not support L2 deployment".to_string();
@@ -134,11 +136,12 @@ pub async fn test_with_terminal_executor(
             stderr: stderr_file_path,
         } = log_layout.allocate_runner_logs(Some(iteration));
 
-        let nanvixd_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
+        let nanvixd_terminal_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
             hwloc_file_path.clone(),
             workload.program_path(),
             parsed_program_args.as_slice(),
             log_layout.test_directory(),
+            extra_nanvixd_args,
         )?;
 
         let collection_timeout: Duration =
@@ -146,7 +149,7 @@ pub async fn test_with_terminal_executor(
 
         let (_nanvixd, stream_collectors) = {
             let mut nanvixd: NanvixdTerminal =
-                NanvixdTerminal::spawn(runner_config, &nanvixd_args).await?;
+                NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
 
             let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
                 let reason: String =

@@ -181,11 +181,29 @@ async fn run() -> Result<()> {
             input,
             expected_output,
             expect_empty_output,
+            extra_nanvixd_args,
         } = test_config;
 
+        // Parse extra_nanvixd_args string into a vector of arguments.
+        let extra_nanvixd_args: Vec<String> = match extra_nanvixd_args.as_ref() {
+            Some(args) => match ::shell_words::split(args) {
+                Ok(values) => values,
+                Err(parse_error) => {
+                    let reason: String = format!(
+                        "failed to parse extra_nanvixd_args (args='{}', error={parse_error})",
+                        args
+                    );
+                    error!("main(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+            },
+            None => Vec::new(),
+        };
+
         debug!(
-            "main(): running test (executor={}, iterations={}, program={:?}, program_args={:?})",
-            executor, iterations, program, program_args,
+            "main(): running test (executor={}, iterations={}, program={:?}, program_args={:?}, \
+             extra_nanvixd_args={:?})",
+            executor, iterations, program, program_args, extra_nanvixd_args,
         );
 
         let executor_name: ExecutorName = ExecutorName::from_str(executor.as_str())?;
@@ -197,7 +215,7 @@ async fn run() -> Result<()> {
                     ExecutorName::Empty.to_str(),
                     executor.as_str(),
                 )?;
-                empty(&runner_config, iterations, &log_layout).await?;
+                empty(&runner_config, iterations, &log_layout, &extra_nanvixd_args).await?;
                 let context: String = format!("empty executor completed (label={})", executor);
                 warning::fail_if_triggered(context.as_str())?;
             },
@@ -233,7 +251,14 @@ async fn run() -> Result<()> {
                     expect_empty_output,
                 );
 
-                test_with_http_executor(&runner_config, iterations, workload, &log_layout).await?;
+                test_with_http_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                )
+                .await?;
                 let context: String = format!(
                     "http executor completed (program={}, test={})",
                     program_path, executor
@@ -278,8 +303,14 @@ async fn run() -> Result<()> {
                     expect_empty_output,
                 );
 
-                test_with_terminal_executor(&runner_config, iterations, workload, &log_layout)
-                    .await?;
+                test_with_terminal_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                )
+                .await?;
                 let context: String = format!(
                     "terminal executor completed (program={}, test={})",
                     program_path, executor

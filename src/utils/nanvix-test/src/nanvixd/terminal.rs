@@ -52,36 +52,42 @@ impl NanvixdTerminal {
     /// # Parameters
     ///
     /// - `config`: Configuration object describing how the Nanvix Daemon should be spawned.
-    /// - `nanvixd_args`: Runtime arguments used when spawning the Nanvix Daemon.
+    /// - `args`: Runtime arguments used when spawning the Nanvix Daemon.
     ///
     /// # Return Value
     ///
     /// Returns a handle to the interactive Nanvix Daemon on success; returns an error if the
     /// process cannot be spawned.
     ///
-    pub async fn spawn(config: &RunnerConfig, nanvixd_args: &NanvixdTerminalArgs) -> Result<Self> {
+    pub async fn spawn(config: &RunnerConfig, args: &NanvixdTerminalArgs) -> Result<Self> {
         debug_assert!(!config.l2_enabled);
 
-        let hwloc_file_path: Option<&str> = nanvixd_args.hwloc_file_path();
-        let log_directory: &Path = nanvixd_args.log_directory();
+        let hwloc_file_path: Option<&str> = args.hwloc_file_path();
+        let log_directory: &Path = args.log_directory();
         trace!(
             "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode={}, \
              hwloc_file_path={:?}, l2=disabled",
             config.nanvixd_binary_path,
             config.working_directory,
             config.toolchain_path,
-            nanvixd_args.mode_label(),
+            args.mode_label(),
             hwloc_file_path,
         );
 
-        let program_path: &str = nanvixd_args.program_path();
-        let program_args: &[String] = nanvixd_args.program_args();
+        let program_path: &str = args.program_path();
+        let program_args: &[String] = args.program_args();
 
         let mut command: Command =
             Nanvixd::build_base_command(config, hwloc_file_path, false, log_directory);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+
+        // Append extra command-line arguments passed directly to nanvixd.
+        for extra_nanvixd_arg in args.extra_nanvixd_args() {
+            command.arg(extra_nanvixd_arg);
+        }
+
         command.arg(::nanvixd::args::Args::OPT_SEPARATOR);
         command.arg(program_path);
         command.args(program_args);
@@ -181,6 +187,8 @@ pub struct NanvixdTerminalArgs {
     program_args: Vec<String>,
     /// Directory where Nanvix Daemon components should emit logs.
     log_directory: PathBuf,
+    /// Command-line arguments passed directly to nanvixd.
+    extra_nanvixd_args: Vec<String>,
 }
 
 impl NanvixdTerminalArgs {
@@ -196,6 +204,7 @@ impl NanvixdTerminalArgs {
     /// - `program_path`: Path to the workload that should execute inside the sandbox.
     /// - `program_args`: Command-line arguments forwarded to the workload.
     /// - `log_directory`: Directory where the Nanvix Daemon should emit component logs.
+    /// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
     ///
     /// # Return Value
     ///
@@ -207,12 +216,14 @@ impl NanvixdTerminalArgs {
         program_path: &str,
         program_args: &[String],
         log_directory: &Path,
+        extra_nanvixd_args: &[String],
     ) -> Result<Self> {
         Ok(Self {
             hwloc_file_path,
             program_path: program_path.to_string(),
             program_args: program_args.to_vec(),
             log_directory: log_directory.to_path_buf(),
+            extra_nanvixd_args: extra_nanvixd_args.to_vec(),
         })
     }
 
@@ -279,5 +290,18 @@ impl NanvixdTerminalArgs {
     ///
     pub fn mode_label(&self) -> &'static str {
         "mode=interactive"
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the command-line arguments passed directly to nanvixd.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a slice containing the nanvixd arguments.
+    ///
+    pub fn extra_nanvixd_args(&self) -> &[String] {
+        self.extra_nanvixd_args.as_slice()
     }
 }

@@ -61,6 +61,7 @@ use ::tokio::time::timeout;
 /// - `iterations`: Number of times the start/run/stop cycle should execute.
 /// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that controls how runner/program logs are timestamped and stored.
+/// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
 ///
 /// # Return Value
 ///
@@ -73,6 +74,7 @@ pub(crate) async fn test_with_http_executor(
     iterations: usize,
     workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
+    extra_nanvixd_args: &[String],
 ) -> Result<()> {
     let l2_enabled: bool = runner_config.l2_enabled;
     let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
@@ -101,12 +103,12 @@ pub(crate) async fn test_with_http_executor(
 
     let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
         (stdout_file_path.as_path(), stderr_file_path.as_path()),
-        runner_config.ipv4_addr.as_str(),
-        runner_config.port_num,
+        (runner_config.ipv4_addr.as_str(), runner_config.port_num),
         hwloc_file_path.clone(),
         l2_enabled,
         runner_config.netns_pool_size,
         log_layout.test_directory(),
+        extra_nanvixd_args,
     )?;
 
     // Run tests within a scoped block to ensure logs are captured before moving them.
