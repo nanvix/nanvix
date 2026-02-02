@@ -490,6 +490,8 @@ pub struct TestCaseConfig {
     pub expect_empty_output: bool,
     /// Optional extra arguments passed directly to nanvixd.
     pub extra_nanvixd_args: Option<String>,
+    /// Optional expected exit code that the workload must produce.
+    pub expected_exit_code: Option<i32>,
 }
 
 impl TestCaseConfig {
@@ -519,6 +521,7 @@ impl TestCaseConfig {
         let expected_output_field: String = format!("{entry_prefix}.expected_output");
         let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
+        let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -546,6 +549,10 @@ impl TestCaseConfig {
                 table,
                 "extra_nanvixd_args",
                 extra_nanvixd_args_field.as_str(),
+            expected_exit_code: read_optional_i32(
+                table,
+                "expected_exit_code",
+                expected_exit_code_field.as_str(),
             )?,
         })
     }
@@ -1176,6 +1183,47 @@ fn read_optional_string(table: &Table, key: &str, field_name: &str) -> Result<Op
         Some(other) => {
             let reason: String =
                 format!("{field_name} must be a string (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional 32-bit signed integer from a TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the integer.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(i32)` when the field exists and is a valid integer; otherwise returns `None`.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an integer or overflows `i32`.
+///
+fn read_optional_i32(table: &Table, key: &str, field_name: &str) -> Result<Option<i32>> {
+    match table.get(key) {
+        Some(Value::Integer(value)) => {
+            let converted: i32 = match i32::try_from(*value) {
+                Ok(v) => v,
+                Err(error) => {
+                    let reason: String =
+                        format!("{field_name} value overflows i32 (value={value}, error={error})");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+            };
+            Ok(Some(converted))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an integer (found={})", describe_toml_type(other));
             Err(::anyhow::anyhow!(reason))
         },
         None => Ok(None),

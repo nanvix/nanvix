@@ -305,6 +305,42 @@ impl Nanvixd {
     fn take_stderr(&mut self) -> Option<ChildStderr> {
         self.cmd.stderr.take()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for the process to exit and returns its exit code.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the exit code of the process on success; returns an error if waiting fails or
+    /// the process was terminated by a signal.
+    ///
+    async fn wait_exit_code(&mut self) -> Result<i32> {
+        let context: String = self.context_label().to_string();
+        trace!("wait_exit_code(): context={context}");
+
+        match self.cmd.wait().await {
+            Ok(status) => {
+                if let Some(code) = status.code() {
+                    debug!("wait_exit_code(): process exited with code {code} (context={context})");
+                    Ok(code)
+                } else {
+                    let reason: String = format!(
+                        "process terminated by signal without exit code (context={context})"
+                    );
+                    error!("wait_exit_code(): {reason}");
+                    Err(::anyhow::anyhow!(reason))
+                }
+            },
+            Err(error) => {
+                let reason: String =
+                    format!("failed to wait for process exit (context={context}, error={error})");
+                error!("wait_exit_code(): {reason}");
+                Err(::anyhow::anyhow!(reason))
+            },
+        }
+    }
 }
 
 impl Drop for Nanvixd {

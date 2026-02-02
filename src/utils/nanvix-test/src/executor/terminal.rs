@@ -147,7 +147,7 @@ pub async fn test_with_terminal_executor(
         let collection_timeout: Duration =
             Duration::from_millis(runner_config.stream_collection_timeout_ms);
 
-        let (_nanvixd, stream_collectors) = {
+        let (mut nanvixd, stream_collectors) = {
             let mut nanvixd: NanvixdTerminal =
                 NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
 
@@ -206,6 +206,9 @@ pub async fn test_with_terminal_executor(
         )
         .await?;
 
+        // Wait for the nanvixd process to exit and get its exit code.
+        let exit_code: i32 = nanvixd.wait_exit_code().await?;
+
         if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
             let reason: String = format!(
                 "failed to write interactive stdout log (path={}, error={error})",
@@ -242,6 +245,21 @@ pub async fn test_with_terminal_executor(
             let reason: String = format!(
                 "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
                 stdout_bytes
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // Validate exit code if expected_exit_code is specified.
+        if let Some(expected) = workload.expected_exit_code()
+            && exit_code != expected
+        {
+            let reason: String = format!(
+                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                expected,
+                exit_code,
+                workload.program_path(),
+                iteration
             );
             error!("test_with_terminal_executor(): {reason}");
             return Err(::anyhow::anyhow!(reason));
