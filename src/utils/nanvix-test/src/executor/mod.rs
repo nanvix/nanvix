@@ -52,6 +52,12 @@ pub struct WorkloadSpec<'a> {
     /// Indicates whether the workload is expected to produce an empty stdout payload.
     ///
     expect_empty_output: bool,
+    ///
+    /// # Description
+    ///
+    /// Optional expected exit code that the workload must produce.
+    ///
+    expected_exit_code: Option<i32>,
 }
 
 impl<'a> WorkloadSpec<'a> {
@@ -68,6 +74,7 @@ impl<'a> WorkloadSpec<'a> {
     /// - `expected_output`: Optional substring that must appear in the collected stdout payload.
     /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
     ///   payload.
+    /// - `expected_exit_code`: Optional exit code that the workload must produce.
     ///
     /// # Return Value
     ///
@@ -78,6 +85,7 @@ impl<'a> WorkloadSpec<'a> {
         input: Option<&'a str>,
         expected_output: Option<&'a str>,
         expect_empty_output: bool,
+        expected_exit_code: Option<i32>,
     ) -> Self {
         Self {
             program_path,
@@ -85,6 +93,7 @@ impl<'a> WorkloadSpec<'a> {
             input,
             expected_output,
             expect_empty_output,
+            expected_exit_code,
         }
     }
 
@@ -146,6 +155,19 @@ impl<'a> WorkloadSpec<'a> {
     /// Returns `true` when empty stdout is required; otherwise returns `false`.
     pub const fn expect_empty_output(&self) -> bool {
         self.expect_empty_output
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional expected exit code that the workload must produce.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the expected exit code when specified; otherwise returns `None`.
+    ///
+    pub const fn expected_exit_code(&self) -> Option<i32> {
+        self.expected_exit_code
     }
 }
 
