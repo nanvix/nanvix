@@ -37,6 +37,7 @@ use ::nanvixd::{
 };
 use ::std::{
     path::PathBuf,
+    process::ExitCode,
     sync::{
         Arc,
         OnceLock,
@@ -54,6 +55,10 @@ use ::tokio::fs;
 
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "info";
+
+/// Maximum exit code value that can be represented as a process exit code.
+/// Exit codes are clamped to the range [0, 255] for compatibility with POSIX systems.
+const MAX_EXIT_CODE: i32 = 255;
 
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
@@ -111,11 +116,11 @@ macro_rules! log_info {
 ///
 /// # Returns
 ///
-/// On success, returns an empty tuple after graceful shutdown. On failure, returns an error
-/// describing what went wrong during initialization or execution.
+/// On success, returns the exit code of the workload in interactive mode or `ExitCode::SUCCESS`
+/// in HTTP mode. On failure, returns an error describing what went wrong.
 ///
 #[tokio::main]
-pub async fn main() -> Result<()> {
+pub async fn main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
@@ -191,12 +196,19 @@ pub async fn main() -> Result<()> {
         };
 
         let mut terminal: Terminal<()> = Terminal::new(config);
-        if let Err(error) = terminal
+        let exit_code: i32 = terminal
             .run(None, None, &guest_binary_path, &guest_binary_args)
-            .await
-        {
-            error!("terminal failed: {error}");
-        }
+            .await?;
+
+        // Clamp exit code to valid range [0, 255] for POSIX compatibility.
+        // Negative values become 255 (error), values > 255 are clamped to 255.
+        let clamped_exit_code: u8 = if !(0..=MAX_EXIT_CODE).contains(&exit_code) {
+            MAX_EXIT_CODE as u8
+        } else {
+            exit_code as u8
+        };
+
+        Ok(ExitCode::from(clamped_exit_code))
     } else {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
@@ -211,9 +223,9 @@ pub async fn main() -> Result<()> {
         if let Err(error) = http_server.run().await {
             error!("http server failed: {error}");
         }
-    }
 
-    Ok(())
+        Ok(ExitCode::SUCCESS)
+    }
 }
 
 ///
