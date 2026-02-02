@@ -63,17 +63,17 @@ impl NanvixdHttp {
     /// # Parameters
     ///
     /// - `config`: Configuration object describing how the Nanvix Daemon should be spawned.
-    /// - `nanvixd_args`: File handles and runtime arguments used when spawning the Nanvix Daemon.
+    /// - `args`: File handles and runtime arguments used when spawning the Nanvix Daemon.
     ///
     /// # Return Value
     ///
     /// Returns a handle to the HTTP-enabled Nanvix Daemon on success; returns an error when the
     /// child process cannot be spawned or the readiness checks fail.
     ///
-    pub async fn spawn(config: &RunnerConfig, nanvixd_args: &NanvixdHttpArgs) -> Result<Self> {
-        let hwloc_file_path: Option<&str> = nanvixd_args.hwloc_file_path();
-        let l2_enabled: bool = nanvixd_args.l2();
-        let log_directory: &Path = nanvixd_args.log_directory();
+    pub async fn spawn(config: &RunnerConfig, args: &NanvixdHttpArgs) -> Result<Self> {
+        let hwloc_file_path: Option<&str> = args.hwloc_file_path();
+        let l2_enabled: bool = args.l2();
+        let log_directory: &Path = args.log_directory();
         trace!(
             "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode=http, \
              hwloc_file_path={:?}, l2={}",
@@ -84,39 +84,36 @@ impl NanvixdHttp {
             l2_enabled,
         );
 
-        let port_num: u16 = nanvixd_args.port_num();
-        let http_address: String = format!("{}:{}", nanvixd_args.ipv4_addr(), port_num);
+        let port_num: u16 = args.port_num();
+        let http_address: String = format!("{}:{}", args.ipv4_addr(), port_num);
 
         let mut command: Command =
             Nanvixd::build_base_command(config, hwloc_file_path, l2_enabled, log_directory);
 
-        let stdout_file: File = nanvixd_args
-            .stdout_file_handle()
-            .try_clone()
-            .map_err(|error| {
-                let reason: String =
-                    format!("failed to clone nanvixd stdout log file (error={error})");
-                error!("spawn(): {reason}");
-                ::anyhow::anyhow!(reason)
-            })?;
+        let stdout_file: File = args.stdout_file_handle().try_clone().map_err(|error| {
+            let reason: String = format!("failed to clone nanvixd stdout log file (error={error})");
+            error!("spawn(): {reason}");
+            ::anyhow::anyhow!(reason)
+        })?;
 
-        let stderr_file: File = nanvixd_args
-            .stderr_file_handle()
-            .try_clone()
-            .map_err(|error| {
-                let reason: String =
-                    format!("failed to clone nanvixd stderr log file (error={error})");
-                error!("spawn(): {reason}");
-                ::anyhow::anyhow!(reason)
-            })?;
+        let stderr_file: File = args.stderr_file_handle().try_clone().map_err(|error| {
+            let reason: String = format!("failed to clone nanvixd stderr log file (error={error})");
+            error!("spawn(): {reason}");
+            ::anyhow::anyhow!(reason)
+        })?;
 
         command.stdin(Stdio::null());
         command.stdout(Stdio::from(stdout_file));
         command.stderr(Stdio::from(stderr_file));
         command.arg(::nanvixd::args::Args::OPT_NETNS_POOL_SIZE);
-        command.arg(nanvixd_args.netns_pool_size().to_string());
+        command.arg(args.netns_pool_size().to_string());
         command.arg(::nanvixd::args::Args::OPT_HTTP_SOCKADDR);
         command.arg(http_address.as_str());
+
+        // Append command-line arguments passed directly to nanvixd.
+        for extra_nanvixd_arg in args.extra_nanvixd_args() {
+            command.arg(extra_nanvixd_arg);
+        }
 
         let mode_label: String = format!("http_address={http_address}");
 
@@ -131,7 +128,7 @@ impl NanvixdHttp {
                 // We cannot fail here; otherwise, `child` would linger.
                 no_fail!(Self, {
                     debug!("spawn(): nanvixd spawned with pid {}", child.id().unwrap_or(0));
-                    let ipv4_addr: String = nanvixd_args.ipv4_addr().to_string();
+                    let ipv4_addr: String = args.ipv4_addr().to_string();
                     let cleanup_guard: EnvironmentCleanupGuard = EnvironmentCleanupGuard::new(
                         l2_enabled,
                         Some(port_num),
@@ -244,6 +241,8 @@ pub struct NanvixdHttpArgs {
     netns_pool_size: usize,
     /// Directory where Nanvix Daemon components should emit logs.
     log_directory: PathBuf,
+    /// Command-line arguments passed directly to nanvixd.
+    extra_nanvixd_args: Vec<String>,
 }
 
 impl NanvixdHttpArgs {
@@ -255,12 +254,12 @@ impl NanvixdHttpArgs {
     /// # Parameters
     ///
     /// - `log_files`: Tuple containing stdout and stderr log file paths.
-    /// - `ipv4_addr`: IPv4 address where the Nanvix Daemon should expose its HTTP interface.
-    /// - `port_num`: TCP port used by the Nanvix Daemon HTTP interface.
+    /// - `http_endpoint`: Tuple containing the IPv4 address and TCP port for the HTTP interface.
     /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
     /// - `l2`: Flag indicating whether the Nanvix Daemon should enable L2 deployment mode.
     /// - `netns_pool_size`: Netns pool prefill size forwarded to the Nanvix Daemon.
     /// - `log_directory`: Path where component logs should be persisted.
+    /// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
     ///
     /// # Return Value
     ///
@@ -269,14 +268,15 @@ impl NanvixdHttpArgs {
     ///
     pub fn new(
         log_files: (&Path, &Path),
-        ipv4_addr: &str,
-        port_num: u16,
+        http_endpoint: (&str, u16),
         hwloc_file_path: Option<String>,
         l2: bool,
         netns_pool_size: usize,
         log_directory: &Path,
+        extra_nanvixd_args: &[String],
     ) -> Result<Self> {
         let (stdout_file_path, stderr_file_path): (&Path, &Path) = log_files;
+        let (ipv4_addr, port_num): (&str, u16) = http_endpoint;
         let stdout_file_handle: File = match OpenOptions::new()
             .create(true)
             .write(true)
@@ -320,6 +320,7 @@ impl NanvixdHttpArgs {
             port_num,
             netns_pool_size,
             log_directory: log_directory.to_path_buf(),
+            extra_nanvixd_args: extra_nanvixd_args.to_vec(),
         })
     }
 
@@ -425,5 +426,18 @@ impl NanvixdHttpArgs {
     ///
     fn log_directory(&self) -> &Path {
         self.log_directory.as_path()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the command-line arguments passed directly to nanvixd.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a slice containing the nanvixd arguments.
+    ///
+    pub fn extra_nanvixd_args(&self) -> &[String] {
+        self.extra_nanvixd_args.as_slice()
     }
 }
