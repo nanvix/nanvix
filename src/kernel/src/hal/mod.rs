@@ -33,7 +33,10 @@ use crate::hal::{
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 #[cfg(feature = "smp")]
 #[path = ""]
@@ -67,21 +70,27 @@ pub struct Hal {
 pub fn init(
     memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
     mem_lower: Option<usize>,
 ) -> Result<Hal, Error> {
     info!("initializing hardware abstraction layer...");
 
     let mut ioports: IoPortAllocator = IoPortAllocator::new();
-    let mut ioaddresses: IoMemoryAllocator = IoMemoryAllocator::new();
-    let mut platform: Platform = platform::init(
-        &mut ioports,
-        &mut ioaddresses,
-        memory_regions,
-        mmio_regions,
-        madt,
-        mem_lower,
-    )?;
+    let mut platform: Platform =
+        platform::init(&mut ioports, ioaddresses, memory_regions, mmio_regions, madt, mem_lower)?;
+
+    // Verify that all MMIO regions are registered in ioaddresses.
+    if mmio_regions.len() != ioaddresses.len() {
+        let reason: &str = "mmio_regions count does not match ioaddresses count";
+        error!(
+            "mmio_regions.len()={}, ioaddresses.len()={} (error={})",
+            mmio_regions.len(),
+            ioaddresses.len(),
+            reason
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
 
     // Initialize the interrupt manager.
     let intman: Option<InterruptManager> = match platform.arch.controller.take() {
@@ -95,6 +104,9 @@ pub fn init(
     // Initialize exception manager.
     // TODO: add comments about safety.
     let excpman: ExceptionController = unsafe { ExceptionController::init()? };
+
+    // Take ownership of ioaddresses.
+    let ioaddresses: IoMemoryAllocator = core::mem::take(ioaddresses);
 
     Ok(Hal {
         _platform: platform,

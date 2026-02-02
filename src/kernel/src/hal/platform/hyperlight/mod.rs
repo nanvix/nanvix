@@ -70,6 +70,16 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Static array to force the kernel image to grow beyond 4 MB.
+/// FIXME (#1310): Remove this once memory layout of Hyperlight is fixed.
+#[unsafe(no_mangle)]
+#[used]
+static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -281,7 +291,14 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
     kernel_modules.push_back(module);
 
-    Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
+    Ok(BootInfo::new(
+        None,
+        None,
+        LinkedList::new(),
+        LinkedList::new(),
+        IoMemoryAllocator::new(),
+        kernel_modules,
+    ))
 }
 
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {

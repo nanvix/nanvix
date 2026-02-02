@@ -71,13 +71,16 @@ impl UninitIoapic {
     /// Upon success, an initialized I/O APIC is returned. Upon failure, an error is returned
     /// instead.
     ///
-    pub fn init(&mut self) -> Result<Ioapic, Error> {
+    pub fn init(self) -> Result<Ioapic, Error> {
         info!("initializing ioapic (id={}, addr={:?}, gsi={})", self.id, self.base, self.gsi);
 
+        // Extract the base address before moving ownership.
+        let base_addr: usize = self.base.base().into_raw_value();
+
         let mut ioapic: Ioapic = Ioapic {
-            _base: self.base.clone(),
+            _base: self.base,
             intvec_base: self.intvec_base,
-            ptr: ioapic::Ioapic::new(self.base.base().into_raw_value()),
+            ptr: ioapic::Ioapic::new(base_addr),
         };
 
         // Check ID mismatch.

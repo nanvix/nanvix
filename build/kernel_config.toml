@@ -14,7 +14,7 @@ kpool_size = 4194304
 # Notes:
 # - This size should be a multiple of a page size.
 # - This size cannot exceed the size of a page table.
-kstack_size = 32768
+kstack_size = 65536
 
 # Timer frequency (in Hz)
 timer_freq = 10000

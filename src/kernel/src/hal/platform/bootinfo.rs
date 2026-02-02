@@ -7,6 +7,7 @@
 
 use crate::{
     hal::{
+        io::IoMemoryAllocator,
         mem::{
             MemoryRegion,
             TruncatedMemoryRegion,
@@ -27,7 +28,6 @@ use ::alloc::collections::LinkedList;
 ///
 /// A type that represents information collected by the bootloader.
 ///
-#[derive(Default)]
 pub struct BootInfo {
     /// ACPI MADT information.
     pub madt: Option<MadtInfo>,
@@ -37,6 +37,8 @@ pub struct BootInfo {
     pub memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     /// Memory-mapped I/O regions.
     pub mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    /// I/O memory allocator with pre-registered MMIO regions.
+    pub ioaddresses: IoMemoryAllocator,
     /// Kernel modules.
     pub kernel_modules: LinkedList<KernelModule>,
 }
@@ -57,6 +59,7 @@ impl BootInfo {
     /// - `mem_lower`: Available Lower memory.
     /// - `memory_regions`: General-purpose memory regions.
     /// - `mmio_regions`: Memory-mapped I/O regions.
+    /// - `ioaddresses`: I/O memory allocator with pre-registered MMIO regions.
     /// - `kernel_modules`: Kernel modules.
     ///
     /// # Returns
@@ -68,6 +71,7 @@ impl BootInfo {
         mem_lower: Option<usize>,
         memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
         mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+        ioaddresses: IoMemoryAllocator,
         kernel_modules: LinkedList<KernelModule>,
     ) -> Self {
         Self {
@@ -75,6 +79,7 @@ impl BootInfo {
             mem_lower,
             memory_regions,
             mmio_regions,
+            ioaddresses,
             kernel_modules,
         }
     }

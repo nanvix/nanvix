@@ -25,6 +25,8 @@ use crate::hal::{
     platform::{
         self,
         madt::MadtInfo,
+        region_names::VIDEO_MMIO_REGION_NAME,
+        region_tags::VIDEO_MMIO_TAG,
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
@@ -235,11 +237,6 @@ pub fn init(
         }
     }
 
-    // Register memory mapped I/O regions.
-    for region in mmio_regions.iter() {
-        ioaddresses.register(region.clone())?;
-    }
-
     // Register BIOS data area.
     #[cfg(feature = "bios")]
     let mem_lower_size = match mem_lower {
@@ -274,13 +271,13 @@ pub fn init(
     // Register video display memory.
     // FIXME: https://github.com/nanvix/kernel/issues/435
     let video_display_memory: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
-        "video display memory",
+        VIDEO_MMIO_REGION_NAME,
         PageAligned::from_raw_value(0x000a0000)?,
         32 * mem::PAGE_SIZE,
         MemoryRegionType::Mmio,
         AccessPermission::RDWR,
     )?;
-    ioaddresses.register(video_display_memory.clone())?;
+    ioaddresses.register(VIDEO_MMIO_TAG, video_display_memory.clone())?;
     mmio_regions.push_back(video_display_memory);
 
     // Bios memory.

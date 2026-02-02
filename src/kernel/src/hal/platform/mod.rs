@@ -16,6 +16,8 @@ mod pc;
 pub(crate) mod hyperlight;
 #[cfg(feature = "microvm")]
 mod microvm;
+pub mod region_names;
+pub mod region_tags;
 
 #[cfg(feature = "pit")]
 pub mod pit;

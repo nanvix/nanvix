@@ -7,11 +7,9 @@
 
 use crate::{
     hal::{
-        io::IoMemoryRegion,
-        mem::{
-            Address,
-            PageAligned,
-            VirtualAddress,
+        io::{
+            IoMemoryRegion,
+            MmioTag,
         },
         Hal,
     },
@@ -40,9 +38,9 @@ fn do_mmio_alloc(
     hal: &mut Hal,
     pm: &mut ProcessManager,
     pid: ProcessIdentifier,
-    addr: PageAligned<VirtualAddress>,
+    tag: MmioTag,
 ) -> Result<(), Error> {
-    trace!("pid={:?}, addr={:?}", pid, addr.into_inner());
+    trace!("pid={:?}, tag={:?}", pid, tag);
 
     // Check if process does not have I/O management capabilities.
     if !pm.has_capability(pid, Capability::IoManagement)? {
@@ -52,7 +50,7 @@ fn do_mmio_alloc(
     }
 
     // Attempt to allocate I/O memory region.
-    let region: IoMemoryRegion = hal.ioaddresses.allocate(addr.into_inner())?;
+    let region: IoMemoryRegion = hal.ioaddresses.allocate(tag)?;
 
     // Attached I/O memory region to the process.
     pm.mmio_alloc(pid, region)?;
@@ -61,13 +59,10 @@ fn do_mmio_alloc(
 }
 
 pub fn mmio_alloc(hal: &mut Hal, pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    // Parse arguments.
-    let addr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg0 as usize) {
-        Ok(base) => base,
-        Err(e) => return KcallResult::Error(e.code.into()),
-    };
+    let tag_value: u64 = ((args.arg1 as u64) << 32) | args.arg0 as u64;
+    let tag: MmioTag = MmioTag::from_u64(tag_value);
 
-    match do_mmio_alloc(hal, pm, args.pid, addr) {
+    match do_mmio_alloc(hal, pm, args.pid, tag) {
         Ok(_) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
     }

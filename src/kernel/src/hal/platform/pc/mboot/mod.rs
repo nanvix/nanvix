@@ -24,6 +24,7 @@ use self::{
 };
 use crate::{
     hal::{
+        io::IoMemoryAllocator,
         mem::{
             AccessPermission,
             Address,
@@ -38,6 +39,14 @@ use crate::{
             bootinfo::BootInfo,
             madt,
             madt::MadtInfo,
+            region_names::{
+                IOAPIC_REGION_NAME,
+                LAPIC_REGION_NAME,
+            },
+            region_tags::{
+                IOAPIC_MMIO_TAG,
+                LAPIC_MMIO_TAG,
+            },
         },
     },
     kmod::KernelModule,
@@ -331,6 +340,7 @@ fn parse_mmap(
 /// # Parameters
 ///
 /// - `tag`: Mboot tag for parse.
+/// - `ioaddresses`: I/O memory allocator to register MMIO regions.
 /// - `mmio_regions`: List of mapped I/O memory regions.
 ///
 /// # Returns
@@ -339,6 +349,7 @@ fn parse_mmap(
 ///
 fn parse_acpiold(
     tag: &MbootTag,
+    ioaddresses: &mut IoMemoryAllocator,
     mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<Option<MadtInfo>, Error> {
     let acpi: MbootAcpi = unsafe {
@@ -363,12 +374,13 @@ fn parse_acpiold(
                 let addr: PageAligned<VirtualAddress> =
                     PageAligned::from_raw_value(ioapic.io_apic_addr as usize)?;
                 let region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
-                    "ioapic",
+                    IOAPIC_REGION_NAME,
                     addr,
                     ::arch::mem::PAGE_SIZE,
                     MemoryRegionType::Mmio,
                     AccessPermission::RDWR,
                 )?;
+                ioaddresses.register(IOAPIC_MMIO_TAG, region.clone())?;
                 mmio_regions.push_back(region);
             }
 
@@ -377,12 +389,13 @@ fn parse_acpiold(
                 let addr: PageAligned<VirtualAddress> =
                     PageAligned::from_raw_value(madt.local_apic_addr as usize)?;
                 let region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
-                    "local_apic",
+                    LAPIC_REGION_NAME,
                     addr,
                     ::arch::mem::PAGE_SIZE,
                     MemoryRegionType::Mmio,
                     AccessPermission::RDWR,
                 )?;
+                ioaddresses.register(LAPIC_MMIO_TAG, region.clone())?;
                 mmio_regions.push_back(region);
             }
 
@@ -474,6 +487,8 @@ pub fn parse(bootloader_magic: u32, addr: usize) -> Result<BootInfo, Error> {
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
     // List of memory-mapped I/O regions.
     let mut mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>> = LinkedList::new();
+    // I/O memory allocator for registering MMIO regions.
+    let mut ioaddresses: IoMemoryAllocator = IoMemoryAllocator::new();
     // Machine information.
     let mut madt: Option<MadtInfo> = None;
     // Lower memory size.
@@ -523,7 +538,7 @@ pub fn parse(bootloader_magic: u32, addr: usize) -> Result<BootInfo, Error> {
                 info!("smbios: {:?}", tag);
             },
             MbootTagType::AcpiOld => {
-                madt = parse_acpiold(tag, &mut mmio_regions)?;
+                madt = parse_acpiold(tag, &mut ioaddresses, &mut mmio_regions)?;
             },
             MbootTagType::AcpiNew => {
                 let acpinew = parse_acpinew(tag)?;
@@ -575,5 +590,5 @@ pub fn parse(bootloader_magic: u32, addr: usize) -> Result<BootInfo, Error> {
         return Err(Error::new(ErrorCode::BadAddress, "invalid multiboot size"));
     }
 
-    Ok(BootInfo::new(madt, mem_lower, memory_regions, mmio_regions, kernel_modules))
+    Ok(BootInfo::new(madt, mem_lower, memory_regions, mmio_regions, ioaddresses, kernel_modules))
 }
