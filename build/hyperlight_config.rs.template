@@ -21,4 +21,6 @@ pub mod hyperlight {
     pub const INPUT_DATA_BUFFER_SIZE: usize = {{INPUT_DATA_BUFFER_SIZE}};
     /// Size of the output data buffer (in bytes).
     pub const OUTPUT_DATA_BUFFER_SIZE: usize = {{OUTPUT_DATA_BUFFER_SIZE}};
+    /// Size of a stack (in bytes).
+    pub const STACK_SIZE: usize = {{STACK_SIZE}};
 }

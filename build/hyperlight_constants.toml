@@ -33,3 +33,6 @@ input_data_buffer_pages = 4
 
 # Size of output data buffer (in pages).
 output_data_buffer_pages = 4
+
+# Size of the stack (in pages).
+stack_pages = 1
