@@ -1838,16 +1838,25 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn mmio_free(
-        &mut self,
-        pid: ProcessIdentifier,
-        tag: MmioTag,
-        addr: PageAligned<VirtualAddress>,
-    ) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Detaches a memory-mapped I/O region identified by `tag` from the process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process from which to detach the region.
+    /// - `tag`: Tag that uniquely identifies the MMIO region to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mmio_free(&mut self, pid: ProcessIdentifier, tag: MmioTag) -> Result<(), Error> {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
         let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
-        state.remove_mmio(tag, addr);
+        state.remove_mmio(tag);
 
         Ok(())
     }
