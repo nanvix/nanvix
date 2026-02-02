@@ -22,6 +22,16 @@ use crate::{
 };
 
 //==================================================================================================
+// Helpers
+//==================================================================================================
+
+fn split_tag(tag: u64) -> (u32, u32) {
+    let lower: u32 = tag as u32;
+    let upper: u32 = (tag >> 32) as u32;
+    (lower, upper)
+}
+
+//==================================================================================================
 // Map Memory Page
 //==================================================================================================
 
@@ -83,61 +93,60 @@ pub fn mprotect(
 }
 
 //==================================================================================================
-// Allocate Memory-Mapped I/O Region
+// Allocate MMIO Region
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Allocates a memory-mapped I/O region identified by the given tag.
+/// Requests the kernel to attach a memory-mapped I/O region identified by `tag` to the
+/// calling process. The tag must match one registered via the hardware abstraction layer and must
+/// be encoded as up to 16 hexadecimal digits packed into a 64-bit value (four bits per digit).
 ///
 /// # Parameters
 ///
-/// - `tag`: A 64-bit tag that uniquely identifies the MMIO region (e.g., 8-byte ASCII name).
+/// - `tag`: Encoded identifier of the MMIO region to allocate.
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+/// `Ok(())` on success, or an error describing why the allocation failed.
 ///
 pub fn mmio_alloc(tag: u64) -> Result<(), Error> {
-    let tag_lo: u32 = tag as u32;
-    let tag_hi: u32 = (tag >> 32) as u32;
-    let result: i64 = kcall2!(KcallNumber::AllocMmio.into(), tag_lo, tag_hi);
+    let (lower, upper): (u32, u32) = split_tag(tag);
+    let result: i64 = kcall2!(KcallNumber::AllocMmio.into(), lower, upper);
 
     if result == 0 {
         Ok(())
     } else {
-        Err(Error::new(ErrorCode::try_from(result)?, "failed to mmio_alloc()"))
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to allocate mmio region"))
     }
 }
 
 //==================================================================================================
-// Free Memory-Mapped I/O Region
+// Release MMIO Region
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Frees a memory-mapped I/O region identified by the given tag and address.
+/// Releases a previously allocated memory-mapped I/O region identified by `tag` from the calling
+/// process.
 ///
 /// # Parameters
 ///
-/// - `tag`: A 64-bit tag that uniquely identifies the MMIO region.
-/// - `vaddr`: Virtual address of the memory-mapped I/O region.
+/// - `tag`: Encoded identifier of the MMIO region to release.
 ///
 /// # Returns
 ///
-/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+/// `Ok(())` on success, or an error describing why the release failed.
 ///
-pub fn mmio_free(tag: u64, vaddr: VirtualAddress) -> Result<(), Error> {
-    let tag_lo: u32 = tag as u32;
-    let tag_hi: u32 = (tag >> 32) as u32;
-    let result: i64 =
-        kcall3!(KcallNumber::FreeMmio.into(), tag_lo, tag_hi, vaddr.into_raw_value() as u32);
+pub fn mmio_free(tag: u64) -> Result<(), Error> {
+    let (lower, upper): (u32, u32) = split_tag(tag);
+    let result: i64 = kcall2!(KcallNumber::FreeMmio.into(), lower, upper);
 
     if result == 0 {
         Ok(())
     } else {
-        Err(Error::new(ErrorCode::try_from(result)?, "failed to mmio_free()"))
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to free mmio region"))
     }
 }
