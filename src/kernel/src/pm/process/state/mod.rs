@@ -68,6 +68,7 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -152,6 +153,8 @@ pub struct ProcessState {
     mutexes: BTreeMap<MutexAddress, Mutex>,
     /// Condition variables.
     conditions: BTreeMap<ConditionAddress, Condvar>,
+    /// Pending exit status set when `exit()` is called with threads still running.
+    pending_exit_status: Option<ExitStatus>,
 }
 
 impl ProcessState {
@@ -166,11 +169,49 @@ impl ProcessState {
             pmio: LinkedList::new(),
             mutexes: BTreeMap::new(),
             conditions: BTreeMap::new(),
+            pending_exit_status: None,
         }
     }
 
     pub fn pid(&self) -> ProcessIdentifier {
         self.pid
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the pending exit status for the process if one is not already set. This is used
+    /// when a thread calls `exit()` to terminate the process, but there are other threads that
+    /// need to be terminated first. The exit status from the first thread that called `exit()`
+    /// is preserved and used as the final process exit status.
+    ///
+    /// If a pending exit status is already set (from an earlier `exit()` call), this function
+    /// does nothing, ensuring that the original exit status is not overwritten by subsequent
+    /// threads being terminated.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: The exit status to store (only if not already set).
+    ///
+    pub fn set_pending_exit_status(&mut self, status: ExitStatus) {
+        if self.pending_exit_status.is_none() {
+            self.pending_exit_status = Some(status);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the pending exit status, if any. Returns the stored exit status and clears it.
+    /// This is called when the last thread in the process terminates to retrieve the exit
+    /// status that was set by the thread that originally called `exit()`.
+    ///
+    /// # Returns
+    ///
+    /// The pending exit status if one was set, otherwise `None`.
+    ///
+    pub fn take_pending_exit_status(&mut self) -> Option<ExitStatus> {
+        self.pending_exit_status.take()
     }
 
     pub fn set_capability(&mut self, capability: Capability) {

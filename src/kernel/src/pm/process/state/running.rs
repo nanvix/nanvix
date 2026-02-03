@@ -214,6 +214,11 @@ impl RunningProcess {
         }
 
         if let Some(interrupted_threads) = interrupted_threads {
+            // Store the pending exit status so that when the last thread terminates,
+            // the process uses this status (from the thread that called exit()) instead of
+            // the status from the terminated threads.
+            self.state.set_pending_exit_status(status);
+
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
                 self.state,
                 self.sleeping_threads.take(),
@@ -223,7 +228,10 @@ impl RunningProcess {
 
             Ok((interrupted_process.resume(), ctx))
         } else {
-            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
+            // Use pending exit status if set (from a prior exit() call), otherwise use current
+            // thread's status.
+            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
+            Err((ZombieProcess::new(self.state, zombie_threads, final_status), ctx))
         }
     }
 
@@ -294,7 +302,10 @@ impl RunningProcess {
                 ctx,
             )))
         } else {
-            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, status), ctx)))
+            // Use pending exit status if set (from a prior exit() call), otherwise use current
+            // thread's status.
+            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
+            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, final_status), ctx)))
         }
     }
 
