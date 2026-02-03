@@ -39,6 +39,13 @@ iterations = 2
 
 [[tests]]
 executor = "http"
+program = "./bin/kernel-exit.elf"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "http"
 program = "./bin/echo-c.elf"
 input = "hello world!"
 expected_output = "hello world!"
