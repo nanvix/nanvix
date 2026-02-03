@@ -488,6 +488,8 @@ pub struct TestCaseConfig {
     pub expected_output: Option<String>,
     /// Flag indicating that the workload must not produce any stdout output.
     pub expect_empty_output: bool,
+    /// Optional extra arguments passed directly to nanvixd.
+    pub extra_nanvixd_args: Option<String>,
 }
 
 impl TestCaseConfig {
@@ -516,6 +518,7 @@ impl TestCaseConfig {
         let input_field: String = format!("{entry_prefix}.input");
         let expected_output_field: String = format!("{entry_prefix}.expected_output");
         let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
+        let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -538,6 +541,11 @@ impl TestCaseConfig {
                 "expect_empty_output",
                 expect_empty_output_field.as_str(),
                 false,
+            )?,
+            extra_nanvixd_args: read_optional_string(
+                table,
+                "extra_nanvixd_args",
+                extra_nanvixd_args_field.as_str(),
             )?,
         })
     }
