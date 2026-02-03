@@ -14,8 +14,7 @@ permissions:
 env:
   TARGET_REPOSITORIES: |
     rusty_v8
-    nanvix-registry
-    nanvix-sandbox
+    quickjs
 
 jobs:
   dispatch:
