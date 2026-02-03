@@ -1,0 +1,35 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "kernel-exit"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Test program that exits with a specific exit code via kernel call"
+homepage.workspace = true
+
+[[bin]]
+name = "kernel-exit"
+
+[dependencies]
+libc_string = { workspace = true }
+sys = { workspace = true }
+nvx = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]
+
+[lints]
+workspace = true
