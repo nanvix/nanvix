@@ -172,7 +172,23 @@ async fn run() -> Result<()> {
     );
     warning::fail_if_triggered("prepare_runner_environment")?;
 
+    // Detect machine type at compile time based on enabled Cargo features.
+    #[cfg(feature = "hyperlight")]
+    let machine: &str = "hyperlight";
+    #[cfg(feature = "microvm")]
+    let machine: &str = "microvm";
+
     for test_config in tests {
+        // Skip tests that are not applicable to the current machine.
+        if !test_config.should_run_on(machine) {
+            debug!(
+                "main(): skipping test not applicable to machine (executor={}, program={:?}, \
+                 machine={}, runs_on={:?})",
+                test_config.executor, test_config.program, machine, test_config.runs_on
+            );
+            continue;
+        }
+
         let TestCaseConfig {
             executor,
             iterations,
@@ -183,6 +199,7 @@ async fn run() -> Result<()> {
             expect_empty_output,
             extra_nanvixd_args,
             expected_exit_code,
+            runs_on: _,
         } = test_config;
 
         // Parse extra_nanvixd_args string into a vector of arguments.
