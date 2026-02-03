@@ -492,6 +492,8 @@ pub struct TestCaseConfig {
     pub extra_nanvixd_args: Option<String>,
     /// Optional expected exit code that the workload must produce.
     pub expected_exit_code: Option<i32>,
+    /// Optional list of machine types on which this test should run.
+    pub runs_on: Option<Vec<String>>,
 }
 
 impl TestCaseConfig {
@@ -522,6 +524,7 @@ impl TestCaseConfig {
         let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
+        let runs_on_field: String = format!("{entry_prefix}.runs_on");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -549,11 +552,13 @@ impl TestCaseConfig {
                 table,
                 "extra_nanvixd_args",
                 extra_nanvixd_args_field.as_str(),
+            )?,
             expected_exit_code: read_optional_i32(
                 table,
                 "expected_exit_code",
                 expected_exit_code_field.as_str(),
             )?,
+            runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
         })
     }
 
@@ -653,6 +658,29 @@ impl TestCaseConfig {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this test case should run on the specified machine type.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Machine type to check against.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test should run on the given machine; returns `false` when the
+    /// test is restricted to other machines.
+    ///
+    pub fn should_run_on(&self, machine: &str) -> bool {
+        match &self.runs_on {
+            // No filter specified in test config - run on all machines.
+            None => true,
+            // Filter specified - check if machine is in the list.
+            Some(allowed_machines) => allowed_machines.iter().any(|m| m == machine),
+        }
     }
 }
 
@@ -1224,6 +1252,57 @@ fn read_optional_i32(table: &Table, key: &str, field_name: &str) -> Result<Optio
         Some(other) => {
             let reason: String =
                 format!("{field_name} must be an integer (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional array of strings from the TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the array.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(Vec<String>)` when the field exists and is a valid array of strings; otherwise
+/// returns `None` when the field is absent.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an array or contains non-string elements.
+///
+fn read_optional_string_array(
+    table: &Table,
+    key: &str,
+    field_name: &str,
+) -> Result<Option<Vec<String>>> {
+    match table.get(key) {
+        Some(Value::Array(values)) => {
+            let mut result: Vec<String> = Vec::with_capacity(values.len());
+            for (index, value) in values.iter().enumerate() {
+                match value {
+                    Value::String(s) => result.push(s.clone()),
+                    other => {
+                        let reason: String = format!(
+                            "{field_name}[{index}] must be a string (found={})",
+                            describe_toml_type(other)
+                        );
+                        return Err(::anyhow::anyhow!(reason));
+                    },
+                }
+            }
+            Ok(Some(result))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an array (found={})", describe_toml_type(other));
             Err(::anyhow::anyhow!(reason))
         },
         None => Ok(None),
