@@ -40,6 +40,7 @@ use ::std::{
     os::raw::c_int,
     path::Path,
     sync::Arc,
+    time::Duration,
 };
 use ::sys::error::ErrorCode;
 use ::syslog::{
@@ -64,6 +65,11 @@ pub const INTERRUPT_SIGNAL: c_int = libc::SIGUSR1;
 
 /// Signal used to kill the vCPU thread.
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
+
+/// Grace period before sending SIGKILL to the vCPU thread during shutdown.
+/// This allows the kernel's `abort_with_code()` to complete before the thread is killed.
+/// See issue #1010 for more context on this workaround.
+pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 
 //==================================================================================================
 // Types
@@ -387,21 +393,27 @@ impl Vmm {
         // Parse result.
         match result {
             Ok(_multiuse_sandbox) => {
-                error!("run(): vmm exited");
-                Ok(ErrorCode::ConnectionAborted.into())
+                // Successful completion via halt().
+                debug!("run(): vmm exited normally");
+                Ok(0)
             },
             Err(error) => {
-                // note: this is a bit of a hack to check for the shutdown command.
-                if !error
-                    .to_string()
-                    .contains(&::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD.to_string())
-                {
-                    error!("run(): vmm aborted (error={error:?})");
-                    Ok(ErrorCode::ConnectionReset.into())
-                } else {
-                    // FIXME (#1010): the vCPU thread already returns 0 always, but we will be able to remove
-                    // this line once we can join the vCPU thread.
-                    Ok(0)
+                // Extract numeric exit code from GuestAborted error.
+                // NOTE: The kernel uses abort_with_code() for all exit codes (including 0) rather
+                // than halt() to avoid a race condition with SIGKILL. See issue #1010.
+                match error {
+                    HyperlightError::GuestAborted(code, ref message) => {
+                        if message.is_empty() {
+                            debug!("run(): guest exited (code={code})");
+                        } else {
+                            debug!("run(): guest exited (code={code}, message={message})");
+                        }
+                        Ok(code as u16)
+                    },
+                    _ => {
+                        error!("run(): vmm aborted (error={error:?})");
+                        Ok(ErrorCode::ConnectionReset.into())
+                    },
                 }
             },
         }

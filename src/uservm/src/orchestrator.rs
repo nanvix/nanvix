@@ -498,6 +498,10 @@ impl Orchestrator {
                     // itself, we kill it here. This may populate the logs with an error message
                     // during shutdown, but is functionally equivalent.
                     if #[cfg(feature = "hyperlight")] {
+                        // Wait for a grace period to allow the kernel's abort_with_code() to complete
+                        // before sending SIGKILL. See issue #1010 for context.
+                        debug!("try_receive_from_io_thread(): waiting {:?} before killing vcpu thread", crate::vmm::SHUTDOWN_GRACE_PERIOD);
+                        ::std::thread::sleep(crate::vmm::SHUTDOWN_GRACE_PERIOD);
                         debug!("try_receive_from_io_thread(): killing vcpu thread id: {}", self.vcpu_tid);
                         let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
                         unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
