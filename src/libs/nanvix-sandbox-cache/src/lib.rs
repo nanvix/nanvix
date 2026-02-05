@@ -712,29 +712,59 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Creates a unique temporary directory for testing.
+    /// RAII wrapper for temporary test directories that automatically cleans up on drop.
     ///
-    /// # Returns
-    ///
-    /// A unique temporary directory path string.
-    ///
-    fn create_unique_tmp_dir() -> String {
-        use ::std::sync::atomic::{
-            AtomicU64,
-            Ordering,
-        };
+    struct TempTestDir {
+        /// Path to the temporary directory.
+        path: String,
+    }
 
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
+    impl TempTestDir {
+        ///
+        /// # Description
+        ///
+        /// Creates a new unique temporary directory for testing.
+        ///
+        /// # Returns
+        ///
+        /// A `TempTestDir` instance that will clean up the directory when dropped.
+        ///
+        fn new() -> Self {
+            use ::std::sync::atomic::{
+                AtomicU64,
+                Ordering,
+            };
 
-        let base_tmp: String = ::std::env::temp_dir().to_string_lossy().to_string();
-        let unique_id: u64 = ::std::time::SystemTime::now()
-            .duration_since(::std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64;
-        let counter: u64 = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let unique_dir: String = format!("{}/nanvix-test-{}-{}", base_tmp, unique_id, counter);
-        ::std::fs::create_dir_all(&unique_dir).unwrap();
-        unique_dir
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+            let base_tmp: String = ::std::env::temp_dir().to_string_lossy().to_string();
+            let unique_id: u64 = ::std::time::SystemTime::now()
+                .duration_since(::std::time::UNIX_EPOCH)
+                .expect("system time should be after UNIX_EPOCH")
+                .as_nanos() as u64;
+            let counter: u64 = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let unique_dir: String = format!("{}/nanvix-test-{}-{}", base_tmp, unique_id, counter);
+            ::std::fs::create_dir_all(&unique_dir).expect("failed to create test directory");
+            Self { path: unique_dir }
+        }
+
+        ///
+        /// # Description
+        ///
+        /// Returns the path to the temporary directory.
+        ///
+        fn path(&self) -> &str {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTestDir {
+        fn drop(&mut self) {
+            // Best-effort cleanup; warn if removal fails.
+            if let Err(error) = ::std::fs::remove_dir_all(&self.path) {
+                error!("TempTestDir::drop(): failed to remove {} (error={})", self.path, error);
+            }
+        }
     }
 
     ///
@@ -744,12 +774,13 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     #[cfg(feature = "single-process")]
-    fn create_test_config() -> SandboxCacheConfig<()> {
-        let tmp_dir: String = create_unique_tmp_dir();
-        SandboxCacheConfig::new(
+    fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             SocketType::Unix,
             SocketType::Unix,
             SocketType::Unix,
@@ -757,14 +788,15 @@ mod tests {
             None,
             None,
             128,
-            &format!("{}/kernel.elf", tmp_dir),
+            &format!("{}/kernel.elf", tmp_dir.path()),
             None,
-            &format!("{}/toolchain", tmp_dir),
-            &format!("{}/logs", tmp_dir),
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
             false,
-            &format!("{}/snapshot", tmp_dir),
-            &tmp_dir,
-        )
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+        (config, tmp_dir)
     }
 
     ///
@@ -774,12 +806,13 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     #[cfg(not(feature = "single-process"))]
-    fn create_test_config() -> SandboxCacheConfig<()> {
-        let tmp_dir: String = create_unique_tmp_dir();
-        SandboxCacheConfig::new(
+    fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             SocketType::Unix,
             SocketType::Unix,
             SocketType::Unix,
@@ -787,15 +820,16 @@ mod tests {
             None,
             None,
             0,
-            &format!("{}/kernel.elf", tmp_dir),
-            &format!("{}/linuxd.elf", tmp_dir),
-            &format!("{}/uservm.elf", tmp_dir),
-            &format!("{}/toolchain", tmp_dir),
-            &format!("{}/logs", tmp_dir),
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            &format!("{}/linuxd.elf", tmp_dir.path()),
+            &format!("{}/uservm.elf", tmp_dir.path()),
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
             false,
-            &format!("{}/snapshot", tmp_dir),
-            &tmp_dir,
-        )
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+        (config, tmp_dir)
     }
 
     ///
@@ -812,56 +846,55 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     fn create_custom_test_config(
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
         socket_type: SocketType,
         l2: bool,
-    ) -> SandboxCacheConfig<()> {
-        let tmp_dir: String = create_unique_tmp_dir();
+    ) -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
 
         #[cfg(feature = "single-process")]
-        {
-            SandboxCacheConfig::new(
-                socket_type,
-                socket_type,
-                socket_type,
-                console_file,
-                None,
-                hwloc,
-                128,
-                &format!("{}/kernel.elf", tmp_dir),
-                None,
-                &format!("{}/toolchain", tmp_dir),
-                &format!("{}/logs", tmp_dir),
-                l2,
-                &format!("{}/snapshot", tmp_dir),
-                &tmp_dir,
-            )
-        }
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
+            socket_type,
+            socket_type,
+            socket_type,
+            console_file,
+            None,
+            hwloc,
+            128,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            None,
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
+            l2,
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
 
         #[cfg(not(feature = "single-process"))]
-        {
-            SandboxCacheConfig::new(
-                socket_type,
-                socket_type,
-                socket_type,
-                console_file,
-                None,
-                hwloc,
-                128,
-                &format!("{}/kernel.elf", tmp_dir),
-                &format!("{}/linuxd.elf", tmp_dir),
-                &format!("{}/uservm.elf", tmp_dir),
-                &format!("{}/toolchain", tmp_dir),
-                &format!("{}/logs", tmp_dir),
-                l2,
-                &format!("{}/snapshot", tmp_dir),
-                &tmp_dir,
-            )
-        }
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
+            socket_type,
+            socket_type,
+            socket_type,
+            console_file,
+            None,
+            hwloc,
+            128,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            &format!("{}/linuxd.elf", tmp_dir.path()),
+            &format!("{}/uservm.elf", tmp_dir.path()),
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
+            l2,
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+
+        (config, tmp_dir)
     }
 
     ///
@@ -871,7 +904,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_new_creates_cache() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
     }
@@ -884,7 +917,7 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "single-process")]
     async fn test_new_single_process_mode() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
 
@@ -903,7 +936,7 @@ mod tests {
     #[tokio::test]
     #[cfg(not(feature = "single-process"))]
     async fn test_new_multi_process_mode() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
 
@@ -921,7 +954,7 @@ mod tests {
     #[tokio::test]
     #[cfg(not(feature = "single-process"))]
     async fn test_new_l2_mode() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
         let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
@@ -934,7 +967,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_cleanup_empties_cache() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
 
         {
@@ -951,7 +984,7 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_kill_nonexistent_sandbox_fails() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
 
         let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
@@ -1014,7 +1047,7 @@ mod tests {
     #[test]
     #[cfg(feature = "single-process")]
     fn test_config_single_process() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
@@ -1034,7 +1067,7 @@ mod tests {
     #[test]
     #[cfg(not(feature = "single-process"))]
     fn test_config_multi_process() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
@@ -1057,7 +1090,7 @@ mod tests {
     fn test_config_with_console_file() {
         let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
         let console_file: String = format!("{}/console.log", tmp_dir);
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(Some(console_file.clone()), None, SocketType::Unix, false);
         assert_eq!(config.console_file(), Some(console_file.as_str()));
     }
@@ -1069,7 +1102,7 @@ mod tests {
     ///
     #[test]
     fn test_config_without_hwloc() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert!(config.hwloc().is_none());
     }
 
@@ -1081,7 +1114,7 @@ mod tests {
     #[test]
     #[cfg(not(feature = "single-process"))]
     fn test_config_with_l2_enabled() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
         assert!(config.l2());
     }
@@ -1093,7 +1126,7 @@ mod tests {
     ///
     #[test]
     fn test_config_socket_types() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Tcp, false);
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Tcp);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Tcp);
