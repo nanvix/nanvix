@@ -4,7 +4,7 @@
 # Test script for running Nanvix programs via nanvixd in HTTP or terminal mode.
 #
 # Usage:
-#   test-nanvixd.sh <MODE> <NANVIXD_SOCKADDR> <PROGRAM_NAME> <PROGRAM_ARGS> <PROGRAM_INPUT> <PROGRAM_EXPECTED_OUTPUT> [TIMEOUT]
+#   test-nanvixd.sh <MODE> <NANVIXD_SOCKADDR> <PROGRAM_NAME> <PROGRAM_ARGS> <PROGRAM_INPUT> <PROGRAM_EXPECTED_OUTPUT> [TIMEOUT] [EXPECTED_EXIT_CODE]
 #
 # Arguments:
 #   MODE                       - Mode of operation: 'http' or 'terminal'
@@ -18,6 +18,7 @@
 #                                  Terminal mode: passed directly via stdin
 #   PROGRAM_EXPECTED_OUTPUT    - Expected output string to match
 #   TIMEOUT                    - Optional timeout in seconds (default: 90)
+#   EXPECTED_EXIT_CODE         - Optional expected exit code (default: 0)
 #
 
 set -euo pipefail
@@ -54,6 +55,7 @@ PROGRAM_ARGS=$4
 PROGRAM_INPUT=$5
 PROGRAM_EXPECTED_OUTPUT=$6
 TIMEOUT=${7:-90}
+EXPECTED_EXIT_CODE=${8:-0}
 
 # Validate mode.
 if [ "${MODE}" != "http" ] && [ "${MODE}" != "terminal" ]; then
@@ -189,8 +191,8 @@ else
     RUN_STATUS=$?
     set -e
 
-    if [ "${RUN_STATUS}" -ne 0 ]; then
-        print_error "Test failed: nanvixd.elf exited with status ${RUN_STATUS}. See ${RUN_STDERR_LOG}."
+    if [ "${RUN_STATUS}" -ne "${EXPECTED_EXIT_CODE}" ]; then
+        print_error "Test failed: nanvixd.elf exited with status ${RUN_STATUS}, expected ${EXPECTED_EXIT_CODE}. See ${RUN_STDERR_LOG}."
         exit 1
     fi
 fi
