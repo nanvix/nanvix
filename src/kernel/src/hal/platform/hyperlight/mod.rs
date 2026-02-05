@@ -223,14 +223,21 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// # Parameters
 ///
-/// - `status`: The shutdown status code.
+/// - `status`: The shutdown status code (low 8 bits are passed to the VMM).
 ///
 /// # Return
 ///
 /// This function never returns.
 ///
-pub fn shutdown(_status: usize) -> ! {
-    ::hyperlight_guest::exit::abort_with_code(&[::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD]);
+pub fn shutdown(status: usize) -> ! {
+    // Pass the low 8 bits of status as the exit code to the VMM.
+    let code: u8 = (status & 0xFF) as u8;
+    // NOTE: We use abort_with_code() for all exit codes (including 0) rather than halt() because
+    // halt() takes longer to propagate through hyperlight's host machinery. Due to issue #1010,
+    // the orchestrator sends SIGKILL immediately upon receiving a shutdown command, which can
+    // kill the vCPU thread before halt() completes. Using abort_with_code() is faster and avoids
+    // this race condition.
+    ::hyperlight_guest::exit::abort_with_code(&[code]);
 }
 
 ///

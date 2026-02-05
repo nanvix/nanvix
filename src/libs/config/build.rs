@@ -246,7 +246,6 @@ macro_rules! define_parse_hex_or_decimal {
 
 define_parse_hex_or_decimal!(parse_hex_or_decimal_usize, usize);
 define_parse_hex_or_decimal!(parse_hex_or_decimal_u32, u32);
-define_parse_hex_or_decimal!(parse_hex_or_decimal_u8, u8);
 
 ///
 /// # Description
@@ -309,13 +308,6 @@ fn generate_hyperlight_config(
         .parse()
         .expect("Failed to parse initrd_size_bytes as usize");
     template = template.replace("{{INITRD_SIZE_BYTES}}", &initrd_size_val.to_string());
-
-    // VMM shutdown command.
-    let shutdown_cmd: &str = config
-        .get("default_vmm_shutdown_cmd")
-        .expect("default_vmm_shutdown_cmd not found in hyperlight_constants.toml");
-    let shutdown_cmd_val: u8 = parse_hex_or_decimal_u8(shutdown_cmd, "default_vmm_shutdown_cmd");
-    template = template.replace("{{DEFAULT_VMM_SHUTDOWN_CMD}}", &format!("{shutdown_cmd_val:#x}"));
 
     // PEB size (in pages -> bytes).
     let peb_pages: &str = config
