@@ -11,8 +11,6 @@ pub mod hyperlight {
     pub const DEFAULT_INITRD_BASE: usize = {{DEFAULT_INITRD_BASE}};
     /// Number of bytes used to store initrd's size.
     pub const INITRD_SIZE_BYTES: usize = {{INITRD_SIZE_BYTES}};
-    /// Default VMM shutdown command.
-    pub const DEFAULT_VMM_SHUTDOWN_CMD: u8 = {{DEFAULT_VMM_SHUTDOWN_CMD}};
     /// Size of the process environment block (in bytes).
     pub const PEB_SIZE: usize = {{PEB_SIZE}};
     /// Size of the host function definitions area (in bytes).
