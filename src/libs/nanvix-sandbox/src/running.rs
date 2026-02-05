@@ -15,6 +15,7 @@ use crate::{
     linuxd::LinuxDaemon,
     tcp_port::TcpPort,
     uservm::UserVm,
+    SandboxTag,
 };
 use ::std::{
     process::ExitStatus,
@@ -40,6 +41,8 @@ use ::tokio::sync::Mutex;
 /// the sandbox to operate, including the User VM, Linux Daemon, and socket connections.
 ///
 pub struct RunningSandbox {
+    /// Sandbox tag containing tenant, program, and application information.
+    pub(crate) tag: SandboxTag,
     /// Handle to the running User VM instance.
     pub(super) uservm: UserVm,
     /// Shared handle to the Linux Daemon instance (kept alive for resource management).
@@ -51,6 +54,22 @@ pub struct RunningSandbox {
 }
 
 impl RunningSandbox {
+    ///
+    /// # Description
+    ///
+    /// Returns a reference to the sandbox tag.
+    ///
+    /// The sandbox tag contains tenant, program, and application information that uniquely
+    /// identifies this sandbox instance.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the sandbox tag.
+    ///
+    pub fn tag(&self) -> &SandboxTag {
+        &self.tag
+    }
+
     ///
     /// # Description
     ///

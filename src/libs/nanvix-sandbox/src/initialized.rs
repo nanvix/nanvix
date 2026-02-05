@@ -20,6 +20,7 @@ use crate::{
     uservm::UserVm,
     RunningSandbox,
     SandboxConfig,
+    SandboxTag,
     UserVmArgs,
 };
 use ::anyhow::Result;
@@ -93,13 +94,17 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// Starts the sandbox by spawning a User VM instance and waiting for the gateway socket
     /// to become available. This transitions the sandbox from initialized to running state.
     ///
+    /// # Parameters
+    ///
+    /// - `tag`: The sandbox tag containing tenant, program, and application information.
+    ///
     /// # Returns
     ///
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
     #[cfg_attr(feature = "single-process", allow(unused_mut))]
-    pub async fn start(mut self) -> Result<RunningSandbox> {
+    pub async fn start(mut self, tag: SandboxTag) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
@@ -174,6 +179,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         .await?;
 
         Ok(RunningSandbox {
+            tag,
             uservm,
             _linuxd: self.linuxd,
             _control_plane_socket_and_info: self.control_plane_bind_socket_and_info,
