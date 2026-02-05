@@ -42,7 +42,6 @@ executor = "http"
 program = "./bin/test-kernel.elf"
 expect_empty_output = true
 expected_exit_code = 13
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
@@ -221,7 +220,6 @@ executor = "terminal"
 program = "./bin/test-kernel.elf"
 expect_empty_output = true
 expected_exit_code = 13
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
