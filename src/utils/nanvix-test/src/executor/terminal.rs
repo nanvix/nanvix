@@ -7,7 +7,10 @@
 
 use crate::{
     config::RunnerConfig,
-    executor::WorkloadSpec,
+    executor::{
+        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
+        WorkloadSpec,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -19,7 +22,10 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::log::error;
+use ::nanvix::log::{
+    error,
+    warn,
+};
 use ::std::{
     fs::write,
     path::Path,
@@ -147,7 +153,7 @@ pub async fn test_with_terminal_executor(
         let collection_timeout: Duration =
             Duration::from_millis(runner_config.stream_collection_timeout_ms);
 
-        let (_nanvixd, stream_collectors) = {
+        let (mut nanvixd, stream_collectors) = {
             let mut nanvixd: NanvixdTerminal =
                 NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
 
@@ -206,6 +212,28 @@ pub async fn test_with_terminal_executor(
         )
         .await?;
 
+        // Wait for the nanvixd process to exit and get its exit code.
+        // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd without a clean exit, causing
+        // wait_exit_code() to fail. When skip_exit_code_validation is true, we tolerate this
+        // failure since we cannot reliably get the exit code anyway.
+        let exit_code: i32 = match nanvixd.wait_exit_code().await {
+            Ok(code) => code,
+            Err(error) => {
+                if workload.skip_exit_code_validation() {
+                    warn!(
+                        "test_with_terminal_executor(): wait_exit_code failed but skipping \
+                         validation (program={}, iteration={}, error={})",
+                        workload.program_path(),
+                        iteration,
+                        error
+                    );
+                    DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                } else {
+                    return Err(error);
+                }
+            },
+        };
+
         if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
             let reason: String = format!(
                 "failed to write interactive stdout log (path={}, error={error})",
@@ -242,6 +270,24 @@ pub async fn test_with_terminal_executor(
             let reason: String = format!(
                 "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
                 stdout_bytes
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // Validate exit code if expected_exit_code is specified and validation is not skipped.
+        // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
+        // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
+        if !workload.skip_exit_code_validation()
+            && let Some(expected) = workload.expected_exit_code()
+            && exit_code != expected
+        {
+            let reason: String = format!(
+                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                expected,
+                exit_code,
+                workload.program_path(),
+                iteration
             );
             error!("test_with_terminal_executor(): {reason}");
             return Err(::anyhow::anyhow!(reason));

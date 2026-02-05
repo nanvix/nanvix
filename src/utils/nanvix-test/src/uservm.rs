@@ -5,10 +5,7 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    config::RunnerConfig,
-    warn_with_policy,
-};
+use crate::config::RunnerConfig;
 use ::anyhow::Result;
 use ::nanvix::{
     http::message::{
@@ -73,6 +70,8 @@ pub struct UserVm {
     cleanup_l2_uservm_sleep_duration_ms: u64,
     /// Indicates whether this User VM handle operates in L2 mode.
     l2_enabled: bool,
+    /// Indicates whether the User VM has been explicitly terminated.
+    terminated: bool,
 }
 
 impl UserVm {
@@ -170,6 +169,7 @@ impl UserVm {
             cleanup_uservm_sleep_duration_ms: config.cleanup_uservm_sleep_duration_ms,
             cleanup_l2_uservm_sleep_duration_ms: config.cleanup_l2_uservm_sleep_duration_ms,
             l2_enabled,
+            terminated: false,
         })
     }
 
@@ -333,10 +333,10 @@ impl UserVm {
     ///
     /// # Return Value
     ///
-    /// Returns `Ok(())` once the Nanvix Daemon confirms the User VM termination response; returns
-    /// an error if the request or response handling fails.
+    /// Returns the exit code reported by the User VM on success; returns an error if the request
+    /// or response handling fails.
     ///
-    async fn kill(&self, request_url: String, user_vm_id: UserVmIdentifier) -> Result<()> {
+    async fn kill(&self, request_url: String, user_vm_id: UserVmIdentifier) -> Result<i32> {
         trace!("kill(): user_vm_id={user_vm_id}");
 
         let client: Client = Self::build_control_plane_client()?;
@@ -399,11 +399,11 @@ impl UserVm {
             return Err(::anyhow::anyhow!(reason));
         };
 
-        if response.exit_code != 0 {
-            warn_with_policy!(
+        let exit_code: i32 = response.exit_code;
+        if exit_code != 0 {
+            debug!(
                 "kill(): nanvixd reported non-zero exit code (user_vm_id={}, exit_code={})",
-                user_vm_id,
-                response.exit_code
+                user_vm_id, exit_code
             );
         } else {
             debug!("kill(): uservm {} terminated", user_vm_id);
@@ -411,7 +411,33 @@ impl UserVm {
 
         sleep(self.cleanup_delay()).await;
 
-        Ok(())
+        Ok(exit_code)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Explicitly terminates the User VM and returns the exit code reported by the workload.
+    ///
+    /// This method should be called when the caller needs to validate the exit code. After
+    /// calling this method, the User VM will not be terminated again when dropped.
+    ///
+    /// # Thread Safety
+    ///
+    /// This method requires exclusive access (`&mut self`), which guarantees that `terminate()`
+    /// and `drop()` cannot race. The `terminated` flag is only accessed through mutable references.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the exit code reported by the User VM on success; returns an error if the
+    /// termination request fails.
+    ///
+    pub async fn terminate(&mut self) -> Result<i32> {
+        let request_url: String = self.request_url.clone();
+        let user_vm_id: UserVmIdentifier = self.user_vm_id;
+        let exit_code: i32 = self.kill(request_url, user_vm_id).await?;
+        self.terminated = true;
+        Ok(exit_code)
     }
 }
 
@@ -420,7 +446,8 @@ impl Drop for UserVm {
     /// # Description
     ///
     /// Ensures the User VM is terminated when this handle goes out of scope by synchronously
-    /// driving the asynchronous `kill()` helper.
+    /// driving the asynchronous `kill()` helper. Skips termination if `terminate()` was already
+    /// called.
     ///
     /// # Return Value
     ///
@@ -429,25 +456,48 @@ impl Drop for UserVm {
     fn drop(&mut self) {
         trace!("drop(): user_vm_id={}", self.user_vm_id);
 
+        // Skip termination if already explicitly terminated.
+        if self.terminated {
+            trace!("drop(): user_vm_id={} already terminated, skipping", self.user_vm_id);
+            return;
+        }
+
         if let Ok(handle) = ::tokio::runtime::Handle::try_current() {
             let request_url: String = self.request_url.clone();
             let user_vm_id: UserVmIdentifier = self.user_vm_id;
 
-            let kill_result: Result<()> =
+            let kill_result: Result<i32> =
                 block_in_place(|| handle.block_on(self.kill(request_url, user_vm_id)));
 
-            if let Err(error) = kill_result {
-                error!(
-                    "drop(): failed to terminate user VM (user_vm_id={}, error={error})",
-                    self.user_vm_id
-                );
+            match kill_result {
+                Ok(exit_code) if exit_code != 0 => {
+                    debug!(
+                        "drop(): user VM terminated with non-zero exit code (user_vm_id={}, \
+                         exit_code={exit_code})",
+                        self.user_vm_id
+                    );
+                },
+                Ok(_) => {},
+                Err(error) => {
+                    error!(
+                        "drop(): failed to terminate user VM (user_vm_id={}, error={error})",
+                        self.user_vm_id
+                    );
+                },
             }
         } else {
             match ::tokio::runtime::Runtime::new() {
                 Ok(runtime) => match runtime
                     .block_on(self.kill(self.request_url.clone(), self.user_vm_id))
                 {
-                    Ok(()) => {},
+                    Ok(exit_code) if exit_code != 0 => {
+                        debug!(
+                            "drop(): user VM terminated with non-zero exit code (user_vm_id={}, \
+                             exit_code={exit_code})",
+                            self.user_vm_id
+                        );
+                    },
+                    Ok(_) => {},
                     Err(error) => {
                         error!(
                             "drop(): failed to terminate user VM (user_vm_id={}, error={error})",

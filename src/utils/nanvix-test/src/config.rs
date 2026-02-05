@@ -23,28 +23,99 @@ use ::toml::{
 // Constants
 //==================================================================================================
 
-///
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Shutdown Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to exit gracefully after
+// sending SIGINT. If the timeout is exceeded, SIGKILL is sent.
+//
+// Default (non-L2): 10 attempts × 100ms = 1 second total.
+// This is sufficient for nanvixd to propagate shutdown to linuxd (which has an internal 1-second
+// shutdown timeout) and perform basic cleanup.
+//
+// L2 mode uses higher values (60 attempts × 300ms = 18 seconds) because shutdown must propagate
+// through multiple layers: nanvixd → cloud-hypervisor → guest Linux VM. Each layer adds latency
+// and the nested VM may have pending I/O or cleanup work.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of Nanvix Daemon shutdown attempts when omitted in the TOML file.
-///
 const DEFAULT_NANVIXD_SHUTDOWN_ATTEMPTS_MAX: usize = 10;
 /// Default Nanvix Daemon shutdown retry interval (in milliseconds) when omitted in the TOML file.
 const DEFAULT_NANVIXD_SHUTDOWN_RETRY_INTERVAL_MS: u64 = 100;
-/// Default iteration count for the requested test case when not specified.
-const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Readiness Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to become ready (accept HTTP
+// connections) after spawning. The daemon must bind its HTTP socket and initialize the sandbox
+// cache before accepting requests.
+//
+// Total timeout: 50 attempts × 100ms = 5 seconds.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of readiness probes issued before giving up on the Nanvix Daemon HTTP endpoint.
 const DEFAULT_NANVIXD_READY_ATTEMPTS_MAX: usize = 50;
 /// Default interval (in milliseconds) between Nanvix Daemon readiness probes.
 const DEFAULT_NANVIXD_READY_RETRY_INTERVAL_MS: u64 = 100;
+
+// -------------------------------------------------------------------------------------------------
+// Test Iteration Configuration
+// -------------------------------------------------------------------------------------------------
+
+/// Default iteration count for the requested test case when not specified.
+const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// User VM Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets,
+// network namespaces). L2 mode requires longer delays because cloud-hypervisor process teardown
+// and nested VM cleanup are slower.
+// -------------------------------------------------------------------------------------------------
+
 /// Default delay (in milliseconds) before launching another User VM.
 const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
 /// Default delay (in milliseconds) before launching another User VM when L2 mode is enabled.
-const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 100;
+const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 500;
+
+// -------------------------------------------------------------------------------------------------
+// Stream Collection Configuration
+// -------------------------------------------------------------------------------------------------
+// Maximum time allowed for collecting stdout/stderr from interactive workloads. Set to 5 minutes
+// to accommodate long-running tests (stress tests, interpreter benchmarks like QuickJS test
+// suites) that may produce output over extended periods.
+// -------------------------------------------------------------------------------------------------
+
 /// Default timeout (in milliseconds) applied when collecting interactive stdout/stderr streams.
 const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
+
+// -------------------------------------------------------------------------------------------------
+// TCP TIME_WAIT Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// After nanvixd exits, its HTTP port may linger in TCP TIME_WAIT state for up to 60 seconds
+// (Linux default: 2 × MSL where MSL = 30 seconds). The test harness waits for this state to
+// clear before the next test iteration to avoid "address already in use" errors.
+//
+// Max wait: 70 seconds (60s TIME_WAIT + 10s headroom).
+// Poll interval: 2 seconds balances responsiveness with avoiding excessive syscalls.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum duration (in seconds) spent waiting for lingering TCP TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_MAX_WAIT_SECONDS: u64 = 70;
 /// Default polling interval (in seconds) used while monitoring TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_POLL_INTERVAL_SECONDS: u64 = 2;
+
+// -------------------------------------------------------------------------------------------------
+// Gateway Connection Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control the client-side connection loop when connecting to a User VM gateway
+// socket. User VM startup time is variable (depends on kernel boot, linuxd initialization,
+// workload size), so exponential backoff is used.
+//
+// Max attempts: 100, with exponential backoff from 10ms to 500ms.
+// Total timeout: 15 seconds hard cap on the connection loop.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum number of gateway connection attempts before failing a spawn.
 const DEFAULT_GATEWAY_CONNECT_MAX_ATTEMPTS: usize = 100;
 /// Default initial backoff (in milliseconds) between gateway connection retries.
@@ -53,6 +124,11 @@ const DEFAULT_GATEWAY_CONNECT_INITIAL_BACKOFF_MS: u64 = 10;
 const DEFAULT_GATEWAY_CONNECT_MAX_BACKOFF_MS: u64 = 500;
 /// Default timeout (in milliseconds) applied to the gateway connection loop.
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
+
+// -------------------------------------------------------------------------------------------------
+// Miscellaneous
+// -------------------------------------------------------------------------------------------------
+
 /// Placeholder token replaced with the configured sysroot path inside test definitions.
 const SYSROOT_PATH_PLACEHOLDER: &str = "${sysroot_path}";
 
@@ -490,6 +566,10 @@ pub struct TestCaseConfig {
     pub expect_empty_output: bool,
     /// Optional extra arguments passed directly to nanvixd.
     pub extra_nanvixd_args: Option<String>,
+    /// Optional expected exit code that the workload must produce.
+    pub expected_exit_code: Option<i32>,
+    /// Optional list of machine types on which this test should run.
+    pub runs_on: Option<Vec<String>>,
 }
 
 impl TestCaseConfig {
@@ -519,6 +599,8 @@ impl TestCaseConfig {
         let expected_output_field: String = format!("{entry_prefix}.expected_output");
         let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
+        let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
+        let runs_on_field: String = format!("{entry_prefix}.runs_on");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -547,6 +629,12 @@ impl TestCaseConfig {
                 "extra_nanvixd_args",
                 extra_nanvixd_args_field.as_str(),
             )?,
+            expected_exit_code: read_optional_i32(
+                table,
+                "expected_exit_code",
+                expected_exit_code_field.as_str(),
+            )?,
+            runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
         })
     }
 
@@ -646,6 +734,29 @@ impl TestCaseConfig {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this test case should run on the specified machine type.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Machine type to check against.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test should run on the given machine; returns `false` when the
+    /// test is restricted to other machines.
+    ///
+    pub fn should_run_on(&self, machine: &str) -> bool {
+        match &self.runs_on {
+            // No filter specified in test config - run on all machines.
+            None => true,
+            // Filter specified - check if machine is in the list.
+            Some(allowed_machines) => allowed_machines.iter().any(|m| m == machine),
+        }
     }
 }
 
@@ -1176,6 +1287,98 @@ fn read_optional_string(table: &Table, key: &str, field_name: &str) -> Result<Op
         Some(other) => {
             let reason: String =
                 format!("{field_name} must be a string (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional 32-bit signed integer from a TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the integer.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(i32)` when the field exists and is a valid integer; otherwise returns `None`.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an integer or overflows `i32`.
+///
+fn read_optional_i32(table: &Table, key: &str, field_name: &str) -> Result<Option<i32>> {
+    match table.get(key) {
+        Some(Value::Integer(value)) => {
+            let converted: i32 = match i32::try_from(*value) {
+                Ok(v) => v,
+                Err(error) => {
+                    let reason: String =
+                        format!("{field_name} value overflows i32 (value={value}, error={error})");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+            };
+            Ok(Some(converted))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an integer (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional array of strings from the TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the array.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(Vec<String>)` when the field exists and is a valid array of strings; otherwise
+/// returns `None` when the field is absent.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an array or contains non-string elements.
+///
+fn read_optional_string_array(
+    table: &Table,
+    key: &str,
+    field_name: &str,
+) -> Result<Option<Vec<String>>> {
+    match table.get(key) {
+        Some(Value::Array(values)) => {
+            let mut result: Vec<String> = Vec::with_capacity(values.len());
+            for (index, value) in values.iter().enumerate() {
+                match value {
+                    Value::String(s) => result.push(s.clone()),
+                    other => {
+                        let reason: String = format!(
+                            "{field_name}[{index}] must be a string (found={})",
+                            describe_toml_type(other)
+                        );
+                        return Err(::anyhow::anyhow!(reason));
+                    },
+                }
+            }
+            Ok(Some(result))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an array (found={})", describe_toml_type(other));
             Err(::anyhow::anyhow!(reason))
         },
         None => Ok(None),

@@ -8,7 +8,10 @@
 use crate::{
     DEFAULT_TENANT_ID,
     config::RunnerConfig,
-    executor::WorkloadSpec,
+    executor::{
+        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
+        WorkloadSpec,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -158,6 +161,41 @@ pub(crate) async fn test_with_http_executor(
                 return Err(::anyhow::anyhow!(reason));
             }
             log_layout.persist_program_output(iteration, payload.as_slice())?;
+
+            // Explicitly terminate the User VM to get the exit code.
+            // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd before we can send the kill
+            // request, causing a connection error. When skip_exit_code_validation is true, we
+            // tolerate termination failures since we cannot reliably get the exit code anyway.
+            let exit_code: i32 = match user_vm.terminate().await {
+                Ok(code) => code,
+                Err(error) => {
+                    if workload.skip_exit_code_validation() {
+                        warn!(
+                            "test_with_http_executor(): termination failed but skipping \
+                             validation (program={}, iteration={}, error={})",
+                            program_path, iteration, error
+                        );
+                        DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                    } else {
+                        return Err(error);
+                    }
+                },
+            };
+
+            // Validate exit code if expected_exit_code is specified and validation is not skipped.
+            // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
+            // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
+            if !workload.skip_exit_code_validation()
+                && let Some(expected) = workload.expected_exit_code()
+                && exit_code != expected
+            {
+                let reason: String = format!(
+                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                    expected, exit_code, program_path, iteration
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
         }
     }
 

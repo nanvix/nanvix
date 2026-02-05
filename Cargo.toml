@@ -48,6 +48,7 @@ members = [
         "src/libs/user-vm-api",
         "src/tests/arch-rust",
         "src/tests/file-rust",
+        "src/tests/kernel-exit",
         "src/tests/thread-rust",
         "src/tests/stress-rust",
         "src/tests/linux-app",
