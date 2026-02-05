@@ -13,8 +13,13 @@ permissions:
 
 env:
   TARGET_REPOSITORIES: |
-    rusty_v8
+    cpython
+    openblas
+    openssl
     quickjs
+    rusty_v8
+    sqlite
+    zlib
 
 jobs:
   dispatch:
