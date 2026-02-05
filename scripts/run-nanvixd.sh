@@ -736,9 +736,10 @@ main() {
     }
     echo "[MAIN] VM termination response received (exit_code=${kill_exit_code})" 1>&2
 
+    # Report non-zero exit codes but don't treat them as script failures.
+    # The caller (test framework) is responsible for validating the exit code.
     if [ -n "${kill_exit_code}" ] && [ "${kill_exit_code}" != "0" ]; then
-        echo "[MAIN] ERROR: VM exited with status code ${kill_exit_code}" 1>&2
-        return 1
+        echo "[MAIN] VM exited with non-zero status code ${kill_exit_code}" 1>&2
     fi
 
     echo "[MAIN] Script completed successfully" 1>&2

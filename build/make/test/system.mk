@@ -54,7 +54,7 @@ $(eval $(call NANVIXD_HTTP_TEST_RULE,$(SYSROOT_DIR)/bin,python3,,'$(SOURCES_DIR)
 $(eval $(call NANVIXD_HTTP_TEST_RULE,$(SYSROOT_DIR)/bin,qjs,,'$(SOURCES_DIR)/user/hello-js/index.js','','Hello$(comma) world from JavaScript!'))
 
 # Terminal mode test rule: Runs tests through nanvixd's terminal interface.
-# Parameters: (binary_dir, test_name, extension, program_input, expected_output)
+# Parameters: (binary_dir, test_name, extension, program_input, expected_output, expected_exit_code)
 # Note: Unlike HTTP mode, program_input is provided directly via stdin (not as JSON).
 # Terminal mode does not support L2 VM or interpreter-based tests (Python, QuickJS).
 define NANVIXD_TERMINAL_TEST_RULE
@@ -63,7 +63,7 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ifneq ($(L2_VM),yes)
 	@echo "Running terminal $(2) test..."
 	@find /tmp -maxdepth 1 -type d -name 'nvx:*' -mmin +5 -exec rm -rf {} + >/dev/null 2>&1 || true
-	@$(SCRIPTS_DIR)/test-nanvixd.sh terminal '' "$(1)/$(2)$(3)" '' '$(4)' '$(5)' $(TIMEOUT)
+	@$(SCRIPTS_DIR)/test-nanvixd.sh terminal '' "$(1)/$(2)$(3)" '' '$(4)' '$(5)' $(TIMEOUT) $(if $(6),$(6),0)
 	@find /tmp -maxdepth 1 -type d -name 'nvx:*' -mmin +5 -exec rm -rf {} + >/dev/null 2>&1 || true
 endif
 endif
