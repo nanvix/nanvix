@@ -4,7 +4,7 @@
 # Test script for running Nanvix programs via nanvixd in HTTP or terminal mode.
 #
 # Usage:
-#   test-nanvixd.sh <MODE> <NANVIXD_SOCKADDR> <PROGRAM_NAME> <PROGRAM_ARGS> <PROGRAM_INPUT> <PROGRAM_EXPECTED_OUTPUT> [TIMEOUT] [EXPECTED_EXIT_CODE]
+#   test-nanvixd.sh <MODE> <NANVIXD_SOCKADDR> <PROGRAM_NAME> <PROGRAM_ARGS> <PROGRAM_INPUT> <PROGRAM_EXPECTED_OUTPUT> [TIMEOUT] [EXPECTED_EXIT_CODE] [SKIP_EXIT_CODE_VALIDATION]
 #
 # Arguments:
 #   MODE                       - Mode of operation: 'http' or 'terminal'
@@ -19,6 +19,8 @@
 #   PROGRAM_EXPECTED_OUTPUT    - Expected output string to match
 #   TIMEOUT                    - Optional timeout in seconds (default: 90)
 #   EXPECTED_EXIT_CODE         - Optional expected exit code (default: 0)
+#   SKIP_EXIT_CODE_VALIDATION  - Optional flag to skip exit code validation (default: false)
+#                                Set to 'true' to skip validation (e.g., for hyperlight)
 #
 
 set -euo pipefail
@@ -56,6 +58,7 @@ PROGRAM_INPUT=$5
 PROGRAM_EXPECTED_OUTPUT=$6
 TIMEOUT=${7:-90}
 EXPECTED_EXIT_CODE=${8:-0}
+SKIP_EXIT_CODE_VALIDATION=${9:-false}
 
 # Validate mode.
 if [ "${MODE}" != "http" ] && [ "${MODE}" != "terminal" ]; then
@@ -191,7 +194,9 @@ else
     RUN_STATUS=$?
     set -e
 
-    if [ "${RUN_STATUS}" -ne "${EXPECTED_EXIT_CODE}" ]; then
+    # Skip exit code validation if requested (e.g., for hyperlight where SIGKILL prevents clean exit).
+    # FIXME (#1010): Remove SKIP_EXIT_CODE_VALIDATION once graceful hyperlight interrupt is implemented.
+    if [ "${SKIP_EXIT_CODE_VALIDATION}" != "true" ] && [ "${RUN_STATUS}" -ne "${EXPECTED_EXIT_CODE}" ]; then
         print_error "Test failed: nanvixd.elf exited with status ${RUN_STATUS}, expected ${EXPECTED_EXIT_CODE}. See ${RUN_STDERR_LOG}."
         exit 1
     fi
