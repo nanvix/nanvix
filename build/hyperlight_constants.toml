@@ -19,9 +19,6 @@ default_initrd_base = 0x00c02000
 # Number of bytes used to store initrd's size.
 initrd_size_bytes = 8
 
-# Default VMM shutdown command.
-default_vmm_shutdown_cmd = 0x20
-
 # Size of the process environment block (in pages).
 peb_pages = 1
 
