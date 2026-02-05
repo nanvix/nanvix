@@ -40,6 +40,7 @@ use ::std::{
     os::raw::c_int,
     path::Path,
     sync::Arc,
+    time::Duration,
 };
 use ::sys::error::ErrorCode;
 use ::syslog::{
@@ -64,6 +65,11 @@ pub const INTERRUPT_SIGNAL: c_int = libc::SIGUSR1;
 
 /// Signal used to kill the vCPU thread.
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
+
+/// Grace period before sending SIGKILL to the vCPU thread during shutdown.
+/// This allows the kernel's `abort_with_code()` to complete before the thread is killed.
+/// See issue #1010 for more context on this workaround.
+pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 
 //==================================================================================================
 // Types
