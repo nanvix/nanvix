@@ -70,13 +70,13 @@ const DEFAULT_TEST_ITERATIONS: usize = 1;
 // -------------------------------------------------------------------------------------------------
 // Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets,
 // network namespaces). L2 mode requires longer delays because cloud-hypervisor process teardown
-// and nested VM cleanup are slower. L2 toml configs typically override this to 500ms.
+// and nested VM cleanup are slower.
 // -------------------------------------------------------------------------------------------------
 
 /// Default delay (in milliseconds) before launching another User VM.
 const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
 /// Default delay (in milliseconds) before launching another User VM when L2 mode is enabled.
-const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 100;
+const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 500;
 
 // -------------------------------------------------------------------------------------------------
 // Stream Collection Configuration
