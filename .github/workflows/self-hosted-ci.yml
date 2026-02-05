@@ -395,7 +395,7 @@ jobs:
           exit 0
         fi
 
-        repos=("rusty_v8" "quickjs")
+        repos=("cpython" "openblas" "openssl" "quickjs" "rusty_v8" "sqlite" "zlib")
         failed=0
 
         for repo in "${repos[@]}"; do
