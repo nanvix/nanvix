@@ -11,12 +11,9 @@
 // Imports
 //==================================================================================================
 
-use ::nanvix_sandbox::UserVmIdentifier;
 use ::rand::Rng;
-use ::std::{
-    self,
-    hash::Hash,
-};
+use ::std::hash::Hash;
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
