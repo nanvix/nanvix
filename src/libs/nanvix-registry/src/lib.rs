@@ -7,7 +7,8 @@
 //! The `nanvix-registry` library provides functionality for managing a local cache of Nanvix
 //! release binaries downloaded from GitHub releases. It automatically downloads, extracts, and
 //! caches binaries for different deployment types and target machines, supporting multiple
-//! versions to coexist simultaneously.
+//! versions to coexist simultaneously. Additionally, it supports installing third-party packages
+//! with automatic dependency resolution.
 //!
 //! # Features
 //!
@@ -20,6 +21,18 @@
 //! - Cache management (automatic reuse and manual clearing).
 //! - Tracks latest downloaded artifacts via release registry.
 //! - Allows multiple versions of each machine-deployment configuration to coexist.
+//! - Package installation with transitive dependency resolution.
+//!
+//! # Supported Packages
+//!
+//! The following packages can be installed using the registry:
+//!
+//! - `openblas`: OpenBLAS library for linear algebra operations.
+//! - `openssl`: OpenSSL cryptographic library.
+//! - `sqlite`: SQLite embedded database library.
+//! - `zlib`: Zlib compression library.
+//! - `quickjs`: QuickJS JavaScript engine.
+//! - `cpython` (or `python`, `python3`): CPython interpreter.
 //!
 //! # Usage
 //!
@@ -42,6 +55,28 @@
 //!
 //!     // Clear the cache when needed.
 //!     registry.clear_cache().await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Installing Packages
+//!
+//! ```no_run
+//! use nanvix_registry::Registry;
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     let registry: Registry = Registry::new(None);
+//!
+//!     // Install CPython and all its dependencies.
+//!     // This will automatically download openssl, zlib, and other required packages.
+//!     // Use `true` to fall back to latest version if compatible version not found.
+//!     let install_path: String = registry
+//!         .install("microvm", "single-process", "python", true)
+//!         .await?;
+//!
+//!     println!("Python installed to: {}", install_path);
 //!
 //!     Ok(())
 //! }
@@ -75,6 +110,7 @@
 //! - `deployment`: Defines deployment types (`SingleProcess`, `MultiProcess`).
 //! - `machine`: Defines target machine types (`Hyperlight`, `microvm`).
 //! - `metadata`: Manages release registry tracking multiple machine-deployment configurations.
+//! - `package`: Defines package types and handles package downloads from GitHub.
 //! - `release`: Handles fetching and downloading releases from GitHub API.
 //! - `tarball`: Provides tarball extraction functionality.
 //! - `tempfile`: Manages temporary files with automatic cleanup.
@@ -96,16 +132,21 @@
 //! # Metadata
 //!
 //! The registry maintains a `release-metadata.json` file in the cache directory root that tracks
-//! multiple machine-deployment configurations. Each entry in the registry contains:
+//! multiple machine-deployment configurations and installed packages. Each release entry contains:
 //! - The URL of the release tarball.
 //! - The commit ID of the downloaded artifacts.
 //!
-//! The key format is `<machine>-<deployment>` (e.g., "microvm-single-process"), and multiple
-//! versions can coexist in separate subdirectories. The registry tracks the most recent commit ID
-//! for each configuration, enabling the library to:
+//! Each package entry contains:
+//! - The URL of the package tarball.
+//! - The Nanvix commit ID the package is built for.
+//!
+//! The key format is `<machine>-<deployment>` for releases and `<machine>-<deployment>-<package>`
+//! for packages. Multiple versions can coexist in separate subdirectories. The registry tracks
+//! the most recent commit ID for each configuration, enabling the library to:
 //! - Detect when new releases are available for specific configurations.
 //! - Automatically download new releases while preserving older versions.
 //! - Support side-by-side deployment of different machine-deployment combinations.
+//! - Track installed packages and their versions.
 
 //==================================================================================================
 // Lint Configuration
@@ -132,9 +173,14 @@
 // Private Modules
 //==================================================================================================
 
+mod checksum;
 mod deployment;
+mod github_client;
 mod machine;
 mod metadata;
+mod package;
+mod progress;
+mod rate_limiter;
 mod release;
 mod tarball;
 mod tempfile;
@@ -146,6 +192,13 @@ mod tempfile;
 pub use crate::{
     deployment::Deployment,
     machine::Machine,
+    package::Package,
+    progress::{
+        LoggingProgress,
+        NoOpProgress,
+        ProgressCallback,
+        SharedProgress,
+    },
 };
 
 //==================================================================================================
@@ -154,10 +207,21 @@ pub use crate::{
 
 use crate::{
     metadata::ReleaseRegistry,
+    package::{
+        PackageDependencies,
+        PackageRelease,
+    },
     release::LatestRelease,
 };
 use ::anyhow::Result;
-use ::std::path::PathBuf;
+use ::std::{
+    collections::HashSet,
+    path::{
+        Path,
+        PathBuf,
+    },
+    sync::Arc,
+};
 use ::syslog::{
     debug,
     error,
@@ -179,6 +243,61 @@ const BINARY_DIRECTORY_NAME: &str = "bin";
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Context for package installation operations.
+///
+/// This struct groups related parameters for the recursive package installation process,
+/// reducing the number of function arguments and improving code maintainability.
+///
+struct InstallContext<'a> {
+    /// Target machine type.
+    machine: Machine,
+    /// Deployment type.
+    deployment: Deployment,
+    /// Nanvix commit ID.
+    commit_id: &'a str,
+    /// Cache directory path.
+    cache_dir: &'a Path,
+    /// Whether to fall back to latest release when compatible version is not found.
+    use_latest_fallback: bool,
+    /// Progress callback for reporting installation progress.
+    progress: Arc<dyn ProgressCallback>,
+}
+
+impl<'a> InstallContext<'a> {
+    /// Returns the target machine type.
+    fn machine(&self) -> Machine {
+        self.machine
+    }
+
+    /// Returns the deployment type.
+    fn deployment(&self) -> Deployment {
+        self.deployment
+    }
+
+    /// Returns the Nanvix commit ID.
+    fn commit_id(&self) -> &str {
+        self.commit_id
+    }
+
+    /// Returns the cache directory path.
+    fn cache_dir(&self) -> &Path {
+        self.cache_dir
+    }
+
+    /// Returns whether to fall back to latest release.
+    fn use_latest_fallback(&self) -> bool {
+        self.use_latest_fallback
+    }
+
+    /// Returns the progress callback.
+    fn progress(&self) -> &dyn ProgressCallback {
+        self.progress.as_ref()
+    }
+}
 
 ///
 /// # Description
@@ -402,8 +521,7 @@ impl Registry {
                 id
             },
             None => {
-                let reason: String =
-                    format!("Failed to extract commit ID from URL: {}", latest_url);
+                let reason: String = format!("Failed to extract commit ID from URL: {latest_url}");
                 error!("{reason}");
                 anyhow::bail!(reason);
             },
@@ -459,8 +577,7 @@ impl Registry {
         if needs_download {
             // Create the artifact cache directory.
             if let Err(error) = fs::create_dir_all(&artifact_cache_dir).await {
-                let reason: String =
-                    format!("Failed to create artifact cache directory: {}", error);
+                let reason: String = format!("Failed to create artifact cache directory: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason);
             }
@@ -490,6 +607,347 @@ impl Registry {
                 anyhow::bail!(reason);
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs a package and its dependencies for the current Nanvix release.
+    ///
+    /// This method first ensures the Nanvix release is cached, then downloads and installs the
+    /// specified package and all its transitive dependencies. Packages are installed in the
+    /// cache directory matching the Nanvix version.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Target machine type. Supported values:
+    ///   - `"hyperlight"`: Hyperlight machine type.
+    ///   - `"microvm"`: microvm machine type.
+    /// - `deployment`: Deployment type. Supported values:
+    ///   - `"single-process"`: Single-process deployment mode.
+    ///   - `"multi-process"`: Multi-process deployment mode.
+    /// - `package_name`: Name of the package to install. Supported packages:
+    ///   - `"openblas"`: OpenBLAS library.
+    ///   - `"openssl"`: OpenSSL library.
+    ///   - `"sqlite"`: SQLite library.
+    ///   - `"zlib"`: Zlib compression library.
+    ///   - `"quickjs"`: QuickJS JavaScript engine.
+    ///   - `"cpython"` / `"python"` / `"python3"`: CPython interpreter.
+    /// - `use_latest_fallback`: If `true`, falls back to the latest available package version
+    ///   when a version compatible with the current Nanvix release is not found. If `false`,
+    ///   returns an error when no compatible version exists.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path to the directory where the package was installed.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if:
+    /// - The machine type is not recognized.
+    /// - The deployment type is not recognized.
+    /// - The package name is not recognized.
+    /// - The GitHub API request fails.
+    /// - The package tarball cannot be downloaded or extracted.
+    /// - A dependency cannot be installed.
+    /// - File system operations fail.
+    /// - No compatible package version is found and `use_latest_fallback` is `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nanvix_registry::Registry;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> anyhow::Result<()> {
+    ///     let registry: Registry = Registry::new(None);
+    ///
+    ///     // Install CPython and its dependencies (strict mode - requires compatible version).
+    ///     let install_path: String = registry
+    ///         .install("microvm", "single-process", "python", false)
+    ///         .await?;
+    ///
+    ///     // Install with fallback to latest if compatible version not found.
+    ///     let install_path: String = registry
+    ///         .install("microvm", "single-process", "python", true)
+    ///         .await?;
+    ///
+    ///     println!("Package installed to: {}", install_path);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    pub async fn install(
+        &self,
+        machine: &str,
+        deployment: &str,
+        package_name: &str,
+        use_latest_fallback: bool,
+    ) -> Result<String> {
+        self.install_with_progress(
+            machine,
+            deployment,
+            package_name,
+            use_latest_fallback,
+            Arc::new(NoOpProgress),
+        )
+        .await
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs a package and its dependencies with progress reporting.
+    ///
+    /// This method is identical to [`install`](Self::install) but accepts a progress callback
+    /// to receive updates during the installation process.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Target machine type (see [`install`](Self::install) for supported values).
+    /// - `deployment`: Deployment type (see [`install`](Self::install) for supported values).
+    /// - `package_name`: Name of the package to install.
+    /// - `use_latest_fallback`: If `true`, falls back to latest version when compatible not found.
+    /// - `progress`: A shared progress callback to receive installation updates.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path to the directory where the package was installed.
+    ///
+    /// # Errors
+    ///
+    /// Same error conditions as [`install`](Self::install).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nanvix_registry::{Registry, LoggingProgress};
+    /// use std::sync::Arc;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> anyhow::Result<()> {
+    ///     let registry: Registry = Registry::new(None);
+    ///     let progress = Arc::new(LoggingProgress);
+    ///
+    ///     let install_path: String = registry
+    ///         .install_with_progress("microvm", "single-process", "python", true, progress)
+    ///         .await?;
+    ///
+    ///     println!("Package installed to: {}", install_path);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    pub async fn install_with_progress(
+        &self,
+        machine: &str,
+        deployment: &str,
+        package_name: &str,
+        use_latest_fallback: bool,
+        progress: SharedProgress,
+    ) -> Result<String> {
+        let cache_dir: PathBuf = self.get_cache_dir().await?;
+
+        // Convert machine from string representation.
+        let machine: Machine = Machine::try_from(machine)?;
+
+        // Convert deployment from string representation.
+        let deployment: Deployment = Deployment::try_from(deployment)?;
+
+        // Convert package from string representation.
+        let package: Package = Package::try_from(package_name)?;
+
+        // First, ensure we have the Nanvix release cached to get the commit ID.
+        let release: LatestRelease = LatestRelease::new(deployment, machine);
+        let latest_url: String = release.get_url().await?;
+
+        let commit_id: String = match Self::extract_commit_id(&latest_url) {
+            Some(id) => {
+                debug!("Nanvix commit ID: {}", id);
+                id
+            },
+            None => {
+                let reason: String = format!("Failed to extract commit ID from URL: {latest_url}");
+                error!("{reason}");
+                anyhow::bail!(reason);
+            },
+        };
+
+        // Load or create the release registry once at the start.
+        let mut registry: ReleaseRegistry = if ReleaseRegistry::exists(&cache_dir).await {
+            match ReleaseRegistry::load(&cache_dir).await {
+                Ok(reg) => reg,
+                Err(error) => {
+                    let reason: String = format!("Failed to load registry: {error}");
+                    error!("{reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+        } else {
+            info!("Creating a new registry...");
+            ReleaseRegistry::new()
+        };
+
+        // Install the package (and dependencies) recursively.
+        let context: InstallContext<'_> = InstallContext {
+            machine,
+            deployment,
+            commit_id: &commit_id,
+            cache_dir: &cache_dir,
+            use_latest_fallback,
+            progress,
+        };
+        let mut in_progress: HashSet<Package> = HashSet::new();
+        self.install_package_recursive(&context, package, &mut registry, &mut in_progress)
+            .await
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Internal helper method to recursively install a package and its dependencies.
+    ///
+    /// # Parameters
+    ///
+    /// - `context`: The installation context containing machine, deployment, commit ID,
+    ///   cache directory, and fallback settings.
+    /// - `package`: The package to install.
+    /// - `registry`: Mutable reference to the release registry for tracking installations.
+    /// - `in_progress`: Set of packages currently being installed, used to detect circular
+    ///   dependencies.
+    ///
+    /// # Returns
+    ///
+    /// The absolute path to the directory where the package was installed.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the package or any dependency cannot be installed,
+    /// or if a circular dependency is detected.
+    ///
+    async fn install_package_recursive(
+        &self,
+        context: &InstallContext<'_>,
+        package: Package,
+        registry: &mut ReleaseRegistry,
+        in_progress: &mut HashSet<Package>,
+    ) -> Result<String> {
+        // Detect circular dependencies.
+        if !in_progress.insert(package) {
+            let reason: String = format!("Circular dependency detected for package {package}");
+            error!("{reason}");
+            anyhow::bail!(reason);
+        }
+
+        // Check if package is already installed for this configuration.
+        if registry.is_package_installed(
+            context.machine(),
+            context.deployment(),
+            package,
+            context.commit_id(),
+        ) {
+            let subdir_name: String =
+                format!("{}-{}-{}", context.machine(), context.deployment(), context.commit_id());
+            let package_dir: PathBuf = context.cache_dir().join(&subdir_name);
+            info!(
+                "Package {} already installed for {}-{}-{}",
+                package,
+                context.machine(),
+                context.deployment(),
+                context.commit_id()
+            );
+            in_progress.remove(&package);
+            return Ok(package_dir.to_string_lossy().to_string());
+        }
+
+        // Create package release handle.
+        let package_release: PackageRelease = PackageRelease::new(
+            package,
+            context.deployment(),
+            context.machine(),
+            context.commit_id().to_string(),
+            context.use_latest_fallback(),
+        )?;
+
+        // First, fetch and install dependencies.
+        let dependencies: PackageDependencies = package_release.get_dependencies().await?;
+        for dep_name in dependencies.dependencies() {
+            let dep_package: Package = match Package::try_from(dep_name.as_str()) {
+                Ok(p) => p,
+                Err(error) => {
+                    let reason: String = format!(
+                        "Unknown dependency '{}' for package {}: {}",
+                        dep_name, package, error
+                    );
+                    error!("{reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+
+            // Notify progress callback about dependency installation.
+            context
+                .progress()
+                .on_dependency_start(dep_name, package.as_str());
+
+            info!("Installing dependency {} for package {}", dep_package, package);
+
+            // Recursively install the dependency using Box::pin to avoid recursion issues.
+            Box::pin(self.install_package_recursive(context, dep_package, registry, in_progress))
+                .await?;
+        }
+
+        // Now install the package itself.
+        let subdir_name: String =
+            format!("{}-{}-{}", context.machine(), context.deployment(), context.commit_id());
+        let package_dir: PathBuf = context.cache_dir().join(&subdir_name);
+
+        // Create the package directory if it doesn't exist.
+        if let Err(error) = fs::create_dir_all(&package_dir).await {
+            let reason: String = format!("Failed to create package directory: {error}");
+            error!("{reason}");
+            anyhow::bail!(reason);
+        }
+
+        info!(
+            "Installing package {} for {}-{}-{}",
+            package,
+            context.machine(),
+            context.deployment(),
+            context.commit_id()
+        );
+
+        // Notify progress callback about download start.
+        context.progress().on_download_start(package.as_str(), None);
+
+        // Download and extract the package.
+        let downloaded_url: String = package_release.download(&package_dir).await?;
+
+        // Notify progress callback about download completion.
+        context.progress().on_download_complete(package.as_str());
+
+        // Notify progress callback about extraction start.
+        context.progress().on_extract_start(package.as_str());
+
+        // Update and save the registry with the installed package.
+        // We save after each package to persist partial progress on failure.
+        registry.set_package(
+            context.machine(),
+            context.deployment(),
+            package,
+            downloaded_url,
+            context.commit_id().to_string(),
+        );
+        registry.save(context.cache_dir()).await?;
+
+        // Notify progress callback about extraction completion.
+        context.progress().on_extract_complete(package.as_str());
+
+        info!("Successfully installed package {} to {:?}", package, package_dir);
+
+        in_progress.remove(&package);
+        Ok(package_dir.to_string_lossy().to_string())
     }
 
     ///
@@ -677,7 +1135,7 @@ impl Registry {
                     anyhow::bail!(reason);
                 },
                 Err(error) => {
-                    let reason: String = format!("failed to spawn blocking task: {error}");
+                    let reason: String = format!("Failed to spawn blocking task: {error}");
                     error!("{reason}");
                     anyhow::bail!(reason);
                 },
@@ -1059,5 +1517,114 @@ mod tests {
         let url: &str = "not-a-valid-url";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_none());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that install returns error for invalid machine type.
+    ///
+    #[tokio::test]
+    async fn test_install_invalid_machine() {
+        let registry: Registry = Registry::new(None);
+        let result: Result<String> = registry
+            .install("invalid-machine", "single-process", "openssl", false)
+            .await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that install returns error for invalid deployment type.
+    ///
+    #[tokio::test]
+    async fn test_install_invalid_deployment() {
+        let registry: Registry = Registry::new(None);
+        let result: Result<String> = registry
+            .install("microvm", "invalid-deployment", "openssl", false)
+            .await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that install returns error for invalid package name.
+    ///
+    #[tokio::test]
+    async fn test_install_invalid_package() {
+        let registry: Registry = Registry::new(None);
+        let result: Result<String> = registry
+            .install("microvm", "single-process", "invalid-package", false)
+            .await;
+        assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests downloading and installing all packages.
+    ///
+    /// # Note
+    ///
+    /// This unit test is marked with `#[ignore]` because it performs actual network requests to
+    /// GitHub and downloads multiple packages, which can be time-consuming and may not be suitable
+    /// for regular test runs. It can be run manually when needed to verify the installation process
+    /// end-to-end.
+    ///
+    #[tokio::test]
+    #[ignore]
+    async fn test_install_all_packages() {
+        use ::tokio::fs;
+
+        // Create a temporary directory for the test cache.
+        let temp_dir: PathBuf =
+            ::std::env::temp_dir().join("nanvix-registry-test-install-all-packages");
+
+        // Clean up any existing test directory.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+
+        // Run test logic and capture result to ensure cleanup runs even on failure.
+        let test_result: Result<()> = async {
+            // Create registry with custom cache directory.
+            let registry: Registry = Registry::new(Some(temp_dir.clone()));
+
+            // Attempt to install all packages.
+            for package in Package::all() {
+                let package_name: &str = package.as_str();
+
+                // Attempt to install the package.
+                let result: Result<String> = registry
+                    .install("microvm", "single-process", package_name, true)
+                    .await;
+
+                // Verify installation succeeded.
+                let install_path: String = result?;
+                anyhow::ensure!(
+                    !install_path.is_empty(),
+                    "Install path is empty for package: {}",
+                    package_name
+                );
+
+                // Verify the install path exists.
+                let path: PathBuf = PathBuf::from(&install_path);
+                anyhow::ensure!(
+                    fs::metadata(&path).await.is_ok(),
+                    "Install path does not exist for package {}: {}",
+                    package_name,
+                    install_path
+                );
+            }
+
+            Ok(())
+        }
+        .await;
+
+        // Clean up regardless of test outcome.
+        let _ = fs::remove_dir_all(&temp_dir).await;
+
+        // Now assert the test result.
+        assert!(test_result.is_ok(), "Test failed: {:?}", test_result.err());
     }
 }

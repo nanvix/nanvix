@@ -113,7 +113,7 @@ impl Tarball {
     /// On success, this function returns an empty tuple. On failure, it returns an object that
     /// describes the error.
     ///
-    pub(crate) async fn extract(&self, dest_dir: &PathBuf) -> Result<()> {
+    pub(crate) async fn extract(&self, dest_dir: &Path) -> Result<()> {
         match self {
             Tarball::Bzip2 { path } => extract_bzip2(path, dest_dir).await,
         }
@@ -142,6 +142,11 @@ impl Tarball {
 ///
 /// Extracts a bzip2-compressed tarball using the `tar` command.
 ///
+/// # Note
+///
+/// This function does not validate extracted paths. See
+/// https://github.com/nanvix/nanvix/issues/1359 for tar slip mitigation.
+///
 /// # Parameters
 ///
 /// - `tarball_path`: Path to the tarball file.
@@ -151,7 +156,7 @@ impl Tarball {
 ///
 /// On success, returns an empty tuple. On failure, it returns an object that describes the error.
 ///
-async fn extract_bzip2(tarball_path: &PathBuf, dir: &PathBuf) -> anyhow::Result<()> {
+async fn extract_bzip2(tarball_path: &Path, dir: &Path) -> anyhow::Result<()> {
     // Spawn tar command.
     let mut child: Child = match Command::new("tar")
         .arg("-xjf")
@@ -162,7 +167,7 @@ async fn extract_bzip2(tarball_path: &PathBuf, dir: &PathBuf) -> anyhow::Result<
     {
         Ok(child) => child,
         Err(error) => {
-            let reason: String = format!("Failed to spawn tar command: {}", error);
+            let reason: String = format!("Failed to spawn tar command: {error}");
             error!("{reason}");
             anyhow::bail!(reason)
         },
@@ -172,7 +177,7 @@ async fn extract_bzip2(tarball_path: &PathBuf, dir: &PathBuf) -> anyhow::Result<
     let status: ExitStatus = match child.wait().await {
         Ok(status) => status,
         Err(error) => {
-            let reason: String = format!("Failed to wait for tar command: {}", error);
+            let reason: String = format!("Failed to wait for tar command: {error}");
             error!("{reason}");
             return Err(anyhow!(reason));
         },

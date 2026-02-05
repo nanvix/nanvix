@@ -95,7 +95,7 @@ impl TryFrom<&str> for Deployment {
             Self::SINGLE_PROCESS_STR => Ok(Deployment::SingleProcess),
             Self::MULTI_PROCESS_STR => Ok(Deployment::MultiProcess),
             _ => {
-                let reason: String = format!("Unknown deployment type: {}", value);
+                let reason: String = format!("Unknown deployment type: {value}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },

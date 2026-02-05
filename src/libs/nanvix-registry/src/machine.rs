@@ -95,7 +95,7 @@ impl TryFrom<&str> for Machine {
             Self::HYPERLIGHT_STR => Ok(Machine::Hyperlight),
             Self::MICROVM_STR => Ok(Machine::Microvm),
             _ => {
-                let reason: String = format!("Unknown machine type: {}", value);
+                let reason: String = format!("Unknown machine type: {value}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },

@@ -7,7 +7,12 @@
 
 use crate::{
     deployment::Deployment,
+    github_client,
     machine::Machine,
+    rate_limiter::{
+        self,
+        RateLimiter,
+    },
     tarball::Tarball,
     tempfile::TemporaryFile,
 };
@@ -18,7 +23,10 @@ use ::reqwest::{
 };
 use ::std::{
     env,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 use ::syslog::{
     error,
@@ -46,6 +54,8 @@ pub(crate) struct LatestRelease {
     deployment: Deployment,
     /// Target machine type for the release.
     machine: Machine,
+    /// Rate limiter for GitHub API calls.
+    rate_limiter: RateLimiter,
 }
 
 //==================================================================================================
@@ -71,6 +81,7 @@ impl LatestRelease {
         Self {
             deployment,
             machine,
+            rate_limiter: RateLimiter::for_github(),
         }
     }
 
@@ -88,25 +99,35 @@ impl LatestRelease {
     /// On success, this function returns the URL of the downloaded release. On failure, it returns
     /// an object that describes the error.
     ///
-    pub(crate) async fn download(&self, dir: &PathBuf) -> Result<String> {
+    pub(crate) async fn download(&self, dir: &Path) -> Result<String> {
         let release_url: String = self.get_url().await?;
 
         info!("Downloading release from: {}", release_url);
 
+        // Apply rate limiting before download.
+        self.rate_limiter.wait().await;
+
         // Download the tarball.
-        let response: Response = match reqwest::get(&release_url).await {
+        let client: Client = github_client::build_client()?;
+        let response: Response = match github_client::authenticated_get(&client, &release_url)
+            .send()
+            .await
+        {
             Ok(response) => response,
             Err(error) => {
-                let reason: String = format!("Failed to download release: {}", error);
+                let reason: String = format!("Failed to download release: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
         };
 
-        let bytes = match response.bytes().await {
+        // Check for rate limit errors.
+        rate_limiter::check_rate_limit(&response)?;
+
+        let bytes: ::bytes::Bytes = match response.bytes().await {
             Ok(bytes) => bytes,
             Err(error) => {
-                let reason: String = format!("Failed to read release: {}", error);
+                let reason: String = format!("Failed to read release: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
@@ -137,32 +158,36 @@ impl LatestRelease {
     /// object that describes the error.
     ///
     pub(crate) async fn get_url(&self) -> Result<String> {
-        let client: Client = Client::new();
-        let response: Response = match client
-            .get(GITHUB_API_URL)
-            .header("User-Agent", "nanvix-embedded")
+        // Apply rate limiting before API call.
+        self.rate_limiter.wait().await;
+
+        let client: Client = github_client::build_client()?;
+        let response: Response = match github_client::authenticated_get(&client, GITHUB_API_URL)
             .send()
             .await
         {
             Ok(response) => response,
             Err(error) => {
-                let reason: String = format!("Failed to fetch releases: {}", error);
+                let reason: String = format!("Failed to fetch releases: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
         };
 
+        // Check for rate limit errors.
+        rate_limiter::check_rate_limit(&response)?;
+
         let response: serde_json::Value = match response.json().await {
             Ok(json) => json,
             Err(error) => {
-                let reason: String = format!("Failed to parse releases: {}", error);
+                let reason: String = format!("Failed to parse releases: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
         };
 
         // Find the release asset URL.
-        let assets: &Vec<serde_json::Value> = match response["assets"].as_array() {
+        let assets: &[serde_json::Value] = match response["assets"].as_array() {
             Some(assets) => assets,
             None => {
                 let reason: String = "No assets found in release".to_string();
