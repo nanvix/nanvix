@@ -7,7 +7,10 @@
 
 use crate::{
     config::RunnerConfig,
-    executor::WorkloadSpec,
+    executor::{
+        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
+        WorkloadSpec,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -19,7 +22,10 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::log::error;
+use ::nanvix::log::{
+    error,
+    warn,
+};
 use ::std::{
     fs::write,
     path::Path,
@@ -207,7 +213,26 @@ pub async fn test_with_terminal_executor(
         .await?;
 
         // Wait for the nanvixd process to exit and get its exit code.
-        let exit_code: i32 = nanvixd.wait_exit_code().await?;
+        // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd without a clean exit, causing
+        // wait_exit_code() to fail. When skip_exit_code_validation is true, we tolerate this
+        // failure since we cannot reliably get the exit code anyway.
+        let exit_code: i32 = match nanvixd.wait_exit_code().await {
+            Ok(code) => code,
+            Err(error) => {
+                if workload.skip_exit_code_validation() {
+                    warn!(
+                        "test_with_terminal_executor(): wait_exit_code failed but skipping \
+                         validation (program={}, iteration={}, error={})",
+                        workload.program_path(),
+                        iteration,
+                        error
+                    );
+                    DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                } else {
+                    return Err(error);
+                }
+            },
+        };
 
         if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
             let reason: String = format!(
@@ -250,8 +275,11 @@ pub async fn test_with_terminal_executor(
             return Err(::anyhow::anyhow!(reason));
         }
 
-        // Validate exit code if expected_exit_code is specified.
-        if let Some(expected) = workload.expected_exit_code()
+        // Validate exit code if expected_exit_code is specified and validation is not skipped.
+        // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
+        // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
+        if !workload.skip_exit_code_validation()
+            && let Some(expected) = workload.expected_exit_code()
             && exit_code != expected
         {
             let reason: String = format!(

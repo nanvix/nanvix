@@ -261,6 +261,7 @@ async fn run() -> Result<()> {
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
+                    machine == "hyperlight",
                 );
 
                 test_with_http_executor(
@@ -307,6 +308,7 @@ async fn run() -> Result<()> {
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
+                    machine == "hyperlight",
                 );
 
                 test_with_terminal_executor(
