@@ -9,7 +9,22 @@ pub mod empty;
 pub mod http;
 pub mod terminal;
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
 use ::anyhow::Result;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Exit code used when we failed to retrieve the exit code and need to skip validation.
+///
+const DEFAULT_EXIT_CODE_SKIP_VALIDATION: i32 = -2;
 
 //==================================================================================================
 // Structures
@@ -58,6 +73,15 @@ pub struct WorkloadSpec<'a> {
     /// Optional expected exit code that the workload must produce.
     ///
     expected_exit_code: Option<i32>,
+    ///
+    /// # Description
+    ///
+    /// Indicates whether exit code validation should be skipped. This is used on hyperlight where
+    /// the User VM is terminated via SIGKILL and cannot reliably report exit codes.
+    ///
+    /// FIXME (#1010): Remove this workaround once graceful hyperlight interrupt is implemented.
+    ///
+    skip_exit_code_validation: bool,
 }
 
 impl<'a> WorkloadSpec<'a> {
@@ -75,6 +99,7 @@ impl<'a> WorkloadSpec<'a> {
     /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
     ///   payload.
     /// - `expected_exit_code`: Optional exit code that the workload must produce.
+    /// - `skip_exit_code_validation`: Indicates whether exit code validation should be skipped.
     ///
     /// # Return Value
     ///
@@ -86,6 +111,7 @@ impl<'a> WorkloadSpec<'a> {
         expected_output: Option<&'a str>,
         expect_empty_output: bool,
         expected_exit_code: Option<i32>,
+        skip_exit_code_validation: bool,
     ) -> Self {
         Self {
             program_path,
@@ -94,6 +120,7 @@ impl<'a> WorkloadSpec<'a> {
             expected_output,
             expect_empty_output,
             expected_exit_code,
+            skip_exit_code_validation,
         }
     }
 
@@ -168,6 +195,19 @@ impl<'a> WorkloadSpec<'a> {
     ///
     pub const fn expected_exit_code(&self) -> Option<i32> {
         self.expected_exit_code
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Indicates whether exit code validation should be skipped.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` if exit code validation should be skipped; otherwise returns `false`.
+    ///
+    pub const fn skip_exit_code_validation(&self) -> bool {
+        self.skip_exit_code_validation
     }
 }
 
