@@ -15,6 +15,9 @@ set -euo pipefail
 # Get the repository root directory.
 REPO_ROOT_DIR=$(git rev-parse --show-toplevel)
 
+# Path to the z helper script.
+Z_SCRIPT="${REPO_ROOT_DIR}/z"
+
 # Directory where to find scripts to import.
 IMPORT_DIR="${REPO_ROOT_DIR}/scripts/common"
 
@@ -251,13 +254,13 @@ run_step() {
 
     # Run the step and capture return code.
     if [[ -z "${machine}" ]]; then
-        if ./z build -- LOG_LEVEL=trace "${release_flag}" ${make_target} > "${tmpfile}" 2>&1; then
+        if "${Z_SCRIPT}" build -- LOG_LEVEL=trace "${release_flag}" ${make_target} > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?
         fi
     else
-        if ./z build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${deployment_flags} ${make_target} > "${tmpfile}" 2>&1; then
+        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${deployment_flags} ${make_target} > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?
@@ -294,6 +297,12 @@ main() {
         exit 1
     fi
 
+    # Ensure helper script exists even when running outside the repository root.
+    if [[ ! -x "${Z_SCRIPT}" ]]; then
+        print_error "(pipeline) Cannot find executable z helper at ${Z_SCRIPT}."
+        exit 1
+    fi
+
     # Create a temporary file to capture output.
     tmpfile="$(mktemp)"
     trap 'rm -f "$tmpfile"' EXIT
@@ -310,7 +319,7 @@ main() {
             for deployment in "${DEPLOYMENT_TYPES[@]}"; do
                 # Check if this machine/deployment combination is excluded.
                 if is_excluded "${machine}" "${deployment}"; then
-                    ((skipped_count++))
+                    ((++skipped_count))
                     continue
                 fi
 
