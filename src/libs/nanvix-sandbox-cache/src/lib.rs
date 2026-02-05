@@ -79,6 +79,17 @@ use ::syslog::{
 };
 use ::tokio::sync::Mutex;
 
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default exit code returned when the User VM exit code cannot be retrieved.
+pub const DEFAULT_EXIT_CODE: i32 = -1;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
 ///
 /// # Description
 ///
@@ -110,10 +121,6 @@ pub struct SandboxCache<T> {
     #[cfg(not(feature = "single-process"))]
     _phantom: PhantomData<T>,
 }
-
-//==================================================================================================
-// Structures
-//==================================================================================================
 
 ///
 /// # Description
@@ -609,34 +616,35 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Returns
     ///
-    /// On success, returns an empty tuple. On failure, returns an error if the User VM
-    /// identifier was not found in the cache.
+    /// On success, returns the exit code of the User VM. On failure, returns an error if the
+    /// User VM identifier was not found in the cache or if the shutdown did not complete.
     ///
-    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
+    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<i32> {
         if let Some(sandbox) = self.running_sandboxes.remove(&user_vm_id) {
             match sandbox.shutdown().await {
                 Some(status) => {
+                    let exit_code: i32 = status.code().unwrap_or(DEFAULT_EXIT_CODE);
                     if status.success() {
                         debug!(
                             "kill(): sandbox exited successfully (user_vm_id={user_vm_id}, \
-                             status={status:?})"
+                             exit_code={exit_code})"
                         );
                     } else {
-                        warn!(
-                            "kill(): sandbox exited with failure (user_vm_id={user_vm_id}, \
-                             status={status:?})"
+                        debug!(
+                            "kill(): sandbox exited with non-zero exit code \
+                             (user_vm_id={user_vm_id}, exit_code={exit_code})"
                         );
                     }
+                    Ok(exit_code)
                 },
                 None => {
                     warn!(
                         "kill(): sandbox shutdown did not complete before timeout \
                          (user_vm_id={user_vm_id})"
                     );
+                    Ok(DEFAULT_EXIT_CODE)
                 },
             }
-
-            Ok(())
         } else {
             let reason: &str = "user VM instance not found in cache";
             error!("kill(): {reason} (user_vm_id={user_vm_id})");
@@ -989,7 +997,7 @@ mod tests {
 
         let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         let nonexistent_id: UserVmIdentifier = UserVmIdentifier::new(NONEXISTENT_USER_VM_ID);
-        let result: Result<()> = cache_guard.kill(nonexistent_id).await;
+        let result: Result<i32> = cache_guard.kill(nonexistent_id).await;
         assert!(result.is_err());
     }
 

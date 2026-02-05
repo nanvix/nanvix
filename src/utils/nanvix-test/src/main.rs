@@ -172,7 +172,23 @@ async fn run() -> Result<()> {
     );
     warning::fail_if_triggered("prepare_runner_environment")?;
 
+    // Detect machine type at compile time based on enabled Cargo features.
+    #[cfg(feature = "hyperlight")]
+    let machine: &str = "hyperlight";
+    #[cfg(feature = "microvm")]
+    let machine: &str = "microvm";
+
     for test_config in tests {
+        // Skip tests that are not applicable to the current machine.
+        if !test_config.should_run_on(machine) {
+            debug!(
+                "main(): skipping test not applicable to machine (executor={}, program={:?}, \
+                 machine={}, runs_on={:?})",
+                test_config.executor, test_config.program, machine, test_config.runs_on
+            );
+            continue;
+        }
+
         let TestCaseConfig {
             executor,
             iterations,
@@ -182,6 +198,8 @@ async fn run() -> Result<()> {
             expected_output,
             expect_empty_output,
             extra_nanvixd_args,
+            expected_exit_code,
+            runs_on: _,
         } = test_config;
 
         // Parse extra_nanvixd_args string into a vector of arguments.
@@ -208,8 +226,8 @@ async fn run() -> Result<()> {
 
         let executor_name: ExecutorName = ExecutorName::from_str(executor.as_str())?;
 
-        match (executor_name, program, program_args, input, expected_output, expect_empty_output) {
-            (ExecutorName::Empty, _, _, _, _, _) => {
+        match (executor_name, &program) {
+            (ExecutorName::Empty, _) => {
                 let log_layout: TestLogLayout = TestLogLayout::for_label(
                     log_root,
                     ExecutorName::Empty.to_str(),
@@ -219,14 +237,7 @@ async fn run() -> Result<()> {
                 let context: String = format!("empty executor completed (label={})", executor);
                 warning::fail_if_triggered(context.as_str())?;
             },
-            (
-                ExecutorName::Http,
-                Some(program_path),
-                program_args,
-                input,
-                expected_output,
-                expect_empty_output,
-            ) => {
+            (ExecutorName::Http, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
                         "main(): skipping tests with http executor because program path is \
@@ -249,6 +260,8 @@ async fn run() -> Result<()> {
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
+                    expected_exit_code,
+                    machine == "hyperlight",
                 );
 
                 test_with_http_executor(
@@ -265,20 +278,13 @@ async fn run() -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            (ExecutorName::Http, None, _, _, _, _) => {
+            (ExecutorName::Http, None) => {
                 let reason: String =
                     "tests entries with http executor must define the 'program' field".to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
-            (
-                ExecutorName::Terminal,
-                Some(program_path),
-                program_args,
-                input,
-                expected_output,
-                expect_empty_output,
-            ) => {
+            (ExecutorName::Terminal, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
                         "main(): skipping tests with terminal executor because program path is \
@@ -301,6 +307,8 @@ async fn run() -> Result<()> {
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
+                    expected_exit_code,
+                    machine == "hyperlight",
                 );
 
                 test_with_terminal_executor(
@@ -317,7 +325,7 @@ async fn run() -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            (ExecutorName::Terminal, None, _, _, _, _) => {
+            (ExecutorName::Terminal, None) => {
                 let reason: String = "test entries with terminal executor must define the \
                                       'program' field"
                     .to_string();

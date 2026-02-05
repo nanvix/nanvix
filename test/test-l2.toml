@@ -10,8 +10,8 @@ l2_enabled = true
 fatal = true
 toolchain_path = "toolchain"
 sysroot_path = "./sysroot"
-nanvixd_shutdown_attempts_max = 30
-nanvixd_shutdown_retry_interval_ms = 200
+nanvixd_shutdown_attempts_max = 60
+nanvixd_shutdown_retry_interval_ms = 300
 nanvixd_ready_attempts_max = 50
 nanvixd_ready_retry_interval_ms = 100
 netns_pool_size = 0
@@ -36,6 +36,13 @@ iterations = 2
 #===================================================================================================
 # HTTP Executor Tests (Non-Interactive Mode)
 #===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/kernel-exit.elf"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"

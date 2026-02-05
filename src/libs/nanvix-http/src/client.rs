@@ -247,8 +247,7 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ) -> Result<message::KillResponse> {
         let mut locked_sandbox_cache = sandbox_cache.lock().await;
         match locked_sandbox_cache.kill(message.user_vm_id).await {
-            // TODO: return UserVM exit code.
-            Ok(()) => Ok(message::KillResponse { exit_code: 0 }),
+            Ok(exit_code) => Ok(message::KillResponse { exit_code }),
             Err(error) => {
                 error!(
                     "failed to terminate sandbox (user_vm_id={} error={error})",

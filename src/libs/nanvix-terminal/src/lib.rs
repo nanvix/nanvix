@@ -136,8 +136,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     ///
     /// # Returns
     ///
-    /// On success, this function returns an empty tuple after the terminal session ends. On
-    /// failure, it returns an object that describes the error that occurred.
+    /// On success, returns the exit code of the guest program. On failure, returns an error
+    /// describing what went wrong.
     ///
     pub async fn run(
         &mut self,
@@ -145,7 +145,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         app_name: Option<&str>,
         guest_binary_path: &str,
         guest_binary_args: &str,
-    ) -> Result<()> {
+    ) -> Result<i32> {
         let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
             SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
@@ -157,7 +157,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         let app_name: String = app_name
             .map(|s| s.to_owned())
             .unwrap_or_else(|| DEFAULT_APP_NAME.to_owned());
-        let (_uservm_id, gateway_sockaddr, gateway_socket_type): (
+        let (uservm_id, gateway_sockaddr, gateway_socket_type): (
             UserVmIdentifier,
             String,
             SocketType,
@@ -276,8 +276,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             }
         };
 
-        // Cleanup sandbox resources.
-        sandbox_cache.lock().await.cleanup().await;
+        // Terminate the sandbox and retrieve the exit code.
+        let exit_code: i32 = sandbox_cache.lock().await.kill(uservm_id).await?;
 
         // Send SIGUSR1 signal to stdin thread to interrupt the blocking read operation.
         // SAFETY: The thread ID is valid and was obtained from the stdin thread itself.
@@ -286,7 +286,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             error!("failed to send signal to stdin thread: error code {kill_result}");
         }
 
-        result
+        // Return the exit code if the session ended normally, otherwise propagate the error.
+        result.map(|()| exit_code)
     }
 
     ///
