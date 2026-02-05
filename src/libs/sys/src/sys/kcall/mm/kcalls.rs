@@ -15,6 +15,7 @@ use crate::{
     mm::{
         AccessPermission,
         Address,
+        MmioRegionInfo,
         VirtualAddress,
     },
     number::KcallNumber,
@@ -148,5 +149,37 @@ pub fn mmio_free(tag: u64) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to free mmio region"))
+    }
+}
+
+//==================================================================================================
+// Query MMIO Region
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Queries metadata for the memory-mapped I/O region identified by `tag` and returns information
+/// such as the mapped base address, size, and permissions.
+///
+/// # Parameters
+///
+/// - `tag`: Encoded identifier of the MMIO region to query.
+///
+/// # Returns
+///
+/// On success, returns an [`MmioRegionInfo`] structure populated by the kernel.
+///
+pub fn mmio_info(tag: u64) -> Result<MmioRegionInfo, Error> {
+    let (lower, upper): (u32, u32) = split_tag(tag);
+    let mut info: MmioRegionInfo = MmioRegionInfo::default();
+    let buffer: *mut MmioRegionInfo = &mut info;
+
+    let result: i64 = kcall3!(KcallNumber::MmioInfo.into(), lower, upper, buffer as usize as u32);
+
+    if result == 0 {
+        Ok(info)
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to query mmio region"))
     }
 }

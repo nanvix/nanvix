@@ -45,6 +45,8 @@ pub enum KcallNumber {
     AllocMmio = KcallNumber::NR_ALLOC_MMIO_SYSCALL,
     /// Releases a memory-mapped I/O region.
     FreeMmio = KcallNumber::NR_FREE_MMIO_SYSCALL,
+    /// Retrieves metadata for a memory-mapped I/O region.
+    MmioInfo = KcallNumber::NR_MMIO_INFO_SYSCALL,
     /// Allocates a port-mapped I/O port.
     AllocPmio = KcallNumber::NR_ALLOC_PMIO_SYSCALL,
     /// Frees a port-mapped I/O port.
@@ -98,6 +100,7 @@ impl KcallNumber {
     const NR_MEMORY_COPY_SYSCALL: u32 = 13;
     const NR_ALLOC_MMIO_SYSCALL: u32 = 14;
     const NR_FREE_MMIO_SYSCALL: u32 = 15;
+    const NR_MMIO_INFO_SYSCALL: u32 = 32;
     const NR_ALLOC_PMIO_SYSCALL: u32 = 16;
     const NR_FREE_PMIO_SYSCALL: u32 = 17;
     const NR_READ_PMIO_SYSCALL: u32 = 18;
@@ -137,6 +140,7 @@ impl From<u32> for KcallNumber {
             Self::NR_MEMORY_COPY_SYSCALL => KcallNumber::MemoryCopy,
             Self::NR_ALLOC_MMIO_SYSCALL => KcallNumber::AllocMmio,
             Self::NR_FREE_MMIO_SYSCALL => KcallNumber::FreeMmio,
+            Self::NR_MMIO_INFO_SYSCALL => KcallNumber::MmioInfo,
             Self::NR_ALLOC_PMIO_SYSCALL => KcallNumber::AllocPmio,
             Self::NR_FREE_PMIO_SYSCALL => KcallNumber::FreePmio,
             Self::NR_READ_PMIO_SYSCALL => KcallNumber::ReadPmio,
@@ -178,6 +182,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::MemoryCopy => KcallNumber::NR_MEMORY_COPY_SYSCALL,
             KcallNumber::AllocMmio => KcallNumber::NR_ALLOC_MMIO_SYSCALL,
             KcallNumber::FreeMmio => KcallNumber::NR_FREE_MMIO_SYSCALL,
+            KcallNumber::MmioInfo => KcallNumber::NR_MMIO_INFO_SYSCALL,
             KcallNumber::AllocPmio => KcallNumber::NR_ALLOC_PMIO_SYSCALL,
             KcallNumber::FreePmio => KcallNumber::NR_FREE_PMIO_SYSCALL,
             KcallNumber::ReadPmio => KcallNumber::NR_READ_PMIO_SYSCALL,
