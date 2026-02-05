@@ -302,6 +302,23 @@ impl ProcessState {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Retrieves a reference to the MMIO region identified by the given tag.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Tag that uniquely identifies the region to look up.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`IoMemoryRegion`] if found, or `None` otherwise.
+    ///
+    pub fn mmio_info(&self, tag: MmioTag) -> Option<&IoMemoryRegion> {
+        self.mmio.iter().find(|r| r.tag() == tag)
+    }
+
     pub fn add_pmio(&mut self, port: AnyIoPort) {
         self.pmio.push_back(port)
     }

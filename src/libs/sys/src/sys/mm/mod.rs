@@ -8,6 +8,7 @@
 mod access;
 mod address;
 mod alignment;
+mod mmio;
 
 //==================================================================================================
 // Exports
@@ -16,3 +17,4 @@ mod alignment;
 pub use access::*;
 pub use address::*;
 pub use alignment::*;
+pub use mmio::*;

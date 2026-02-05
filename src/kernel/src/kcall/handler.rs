@@ -83,6 +83,7 @@ pub fn kcall_handler(
                         KcallNumber::Send => ipc::send(pm, args),
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm, args),
                         KcallNumber::FreeMmio => io::mmio_free(pm, args),
+                        KcallNumber::MmioInfo => io::mmio_info(pm, args),
                         KcallNumber::AllocPmio => io::pmio_alloc(hal, pm, args),
                         KcallNumber::FreePmio => io::pmio_free(pm, args),
                         KcallNumber::ReadPmio => io::pmio_read(pm, args),
