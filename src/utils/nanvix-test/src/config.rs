@@ -23,28 +23,99 @@ use ::toml::{
 // Constants
 //==================================================================================================
 
-///
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Shutdown Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to exit gracefully after
+// sending SIGINT. If the timeout is exceeded, SIGKILL is sent.
+//
+// Default (non-L2): 10 attempts × 100ms = 1 second total.
+// This is sufficient for nanvixd to propagate shutdown to linuxd (which has an internal 1-second
+// shutdown timeout) and perform basic cleanup.
+//
+// L2 mode uses higher values (60 attempts × 300ms = 18 seconds) because shutdown must propagate
+// through multiple layers: nanvixd → cloud-hypervisor → guest Linux VM. Each layer adds latency
+// and the nested VM may have pending I/O or cleanup work.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of Nanvix Daemon shutdown attempts when omitted in the TOML file.
-///
 const DEFAULT_NANVIXD_SHUTDOWN_ATTEMPTS_MAX: usize = 10;
 /// Default Nanvix Daemon shutdown retry interval (in milliseconds) when omitted in the TOML file.
 const DEFAULT_NANVIXD_SHUTDOWN_RETRY_INTERVAL_MS: u64 = 100;
-/// Default iteration count for the requested test case when not specified.
-const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Readiness Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to become ready (accept HTTP
+// connections) after spawning. The daemon must bind its HTTP socket and initialize the sandbox
+// cache before accepting requests.
+//
+// Total timeout: 50 attempts × 100ms = 5 seconds.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of readiness probes issued before giving up on the Nanvix Daemon HTTP endpoint.
 const DEFAULT_NANVIXD_READY_ATTEMPTS_MAX: usize = 50;
 /// Default interval (in milliseconds) between Nanvix Daemon readiness probes.
 const DEFAULT_NANVIXD_READY_RETRY_INTERVAL_MS: u64 = 100;
+
+// -------------------------------------------------------------------------------------------------
+// Test Iteration Configuration
+// -------------------------------------------------------------------------------------------------
+
+/// Default iteration count for the requested test case when not specified.
+const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// User VM Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets,
+// network namespaces). L2 mode requires longer delays because cloud-hypervisor process teardown
+// and nested VM cleanup are slower. L2 toml configs typically override this to 500ms.
+// -------------------------------------------------------------------------------------------------
+
 /// Default delay (in milliseconds) before launching another User VM.
 const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
 /// Default delay (in milliseconds) before launching another User VM when L2 mode is enabled.
 const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 100;
+
+// -------------------------------------------------------------------------------------------------
+// Stream Collection Configuration
+// -------------------------------------------------------------------------------------------------
+// Maximum time allowed for collecting stdout/stderr from interactive workloads. Set to 5 minutes
+// to accommodate long-running tests (stress tests, interpreter benchmarks like QuickJS test
+// suites) that may produce output over extended periods.
+// -------------------------------------------------------------------------------------------------
+
 /// Default timeout (in milliseconds) applied when collecting interactive stdout/stderr streams.
 const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
+
+// -------------------------------------------------------------------------------------------------
+// TCP TIME_WAIT Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// After nanvixd exits, its HTTP port may linger in TCP TIME_WAIT state for up to 60 seconds
+// (Linux default: 2 × MSL where MSL = 30 seconds). The test harness waits for this state to
+// clear before the next test iteration to avoid "address already in use" errors.
+//
+// Max wait: 70 seconds (60s TIME_WAIT + 10s headroom).
+// Poll interval: 2 seconds balances responsiveness with avoiding excessive syscalls.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum duration (in seconds) spent waiting for lingering TCP TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_MAX_WAIT_SECONDS: u64 = 70;
 /// Default polling interval (in seconds) used while monitoring TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_POLL_INTERVAL_SECONDS: u64 = 2;
+
+// -------------------------------------------------------------------------------------------------
+// Gateway Connection Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control the client-side connection loop when connecting to a User VM gateway
+// socket. User VM startup time is variable (depends on kernel boot, linuxd initialization,
+// workload size), so exponential backoff is used.
+//
+// Max attempts: 100, with exponential backoff from 10ms to 500ms.
+// Total timeout: 15 seconds hard cap on the connection loop.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum number of gateway connection attempts before failing a spawn.
 const DEFAULT_GATEWAY_CONNECT_MAX_ATTEMPTS: usize = 100;
 /// Default initial backoff (in milliseconds) between gateway connection retries.
@@ -53,6 +124,11 @@ const DEFAULT_GATEWAY_CONNECT_INITIAL_BACKOFF_MS: u64 = 10;
 const DEFAULT_GATEWAY_CONNECT_MAX_BACKOFF_MS: u64 = 500;
 /// Default timeout (in milliseconds) applied to the gateway connection loop.
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
+
+// -------------------------------------------------------------------------------------------------
+// Miscellaneous
+// -------------------------------------------------------------------------------------------------
+
 /// Placeholder token replaced with the configured sysroot path inside test definitions.
 const SYSROOT_PATH_PLACEHOLDER: &str = "${sysroot_path}";
 
