@@ -559,9 +559,13 @@ impl LinuxDaemon {
 
             child
         } else {
-            Command::new(&linuxd_args[0])
-                .args(&linuxd_args[1..])
-                .stdout(Stdio::inherit())
+            let mut cmd: Command = Command::new(&linuxd_args[0]);
+            cmd.args(&linuxd_args[1..]);
+            // Ensure the child process is killed if the Child handle is dropped without explicit
+            // cleanup. This acts as a best-effort safety net during normal unwinding and shutdown
+            // paths where drop handlers run, helping to prevent orphaned processes.
+            cmd.kill_on_drop(true);
+            cmd.stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
                 .map_err(|e| {
