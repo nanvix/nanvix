@@ -63,6 +63,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - name: "Pre-Cleanup Dangling Resources"
+      uses: ./.github/actions/cleanup
+
     - name: "Cache Cargo Target"
       id: cache-target
       uses: actions/cache@v5
@@ -162,13 +165,9 @@ jobs:
         key: ${{ runner.os }}-benchmark-target-${{ matrix.arch }}-${{ matrix.build-type }}
 
 
-    - name: "Cleanup Dangling Resources"
+    - name: "Post-Cleanup Dangling Resources"
       if: always()
-      run: |
-        sudo rm -rf images
-        sudo find /tmp -maxdepth 1 -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
-        sudo rm -rf /tmp/clh-console 2>/dev/null || true
-      shell: bash
+      uses: ./.github/actions/cleanup
 
     - name: "Upload logs in case of benchmark failures"
       if: failure()
