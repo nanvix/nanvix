@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Test"
-description: "Run the integration tests for all machine types"
+description: "Run integration tests for all machine types"
 
 inputs:
   release:

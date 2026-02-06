@@ -144,12 +144,7 @@ jobs:
         else
           echo "SCCACHE not configured or not available"
         fi
-    - name: "Test (New) (${{ matrix.deployment-type }})"
-      uses: ./.github/actions/nanvix-test
-      with:
-        deployment-type: '${{ matrix.deployment-type }}'
-        machine-type: '${{ matrix.machine-type }}'
-    - name: "Test"
+    - name: "Test (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
       uses: ./.github/actions/test
       with:
         release: '${{ matrix.build-type }}'
