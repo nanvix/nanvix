@@ -128,6 +128,10 @@ impl Nanvixd {
     ) -> Command {
         let mut command: Command = Command::new(config.nanvixd_binary_path.as_str());
         command.current_dir(&config.working_directory);
+        // Ensure the child process is killed if the Child handle is dropped without explicit
+        // cleanup.  This acts as a best-effort safety net during normal unwinding and shutdown
+        // paths where drop handlers run, helping to prevent orphaned processes.
+        command.kill_on_drop(true);
         command.arg(::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY);
         command.arg(format!("{}/bin", config.toolchain_path));
 
