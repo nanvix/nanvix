@@ -36,6 +36,8 @@ usage() {
     echo "  -h, --help        Show this help message and exit"
     echo ""
     echo "Environment Variables:"
+    echo "  GITHUB_TOKEN             GitHub token for authenticated API requests (5000 req/hr vs 60 unauthenticated)"
+    echo "  GH_TOKEN                 Alternative to GITHUB_TOKEN (GitHub CLI convention)"
     echo "  NANVIX_CONNECT_TIMEOUT   Connection timeout in seconds (default: 30)"
     echo "  NANVIX_MAX_TIMEOUT       Maximum total timeout in seconds (default: 300)"
     echo "  NANVIX_FORCE_DOWNLOAD    Force download if 'true' (default: false)"
@@ -67,6 +69,46 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+#
+# Description
+#
+#   Gets authorization header arguments for curl/wget if a GitHub token is available.
+#   Checks GITHUB_TOKEN first, then falls back to GH_TOKEN (GitHub CLI convention).
+#
+# Arguments
+#
+#   $1 - The download tool to use ("curl" or "wget").
+#
+# Returns
+#
+#   Prints authorization arguments for the specified tool, or nothing if no token is set.
+#
+# Usage Example
+#
+#   auth_args=$(get_auth_args "curl")
+#
+get_auth_args() {
+    local tool="$1"
+    local token=""
+
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        token="$GITHUB_TOKEN"
+    elif [[ -n "${GH_TOKEN:-}" ]]; then
+        token="$GH_TOKEN"
+    fi
+
+    if [[ -n "$token" ]]; then
+        case "$tool" in
+            curl)
+                echo "-H" "Authorization: Bearer $token"
+                ;;
+            wget)
+                echo "--header=Authorization: Bearer $token"
+                ;;
+        esac
+    fi
+}
+
 # Determine which download tool to use.
 get_download_tool() {
     if command_exists curl; then
@@ -88,9 +130,18 @@ download_to_stdout() {
     local exit_code
     tool=$(get_download_tool)
 
+    # Build command arguments conditionally based on tool and auth availability.
     case "$tool" in
         curl)
-            curl -sL --fail --max-redirs 5 --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIMEOUT" "$url"
+            local curl_args=(curl -sL --fail --max-redirs 5 --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIMEOUT")
+            # Add auth header if token is available.
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+                curl_args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+            elif [[ -n "${GH_TOKEN:-}" ]]; then
+                curl_args+=(-H "Authorization: Bearer $GH_TOKEN")
+            fi
+            curl_args+=("$url")
+            "${curl_args[@]}"
             exit_code=$?
             if (( exit_code != 0 )); then
                 warn "curl failed with exit code $exit_code for URL: $url"
@@ -98,7 +149,15 @@ download_to_stdout() {
             fi
             ;;
         wget)
-            wget -qO- --max-redirect=5 --dns-timeout="$CONNECT_TIMEOUT" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$MAX_TIMEOUT" "$url"
+            local wget_args=(wget -qO- --max-redirect=5 --dns-timeout="$CONNECT_TIMEOUT" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$MAX_TIMEOUT")
+            # Add auth header if token is available.
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+                wget_args+=("--header=Authorization: Bearer $GITHUB_TOKEN")
+            elif [[ -n "${GH_TOKEN:-}" ]]; then
+                wget_args+=("--header=Authorization: Bearer $GH_TOKEN")
+            fi
+            wget_args+=("$url")
+            "${wget_args[@]}"
             exit_code=$?
             if (( exit_code != 0 )); then
                 warn "wget failed with exit code $exit_code for URL: $url"
@@ -116,9 +175,18 @@ download_to_file() {
     local exit_code
     tool=$(get_download_tool)
 
+    # Build command arguments conditionally based on tool and auth availability.
     case "$tool" in
         curl)
-            curl -sL --fail --max-redirs 5 --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIMEOUT" -o "$output" "$url"
+            local curl_args=(curl -sL --fail --max-redirs 5 --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIMEOUT")
+            # Add auth header if token is available.
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+                curl_args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+            elif [[ -n "${GH_TOKEN:-}" ]]; then
+                curl_args+=(-H "Authorization: Bearer $GH_TOKEN")
+            fi
+            curl_args+=(-o "$output" "$url")
+            "${curl_args[@]}"
             exit_code=$?
             if (( exit_code != 0 )); then
                 warn "curl failed with exit code $exit_code for URL: $url"
@@ -126,7 +194,15 @@ download_to_file() {
             fi
             ;;
         wget)
-            wget -q --max-redirect=5 --dns-timeout="$CONNECT_TIMEOUT" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$MAX_TIMEOUT" -O "$output" "$url"
+            local wget_args=(wget -q --max-redirect=5 --dns-timeout="$CONNECT_TIMEOUT" --connect-timeout="$CONNECT_TIMEOUT" --timeout="$MAX_TIMEOUT")
+            # Add auth header if token is available.
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+                wget_args+=("--header=Authorization: Bearer $GITHUB_TOKEN")
+            elif [[ -n "${GH_TOKEN:-}" ]]; then
+                wget_args+=("--header=Authorization: Bearer $GH_TOKEN")
+            fi
+            wget_args+=(-O "$output" "$url")
+            "${wget_args[@]}"
             exit_code=$?
             if (( exit_code != 0 )); then
                 warn "wget failed with exit code $exit_code for URL: $url"
@@ -134,6 +210,53 @@ download_to_file() {
             fi
             ;;
     esac
+}
+
+#
+# Description
+#
+#   Downloads a URL to stdout with retry and exponential backoff.
+#   Suppresses warning messages from intermediate attempts to avoid duplicate output.
+#
+# Arguments
+#
+#   $1 - The URL to download.
+#   $2 - Number of retry attempts (default: 3).
+#
+# Returns
+#
+#   0 on success (content printed to stdout), 1 on failure after all retries exhausted.
+#
+# Usage Example
+#
+#   content=$(download_with_retry "https://api.github.com/repos/owner/repo/releases/latest" 3)
+#
+download_with_retry() {
+    local url="$1"
+    local retries="${2:-3}"
+    local delay=5
+    local i
+    local result
+
+    for ((i=1; i<=retries; i++)); do
+        # Suppress warnings from intermediate attempts to avoid duplicate messages.
+        if (( i < retries )); then
+            if result=$(download_to_stdout "$url" 2>/dev/null); then
+                echo "$result"
+                return 0
+            fi
+            warn "Attempt $i/$retries failed, retrying in ${delay}s..."
+            sleep "$delay"
+            delay=$((delay * 2))
+        else
+            # Last attempt: show warnings.
+            if result=$(download_to_stdout "$url"); then
+                echo "$result"
+                return 0
+            fi
+        fi
+    done
+    return 1
 }
 
 # Extract a JSON value using basic shell tools.
@@ -203,9 +326,9 @@ main() {
 
     info "Fetching latest release information from GitHub..."
 
-    # Download the release information.
+    # Download the release information with retry.
     local release_info
-    release_info=$(download_to_stdout "$GITHUB_API_URL")
+    release_info=$(download_with_retry "$GITHUB_API_URL" 3) || true
 
     if [ -z "$release_info" ]; then
         error "Failed to fetch release information from GitHub."
@@ -215,6 +338,12 @@ main() {
     if [[ "$release_info" == *'"message"'* ]]; then
         local message
         message=$(extract_json_value "$release_info" "message")
+
+        # Provide actionable guidance for rate limit errors.
+        if [[ "$message" == *"API rate limit exceeded"* ]] || [[ "$message" == *"rate limit"* ]]; then
+            error "GitHub API rate limit exceeded. Set GITHUB_TOKEN (or GH_TOKEN) environment variable to increase limits (60 req/hr -> 5000 req/hr)."
+        fi
+
         error "GitHub API error: $message"
     fi
 
