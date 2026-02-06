@@ -4,26 +4,47 @@
 name: "Cleanup Dangling Resources"
 description: "Clean up resources that may have been left behind by previous runs or crashes"
 
+inputs:
+  phase:
+    description: "Cleanup phase: 'pre' (before tests, waits for ports, fails on timeout) or 'post' (after tests, informational only)"
+    required: true
+  port:
+    description: "Port number to check availability"
+    required: false
+    default: "9999"
+  wait-port-timeout:
+    description: "Timeout in seconds to wait for port to become available"
+    required: false
+    default: "70"
+
 runs:
   using: "composite"
   steps:
     - name: "Cleanup Dangling Resources"
       shell: bash
       run: |
-        # Defensive cleanup for resources that should have been cleaned by their owners:
-        # - nvx:* directories: cleaned by TemporaryDirectory::Drop (nanvixd/tempdir.rs)
-        # - *.socket files: cleaned by SocketListener::Drop (syscomm/socket_listener.rs)
-        # - nvxns-* namespaces: cleaned by NetnsHandle::Drop (nanvix-sandbox/netns.rs)
-        # - clh-console/cloud-hypervisor.sock: cleaned by EXIT trap (generate-l2-snapshot.sh)
-        # This step catches any resources leaked due to crashes or abnormal termination.
+        PHASE="${{ inputs.phase }}"
+        PORT="${{ inputs.port }}"
+        WAIT_PORT_TIMEOUT="${{ inputs.wait-port-timeout }}"
+        CLEANUP_SCRIPT="${GITHUB_WORKSPACE}/scripts/cleanup-nanvixd.sh"
 
-        sudo rm -rf images 2>/dev/null || true
-        sudo find /tmp -maxdepth 1 -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
-        rm -rf /tmp/nanvix-test-* 2>/dev/null || true
-        sudo rm -rf /tmp/clh-console 2>/dev/null || true
-        sudo rm -f /tmp/cloud-hypervisor.sock 2>/dev/null || true
-        sudo rm -f /tmp/*.socket 2>/dev/null || true
-        for ns in $(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true); do
-          sudo ip link del "nvxgw-h-${ns#nvxns-}" 2>/dev/null || true
-          sudo ip netns del "${ns}" 2>/dev/null || true
-        done
+        # Ensure cleanup script exists and is executable.
+        if [[ ! -x "${CLEANUP_SCRIPT}" ]]; then
+          echo "ERROR: Cleanup script not found or not executable: ${CLEANUP_SCRIPT}"
+          exit 1
+        fi
+
+        # Run full cleanup (kills processes, cleans namespaces, sockets, temp dirs, images).
+        ${CLEANUP_SCRIPT} --all --verbose
+
+        # Port availability handling differs by phase.
+        if [[ "${PHASE}" == "pre" ]]; then
+          # Pre-cleanup: wait for port, fail if timeout exceeded.
+          "${CLEANUP_SCRIPT}" --wait-port "${PORT}" --wait-port-timeout "${WAIT_PORT_TIMEOUT}" --verbose
+        else
+          # Post-cleanup: informational check only.
+          echo "Post-cleanup: checking port ${PORT} status (informational only)..."
+          if ! "${CLEANUP_SCRIPT}" --wait-port "${PORT}" --wait-port-timeout 5 2>/dev/null; then
+            echo "Warning: Port ${PORT} is still in use. Next job may need to wait for TIME_WAIT."
+          fi
+        fi

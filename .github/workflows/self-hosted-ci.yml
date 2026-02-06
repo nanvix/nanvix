@@ -70,6 +70,8 @@ jobs:
 
     - name: "Pre-Cleanup Dangling Resources"
       uses: ./.github/actions/cleanup
+      with:
+        phase: pre
 
     # Create a link to the toolchain directory, as tests files assume the toolchain is at
     # ${GITHUB_WORKSPACE}/toolchain.
@@ -275,6 +277,8 @@ jobs:
     - name: "Post-Cleanup Dangling Resources"
       if: always()
       uses: ./.github/actions/cleanup
+      with:
+        phase: post
 
     - name: "Upload logs in case of failures"
       if: failure()
