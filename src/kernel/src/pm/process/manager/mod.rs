@@ -218,7 +218,7 @@ impl ProcessManagerInner {
         debug_assert!(Vmem::is_user_addr(args.user_fn));
 
         let kernel_func: VirtualAddress =
-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
+            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as *const () as usize);
 
         // Alloc kernel pages for the kernel stack. If we fail beyond this point, `kernel_stack`
         // gets dropped as soon as we exit this scope and underlying pages are released.
