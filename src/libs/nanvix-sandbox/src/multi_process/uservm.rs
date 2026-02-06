@@ -164,12 +164,26 @@ impl UserVm {
             } else {
                 let mut cmd: Command = Command::new(&user_vm_args[0]);
                 cmd.args(&user_vm_args[1..]);
+                // Ensure the child process is killed if the Child handle is dropped without
+                // explicit cleanup. This acts as a best-effort safety net during normal unwinding
+                // and shutdown paths where drop handlers run, helping to prevent orphaned
+                // processes.
+                cmd.kill_on_drop(true);
 
                 cmd
             }
 
             #[cfg(feature = "single-process")]
-            Command::new(&user_vm_args[0]).args(&user_vm_args[1..])
+            {
+                let mut cmd: Command = Command::new(&user_vm_args[0]);
+                cmd.args(&user_vm_args[1..]);
+                // Ensure the child process is killed if the Child handle is dropped without
+                // explicit cleanup.  This acts as a best-effort safety net during normal unwinding
+                // and shutdown paths where drop handlers run, helping to prevent orphaned
+                // processes.
+                cmd.kill_on_drop(true);
+                cmd
+            }
         };
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
