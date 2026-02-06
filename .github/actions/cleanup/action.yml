@@ -1,0 +1,29 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Cleanup Dangling Resources"
+description: "Clean up resources that may have been left behind by previous runs or crashes"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Cleanup Dangling Resources"
+      shell: bash
+      run: |
+        # Defensive cleanup for resources that should have been cleaned by their owners:
+        # - nvx:* directories: cleaned by TemporaryDirectory::Drop (nanvixd/tempdir.rs)
+        # - *.socket files: cleaned by SocketListener::Drop (syscomm/socket_listener.rs)
+        # - nvxns-* namespaces: cleaned by NetnsHandle::Drop (nanvix-sandbox/netns.rs)
+        # - clh-console/cloud-hypervisor.sock: cleaned by EXIT trap (generate-l2-snapshot.sh)
+        # This step catches any resources leaked due to crashes or abnormal termination.
+
+        sudo rm -rf images 2>/dev/null || true
+        sudo find /tmp -maxdepth 1 -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
+        rm -rf /tmp/nanvix-test-* 2>/dev/null || true
+        sudo rm -rf /tmp/clh-console 2>/dev/null || true
+        sudo rm -f /tmp/cloud-hypervisor.sock 2>/dev/null || true
+        sudo rm -f /tmp/*.socket 2>/dev/null || true
+        for ns in $(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true); do
+          sudo ip link del "nvxgw-h-${ns#nvxns-}" 2>/dev/null || true
+          sudo ip netns del "${ns}" 2>/dev/null || true
+        done
