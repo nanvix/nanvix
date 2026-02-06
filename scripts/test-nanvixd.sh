@@ -45,6 +45,45 @@ NANVIX_HOME=$(git rev-parse --show-toplevel)
 source "${NANVIX_HOME}/scripts/common/logging.sh"
 source "${NANVIX_HOME}/scripts/common/utils.sh"
 
+# Path to the cleanup script.
+CLEANUP_SCRIPT="${NANVIX_HOME}/scripts/cleanup-nanvixd.sh"
+
+# Validate cleanup script exists and is executable (warn once, don't fail).
+CLEANUP_SCRIPT_AVAILABLE=true
+if [[ ! -x "${CLEANUP_SCRIPT}" ]]; then
+    print_warning "Cleanup script not found or not executable: ${CLEANUP_SCRIPT}"
+    CLEANUP_SCRIPT_AVAILABLE=false
+fi
+
+#===================================================================================================
+# Cleanup Functions
+#===================================================================================================
+
+#
+# Description
+#
+#   Invokes the cleanup script safely, emitting a warning if unavailable.
+#
+# Arguments
+#
+#   $@ - Arguments to pass to the cleanup script.
+#
+invoke_cleanup() {
+    if [ "${CLEANUP_SCRIPT_AVAILABLE}" = true ]; then
+        "${CLEANUP_SCRIPT}" "$@" 2>/dev/null || true
+    fi
+}
+
+#
+# Description
+#
+#   Cleans up resources on script exit (terminal mode only).
+#
+cleanup_terminal_mode() {
+    # Clean up network namespaces and sockets using cleanup script.
+    invoke_cleanup --netns --sockets
+}
+
 #===================================================================================================
 # Command line arguments
 #===================================================================================================
@@ -167,6 +206,12 @@ if [ "${MODE}" = "http" ]; then
 # Terminal mode: Test programs via nanvixd's terminal interface.
 # In this mode, the program is invoked directly and input is provided via stdin (not JSON).
 else
+    # Pre-cleanup: clean up stale resources from previous runs using cleanup script.
+    invoke_cleanup --netns --sockets
+
+    # Set up cleanup trap for terminal mode.
+    trap 'cleanup_terminal_mode' EXIT
+
     # Terminal mode: directly invoke nanvixd.elf with -- separator.
     RUN_COMMAND=("${NANVIX_HOME}/bin/nanvixd.elf" "--" "${PROGRAM_NAME}")
 
