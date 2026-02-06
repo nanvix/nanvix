@@ -351,10 +351,10 @@ def test(
         features=features,
     )
 
-    # Check if nanvixd tests are supported.
-    if has_nanvixd_tests(machine):
+    # Run system integration tests for supported machines.
+    if machine in ["microvm", "hyperlight"]:
         make(
-            "run-nanvixd-tests",
+            "run-nanvix-tests",
             machine,
             arch,
             release,
@@ -377,7 +377,7 @@ def test(
             features=features,
         )
 
-        # Check if last line of "test-stdout.log" contains the magic string.
+        # Check if last line of "run-stdout.log" contains the magic string.
         with open("run-stdout.log", "r") as file:
             lines = file.readlines()
             last_line = lines[-1]
@@ -387,20 +387,6 @@ def test(
                 print("last line:", last_line)
                 print("Test failed.")
                 exit(1)
-
-
-def has_nanvixd_tests(machine: str) -> bool:
-    """
-    Checks if Machine supports tests with nanvixd.
-
-    Args:
-        machine (str): Target machine.
-    """
-
-    if machine in ["microvm", "hyperlight"]:
-        return True
-    else:
-        return False
 
 
 def parse_args() -> argparse.Namespace:

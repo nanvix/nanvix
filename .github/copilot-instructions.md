@@ -152,42 +152,6 @@ Example:
 ./z build --with-cached-options -- run-unit-tests
 ```
 
-#### System Tests
-
-System tests run against a live Nanvix system and come in two modes:
-
-**HTTP Mode Tests** (supports all program types including WASM and interpreters):
-
-```bash
-./z build --with-cached-options -- run-nanvixd-http-tests
-```
-
-**Terminal Mode Tests** (native executables only):
-
-```bash
-./z build --with-cached-options -- run-nanvixd-terminal-tests
-```
-
-**Run specific test suites:**
-
-```bash
-# Run all system tests
-make run-nanvixd-tests
-
-# Run specific test categories
-make run-nanvixd-http-tests-c-bindings
-make run-nanvixd-http-tests-file
-make run-nanvixd-http-tests-quickjs
-```
-
-#### Manual System Test
-
-For manual testing or debugging:
-
-```bash
-scripts/test-nanvixd.sh 127.0.0.1:8181 bin/hello-c.elf '' '[]' 'Hello, world from C!'
-```
-
 #### Benchmarking
 
 ```bash

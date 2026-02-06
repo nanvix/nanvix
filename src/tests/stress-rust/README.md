@@ -22,9 +22,7 @@ we continue to engineer and debug these heavier scenarios.
   a sliding window of pages to stress the memory-management kernel calls directly.
 
 ## Current Status (January 14, 2026)
-- Running either `./z build -- test-nanvixd-http-stress-rust` or
-  `./z build -- test-nanvixd-terminal-stress-rust` currently fails *before* the VM is
-  brought up.
+- The stress tests currently fail *before* the VM is brought up.
 - `nanvixd` reports repeated "failed to connect to gateway socket" errors, suggesting
   a sandbox or runner startup problem rather than an in-guest crash.
 - Guest logs (when available) show `condvar::wait()` alarms expiring immediately at
@@ -42,5 +40,4 @@ we continue to engineer and debug these heavier scenarios.
    directory is cleaned between test runs.
 
 > This file should be kept up to date so we can quickly resume the investigation when
-> returning to the stress suite. We intentionally left the stress program out of the
-> default nanvixd test aggregates until it becomes reliable again.
+> returning to the stress suite.
