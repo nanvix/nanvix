@@ -5,13 +5,22 @@ GUEST_BINARY_FEATURES := $(LOG_LEVEL)
 GUEST_BINARY_FEATURES := $(strip $(GUEST_BINARY_FEATURES))
 GUEST_BINARY_CARGO_FEATURES := $(if $(GUEST_BINARY_FEATURES),--features "$(GUEST_BINARY_FEATURES)")
 
+# Package-specific features for test-kernel program.
+TEST_KERNEL_FEATURES := $(GUEST_BINARY_FEATURES)
+TEST_KERNEL_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+TEST_KERNEL_FEATURES := $(strip $(TEST_KERNEL_FEATURES))
+TEST_KERNEL_CARGO_FEATURES := $(if $(TEST_KERNEL_FEATURES),--features "$(TEST_KERNEL_FEATURES)")
+
+# Returns package-specific cargo features, falling back to generic features.
+GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(GUEST_BINARY_CARGO_FEATURES))
+
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): init all-guest-staticlibs
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
+	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
 	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES)
+	$(GUEST_CARGO_CHECK_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
 
 format-guest-binaries-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -24,10 +33,10 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) --fix --allow-dirty
 
 rust-lint-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) -- -D warnings
 endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))

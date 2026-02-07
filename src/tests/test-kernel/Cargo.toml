@@ -7,16 +7,18 @@ version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Test program that exits with a specific exit code via kernel call"
+description = "Focused user-level regression tests for kernel interfaces"
 homepage.workspace = true
 
 [[bin]]
 name = "test-kernel"
 
 [dependencies]
+arch = { workspace = true }
 libc_string = { workspace = true }
-sys = { workspace = true }
 nvx = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 cc = { workspace = true }
@@ -24,12 +26,13 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["panic"]
-trace = ["nvx/trace"]
-debug = ["nvx/debug"]
-info = ["nvx/info"]
-warn = ["nvx/warn"]
-error = ["nvx/error"]
-panic = ["nvx/panic"]
+trace = ["nvx/trace", "syslog/trace"]
+debug = ["nvx/debug", "syslog/debug"]
+info = ["nvx/info", "syslog/info"]
+warn = ["nvx/warn", "syslog/warn"]
+error = ["nvx/error", "syslog/error"]
+panic = ["nvx/panic", "syslog/panic"]
+hyperlight = []
 
 [lints]
 workspace = true

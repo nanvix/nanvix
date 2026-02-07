@@ -1838,18 +1838,61 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn mmio_free(
-        &mut self,
-        pid: ProcessIdentifier,
-        tag: MmioTag,
-        addr: PageAligned<VirtualAddress>,
-    ) -> Result<(), Error> {
+    ///
+    /// # Description
+    ///
+    /// Detaches a memory-mapped I/O region identified by `tag` from the process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process from which to detach the region.
+    /// - `tag`: Tag that uniquely identifies the MMIO region to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mmio_free(&mut self, pid: ProcessIdentifier, tag: MmioTag) -> Result<(), Error> {
         let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
         let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
-        state.remove_mmio(tag, addr);
+        state.remove_mmio(tag);
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves metadata for the MMIO region identified by `tag` attached to a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process that owns the region.
+    /// - `tag`: Tag that uniquely identifies the MMIO region.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a tuple containing the base address, size, and access permissions of the
+    /// region is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mmio_info(
+        &self,
+        pid: ProcessIdentifier,
+        tag: MmioTag,
+    ) -> Result<(PageAligned<VirtualAddress>, usize, AccessPermission), Error> {
+        let pm: Ref<ProcessManagerInner> = self.try_borrow()?;
+        let process: ProcessRef = pm.find_process(pid)?;
+        let state: &ProcessState = process.state();
+
+        match state.mmio_info(tag) {
+            Some(region) => Ok((region.base(), region.size(), region.perm())),
+            None => {
+                let reason: &'static str = "mmio region not found";
+                error!("{reason}");
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        }
     }
 
     pub fn attach_pmio(&mut self, pid: ProcessIdentifier, port: AnyIoPort) -> Result<(), Error> {

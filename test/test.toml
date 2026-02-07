@@ -7,7 +7,7 @@ ipv4_addr = "127.0.0.1"
 port_num = 9999
 hwloc_file_path = ""
 l2_enabled = false
-fatal = false
+fatal = true
 toolchain_path = "toolchain"
 sysroot_path = "./sysroot"
 nanvixd_shutdown_attempts_max = 10
@@ -39,6 +39,8 @@ iterations = 2
 [[tests]]
 executor = "http"
 program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -157,6 +159,8 @@ expected_output = "Hello, world!"
 [[tests]]
 executor = "terminal"
 program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 

@@ -8,6 +8,7 @@
 // Imports
 //==================================================================================================
 
+extern crate alloc;
 extern crate libc_string;
 extern crate nvx;
 
@@ -15,6 +16,13 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+#[cfg(not(feature = "hyperlight"))]
+mod mmio_ramfs;
 
 //==================================================================================================
 // Constants
@@ -30,8 +38,9 @@ const EXIT_CODE: i32 = 13;
 ///
 /// # Description
 ///
-/// Entry point of the test program. This function returns an error with a specific error code
-/// to test that the expected_exit_code assertion works correctly in nanvix-test.
+/// Entry point of the test program. This function runs kernel interface tests and returns an
+/// error with a specific error code to test that the expected_exit_code assertion works correctly
+/// in nanvix-test.
 ///
 /// # Returns
 ///
@@ -39,6 +48,9 @@ const EXIT_CODE: i32 = 13;
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
+    #[cfg(not(feature = "hyperlight"))]
+    mmio_ramfs::run()?;
+
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.
     Err(Error::new(
