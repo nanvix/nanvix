@@ -196,6 +196,20 @@ pub(crate) async fn test_with_http_executor(
                 error!("test_with_http_executor(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             }
+
+            // When termination succeeds on hyperlight, still validate the exit code.
+            if workload.skip_exit_code_validation()
+                && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                && let Some(expected) = workload.expected_exit_code()
+                && exit_code != expected
+            {
+                let reason: String = format!(
+                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                    expected, exit_code, program_path, iteration
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
         }
     }
 

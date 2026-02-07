@@ -293,6 +293,23 @@ pub async fn test_with_terminal_executor(
             return Err(::anyhow::anyhow!(reason));
         }
 
+        // When wait_exit_code succeeds on hyperlight, still validate the exit code.
+        if workload.skip_exit_code_validation()
+            && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
+            && let Some(expected) = workload.expected_exit_code()
+            && exit_code != expected
+        {
+            let reason: String = format!(
+                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                expected,
+                exit_code,
+                workload.program_path(),
+                iteration
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
         guest_log_tracker.move_new_logs(log_layout.test_directory())?;
         log_layout.normalize_component_logs(iteration)?;
     }
