@@ -12,8 +12,8 @@
 
 use crate::netns::NetnsInfo;
 use ::std::{
-    io,
     ffi::CString,
+    io,
     os::unix::io::RawFd,
 };
 use ::syslog::error;
@@ -53,14 +53,19 @@ unsafe fn setns_by_name(ns_name: &str) -> io::Result<()> {
 
     let fd: RawFd = libc::open(c_path.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC);
     if fd < 0 {
-        error!("setns_by_name(): error opening netns file (error={:?})", io::Error::last_os_error());
-        return Err(io::Error::last_os_error());
+        let open_err: io::Error = io::Error::last_os_error();
+        error!("setns_by_name(): error opening netns file (error={open_err:?})");
+        return Err(open_err);
     }
 
     // Join the network namespace.
     // Note: setns() returns 0 on success, -1 on error (errno set).
     let rc: libc::c_int = libc::setns(fd, libc::CLONE_NEWNET);
-    let saved_err: Option<io::Error> = if rc != 0 { Some(io::Error::last_os_error()) } else { None };
+    let saved_err: Option<io::Error> = if rc != 0 {
+        Some(io::Error::last_os_error())
+    } else {
+        None
+    };
 
     // Close fd regardless.
     let close_rc: libc::c_int = libc::close(fd);
@@ -102,15 +107,15 @@ unsafe fn setns_by_name(ns_name: &str) -> io::Result<()> {
 ///
 /// A Command with the right hook that can be spawned.
 ///
-pub fn command_in_netns(
-    info: &NetnsInfo,
-    program: &str,
-    args: &[String],
-) -> Command {
+pub fn command_in_netns(info: &NetnsInfo, program: &str, args: &[String]) -> Command {
     let ns_name: String = info.ns_name().to_string();
 
     let mut cmd: Command = Command::new(program);
     cmd.args(args);
+    // Ensure the child process is killed if the Child handle is dropped without explicit cleanup.
+    // This acts as a best-effort safety net during normal unwinding and shutdown paths where drop
+    // handlers run, helping to prevent orphaned processes.
+    cmd.kill_on_drop(true);
 
     // SAFETY: inside the `pre-exec` closure we only run the logic to open the network namespace
     // file descriptor and call `setns` on it. It does not allocate any memory, and it only calls
