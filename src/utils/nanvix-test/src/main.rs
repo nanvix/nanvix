@@ -220,8 +220,16 @@ async fn run() -> Result<()> {
 
         debug!(
             "main(): running test (executor={}, iterations={}, program={:?}, program_args={:?}, \
+             expected_output={:?}, expect_empty_output={}, expected_exit_code={:?}, \
              extra_nanvixd_args={:?})",
-            executor, iterations, program, program_args, extra_nanvixd_args,
+            executor,
+            iterations,
+            program,
+            program_args,
+            expected_output,
+            expect_empty_output,
+            expected_exit_code,
+            extra_nanvixd_args
         );
 
         let executor_name: ExecutorName = ExecutorName::from_str(executor.as_str())?;
