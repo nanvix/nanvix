@@ -185,6 +185,13 @@ impl RunningProcess {
         status: ExitStatus,
     ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
     {
+        // Save the exit status before terminating any threads. This ensures that the intended
+        // exit code from the first exit() call is preserved, even if subsequent thread cleanup
+        // triggers additional exit() calls with different status values (e.g., ESRCH from
+        // detached thread teardown). The set_pending_exit_status() method is a no-op when a
+        // pending status is already set, so only the first caller's status is retained.
+        self.state.set_pending_exit_status(status);
+
         let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
@@ -214,11 +221,6 @@ impl RunningProcess {
         }
 
         if let Some(interrupted_threads) = interrupted_threads {
-            // Store the pending exit status so that when the last thread terminates,
-            // the process uses this status (from the thread that called exit()) instead of
-            // the status from the terminated threads.
-            self.state.set_pending_exit_status(status);
-
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
                 self.state,
                 self.sleeping_threads.take(),
@@ -228,8 +230,9 @@ impl RunningProcess {
 
             Ok((interrupted_process.resume(), ctx))
         } else {
-            // Use pending exit status if set (from a prior exit() call), otherwise use current
-            // thread's status.
+            // Use pending exit status (from the first exit() call). The unwrap_or fallback
+            // should never be reached because set_pending_exit_status is called above, but is
+            // kept as a defensive measure.
             let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
             Err((ZombieProcess::new(self.state, zombie_threads, final_status), ctx))
         }
