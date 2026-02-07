@@ -39,7 +39,10 @@ use ::nanvix_sandbox_cache::{
     SandboxCacheConfig,
 };
 use ::std::{
-    io::Read,
+    io::{
+        ErrorKind,
+        Read,
+    },
     mem,
     ptr,
     sync::Arc,
@@ -47,6 +50,7 @@ use ::std::{
 use ::syslog::{
     error,
     info,
+    warn,
 };
 use ::tokio::{
     io::{
@@ -231,9 +235,18 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
                                 stdout.flush().await?;
                             }
                         },
-                        Err(error) => {
-                            error!("failed to read from gateway: {}", error);
-                            break Err(anyhow::anyhow!(error));
+                        Err(error) => match error.kind() {
+                            ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
+                                // Treat connection reset and unexpected EOF as normal close.
+                                // The guest program may exit without writing any output, which
+                                // causes the gateway socket to be reset from the VM side.
+                                warn!("gateway closed with {}: treating as normal close.", error.kind());
+                                break Ok(());
+                            },
+                            _ => {
+                                error!("failed to read from gateway: {}", error);
+                                break Err(anyhow::anyhow!(error));
+                            },
                         },
                     }
                 },
