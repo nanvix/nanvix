@@ -39,6 +39,8 @@ iterations = 2
 [[tests]]
 executor = "http"
 program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -217,6 +219,8 @@ expected_output = "Hello, world!"
 [[tests]]
 executor = "terminal"
 program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 

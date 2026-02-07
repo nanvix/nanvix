@@ -31,10 +31,7 @@ use crate::{
             IoPortWidth,
             MmioTag,
         },
-        mem::{
-            PageAligned,
-            VirtualAddress,
-        },
+        mem::VirtualAddress,
     },
     ipc::Mailbox,
     mm::Vmem,
@@ -268,12 +265,58 @@ impl ProcessState {
         self.mailbox.receive(tid)
     }
 
+    /// # Description
+    ///
+    /// Adds an MMIO region to the process state.
+    ///
+    /// # Parameters
+    ///
+    /// - `region`: The I/O memory region to add.
+    ///
+    /// # Note
+    ///
+    /// Tag uniqueness is enforced by [`IoMemoryAllocator`], which guarantees that no two regions
+    /// with the same tag can be allocated simultaneously.
+    ///
     pub fn add_mmio(&mut self, region: IoMemoryRegion) {
         self.mmio.push_back(region)
     }
 
-    pub fn remove_mmio(&mut self, tag: MmioTag, addr: PageAligned<VirtualAddress>) {
-        self.mmio.retain(|r| r.tag() != tag || r.base() != addr)
+    ///
+    /// # Description
+    ///
+    /// Removes the MMIO region identified by the given tag from the process state.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Tag that uniquely identifies the region to remove.
+    ///
+    /// # Note
+    ///
+    /// Tag uniqueness is enforced by [`IoMemoryAllocator`], so at most one region will match.
+    ///
+    pub fn remove_mmio(&mut self, tag: MmioTag) {
+        if let Some(index) = self.mmio.iter().position(|r| r.tag() == tag) {
+            // Remove only the first region that matches the given tag.
+            self.mmio.remove(index);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves a reference to the MMIO region identified by the given tag.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Tag that uniquely identifies the region to look up.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`IoMemoryRegion`] if found, or `None` otherwise.
+    ///
+    pub fn mmio_info(&self, tag: MmioTag) -> Option<&IoMemoryRegion> {
+        self.mmio.iter().find(|r| r.tag() == tag)
     }
 
     pub fn add_pmio(&mut self, port: AnyIoPort) {
