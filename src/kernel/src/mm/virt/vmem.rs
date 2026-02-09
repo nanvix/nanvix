@@ -298,8 +298,12 @@ impl Vmem {
                 // Add the kernel page to the list of kernel pages.
                 self.kernel_pages.push_back(Rc::new(RefCell::new(kpage)));
 
-                // Reload page directory to force a TLB flush.
-                self.load()?;
+                // Invalidate the TLB entry for this specific page instead of
+                // flushing the entire TLB.  Under nested virtualization,
+                // `invlpg` is far cheaper than a CR3 reload because it avoids
+                // the full TLB flush that triggers expensive nested page table
+                // walks for every subsequent memory access.
+                unsafe { mmu::invalidate_page(vaddr.into_raw_value()) };
 
                 return Ok(());
             }

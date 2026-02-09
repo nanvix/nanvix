@@ -40,3 +40,33 @@ pub unsafe fn load_page_directory(cr3: usize) {
         options(nostack, att_syntax)
     );
 }
+
+///
+/// # Description
+///
+/// Invalidates the TLB entry for a single page using the `invlpg` instruction.
+///
+/// This is much cheaper than a full TLB flush (CR3 reload) because it only
+/// invalidates the single TLB entry for the given virtual address, rather than
+/// flushing all entries. Under nested virtualization, `invlpg` does not cause
+/// a VM exit (KVM handles it in-guest via NPT), unlike CR3 writes which flush
+/// the entire TLB and trigger expensive nested page table walks for every
+/// subsequent memory access.
+///
+/// # Parameters
+///
+/// - `vaddr`: The virtual address of the page whose TLB entry should be
+///   invalidated.
+///
+/// # Safety
+///
+/// The caller must ensure that `vaddr` is a valid virtual address.
+///
+#[inline(always)]
+pub unsafe fn invalidate_page(vaddr: usize) {
+    arch::asm!(
+        "invlpg ({0})",
+        in(reg) vaddr,
+        options(nostack, att_syntax)
+    );
+}
