@@ -12,6 +12,7 @@
 //==================================================================================================
 
 pub mod elf;
+mod identity;
 mod phys;
 mod virt;
 
@@ -247,6 +248,11 @@ pub fn init(
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(Vmem, VirtMemoryManager), Error> {
     info!("initializing the memory manager ...");
+
+    // Initialize the identity page directory used by __phys_memcpy/__phys_memset.
+    // This must happen before any physical-memory copy/set routines are called.
+    // SAFETY: Called exactly once, before any __phys_memcpy/__phys_memset usage.
+    unsafe { identity::init() };
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;

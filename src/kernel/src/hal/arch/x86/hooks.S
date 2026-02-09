@@ -256,6 +256,7 @@
 .extern do_exception
 .extern do_kcall
 .extern do_interrupt
+.extern IDENTITY_CR3
 
 /* Exception hooks. */
 .globl _do_excp0
@@ -538,6 +539,11 @@ __leave_kernel:
 
 /*
  * Physical memory copy.
+ *
+ * Switches to an identity-mapped page directory (VA == PA for [0, MEMORY_SIZE))
+ * instead of toggling CR0.PG.  CR3 writes are not intercepted by KVM when AMD
+ * NPT is active, so this avoids the VM-exit overhead on AMD SVM that the
+ * previous CR0.PG toggle approach incurred.
  */
 __phys_memcpy:
     pushl %esi
@@ -552,27 +558,17 @@ __phys_memcpy:
     test %ecx, %ecx
     jz __phys_memcpy.done
 
-    /* Preserve flags before paging is disabled. */
-    pushf
-    popl %edx
+    /* Switch to identity page directory. */
+    movl %cr3, %edx
+    movl IDENTITY_CR3, %eax
+    movl %eax, %cr3
 
-    /* Disable paging. */
-    movl %cr0, %eax
-    andl $0x80000000 - 1, %eax
-    movl %eax, %cr0
-
-    /* Use rep movsb while paging is temporarily disabled. */
+    /* Copy using rep movsb with identity mapping active. */
     cld
     rep movsb
 
-    /* Re-enable paging. */
-    movl %cr0, %eax
-    orl $0x80000000, %eax
-    movl %eax, %cr0
-
-    /* Restore flags now that paging is enabled again. */
-    pushl %edx
-    popf
+    /* Restore original page directory. */
+    movl %edx, %cr3
 
 __phys_memcpy.done:
 
@@ -587,6 +583,8 @@ __phys_memcpy.done:
 
 /*
  * Physical memory copy (32-bit word at a time).
+ *
+ * Same CR3-switch approach as __phys_memcpy above.
  */
 __phys_memcpy32:
     pushl %esi
@@ -604,27 +602,17 @@ __phys_memcpy32:
     test %ecx, %ecx
     jz __phys_memcpy32.done
 
-    /* Preserve flags before paging is disabled. */
-    pushf
-    popl %edx
+    /* Switch to identity page directory. */
+    movl %cr3, %edx
+    movl IDENTITY_CR3, %eax
+    movl %eax, %cr3
 
-    /* Disable paging. */
-    movl %cr0, %eax
-    andl $0x80000000 - 1, %eax
-    movl %eax, %cr0
-
-    /* Use rep movsl while paging is temporarily disabled. */
+    /* Copy using rep movsl with identity mapping active. */
     cld
     rep movsl
 
-    /* Re-enable paging. */
-    movl %cr0, %eax
-    orl $0x80000000, %eax
-    movl %eax, %cr0
-
-    /* Restore flags now that paging is enabled again. */
-    pushl %edx
-    popf
+    /* Restore original page directory. */
+    movl %edx, %cr3
 
 __phys_memcpy32.done:
 
@@ -639,6 +627,10 @@ __phys_memcpy32.done:
 
 /*
  * Fills a memory region with a given value.
+ *
+ * With paging kept enabled (identity mapping), we can use rep stosb instead of
+ * the previous byte-by-byte loop that was necessary when paging was disabled
+ * (segment registers require the GDT which is paging-dependent).
  */
 __phys_memset:
     pushl %edi
@@ -648,27 +640,28 @@ __phys_memset:
     movl 12(%esp), %edx /* value */
     movl 16(%esp), %ecx /* size */
 
-    /* Disable paging. */
-    movl %cr0, %eax
-    andl $0x80000000 - 1, %eax
-    movl %eax, %cr0
+    /* If size is zero, skip. */
+    test %ecx, %ecx
+    jz __phys_memset.done
 
-/*
- * We cannot use nice instructions such as
- * movsb because we would use segment registers
- * and therefore the GDT, which is only accessible
- * when paging is enabled.
- */
-__phys_memset.loop:
-    movb %dl, (%edi)
-    inc %edi
-    dec %ecx
-    jnz __phys_memset.loop
+    /* Save current CR3 and switch to identity page directory. */
+    movl %cr3, %eax
+    pushl %eax
+    movl IDENTITY_CR3, %eax
+    movl %eax, %cr3
 
-    /* Re-enable paging. */
-    movl %cr0, %eax
-    orl $0x80000000, %eax
-    movl %eax, %cr0
+    /* Set up eax = fill byte for rep stosb (al = value). */
+    movl %edx, %eax
+
+    /* Fill using rep stosb with identity mapping active. */
+    cld
+    rep stosb
+
+    /* Restore original page directory. */
+    popl %eax
+    movl %eax, %cr3
+
+__phys_memset.done:
 
     popl %edi
 
