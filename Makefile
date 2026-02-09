@@ -135,7 +135,6 @@ NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
 # Scripts
-RUN_NANVIXD_SCRIPT := $(SCRIPTS_DIR)/run-nanvixd.sh
 GRUB_CFG_SCRIPT := $(BUILD_DIR)/iso/boot/grub/grub.cfg
 
 #===================================================================================================
@@ -303,12 +302,6 @@ export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
 
 #===================================================================================================
-# Configuration for Tests
-#===================================================================================================
-
-export NANVIXD_SOCKADDR := $(if $(filter yes,$(RELEASE)),127.0.0.1:8181,127.0.0.1:8282)
-
-#===================================================================================================
 # Top-Level Targets
 #===================================================================================================
 
@@ -438,7 +431,6 @@ ifneq ($(SINGLE_PROCESS),yes)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
-	@cp ${RUN_NANVIXD_SCRIPT} ${SYSROOT_DIR}/etc/scripts/
 endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common
@@ -474,7 +466,7 @@ help:
 	@echo ""
 	@echo "Testing Targets"
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
-	@echo "  run-nanvixd-tests    Run system integration tests"
+	@echo "  run-nanvix-tests     Run system integration tests using nanvix-test"
 	@echo ""
 	@echo "Execution Targets"
 	@echo "  debug    Run system in debug mode"
@@ -683,9 +675,7 @@ endif
 test:
 	@$(MAKE) run-unit-tests
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-	@$(MAKE) run-nanvixd-tests
-else
-	@echo "Skipping run-nanvixd-tests; MACHINE=$(MACHINE) does not support nanvixd system tests."
+	@$(MAKE) run-nanvix-tests
 endif
 
 run-unit-tests: all-nanvix test-guest-rlibs
@@ -694,7 +684,21 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 run-unit-tests: test-host-rlibs
 endif
 
-include build/make/test.mk
+# Determine the test configuration file based on deployment mode.
+ifeq ($(SINGLE_PROCESS),yes)
+NANVIX_TEST_CONFIG := test/test-single_process.toml
+else ifeq ($(L2_VM),yes)
+NANVIX_TEST_CONFIG := test/test-l2.toml
+else
+NANVIX_TEST_CONFIG := test/test-multi_process.toml
+endif
+
+NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf
+
+.PHONY: run-nanvix-tests
+run-nanvix-tests: all-nanvix
+	@echo "Running integration tests with configuration: $(NANVIX_TEST_CONFIG)"
+	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(NANVIX_TEST_CONFIG)
 
 #===================================================================================================
 # Build Rules for Optional Software
