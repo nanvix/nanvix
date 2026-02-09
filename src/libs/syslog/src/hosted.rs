@@ -6,10 +6,15 @@
 //==================================================================================================
 
 use ::flexi_logger::{
+    DeferredNow,
     FileSpec,
     Logger,
 };
-use ::std::sync::Once;
+use ::log::Record;
+use ::std::{
+    io::Write,
+    sync::Once,
+};
 
 //==================================================================================================
 // Re-Exports
@@ -22,6 +27,58 @@ pub use ::log::{
     trace,
     warn,
 };
+
+//==================================================================================================
+// Private Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Formats a log record with relative file paths instead of absolute paths.
+///
+/// # Parameters
+///
+/// - `write`: The writer to write the formatted log record to.
+/// - `now`: The current timestamp.
+/// - `record`: The log record to format.
+///
+/// # Returns
+///
+/// A result indicating success or failure.
+///
+fn format_with_relative_path(
+    write: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), ::std::io::Error> {
+    // Get the file path and strip the absolute path prefix to show only the relative path.
+    let file_path: &str = if let Some(file) = record.file() {
+        // Find the last occurrence of "/nanvix/" and strip everything before it (including "/nanvix/")
+        // This will convert paths like:
+        // "/opt/github/actions-runner/_work/nanvix/nanvix/src/libs/nanvix-sandbox/src/initialized.rs"
+        // to: "src/libs/nanvix-sandbox/src/initialized.rs"
+        if let Some(pos) = file.rfind("/nanvix/") {
+            &file[pos + 8..] // +8 to skip "/nanvix/"
+        } else {
+            file
+        }
+    } else {
+        "<unknown>"
+    };
+
+    // Format the log record similar to colored_detailed_format but with relative path
+    write!(
+        write,
+        "[{}] {} [{}] {}:{}: {}",
+        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        ::flexi_logger::style(record.level()).paint(record.level().to_string()),
+        record.module_path().unwrap_or("<unnamed>"),
+        file_path,
+        record.line().unwrap_or(0),
+        record.args()
+    )
+}
 
 //==================================================================================================
 // Public Standalone Functions
@@ -53,7 +110,7 @@ pub fn init(
     INIT_LOG.call_once(|| {
         let logger: Logger = Logger::try_with_env_or_str(default_level)
             .expect("malformed RUST_LOG environment variable")
-            .format(::flexi_logger::colored_detailed_format)
+            .format(format_with_relative_path)
             .write_mode(::flexi_logger::WriteMode::Direct);
         if log_to_file {
             let mut file_spec: FileSpec = FileSpec::default().directory(log_dir);
