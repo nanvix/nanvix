@@ -42,12 +42,20 @@ use ::std::{
     thread,
     time::Duration,
 };
-use ::tokio::process::{
-    Child,
-    ChildStderr,
-    ChildStdin,
-    ChildStdout,
-    Command,
+use ::tokio::{
+    process::{
+        Child,
+        ChildStderr,
+        ChildStdin,
+        ChildStdout,
+        Command,
+    },
+    runtime::{
+        Builder,
+        Handle,
+        RuntimeFlavor,
+    },
+    task::block_in_place,
 };
 
 //==================================================================================================
@@ -513,12 +521,82 @@ impl EnvironmentCleanupGuard {
 
 impl Drop for EnvironmentCleanupGuard {
     fn drop(&mut self) {
-        environment::cleanup_after_run(
-            self.l2_enabled,
-            self.http_port,
-            self.tmp_directory.as_path(),
-            self.tcp_cleanup_max_wait_seconds,
-            self.tcp_cleanup_poll_interval_seconds,
-        );
+        let l2_enabled: bool = self.l2_enabled;
+        let http_port: Option<u16> = self.http_port;
+        let tmp_directory: PathBuf = self.tmp_directory.clone();
+        let tcp_cleanup_max_wait_seconds: u64 = self.tcp_cleanup_max_wait_seconds;
+        let tcp_cleanup_poll_interval_seconds: u64 = self.tcp_cleanup_poll_interval_seconds;
+
+        if let Ok(handle) = Handle::try_current() {
+            match handle.runtime_flavor() {
+                RuntimeFlavor::MultiThread => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    block_in_place(|| {
+                        handle.block_on(async {
+                            environment::cleanup_after_run(
+                                l2_enabled,
+                                http_port,
+                                tmp_clone.as_path(),
+                                tcp_cleanup_max_wait_seconds,
+                                tcp_cleanup_poll_interval_seconds,
+                            )
+                            .await;
+                        });
+                    });
+                },
+                RuntimeFlavor::CurrentThread => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    handle.spawn(async move {
+                        environment::cleanup_after_run(
+                            l2_enabled,
+                            http_port,
+                            tmp_clone.as_path(),
+                            tcp_cleanup_max_wait_seconds,
+                            tcp_cleanup_poll_interval_seconds,
+                        )
+                        .await;
+                    });
+                },
+                _ => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    warn_with_policy!(
+                        "EnvironmentCleanupGuard::drop(): unknown runtime flavor, running cleanup \
+                         synchronously"
+                    );
+                    block_in_place(|| {
+                        handle.block_on(async {
+                            environment::cleanup_after_run(
+                                l2_enabled,
+                                http_port,
+                                tmp_clone.as_path(),
+                                tcp_cleanup_max_wait_seconds,
+                                tcp_cleanup_poll_interval_seconds,
+                            )
+                            .await;
+                        });
+                    });
+                },
+            }
+            return;
+        }
+
+        match Builder::new_current_thread().enable_all().build() {
+            Ok(runtime) => {
+                runtime.block_on(async {
+                    environment::cleanup_after_run(
+                        l2_enabled,
+                        http_port,
+                        tmp_directory.as_path(),
+                        tcp_cleanup_max_wait_seconds,
+                        tcp_cleanup_poll_interval_seconds,
+                    )
+                    .await;
+                });
+            },
+            Err(error) => warn_with_policy!(
+                "EnvironmentCleanupGuard::drop(): failed to build cleanup runtime (error={})",
+                error
+            ),
+        }
     }
 }
