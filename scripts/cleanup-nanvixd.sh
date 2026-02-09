@@ -9,8 +9,6 @@
 #
 # This script consolidates all cleanup logic used across:
 # - .github/actions/cleanup/action.yml
-# - scripts/run-nanvixd.sh
-# - scripts/test-nanvixd.sh
 #
 # Usage:
 #   cleanup-nanvixd.sh [OPTIONS]

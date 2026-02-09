@@ -10,10 +10,8 @@ This document guides you through testing Nanvix.
 
 - [Running Full CI Pipeline](#running-full-ci-pipeline)
 - [Running Unit Tests](#running-unit-tests)
-- [Running System-Level Tests (MicroVM and Hyperlight Machines Only)](#running-system-level-tests-microvm-and-hyperlight-machines-only)
-  - [HTTP Mode Tests](#http-mode-tests)
-  - [Terminal Mode Tests](#terminal-mode-tests)
-  - [Understanding Test Modes](#understanding-test-modes)
+- [Running System Integration Tests (MicroVM and Hyperlight Only)](#running-system-integration-tests-microvm-and-hyperlight-only)
+  - [Test Modes](#test-modes)
 - [Running All Tests](#running-all-tests)
 
 ## Running Full CI Pipeline
@@ -32,52 +30,39 @@ build parameters.
 make run-unit-tests
 ```
 
-## Running System-Level Tests (MicroVM and Hyperlight Machines Only)
+## Running System Integration Tests (MicroVM and Hyperlight Only)
 
-> ℹ️ This runs system-level tests with the default build parameters.  Check the
-[build.md](build.md) document for more information on how to change default
-build parameters.
+> ℹ️ System integration tests are only available on `microvm` and `hyperlight`
+machines. These tests use the `nanvix-test.elf` utility to run programs through
+the Nanvix Daemon.
 
-System-level tests for Nanvix can be run in two modes: HTTP mode and terminal mode.
-
-### HTTP Mode Tests
-
-HTTP mode tests run programs through nanvixd's HTTP API. This is the default mode and supports all test types including WASM and interpreter-based programs (Python, QuickJS).
+The system integration tests can be run directly using:
 
 ```bash
-make run-nanvixd-http-tests
+make run-nanvix-tests
 ```
 
-### Terminal Mode Tests
+The appropriate test configuration is automatically selected based on the
+deployment mode:
 
-Terminal mode tests run programs directly through nanvixd's terminal interface. This mode provides a more direct execution path but does not support WASM or interpreter-based programs.
+- **Single-process mode** (`SINGLE_PROCESS=yes`): Uses `test/test-single_process.toml`
+- **L2 VM mode** (`L2_VM=yes`): Uses `test/test-l2.toml`
+- **Multi-process mode** (default): Uses `test/test-multi_process.toml`
 
-```bash
-make run-nanvixd-terminal-tests
-```
+### Test Modes
 
-### Understanding Test Modes
+The `nanvix-test.elf` utility supports two execution modes:
 
 **HTTP Mode:**
 
-- Programs are invoked via HTTP requests to nanvixd
-- Program arguments and input are passed as JSON payloads
-- Supports all program types: native executables, WASM modules, and interpreter-based programs
-- Uses `run-nanvixd.sh` script to communicate with nanvixd server
+- Programs are invoked via HTTP requests to nanvixd.
+- Supports all program types: native executables, WASM modules, and interpreter-based programs.
 
 **Terminal Mode:**
 
-- Programs are invoked directly by nanvixd with a terminal interface
-- Input is provided directly via stdin (not as JSON)
-- Only supports native executables (ELF binaries)
-- Does not support WASM modules or interpreter-based programs (Python, QuickJS)
-- Does not support L2 VM deployment
-
-To run all tests (both HTTP and terminal modes):
-
-```bash
-make run-nanvixd-tests
-```
+- Programs are invoked directly by nanvixd with a terminal interface.
+- Only supports native executables (ELF binaries).
+- Not available for L2 VM deployments (`L2_VM=yes`); L2 configurations always use the HTTP executor.
 
 ## Running All Tests
 
@@ -87,6 +72,5 @@ make run-nanvixd-tests
 make test
 ```
 
-`make test` first runs `run-unit-tests` and then executes `run-nanvixd-tests` (HTTP and terminal
-modes) when running on `microvm` or `hyperlight`. For other machines, Nanvix skips the nanvixd
-tests automatically and reports that system tests are unavailable.
+On `microvm` and `hyperlight` machines, `make test` runs both unit tests and
+system integration tests. On other machines, only unit tests are executed.
