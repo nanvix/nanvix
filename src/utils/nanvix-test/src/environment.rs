@@ -24,17 +24,17 @@ use ::nanvixd::config::{
     DEFAULT_L2_SNAPSHOT_DIRECTORY,
     DEFAULT_SNAPSHOT_FILE_NAME,
 };
-use ::std::{
+use ::std::path::{
+    Path,
+    PathBuf,
+};
+use ::tokio::{
     fs,
-    path::{
-        Path,
-        PathBuf,
-    },
     process::Command,
-    thread::sleep,
     time::{
         Duration,
         Instant,
+        sleep,
     },
 };
 
@@ -57,23 +57,24 @@ use ::std::{
 ///   sockets.
 /// - `tcp_cleanup_poll_interval_seconds`: Seconds between TIME_WAIT socket inspections.
 ///
-pub(crate) fn prepare_runner_environment(
+pub(crate) async fn prepare_runner_environment(
     l2_enabled: bool,
     port_num: u16,
     tmp_directory: &Path,
     tcp_cleanup_max_wait_seconds: u64,
     tcp_cleanup_poll_interval_seconds: u64,
 ) {
-    cleanup_stale_sockets(tmp_directory);
-    cleanup_stale_files(tmp_directory);
-    cleanup_stale_netns();
+    cleanup_stale_unix_sockets(tmp_directory).await;
+    cleanup_stale_files(tmp_directory).await;
+    cleanup_stale_netns().await;
 
     if l2_enabled {
         wait_for_tcp_cleanup(
             port_num,
             tcp_cleanup_max_wait_seconds,
             tcp_cleanup_poll_interval_seconds,
-        );
+        )
+        .await;
     }
 }
 
@@ -98,9 +99,12 @@ pub(crate) fn prepare_runner_environment(
 /// Returns an error when the helper scripts are missing, fail to execute, or the artifacts remain
 /// absent after generation attempts.
 ///
-pub(crate) fn prepare_l2_artifacts(toolchain_path: &str, working_directory: &Path) -> Result<()> {
+pub(crate) async fn prepare_l2_artifacts(
+    toolchain_path: &str,
+    working_directory: &Path,
+) -> Result<()> {
     let images_dir: PathBuf = working_directory.join(DEFAULT_L2_SNAPSHOT_DIRECTORY);
-    if let Err(error) = fs::create_dir_all(&images_dir) {
+    if let Err(error) = fs::create_dir_all(&images_dir).await {
         let reason: String = format!(
             "failed to create images directory (path={}, error={error})",
             images_dir.display()
@@ -112,7 +116,31 @@ pub(crate) fn prepare_l2_artifacts(toolchain_path: &str, working_directory: &Pat
     let snapshot_path: PathBuf = images_dir.join(SNAPSHOT_NAME);
     let initramfs_path: PathBuf = images_dir.join(DEFAULT_SNAPSHOT_FILE_NAME);
 
-    if snapshot_path.exists() && initramfs_path.exists() {
+    // Check for existing artifacts.
+    let snapshot_exists: bool = match fs::try_exists(&snapshot_path).await {
+        Ok(exists) => exists,
+        Err(error) => {
+            warn_with_policy!(
+                "prepare_l2_artifacts(): failed to check snapshot existence (path={}, error={})",
+                snapshot_path.display(),
+                error
+            );
+            false
+        },
+    };
+    let initramfs_exists: bool = match fs::try_exists(&initramfs_path).await {
+        Ok(exists) => exists,
+        Err(error) => {
+            warn_with_policy!(
+                "prepare_l2_artifacts(): failed to check initramfs existence (path={}, error={})",
+                initramfs_path.display(),
+                error
+            );
+            false
+        },
+    };
+
+    if snapshot_exists && initramfs_exists {
         debug!(
             "prepare_l2_artifacts(): reusing existing L2 artifacts (snapshot={}, initramfs={})",
             snapshot_path.display(),
@@ -130,7 +158,7 @@ pub(crate) fn prepare_l2_artifacts(toolchain_path: &str, working_directory: &Pat
         initramfs_script.display(),
         initramfs_path.display()
     );
-    run_script(&initramfs_script, working_directory, &[])?;
+    run_script(&initramfs_script, working_directory, &[]).await?;
 
     info!(
         "prepare_l2_artifacts(): generating L2 snapshot (script={}, output={}, toolchain={})",
@@ -138,9 +166,34 @@ pub(crate) fn prepare_l2_artifacts(toolchain_path: &str, working_directory: &Pat
         snapshot_path.display(),
         toolchain_path
     );
-    run_script(&snapshot_script, working_directory, &[toolchain_path])?;
+    run_script(&snapshot_script, working_directory, &[toolchain_path]).await?;
 
-    if snapshot_path.exists() && initramfs_path.exists() {
+    let snapshot_exists_after: bool = match fs::try_exists(&snapshot_path).await {
+        Ok(exists) => exists,
+        Err(error) => {
+            warn_with_policy!(
+                "prepare_l2_artifacts(): failed to check snapshot after generation (path={}, \
+                 error={})",
+                snapshot_path.display(),
+                error
+            );
+            false
+        },
+    };
+    let initramfs_exists_after: bool = match fs::try_exists(&initramfs_path).await {
+        Ok(exists) => exists,
+        Err(error) => {
+            warn_with_policy!(
+                "prepare_l2_artifacts(): failed to check initramfs after generation (path={}, \
+                 error={})",
+                initramfs_path.display(),
+                error
+            );
+            false
+        },
+    };
+
+    if snapshot_exists_after && initramfs_exists_after {
         info!(
             "prepare_l2_artifacts(): generated L2 artifacts (snapshot={}, initramfs={})",
             snapshot_path.display(),
@@ -174,16 +227,16 @@ pub(crate) fn prepare_l2_artifacts(toolchain_path: &str, working_directory: &Pat
 ///   sockets.
 /// - `tcp_cleanup_poll_interval_seconds`: Seconds between TIME_WAIT socket inspections.
 ///
-pub(crate) fn cleanup_after_run(
+pub(crate) async fn cleanup_after_run(
     l2_enabled: bool,
     http_port: Option<u16>,
     tmp_directory: &Path,
     tcp_cleanup_max_wait_seconds: u64,
     tcp_cleanup_poll_interval_seconds: u64,
 ) {
-    cleanup_stale_sockets(tmp_directory);
-    cleanup_stale_netns();
-    cleanup_stale_files(tmp_directory);
+    cleanup_stale_unix_sockets(tmp_directory).await;
+    cleanup_stale_netns().await;
+    cleanup_stale_files(tmp_directory).await;
 
     if l2_enabled {
         match http_port {
@@ -192,7 +245,8 @@ pub(crate) fn cleanup_after_run(
                     port,
                     tcp_cleanup_max_wait_seconds,
                     tcp_cleanup_poll_interval_seconds,
-                );
+                )
+                .await;
             },
             None => warn_with_policy!(
                 "cleanup_after_run(): skipping TCP cleanup because HTTP port is unknown"
@@ -222,21 +276,34 @@ pub(crate) fn cleanup_after_run(
 /// Returns an error when the script does not exist, cannot be executed, or exits with a
 /// non-zero status code.
 ///
-fn run_script(script_path: &Path, working_directory: &Path, args: &[&str]) -> Result<()> {
-    if !script_path.exists() {
-        let reason: String = format!(
-            "script not found (script={}, cwd={})",
-            script_path.display(),
-            working_directory.display()
-        );
-        warn_with_policy!("run_script(): {reason}");
-        return Err(::anyhow::anyhow!(reason));
+async fn run_script(script_path: &Path, working_directory: &Path, args: &[&str]) -> Result<()> {
+    // Check script existence.
+    match fs::try_exists(script_path).await {
+        Ok(true) => {},
+        Ok(false) => {
+            let reason: String = format!(
+                "script not found (script={}, cwd={})",
+                script_path.display(),
+                working_directory.display()
+            );
+            warn_with_policy!("run_script(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        },
+        Err(error) => {
+            let reason: String = format!(
+                "failed to check script existence (script={}, error={error})",
+                script_path.display()
+            );
+            warn_with_policy!("run_script(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        },
     }
 
-    let status: ::std::process::ExitStatus = ::std::process::Command::new(script_path)
+    let status: ::std::process::ExitStatus = Command::new(script_path)
         .current_dir(working_directory)
         .args(args)
         .status()
+        .await
         .map_err(|error| {
             let reason: String = format!(
                 "failed to execute script (script={}, error={error})",
@@ -271,8 +338,8 @@ fn run_script(script_path: &Path, working_directory: &Path, args: &[&str]) -> Re
 ///
 /// - `tmp_directory`: Directory inspected for stale socket files.
 ///
-fn cleanup_stale_sockets(tmp_directory: &Path) {
-    let entries = match fs::read_dir(tmp_directory) {
+async fn cleanup_stale_unix_sockets(tmp_directory: &Path) {
+    let mut entries: fs::ReadDir = match fs::read_dir(tmp_directory).await {
         Ok(entries) => entries,
         Err(error) => {
             warn_with_policy!(
@@ -284,30 +351,41 @@ fn cleanup_stale_sockets(tmp_directory: &Path) {
         },
     };
 
-    for entry_result in entries {
-        let entry = match entry_result {
-            Ok(entry) => entry,
+    loop {
+        let entry: fs::DirEntry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
             Err(error) => {
                 warn_with_policy!(
                     "cleanup_stale_sockets(): failed to read tmp entry (error={})",
                     error
                 );
-                continue;
+                break;
             },
         };
 
-        let file_name = entry.file_name();
-        let file_name_str: String = file_name.to_string_lossy().to_string();
-        if !file_name_str.ends_with(UNIX_SOCKET_SUFFIX) {
+        let file_name: String = entry.file_name().to_string_lossy().to_string();
+        if !file_name.ends_with(UNIX_SOCKET_SUFFIX) {
             continue;
         }
 
-        let path = entry.path();
-        if !path.is_file() {
+        let path: PathBuf = entry.path();
+        let metadata: ::std::fs::Metadata = match fs::metadata(&path).await {
+            Ok(meta) => meta,
+            Err(error) => {
+                warn_with_policy!(
+                    "cleanup_stale_sockets(): failed to fetch metadata for {} (error={})",
+                    path.display(),
+                    error
+                );
+                continue;
+            },
+        };
+        if !metadata.is_file() {
             continue;
         }
 
-        if let Err(error) = fs::remove_file(&path) {
+        if let Err(error) = fs::remove_file(&path).await {
             warn_with_policy!(
                 "cleanup_stale_sockets(): failed to remove socket {} (error={})",
                 path.display(),
@@ -329,8 +407,8 @@ fn cleanup_stale_sockets(tmp_directory: &Path) {
 ///
 /// - `tmp_directory`: Directory inspected for stale Nanvix artifacts.
 ///
-fn cleanup_stale_files(tmp_directory: &Path) {
-    let entries = match fs::read_dir(tmp_directory) {
+async fn cleanup_stale_files(tmp_directory: &Path) {
+    let mut entries: fs::ReadDir = match fs::read_dir(tmp_directory).await {
         Ok(entries) => entries,
         Err(error) => {
             warn_with_policy!(
@@ -342,15 +420,16 @@ fn cleanup_stale_files(tmp_directory: &Path) {
         },
     };
 
-    for entry_result in entries {
-        let entry = match entry_result {
-            Ok(entry) => entry,
+    loop {
+        let entry: fs::DirEntry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
             Err(error) => {
                 warn_with_policy!(
                     "cleanup_stale_named_resources(): failed to read tmp entry (error={})",
                     error
                 );
-                continue;
+                break;
             },
         };
 
@@ -359,11 +438,23 @@ fn cleanup_stale_files(tmp_directory: &Path) {
             continue;
         }
 
-        let path = entry.path();
-        let removal_result: Result<(), ::std::io::Error> = if path.is_dir() {
-            fs::remove_dir_all(&path)
+        let path: PathBuf = entry.path();
+        let metadata: ::std::fs::Metadata = match fs::metadata(&path).await {
+            Ok(meta) => meta,
+            Err(error) => {
+                warn_with_policy!(
+                    "cleanup_stale_named_resources(): failed to fetch metadata for {} (error={})",
+                    path.display(),
+                    error
+                );
+                continue;
+            },
+        };
+
+        let removal_result: Result<(), ::std::io::Error> = if metadata.is_dir() {
+            fs::remove_dir_all(&path).await
         } else {
-            fs::remove_file(&path)
+            fs::remove_file(&path).await
         };
 
         match removal_result {
@@ -389,12 +480,13 @@ fn cleanup_stale_files(tmp_directory: &Path) {
 ///
 /// Removes Nanvix network namespaces and associated host veth pairs left behind by previous runs.
 ///
-fn cleanup_stale_netns() {
-    let output = match Command::new("sudo")
+async fn cleanup_stale_netns() {
+    let output: ::std::process::Output = match Command::new("sudo")
         .arg("ip")
         .arg("netns")
         .arg("list")
         .output()
+        .await
     {
         Ok(output) => output,
         Err(error) => {
@@ -411,7 +503,7 @@ fn cleanup_stale_netns() {
         return;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
     let mut namespaces: Vec<String> = stdout
         .split_whitespace()
         .filter(|token| token.starts_with(NETNS_NAME_PREFIX))
@@ -440,6 +532,7 @@ fn cleanup_stale_netns() {
             .arg("del")
             .arg(&veth_name)
             .output()
+            .await
         {
             Err(error) => warn_with_policy!(
                 "cleanup_stale_netns(): failed to delete veth {} (error={})",
@@ -472,6 +565,7 @@ fn cleanup_stale_netns() {
             .arg("del")
             .arg(&namespace)
             .status()
+            .await
         {
             Err(error) => warn_with_policy!(
                 "cleanup_stale_netns(): failed to delete namespace {} (error={})",
@@ -500,7 +594,7 @@ fn cleanup_stale_netns() {
 /// - `tcp_cleanup_max_wait_seconds`: Maximum seconds spent waiting for TIME_WAIT sockets.
 /// - `tcp_cleanup_poll_interval_seconds`: Seconds between TIME_WAIT socket inspections.
 ///
-fn wait_for_tcp_cleanup(
+async fn wait_for_tcp_cleanup(
     port: u16,
     tcp_cleanup_max_wait_seconds: u64,
     tcp_cleanup_poll_interval_seconds: u64,
@@ -515,7 +609,7 @@ fn wait_for_tcp_cleanup(
     );
 
     loop {
-        match count_time_wait_connections(port) {
+        match count_time_wait_connections(port).await {
             Some(0) => {
                 info!("wait_for_tcp_cleanup(): TIME_WAIT sockets cleared for port {}", port);
                 return;
@@ -543,7 +637,7 @@ fn wait_for_tcp_cleanup(
             return;
         }
 
-        sleep(poll_interval);
+        sleep(poll_interval).await;
     }
 }
 
@@ -561,11 +655,12 @@ fn wait_for_tcp_cleanup(
 /// Returns the number of TIME_WAIT sockets bound to the port when `ss` succeeds; otherwise
 /// returns `None` when the command fails.
 ///
-fn count_time_wait_with_ss(port: u16) -> Option<usize> {
+async fn count_time_wait_with_ss(port: u16) -> Option<usize> {
     let port_arg: String = port.to_string();
-    let output = match Command::new("ss")
+    let output: ::std::process::Output = match Command::new("ss")
         .args(["-tan", "state", "time-wait", "sport", port_arg.as_str()])
         .output()
+        .await
     {
         Ok(output) => output,
         Err(error) => {
@@ -579,7 +674,7 @@ fn count_time_wait_with_ss(port: u16) -> Option<usize> {
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
     let count: usize = stdout
         .lines()
         .skip(1)
@@ -603,8 +698,9 @@ fn count_time_wait_with_ss(port: u16) -> Option<usize> {
 /// Returns the number of TIME_WAIT sockets bound to the port when `netstat` succeeds; otherwise
 /// returns `None` when the utility fails.
 ///
-fn count_time_wait_with_netstat(port: u16) -> Option<usize> {
-    let output = match Command::new("netstat").args(["-tan"]).output() {
+async fn count_time_wait_with_netstat(port: u16) -> Option<usize> {
+    let output: ::std::process::Output = match Command::new("netstat").args(["-tan"]).output().await
+    {
         Ok(output) => output,
         Err(error) => {
             debug!("count_time_wait_with_netstat(): failed to execute netstat (error={})", error);
@@ -616,7 +712,7 @@ fn count_time_wait_with_netstat(port: u16) -> Option<usize> {
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
     let needle: String = format!(":{port}");
     let count: usize = stdout
         .lines()
@@ -640,10 +736,113 @@ fn count_time_wait_with_netstat(port: u16) -> Option<usize> {
 /// Returns the TIME_WAIT count reported by either `ss` or `netstat`; returns `None` when both
 /// probes fail.
 ///
-fn count_time_wait_connections(port: u16) -> Option<usize> {
-    if let Some(count) = count_time_wait_with_ss(port) {
+async fn count_time_wait_connections(port: u16) -> Option<usize> {
+    if let Some(count) = count_time_wait_with_ss(port).await {
         return Some(count);
     }
 
-    count_time_wait_with_netstat(port)
+    count_time_wait_with_netstat(port).await
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::anyhow::Result;
+    use ::std::{
+        env,
+        fs,
+        path::PathBuf,
+        time::{
+            SystemTime,
+            UNIX_EPOCH,
+        },
+    };
+
+    fn unique_temp_dir(prefix: &str) -> Result<PathBuf> {
+        let now: SystemTime = SystemTime::now();
+        let nanos: u128 = match now.duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_nanos(),
+            Err(error) => {
+                let reason: String =
+                    format!("failed to compute monotonic timestamp for temp dir (error={error})");
+                return Err(::anyhow::anyhow!(reason));
+            },
+        };
+
+        let dir: PathBuf = env::temp_dir().join(format!("{prefix}-{nanos}"));
+        if let Err(error) = fs::create_dir_all(&dir) {
+            let reason: String =
+                format!("failed to create temp dir (path={}, error={error})", dir.display());
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        Ok(dir)
+    }
+
+    #[tokio::test(flavor = "multi_thread")] // Uses multi-thread runtime to mirror production
+    async fn cleanup_stale_unix_sockets_removes_only_sockets() -> Result<()> {
+        let temp_dir: PathBuf = unique_temp_dir("nvx-clean-sock")?;
+        let socket_path: PathBuf = temp_dir.join(format!("test{UNIX_SOCKET_SUFFIX}"));
+        let other_path: PathBuf = temp_dir.join("other.txt");
+
+        ::tokio::fs::write(&socket_path, b"socket").await?;
+        ::tokio::fs::write(&other_path, b"other").await?;
+
+        cleanup_stale_unix_sockets(temp_dir.as_path()).await;
+
+        let socket_exists: bool = ::tokio::fs::try_exists(&socket_path).await.unwrap_or(false);
+        let other_exists: bool = ::tokio::fs::try_exists(&other_path).await.unwrap_or(false);
+
+        assert!(!socket_exists, "stale socket should be removed");
+        assert!(other_exists, "non-socket file must remain");
+
+        let _ = fs::remove_file(&other_path);
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")] // Ensures early return path is preserved
+    async fn prepare_l2_artifacts_reuses_existing_files() -> Result<()> {
+        let temp_dir: PathBuf = unique_temp_dir("nvx-artifacts")?;
+        let images_dir: PathBuf = temp_dir.join(DEFAULT_L2_SNAPSHOT_DIRECTORY);
+        ::tokio::fs::create_dir_all(&images_dir).await?;
+
+        let snapshot_path: PathBuf = images_dir.join(SNAPSHOT_NAME);
+        let initramfs_path: PathBuf = images_dir.join(DEFAULT_SNAPSHOT_FILE_NAME);
+        ::tokio::fs::write(&snapshot_path, b"snapshot").await?;
+        ::tokio::fs::write(&initramfs_path, b"initramfs").await?;
+
+        prepare_l2_artifacts("toolchain", temp_dir.as_path()).await?;
+
+        let snapshot_exists: bool = ::tokio::fs::try_exists(&snapshot_path)
+            .await
+            .unwrap_or(false);
+        let initramfs_exists: bool = ::tokio::fs::try_exists(&initramfs_path)
+            .await
+            .unwrap_or(false);
+
+        assert!(snapshot_exists, "snapshot must remain when artifacts pre-exist");
+        assert!(initramfs_exists, "initramfs must remain when artifacts pre-exist");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")] // Validates missing script error path
+    async fn run_script_returns_error_when_missing() -> Result<()> {
+        let temp_dir: PathBuf = unique_temp_dir("nvx-run-script")?;
+        let missing_script: PathBuf = temp_dir.join("missing.sh");
+
+        let result: Result<()> =
+            run_script(missing_script.as_path(), temp_dir.as_path(), &[]).await;
+
+        assert!(result.is_err(), "missing script must produce an error");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
 }
