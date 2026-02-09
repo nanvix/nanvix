@@ -12,7 +12,7 @@
 //==================================================================================================
 
 use ::nanvix_sandbox::UserVmIdentifier;
-use ::rand::Rng;
+use ::rand::RngExt;
 use ::std::{
     self,
     hash::Hash,
