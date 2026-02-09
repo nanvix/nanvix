@@ -382,7 +382,11 @@ all-nanvix: \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-bench all-nanvix-test
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+all-nanvix: all-nanvix-bench
 endif
 
 # Performs local initialization.
@@ -406,7 +410,11 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-bench clean-nanvix-test
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+clean: clean-nanvix-bench
 endif
 
 distclean: clean
@@ -519,7 +527,11 @@ rust-lint-check: \
 	rust-lint-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-bench rust-lint-check-nanvix-test
+rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+rust-lint-check: rust-lint-check-nanvix-bench
 endif
 
 # Fixes code linting issues.
@@ -532,7 +544,11 @@ rust-lint: \
 	rust-lint-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-bench rust-lint-nanvix-test
+rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+rust-lint: rust-lint-nanvix-bench
 endif
 
 # Fixes spelling errors in source code and documentation.
@@ -565,7 +581,11 @@ rust-format: \
 	format-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-bench format-nanvix-test
+rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+rust-format: format-nanvix-bench
 endif
 
 # Checks Rust code formatting.
@@ -578,7 +598,11 @@ rust-format-check: \
 	format-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-bench format-check-nanvix-test
+rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+rust-format-check: format-check-nanvix-bench
 endif
 
 # Python lint variables
@@ -629,7 +653,11 @@ check: \
 	check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-bench check-nanvix-test
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+endif
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+check: check-nanvix-bench
 endif
 
 #===================================================================================================
