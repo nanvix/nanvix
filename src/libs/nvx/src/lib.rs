@@ -82,10 +82,38 @@ core::arch::global_asm!(
     .section .crt0, "ax"
 
     _do_start:
+        #
+        # Entry point for newly created processes.
+        #
+        # The kernel sets up a trap frame so that IRET "returns" to this function.
+        # The kernel passes the argument pointer in EDX and the environment pointer
+        # in ECX, and guarantees that ESP is 16-byte aligned (ESP = 16k) after IRET.
+        #
+        # This stub must satisfy the i386 SysV ABI calling convention before
+        # invoking _start(argp, envp):
+        #  - Arguments are pushed right-to-left (envp first, then argp).
+        #  - At the CALL instruction, ESP must be 0 mod 16, so the return address
+        #    push leaves the callee with ESP = 12 (mod 16).
+        #
+        # Stack alignment arithmetic:
+        #   sub esp, 8  -> ESP = 16k - 8   (reserve padding)
+        #   mov ebp,esp -> set frame pointer for the process root frame
+        #   push ecx    -> ESP = 16k - 12  (push envp -- second parameter)
+        #   push edx    -> ESP = 16k - 16  = 0 (mod 16) (push argp -- first parameter)
+        #   call        -> ESP = 16k - 20  = 12 (mod 16)
+        #
+        # After CALL, the callee's stack frame looks like:
+        #   [ESP + 8]  envp  (second parameter, from ECX)
+        #   [ESP + 4]  argp  (first parameter, from EDX)
+        #   [ESP + 0]  return address (pushed by CALL)
+        #
+        sub esp, 8
         mov ebp, esp
         push ecx
         push edx
         call _start
+    # Safety net: _start() calls exit() and never returns.
+    # If it somehow does, spin forever rather than falling through.
     1:  jmp 1b
     "#
 );
