@@ -478,9 +478,13 @@ __context_switch:
     push CONTEXT_EFLAGS(%edx)
     popfl
 
-    /* Restore address space.*/
+    /* Restore address space only if it changed (avoids unnecessary TLB flush). */
+    movl %cr3, %eax
+    cmpl CONTEXT_CR3(%edx), %eax
+    je 1f
     movl CONTEXT_CR3(%edx), %eax
     movl %eax, %cr3
+1:
 
     /* Update ESP0 on TSS. */
     movl CONTEXT_ESP0(%edx), %eax
