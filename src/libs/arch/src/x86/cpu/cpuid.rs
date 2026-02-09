@@ -11,7 +11,14 @@
 // Constants
 //==================================================================================================
 
+/// CPUID leaf for standard feature flags (EAX=1).
 pub const CPUID_FEATURES: u32 = 1;
+
+/// CPUID leaf for structured extended feature flags (EAX=7, ECX=0).
+pub const CPUID_STRUCTURED_EXTENDED_FEATURES: u32 = 7;
+
+/// CPUID leaf for AMD extended address and feature bits (EAX=0x80000008).
+pub const CPUID_AMD_EXTENDED_FEATURES: u32 = 0x80000008;
 
 //==================================================================================================
 //  Structures
@@ -39,6 +46,59 @@ impl EbxFeature {
     pub const INITIAL_APIC_ID_SHIFT: u32 = 24;
     /// CPUID.01H:EBX[63:56] Initial APIC ID
     pub const INITIAL_APIC_ID_MASK: u32 = 0xFF << Self::INITIAL_APIC_ID_SHIFT;
+}
+
+///
+/// # Description
+///
+/// Speculation control bits in CPUID leaf 7, subleaf 0, EDX register.
+///
+/// These bits advertise CPU support for Spectre/Meltdown mitigations. Clearing them in a guest's
+/// CPUID tells KVM that the guest does not need speculation control, so KVM skips the expensive
+/// MSR save/restore on every VM entry/exit. This significantly improves performance on AMD CPUs,
+/// where these MSR operations are much costlier than on Intel (which has lightweight Enhanced
+/// IBRS).
+///
+pub struct Leaf7EdxSpeculationBits;
+
+impl Leaf7EdxSpeculationBits {
+    /// Indirect Branch Restricted Speculation / Indirect Branch Prediction Barrier (IBRS/IBPB).
+    pub const IBRS_IBPB: u32 = 1 << 26;
+    /// Single Thread Indirect Branch Predictors (STIBP).
+    pub const STIBP: u32 = 1 << 27;
+    /// IA32_ARCH_CAPABILITIES MSR support.
+    pub const ARCH_CAPABILITIES: u32 = 1 << 29;
+    /// Speculative Store Bypass Disable (SSBD).
+    pub const SSBD: u32 = 1 << 31;
+}
+
+///
+/// # Description
+///
+/// AMD-specific speculation control bits in CPUID leaf 0x80000008, EBX register.
+///
+/// Similar to [`Leaf7EdxSpeculationBits`], clearing these bits prevents KVM from managing
+/// AMD-specific speculation control MSRs on VM entry/exit.
+///
+pub struct AmdExtendedEbxSpeculationBits;
+
+impl AmdExtendedEbxSpeculationBits {
+    /// Indirect Branch Prediction Barrier (IBPB).
+    pub const IBPB: u32 = 1 << 12;
+    /// Indirect Branch Restricted Speculation (IBRS).
+    pub const IBRS: u32 = 1 << 14;
+    /// Single Thread Indirect Branch Predictors (STIBP).
+    pub const STIBP: u32 = 1 << 15;
+    /// IBRS always on mode.
+    pub const IBRS_ALWAYS_ON: u32 = 1 << 16;
+    /// STIBP always on mode.
+    pub const STIBP_ALWAYS_ON: u32 = 1 << 17;
+    /// IBRS preferred over software mitigations.
+    pub const IBRS_PREFERRED: u32 = 1 << 18;
+    /// Speculative Store Bypass Disable (SSBD).
+    pub const SSBD: u32 = 1 << 24;
+    /// Virtualized SSBD.
+    pub const VIRT_SSBD: u32 = 1 << 25;
 }
 
 #[derive(Debug, Clone, Copy)]

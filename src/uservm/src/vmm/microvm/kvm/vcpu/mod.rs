@@ -34,8 +34,12 @@ use crate::vmm::kvm::{
 };
 use ::anyhow::Result;
 use ::arch::cpu::cpuid::{
+    AmdExtendedEbxSpeculationBits,
+    CPUID_AMD_EXTENDED_FEATURES,
     CPUID_FEATURES,
+    CPUID_STRUCTURED_EXTENDED_FEATURES,
     EdxFeature,
+    Leaf7EdxSpeculationBits,
 };
 use ::kvm_bindings::{
     CpuId,
@@ -420,6 +424,29 @@ impl VirtualProcessor {
                         | (EdxFeature::Tm as u32)         // Thermal Monitor
                         | (EdxFeature::Pbe as u32)        // Pending Break Enable
                         ;
+                },
+                // Clear speculation control bits from CPUID leaf 7 (structured extended features).
+                // The Nanvix guest kernel does not use any Spectre mitigations (IBRS, IBPB, STIBP,
+                // SSBD). By clearing these bits, KVM skips the expensive IA32_SPEC_CTRL MSR
+                // save/restore on every VM entry/exit. This is critical on AMD CPUs, where these
+                // MSR operations are significantly more expensive than on Intel (which has
+                // lightweight Enhanced IBRS), and especially in nested virtualization environments.
+                CPUID_STRUCTURED_EXTENDED_FEATURES => {
+                    entry.edx &= !(Leaf7EdxSpeculationBits::IBRS_IBPB
+                        | Leaf7EdxSpeculationBits::STIBP
+                        | Leaf7EdxSpeculationBits::ARCH_CAPABILITIES
+                        | Leaf7EdxSpeculationBits::SSBD);
+                },
+                // Clear AMD-specific speculation control bits from CPUID leaf 0x80000008.
+                CPUID_AMD_EXTENDED_FEATURES => {
+                    entry.ebx &= !(AmdExtendedEbxSpeculationBits::IBPB
+                        | AmdExtendedEbxSpeculationBits::IBRS
+                        | AmdExtendedEbxSpeculationBits::STIBP
+                        | AmdExtendedEbxSpeculationBits::IBRS_ALWAYS_ON
+                        | AmdExtendedEbxSpeculationBits::STIBP_ALWAYS_ON
+                        | AmdExtendedEbxSpeculationBits::IBRS_PREFERRED
+                        | AmdExtendedEbxSpeculationBits::SSBD
+                        | AmdExtendedEbxSpeculationBits::VIRT_SSBD);
                 },
                 _ => continue,
             }
