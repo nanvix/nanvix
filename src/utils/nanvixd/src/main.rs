@@ -503,21 +503,33 @@ mod tests {
         let encodings: Vec<String> = (0..64).map(encode_base64_filename).collect();
 
         // First 26 should be A-Z.
-        for i in 0..26 {
-            assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'A' + i as u8);
+        for (i, encoding) in encodings.iter().enumerate().take(26) {
+            assert_eq!(encoding.len(), 1);
+            if let Some(ch) = encoding.chars().next() {
+                assert_eq!(ch as u8, b'A' + i as u8);
+            } else {
+                panic!("encoding should have at least one character");
+            }
         }
 
         // Next 26 should be a-z.
-        for i in 26..52 {
-            assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'a' + (i - 26) as u8);
+        for (i, encoding) in encodings.iter().enumerate().skip(26).take(26) {
+            assert_eq!(encoding.len(), 1);
+            if let Some(ch) = encoding.chars().next() {
+                assert_eq!(ch as u8, b'a' + (i - 26) as u8);
+            } else {
+                panic!("encoding should have at least one character");
+            }
         }
 
         // Next 10 should be 0-9.
-        for i in 52..62 {
-            assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'0' + (i - 52) as u8);
+        for (i, encoding) in encodings.iter().enumerate().skip(52).take(10) {
+            assert_eq!(encoding.len(), 1);
+            if let Some(ch) = encoding.chars().next() {
+                assert_eq!(ch as u8, b'0' + (i - 52) as u8);
+            } else {
+                panic!("encoding should have at least one character");
+            }
         }
 
         // Last two should be - and _.
