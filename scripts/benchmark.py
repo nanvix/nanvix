@@ -16,7 +16,6 @@ import subprocess
 # Constants
 # ======================================================================
 
-HYPERLIGHT_MACHINE_TYPE = "hyperlight"
 MICROVM_MACHINE_TYPE = "microvm"
 NA = "NA"
 NANVIX_BENCH_ELF = "nanvix-bench.elf"
@@ -393,11 +392,11 @@ def generate_benchmark_table(
 
         Each table has the following structure:
 
-    =================================== boot-time (us) ====================================
-    |       |            microvm (X64)             |           hyperlight (X64)           |
-    |       |    dev     |   target   |     Δ      |    dev     |   target   |     Δ      |
+    ============ boot-time (us) ============
+    |       |      microvm (X64)           |
+    |       |  dev  | target |      Δ      |
     ...
-    =======================================================================================
+    ========================================
 
         where the rows are benchmark-dependent.
     """
@@ -730,7 +729,7 @@ if __name__ == "__main__":
     run_parser.add_argument(
         "--machine-type",
         required=True,
-        choices=[MICROVM_MACHINE_TYPE, HYPERLIGHT_MACHINE_TYPE],
+        choices=[MICROVM_MACHINE_TYPE],
         help="Type of machine to run the benchmarks on",
     )
     # Make the --hwloc file a mandatory argument for the wrapper script, to
