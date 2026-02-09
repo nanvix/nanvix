@@ -3,7 +3,6 @@
 
 NANVIX_BENCH_FEATURES :=
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
-NANVIX_BENCH_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 NANVIX_BENCH_FEATURES := $(strip $(NANVIX_BENCH_FEATURES))
