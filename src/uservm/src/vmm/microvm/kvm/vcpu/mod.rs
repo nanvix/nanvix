@@ -201,17 +201,27 @@ impl VirtualProcessor {
         trace!("reset(): rip={rip:#010x}, rax={rax:#010x}, rbx={rbx:#010x}");
 
         // Reset system registers.
+        // Read the current special registers once to preserve KVM-internal defaults (which vary
+        // by host CPU and KVM version), then patch only the fields we care about.  This avoids
+        // constructing an all-zero `kvm_sregs` which would clear hidden segment-register state
+        // that KVM initializes during KVM_CREATE_VCPU.
         let mut vcpu_sregs: kvm_sregs = self.fd.get_sregs()?;
         vcpu_sregs.cs.base = 0;
         vcpu_sregs.cs.selector = 0;
         self.fd.set_sregs(&vcpu_sregs)?;
 
         // Reset general purpose registers.
-        let mut vcpu_regs: kvm_regs = self.fd.get_regs()?;
-        vcpu_regs.rip = rip;
-        vcpu_regs.rax = rax;
-        vcpu_regs.rbx = rbx;
-        vcpu_regs.rflags = RFLAGS_INTERRUPT_ENABLE;
+        // Unlike special registers, general-purpose registers have no hidden state that
+        // must be preserved, so we can set them from a zeroed struct directly.  This
+        // saves one KVM_GET_REGS ioctl, which matters in nested virtualization where
+        // every ioctl traverses the hypervisor stack.
+        let vcpu_regs: kvm_regs = kvm_regs {
+            rip,
+            rax,
+            rbx,
+            rflags: RFLAGS_INTERRUPT_ENABLE,
+            ..unsafe { mem::zeroed() }
+        };
         self.fd.set_regs(&vcpu_regs)?;
 
         // Processor is now online.

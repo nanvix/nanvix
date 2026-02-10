@@ -124,6 +124,12 @@ impl VirtualMemory {
             return Err(anyhow::anyhow!(reason));
         }
 
+        // Enable transparent huge pages for guest memory. In nested virtualization,
+        // 2MB pages reduce EPT/NPT walk depth and TLB pressure significantly.
+        unsafe {
+            libc::madvise(ptr.cast::<libc::c_void>(), size, libc::MADV_HUGEPAGE);
+        }
+
         // Create virtual memory. If we fail, destructor will free memory.
         let vmem: Self = Self {
             ptr,
