@@ -4,119 +4,124 @@
 name: "Nanvix CI/CD (GitHub Hosted)"
 
 on:
-  push:
-    branches: [dev]
   pull_request:
-    branches: [dev]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types:
+      - 'opened'
+      - 'synchronize'
+      - 'reopened'
+      - 'ready_for_review'
+    branches:
+      - 'dev'
 
-defaults:
-  run:
-    shell: bash
+  push:
+    branches:
+      - 'dev'
 
 # Cancel previous running actions for the same PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 jobs:
-  setup-toolchain:
+  precheck:
+    uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
+    secrets: inherit
+
+  # Run config-independent source checks once (format, spellcheck) instead of
+  # repeating them in every matrix entry. The CI job waits for these to pass.
+  checks:
+    name: "Source Checks"
+    needs: precheck
+    timeout-minutes: 60
     runs-on: ubuntu-24.04
-    outputs:
-      cache-key: ${{ steps.extract-version.outputs.cache_key }}
+    permissions:
+      contents: read
+
+    # Only run the CI for:
+    # - Non-merge pushes to 'dev'.
+    # - Non-draft PRs.
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      needs.precheck.outputs.up_to_date == 'true' && (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ')
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
 
     steps:
-      - uses: actions/checkout@v6
+    - uses: actions/checkout@v6
 
-      - name: "Setup sccache"
-        uses: mozilla-actions/sccache-action@v0.0.9
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
 
-      - name: "Extract version"
-        id: extract-version
-        run: |
-          # This uses the MAJOR.MINOR as key in the cache
-          VERSION=$(grep '^version' Cargo.toml | head -n1 | sed 's/.*"\(.*\)".*/\1/')
-          echo $VERSION
-          MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
-          echo "cache_key=toolchain-${MAJOR_MINOR}" >> $GITHUB_OUTPUT
+    # The docker-check action's default parameters (machine-type, deployment-type,
+    # etc.) are passed through to make but are ignored by config-independent
+    # targets like format-check and spellcheck.
+    - name: "Check Code Format"
+      uses: ./.github/actions/docker-check
+      with:
+        target: 'format-check'
 
-      - name: "Restore toolchain cache"
-        id: cache
-        uses: actions/cache@v5
-        with:
-          path: ./toolchain
-          key: ${{ steps.extract-version.outputs.cache_key }}
+    - name: "Spellcheck"
+      uses: ./.github/actions/docker-check
+      with:
+        target: 'spellcheck'
 
-      - name: "Prepare build environment if not cached"
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: ./.github/actions/setup
-
-      - name: "Build toolchain if not cached"
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          export TOOLCHAIN_DIR=$(pwd)/toolchain
-          ./scripts/setup/toolchain.sh ${TOOLCHAIN_DIR}
-
-      - name: "Link Rust Toolchain for Nanvix"
-        run: |
-          cd $(pwd)/toolchain/src/rust
-          rustup toolchain link nanvix-x86 build/host/stage2
-
-  tests:
-    needs: setup-toolchain
-    runs-on: ubuntu-24.04
+  ci:
+    name: "CI (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    needs: [precheck, checks]
+    timeout-minutes: 120
     strategy:
-      matrix:
-        mode: [release]
-        target: [qemu-isapc, qemu-pc, qemu-baremetal, microvm, hyperlight]
       fail-fast: false
+      matrix:
+        build-type: [release]
+        machine-type: [hyperlight, microvm]
+        deployment-type: [single-process, multi-process]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v6
+    - uses: actions/checkout@v6
 
-      - name: "Setup sccache"
-        uses: mozilla-actions/sccache-action@v0.0.9
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
 
-      - name: "Restore toolchain cache"
-        uses: actions/cache@v5
-        with:
-          path: ./toolchain
-          key: ${{ needs.setup-toolchain.outputs.cache-key }}
-          fail-on-cache-miss: 'true'
+    - name: "Lint"
+      uses: ./.github/actions/docker-check
+      with:
+        target: 'lint-check'
+        release: '${{ matrix.build-type }}'
+        log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
-      - name: "Prepare build environment"
-        uses: ./.github/actions/setup
+    - name: "Build & Unit Test"
+      uses: ./.github/actions/docker-build
+      with:
+        release: '${{ matrix.build-type }}'
+        log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
-      - name: "Link Rust Toolchain for Nanvix"
-        run: |
-          cd $(pwd)/toolchain/src/rust
-          rustup toolchain link nanvix-x86 build/host/stage2
+    - name: "Test (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+      uses: ./.github/actions/docker-test
+      with:
+        machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
-      # Test
-      - name: "Run ${{ matrix.mode }} (test on ${{ matrix.target }})"
-        run: |
-          export TOOLCHAIN_DIR=$(pwd)/toolchain
-          echo "Running '${{ matrix.mode }}' in 'test' mode for '${{ matrix.target }}'"
-
-          # Check if KVM is enabled
-          sudo kvm-ok
-          sudo lsmod | grep kvm
-          # Add user to kvm group
-          sudo usermod -aG kvm $USER
-
-          # Must run tests in sudo to use KVM.
-          sudo -E --user $USER -- python3 scripts/ci.py --${{ matrix.mode }} --toolchain-dir=${TOOLCHAIN_DIR} --target-arch=x86 --log-level=trace --target-machine=${{ matrix.target }} --lint --spellcheck --build --test
-        timeout-minutes: 60
-
-      - name: "Upload logs in case of (test) failures"
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: nanvix-test-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.mode }}-${{ matrix.target }}
-          # Overwrite to limit the amount of storage we use
-          overwrite: 'true'
-          path: |
-            logs/
-            **/*.log
-            **/*.out
-            **/*.err
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+        # Overwrite to limit the amount of storage we use.
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
