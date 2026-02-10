@@ -33,6 +33,7 @@ mod environment;
 mod executor;
 mod log_layout;
 mod nanvixd;
+mod port;
 mod uservm;
 mod warning;
 

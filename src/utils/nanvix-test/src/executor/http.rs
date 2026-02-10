@@ -21,6 +21,7 @@ use crate::{
         NanvixdHttp,
         NanvixdHttpArgs,
     },
+    port::resolve_http_port,
     uservm::{
         UserVm,
         UserVmArgs,
@@ -104,9 +105,23 @@ pub(crate) async fn test_with_http_executor(
         stderr: stderr_file_path,
     } = log_layout.allocate_runner_logs(None);
 
+    // Resolve an available port, searching for alternatives if the configured port is in use.
+    // Run in a blocking task to avoid stalling the Tokio runtime with synchronous bind calls.
+    let ipv4_addr_clone: String = runner_config.ipv4_addr.clone();
+    let port_num: u16 = runner_config.port_num;
+    let resolved_port: u16 = ::tokio::task::spawn_blocking(move || {
+        resolve_http_port(ipv4_addr_clone.as_str(), port_num)
+    })
+    .await
+    .map_err(|e| {
+        let reason: String = format!("port resolution task failed (error={e})");
+        error!("test_with_http_executor(): {reason}");
+        ::anyhow::anyhow!(reason)
+    })??;
+
     let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
         (stdout_file_path.as_path(), stderr_file_path.as_path()),
-        (runner_config.ipv4_addr.as_str(), runner_config.port_num),
+        (runner_config.ipv4_addr.as_str(), resolved_port),
         hwloc_file_path.clone(),
         l2_enabled,
         runner_config.netns_pool_size,
