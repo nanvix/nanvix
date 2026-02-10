@@ -50,7 +50,7 @@
 //! ## Basic Usage Example
 //!
 //! ```rust,no_run
-//! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig};
+//! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig, SandboxTag};
 //! use ::syscomm::{SocketListener, SocketType, UnboundSocket};
 //! use ::user_vm_api::UserVmIdentifier;
 //! use ::std::sync::Arc;
@@ -99,7 +99,8 @@
 //!     .await?;
 //!
 //! // Start execution.
-//! let running = sandbox.start().await?;
+//! let tag: SandboxTag = SandboxTag::new("tenant-1", "/path/to/guest.elf", "my-app", None);
+//! let running = sandbox.start(tag).await?;
 //!
 //! // ... communicate with sandbox via gateway socket ...
 //!
@@ -133,6 +134,7 @@ mod initialized;
 mod linuxd_args;
 mod running;
 mod sandbox_config;
+mod tag;
 mod uninitialized;
 mod uservm_args;
 
@@ -170,6 +172,7 @@ pub use self::{
     linuxd_args::LinuxDaemonArgs,
     running::RunningSandbox,
     sandbox_config::SandboxConfig,
+    tag::SandboxTag,
     uninitialized::UninitializedSandbox,
     uservm_args::UserVmArgs,
 };
