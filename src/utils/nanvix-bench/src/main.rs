@@ -43,6 +43,7 @@ use ::nanvix::{
     http::{
         message,
         message::{
+            ErrorResponse,
             HTTP_HEADER_MESSAGE_TYPE,
             Kill,
             KillResponse,
@@ -285,15 +286,37 @@ impl Benchmark {
         headers: HeaderMap,
         linuxd_deployment: &LinuxdDeployment,
     ) -> Result<(UserVmIdentifier, SocketStream)> {
-        let response: message::NewResponse = self
+        let http_response: ::reqwest::Response = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(headers)
             .json(&payload)
             .send()
-            .await?
-            .json()
             .await?;
+
+        // Check if the response is successful
+        let status: ::reqwest::StatusCode = http_response.status();
+        if !status.is_success() {
+            // Try to deserialize as ErrorResponse to get detailed error info
+            let error_msg: String = match http_response.json::<ErrorResponse>().await {
+                Ok(err_response) => {
+                    format!(
+                        "nanvixd returned error (status={}, code={:?}): {}",
+                        status, err_response.code, err_response.message
+                    )
+                },
+                Err(e) => {
+                    format!(
+                        "nanvixd returned error (status={}): failed to parse error response: {}",
+                        status, e
+                    )
+                },
+            };
+            error!("{}", error_msg);
+            anyhow::bail!(error_msg);
+        }
+
+        let response: message::NewResponse = http_response.json().await?;
 
         debug!("got: user vm ID={}, gw socket={}", response.user_vm_id, response.gateway_sockaddr);
 
