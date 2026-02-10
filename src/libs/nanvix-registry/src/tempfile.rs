@@ -89,7 +89,7 @@ impl TemporaryFile {
     ///
     pub(crate) async fn write(&self, contents: &[u8]) -> Result<()> {
         if let Err(error) = fs::write(&self.path, contents).await {
-            let reason: String = format!("Failed to write to temporary file: {}", error);
+            let reason: String = format!("Failed to write to temporary file: {error}");
             error!("{reason}");
             anyhow::bail!(reason)
         }

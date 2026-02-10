@@ -75,6 +75,7 @@ arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.98"
 base64 = "0.22.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
+bytes = "1.10.1"
 cc = "1.2.26"
 cfg-if = "1.0.0"
 chrono = "0.4.42"
@@ -132,6 +133,7 @@ serde_cbor = { version = "0.11.2", default-features = false, features = [
 serde_json = { version = "1.0.140", default-features = false, features = [
         "alloc",
 ] }
+sha2 = "0.10.8"
 shell-words = "1.1"
 signal-hook = "0.4.1"
 slab = { path = "src/libs/slab", default-features = false }
