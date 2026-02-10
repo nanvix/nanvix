@@ -127,7 +127,7 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 ::core::arch::global_asm!(
     r#"
     .global _do_start_thread
-    .extern _start_thread
+    .extern _do_exit_thread
     .type _do_start_thread, @function
 
     _do_start_thread:
@@ -135,42 +135,64 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
         # Entry point for newly created threads.
         #
         # The kernel sets up a trap frame so that IRET "returns" to this function.
-        # The kernel passes the thread function pointer in EDX and its argument in
-        # ECX. The caller must ensure that the thread stack (user_stack_base +
-        # user_stack_size) is 16-byte aligned so that ESP = 16k after IRET.
+        # The kernel passes the thread function pointer in EDX and its argument
+        # in ECX.
         #
-        # This stub must satisfy the i386 SysV ABI calling convention before
-        # invoking _start_thread(func, arg):
-        #  - Arguments are pushed right-to-left (arg first, then func).
-        #  - At the CALL instruction, ESP must be 0 mod 16, so the return address
-        #    push leaves the callee with ESP = 12 (mod 16).
+        # This stub calls func(arg) and then _do_exit_thread(status) directly,
+        # enforcing 16-byte stack alignment before each CALL instruction. This
+        # avoids routing through a Rust intermediate function whose compiler-
+        # generated prologue may not preserve 16-byte alignment (the Nanvix Rust
+        # target disables SSE, so LLVM omits alignment-preserving prologues).
+        # The callee func may be compiled by GCC with SSE enabled and may
+        # therefore require 16-byte-aligned stack frames (e.g., movaps).
+        #
+
+        # Save func and arg into callee-saved registers.
+        # This is the thread root frame so there is no caller state to preserve.
+        mov esi, edx        # ESI = func
+        mov edi, ecx        # EDI = arg
+
+        # Set up frame pointer and force 16-byte alignment.
+        and esp, -16
+        mov ebp, esp
+
+        #
+        # Call func(arg).
+        #
+        # Stack alignment arithmetic (i386 SysV ABI):
+        #   and esp,-16 -> ESP = 0 (mod 16)   (force-aligned)
+        #   sub esp, 12 -> ESP = 4 (mod 16)   (alignment padding)
+        #   push edi    -> ESP = 0 (mod 16)   (push arg)
+        #   call esi    -> ESP = 12 (mod 16)  (return address pushed by CALL)
+        #
+        sub esp, 12
+        push edi
+        call esi
+
+        #
+        # Call _do_exit_thread(status).
+        #
+        # func() returned status in EAX.  Re-align the stack for the next call.
         #
         # Stack alignment arithmetic:
-        #   sub esp, 8  -> ESP = 16k - 8   (reserve padding)
-        #   mov ebp,esp -> set frame pointer for the thread root frame
-        #   push ecx    -> ESP = 16k - 12  (push arg -- second parameter)
-        #   push edx    -> ESP = 16k - 16  = 0 (mod 16) (push func -- first parameter)
-        #   call        -> ESP = 16k - 20  = 12 (mod 16)
+        #   and esp,-16 -> ESP = 0 (mod 16)   (force-aligned)
+        #   sub esp, 12 -> ESP = 4 (mod 16)   (alignment padding)
+        #   push eax    -> ESP = 0 (mod 16)   (push status)
+        #   call        -> ESP = 12 (mod 16)  (return address pushed by CALL)
         #
-        # After CALL, the callee's stack frame looks like:
-        #   [ESP + 8]  arg   (second parameter, from ECX)
-        #   [ESP + 4]  func  (first parameter, from EDX)
-        #   [ESP + 0]  return address (pushed by CALL)
-        #
-        sub esp, 8
-        mov ebp, esp
-        push ecx
-        push edx
-        call _start_thread
-    # Safety net: _start_thread() calls exit_thread() and never returns.
+        and esp, -16
+        sub esp, 12
+        push eax
+        call _do_exit_thread
+
+    # Safety net: _do_exit_thread() calls exit_thread() and never returns.
     # If it somehow does, spin forever rather than falling through.
     1: jmp 1b
     "#
 );
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _start_thread(func: extern "C" fn(usize) -> usize, arg: usize) -> ! {
-    let status = func(arg);
+pub extern "C" fn _do_exit_thread(status: usize) -> ! {
     let _ = exit_thread(status);
     unreachable!("failed to exit thread");
 }
