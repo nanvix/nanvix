@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-use ::rand::Rng;
+use ::rand::RngExt;
 use ::std::hash::Hash;
 use ::user_vm_api::UserVmIdentifier;
 
