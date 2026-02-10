@@ -1,0 +1,53 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Docker Build"
+description: "Build all Nanvix targets and run unit tests using Docker toolchain"
+
+inputs:
+  release:
+    description: "Release type"
+    required: true
+    default: "release"
+  log-level:
+    description: "Log level"
+    required: true
+    default: "trace"
+  machine-type:
+    description: "Machine type"
+    required: true
+    default: "microvm"
+  deployment-type:
+    description: "Deployment type"
+    required: true
+    default: "single-process"
+  timeout:
+    description: "Build timeout in seconds passed through to make"
+    required: false
+    default: "600"
+
+runs:
+  using: "composite"
+  steps:
+  - id: deployment
+    uses: ./.github/actions/deployment-features
+    with:
+      deployment-type: "${{ inputs.deployment-type }}"
+  - name: "Build & Unit Test (${{ inputs.machine-type }})"
+    shell: bash
+    env:
+      MACHINE_TYPE: ${{ inputs.machine-type }}
+      LOG_LEVEL: ${{ inputs.log-level }}
+      BUILD_TIMEOUT: ${{ inputs.timeout }}
+      RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
+      MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
+    run: |
+      ./z build --with-minimal-docker -- all run-unit-tests \
+        "MACHINE=${MACHINE_TYPE}" \
+        TARGET=x86 \
+        "LOG_LEVEL=${LOG_LEVEL}" \
+        VERBOSE=yes \
+        BUILD_OPT=yes \
+        "TIMEOUT=${BUILD_TIMEOUT}" \
+        ${RELEASE_FLAG} \
+        ${MAKE_FLAGS}

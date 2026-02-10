@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Resolve Deployment Features"
-description: "Compute feature flags for a given deployment type"
+description: "Compute feature flags and make flags for a given deployment type"
 
 inputs:
   deployment-type:
@@ -13,6 +13,9 @@ outputs:
   features-arg:
     description: "Feature flag argument for scripts/ci.py"
     value: ${{ steps.compute.outputs.features-arg }}
+  make-flags:
+    description: "Make flags for Docker-based builds"
+    value: ${{ steps.compute.outputs.make-flags }}
 
 runs:
   using: "composite"
@@ -23,12 +26,15 @@ runs:
       case "${{ inputs.deployment-type }}" in
         single-process)
           echo "features-arg=--features SINGLE_PROCESS=yes" >> "$GITHUB_OUTPUT"
+          echo "make-flags=SINGLE_PROCESS=yes" >> "$GITHUB_OUTPUT"
           ;;
         multi-process)
           echo "features-arg=--features SINGLE_PROCESS=no" >> "$GITHUB_OUTPUT"
+          echo "make-flags=SINGLE_PROCESS=no" >> "$GITHUB_OUTPUT"
           ;;
         l2)
           echo "features-arg=--features SINGLE_PROCESS=no,L2_VM=yes" >> "$GITHUB_OUTPUT"
+          echo "make-flags=SINGLE_PROCESS=no L2_VM=yes" >> "$GITHUB_OUTPUT"
           ;;
         *)
           echo "invalid deployment type: ${{ inputs.deployment-type }}" >&2

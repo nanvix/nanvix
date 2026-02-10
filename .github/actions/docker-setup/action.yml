@@ -1,0 +1,26 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Docker Setup"
+description: "Free disk space and set up the minimal Docker toolchain"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Free Disk Space"
+    shell: bash
+    run: |
+      echo "=== Disk usage before cleanup ==="
+      df -h /
+      # Remove pre-installed software that is not needed.
+      sudo rm -rf /usr/share/dotnet
+      sudo rm -rf /usr/local/lib/android
+      sudo rm -rf /opt/ghc
+      sudo rm -rf /opt/hostedtoolcache
+      # Clean apt cache.
+      sudo apt-get clean
+      echo "=== Disk usage after cleanup ==="
+      df -h /
+  - name: "Setup Minimal Docker Toolchain"
+    shell: bash
+    run: ./z setup --with-minimal-docker
