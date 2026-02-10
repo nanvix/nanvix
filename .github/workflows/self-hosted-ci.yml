@@ -172,7 +172,7 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Cloud Hypervisor stderr logs'
-        shopt -s nullglob
+        shopt -s nullglob globstar
         clh_logs=("${log_root}"/**/cloud-hypervisor-stderr.log)
         if [[ ${#clh_logs[@]} -eq 0 ]]; then
           echo "No cloud-hypervisor stderr logs found under ${log_root}."
