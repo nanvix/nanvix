@@ -87,7 +87,7 @@ core::arch::global_asm!(
         #
         # The kernel sets up a trap frame so that IRET "returns" to this function.
         # The kernel passes the argument pointer in EDX and the environment pointer
-        # in ECX, and guarantees that ESP is 16-byte aligned (ESP = 16k) after IRET.
+        # in ECX.
         #
         # This stub must satisfy the i386 SysV ABI calling convention before
         # invoking _start(argp, envp):
@@ -96,19 +96,16 @@ core::arch::global_asm!(
         #    push leaves the callee with ESP = 12 (mod 16).
         #
         # Stack alignment arithmetic:
-        #   sub esp, 8  -> ESP = 16k - 8   (reserve padding)
+        #   and esp,-16 -> ESP = 0 (mod 16)   (force 16-byte alignment)
         #   mov ebp,esp -> set frame pointer for the process root frame
-        #   push ecx    -> ESP = 16k - 12  (push envp -- second parameter)
-        #   push edx    -> ESP = 16k - 16  = 0 (mod 16) (push argp -- first parameter)
-        #   call        -> ESP = 16k - 20  = 12 (mod 16)
+        #   sub esp, 8  -> ESP = 8 (mod 16)   (alignment padding)
+        #   push ecx    -> ESP = 4 (mod 16)   (push envp -- second parameter)
+        #   push edx    -> ESP = 0 (mod 16)   (push argp -- first parameter)
+        #   call        -> ESP = 12 (mod 16)  (return address pushed by CALL)
         #
-        # After CALL, the callee's stack frame looks like:
-        #   [ESP + 8]  envp  (second parameter, from ECX)
-        #   [ESP + 4]  argp  (first parameter, from EDX)
-        #   [ESP + 0]  return address (pushed by CALL)
-        #
-        sub esp, 8
+        and esp, -16
         mov ebp, esp
+        sub esp, 8
         push ecx
         push edx
         call _start
