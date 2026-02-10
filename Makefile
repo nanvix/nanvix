@@ -523,13 +523,20 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-lint: rust-lint-nanvix-bench
 endif
 
+# Source file lists - use git ls-files if in a git repo, fall back to find.
+# This is needed because Docker builds exclude the .git directory.
+PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/__pycache__/*" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
+C_CPP_FILES := $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp" 2>/dev/null || find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
+SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
+ALL_SOURCE_FILES := $(shell git ls-files 2>/dev/null || find . -type f -not -path "*/target/*" -not -path "*/toolchain/*" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -path "*/.cargo/*")
+
 # Fixes spelling errors in source code and documentation.
 spellcheck-fix:
-	codespell --write-changes $(shell git ls-files)
+	codespell --write-changes $(ALL_SOURCE_FILES)
 
 # Checks for spelling errors in source code and documentation.
 spellcheck:
-	codespell $(shell git ls-files)
+	codespell $(ALL_SOURCE_FILES)
 
 # Fixes code formatting issues.
 format: \
@@ -592,17 +599,17 @@ python-init:
 	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
 
 python-format: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PYTHON_FILES) $(PY_VERBOSE)
 
 python-format-check: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black --check $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black --check $(PYTHON_FILES) $(PY_VERBOSE)
 
 python-lint: python-init
-	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(shell git ls-files -- "*.py") $(PY_VERBOSE)
+	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m flake8 $(PYTHON_FILES) $(PY_VERBOSE)
 
 # Checks for linting issues in shell scripts.
 shell-lint-check:
-	@shellcheck -S warning $(shell git ls-files -- "*.sh")
+	@shellcheck -S warning $(SHELL_FILES)
 
 # Fixes code linting issues in shell scripts.
 shell-lint:
@@ -610,11 +617,11 @@ shell-lint:
 
 # Check C/C++ formatting style.
 clang-format-check:
-	@clang-format --dry-run --Werror $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp")
+	@clang-format --dry-run --Werror $(C_CPP_FILES)
 
 # Format C/C++ files.
 clang-format:
-	@clang-format -i $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp")
+	@clang-format -i $(C_CPP_FILES)
 
 check: \
 	check-kernel \
