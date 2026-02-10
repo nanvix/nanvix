@@ -14,22 +14,14 @@
 pub mod config;
 
 //==================================================================================================
-// Private Modules
-//==================================================================================================
-
-mod tag;
-
-//==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::{
-    config::SandboxCacheConfig,
-    tag::SandboxTag,
-};
+pub use self::config::SandboxCacheConfig;
 pub use ::nanvix_sandbox::{
     syscomm,
     HwLoc,
+    SandboxTag,
 };
 
 #[cfg(feature = "single-process")]
@@ -583,7 +575,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     .insert(tag.tenant_id().to_string(), initialized_sandbox.linuxd());
 
                 // Run sandbox.
-                match initialized_sandbox.start().await {
+                match initialized_sandbox.start(tag.clone()).await {
                     Ok(running_sandbox) => {
                         self.running_sandboxes
                             .insert(tag.sandbox_id(), running_sandbox);
