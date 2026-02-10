@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::Bitmap;
-use ::rand::Rng;
+use ::rand::RngExt;
 use ::raw_array::RawArray;
 use ::sys::error::Error;
 
@@ -148,10 +148,8 @@ fn test_alloc_range_across_word_boundary() {
 
     // Set all bits that are not in the range.
     for i in 0..bitmap.number_of_bits() {
-        if i < start || i >= end {
-            if bitmap.set(i).is_err() {
-                panic!("failed to set bit at index {i}");
-            }
+        if (i < start || i >= end) && bitmap.set(i).is_err() {
+            panic!("failed to set bit at index {i}");
         }
     }
 
@@ -200,7 +198,7 @@ fn test_alloc_random_ranges() {
 
     // Allocate random ranges.
     for _ in 0..NUMBER_OF_ITERATIONS {
-        let size: usize = (::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits()) + 1;
+        let size: usize = ::rand::rng().random_range(0..bitmap.number_of_bits()) + 1;
 
         let start: usize = bitmap.alloc_range(size).unwrap_or_else(|_| {
             panic!("failed to allocate range of size {}", size);
@@ -236,7 +234,7 @@ fn test_alloc_random_bits_in_partial_bitmap() {
 
     // Set some bits randomly.
     for _ in 0..data.len() / 2 {
-        let index: usize = ::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits();
+        let index: usize = ::rand::rng().random_range(0..bitmap.number_of_bits());
         let _ = bitmap.set(index);
     }
 
@@ -272,16 +270,14 @@ fn test_alloc_random_ranges_in_partial_bitmap() {
 
     for _ in 0..NUMBER_OF_ITERATIONS {
         // Choose a range that crosses a byte (word) boundary, e.g., bits 6..10 (crosses from byte 0 to byte 1)
-        let start = ::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits();
-        let end =
-            start + (::rand::thread_rng().gen::<usize>() % (bitmap.number_of_bits() - start)) + 1;
+        let start: usize = ::rand::rng().random_range(0..bitmap.number_of_bits());
+        let end: usize =
+            start + ::rand::rng().random_range(0..(bitmap.number_of_bits() - start)) + 1;
 
         // Set all bits that are not in the range.
         for i in 0..bitmap.number_of_bits() {
-            if i < start || i >= end {
-                if bitmap.set(i).is_err() {
-                    panic!("failed to set bit at index {i} {start} {end}");
-                }
+            if (i < start || i >= end) && bitmap.set(i).is_err() {
+                panic!("failed to set bit at index {i} {start} {end}");
             }
         }
 
