@@ -122,4 +122,39 @@ impl Guest {
     pub fn resume_vm(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
         Ok(()) // TODO: https://github.com/nanvix/nanvix/issues/791
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the ring buffer mode is active. Ring buffers are not supported on
+    /// Hyperlight, so this always returns `false`.
+    ///
+    pub fn is_ring_buffer_active(&self) -> bool {
+        false
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes a message to the RX ring buffer. Ring buffers are not supported on Hyperlight.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory manager of the virtual machine.
+    /// - `message`: The message to write into the ring buffer.
+    ///
+    /// # Returns
+    ///
+    /// Always returns an error because ring buffers are not supported on Hyperlight.
+    ///
+    #[allow(unused_variables)]
+    pub fn write_rx_ring(
+        &self,
+        vmem: &mut VirtualMemory,
+        message: &::sys::ipc::Message,
+    ) -> Result<()> {
+        let reason: &str = "ring buffers are not supported on Hyperlight";
+        error!("write_rx_ring(): {reason}");
+        Err(anyhow::anyhow!(reason))
+    }
 }

@@ -47,6 +47,21 @@ use ::sys::error::{
     ErrorCode,
 };
 
+//==================================================================================================
+// Static Variables
+//==================================================================================================
+
+use core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+
+/// Base address of the TX ring buffer region (0 when ring buffers are not active).
+static TX_RING_BASE: AtomicUsize = AtomicUsize::new(0);
+
+/// Base address of the RX ring buffer region (0 when ring buffers are not active).
+static RX_RING_BASE: AtomicUsize = AtomicUsize::new(0);
+
 #[cfg(feature = "pit")]
 use crate::hal::platform::pit::Pit;
 
@@ -150,12 +165,17 @@ pub unsafe fn putb(b: u8) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
     use crate::PERF_VMBUS_WRITE;
-    use core::hint;
 
     PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    #[allow(clippy::unit_arg)]
-    hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
+    let tx_base: usize = TX_RING_BASE.load(Ordering::Relaxed);
+    if tx_base != 0 {
+        vmbus_write_ring(tx_base, addr);
+    } else {
+        use core::hint;
+        #[allow(clippy::unit_arg)]
+        hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDOUT_PORT, addr as u32));
+    }
 }
 
 ///
@@ -183,6 +203,240 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 
     #[allow(clippy::unit_arg)]
     hint::black_box(::arch::io::out32(::config::microvm::DEFAULT_STDIN_PORT, addr as u32))
+}
+
+///
+/// # Description
+///
+/// Returns whether the MMIO ring buffer path is active.
+///
+/// # Returns
+///
+/// `true` when the VMM has provisioned TX and RX ring buffers and the guest has discovered them
+/// during platform initialization. `false` when the legacy PMIO path should be used.
+///
+#[cfg(feature = "stdio")]
+pub fn is_ring_buffer_active() -> bool {
+    TX_RING_BASE.load(Ordering::Relaxed) != 0
+}
+
+///
+/// # Description
+///
+/// Writes a message into the TX ring buffer and rings the doorbell to notify the VMM.
+///
+/// The caller must ensure that the TX ring buffer is active (`TX_RING_BASE != 0`). This function
+/// spins if the ring is full, waiting for the VMM consumer to advance the tail.
+///
+/// # Parameters
+///
+/// - `tx_base`: Guest-physical (identity-mapped) base address of the TX ring.
+/// - `addr`: Pointer to the message bytes to enqueue (`IPC_MESSAGE_SIZE` bytes).
+///
+/// # Safety
+///
+/// The caller must guarantee that `tx_base` points to a valid, mapped ring buffer region and that
+/// `addr` points to at least `IPC_MESSAGE_SIZE` readable bytes.
+///
+#[cfg(feature = "stdio")]
+unsafe fn vmbus_write_ring(tx_base: usize, addr: *const u8) {
+    let header_ptr: *mut u32 = tx_base as *mut u32;
+
+    // Read head (we are producer, we own head).
+    let head: u32 = core::ptr::read_volatile(header_ptr);
+    // Read capacity.
+    let capacity: u32 = core::ptr::read_volatile(header_ptr.add(2));
+
+    // Spin-wait until there is free space in the ring.
+    loop {
+        let tail: u32 = core::ptr::read_volatile(header_ptr.add(1));
+        let used: u32 = head.wrapping_sub(tail);
+        if used < capacity {
+            break;
+        }
+        core::hint::spin_loop();
+    }
+
+    // Compute slot address.
+    let slot_index: usize = (head % capacity) as usize;
+    let slot_addr: usize = tx_base
+        + ::config::microvm::RING_DATA_OFFSET
+        + slot_index * ::config::kernel::IPC_MESSAGE_SIZE;
+
+    // Copy message into the slot.
+    core::ptr::copy_nonoverlapping(addr, slot_addr as *mut u8, ::config::kernel::IPC_MESSAGE_SIZE);
+
+    // Compiler fence: ensure message data is committed before the head update becomes visible.
+    core::sync::atomic::compiler_fence(Ordering::Release);
+
+    // Increment head.
+    let new_head: u32 = head.wrapping_add(1);
+    core::ptr::write_volatile(header_ptr, new_head);
+
+    // Ring the doorbell to notify the VMM.
+    #[allow(clippy::unit_arg)]
+    core::hint::black_box(::arch::io::out32(
+        ::config::microvm::DEFAULT_STDOUT_PORT,
+        ::config::microvm::DOORBELL_VALUE,
+    ));
+}
+
+///
+/// # Description
+///
+/// Attempts to read a message from the RX ring buffer.
+///
+/// If the ring contains at least one pending message, it is copied into the buffer at `addr` and
+/// the consumer tail is advanced. Otherwise the buffer is left untouched and `false` is returned.
+///
+/// # Parameters
+///
+/// - `addr`: Pointer to a buffer of at least `IPC_MESSAGE_SIZE` bytes where the message will be
+///   written.
+///
+/// # Returns
+///
+/// `true` if a message was dequeued, `false` if the ring was empty.
+///
+/// # Safety
+///
+/// The caller must guarantee that `RX_RING_BASE` has been initialized to a valid, mapped ring
+/// buffer region and that `addr` points to at least `IPC_MESSAGE_SIZE` writable bytes.
+///
+#[cfg(feature = "stdio")]
+pub unsafe fn vmbus_read_ring(addr: *mut u8) -> bool {
+    use crate::PERF_VMBUS_READ;
+
+    let rx_base: usize = RX_RING_BASE.load(Ordering::Relaxed);
+    let header_ptr: *mut u32 = rx_base as *mut u32;
+
+    // Read head (VMM producer writes this).
+    let head: u32 = core::ptr::read_volatile(header_ptr);
+    // Read tail (we are consumer, we own tail).
+    let tail: u32 = core::ptr::read_volatile(header_ptr.add(1));
+
+    // No data available.
+    if head == tail {
+        return false;
+    }
+
+    PERF_VMBUS_READ.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+
+    // Read capacity.
+    let capacity: u32 = core::ptr::read_volatile(header_ptr.add(2));
+
+    // Compiler fence: ensure we observe the head update before reading slot data.
+    core::sync::atomic::compiler_fence(Ordering::Acquire);
+
+    // Compute slot address.
+    let slot_index: usize = (tail % capacity) as usize;
+    let slot_addr: usize = rx_base
+        + ::config::microvm::RING_DATA_OFFSET
+        + slot_index * ::config::kernel::IPC_MESSAGE_SIZE;
+
+    // Copy message from the slot.
+    core::ptr::copy_nonoverlapping(
+        slot_addr as *const u8,
+        addr,
+        ::config::kernel::IPC_MESSAGE_SIZE,
+    );
+
+    // Increment tail.
+    let new_tail: u32 = tail.wrapping_add(1);
+    core::ptr::write_volatile(header_ptr.add(1), new_tail);
+
+    true
+}
+
+///
+/// # Description
+///
+/// Reads the ring buffer base addresses and sizes from the MicroVM control registers and, when
+/// present, stores them in the module-level atomics so that subsequent `vmbus_write` / `vmbus_read`
+/// calls use the MMIO ring buffer path instead of PMIO.
+///
+fn init_ring_buffers() {
+    // SAFETY: The control register page is identity-mapped and valid during platform
+    // initialization.
+    unsafe {
+        let tx_base: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_BASE) as usize;
+        let tx_size: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_SIZE) as usize;
+        let rx_base: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_BASE) as usize;
+        let rx_size: usize =
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_SIZE) as usize;
+
+        if tx_base != 0 && tx_size != 0 && rx_base != 0 && rx_size != 0 {
+            TX_RING_BASE.store(tx_base, Ordering::Relaxed);
+            RX_RING_BASE.store(rx_base, Ordering::Relaxed);
+            info!(
+                "ring buffers active: tx_base={:#010x}, tx_size={:#x}, rx_base={:#010x}, \
+                 rx_size={:#x}",
+                tx_base, tx_size, rx_base, rx_size
+            );
+        } else {
+            info!("ring buffers not available, using PMIO path");
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Registers the TX and RX ring buffer regions as MMIO memory regions so that the kernel's
+/// virtual memory manager maps them with read-write access.
+///
+/// If the VMM did not provision ring buffers (control registers read as zero), this function is a
+/// no-op.
+///
+/// # Parameters
+///
+/// - `memory_regions`: List of memory regions to which the ring buffer regions will be appended.
+///
+/// # Returns
+///
+/// Upon successful completion, this function returns empty. Otherwise, it returns an error.
+///
+fn register_ring_buffer_regions(
+    memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
+) -> Result<(), Error> {
+    // SAFETY: Control registers are identity-mapped and valid during platform initialization.
+    let (tx_base, tx_size, rx_base, rx_size): (usize, usize, usize, usize) = unsafe {
+        (
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_BASE) as usize,
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_SIZE) as usize,
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_BASE) as usize,
+            read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_SIZE) as usize,
+        )
+    };
+
+    if tx_base == 0 || tx_size == 0 || rx_base == 0 || rx_size == 0 {
+        return Ok(());
+    }
+
+    // Register TX ring buffer region (guest is producer: needs read-write).
+    let tx_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "vmbus-tx-ring",
+        VirtualAddress::from_raw_value(tx_base),
+        tx_size,
+        MemoryRegionType::Mmio,
+        AccessPermission::RDWR,
+    )?;
+    memory_regions.push_back(tx_region);
+
+    // Register RX ring buffer region (guest is consumer: needs read-write for tail updates).
+    let rx_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "vmbus-rx-ring",
+        VirtualAddress::from_raw_value(rx_base),
+        rx_size,
+        MemoryRegionType::Mmio,
+        AccessPermission::RDWR,
+    )?;
+    memory_regions.push_back(rx_region);
+
+    Ok(())
 }
 
 ///
@@ -312,15 +566,33 @@ fn log_control_registers() {
             ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE as *const u32,
         );
 
+        let tx_ring_base_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_BASE as *const u32,
+        );
+        let tx_ring_size_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_SIZE as *const u32,
+        );
+        let rx_ring_base_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_BASE as *const u32,
+        );
+        let rx_ring_size_value: u32 = core::ptr::read_volatile(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_SIZE as *const u32,
+        );
+
         info!(
             "microvm ctrl registers: base={:#010x}, null={:#010x}, credits={:#010x}, \
-             pause={:#010x}, ramfs_base={:#010x}, ramfs_size={:#010x}",
+             pause={:#010x}, ramfs_base={:#010x}, ramfs_size={:#010x}, tx_ring_base={:#010x}, \
+             tx_ring_size={:#010x}, rx_ring_base={:#010x}, rx_ring_size={:#010x}",
             ::config::microvm::DEFAULT_MICROVM_CTRL_BASE,
             null_value,
             credits_value,
             pause_value,
             ramfs_base_value,
-            ramfs_size_value
+            ramfs_size_value,
+            tx_ring_base_value,
+            tx_ring_size_value,
+            rx_ring_base_value,
+            rx_ring_size_value
         );
     }
 }
@@ -439,6 +711,8 @@ pub fn init(
     memory_regions.push_back(scratch_region);
 
     log_control_registers();
+    register_ring_buffer_regions(memory_regions)?;
+    init_ring_buffers();
     register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
 
     Ok(Platform {

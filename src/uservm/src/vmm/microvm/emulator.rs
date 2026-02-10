@@ -8,6 +8,7 @@
 use crate::vmm::{
     StderrFn,
     StdinFn,
+    StdoutDirectFn,
     StdoutFn,
     guest::Guest,
     kvm::pmio::{
@@ -46,6 +47,8 @@ pub struct Emulator {
     stdin_fn: Box<StdinFn>,
     /// Function used for emulating writes to standard output.
     stdout_fn: Box<StdoutFn>,
+    /// Function used for forwarding pre-read messages to the I/O thread (ring buffer path).
+    stdout_direct_fn: Box<StdoutDirectFn>,
     /// Function used for emulating writs to standard error.
     stderr_fn: Box<StderrFn>,
 }
@@ -78,6 +81,7 @@ impl Emulator {
         vmem: Arc<Mutex<VirtualMemory>>,
         stdin_fn: Box<StdinFn>,
         stdout_fn: Box<StdoutFn>,
+        stdout_direct_fn: Box<StdoutDirectFn>,
         stderr_fn: Box<StderrFn>,
     ) -> Result<Self> {
         trace!("new()");
@@ -86,6 +90,7 @@ impl Emulator {
             vmem,
             stdin_fn,
             stdout_fn,
+            stdout_direct_fn,
             stderr_fn,
         })
     }
@@ -136,7 +141,13 @@ impl Emulator {
                         let buf: &[u8] = &[ch as u8];
                         self.stderr_fn.write_all(buf)?;
                     } else if *width == PmioWidth::Dword {
-                        (self.stdout_fn)(&self.vmem, *data)?;
+                        if *data == ::config::microvm::DOORBELL_VALUE {
+                            // Doorbell: drain the TX ring buffer.
+                            self.handle_tx_doorbell()?;
+                        } else {
+                            // Legacy PMIO: read message from guest address.
+                            (self.stdout_fn)(&self.vmem, *data)?;
+                        }
                     } else {
                         warn!("handle_pmio_access(): invalid write size (size={width:?})");
                     }
@@ -171,5 +182,32 @@ impl Emulator {
         }
 
         Ok(None)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a doorbell notification from the guest. Drains all pending messages from the
+    /// TX ring buffer and forwards each one to the standard output function.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    fn handle_tx_doorbell(&mut self) -> Result<()> {
+        trace!("handle_tx_doorbell()");
+
+        let messages: Vec<::sys::ipc::Message> = {
+            let locked_guest: ::tokio::sync::MutexGuard<'_, Guest> = self.guest.blocking_lock();
+            let mut locked_vmem: ::tokio::sync::MutexGuard<'_, VirtualMemory> =
+                self.vmem.blocking_lock();
+            locked_guest.drain_tx_ring(&mut locked_vmem)?
+        };
+
+        for message in messages {
+            (self.stdout_direct_fn)(message)?;
+        }
+
+        Ok(())
     }
 }

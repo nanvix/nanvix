@@ -241,6 +241,40 @@ pub mod microvm {
 
     /// Magic value that flags that the VMM requested the guest OS to pause MicroVM execution.
     pub const PAUSE_REQUEST: u32 = 0x00000001;
+
+    /// Control register: guest-physical base address of the TX ring (32-bit, read-only from guest).
+    pub const DEFAULT_MICROVM_CTRL_TX_RING_BASE: usize = 0x0000_0014;
+
+    /// Control register: size of the TX ring in bytes (32-bit, read-only from guest).
+    pub const DEFAULT_MICROVM_CTRL_TX_RING_SIZE: usize = 0x0000_0018;
+
+    /// Control register: guest-physical base address of the RX ring (32-bit, read-only from guest).
+    pub const DEFAULT_MICROVM_CTRL_RX_RING_BASE: usize = 0x0000_001c;
+
+    /// Control register: size of the RX ring in bytes (32-bit, read-only from guest).
+    pub const DEFAULT_MICROVM_CTRL_RX_RING_SIZE: usize = 0x0000_0020;
+
+    /// Number of pages allocated for one ring buffer (TX or RX).
+    pub const DEFAULT_RING_PAGES: usize = 4;
+
+    /// Size of one ring buffer in bytes.
+    pub const DEFAULT_RING_SIZE: usize = DEFAULT_RING_PAGES * 4096;
+
+    /// Byte offset from a ring base to the first message slot.
+    pub const RING_DATA_OFFSET: usize = 0x40;
+
+    /// Number of message slots per ring buffer.
+    pub const RING_CAPACITY: usize =
+        (DEFAULT_RING_SIZE - RING_DATA_OFFSET) / crate::kernel::IPC_MESSAGE_SIZE;
+
+    /// Guest-physical base address of the TX ring buffer.
+    pub const DEFAULT_TX_RING_BASE: usize = 0x0000_1000;
+
+    /// Guest-physical base address of the RX ring buffer.
+    pub const DEFAULT_RX_RING_BASE: usize = 0x0000_5000;
+
+    /// Doorbell sentinel value written to port 0xe9 to signal the VMM to drain the TX ring.
+    pub const DOORBELL_VALUE: u32 = 0;
 }
 
 #[cfg(feature = "pc")]

@@ -45,6 +45,14 @@ use ::tokio::sync::mpsc::{
 pub type AddCreditFn =
     dyn FnMut() -> Pin<Box<dyn ::std::future::Future<Output = Result<()>> + Send>> + Send + 'static;
 
+/// Type alias for the async message delivery function used by the memory thread.
+///
+/// In PMIO mode, this sends the message via a channel and adds a credit.
+/// In ring buffer mode, this writes the message directly into the RX ring.
+pub type DeliverMessageFn = dyn FnMut(Message) -> Pin<Box<dyn ::std::future::Future<Output = Result<()>> + Send>>
+    + Send
+    + 'static;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -52,10 +60,9 @@ pub type AddCreditFn =
 /// Tokio task that relays `Message` frames while coordinating credit management.
 pub struct MemoryThread {
     data_rx: Receiver<Message>,
-    data_tx: Sender<Message>,
     control_rx: Receiver<MemoryControlCommand>,
     control_tx: Sender<MemoryControlResponse>,
-    add_credit: Box<AddCreditFn>,
+    deliver_message: Box<DeliverMessageFn>,
     counters: MessageCounters,
 }
 
@@ -72,26 +79,25 @@ impl MemoryThread {
     /// # Parameters
     ///
     /// - `data_rx`: Receives data messages from the I/O thread.
-    /// - `data_tx`: Sends data messages to the virtual machine's stdin.
     /// - `control_rx`: Receives control commands from the VMM.
     /// - `control_tx`: Sends control responses to the VMM.
-    /// - `add_credit`: Closure that adds a credit to the virtual machine credit pool.
+    /// - `deliver_message`: Closure that delivers a message to the guest. In PMIO mode, this sends
+    ///   the message via a channel and adds a credit. In ring buffer mode, this writes the message
+    ///   directly into the RX ring.
     /// - `counters`: Shared counters for tracking message flow across threads.
     ///
     pub fn new(
         data_rx: Receiver<Message>,
-        data_tx: Sender<Message>,
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
-        add_credit: Box<AddCreditFn>,
+        deliver_message: Box<DeliverMessageFn>,
         counters: MessageCounters,
     ) -> Self {
         Self {
             data_rx,
-            data_tx,
             control_rx,
             control_tx,
-            add_credit,
+            deliver_message,
             counters,
         }
     }
@@ -112,10 +118,9 @@ impl MemoryThread {
         trace!("spawn()");
         ::tokio::spawn(async move {
             let mut data_rx: Receiver<Message> = self.data_rx;
-            let data_tx: Sender<Message> = self.data_tx;
             let mut control_rx: Receiver<MemoryControlCommand> = self.control_rx;
             let _control_tx: Sender<MemoryControlResponse> = self.control_tx;
-            let mut add_credit: Box<AddCreditFn> = self.add_credit;
+            let mut deliver_message: Box<DeliverMessageFn> = self.deliver_message;
             let counters: MessageCounters = self.counters;
 
             let result: Result<(), Error> = loop {
@@ -143,12 +148,8 @@ impl MemoryThread {
 
                                 on_message_received_from_io_thread(&counters);
 
-                                if let Err(e) = data_tx.send(msg).await {
-                                    error!("spawn(): failed to send message: {e}");
-                                    continue;
-                                }
-                                if let Err(error) = add_credit().await {
-                                    error!("spawn(): failed to add credit: {error}");
+                                if let Err(error) = deliver_message(msg).await {
+                                    error!("spawn(): failed to deliver message: {error}");
                                     break Err(error);
                                 }
                             },
@@ -236,23 +237,21 @@ mod tests {
     // Test Helpers
     //----------------------------------------------------------------------------------------------
 
-    /// Spawns a memory thread for tests with an injected credit function.
+    /// Spawns a memory thread for tests with an injected delivery function.
     fn spawn(
         data_rx: Receiver<Message>,
-        data_tx: Sender<Message>,
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
-        mut add_credit: impl FnMut() -> Result<()> + Send + 'static,
+        mut deliver: impl FnMut(Message) -> Result<()> + Send + 'static,
     ) -> JoinHandle<()> {
-        // Wrap the synchronous test closure into the asynchronous AddCreditFn expected by
+        // Wrap the synchronous test closure into the asynchronous DeliverMessageFn expected by
         // `MemoryThread::new` in test builds.
-        let add_credit_box: Box<AddCreditFn> = Box::new(move || {
-            let res: Result<()> = add_credit();
+        let deliver_box: Box<DeliverMessageFn> = Box::new(move |msg| {
+            let res: Result<()> = deliver(msg);
             Box::pin(async move { res })
         });
         let counters: MessageCounters = MessageCounters::new();
-        MemoryThread::new(data_rx, data_tx, control_rx, control_tx, add_credit_box, counters)
-            .spawn()
+        MemoryThread::new(data_rx, control_rx, control_tx, deliver_box, counters).spawn()
     }
 
     // Helper: small timeout to avoid hanging tests.
@@ -276,7 +275,8 @@ mod tests {
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
 
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+        let handle: JoinHandle<()> = spawn(io_rx, control_rx, resp_tx, move |msg| {
+            vm_tx.blocking_send(msg).map_err(|e| anyhow!("{e}"))?;
             credits_clone.fetch_add(1, Ordering::SeqCst);
             Ok(())
         });
@@ -318,8 +318,6 @@ mod tests {
     async fn test_shutdown_without_messages() {
         let (_io_tx, io_rx): (Sender<Message>, Receiver<Message>) =
             ::tokio::sync::mpsc::channel::<Message>(1);
-        let (vm_tx, mut _vm_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(1);
         let (control_tx, control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -329,7 +327,7 @@ mod tests {
 
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+        let handle: JoinHandle<()> = spawn(io_rx, control_rx, resp_tx, move |_msg| {
             credits_clone.fetch_add(1, Ordering::SeqCst);
             Ok(())
         });
@@ -353,8 +351,6 @@ mod tests {
     async fn test_credit_error_terminates_thread() {
         let (io_tx, io_rx): (Sender<Message>, Receiver<Message>) =
             ::tokio::sync::mpsc::channel::<Message>(2);
-        let (vm_tx, mut vm_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(2);
         let (_control_tx, control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -362,37 +358,26 @@ mod tests {
         let (resp_tx, _resp_rx): (Sender<MemoryControlResponse>, Receiver<MemoryControlResponse>) =
             ::tokio::sync::mpsc::channel::<MemoryControlResponse>(1);
 
-        let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            // Simulate a failure on first credit attempt.
-            Err(anyhow!("simulated credit failure"))
+        let delivered: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let handle: JoinHandle<()> = spawn(io_rx, control_rx, resp_tx, move |_msg| {
+            // Simulate a failure on first delivery attempt.
+            Err(anyhow!("simulated delivery failure"))
         });
 
         let msg: Message = Message::default();
         io_tx.send(msg.clone()).await.expect("send first message");
 
-        // Forwarded even though credit fails afterwards.
-        let forwarded: Message = timeout(short_timeout(), vm_rx.recv())
-            .await
-            .expect("forward receive timeout")
-            .expect("forward channel closed");
-        assert_eq!(
-            forwarded.clone().to_bytes(),
-            msg.clone().to_bytes(),
-            "message not forwarded prior to error"
-        );
-
-        // Thread should terminate due to credit error.
+        // Thread should terminate due to delivery error.
         let join_result: ::core::result::Result<(), ::tokio::task::JoinError> =
             timeout(short_timeout(), handle)
                 .await
-                .expect("memory thread did not terminate after credit error");
-        assert!(join_result.is_ok(), "memory thread did not exit cleanly after credit error");
+                .expect("memory thread did not terminate after delivery error");
+        assert!(join_result.is_ok(), "memory thread did not exit cleanly after delivery error");
 
         assert_eq!(
-            credits.load(Ordering::SeqCst),
+            delivered.load(Ordering::SeqCst),
             0,
-            "credit count should remain zero on error path"
+            "delivered count should remain zero on error path"
         );
     }
 }

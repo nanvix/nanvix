@@ -79,6 +79,8 @@ pub type StdinFn = dyn FnMut() -> Result<Vec<u8>, HyperlightError> + Send;
 
 pub type StdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
 
+pub type StdoutDirectFn = dyn FnMut(::sys::ipc::Message) -> Result<()> + Send;
+
 pub type StderrFn = dyn Write + Send;
 
 //==================================================================================================

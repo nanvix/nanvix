@@ -37,6 +37,7 @@ pub struct MicroVmArgs {
     pub ramfs_filename: Option<String>,
     pub input: Box<StdinFn>,
     pub output: Box<StdoutFn>,
+    pub output_direct: Box<StdoutDirectFn>,
     pub stderr: Box<StderrFn>,
 }
 

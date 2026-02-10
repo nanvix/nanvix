@@ -61,6 +61,7 @@ use crate::{
     counters::MessageCounters,
     memory_thread::{
         AddCreditFn,
+        DeliverMessageFn,
         MemoryThread,
     },
     orchestrator::{
@@ -78,6 +79,7 @@ use crate::{
     vmm::{
         MicroVmArgs,
         StdinFn,
+        StdoutDirectFn,
         StdoutFn,
         VirtualMemory,
         Vmm,
@@ -233,6 +235,10 @@ impl UserVm {
         // Output function used for emulating I/O port writes.
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx.clone());
 
+        // Direct output function for ring buffer TX path (forwards pre-read messages).
+        let vmm_stdout_direct_fn: Box<StdoutDirectFn> =
+            output_direct_fn(args.vcpu_thread_stdout_tx.clone());
+
         // Input function used for emulating I/O port reads.
         #[cfg(not(feature = "hyperlight"))]
         let vmm_stdin_fn: Box<StdinFn> =
@@ -248,6 +254,7 @@ impl UserVm {
         let microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
+            output_direct: vmm_stdout_direct_fn,
             stderr: vmm_stderr_fn,
             memory_size: args.memory_size,
             control_rx: vcpu_thread_control_rx,
@@ -268,13 +275,25 @@ impl UserVm {
             handles.set_vmem_handle(vmem.clone()).await;
         }
 
+        // Build the delivery function based on whether ring buffers are active.
+        let deliver_message: Box<DeliverMessageFn> = {
+            let is_ring_active: bool = guest.lock().await.is_ring_buffer_active();
+            if is_ring_active {
+                deliver_message_ring_fn(guest.clone(), vmem.clone())
+            } else {
+                deliver_message_pmio_fn(
+                    memory_thread_data_tx,
+                    add_credit_fn(guest.clone(), vmem.clone()),
+                )
+            }
+        };
+
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
             args.memory_thread_data_rx,
-            memory_thread_data_tx,
             memory_thread_control_rx,
             memory_thread_control_tx,
-            add_credit_fn(guest.clone(), vmem.clone()),
+            deliver_message,
             args.counters.clone(),
         );
         let memory_thread: JoinHandle<()> = memory_thread.spawn();
@@ -385,6 +404,63 @@ fn add_credit_fn(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> B
             let mut guest = guest.lock().await;
             let mut vmem = vmem.lock().await;
             guest.add_credit(&mut vmem)
+        })
+    })
+}
+
+/// Builds a direct output function for the ring buffer TX path.
+///
+/// This closure forwards pre-read [`Message`] values directly to the I/O channel without
+/// reading from guest virtual memory, as the emulator already extracted the message from
+/// the TX ring buffer.
+fn output_direct_fn(queue: Sender<Message>) -> Box<StdoutDirectFn> {
+    Box::new(move |message: Message| -> Result<()> {
+        if let Err(e) = queue.blocking_send(message) {
+            let reason: String = format!("failed to send message: {e:?}");
+            error!("output_direct(): {reason}");
+            anyhow::bail!(reason);
+        }
+        Ok(())
+    })
+}
+
+/// Builds a delivery function for the ring buffer RX path.
+///
+/// This closure writes messages directly into the guest's RX ring buffer via shared memory,
+/// completely bypassing the PMIO credit mechanism and avoiding VM exits on the RX path.
+fn deliver_message_ring_fn(
+    guest: Arc<Mutex<Guest>>,
+    vmem: Arc<Mutex<VirtualMemory>>,
+) -> Box<DeliverMessageFn> {
+    Box::new(move |msg: Message| {
+        let guest: Arc<Mutex<Guest>> = guest.clone();
+        let vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
+        Box::pin(async move {
+            let guest: MutexGuard<'_, Guest> = guest.lock().await;
+            let mut vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
+            guest.write_rx_ring(&mut vmem, &msg)
+        })
+    })
+}
+
+/// Builds a delivery function for the legacy PMIO RX path.
+///
+/// This closure sends the message through a channel to the vCPU thread's stdin handler and
+/// then adds a credit so the guest knows a message is available.
+fn deliver_message_pmio_fn(
+    data_tx: Sender<Message>,
+    mut add_credit: Box<AddCreditFn>,
+) -> Box<DeliverMessageFn> {
+    Box::new(move |msg: Message| {
+        let data_tx: Sender<Message> = data_tx.clone();
+        let credit_fut = add_credit();
+        Box::pin(async move {
+            if let Err(e) = data_tx.send(msg).await {
+                let reason: String = format!("failed to send message: {e}");
+                error!("deliver_message_pmio(): {reason}");
+                anyhow::bail!(reason);
+            }
+            credit_fut.await
         })
     })
 }

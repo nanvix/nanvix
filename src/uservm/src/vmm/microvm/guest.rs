@@ -43,6 +43,8 @@ pub struct Guest {
     credits: u32,
     /// Entry point of the guest.
     entry: usize,
+    /// Whether the shared-memory ring buffers are active.
+    ring_buffer_active: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,6 +57,9 @@ pub struct GuestState {
     credits: u32,
     // Entry point of the guest.
     entry: usize,
+    // Whether the shared-memory ring buffers are active.
+    #[serde(default)]
+    ring_buffer_active: bool,
 }
 
 //==================================================================================================
@@ -434,6 +439,7 @@ impl Guest {
             initrd: self.initrd,
             credits: self.credits,
             entry: self.entry,
+            ring_buffer_active: self.ring_buffer_active,
         })
     }
 
@@ -443,6 +449,227 @@ impl Guest {
         self.initrd = state.initrd;
         self.credits = state.credits;
         self.entry = state.entry;
+        self.ring_buffer_active = state.ring_buffer_active;
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Initializes the TX and RX ring buffer headers and writes their base addresses and sizes
+    /// into the control register page.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory of the guest.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn init_ring_buffers(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
+        use ::sys::ipc::RingHeader;
+
+        trace!("init_ring_buffers()");
+
+        let capacity: u32 = match u32::try_from(::config::microvm::RING_CAPACITY) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: String = format!(
+                    "ring capacity does not fit in u32 (capacity={})",
+                    ::config::microvm::RING_CAPACITY
+                );
+                error!("init_ring_buffers(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        let header: RingHeader = RingHeader::new(capacity);
+        let header_bytes: [u8; ::sys::ipc::RING_HEADER_SIZE] = header.to_bytes();
+
+        // Write TX ring header.
+        vmem.write_bytes(::config::microvm::DEFAULT_TX_RING_BASE as u64, &header_bytes)?;
+
+        // Write RX ring header.
+        vmem.write_bytes(::config::microvm::DEFAULT_RX_RING_BASE as u64, &header_bytes)?;
+
+        // Write control registers for ring buffer discovery.
+        let tx_base: u32 = match u32::try_from(::config::microvm::DEFAULT_TX_RING_BASE) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: &str = "TX ring base does not fit in u32";
+                error!("init_ring_buffers(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+        let ring_size: u32 = match u32::try_from(::config::microvm::DEFAULT_RING_SIZE) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: &str = "ring size does not fit in u32";
+                error!("init_ring_buffers(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+        let rx_base: u32 = match u32::try_from(::config::microvm::DEFAULT_RX_RING_BASE) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: &str = "RX ring base does not fit in u32";
+                error!("init_ring_buffers(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            },
+        };
+
+        vmem.write_bytes(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_BASE as u64,
+            &tx_base.to_le_bytes(),
+        )?;
+        vmem.write_bytes(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_TX_RING_SIZE as u64,
+            &ring_size.to_le_bytes(),
+        )?;
+        vmem.write_bytes(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_BASE as u64,
+            &rx_base.to_le_bytes(),
+        )?;
+        vmem.write_bytes(
+            ::config::microvm::DEFAULT_MICROVM_CTRL_RX_RING_SIZE as u64,
+            &ring_size.to_le_bytes(),
+        )?;
+
+        self.ring_buffer_active = true;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Drains all pending messages from the TX ring buffer.
+    ///
+    /// Reads messages from the TX ring starting at the current tail up to the head,
+    /// advancing the tail for each message consumed.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory of the guest.
+    ///
+    /// # Returns
+    ///
+    /// A vector of messages drained from the TX ring.
+    ///
+    pub fn drain_tx_ring(&self, vmem: &mut VirtualMemory) -> Result<Vec<::sys::ipc::Message>> {
+        use ::sys::ipc::{
+            RING_HEADER_SIZE,
+            RingHeader,
+        };
+
+        let mut header_buf: [u8; RING_HEADER_SIZE] = [0u8; RING_HEADER_SIZE];
+        vmem.read_bytes(::config::microvm::DEFAULT_TX_RING_BASE as u64, &mut header_buf)?;
+        let header: RingHeader = RingHeader::from_bytes(header_buf);
+
+        let mut tail: u32 = header.tail;
+        let head: u32 = header.head;
+        let capacity: u32 = header.capacity;
+        let mut messages: Vec<::sys::ipc::Message> = Vec::new();
+
+        while tail != head {
+            let slot_index: u32 = tail % capacity;
+            let slot_offset: u64 = ::config::microvm::DEFAULT_TX_RING_BASE as u64
+                + ::config::microvm::RING_DATA_OFFSET as u64
+                + u64::from(slot_index) * (::config::kernel::IPC_MESSAGE_SIZE as u64);
+
+            let mut msg_bytes: [u8; ::config::kernel::IPC_MESSAGE_SIZE] =
+                [0u8; ::config::kernel::IPC_MESSAGE_SIZE];
+            vmem.read_bytes(slot_offset, &mut msg_bytes)?;
+
+            let message: ::sys::ipc::Message = match ::sys::ipc::Message::try_from_bytes(msg_bytes)
+            {
+                Ok(msg) => msg,
+                Err(err) => {
+                    let reason: String = format!(
+                        "failed to parse TX ring message at slot {slot_index} (error={err:?})"
+                    );
+                    error!("drain_tx_ring(): {reason}");
+                    return Err(anyhow::anyhow!(reason));
+                },
+            };
+
+            messages.push(message);
+            tail = tail.wrapping_add(1);
+        }
+
+        // Update tail in guest memory.
+        if tail != header.tail {
+            let tail_offset: u64 = ::config::microvm::DEFAULT_TX_RING_BASE as u64 + 4;
+            vmem.write_bytes(tail_offset, &tail.to_le_bytes())?;
+        }
+
+        Ok(messages)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes a message into the RX ring buffer for the guest to consume.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory of the guest.
+    /// - `message`: The message to enqueue.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. If the ring is full, an error
+    /// is returned.
+    ///
+    pub fn write_rx_ring(
+        &self,
+        vmem: &mut VirtualMemory,
+        message: &::sys::ipc::Message,
+    ) -> Result<()> {
+        use ::sys::ipc::{
+            RING_HEADER_SIZE,
+            RingHeader,
+        };
+
+        // Read the RX ring header.
+        let mut header_buf: [u8; RING_HEADER_SIZE] = [0u8; RING_HEADER_SIZE];
+        vmem.read_bytes(::config::microvm::DEFAULT_RX_RING_BASE as u64, &mut header_buf)?;
+        let header: RingHeader = RingHeader::from_bytes(header_buf);
+
+        let head: u32 = header.head;
+        let tail: u32 = header.tail;
+        let capacity: u32 = header.capacity;
+
+        // Check if ring is full.
+        let used: u32 = head.wrapping_sub(tail);
+        if used >= capacity {
+            let reason: &str = "RX ring buffer is full";
+            error!("write_rx_ring(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Write message into slot.
+        let slot_index: u32 = head % capacity;
+        let slot_offset: u64 = ::config::microvm::DEFAULT_RX_RING_BASE as u64
+            + ::config::microvm::RING_DATA_OFFSET as u64
+            + u64::from(slot_index) * (::config::kernel::IPC_MESSAGE_SIZE as u64);
+
+        let msg_bytes: [u8; ::config::kernel::IPC_MESSAGE_SIZE] = message.clone().to_bytes();
+        vmem.write_bytes(slot_offset, &msg_bytes)?;
+
+        // Update head in guest memory.
+        let new_head: u32 = head.wrapping_add(1);
+        vmem.write_bytes(::config::microvm::DEFAULT_RX_RING_BASE as u64, &new_head.to_le_bytes())?;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the ring buffer mode is active.
+    ///
+    pub fn is_ring_buffer_active(&self) -> bool {
+        self.ring_buffer_active
     }
 }

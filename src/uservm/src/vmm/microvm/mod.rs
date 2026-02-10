@@ -171,6 +171,8 @@ pub type StdinFn =
 
 pub type StdoutFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32) -> Result<()> + Send;
 
+pub type StdoutDirectFn = dyn FnMut(::sys::ipc::Message) -> Result<()> + Send;
+
 pub type StderrFn = dyn Write + Send;
 
 //==================================================================================================
@@ -245,6 +247,8 @@ impl Vmm {
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
+            guest.init_ring_buffers(&mut vmem)?;
+
             guest.reset(&mut vmem, &mut vcpu)?;
 
             Arc::new(Mutex::new(guest))
@@ -254,8 +258,14 @@ impl Vmm {
 
         let vcpu: Arc<Mutex<VirtualProcessor>> = Arc::new(Mutex::new(vcpu));
 
-        let emulator: Emulator =
-            Emulator::new(guest.clone(), vmem.clone(), args.input, args.output, args.stderr)?;
+        let emulator: Emulator = Emulator::new(
+            guest.clone(),
+            vmem.clone(),
+            args.input,
+            args.output,
+            args.output_direct,
+            args.stderr,
+        )?;
 
         Ok(Self {
             guest,

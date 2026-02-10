@@ -80,30 +80,46 @@ pub fn read() -> Result<Option<Message>, Error> {
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "microvm")] {
-            // Read credits register.
-            let credits: u32 = unsafe {
-                core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32)
-            };
+            if platform::is_ring_buffer_active() {
+                // MMIO ring buffer path: read directly from the RX ring.
+                // SAFETY: The RX ring buffer region is mapped with read-write access during
+                // platform initialization.
+                let available: bool = unsafe {
+                    platform::vmbus_read_ring(&mut message as *mut u8)
+                };
+                if !available {
+                    return Ok(None);
+                }
+            } else {
+                // Legacy PMIO path: check credits register.
+                let credits: u32 = unsafe {
+                    core::ptr::read_volatile(
+                        ::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32,
+                    )
+                };
+                if credits == 0 {
+                    return Ok(None);
+                }
+                // SAFETY: The standard input is present, initialized and thread-safe to read.
+                unsafe {
+                    platform::vmbus_read(&mut message as *mut u8);
+                };
+            }
         }
         else if #[cfg(feature = "hyperlight")] {
             // Read credits register.
             let credits: u64 = unsafe {
                 crate::hal::platform::hyperlight::peb::ProcessEnvironmentBlock::get_credits()?
             };
+            if credits == 0 {
+                return Ok(None);
+            }
+            // SAFETY: The standard input is present, initialized and thread-safe to read.
+            unsafe {
+                platform::vmbus_read(&mut message as *mut u8);
+            };
         }
     }
-
-    // No message available.
-    if credits == 0 {
-        return Ok(None);
-    }
-
-    // Read message from the kernel's standard input.
-    // SAFETY: The standard input is present, initialized and thread-safe to read.
-    unsafe {
-        // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
-        platform::vmbus_read(&mut message as *mut u8);
-    };
 
     PERF_IKC_MESSAGES_RECEIVED.fetch_add(1, Ordering::Relaxed);
 
