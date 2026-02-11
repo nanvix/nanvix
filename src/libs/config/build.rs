@@ -137,6 +137,10 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
             constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));
         }
     }
+    if let Some(kpool_base) = kernel_config_toml.get("kpool_base") {
+        let val: usize = parse_hex_or_decimal_usize(kpool_base, "kpool_base");
+        constants.push_str(&format!("pub const KPOOL_BASE_RAW: usize = {val:#x};\n"));
+    }
     constants.push_str("}\n");
 
     // Write the generated file
