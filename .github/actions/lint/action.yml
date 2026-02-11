@@ -30,6 +30,15 @@ runs:
     with:
       deployment-type: "${{ inputs.deployment-type }}"
   - name: "Lint (${{ inputs.machine-type }})"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --lint ${{ steps.deployment.outputs.features-arg }}
     shell: bash
+    run: |
+      ./z build \
+        --toolchain-dir "$HOME/toolchain" \
+        -- \
+        lint-check \
+        "MACHINE=${{ inputs.machine-type }}" \
+        TARGET=x86 \
+        "LOG_LEVEL=${{ inputs.log-level }}" \
+        VERBOSE=yes \
+        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+        ${{ steps.deployment.outputs.make-flags }}
