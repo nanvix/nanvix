@@ -152,8 +152,8 @@
 // Lint Configuration
 //==================================================================================================
 
-#![forbid(clippy::unwrap_used)]
-#![forbid(clippy::expect_used)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 #![forbid(clippy::cast_possible_truncation)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
@@ -1173,6 +1173,7 @@ impl Default for Registry {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
