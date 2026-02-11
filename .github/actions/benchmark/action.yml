@@ -39,15 +39,17 @@ runs:
     # MicroVM benchmarks
     - name: Build (MicroVM)
       run: |
-        python3 scripts/ci.py \
-          --toolchain-dir=$HOME/toolchain \
-          --target-arch=x86 \
-          --log-level=panic \
-          --target-machine=microvm \
-          --release \
-          --build \
-          --sccache=${SCCACHE} \
-          --features L2_VM=yes
+        ./z build \
+          --toolchain-dir "$HOME/toolchain" \
+          -- \
+          all \
+          MACHINE=microvm \
+          TARGET=x86 \
+          LOG_LEVEL=panic \
+          VERBOSE=yes \
+          RELEASE=yes \
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
+          L2_VM=yes
       shell: bash
     - name: Run micro-benchmarks (MicroVM)
       id: run-microvm-benchmarks
@@ -89,16 +91,19 @@ runs:
           printf '%s\n' "${{ inputs.benchmark_list }}" | tr -d '\r' | sed '/^[[:space:]]*$/d'
         )
 
-        # Re-compile.
-        python3 scripts/ci.py \
-          --toolchain-dir=$HOME/toolchain \
-          --target-arch=x86 \
-          --log-level=panic \
-          --target-machine=microvm \
-          --release \
-          --build \
-          --sccache=${SCCACHE} \
-          --features L2_VM=yes,TIMESTAMP_MSG=yes
+        # Re-compile with TIMESTAMP_MSG=yes for echo-breakdown benchmarks.
+        ./z build \
+          --toolchain-dir "$HOME/toolchain" \
+          -- \
+          all \
+          MACHINE=microvm \
+          TARGET=x86 \
+          LOG_LEVEL=panic \
+          VERBOSE=yes \
+          RELEASE=yes \
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
+          L2_VM=yes \
+          TIMESTAMP_MSG=yes
 
         # Run only the specific benchmarks.
         for bench in "${benchmarks[@]}"; do
