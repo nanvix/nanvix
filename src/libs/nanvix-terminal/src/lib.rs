@@ -417,7 +417,7 @@ fn install_signal_handler() {
     // SAFETY: We install a signal handler that is a no-op so this is safe.
     let ret: c_int = unsafe {
         let sig_action: sigaction = sigaction {
-            sa_sigaction: stdin_thread_signal_handler as usize,
+            sa_sigaction: stdin_thread_signal_handler as *const () as usize,
             // Empty set to not block any other signals that may happen during signal handling.
             sa_mask: {
                 let mut set: libc::sigset_t = mem::zeroed();

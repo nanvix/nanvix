@@ -209,7 +209,7 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
         return Err(Error::new(ErrorCode::InvalidArgument, "user function is set"));
     }
 
-    args.user_fn = VirtualAddress::from_raw_value(_do_start_thread as usize);
+    args.user_fn = VirtualAddress::from_raw_value(_do_start_thread as *const () as usize);
 
     let result: i64 =
         kcall1!(KcallNumber::CreateThread.into(), args as *const ThreadCreateArgs as usize as u32);
