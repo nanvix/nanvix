@@ -23,14 +23,21 @@ ARG WORKSPACE_PATH=/mnt
 WORKDIR ${WORKSPACE_PATH}
 COPY . .
 
+# Ensure system binaries (e.g., /usr/bin/python3) take precedence over toolchain
+# binaries in /opt/nanvix/bin. The Makefile references cross-compilers via explicit
+# paths ($(TOOLCHAIN_DIR)/bin/...), so they do not depend on PATH ordering.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}
+
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     --mount=type=cache,target=${WORKSPACE_PATH}/target,sharing=locked \
     --mount=type=cache,target=/opt/contrib-src,sharing=locked \
     set -e && \
+    SCCACHE_ARG="" && \
+    if [ -x /usr/local/bin/sccache ]; then SCCACHE_ARG="SCCACHE=/usr/local/bin/sccache"; fi && \
     SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
-    make TOOLCHAIN_DIR=/opt/nanvix SCCACHE=/usr/local/bin/sccache ${BUILD_PARAMS}
+    make TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS}
 
 # Create output directories to ensure they exist even if build produces no artifacts.
 RUN mkdir -p ${WORKSPACE_PATH}/bin ${WORKSPACE_PATH}/lib ${WORKSPACE_PATH}/images \

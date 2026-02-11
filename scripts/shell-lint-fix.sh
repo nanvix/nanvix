@@ -11,14 +11,12 @@ if ! command -v shellcheck >/dev/null 2>&1; then
     exit 1
 fi
 
-# Check if git is available
-if ! command -v git >/dev/null 2>&1; then
-    echo "Error: git is not available." >&2
-    exit 1
+# Get all shell scripts - use git ls-files if in a git repo, fall back to find.
+if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+    mapfile -t shell_files < <(git ls-files -- '*.sh')
+else
+    mapfile -t shell_files < <(find . -name "*.sh" -type f)
 fi
-
-# Get all shell scripts in the repository (store in array to preserve filenames safely).
-mapfile -t shell_files < <(git ls-files -- '*.sh')
 
 if [ "${#shell_files[@]}" -eq 0 ]; then
     echo "No shell scripts found in the repository."
@@ -31,7 +29,7 @@ echo "Fixing shell script linting issues..."
 diff_output=$(shellcheck -f diff -S warning "${shell_files[@]}" 2>/dev/null || true)
 
 if [ -n "$diff_output" ]; then
-    if echo "$diff_output" | git apply --allow-empty 2>/dev/null; then
+    if echo "$diff_output" | git apply --allow-empty 2>/dev/null || echo "$diff_output" | patch -p1 2>/dev/null; then
         echo "Applied auto-fixable shell script linting changes."
     else
         echo "Error: failed to apply some auto-fixable shell script changes." >&2
