@@ -29,7 +29,90 @@ runs:
     uses: ./.github/actions/deployment-features
     with:
       deployment-type: "${{ inputs.deployment-type }}"
-  - name: "Test (${{ inputs.machine-type }})"
-    run: |
-      python3 scripts/ci.py --toolchain-dir=$HOME/toolchain --target-arch=x86 --log-level=${{ inputs.log-level }} --target-machine=${{ inputs.machine-type }} --${{ inputs.release }} --test ${{ steps.deployment.outputs.features-arg }}
+
+  - name: "Unit Tests (${{ inputs.machine-type }})"
     shell: bash
+    run: |
+      ./z build \
+        --toolchain-dir "$HOME/toolchain" \
+        -- \
+        run-unit-tests \
+        "MACHINE=${{ inputs.machine-type }}" \
+        TARGET=x86 \
+        "LOG_LEVEL=${{ inputs.log-level }}" \
+        VERBOSE=yes \
+        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+        ${{ steps.deployment.outputs.make-flags }}
+
+  - name: "Integration Tests (${{ inputs.machine-type }}, microvm/hyperlight)"
+    if: ${{ inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight' }}
+    shell: bash
+    run: |
+      ./z build \
+        --toolchain-dir "$HOME/toolchain" \
+        -- \
+        run-nanvix-tests \
+        "MACHINE=${{ inputs.machine-type }}" \
+        TARGET=x86 \
+        "LOG_LEVEL=${{ inputs.log-level }}" \
+        VERBOSE=yes \
+        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+        ${{ steps.deployment.outputs.make-flags }}
+
+  - name: "Integration Tests (${{ inputs.machine-type }}, qemu)"
+    if: ${{ inputs.machine-type != 'microvm' && inputs.machine-type != 'hyperlight' }}
+    shell: bash
+    env:
+      MACHINE_TYPE: ${{ inputs.machine-type }}
+      LOG_LEVEL: ${{ inputs.log-level }}
+      RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
+      MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
+    run: |
+      set -Euo pipefail
+
+      MAGIC_STRING="hello, world!"
+      TIMEOUT=600
+
+      rm -f run-stdout.log
+      touch run-stdout.log
+
+      # Start the system in the background and tee output to a log file.
+      ./z build \
+        --toolchain-dir "$HOME/toolchain" \
+        -- \
+        run \
+        "MACHINE=${MACHINE_TYPE}" \
+        TARGET=x86 \
+        "LOG_LEVEL=${LOG_LEVEL}" \
+        VERBOSE=yes \
+        ${RELEASE_FLAG} \
+        ${MAKE_FLAGS} \
+        > >(tee run-stdout.log) 2>&1 &
+      CMD_PID=$!
+
+      # Monitor stdout for the magic string with a timeout.
+      elapsed=0
+      while [ "${elapsed}" -lt "${TIMEOUT}" ]; do
+        if grep -q "${MAGIC_STRING}" run-stdout.log 2>/dev/null; then
+          echo "Magic string found. Sending SIGINT to terminate QEMU."
+          kill -INT "${CMD_PID}" 2>/dev/null || true
+          wait "${CMD_PID}" 2>/dev/null || true
+          echo "Integration test passed."
+          exit 0
+        fi
+
+        # Check if the process has already exited.
+        if ! kill -0 "${CMD_PID}" 2>/dev/null; then
+          break
+        fi
+
+        sleep 1
+        elapsed=$((elapsed + 1))
+      done
+
+      # Timeout or process exited without the magic string.
+      kill -INT "${CMD_PID}" 2>/dev/null || true
+      wait "${CMD_PID}" 2>/dev/null || true
+
+      echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
+      exit 1
