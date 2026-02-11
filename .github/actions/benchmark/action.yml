@@ -45,7 +45,6 @@ runs:
           --log-level=panic \
           --target-machine=microvm \
           --release \
-          --without-opt \
           --build \
           --sccache=${SCCACHE} \
           --features L2_VM=yes
@@ -97,7 +96,6 @@ runs:
           --log-level=panic \
           --target-machine=microvm \
           --release \
-          --without-opt \
           --build \
           --sccache=${SCCACHE} \
           --features L2_VM=yes,TIMESTAMP_MSG=yes
