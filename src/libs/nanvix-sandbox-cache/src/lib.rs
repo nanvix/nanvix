@@ -865,7 +865,7 @@ mod tests {
             console_file,
             None,
             hwloc,
-            128,
+            0,
             &format!("{}/kernel.elf", tmp_dir.path()),
             None,
             &format!("{}/toolchain", tmp_dir.path()),
@@ -876,6 +876,8 @@ mod tests {
         );
 
         #[cfg(not(feature = "single-process"))]
+        let netns_pool_size: usize = 0;
+        #[cfg(not(feature = "single-process"))]
         let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             socket_type,
             socket_type,
@@ -883,7 +885,7 @@ mod tests {
             console_file,
             None,
             hwloc,
-            128,
+            netns_pool_size,
             &format!("{}/kernel.elf", tmp_dir.path()),
             &format!("{}/linuxd.elf", tmp_dir.path()),
             &format!("{}/uservm.elf", tmp_dir.path()),
