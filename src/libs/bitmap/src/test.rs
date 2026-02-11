@@ -20,7 +20,7 @@ fn test_helper_create_bitmap_from_raw_array(data: &mut [u8]) -> Result<Bitmap, E
     let len: usize = data.len();
     let array = unsafe { RawArray::from_raw_parts(ptr, len)? };
 
-    Ok(Bitmap::from_raw_array(array))
+    Bitmap::from_raw_array(array)
 }
 
 /// Attempts to create a [`Bitmap`] from a raw array.
