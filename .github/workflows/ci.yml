@@ -138,13 +138,14 @@ jobs:
   # runner and then integration-tests on a self-hosted runner. Because
   # each entry is independent, a fast config's test starts as soon as its own
   # build finishes instead of waiting for every build to complete.
+  # On pull requests, only debug builds run (release is tested on dev push).
   ci-build-and-test:
     name: "CI (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
     needs: [precheck, checks, lint]
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [single-process, multi-process]
         exclude:
@@ -175,6 +176,7 @@ jobs:
 
   # L2 configurations require .git for generate-l2-initramfs.sh, so they build
   # from source on self-hosted runners with a local toolchain.
+  # On pull requests, only debug builds run (release is tested on dev push).
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
     needs: [precheck, checks]
@@ -182,7 +184,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [microvm, hyperlight]
     runs-on: [self-hosted, Linux, X64]
     permissions:
