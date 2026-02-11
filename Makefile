@@ -212,15 +212,15 @@ export RUSTC_WRAPPER := $(SCCACHE)
 endif
 
 # Rust flags for guest target.
-export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no --emit=mir,link,dep-info,metadata"
 export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
-export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no --emit=mir,link,dep-info,metadata"
 export KERNEL_CARGO_FLAGS := -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 
 # Rust flags for host target.
-export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
+export HOST_RUST_FLAGS := "--emit=mir,link,dep-info,metadata $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))"
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
@@ -253,7 +253,7 @@ export KERNEL_CARGO_CLIPPY_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvi
 export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
 # Cargo commands for wasm target.
-export WASM_CARGO_BUILD_CMD := $(CARGO) +nanvix-x86 build $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
+export WASM_CARGO_BUILD_CMD := RUSTFLAGS="--emit=mir,link,dep-info,metadata" $(CARGO) +nanvix-x86 build $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
 export WASM_CARGO_CLEAN_CMD := $(CARGO) +nanvix-x86 clean --target wasm32-wasip1
 export WASM_CARGO_CHECK_CMD := $(CARGO) +nanvix-x86 check --target wasm32-wasip1 --message-format=json --no-default-features
 export WASM_CARGO_CLIPPY_CMD := $(CARGO) +nanvix-x86 clippy --target wasm32-wasip1 --no-default-features
