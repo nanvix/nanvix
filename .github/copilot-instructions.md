@@ -14,10 +14,10 @@ types and supports various runtimes.
 - **Languages:** Rust (kernel, daemons, libraries), C/C++ (tests), Python and Shell (tooling)
 - **Target Architecture:** x86 (32-bit)
 - **Target Machines:** microvm (default), hyperlight, qemu-pc, qemu-isapc, qemu-baremetal
-- **Runtimes:** Python 3.12.3, Libstdc++ v3, Newlib 4.4.0, WebAssembly (via QuickJS and wasmd)
+- **Runtimes:** Python 3.12.3, Libstdc++ v3, Newlib 4.4.0, WebAssembly (via QuickJS and wasmd) *(built externally)*
 - **Build System:** Bash Scripts + Make + Cargo (Rust) with custom toolchain
 - **Development Tools:** Binutils v2.40, GCC v12.4.0, G++ v12.4.0, GFortran v12.4.0, Rustc v1.87.0
-- **Supported Libraries:** OpenBLAS v0.3.29, OpenSSL v3.5.0, SQLite v3.49.0, Zlib v1.3.1
+- **Supported Libraries:** OpenBLAS v0.3.29, OpenSSL v3.5.0, SQLite v3.49.0, Zlib v1.3.1 *(built externally)*
 
 ## Repository Structure
 
@@ -86,12 +86,6 @@ To get started with the `z` utility, run:
 ./z build -- kernel          # Build kernel only
 ./z build -- all-nanvixd     # Build nanvixd only
 ./z build -- all-uservm      # Build uservm only
-
-# Full build (includes optional components)
-./z build -- BUILD_OPT=yes all
-
-# Fast build (skips optional components)
-./z build -- BUILD_OPT=no all
 ```
 
 ### Build Parameters
@@ -105,7 +99,6 @@ Key build parameters can be set as environment variables or via the `z` utility:
 - `PROFILER` - Enable profiler: `yes` or `no` (default)
 - `SINGLE_PROCESS` - Single-process deployment: `yes` (default) or `no`
 - `L2_VM` - L2 VM deployment: `yes` or `no` (default)
-- `BUILD_OPT` - Build optional software: `yes` (default) or `no`
 
 Example:
 
