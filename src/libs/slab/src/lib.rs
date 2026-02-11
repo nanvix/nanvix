@@ -139,7 +139,7 @@ impl Slab {
 
         // Instantiate index.
         let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
-        let mut index: Bitmap = Bitmap::from_raw_array(storage);
+        let mut index: Bitmap = Bitmap::from_raw_array(storage)?;
 
         // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
         // the memory region is left in a modified state.
