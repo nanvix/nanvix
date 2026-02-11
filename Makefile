@@ -29,9 +29,6 @@ export TIMESTAMP_MSG ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
-# Build optional software?
-export BUILD_OPT ?= yes
-
 # L2 VM deployment?
 export L2_VM ?= no
 
@@ -64,28 +61,6 @@ export MAKE_NO_PRINT ?= yes
 
 # Make command for recursive invocations (adds --no-print-directory if MAKE_NO_PRINT=yes)
 export MAKE_QUIET := $(MAKE) $(if $(filter yes,$(MAKE_NO_PRINT)),--no-print-directory)
-
-#===================================================================================================
-# Optional Software Repositories (URLs and pinned commits)
-#===================================================================================================
-
-OPENBLAS_REPOSITORY := https://github.com/nanvix/OpenBLAS
-OPENBLAS_COMMIT := b10d27dd5d491cee83ea9f19d4d9db070389d9d9
-
-OPENSSL_REPOSITORY := https://github.com/nanvix/openssl
-OPENSSL_COMMIT := 4ad6f7a980172cc5314c5f0fbe008e6a020e4441
-
-PYTHON_REPOSITORY := https://github.com/nanvix/cpython
-PYTHON_COMMIT := 98288af34dbeb4beacd56c5097f62e798b0a25ae
-
-SQLITE_REPOSITORY := https://github.com/nanvix/sqlite
-SQLITE_COMMIT := c5b9f35226d11c3833c2538af629b78c69e62629
-
-ZLIB_REPOSITORY := https://github.com/nanvix/zlib
-ZLIB_COMMIT := b1c1f88a2a1b5feb29d6f09efd3a31ac05ded44d
-
-QUICKJS_REPOSITORY := https://github.com/nanvix/quickjs
-QUICKJS_COMMIT := 0c5006c20897be41569d40fcd97990b8a3563d46
 
 #===================================================================================================
 # Directories
@@ -367,7 +342,7 @@ dump-sccache-stats:
 #===================================================================================================
 
 # Builds everything.
-all: all-nanvix all-opt
+all: all-nanvix
 	@$(MAKE_QUIET) update-sysroot-link
 	@$(MAKE_QUIET) dump-sccache-stats
 
@@ -390,7 +365,7 @@ all-nanvix: all-nanvix-bench
 endif
 
 # Performs local initialization.
-init: init-repo init-opt
+init: init-repo
 
 init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
@@ -405,7 +380,6 @@ clean: \
 	clean-wasmd \
 	clean-kernel \
 	clean-wasm-binaries \
-	clean-opt \
 	clean-snapshot \
 	image-clean
 
@@ -482,7 +456,6 @@ help:
 	@echo "  run      Run system in release mode"
 	@echo ""
 	@echo "Build Parameters (override with VAR=value, see Parameter Values section below)"
-	@echo "  BUILD_OPT        Build optional software (default: $(BUILD_OPT)) [impacts build time]"
 	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
 	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
 	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
@@ -502,7 +475,6 @@ help:
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error"
 	@echo "  PROFILER        yes, no"
-	@echo "  BUILD_OPT       yes, no"
 	@echo "  L2_VM           yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
 
@@ -727,12 +699,6 @@ NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf
 run-nanvix-tests: all-nanvix
 	@echo "Running integration tests with configuration: $(NANVIX_TEST_CONFIG)"
 	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(NANVIX_TEST_CONFIG)
-
-#===================================================================================================
-# Build Rules for Optional Software
-#===================================================================================================
-
-include build/make/optional.mk
 
 #===================================================================================================
 # Build Rules for L2 System VM Snapshot

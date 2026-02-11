@@ -107,7 +107,6 @@ def make(
     log_level: str = None,
     verbose: bool = False,
     timeout: int = None,
-    build_opt: bool = False,
     sccache: str = None,
     features: Optional[List[str]] = None,
 ) -> None:
@@ -150,8 +149,6 @@ def make(
 
     if sccache:
         command.append(f"SCCACHE={sccache}")
-
-    command.append("BUILD_OPT=yes" if build_opt else "BUILD_OPT=no")
 
     # Append feature toggles (e.g., ["FOO=bar"]).
     if features:
@@ -277,7 +274,6 @@ def build(
     machine: str,
     arch: str,
     release: bool,
-    build_opt: bool,
     sccache: str = None,
     toolchain_dir: str = None,
     log_level: str = None,
@@ -292,7 +288,6 @@ def build(
         machine (str): Target machine.
         arch (str): Target architecture.
         release (bool): Release build.
-        build_opt (bool): Build optional software.
         sccache (str, optional): Path to sccache binary. Defaults to None.
         toolchain_dir (str, optional): Toolchain directory. Defaults to None.
         log_level (str, optional): Log level. Defaults to None.
@@ -310,7 +305,6 @@ def build(
         log_level,
         verbose,
         timeout,
-        build_opt,
         sccache,
         features,
     )
@@ -450,12 +444,6 @@ def parse_args() -> argparse.Namespace:
         "--build", action="store_true", help="Build Nanvix", default=False
     )
     parser.add_argument(
-        "--without-opt",
-        action="store_true",
-        help="Disable optional software",
-        default=False,
-    )
-    parser.add_argument(
         "--test",
         action="store_true",
         help="Test Nanvix (implies --build)",
@@ -493,7 +481,6 @@ def main() -> None:
     print(f"  - Lint: {args.lint}")
     print(f"  - Spellcheck: {args.spellcheck}")
     print(f"  - Build: {args.build}")
-    print(f"  - Disable Optional Software: {args.without_opt}")
     print(f"  - SCCACHE: {args.sccache if args.sccache else ''}")
     print(f"  - Verbose: {args.verbose}")
     print(f"  - Timeout: {args.timeout}")
@@ -548,7 +535,6 @@ def main() -> None:
             args.target_machine,
             args.target_arch,
             args.release or not args.debug,
-            not args.without_opt,
             args.sccache,
             args.toolchain_dir,
             args.log_level,
