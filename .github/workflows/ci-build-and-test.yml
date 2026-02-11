@@ -52,10 +52,7 @@ jobs:
           bin/
           images/
           lib/
-          test/
-          sysroot-debug/
-          sysroot-release/
-          sysroot
+          sysroot-${{ inputs.build-type }}/
 
     - name: "Upload logs in case of failures"
       if: failure()
