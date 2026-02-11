@@ -46,3 +46,9 @@ cond_open_max = 32
 
 # Number of IKC messages to poll at a time.
 ikc_poll_batch_size = 1
+
+# Base address of the kernel pool.
+# Notes:
+# - This value must be aligned to a page table boundary.
+# - This value is used in both the Rust code and the linker script.
+kpool_base = 0x00800000

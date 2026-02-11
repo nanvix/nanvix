@@ -73,7 +73,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_BASE`], which can be used in constant-value expressions.
     ///
-    pub const KPOOL_BASE_RAW: usize = 0x00800000;
+    pub const KPOOL_BASE_RAW: usize = crate::kernel::KPOOL_BASE_RAW;
 
     ///
     /// # Description
