@@ -39,6 +39,31 @@ const DEFAULT_KERNEL_CONFIG_PATH: &str = "build/kernel_config.toml";
 ///
 /// # Description
 ///
+/// Parses a string as either a hexadecimal (0x-prefixed) or decimal value.
+///
+/// # Parameters
+///
+/// - `value`: The string to parse.
+/// - `key`: The key name, used in error messages.
+///
+/// # Returns
+///
+/// The parsed value.
+///
+fn parse_hex_or_decimal(value: &str, key: &str) -> usize {
+    if let Some(stripped) = value.strip_prefix("0x") {
+        usize::from_str_radix(stripped, 16)
+            .unwrap_or_else(|_| panic!("Invalid hex value for {}: '{}'", key, value))
+    } else {
+        value
+            .parse()
+            .unwrap_or_else(|_| panic!("Invalid decimal value for {}: '{}'", key, value))
+    }
+}
+
+///
+/// # Description
+///
 /// Helper method to load a TOML file from a file path, and store it in a HashMap. This is a very
 /// simple parser that only supports single-level TOMLs (i.e. no-nesting).
 ///
@@ -110,6 +135,13 @@ fn main() {
             .expect("Failed to parse kstack_size"),
         None => panic!("kstack_size not found in kernel_config.toml"),
     };
+
+    // Extract kpool_base from config
+    let kpool_base_str: &str = match kernel_config.get("kpool_base") {
+        Some(s) => s.as_str(),
+        None => panic!("kpool_base not found in kernel_config.toml"),
+    };
+    let kpool_base: usize = parse_hex_or_decimal(kpool_base_str, "kpool_base");
 
     // Tell Cargo to rerun build script if config changes
     println!("cargo::rerun-if-changed={}", kernel_config_path.display());
@@ -288,7 +320,9 @@ fn main() {
 
     let linker_template: String =
         fs::read_to_string(&linker_template_path).expect("Failed to read linker script template");
-    let linker_script: String = linker_template.replace("@MACHINE_RESERVED@", &machine_reserved);
+    let linker_script: String = linker_template
+        .replace("@MACHINE_RESERVED@", &machine_reserved)
+        .replace("@KPOOL_BASE@", &format!("{:#x}", kpool_base));
     fs::write(&linker_output_path, linker_script).expect("Failed to write linker script");
 
     println!("cargo::rerun-if-changed={}", linker_template_path.display());
