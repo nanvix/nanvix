@@ -197,6 +197,7 @@ async fn extract_bzip2(tarball_path: &Path, dir: &Path) -> anyhow::Result<()> {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

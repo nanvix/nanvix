@@ -241,6 +241,7 @@ pub(crate) fn check_rate_limit(response: &Response) -> Result<()> {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

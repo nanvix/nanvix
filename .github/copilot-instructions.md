@@ -186,7 +186,10 @@ This runs formatting checks, linting, spell checking, building, and all tests.
 
 #### Style & Formatting (Rust only)
 
-- Do not use `panic!`, `unwrap()`, or `expect()`, instead return `Result<T, E>`.
+- Do not use `panic!`, `unwrap()`, or `expect()` in production code, instead return `Result<T, E>`.
+  - In `#[cfg(test)]` modules, `unwrap()` and `expect()` are acceptable since test failures are expected to panic.
+  - Prefer `expect()` with a descriptive message over `unwrap()` in tests to provide failure context.
+  - Use `#![deny(...)]` instead of `#![forbid(...)]` for `clippy::unwrap_used` and `clippy::expect_used` lints so that test modules can selectively `#[allow]` them.
 - Avoid `unsafe` unless strictly necessary. When unavoidable, narrow its scope and document pre/post conditions.
 - Always add explicit type annotation when defining variables and constants, even if type can be inferred (e.g., `let x: u32 = 42;`).
 - Prefix all import statements with `::` (e.g., use `::std::fs` instead of `std::fs`).
@@ -266,7 +269,7 @@ This runs formatting checks, linting, spell checking, building, and all tests.
 - Member fields in `struct`s must be private and accessed via getter/setter methods.
 - Verify that all imports use the `::` prefix convention.
 - Check that error paths log before returning.
-- Ensure no `unwrap()`, `expect()`, or `panic!()` are used.
+- Ensure no `unwrap()`, `expect()`, or `panic!()` are used in production code. In `#[cfg(test)]` modules, `expect()` is preferred over `unwrap()` for better failure diagnostics.
 - Verify unsafe blocks are minimized and properly documented.
 - Check that explicit type annotations are used for variable declarations.
 
