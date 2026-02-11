@@ -261,8 +261,12 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         static __KERNEL_END: u8;
     }
 
-    let peb_base: usize =
-        unsafe { ::sys::mm::align_up(&__KERNEL_END as *const u8 as usize, PAGE_ALIGNMENT) };
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT).ok_or_else(|| {
+        let reason: &str = "align_up overflow";
+        error!("parse_bootinfo(): {reason} (kernel_end={kernel_end:#x})");
+        Error::new(ErrorCode::BadAddress, reason)
+    })?;
     let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
     unsafe {
@@ -341,8 +345,13 @@ pub fn init(
         static __KERNEL_END: u8;
     }
     // Register PEB structure.
+    let kernel_end_addr: usize = unsafe { &__KERNEL_END } as *const u8 as usize;
     let peb_base: usize =
-        ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, PAGE_ALIGNMENT);
+        ::sys::mm::align_up(kernel_end_addr, PAGE_ALIGNMENT).ok_or_else(|| {
+            let reason: &str = "align_up overflow";
+            error!("init(): {reason} (kernel_end_addr={kernel_end_addr:#x})");
+            Error::new(ErrorCode::BadAddress, reason)
+        })?;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",
         VirtualAddress::from_raw_value(peb_base),

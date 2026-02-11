@@ -91,7 +91,14 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     let tls_alignment: usize = PAGE_ALIGNMENT.into();
     let tda_ptr_size: usize = core::mem::size_of::<*mut u8>();
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
-    let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?);
+    let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
+        .ok_or_else(|| {
+            ::syslog::error!(
+                "alloc(): align_up overflow (tls_size={tls_size}, \
+                 allocation_alignment={allocation_alignment})"
+            );
+            Error::new(ErrorCode::OutOfMemory, "align_up overflow")
+        })?;
     let allocation_size: usize = allocation_padding_size + tda_ptr_size;
 
     ::syslog::trace!(
@@ -150,7 +157,11 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
 
     // Compute pointer to thread-local storage.
     // SAFETY: `tda_ptr` is non-null and pointer arithmetic is within bounds.
-    let tls_ptr: *mut u8 = unsafe { tda_ptr.sub(align_up(tls_size, PAGE_ALIGNMENT)) };
+    let tls_aligned_size: usize = align_up(tls_size, PAGE_ALIGNMENT).ok_or_else(|| {
+        ::syslog::error!("alloc(): align_up overflow (tls_size={tls_size}, tda_ptr={tda_ptr:?})");
+        Error::new(ErrorCode::OutOfMemory, "align_up overflow")
+    })?;
+    let tls_ptr: *mut u8 = unsafe { tda_ptr.sub(tls_aligned_size) };
 
     // Initialize thread-local storage with the contents of the main executable's TLS segment.
     // SAFETY: `tls_ptr` is non-null and properly aligned. The copy is within bounds.
@@ -226,7 +237,14 @@ fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
     let tls_alignment: usize = PAGE_ALIGNMENT.into();
     let tda_ptr_size: usize = core::mem::size_of::<*mut u8>();
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
-    let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?);
+    let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
+        .ok_or_else(|| {
+            ::syslog::error!(
+                "dealloc(): align_up overflow (tls_size={tls_size}, \
+                 allocation_alignment={allocation_alignment})"
+            );
+            Error::new(ErrorCode::OutOfMemory, "align_up overflow")
+        })?;
     let allocation_size: usize = allocation_padding_size + tda_ptr_size;
 
     ::syslog::trace!(

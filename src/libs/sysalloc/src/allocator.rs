@@ -124,7 +124,18 @@ impl NanvixOomHandler {
 
 impl OomHandler for NanvixOomHandler {
     fn handle_oom(talc: &mut Talc<Self>, layout: core::alloc::Layout) -> Result<(), ()> {
-        let increment: usize = mm::align_up(layout.size(), PAGE_ALIGNMENT);
+        let increment: usize = match mm::align_up(layout.size(), PAGE_ALIGNMENT) {
+            Some(v) => v,
+            None => {
+                #[cfg(feature = "warn")]
+                let _ = writeln!(
+                    &mut Logger::get(module_path!(), LogLevel::Warn),
+                    "handle_oom(): align_up overflow (layout_size={})",
+                    layout.size()
+                );
+                return Err(());
+            },
+        };
 
         let old_heap: Span = talc
             .oom_handler
