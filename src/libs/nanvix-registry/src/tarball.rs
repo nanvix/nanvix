@@ -10,16 +10,21 @@ use ::anyhow::{
     Result,
 };
 use ::std::{
+    collections::HashSet,
     path::{
+        Component,
         Path,
         PathBuf,
     },
     process::ExitStatus,
 };
 use ::syslog::error;
-use ::tokio::process::{
-    Child,
-    Command,
+use ::tokio::{
+    fs,
+    process::{
+        Child,
+        Command,
+    },
 };
 
 //==================================================================================================
@@ -140,12 +145,8 @@ impl Tarball {
 ///
 /// # Description
 ///
-/// Extracts a bzip2-compressed tarball using the `tar` command.
-///
-/// # Note
-///
-/// This function does not validate extracted paths. See
-/// https://github.com/nanvix/nanvix/issues/1359 for tar slip mitigation.
+/// Extracts a bzip2-compressed tarball using the `tar` command and validates that all extracted
+/// paths remain within the destination directory to prevent tar slip attacks.
 ///
 /// # Parameters
 ///
@@ -157,6 +158,9 @@ impl Tarball {
 /// On success, returns an empty tuple. On failure, it returns an object that describes the error.
 ///
 async fn extract_bzip2(tarball_path: &Path, dir: &Path) -> anyhow::Result<()> {
+    // Validate archive member paths before extraction to prevent tar slip attacks.
+    validate_archive_paths(tarball_path).await?;
+
     // Spawn tar command.
     let mut child: Child = match Command::new("tar")
         .arg("-xjf")
@@ -187,6 +191,183 @@ async fn extract_bzip2(tarball_path: &Path, dir: &Path) -> anyhow::Result<()> {
         let reason: String = "Tarball extraction failed".to_string();
         error!("{reason}");
         anyhow::bail!(reason)
+    }
+
+    // Validate that no extracted paths escape the destination directory.
+    validate_extracted_paths(dir).await?;
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Validates archive member paths before extraction to reject entries containing absolute paths or
+/// relative path components (e.g., `../../etc/malicious`) that could escape the destination
+/// directory. This complements `validate_extracted_paths` by catching malicious entries before any
+/// files are written to disk.
+///
+/// # Parameters
+///
+/// - `tarball_path`: Path to the tarball file to inspect.
+///
+/// # Returns
+///
+/// On success, returns an empty tuple. On failure, it returns an object that describes the error.
+///
+async fn validate_archive_paths(tarball_path: &Path) -> anyhow::Result<()> {
+    // List archive contents without extracting.
+    let output: ::std::process::Output = match Command::new("tar")
+        .arg("-tjf")
+        .arg(tarball_path)
+        .output()
+        .await
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let reason: String = format!("Failed to list tarball contents: {error}");
+            error!("{reason}");
+            anyhow::bail!(reason)
+        },
+    };
+
+    if !output.status.success() {
+        let reason: String = "Failed to list tarball contents".to_string();
+        error!("{reason}");
+        anyhow::bail!(reason)
+    }
+
+    let contents: String = String::from_utf8_lossy(&output.stdout).to_string();
+
+    for entry in contents.lines() {
+        let path: &Path = Path::new(entry);
+
+        // Reject absolute paths.
+        if path.is_absolute() {
+            let reason: String = format!("Archive contains absolute path: '{entry}'");
+            error!("{reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Reject paths with parent directory components that could escape the destination.
+        for component in path.components() {
+            if component == Component::ParentDir {
+                let reason: String = format!("Archive contains path traversal entry: '{entry}'");
+                error!("{reason}");
+                anyhow::bail!(reason)
+            }
+        }
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Validates that all files and directories within the given directory are contained within it.
+/// This prevents tar slip attacks where malicious archives extract files outside the intended
+/// destination directory using relative path components (e.g., `../../etc/malicious`).
+///
+/// # Parameters
+///
+/// - `dir`: The directory to validate.
+///
+/// # Returns
+///
+/// On success, returns an empty tuple. On failure, it returns an object that describes the error.
+///
+async fn validate_extracted_paths(dir: &Path) -> anyhow::Result<()> {
+    // Canonicalize the destination directory to resolve any symlinks or relative components.
+    let canonical_dir: PathBuf = match fs::canonicalize(dir).await {
+        Ok(path) => path,
+        Err(error) => {
+            let reason: String = format!(
+                "Failed to canonicalize destination directory '{}': {error}",
+                dir.display()
+            );
+            error!("{reason}");
+            anyhow::bail!(reason)
+        },
+    };
+
+    // Track visited canonical directories to prevent infinite loops from symlink cycles.
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    visited.insert(canonical_dir.clone());
+
+    // Walk the directory tree iteratively and validate each path.
+    let mut stack: Vec<PathBuf> = vec![canonical_dir.clone()];
+
+    while let Some(current_dir) = stack.pop() {
+        let mut read_dir: fs::ReadDir = match fs::read_dir(&current_dir).await {
+            Ok(read_dir) => read_dir,
+            Err(error) => {
+                let reason: String =
+                    format!("Failed to read directory '{}': {error}", current_dir.display());
+                error!("{reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        loop {
+            match read_dir.next_entry().await {
+                Ok(Some(entry)) => {
+                    let path: PathBuf = entry.path();
+
+                    // Canonicalize the entry path to resolve symlinks and relative components.
+                    let canonical_path: PathBuf = match fs::canonicalize(&path).await {
+                        Ok(path) => path,
+                        Err(error) => {
+                            let reason: String = format!(
+                                "Failed to canonicalize path '{}': {error}",
+                                path.display()
+                            );
+                            error!("{reason}");
+                            anyhow::bail!(reason)
+                        },
+                    };
+
+                    // Verify the canonical path is within the destination directory.
+                    if !canonical_path.starts_with(&canonical_dir) {
+                        let reason: String = format!(
+                            "Extracted path '{}' escapes destination directory '{}'",
+                            canonical_path.display(),
+                            canonical_dir.display()
+                        );
+                        error!("{reason}");
+                        anyhow::bail!(reason)
+                    }
+
+                    // If it is a directory, add it to the stack for further validation.
+                    match fs::metadata(&canonical_path).await {
+                        Ok(metadata) => {
+                            if metadata.is_dir() && visited.insert(canonical_path.clone()) {
+                                stack.push(canonical_path);
+                            }
+                        },
+                        Err(error) => {
+                            let reason: String = format!(
+                                "Failed to read metadata for '{}': {error}",
+                                path.display()
+                            );
+                            error!("{reason}");
+                            anyhow::bail!(reason)
+                        },
+                    }
+                },
+                Ok(None) => {
+                    break;
+                },
+                Err(error) => {
+                    let reason: String = format!(
+                        "Failed to read directory entry in '{}': {error}",
+                        current_dir.display()
+                    );
+                    error!("{reason}");
+                    anyhow::bail!(reason)
+                },
+            }
+        }
     }
 
     Ok(())
@@ -292,5 +473,92 @@ mod tests {
                 assert_eq!(path, expected_path);
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a unique temporary directory name to avoid conflicts when tests run concurrently.
+    ///
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        ::std::env::temp_dir().join(format!(
+            "{}-{}-{}",
+            prefix,
+            ::std::process::id(),
+            ::std::time::SystemTime::now()
+                .duration_since(::std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that path validation succeeds for a directory with only contained files.
+    ///
+    #[tokio::test]
+    async fn test_validate_extracted_paths_valid() {
+        let dir: PathBuf = unique_temp_dir("tarball_test_valid");
+        let _ = fs::remove_dir_all(&dir).await;
+        fs::create_dir_all(dir.join("subdir")).await.unwrap();
+        fs::write(dir.join("file.txt"), "content").await.unwrap();
+        fs::write(dir.join("subdir/nested.txt"), "content")
+            .await
+            .unwrap();
+
+        let result: Result<()> = validate_extracted_paths(&dir).await;
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(&dir).await;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that path validation fails when a symlink escapes the destination directory.
+    ///
+    #[tokio::test]
+    async fn test_validate_extracted_paths_symlink_escape() {
+        let base: PathBuf = unique_temp_dir("tarball_test_escape");
+        let dir: PathBuf = base.join("dest");
+        let outside: PathBuf = base.join("outside");
+        let _ = fs::remove_dir_all(&base).await;
+        fs::create_dir_all(&dir).await.unwrap();
+        fs::create_dir_all(&outside).await.unwrap();
+        fs::write(outside.join("secret.txt"), "secret")
+            .await
+            .unwrap();
+
+        // Create a symlink inside `dir` that points to a file outside `dir`.
+        fs::symlink(outside.join("secret.txt"), dir.join("escape_link"))
+            .await
+            .unwrap();
+
+        let result: Result<()> = validate_extracted_paths(&dir).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("escapes destination directory"));
+
+        let _ = fs::remove_dir_all(&base).await;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests that path validation succeeds for an empty directory.
+    ///
+    #[tokio::test]
+    async fn test_validate_extracted_paths_empty_dir() {
+        let dir: PathBuf = unique_temp_dir("tarball_test_empty");
+        let _ = fs::remove_dir_all(&dir).await;
+        fs::create_dir_all(&dir).await.unwrap();
+
+        let result: Result<()> = validate_extracted_paths(&dir).await;
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(&dir).await;
     }
 }
