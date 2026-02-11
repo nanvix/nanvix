@@ -34,15 +34,6 @@ jobs:
     - name: "Setup"
       uses: ./.github/actions/docker-setup
 
-    - name: "Lint"
-      uses: ./.github/actions/docker-check
-      with:
-        target: 'lint-check'
-        release: '${{ inputs.build-type }}'
-        log-level: 'trace'
-        machine-type: '${{ inputs.machine-type }}'
-        deployment-type: '${{ inputs.deployment-type }}'
-
     - name: "Build & Unit Test"
       uses: ./.github/actions/docker-build
       with:

@@ -85,8 +85,54 @@ jobs:
         target: 'spellcheck'
 
   # ==========================================================================================
-  # Stage 1+2: Build, Unit Test, and Integration Test
+  # Stage 1+2: Lint, Build, Unit Test, and Integration Test
   # ==========================================================================================
+
+  # Lint is config-dependent (features differ per machine-type + deployment-type)
+  # but does NOT depend on build-type (debug vs release). Run lint once per
+  # unique (machine-type, deployment-type) pair (5 jobs) instead of once per
+  # build matrix entry (10 jobs).
+  lint:
+    name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    needs: [precheck, checks]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        machine-type: [qemu-pc, microvm, hyperlight]
+        deployment-type: [single-process, multi-process]
+        exclude:
+          - machine-type: qemu-pc
+            deployment-type: single-process
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      needs.precheck.outputs.up_to_date == 'true' && (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ')
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
+
+    - name: "Lint"
+      uses: ./.github/actions/docker-check
+      with:
+        target: 'lint-check'
+        release: 'debug'
+        log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
 
   # Each matrix entry calls a reusable workflow that builds on a GitHub-hosted
   # runner and then integration-tests on a self-hosted runner. Because
@@ -94,7 +140,7 @@ jobs:
   # build finishes instead of waiting for every build to complete.
   ci-build-and-test:
     name: "CI (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck, checks]
+    needs: [precheck, checks, lint]
     strategy:
       fail-fast: false
       matrix:
