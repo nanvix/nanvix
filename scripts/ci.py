@@ -1,6 +1,11 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# DEPRECATED: This script is no longer used by CI workflows.
+# All CI invocations now use the ./z utility directly. This script is retained
+# for backward compatibility with local development workflows but may be removed
+# in a future release. See GitHub issue #1362 for details.
+
 # ======================================================================================================================
 # Imports
 # ======================================================================================================================

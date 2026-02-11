@@ -6,7 +6,7 @@ name: "Nanvix Benchmark Comment Dispatcher"
 on:
   workflow_run:
     workflows:
-      - "Nanvix Benchmark (Self-Hosted)"
+      - "Nanvix CI/CD"
     types:
       - completed
 
