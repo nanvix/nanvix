@@ -260,6 +260,37 @@ jobs:
         echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
       shell: bash
 
+    - name: "Validate Release Archive"
+      if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' && matrix.deployment-type != 'l2' }}
+      run: |
+        archive="${{ steps.release-archive.outputs.archive-path }}"
+        echo "Validating release archive: ${archive}"
+
+        # List of required files that must be present in every release archive.
+        required_files=(
+          "./lib/user.ld"
+          "./lib/libposix.a"
+          "./bin/kernel.elf"
+        )
+
+        missing=0
+        for file in "${required_files[@]}"; do
+          if ! tar -tjf "${archive}" | grep -qx "${file}"; then
+            echo "::error::Required file missing from release archive: ${file}"
+            missing=1
+          else
+            echo "✓ Found: ${file}"
+          fi
+        done
+
+        if (( missing == 1 )); then
+          echo "::error::Release archive validation failed."
+          exit 1
+        fi
+
+        echo "Release archive validation passed."
+      shell: bash
+
     - name: "Upload Release Artifact"
       if: ${{ success() && github.ref == 'refs/heads/dev' && matrix.build-type == 'release' && matrix.deployment-type != 'l2' }}
       uses: actions/upload-artifact@v6
