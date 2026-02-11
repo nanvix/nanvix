@@ -214,7 +214,7 @@ impl WorkerThreadHandle {
         // SAFETY: we install a signal handler that is a no-op so this is safe.
         let ret = unsafe {
             let sig_action = sigaction {
-                sa_sigaction: linuxd_worker_thread_signal_handler as usize,
+                sa_sigaction: linuxd_worker_thread_signal_handler as *const () as usize,
                 // Empty set to not block any other signals that may happen during signal handling.
                 sa_mask: {
                     let mut set = mem::zeroed();
