@@ -59,8 +59,12 @@ impl EventDescriptor {
         self.0.to_ne_bytes()
     }
 
-    pub fn from_ne_bytes(bytes: [u8; core::mem::size_of::<usize>()]) -> Self {
-        Self(usize::from_ne_bytes(bytes))
+    pub fn from_ne_bytes(bytes: [u8; core::mem::size_of::<usize>()]) -> Result<Self, Error> {
+        let raw: usize = usize::from_ne_bytes(bytes);
+        // Validate that event bits encode a valid event and normalize descriptor.
+        let ev: Event = Event::try_from(raw & Self::EVENT_MASK)?;
+        let id: usize = (raw & Self::ID_MASK) >> Self::ID_SHIFT;
+        Ok(Self::new(id, ev))
     }
 }
 
@@ -83,5 +87,55 @@ impl TryFrom<usize> for EventDescriptor {
         let id: usize = (raw & EventDescriptor::ID_MASK) >> EventDescriptor::ID_SHIFT;
         let ev: Event = Event::try_from(raw & EventDescriptor::EVENT_MASK)?;
         Ok(Self::new(id, ev))
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event::{
+        ExceptionEvent,
+        InterruptEvent,
+    };
+
+    #[test]
+    fn from_ne_bytes_valid_event() {
+        let desc: EventDescriptor =
+            EventDescriptor::new(1, Event::Interrupt(InterruptEvent::Interrupt0));
+        let bytes: [u8; core::mem::size_of::<usize>()] = desc.to_ne_bytes();
+        let result: Result<EventDescriptor, Error> = EventDescriptor::from_ne_bytes(bytes);
+        assert!(result.is_ok());
+        let restored: EventDescriptor = result.expect("should be valid");
+        assert_eq!(restored.id(), 1);
+        assert_eq!(restored.event(), Event::Interrupt(InterruptEvent::Interrupt0));
+    }
+
+    #[test]
+    fn from_ne_bytes_invalid_event() {
+        // Construct raw bytes with invalid event bits.
+        let invalid_event_value: usize = EventDescriptor::EVENT_MASK;
+        let bytes: [u8; core::mem::size_of::<usize>()] = invalid_event_value.to_ne_bytes();
+        let result: Result<EventDescriptor, Error> = EventDescriptor::from_ne_bytes(bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_from_usize_valid() {
+        let desc: EventDescriptor =
+            EventDescriptor::new(2, Event::Exception(ExceptionEvent::Exception0));
+        let raw: usize = desc.into_raw();
+        let result: Result<EventDescriptor, Error> = EventDescriptor::try_from(raw);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn try_from_usize_invalid() {
+        let invalid_raw: usize = EventDescriptor::EVENT_MASK;
+        let result: Result<EventDescriptor, Error> = EventDescriptor::try_from(invalid_raw);
+        assert!(result.is_err());
     }
 }
