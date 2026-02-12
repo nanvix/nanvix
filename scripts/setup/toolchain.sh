@@ -231,6 +231,26 @@ build_tool "${RUST_HOME}" "${PREFIX}" "0" "${PREFIX}" || {
     exit 1
 }
 
+# Copy cargo and other tools from stage2-tools-bin into stage2/bin.
+# The custom Rust build produces cargo in stage2-tools-bin/ but not in stage2/bin/.
+# Without this, `cargo +nanvix-x86` falls back to the system default cargo, which may
+# be a different version and cause incompatible flag requirements (e.g., -Zjson-target-spec).
+STAGE2_DIR="${RUST_HOME}/build/host/stage2"
+STAGE2_TOOLS_DIR="${RUST_HOME}/build/host/stage2-tools-bin"
+if [[ ! -d "${STAGE2_TOOLS_DIR}" ]]; then
+    STAGE2_DIR="${RUST_HOME}/build/x86_64-unknown-linux-gnu/stage2"
+    STAGE2_TOOLS_DIR="${RUST_HOME}/build/x86_64-unknown-linux-gnu/stage2-tools-bin"
+fi
+if [[ -d "${STAGE2_TOOLS_DIR}" ]]; then
+    cp -f "${STAGE2_TOOLS_DIR}"/* "${STAGE2_DIR}/bin/" || {
+        print_error "Failed to copy tools from stage2-tools-bin to stage2/bin."
+        exit 1
+    }
+    print_success "Copied tools (including cargo) from stage2-tools-bin to stage2/bin."
+else
+    print_warning "stage2-tools-bin directory not found. cargo may not be available in nanvix-x86 toolchain."
+fi
+
 # Clone, build and cleanup Python.
 "${SCRIPTS_DIR}/python.sh" "${PREFIX}" || {
     print_error "Failed to build Python."

@@ -364,14 +364,34 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-nanvix-bench
 endif
 
+# Rust toolchain channel (parsed from rust-toolchain file).
+RUST_CHANNEL := $(shell grep 'channel' $(ROOT_DIR)/rust-toolchain | sed 's/.*"\(.*\)"/\1/')
+
+# Path to the nanvix-x86 custom toolchain directory.
+NANVIX_X86_TOOLCHAIN_BIN := $(HOME)/.rustup/toolchains/nanvix-x86/bin
+
+# Path to the fallback toolchain's cargo binary (from rust-toolchain channel).
+FALLBACK_CARGO := $(HOME)/.rustup/toolchains/$(RUST_CHANNEL)-x86_64-unknown-linux-gnu/bin/cargo
+
 # Performs local initialization.
-init: init-repo
+init: init-repo init-nanvix-x86-cargo
 
 init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
 	$(MKDIR_CMD) $(LIBRARIES_DIR)
 	$(MKDIR_CMD) $(LOGS_DIR)
 	@if [ -d .git ]; then git config --local core.hooksPath .githooks; fi
+
+# Workaround: ensure nanvix-x86 toolchain has a cargo binary.
+# Older toolchain builds did not include cargo in stage2/bin/, causing `cargo +nanvix-x86`
+# to fall back to the system default cargo which may be an incompatible version.
+# This copies cargo from the nightly toolchain specified in rust-toolchain as a fallback.
+init-nanvix-x86-cargo:
+	@if [ ! -f $(NANVIX_X86_TOOLCHAIN_BIN)/cargo ] && [ -f $(FALLBACK_CARGO) ]; then \
+		echo "[WARN] cargo not found in nanvix-x86 toolchain, copying from $(RUST_CHANNEL)..."; \
+		cp -f $(FALLBACK_CARGO) $(NANVIX_X86_TOOLCHAIN_BIN)/cargo; \
+		echo "[INFO] cargo copied to nanvix-x86 toolchain."; \
+	fi
 
 # Cleans build.
 clean: \
