@@ -1,0 +1,209 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "CI Build and Test"
+
+on:
+  workflow_call:
+    inputs:
+      build-type:
+        required: true
+        type: string
+      machine-type:
+        required: true
+        type: string
+      deployment-type:
+        required: true
+        type: string
+
+env:
+  SCCACHE: "/usr/local/bin/sccache"
+
+jobs:
+
+  build:
+    name: "Build"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
+
+    - name: "Build & Unit Test"
+      uses: ./.github/actions/docker-build
+      with:
+        release: '${{ inputs.build-type }}'
+        log-level: 'trace'
+        machine-type: '${{ inputs.machine-type }}'
+        deployment-type: '${{ inputs.deployment-type }}'
+
+    - name: "Upload Build Artifacts"
+      uses: actions/upload-artifact@v6
+      with:
+        name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{ inputs.deployment-type }}
+        overwrite: true
+        retention-days: 1
+        path: |
+          bin/
+          images/
+          lib/
+          sysroot-${{ inputs.build-type }}/
+
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{ inputs.deployment-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+
+  test:
+    name: "Test"
+    needs: build
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Pre-Cleanup Dangling Resources"
+      uses: ./.github/actions/cleanup
+      with:
+        phase: pre
+
+    - name: "Download Build Artifacts"
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{ inputs.deployment-type }}
+        path: .
+
+    - name: "Make binaries executable"
+      shell: bash
+      run: chmod +x bin/*.elf 2>/dev/null || true
+
+    - name: "Recreate sysroot symlink"
+      if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+      shell: bash
+      run: |
+        # The sysroot symlink created during build uses an absolute path that
+        # is invalid on the self-hosted runner. Recreate it with a relative path.
+        rm -f sysroot
+        ln -sfn "sysroot-${{ inputs.build-type }}" sysroot
+
+    # For microvm/hyperlight: run test binary directly from downloaded artifacts.
+    - name: "Integration Test (microvm/hyperlight)"
+      if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+      shell: bash
+      env:
+        RUST_LOG: info
+      run: |
+        set -Eeuo pipefail
+
+        # Determine test config based on deployment type.
+        case "${{ inputs.deployment-type }}" in
+          single-process) TEST_CONFIG="test/test-single_process.toml" ;;
+          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
+          l2)             TEST_CONFIG="test/test-l2.toml" ;;
+          *)
+            echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
+            exit 1
+            ;;
+        esac
+
+        echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
+        ./bin/nanvix-test.elf "${TEST_CONFIG}"
+
+    # For qemu-pc: use z utility to run the system via QEMU and check for magic string.
+    - name: "Link Toolchain Directory"
+      if: inputs.machine-type == 'qemu-pc'
+      shell: bash
+      run: ln -sfn "${HOME}/toolchain" toolchain
+
+    - name: "Integration Test (qemu-pc)"
+      if: inputs.machine-type == 'qemu-pc'
+      shell: bash
+      env:
+        RELEASE_FLAG: ${{ inputs.build-type == 'release' && 'RELEASE=yes' || '' }}
+      run: |
+        set -Euo pipefail
+
+        MAGIC_STRING="hello, world!"
+        TIMEOUT=600
+
+        single_process="no"
+        if [[ "${{ inputs.deployment-type }}" == "single-process" ]]; then
+          single_process="yes"
+        fi
+
+        rm -f run-stdout.log
+        touch run-stdout.log
+
+        # Start the system in the background and tee output to a log file.
+        ./z build \
+          --toolchain-dir "$HOME/toolchain" \
+          -- \
+          run \
+          MACHINE=qemu-pc \
+          TARGET=x86 \
+          LOG_LEVEL=trace \
+          VERBOSE=yes \
+          ${RELEASE_FLAG} \
+          "SINGLE_PROCESS=${single_process}" \
+          > >(tee run-stdout.log) 2>&1 &
+        CMD_PID=$!
+
+        # Monitor stdout for the magic string with a timeout.
+        elapsed=0
+        while [ "${elapsed}" -lt "${TIMEOUT}" ]; do
+          if grep -q "${MAGIC_STRING}" run-stdout.log 2>/dev/null; then
+            echo "Magic string found. Sending SIGINT to terminate QEMU."
+            kill -INT "${CMD_PID}" 2>/dev/null || true
+            wait "${CMD_PID}" 2>/dev/null || true
+            echo "Integration test passed."
+            exit 0
+          fi
+
+          # Check if the process has already exited.
+          if ! kill -0 "${CMD_PID}" 2>/dev/null; then
+            break
+          fi
+
+          sleep 1
+          elapsed=$((elapsed + 1))
+        done
+
+        # Timeout or process exited without the magic string.
+        kill -INT "${CMD_PID}" 2>/dev/null || true
+        wait "${CMD_PID}" 2>/dev/null || true
+
+        echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
+        exit 1
+
+    - name: "Post-Cleanup Dangling Resources"
+      if: always()
+      uses: ./.github/actions/cleanup
+      with:
+        phase: post
+
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{ inputs.deployment-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err

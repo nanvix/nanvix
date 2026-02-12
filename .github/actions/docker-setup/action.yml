@@ -12,15 +12,48 @@ runs:
     run: |
       echo "=== Disk usage before cleanup ==="
       df -h /
-      # Remove pre-installed software that is not needed.
-      sudo rm -rf /usr/share/dotnet
-      sudo rm -rf /usr/local/lib/android
-      sudo rm -rf /opt/ghc
-      sudo rm -rf /opt/hostedtoolcache
-      # Clean apt cache.
-      sudo apt-get clean
+      # Remove pre-installed software in parallel (I/O-bound, no ordering deps).
+      sudo rm -rf /usr/share/dotnet &
+      sudo rm -rf /usr/local/lib/android &
+      sudo rm -rf /opt/ghc &
+      sudo rm -rf /opt/hostedtoolcache &
+      sudo apt-get clean &
+      wait
       echo "=== Disk usage after cleanup ==="
       df -h /
-  - name: "Setup Minimal Docker Toolchain"
+
+  - name: "Resolve Docker Image Tag"
+    id: image-tag
     shell: bash
-    run: ./z setup --with-minimal-docker
+    run: |
+      version=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+      tag="v${version%.*}.x-minimal"
+      image="nanvix/toolchain:${tag}"
+      echo "image=${image}" >> "$GITHUB_OUTPUT"
+      # Produce a cache-safe key by replacing special characters.
+      echo "cache-key=docker-nanvix-toolchain-${tag}" >> "$GITHUB_OUTPUT"
+
+  - name: "Restore Docker Image Cache"
+    id: docker-cache
+    uses: actions/cache@v4
+    with:
+      path: /tmp/docker-image.tar.zst
+      key: ${{ steps.image-tag.outputs.cache-key }}
+
+  - name: "Load Docker Image from Cache"
+    if: steps.docker-cache.outputs.cache-hit == 'true'
+    shell: bash
+    run: |
+      echo "[INFO] Loading Docker image from cache..."
+      zstd -d /tmp/docker-image.tar.zst --stdout | docker load
+      echo "[INFO] Docker image loaded successfully."
+
+  - name: "Pull Docker Image (cache miss)"
+    if: steps.docker-cache.outputs.cache-hit != 'true'
+    shell: bash
+    run: |
+      echo "[INFO] Cache miss. Pulling Docker image via z setup..."
+      ./z setup --with-minimal-docker
+      echo "[INFO] Saving Docker image to cache for future runs..."
+      docker save ${{ steps.image-tag.outputs.image }} | zstd -T0 -3 > /tmp/docker-image.tar.zst
+      echo "[INFO] Docker image saved to cache."

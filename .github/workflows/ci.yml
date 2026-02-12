@@ -38,7 +38,7 @@ jobs:
     secrets: inherit
 
   # ==========================================================================================
-  # Stage 1: Build and Verify (GitHub-Hosted Runners)
+  # Stage 1: Source Checks (GitHub-Hosted Runners)
   # ==========================================================================================
 
   # Run config-independent source checks once (format, spellcheck) instead of
@@ -84,17 +84,21 @@ jobs:
       with:
         target: 'spellcheck'
 
-  # CI matrix: lint, build, and unit tests for Docker-compatible configurations.
-  # L2 builds require .git (for generate-l2-initramfs.sh) which is unavailable
-  # inside Docker, so they run on self-hosted runners in the ci-l2 job below.
-  ci-build:
-    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+  # ==========================================================================================
+  # Stage 1+2: Lint, Build, Unit Test, and Integration Test
+  # ==========================================================================================
+
+  # Lint is config-dependent (features differ per machine-type + deployment-type)
+  # but does NOT depend on build-type (debug vs release). Run lint once per
+  # unique (machine-type, deployment-type) pair (5 jobs) instead of once per
+  # build matrix entry (10 jobs).
+  lint:
+    name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
     needs: [precheck, checks]
-    timeout-minutes: 120
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [single-process, multi-process]
         exclude:
@@ -125,205 +129,54 @@ jobs:
       uses: ./.github/actions/docker-check
       with:
         target: 'lint-check'
-        release: '${{ matrix.build-type }}'
+        release: 'debug'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
 
-    - name: "Build & Unit Test"
-      uses: ./.github/actions/docker-build
-      with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
-
-    - name: "Upload Build Artifacts"
-      uses: actions/upload-artifact@v6
-      with:
-        name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: true
-        retention-days: 1
-        path: |
-          bin/
-          images/
-          lib/
-          test/
-          sysroot-debug/
-          sysroot-release/
-          sysroot
-
-    - name: "Upload logs in case of failures"
-      if: failure()
-      uses: actions/upload-artifact@v6
-      with:
-        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: 'true'
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
-
-  # ==========================================================================================
-  # Stage 2: Integration Test and Benchmark (Self-Hosted Runners)
-  # ==========================================================================================
-
-  # Download build artifacts and run integration tests on self-hosted runners.
-  # L2 configurations are handled by the ci-l2 job which builds from source.
-  integration-test:
-    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: ci-build
-    timeout-minutes: 120
+  # Each matrix entry calls a reusable workflow that builds on a GitHub-hosted
+  # runner and then integration-tests on a self-hosted runner. Because
+  # each entry is independent, a fast config's test starts as soon as its own
+  # build finishes instead of waiting for every build to complete.
+  # On pull requests, only debug builds run (release is tested on dev push).
+  ci-build-and-test:
+    name: "CI (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    needs: [precheck, checks, lint]
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [single-process, multi-process]
         exclude:
           - machine-type: qemu-pc
             deployment-type: single-process
-    runs-on: [self-hosted, Linux, X64]
-    permissions:
-      contents: read
 
-    steps:
-    - uses: actions/checkout@v6
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      needs.precheck.outputs.up_to_date == 'true' && (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ')
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
 
-    - name: "Pre-Cleanup Dangling Resources"
-      uses: ./.github/actions/cleanup
-      with:
-        phase: pre
+    uses: ./.github/workflows/ci-build-and-test.yml
+    with:
+      build-type: ${{ matrix.build-type }}
+      machine-type: ${{ matrix.machine-type }}
+      deployment-type: ${{ matrix.deployment-type }}
+    secrets: inherit
 
-    - name: "Download Build Artifacts"
-      uses: actions/download-artifact@v7
-      with:
-        name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        path: .
-
-    - name: "Make binaries executable"
-      shell: bash
-      run: chmod +x bin/*.elf 2>/dev/null || true
-
-    - name: "Recreate sysroot symlink"
-      if: matrix.machine-type == 'microvm' || matrix.machine-type == 'hyperlight'
-      shell: bash
-      run: |
-        # The sysroot symlink created during build uses an absolute path that
-        # is invalid on the self-hosted runner. Recreate it with a relative path.
-        rm -f sysroot
-        ln -sfn "sysroot-${{ matrix.build-type }}" sysroot
-
-    # For microvm/hyperlight: run test binary directly from downloaded artifacts.
-    - name: "Integration Test (microvm/hyperlight)"
-      if: matrix.machine-type == 'microvm' || matrix.machine-type == 'hyperlight'
-      shell: bash
-      env:
-        RUST_LOG: info
-      run: |
-        set -Eeuo pipefail
-
-        # Determine test config based on deployment type.
-        case "${{ matrix.deployment-type }}" in
-          single-process) TEST_CONFIG="test/test-single_process.toml" ;;
-          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
-          l2)             TEST_CONFIG="test/test-l2.toml" ;;
-          *)
-            echo "::error::Unknown deployment type: ${{ matrix.deployment-type }}"
-            exit 1
-            ;;
-        esac
-
-        echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
-        ./bin/nanvix-test.elf "${TEST_CONFIG}"
-
-    # For qemu-pc: use z utility to run the system via QEMU and check for magic string.
-    - name: "Link Toolchain Directory"
-      if: matrix.machine-type == 'qemu-pc'
-      shell: bash
-      run: ln -sfn "${HOME}/toolchain" toolchain
-
-    - name: "Integration Test (qemu-pc)"
-      if: matrix.machine-type == 'qemu-pc'
-      shell: bash
-      env:
-        RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
-      run: |
-        set -Euo pipefail
-
-        MAGIC_STRING="hello, world!"
-        TIMEOUT=600
-
-        single_process="no"
-        if [[ "${{ matrix.deployment-type }}" == "single-process" ]]; then
-          single_process="yes"
-        fi
-
-        rm -f run-stdout.log
-        touch run-stdout.log
-
-        # Start the system in the background and tee output to a log file.
-        ./z build \
-          --toolchain-dir "$HOME/toolchain" \
-          -- \
-          run \
-          MACHINE=qemu-pc \
-          TARGET=x86 \
-          LOG_LEVEL=trace \
-          VERBOSE=yes \
-          ${RELEASE_FLAG} \
-          "SINGLE_PROCESS=${single_process}" \
-          > >(tee run-stdout.log) 2>&1 &
-        CMD_PID=$!
-
-        # Monitor stdout for the magic string with a timeout.
-        elapsed=0
-        while [ "${elapsed}" -lt "${TIMEOUT}" ]; do
-          if grep -q "${MAGIC_STRING}" run-stdout.log 2>/dev/null; then
-            echo "Magic string found. Sending SIGINT to terminate QEMU."
-            kill -INT "${CMD_PID}" 2>/dev/null || true
-            wait "${CMD_PID}" 2>/dev/null || true
-            echo "Integration test passed."
-            exit 0
-          fi
-
-          # Check if the process has already exited.
-          if ! kill -0 "${CMD_PID}" 2>/dev/null; then
-            break
-          fi
-
-          sleep 1
-          elapsed=$((elapsed + 1))
-        done
-
-        # Timeout or process exited without the magic string.
-        kill -INT "${CMD_PID}" 2>/dev/null || true
-        wait "${CMD_PID}" 2>/dev/null || true
-
-        echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-        exit 1
-
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
-
-    - name: "Upload logs in case of failures"
-      if: failure()
-      uses: actions/upload-artifact@v6
-      with:
-        name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: 'true'
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+  # ==========================================================================================
+  # Stage 3: L2 and Benchmark (Self-Hosted Runners)
+  # ==========================================================================================
 
   # L2 configurations require .git for generate-l2-initramfs.sh, so they build
   # from source on self-hosted runners with a local toolchain.
+  # On pull requests, only debug builds run (release is tested on dev push).
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
     needs: [precheck, checks]
@@ -331,7 +184,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [microvm, hyperlight]
     runs-on: [self-hosted, Linux, X64]
     permissions:
@@ -719,17 +572,17 @@ jobs:
           bench_*.txt
 
   # ==========================================================================================
-  # Stage 3: Post Actions (Conditional)
+  # Stage 4: Post Actions (Conditional)
   # ==========================================================================================
 
   # Create release archives for all applicable configurations.
   release-archive:
     name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [integration-test, ci-l2]
+    needs: [ci-build-and-test, ci-l2]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
-      needs.integration-test.result == 'success' &&
+      needs.ci-build-and-test.result == 'success' &&
       needs.ci-l2.result == 'success'
     timeout-minutes: 60
     strategy:
