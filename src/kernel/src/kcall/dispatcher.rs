@@ -52,14 +52,8 @@ use ::sys::{
 ///
 #[unsafe(no_mangle)]
 pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> i64 {
-    let pid: ProcessIdentifier = match unsafe { ProcessManager::get() }.get_pid() {
-        Ok(pid) => pid,
-        Err(e) => return KcallResult::Error(e.code.into()).into(),
-    };
-    let tid: ThreadIdentifier = match unsafe { ProcessManager::get() }.get_tid() {
-        Ok(tid) => tid,
-        Err(e) => return KcallResult::Error(e.code.into()).into(),
-    };
+    let pid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_pid();
+    let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
 
     match KcallNumber::from(number) {
         // Handle `getpid()` locally.

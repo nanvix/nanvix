@@ -952,9 +952,7 @@ fn do_exception_handler(
     trace!("info={:?}", info);
 
     // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
-    let pid: ProcessIdentifier = unsafe { ProcessManager::get() }
-        .get_pid()
-        .map_err(SleepError::Generic)?;
+    let pid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_pid();
 
     // Check if exception was triggered by the kernel.
     if pid == ProcessIdentifier::KERNEL {

@@ -207,18 +207,17 @@ fn test() {
 /// # Parameters
 ///
 /// - `mm`: A reference to the virtual memory manager to use.
-/// - `pm`: A reference to the process manager to use.
 /// - `kmods`: A reference to the list of kernel modules to spawn.
 ///
 /// # Returns
 ///
 /// The number of servers that were successfully spawned.
 ///
-fn spawn_servers(
-    mm: &mut VirtMemoryManager,
-    pm: &mut ProcessManager,
-    kmods: &LinkedList<KernelModule>,
-) -> usize {
+fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -> usize {
+    // SAFETY: the process manager is initialized, this is a single-core system, interrupts are
+    // disabled, and the resulting `&mut ProcessManager` does not alias `mm`.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     let mut count: usize = 0;
     // Spawn all servers.
     for kmod in kmods.iter() {
@@ -330,12 +329,9 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             },
         };
 
-    let mut pm: ProcessManager = match pm::init(&mut hal, root) {
-        Ok(pm) => pm,
-        Err(err) => {
-            panic!("failed to initialize process manager: {:?}", err);
-        },
-    };
+    if let Err(err) = pm::init(&mut hal, root) {
+        panic!("failed to initialize process manager: {:?}", err);
+    }
 
     // Start application cores.
     #[cfg(feature = "smp")]
@@ -417,7 +413,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
 
-    let status: ExitStatus = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
+    let status: ExitStatus = if spawn_servers(&mut mm, &kernel_modules) > 0 {
         // Initialize kernel call dispatcher.
         kcall::init();
 
@@ -428,7 +424,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             }
         }
 
-        kcall::handler(&mut hal, &mut mm, &mut pm)
+        kcall::handler(&mut hal, &mut mm)
     } else {
         ExitStatus::ok()
     };
