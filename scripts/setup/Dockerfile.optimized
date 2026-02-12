@@ -22,7 +22,7 @@ USER $USER
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-ARG RUST_VERSION=nightly-2025-10-28
+ARG RUST_VERSION=nightly-2025-12-08
 
 # Install runtime and build dependencies via shared setup script (keeps parity with full image).
 COPY --from=source /opt/nanvix/src/nanvix/scripts/setup/ubuntu.sh /tmp/ubuntu.sh

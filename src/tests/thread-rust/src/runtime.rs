@@ -109,7 +109,7 @@ pub fn deadline_from_now(duration: Duration) -> Result<SystemTime, Error> {
 /// Converts an extern "C" function pointer to the raw value expected by the kernel call ABI.
 #[allow(clippy::as_conversions, clippy::fn_to_numeric_cast)]
 pub fn raw_entry_address(entry: extern "C" fn(usize) -> usize) -> usize {
-    entry as usize
+    entry as *const () as usize
 }
 
 /// Converts a raw pointer to its integer representation for kernel calls.
