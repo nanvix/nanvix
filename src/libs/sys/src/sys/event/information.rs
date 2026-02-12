@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    error::Error,
     event::EventDescriptor,
     ipc::{
         Message,
@@ -77,14 +78,16 @@ impl From<EventInformation> for Message {
     }
 }
 
-impl From<Message> for EventInformation {
-    fn from(message: Message) -> Self {
+impl TryFrom<Message> for EventInformation {
+    type Error = Error;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
         let mut offset: usize = 0;
         let id: EventDescriptor = EventDescriptor::from_ne_bytes(
             message.payload[offset..offset + core::mem::size_of::<EventDescriptor>()]
                 .try_into()
                 .unwrap(),
-        );
+        )?;
         offset += core::mem::size_of::<EventDescriptor>();
 
         let pid: ProcessIdentifier = ProcessIdentifier::from_ne_bytes(
@@ -141,13 +144,13 @@ impl From<Message> for EventInformation {
             None
         };
 
-        Self {
+        Ok(Self {
             id,
             pid,
             number,
             code,
             address,
             instruction,
-        }
+        })
     }
 }
