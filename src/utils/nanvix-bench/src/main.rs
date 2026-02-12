@@ -367,28 +367,24 @@ impl Benchmark {
 
     /// Kill the different components in order.
     pub fn cleanup(&mut self) {
-        if self.nanvixd.is_some() {
+        if let Some(nanvixd) = self.nanvixd.as_mut() {
             debug!("Sending SIGINT to nanvixd");
-            let ret_code = unsafe {
-                libc::kill(self.nanvixd.as_mut().unwrap().id() as libc::pid_t, libc::SIGINT)
-            };
+            let ret_code: i32 = unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGINT) };
 
             if ret_code < 0 {
                 error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
             }
 
-            if let Some(nanvixd) = self.nanvixd.as_mut() {
-                match nanvixd.wait() {
-                    Ok(exit_status) => {
-                        if !exit_status.success() {
-                            error!(
-                                "nanvixd returned with non-zero exit status: {:?}",
-                                exit_status.code()
-                            );
-                        }
-                    },
-                    Err(e) => error!("error waiting for nanvixd: {e:?}"),
-                }
+            match nanvixd.wait() {
+                Ok(exit_status) => {
+                    if !exit_status.success() {
+                        error!(
+                            "nanvixd returned with non-zero exit status: {:?}",
+                            exit_status.code()
+                        );
+                    }
+                },
+                Err(e) => error!("error waiting for nanvixd: {e:?}"),
             }
 
             self.nanvixd = None;
