@@ -74,7 +74,7 @@ RUN rustup toolchain install "$RUST_VERSION" && \
     rm -rf "$HOME/.cargo/git/db"
 
 # Set environment variables for toolchain.
-ENV PATH=/opt/nanvix/bin:$PATH
+ENV PATH=$PATH:/opt/nanvix/bin
 ENV LD_LIBRARY_PATH=/opt/nanvix/lib
 
 # Verify toolchain is working.
