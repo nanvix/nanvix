@@ -459,7 +459,7 @@ jobs:
         fi
 
     - name: "Find benchmark results comment if it exists"
-      uses: peter-evans/find-comment@v3
+      uses: peter-evans/find-comment@v4
       if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' }}
       id: fc
       with:
