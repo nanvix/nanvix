@@ -160,7 +160,16 @@ impl Address for PhysicalAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Self::from_virtual_address(self.0.align_up(align))
+        let aligned: VirtualAddress = self.0.align_up(align).ok_or_else(|| {
+            let reason: &str = "align_up overflow";
+            error!(
+                "PhysicalAddress::align_up(): {reason} (addr={:#x}, align={:?})",
+                self.0.into_raw_value(),
+                align
+            );
+            Error::new(ErrorCode::BadAddress, reason)
+        })?;
+        Self::from_virtual_address(aligned)
     }
 
     ///

@@ -102,7 +102,16 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         };
 
         // Align the new end.
-        let new_end: *mut u8 = align_up(new_end as usize, PAGE_ALIGNMENT) as *mut u8;
+        let new_end: *mut u8 = match align_up(new_end as usize, PAGE_ALIGNMENT) {
+            Some(aligned_new_end) => aligned_new_end as *mut u8,
+            None => {
+                let reason: &'static str = "align_up overflow";
+                ::syslog::error!(
+                    "sbrk(): {reason} (size={size:?}), old_end={old_end:x?}, new_end={new_end:x?}"
+                );
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            },
+        };
 
         // Check whether we should allocate or free memory.
         if size > 0 {

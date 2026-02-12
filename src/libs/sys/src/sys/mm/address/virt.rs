@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     mm::{
         self,
         Address,
@@ -63,10 +66,11 @@ impl VirtualAddress {
     ///
     /// # Returns
     ///
-    /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
+    /// Upon success, the aligned address is returned. Upon failure (overflow), `None` is returned
+    /// instead.
     ///
-    pub fn align_up(&self, align: Alignment) -> Self {
-        VirtualAddress::new(mm::align_up(self.0, align))
+    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+        mm::align_up(self.0, align).map(VirtualAddress::new)
     }
 
     ///
@@ -175,7 +179,8 @@ impl Address for VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        Ok(self.align_up(align))
+        self.align_up(align)
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "align_up overflow"))
     }
 
     ///
