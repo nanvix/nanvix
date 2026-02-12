@@ -520,7 +520,7 @@ jobs:
 
     - name: "Upload benchmark comment payload"
       if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: benchmark-comment-${{ github.run_id }}
         path: comment-payload
