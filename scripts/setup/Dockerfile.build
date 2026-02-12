@@ -41,7 +41,11 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
 
 # Create output directories to ensure they exist even if build produces no artifacts.
 RUN mkdir -p ${WORKSPACE_PATH}/bin ${WORKSPACE_PATH}/lib ${WORKSPACE_PATH}/images \
-    ${WORKSPACE_PATH}/sysroot-debug ${WORKSPACE_PATH}/sysroot-release
+    ${WORKSPACE_PATH}/sysroot-debug ${WORKSPACE_PATH}/sysroot-release \
+    ${WORKSPACE_PATH}/release-archives
+
+# Collect release archives (if any) into the export directory.
+RUN find "${WORKSPACE_PATH}" -maxdepth 1 -type f -name 'nanvix-*.tar.bz2' -exec mv -t "${WORKSPACE_PATH}/release-archives" {} +
 
 # Output stage: only copy the actual build artifacts, not intermediate files.
 # NOTE: With --output type=local,dest=., all paths here become relative to the
@@ -55,3 +59,4 @@ COPY --from=builder ${WORKSPACE_PATH}/bin /bin
 COPY --from=builder ${WORKSPACE_PATH}/lib /lib
 COPY --from=builder ${WORKSPACE_PATH}/sysroot-${SYSROOT_SUFFIX} /sysroot-${SYSROOT_SUFFIX}
 COPY --from=builder ${WORKSPACE_PATH}/images /images
+COPY --from=builder ${WORKSPACE_PATH}/release-archives/ /
