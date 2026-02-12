@@ -128,6 +128,9 @@ impl Slab {
                 1
             };
         // info!("number of index blocks: {:?}", num_index_blocks);
+        if num_index_blocks > total_num_blocks {
+            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
+        }
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
         // info!("number of data blocks: {:?}", num_data_blocks);
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
