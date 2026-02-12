@@ -470,7 +470,7 @@ jobs:
 
     - name: "Post comment to PR (Create)"
       if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id == '' }}
-      uses: peter-evans/create-or-update-comment@v4
+      uses: peter-evans/create-or-update-comment@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ steps.pr.outputs.pr_number }}
@@ -480,7 +480,7 @@ jobs:
 
     - name: "Post comment to PR (Update)"
       if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id != '' }}
-      uses: peter-evans/create-or-update-comment@v4
+      uses: peter-evans/create-or-update-comment@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         comment-id: ${{ steps.fc.outputs.comment-id }}
