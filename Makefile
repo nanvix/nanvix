@@ -393,7 +393,11 @@ endif
 
 distclean: clean
 	$(FORCE_RM_CMD) Cargo.lock
-	$(FORCE_RM_CMD) $(OBJECTS_DIR)
+	if mountpoint -q "$(OBJECTS_DIR)" 2>/dev/null; then \
+		find "$(OBJECTS_DIR)" -mindepth 1 -delete || { echo "Error: failed to clean $(OBJECTS_DIR) with find" >&2; exit 1; }; \
+	else \
+		$(FORCE_RM_CMD) "$(OBJECTS_DIR)"; \
+	fi
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
