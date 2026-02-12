@@ -173,7 +173,11 @@ impl<T: Address> TruncatedMemoryRegion<T> {
         perm: AccessPermission,
     ) -> Result<Self, Error> {
         // Truncate the size of the memory region to a multiple of the page size.
-        let size: usize = ::sys::mm::align_up(size, PAGE_ALIGNMENT);
+        let size: usize = ::sys::mm::align_up(size, PAGE_ALIGNMENT).ok_or_else(|| {
+            let reason: &str = "align_up overflow";
+            error!("TruncatedMemoryRegion::new(): {reason} (name={name:?}, size={size})");
+            Error::new(ErrorCode::InvalidArgument, reason)
+        })?;
         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
     }
 

@@ -58,7 +58,11 @@ pub fn mmap(length: usize, prot: MemoryMapProtectionFlags) -> Result<VirtualAddr
     }
 
     // Align up length to page size.
-    let length: usize = mm::align_up(length, PAGE_ALIGNMENT);
+    let length: usize = mm::align_up(length, PAGE_ALIGNMENT).ok_or_else(|| {
+        let reason: &str = "align_up overflow";
+        syslog::error!("mmap(): {reason} (length={length}, prot={prot:?})");
+        Error::new(ErrorCode::InvalidArgument, reason)
+    })?;
 
     // Lock the segments map.
     let mut locked_mmap_base: MutexGuard<'_, VirtualAddress> = MMAP_BASE.lock();

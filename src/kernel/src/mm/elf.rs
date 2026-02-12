@@ -231,7 +231,17 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
-        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_base + size, PAGE_ALIGNMENT);
+        let virt_addr_range_end: usize = virt_addr_base.checked_add(size).ok_or_else(|| {
+            let reason: &str = "virtual address overflow in elf segment";
+            error!("do_elf32_load(): {reason} (virt_addr_base={virt_addr_base:#x}, size={size})");
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
+        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_range_end, PAGE_ALIGNMENT)
+            .ok_or_else(|| {
+                let reason: &str = "align_up overflow";
+                error!("do_elf32_load(): {reason} (virt_addr_range_end={virt_addr_range_end:#x})");
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
 
         let phys_addr_base: usize = unsafe {
             (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
@@ -289,10 +299,15 @@ fn do_elf32_load(
         }
     }
 
-    Ok((
-        entry,
-        PageAligned::from_address(VirtualAddress::new(last_address).align_up(PAGE_ALIGNMENT))?,
-    ))
+    let aligned_last: VirtualAddress = VirtualAddress::new(last_address)
+        .align_up(PAGE_ALIGNMENT)
+        .ok_or_else(|| {
+        let reason: &str = "align_up overflow";
+        error!("do_elf32_load(): {reason} (last_address={last_address:#x})");
+        Error::new(ErrorCode::BadFile, reason)
+    })?;
+
+    Ok((entry, PageAligned::from_address(aligned_last)?))
 }
 
 pub fn elf32_load(
