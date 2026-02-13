@@ -1535,10 +1535,12 @@ impl ProcessManagerInner {
     ///
     /// An error if and only if incrementing by one would overflow the number of buffered messages.
     ///
-
     pub fn note_message_posted(&mut self) -> Result<(), Error> {
         match self.number_buffered_messages.checked_add(1) {
-            Some(_) => Ok(()),
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            }
             None => Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed")),
         }
     }
@@ -1552,12 +1554,16 @@ impl ProcessManagerInner {
     ///
     /// Self alone
     ///
+    /// # Returns
+    ///
     /// An error if and only if decrementing by one would underflow the number of buffered messages.
     ///
-
     pub fn note_message_received(&mut self) -> Result<(), Error> {
         match self.number_buffered_messages.checked_sub(1) {
-            Some(_) => Ok(()),
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            },
             None => Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages underflowed")),
         }
     }
@@ -1575,7 +1581,6 @@ impl ProcessManagerInner {
     ///
     /// The count of buffered messages.
     ///
-
     pub fn count_buffered_messages(&self) -> usize {
         self.number_buffered_messages
     }
