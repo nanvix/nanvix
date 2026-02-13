@@ -600,11 +600,17 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - name: "Download CI Build Artifacts"
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+        path: .
+
     - name: "Setup"
       uses: ./.github/actions/docker-setup
 
     - id: release-archive
-      name: "Build Release Archive"
+      name: "Package Release Archive"
       shell: bash
       run: |
         single_process="no"
@@ -612,6 +618,9 @@ jobs:
           single_process="yes"
         fi
 
+        # Reuse the existing build artifacts (already built with LOG_LEVEL=error,
+        # RELEASE=yes). Only run install and package steps to create the release
+        # archive, avoiding a full rebuild.
         ./z build --with-minimal-docker -- release \
           "MACHINE=${{ matrix.machine-type }}" \
           TARGET=x86 \
