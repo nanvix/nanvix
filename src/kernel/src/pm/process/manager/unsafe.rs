@@ -64,7 +64,9 @@ use ::core::{
         cold_path,
         unlikely,
     },
+    mem::MaybeUninit,
     sync::atomic::{
+        AtomicBool,
         AtomicI32,
         AtomicUsize,
     },
@@ -86,8 +88,11 @@ use ::sys::{
 // Global Variables
 //==================================================================================================
 
-/// Process manager.
-static mut PROCESS_MANAGER: Option<ProcessManager> = None;
+/// Process manager storage.
+static mut PROCESS_MANAGER: MaybeUninit<ProcessManager> = MaybeUninit::uninit();
+
+/// Whether the process manager has been initialized.
+static PROCESS_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 
 /// ID of the current process.
 static CURRENT_PID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
@@ -129,7 +134,7 @@ impl ProcessManager {
         tm: ThreadManager,
     ) -> ProcessManager {
         // Check if the process manager is already initialized.
-        if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
+        if unlikely(PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager was already initialized");
         }
 
@@ -137,7 +142,8 @@ impl ProcessManager {
             Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
-        unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
+        unsafe { PROCESS_MANAGER.write(ProcessManager(pm.clone())) };
+        PROCESS_MANAGER_INIT.store(true, ORDER);
 
         ProcessManager(pm)
     }
@@ -158,12 +164,12 @@ impl ProcessManager {
     /// - The process manager is initialized.
     ///
     pub unsafe fn get<'a>() -> &'a ProcessManager {
-        if let Some(ref pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
+        if unlikely(!PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager is not initialized");
         }
+
+        // SAFETY: The process manager has been initialized, so the value is valid.
+        PROCESS_MANAGER.assume_init_ref()
     }
 
     ///
@@ -182,12 +188,12 @@ impl ProcessManager {
     /// - The process manager is initialized.
     ///
     pub unsafe fn get_mut<'a>() -> &'a mut ProcessManager {
-        if let Some(ref mut pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
+        if unlikely(!PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager is not initialized");
         }
+
+        // SAFETY: The process manager has been initialized, so the value is valid.
+        PROCESS_MANAGER.assume_init_mut()
     }
 
     ///
