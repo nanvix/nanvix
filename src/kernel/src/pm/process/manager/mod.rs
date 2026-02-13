@@ -1525,11 +1525,11 @@ impl ProcessManagerInner {
     ///
     /// # Description
     ///
-    /// Notes that a message was posted
+    /// Notes that a message was posted.
     ///
     /// # Parameters
     ///
-    /// Self alone
+    /// None.
     ///
     /// # Returns
     ///
@@ -1540,19 +1540,22 @@ impl ProcessManagerInner {
             Some(n) => {
                 self.number_buffered_messages = n;
                 Ok(())
-            }
-            None => Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed")),
+            },
+            None => {
+                error!("number of buffered messages overflowed");
+                Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed"))
+            },
         }
     }
 
     ///
     /// # Description
     ///
-    /// Notes that a message was received
+    /// Notes that a message was received.
     ///
     /// # Parameters
     ///
-    /// Self alone
+    /// None.
     ///
     /// # Returns
     ///
@@ -1564,7 +1567,10 @@ impl ProcessManagerInner {
                 self.number_buffered_messages = n;
                 Ok(())
             },
-            None => Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages underflowed")),
+            None => {
+                error!("number of buffered messages underflowed");
+                Err(Error::new(ErrorCode::InvalidArgument, "number of buffered messages underflowed"))
+            },
         }
     }
 
@@ -1575,7 +1581,7 @@ impl ProcessManagerInner {
     ///
     /// # Parameters
     ///
-    /// Self alone
+    /// None.
     ///
     /// # Returns
     ///
