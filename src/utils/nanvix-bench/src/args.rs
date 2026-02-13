@@ -6,11 +6,9 @@
 //==================================================================================================
 
 use crate::benchmark::BenchmarkFlavour;
-use anyhow::Result;
-use std::{
-    process,
-    str::FromStr,
-};
+use ::anyhow::Result;
+use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
+use ::std::str::FromStr;
 
 //==================================================================================================
 // Structures
@@ -22,6 +20,7 @@ pub struct Args {
     iterations: usize,
     num_concurrent_vms: Option<usize>,
     toolchain_bin_dir: String,
+    tmp_dir: String,
 }
 
 //==================================================================================================
@@ -35,6 +34,7 @@ impl Args {
     const OPT_ITERATIONS: &'static str = "-iterations";
     const OPT_NUM_CONCURRENT_VMS: &'static str = "-num-concurrent-vms";
     const OPT_TOOLCHAIN_BIN_DIR: &'static str = "-toolchain-bin-dir";
+    const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
         println!(
@@ -67,6 +67,8 @@ Options:
              benchmarks).
   {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
              etc.).
+  {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
+             {DEFAULT_TMP_DIRECTORY}).
   {help}                              Show this help message and exit.
 
 Examples:
@@ -85,6 +87,8 @@ Examples:
             iterations = Self::OPT_ITERATIONS,
             num_concurrent_vms = Self::OPT_NUM_CONCURRENT_VMS,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIR,
+            tmp_dir = Self::OPT_TMP_DIR,
+            DEFAULT_TMP_DIRECTORY = DEFAULT_TMP_DIRECTORY,
             help = Self::OPT_HELP,
         );
     }
@@ -95,13 +99,14 @@ Examples:
         let mut iterations: usize = 100;
         let mut num_concurrent_vms: Option<usize> = None;
         let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
+        let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
             match args[i].as_str() {
                 Self::OPT_HELP => {
                     Self::usage(args[0].as_str());
-                    process::exit(0);
+                    ::std::process::exit(0);
                 },
                 Self::OPT_BENCHMARK => {
                     i += 1;
@@ -149,6 +154,14 @@ Examples:
                         ));
                     }
                     toolchain_bin_dir = args[i].clone();
+                },
+                Self::OPT_TMP_DIR => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(::anyhow::anyhow!("missing value for: {}", Self::OPT_TMP_DIR));
+                    }
+                    tmp_dir = args[i].clone();
                 },
                 arg => {
                     Self::usage(args[0].as_str());
@@ -199,6 +212,7 @@ Examples:
                     iterations,
                     num_concurrent_vms,
                     toolchain_bin_dir,
+                    tmp_dir,
                 })
             },
             Err(_) => {
@@ -226,5 +240,9 @@ Examples:
 
     pub fn toolchain_bin_dir(&self) -> String {
         self.toolchain_bin_dir.clone()
+    }
+
+    pub fn tmp_dir(&self) -> String {
+        self.tmp_dir.clone()
     }
 }
