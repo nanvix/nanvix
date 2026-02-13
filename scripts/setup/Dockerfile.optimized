@@ -48,7 +48,7 @@ COPY --from=source /opt/nanvix/version /opt/nanvix/version
 
 # Copy custom Rust toolchain (nanvix-x86) from source.
 COPY --from=source /opt/nanvix/src/rust/build/host/stage2 /opt/nanvix/rust-toolchain
-COPY --from=source /opt/nanvix/src/rust/build/x86_64-unknown-linux-gnu/stage2-tools-bin /opt/nanvix/rust-toolchain/bin-tools
+COPY --from=source /opt/nanvix/src/rust/build/host/stage2-tools-bin /opt/nanvix/rust-toolchain/bin-tools
 # Copy Rust library source code (needed for -Zbuild-std).
 COPY --from=source /opt/nanvix/src/rust/library /opt/nanvix/rust-toolchain/lib/rustlib/src/rust/library
 
@@ -68,7 +68,7 @@ RUN rustup toolchain install "$RUST_VERSION" && \
     # Link custom Rust toolchain for Nanvix.
     rustup toolchain link nanvix-x86 /opt/nanvix/rust-toolchain && \
     # Copy cargo and other tools to stage2/bin so they're accessible.
-    cp /opt/nanvix/rust-toolchain/bin-tools/* /opt/nanvix/rust-toolchain/bin/ && \
+    cp --remove-destination /opt/nanvix/rust-toolchain/bin-tools/* /opt/nanvix/rust-toolchain/bin/ && \
     # Clean Rust artifacts.
     rm -rf "$HOME/.cargo/registry/cache" && \
     rm -rf "$HOME/.cargo/git/db"
