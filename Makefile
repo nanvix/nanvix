@@ -80,7 +80,25 @@ export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-releas
 export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
-export SCCACHE       ?= $(shell which sccache 2>/dev/null)
+
+# Targets that do not produce reusable compilation artifacts.
+# Disable sccache unconditionally for these targets to avoid intermittent
+# sccache server crashes inside Docker BuildKit containers (see #1395).
+# The `override` directive ensures this takes effect even when SCCACHE is
+# passed on the command line (e.g., from Dockerfile.build).
+NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix help clean distclean
+
+ifeq ($(MAKECMDGOALS),)
+# Default target ('all') produces artifacts — enable sccache.
+export SCCACHE ?= $(shell which sccache 2>/dev/null)
+else ifeq ($(filter-out $(NO_SCCACHE_GOALS),$(MAKECMDGOALS)),)
+# All command-line goals are check-only — disable sccache.
+override SCCACHE :=
+export SCCACHE
+else
+# At least one goal produces artifacts — enable sccache.
+export SCCACHE ?= $(shell which sccache 2>/dev/null)
+endif
 
 #===================================================================================================
 # Release Artifact Configuration
