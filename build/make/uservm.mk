@@ -27,7 +27,7 @@ clean-uservm:
 	$(RM_CMD) $(BINARIES_DIR)/uservm.elf
 
 rust-lint-uservm:
-	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty
+	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-uservm:
 	$(HOST_CARGO_CLIPPY_CMD) $(USERVM_CARGO_FEATURES) -p uservm -- -D warnings

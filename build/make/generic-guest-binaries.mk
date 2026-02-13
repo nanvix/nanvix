@@ -33,7 +33,7 @@ clean-guest-binaries-$(1): clean-guest-staticlibs
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-binaries-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) -- -D warnings
