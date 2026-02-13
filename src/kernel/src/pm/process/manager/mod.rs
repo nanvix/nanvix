@@ -1543,7 +1543,10 @@ impl ProcessManagerInner {
             },
             None => {
                 error!("number of buffered messages overflowed");
-                Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed"))
+                Err(Error::new(
+                    ErrorCode::ValueOverflow,
+                    "number of buffered messages overflowed"
+                ))
             },
         }
     }
@@ -1569,7 +1572,10 @@ impl ProcessManagerInner {
             },
             None => {
                 error!("number of buffered messages underflowed");
-                Err(Error::new(ErrorCode::InvalidArgument, "number of buffered messages underflowed"))
+                Err(Error::new(
+                    ErrorCode::InvalidArgument,
+                    "number of buffered messages underflowed"
+                ))
             },
         }
     }
