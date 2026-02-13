@@ -77,6 +77,18 @@ jobs:
       contents: read
 
     steps:
+    - name: "Pre-Checkout Cleanup"
+      shell: bash
+      run: |
+        # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
+        # that prevent actions/checkout from resetting the workspace. The cleanup
+        # composite action cannot run before checkout, so perform a direct cleanup
+        # of the images directory without executing any workspace scripts.
+        if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
+          echo "Removing images directory before checkout..."
+          sudo rm -rf "${GITHUB_WORKSPACE}/images"
+        fi
+
     - uses: actions/checkout@v6
 
     - name: "Pre-Cleanup Dangling Resources"
