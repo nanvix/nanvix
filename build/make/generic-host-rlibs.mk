@@ -23,7 +23,7 @@ format-check-host-rlib-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1) --check
 
 rust-lint-host-rlib-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) $(call HOST_RLIBS_CARGO_FEATURES,$(1)) -p $(1) --fix --allow-dirty
+	$(HOST_CARGO_CLIPPY_CMD) $(call HOST_RLIBS_CARGO_FEATURES,$(1)) -p $(1) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-host-rlib-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) $(call HOST_RLIBS_CARGO_FEATURES,$(1)) -p $(1) -- -D warnings

@@ -23,7 +23,7 @@ clean-kernel:
 	$(RM_CMD) $(BINARIES_DIR)/kernel.elf
 
 rust-lint-kernel:
-	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel --fix --allow-dirty
+	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-kernel:
 	$(KERNEL_CARGO_CLIPPY_CMD) $(KERNEL_CARGO_FEATURES) -p kernel -- -D warnings

@@ -26,7 +26,7 @@ clean-nanvix-test:
 	$(RM_CMD) $(BINARIES_DIR)/nanvix-test.elf
 
 rust-lint-nanvix-test:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test --fix --allow-dirty
+	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-nanvix-test:
 	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test -- -D warnings
