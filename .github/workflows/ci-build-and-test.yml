@@ -38,7 +38,9 @@ jobs:
       uses: ./.github/actions/docker-build
       with:
         release: '${{ inputs.build-type }}'
-        log-level: 'trace'
+        # Use 'error' log level for release builds to match release archive settings,
+        # enabling reuse of build artifacts and avoiding a redundant rebuild.
+        log-level: ${{ inputs.build-type == 'release' && 'error' || 'trace' }}
         machine-type: '${{ inputs.machine-type }}'
         deployment-type: '${{ inputs.deployment-type }}'
 
