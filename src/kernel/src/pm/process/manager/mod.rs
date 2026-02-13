@@ -1590,6 +1590,7 @@ impl ProcessManagerInner {
     ///
     /// The count of buffered messages.
     ///
+    #[cfg(feature = "stdio")]
     pub fn count_buffered_messages(&self) -> usize {
         self.number_buffered_messages
     }
