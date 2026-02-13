@@ -12,7 +12,7 @@
 // Imports
 //==================================================================================================
 
-use crate::SystemTime;
+use crate::time::SystemTime;
 use ::core::time::Duration;
 
 //==================================================================================================
@@ -79,8 +79,8 @@ fn test_checked_sub_duration_with_underflow() {
 fn test_checked_sub_time_no_underflow() {
     let time1 = SystemTime::new(10, 500_000_000).unwrap();
     let time2 = SystemTime::new(5, 200_000_000).unwrap();
-    let result = time1.checked_sub_time(&time2);
-    assert!(result.is_some());
+    let result = time1.checked_sub(&time2);
+    assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result.as_secs(), 5);
     assert_eq!(result.subsec_nanos(), 300_000_000);
