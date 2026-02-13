@@ -1521,6 +1521,79 @@ impl ProcessManagerInner {
         error!("{reason} (tid={tid:?})");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
+
+    ///
+    /// # Description
+    ///
+    /// Notes that a message was posted.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// An error if and only if incrementing by one would overflow the number of buffered messages.
+    ///
+    pub fn note_message_posted(&mut self) -> Result<(), Error> {
+        match self.number_buffered_messages.checked_add(1) {
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            },
+            None => {
+                error!("number of buffered messages overflowed");
+                Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed"))
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Notes that a message was received.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// An error if and only if decrementing by one would underflow the number of buffered messages.
+    ///
+    pub fn note_message_received(&mut self) -> Result<(), Error> {
+        match self.number_buffered_messages.checked_sub(1) {
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            },
+            None => {
+                error!("number of buffered messages underflowed");
+                Err(Error::new(
+                    ErrorCode::InvalidArgument,
+                    "number of buffered messages underflowed",
+                ))
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of messages that have been posted but not yet received.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// The count of buffered messages.
+    ///
+    #[cfg(feature = "stdio")]
+    pub fn count_buffered_messages(&self) -> usize {
+        self.number_buffered_messages
+    }
 }
 
 //==================================================================================================
@@ -1962,7 +2035,7 @@ impl ProcessManager {
             Err(tid) => pm.find_process_by_tid(tid)?,
         };
         process.state_mut().post_message(message);
-        pm.number_buffered_messages += 1;
+        pm.note_message_posted()?;
         Ok(())
     }
 
@@ -1996,7 +2069,7 @@ impl ProcessManager {
     ///
     #[cfg(feature = "stdio")]
     pub fn number_buffered_messages(&self) -> Result<usize, Error> {
-        Ok(self.try_borrow()?.number_buffered_messages)
+        Ok(self.try_borrow()?.count_buffered_messages())
     }
 
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {

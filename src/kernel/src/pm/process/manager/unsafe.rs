@@ -687,7 +687,7 @@ impl ProcessManager {
         let running: &mut RunningProcess = pm.get_running_mut();
         match running.state_mut().receive_message(tid) {
             Some(message) => {
-                pm.number_buffered_messages -= 1;
+                pm.note_message_received()?;
                 Ok(Some(message))
             },
             None => Ok(None),
