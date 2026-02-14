@@ -140,6 +140,15 @@ impl OomHandler for NanvixOomHandler {
 
             unsafe {
                 let span: Span = talc.extend(old_heap, req_heap);
+                #[cfg(feature = "warn")]
+                if span.size() != req_heap.size() {
+                    let diff: usize = req_heap.size().abs_diff(span.size());
+                    let _ = writeln!(
+                        &mut Logger::get(module_path!(), LogLevel::Warn),
+                        "handle_oom(): span reclamation claimed {} fewer bytes",
+                        diff
+                    );
+                }
                 talc.oom_handler.span = Some(span);
             }
 
