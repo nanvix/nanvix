@@ -21,6 +21,7 @@ use ::std::{
     },
     process,
 };
+use ::syslog::DEFAULT_LOG_DIRECTORY;
 use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
@@ -105,9 +106,6 @@ impl Args {
 
     /// Program name.
     const PROGRAM_NAME: &'static str = env!("CARGO_PKG_NAME");
-
-    /// Default log directory.
-    const DEFAULT_LOG_DIRECTORY: &'static str = "logs";
 
     /// Test log file name for validation.
     const TEST_LOG_FILENAME: &'static str = "test.log";
@@ -347,7 +345,7 @@ impl Args {
                 let mut abs_path: PathBuf = std::env::current_dir().map_err(|e| {
                     anyhow::anyhow!("failed to get current directory (error={:?})", e)
                 })?;
-                abs_path.push(Self::DEFAULT_LOG_DIRECTORY);
+                abs_path.push(DEFAULT_LOG_DIRECTORY);
                 abs_path.to_str().map(|s| s.to_string()).ok_or_else(|| {
                     anyhow::anyhow!("failed to convert log directory path to string")
                 })?
