@@ -71,7 +71,8 @@ jobs:
   test:
     name: "Test"
     needs: build
-    runs-on: [self-hosted, Linux, X64]
+    runs-on:
+      group: Test
     timeout-minutes: 120
     permissions:
       contents: read
