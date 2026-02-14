@@ -134,10 +134,10 @@ jobs:
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
 
-  # Each matrix entry calls a reusable workflow that builds on a GitHub-hosted
-  # runner and then integration-tests on a self-hosted runner. Because
-  # each entry is independent, a fast config's test starts as soon as its own
-  # build finishes instead of waiting for every build to complete.
+  # Each matrix entry calls a reusable workflow that builds and
+  # integration-tests on GitHub-hosted runners. Because each entry is
+  # independent, a fast config's test starts as soon as its own build finishes
+  # instead of waiting for every build to complete.
   # On pull requests, only debug builds run (release is tested on dev push).
   ci-build-and-test:
     name: "CI (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
@@ -171,11 +171,10 @@ jobs:
     secrets: inherit
 
   # ==========================================================================================
-  # Stage 3: L2 and Benchmark (Self-Hosted Runners)
+  # Stage 3: L2 (GitHub-Hosted Runners) and Benchmark (Self-Hosted Runners)
   # ==========================================================================================
 
-  # L2 configurations require .git for generate-l2-initramfs.sh, so they build
-  # from source on self-hosted runners with a local toolchain.
+  # L2 configurations build and test using Docker on GitHub-hosted runners.
   # On pull requests, only debug builds run (release is tested on dev push).
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
@@ -186,7 +185,7 @@ jobs:
       matrix:
         build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [microvm, hyperlight]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -204,25 +203,20 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: "Pre-Cleanup Dangling Resources"
-      uses: ./.github/actions/cleanup
-      with:
-        phase: pre
-
-    - name: "Link Toolchain Directory"
-      shell: bash
-      run: ln -sfn "${HOME}/toolchain" toolchain
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
 
     - name: "Lint"
-      uses: ./.github/actions/lint
+      uses: ./.github/actions/docker-check
       with:
+        target: 'lint-check'
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: 'l2'
 
     - name: "Build"
-      uses: ./.github/actions/build
+      uses: ./.github/actions/docker-build
       with:
         release: '${{ matrix.build-type }}'
         log-level: 'trace'
@@ -230,10 +224,8 @@ jobs:
         deployment-type: 'l2'
 
     - name: "Test"
-      uses: ./.github/actions/test
+      uses: ./.github/actions/docker-test
       with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: 'l2'
 
@@ -286,12 +278,6 @@ jobs:
         sudo find /tmp -maxdepth 1 -name 'nvx*' -print || true
         sudo find /tmp -maxdepth 2 -name 'nanvixd-clh.*' -print || true
         echo '::endgroup::'
-
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
 
     - name: "Upload logs in case of failures"
       if: failure()
@@ -660,7 +646,7 @@ jobs:
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
       needs.release-archive.result == 'success'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
