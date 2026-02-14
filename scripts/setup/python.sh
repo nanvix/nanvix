@@ -25,7 +25,7 @@ export CPYTHON_BRANCH=7158004b255e8b848562b7f537a9e3c44188997e
 #===================================================================================================
 
 mkdir -p "${CONTRIB_DIR}"
-git clone ${CPYTHON_REPOSITORY} "${CPYTHON_HOME}"
+git clone "${CPYTHON_REPOSITORY}" "${CPYTHON_HOME}"
 cd "${CPYTHON_HOME}" || exit
 git checkout "${CPYTHON_BRANCH}"
 git clean -fdx
