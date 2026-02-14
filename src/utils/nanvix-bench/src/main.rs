@@ -199,6 +199,8 @@ impl Benchmark {
             NANVIXD_ADDRESS.to_string(),
             ::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY.to_string(),
             self.nanvixd_toolchain_bin_dir.clone(),
+            ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
+            self.nanvixd_tmp_dir.clone(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
@@ -1238,6 +1240,7 @@ async fn main() -> Result<()> {
         nanvixd: None,
         nanvixd_client: reqwest::Client::new(),
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
+        nanvixd_tmp_dir: args.tmp_dir(),
         user_vm_id: None,
     };
 

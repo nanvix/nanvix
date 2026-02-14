@@ -32,7 +32,6 @@ use ::nanvix::{
 };
 use ::nanvixd::{
     args::Args,
-    config::DEFAULT_TMP_DIRECTORY,
     tempdir::TemporaryDirectory,
 };
 use ::std::{
@@ -150,7 +149,7 @@ pub async fn main() -> Result<ExitCode> {
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
-    let tmp_directory: TemporaryDirectory = create_tmp_dir(DEFAULT_TMP_DIRECTORY).await?;
+    let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
 
     let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
