@@ -228,6 +228,7 @@ jobs:
       with:
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: 'l2'
+        log-level: 'trace'
 
     - name: "Collect L2 diagnostics"
       if: failure()
