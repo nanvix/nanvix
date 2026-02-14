@@ -126,6 +126,7 @@ expected_output = "ok"
 [[tests]]
 executor = "http"
 program = "./bin/misc-c.elf"
+program_args = ";NANVIX_TEST=1"
 input = "[]"
 expected_output = "ok"
 
@@ -236,6 +237,7 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/misc-c.elf"
+program_args = ";NANVIX_TEST=1"
 expected_output = "ok"
 
 [[tests]]
