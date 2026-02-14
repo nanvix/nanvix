@@ -12,7 +12,7 @@ format-check-guest-rlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
 
 rust-lint-guest-rlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-rlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) -- -D warnings
