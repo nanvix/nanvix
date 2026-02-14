@@ -242,7 +242,10 @@ if [[ ! -d "${STAGE2_TOOLS_DIR}" ]]; then
     STAGE2_TOOLS_DIR="${RUST_HOME}/build/x86_64-unknown-linux-gnu/stage2-tools-bin"
 fi
 if [[ -d "${STAGE2_TOOLS_DIR}" ]]; then
-    cp -f "${STAGE2_TOOLS_DIR}"/* "${STAGE2_DIR}/bin/" || {
+    # Use --remove-destination to handle the case where the Rust build
+    # hardlinks stage2-tools-bin/* into stage2/bin/ (same inode), which
+    # causes plain `cp -f` to fail with "are the same file".
+    cp -f --remove-destination "${STAGE2_TOOLS_DIR}"/* "${STAGE2_DIR}/bin/" || {
         print_error "Failed to copy tools from stage2-tools-bin to stage2/bin."
         exit 1
     }
