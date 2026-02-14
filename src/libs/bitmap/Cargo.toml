@@ -9,12 +9,16 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
 raw-array = { workspace = true }
 sys = { workspace = true }
+vstd = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

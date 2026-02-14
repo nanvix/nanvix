@@ -160,6 +160,7 @@ type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
 uuid = { version = "1.18.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
+vstd = { version = "0.0.0-2026-02-08-0120", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.0", default-features = false }
 
@@ -199,6 +200,10 @@ lto = true
 
 [workspace.lints.rust]
 warnings = "deny"
+unexpected_cfgs = { level = "deny", check-cfg = [
+        "cfg(verus_keep_ghost)",
+        "cfg(verus_keep_ghost_body)",
+] }
 
 [workspace.lints.clippy]
 all = "deny"

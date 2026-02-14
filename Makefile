@@ -234,7 +234,9 @@ export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
 export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
 export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
-export KERNEL_CARGO_FLAGS := -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
+# Note: use '-Z flag' (with a space) instead of '-Zflag' so that cargo-verus can parse and forward
+# the flags correctly. Regular cargo accepts both forms.
+export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 
 # Rust flags for host target.
@@ -264,10 +266,13 @@ export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x
 export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
 export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
-export KERNEL_CARGO_BUILD_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 build $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) $(CARGO_PROFILE) --no-default-features
+# Note: place cargo-native options (--no-default-features, --message-format, etc.) before
+# unstable flags (-Z ...) and --target, so that cargo-verus can reuse the same argument order.
+# Regular cargo accepts any order, so this is safe for all commands.
+export KERNEL_CARGO_BUILD_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 build --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_CLEAN_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CHECK_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 check $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) --message-format=json --no-default-features
-export KERNEL_CARGO_CLIPPY_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET) --no-default-features
+export KERNEL_CARGO_CHECK_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 check --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CLIPPY_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
 
 # Cargo commands for wasm target.
@@ -293,6 +298,22 @@ export CP_CMD := cp -f --preserve
 export GRUB_CMD := grub-mkrescue
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
+
+#===================================================================================================
+# Verus Formal Verification
+#===================================================================================================
+
+# Path to the Verus installation directory.
+export VERUS_DIR ?= $(HOME)/verus
+
+# List of crates to verify with Verus.
+VERUS_CRATES := bitmap
+
+# Verus verification command.
+# Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
+# but needs to accept -Z flags passed by -Z build-std.
+export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH="$(VERUS_DIR):$$PATH" \
+	$(CARGO) +$(RUST_CHANNEL) verus verify --no-default-features
 
 #===================================================================================================
 # Top-Level Targets
@@ -487,6 +508,7 @@ help:
 	@echo "  lint-check      Check for linting issues without fixing"
 	@echo "  spellcheck      Check for spelling errors in source code and documentation"
 	@echo "  spellcheck-fix  Fix spelling errors in source code and documentation"
+	@echo "  verify          Run Verus formal verification on annotated crates"
 	@echo ""
 	@echo "Testing Targets"
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
@@ -510,6 +532,7 @@ help:
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
+	@echo "  VERUS_DIR        Path to Verus installation (default: $(VERUS_DIR))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
@@ -519,6 +542,14 @@ help:
 	@echo "  PROFILER        yes, no"
 	@echo "  L2_VM           yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
+
+# Verifies all Verus-annotated crates.
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES))
+
+# Pattern rule for verifying individual crates.
+$(addprefix verify-,$(VERUS_CRATES)): verify-%:
+	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Fixes code linting issues.
 lint: \
