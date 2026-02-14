@@ -550,6 +550,13 @@ main() {
         shift
     done
 
+    # Extract TOOLCHAIN_DIR from user build parameters if provided.
+    for param in "${user_build_parameters[@]}"; do
+        if [[ "${param}" == TOOLCHAIN_DIR=* ]]; then
+            TOOLCHAIN_DIR="${param#TOOLCHAIN_DIR=}"
+        fi
+    done
+
     # If using cache, restore variables from cache when not overridden by command line options.
     if ${WITH_CACHED_OPTIONS}; then
         print_info "Using cached build options."
