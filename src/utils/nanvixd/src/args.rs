@@ -14,13 +14,13 @@
 use crate::config::{
     self,
     DEFAULT_CONSOLE_FILENAME,
-    DEFAULT_LOG_DIRECTORY,
     DEFAULT_TMP_DIRECTORY,
 };
 use ::anyhow::Result;
 use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
+    log::DEFAULT_LOG_DIRECTORY,
     syscomm::SocketType,
 };
 use ::std::{

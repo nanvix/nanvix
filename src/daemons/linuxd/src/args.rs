@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::config;
 use ::anyhow::Result;
 use ::syscomm::SocketType;
+use ::syslog::DEFAULT_LOG_DIRECTORY;
 
 //==================================================================================================
 // Structures
@@ -159,7 +159,7 @@ impl Args {
                 let mut abs_path = std::env::current_dir().map_err(|e| {
                     anyhow::anyhow!("failed to get current directory (error={:?})", e)
                 })?;
-                abs_path.push(config::DEFAULT_LOG_DIRECTORY);
+                abs_path.push(DEFAULT_LOG_DIRECTORY);
                 abs_path.to_str().map(|s| s.to_string()).ok_or_else(|| {
                     anyhow::anyhow!("failed to convert log directory path to string")
                 })?
