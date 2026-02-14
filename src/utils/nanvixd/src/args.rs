@@ -15,6 +15,7 @@ use crate::config::{
     self,
     DEFAULT_CONSOLE_FILENAME,
     DEFAULT_LOG_DIRECTORY,
+    DEFAULT_TMP_DIRECTORY,
 };
 use ::anyhow::Result;
 use ::chrono::Local;
@@ -72,6 +73,8 @@ pub struct Args {
     program_name: Option<String>,
     /// Program arguments for interactive mode (remaining words after `--` separator).
     program_args: Vec<String>,
+    /// Base directory path for creating temporary directories.
+    tmp_directory: String,
 }
 
 //==================================================================================================
@@ -111,6 +114,8 @@ impl Args {
     pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
     /// Command-line separator for interactive mode program and arguments.
     pub const OPT_SEPARATOR: &'static str = "--";
+    /// Command-line option that sets the base temporary directory path.
+    pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
 
     ///
     /// # Description
@@ -152,6 +157,7 @@ impl Args {
         let mut system_vm_socket_type: Option<SocketType> = None;
         let mut program_name: Option<String> = None;
         let mut program_args: Vec<String> = Vec::new();
+        let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -233,6 +239,17 @@ impl Args {
                 Self::OPT_RAMFS_FILENAME => {
                     i += 1;
                     ramfs_filename = Some(args[i].clone());
+                },
+                Self::OPT_TMP_DIRECTORY => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_TMP_DIRECTORY
+                        ));
+                    }
+                    tmp_directory = args[i].clone();
                 },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
@@ -316,6 +333,7 @@ impl Args {
             system_vm_socket_type,
             program_name,
             program_args,
+            tmp_directory,
         })
     }
 
@@ -359,6 +377,8 @@ Options:
              uservm).
   {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
   {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
+  {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
+             {DEFAULT_TMP_DIRECTORY}).
 ",
             program_name = program_name,
             http_addr = Self::OPT_HTTP_SOCKADDR,
@@ -376,6 +396,7 @@ Options:
             system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
             l2 = Self::OPT_L2,
             l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
+            tmp_dir = Self::OPT_TMP_DIRECTORY,
         );
     }
 
@@ -585,5 +606,18 @@ Options:
     ///
     pub fn program_args(&self) -> &[String] {
         &self.program_args
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base temporary directory path.
+    ///
+    /// # Returns
+    ///
+    /// The base temporary directory path.
+    ///
+    pub fn tmp_directory(&self) -> &str {
+        &self.tmp_directory
     }
 }
