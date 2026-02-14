@@ -186,7 +186,8 @@ jobs:
       matrix:
         build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
         machine-type: [microvm, hyperlight]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on:
+      group: Test
     permissions:
       contents: read
 
@@ -311,7 +312,8 @@ jobs:
     name: "Benchmark"
     needs: [precheck, checks]
     timeout-minutes: 240
-    runs-on: [self-hosted, Linux, X64, baremetal]
+    runs-on:
+      group: Benchmark
     permissions:
       contents: read
       pull-requests: write
@@ -660,7 +662,8 @@ jobs:
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
       needs.release-archive.result == 'success'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on:
+      group: Test
     permissions:
       contents: write
 
