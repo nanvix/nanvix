@@ -53,6 +53,7 @@ int main(int argc, const char *argv[])
     test_times();
     test_uname();
     test_gethostname();
+    test_getenv();
 
     // Write magic string to signal that the test passed.
     {
