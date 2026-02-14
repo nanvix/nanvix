@@ -8,6 +8,7 @@
 mod common;
 mod debug_console_spam;
 mod event_registration;
+mod heap_reclaim;
 mod kcall_hammer;
 mod memory_mapping_storm;
 mod mutex_churn;
@@ -44,6 +45,7 @@ pub fn run_all() -> Result<(), Error> {
     thread_identity::run()?;
     kcall_hammer::run()?;
     scoreboard_backpressure::run()?;
+    heap_reclaim::run()?;
     sleep_burst::run()?;
     debug_console_spam::run()?;
     event_registration::run()?;
