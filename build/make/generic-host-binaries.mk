@@ -29,7 +29,7 @@ clean-host-binaries-$(1):
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-host-binaries-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1) --fix --allow-dirty
+	$(HOST_CARGO_CLIPPY_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-host-binaries-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1) -- -D warnings

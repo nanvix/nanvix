@@ -29,7 +29,7 @@ clean-wasmd: clean-wasm-binaries clean-guest-binaries
 	$(RM_CMD) $(BINARIES_DIR)/wasmd.elf
 
 rust-lint-wasmd:
-	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-wasmd:
 	$(GUEST_CARGO_CLIPPY_CMD) -p wasmd -- -D warnings

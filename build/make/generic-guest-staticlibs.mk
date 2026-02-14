@@ -25,7 +25,7 @@ clean-guest-staticlib-$(1):
 	$(RM_CMD) $(LIBRARIES_DIR)/lib$(1).a
 
 rust-lint-guest-staticlib-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty
+	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES) -- -D warnings

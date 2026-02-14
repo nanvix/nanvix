@@ -20,7 +20,7 @@ clean-wasm-binaries-$(1):
 	$(RM_CMD) $(BINARIES_DIR)/$(1).wasm
 
 rust-lint-wasm-binaries-$(1):
-	$(WASM_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty
+	$(WASM_CARGO_CLIPPY_CMD) -p $(1) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-wasm-binaries-$(1):
 	$(WASM_CARGO_CLIPPY_CMD) -p $(1) -- -D warnings
