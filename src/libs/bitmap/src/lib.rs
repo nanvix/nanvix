@@ -20,6 +20,8 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
 
 //==================================================================================================
 // Structures
