@@ -53,6 +53,9 @@
 // Tests whether we can get the resolution of a clock with `clock_getres()`.
 extern void test_clock_getres(void);
 
+// Tests if `getenv()` works.
+extern void test_getenv(void);
+
 // Tests whether we can get the effective group ID of the calling process with `getegid()`.
 extern void test_getegid(void);
 
