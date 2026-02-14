@@ -1,0 +1,39 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Benchmark Run"
+description: "Run a set of micro-benchmarks"
+
+inputs:
+  benchmarks:
+    description: "Space-separated list of benchmark names to run"
+    required: true
+  machine-type:
+    description: "Target machine type"
+    required: true
+    default: "microvm"
+  iterations:
+    description: "Number of benchmark iterations"
+    required: true
+    default: "100"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Run Benchmarks"
+    shell: bash
+    env:
+      BENCHMARKS: ${{ inputs.benchmarks }}
+      MACHINE_TYPE: ${{ inputs.machine-type }}
+      ITERATIONS: ${{ inputs.iterations }}
+    run: |
+      for bench in ${BENCHMARKS}; do
+        python3 ./scripts/benchmark.py \
+          run \
+          --benchmark "${bench}" \
+          --machine-type "${MACHINE_TYPE}" \
+          --hwloc "$HOME/hwloc.json" \
+          --iterations "${ITERATIONS}" \
+          --toolchain-bin-dir "$HOME/toolchain/bin" \
+          --output-dir "$(pwd)"
+      done

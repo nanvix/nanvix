@@ -1,0 +1,39 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Benchmark Persist"
+description: "Persist benchmark results to the dev baseline directory"
+
+inputs:
+  benchmarks:
+    description: "Comma-separated list of benchmark names"
+    required: true
+  machine-types:
+    description: "Comma-separated list of machine types"
+    required: true
+    default: "microvm"
+  archs:
+    description: "Comma-separated list of architectures"
+    required: true
+    default: "X64"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Persist results on dev"
+    shell: bash
+    env:
+      BENCHMARKS: ${{ inputs.benchmarks }}
+      MACHINE_TYPES: ${{ inputs.machine-types }}
+      ARCHS: ${{ inputs.archs }}
+    run: |
+      target_dir="$HOME/ubench-results-dev"
+      mkdir -p "${target_dir}"
+
+      python3 ./scripts/benchmark.py \
+        copy-results \
+        --benchmarks "${BENCHMARKS}" \
+        --machine-types "${MACHINE_TYPES}" \
+        --archs "${ARCHS}" \
+        --source-dir "$(pwd)" \
+        --target-dir "${target_dir}"
