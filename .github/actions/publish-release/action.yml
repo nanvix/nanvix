@@ -1,0 +1,136 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Publish Release"
+description: "Publish the latest release to GitHub and trigger downstream dispatches"
+
+inputs:
+  github-token:
+    description: "GitHub token for creating releases"
+    required: true
+  dispatch-token:
+    description: "Token for dispatching to downstream repositories (optional)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Extract Version"
+    id: version
+    shell: bash
+    run: |
+      version=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+      if [ -z "${version}" ]; then
+        echo "Warning: Failed to extract version from Cargo.toml, using fallback"
+        version="?.?.?"
+      fi
+      echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+  - name: "Download release artifacts"
+    uses: actions/download-artifact@v7
+    with:
+      pattern: release-*
+      path: release-artifacts
+
+  - name: "Reset Latest Release"
+    uses: actions/github-script@v8
+    with:
+      github-token: ${{ inputs.github-token }}
+      script: |
+        const tag = 'latest';
+        const owner = context.repo.owner;
+        const repo = context.repo.repo;
+
+        async function deleteReleaseByTag() {
+          try {
+            const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+            core.info(`Deleting release ${data.id} (${tag}).`);
+            await github.rest.repos.deleteRelease({ owner, repo, release_id: data.id });
+          } catch (error) {
+            if (error.status === 404) {
+              core.info('No existing latest release to delete.');
+              return;
+            }
+            throw error;
+          }
+        }
+
+        async function deleteTagRef() {
+          try {
+            await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+            core.info('Deleted refs/tags/latest tag.');
+          } catch (error) {
+            if (error.status === 404) {
+              core.info('Tag refs/tags/latest not found; nothing to delete.');
+              return;
+            }
+            throw error;
+          }
+        }
+
+        await deleteReleaseByTag();
+        await deleteTagRef();
+
+  - name: "Update Latest Release"
+    uses: ncipollo/release-action@v1
+    with:
+      token: ${{ inputs.github-token }}
+      tag: latest
+      name: Nanvix ${{ steps.version.outputs.version }}
+      draft: false
+      prerelease: false
+      allowUpdates: false
+      makeLatest: true
+      removeArtifacts: true
+      artifacts: release-artifacts/**/*.tar.bz2
+      artifactContentType: application/x-bzip2
+      body: Automated release for Nanvix ${{ steps.version.outputs.version }}.
+
+  - name: "Trigger Nanvix Release Dispatch"
+    shell: bash
+    env:
+      DISPATCH_TOKEN: ${{ inputs.dispatch-token }}
+    run: |
+      if [[ -z "${DISPATCH_TOKEN}" ]]; then
+        echo "::warning::DISPATCH_TOKEN secret is not configured; skipping release dispatch."
+        exit 0
+      fi
+
+      repos=("cpython" "openblas" "openssl" "quickjs" "rusty_v8" "sqlite" "zlib")
+      failed=0
+
+      for repo in "${repos[@]}"; do
+        API_URL="https://api.github.com/repos/nanvix/${repo}/dispatches"
+        PAYLOAD=$(cat <<JSON
+      {
+        "event_type": "nanvix-minor-release",
+        "client_payload": {
+          "source_repo": "nanvix/nanvix",
+          "ref": "${GITHUB_REF}",
+          "sha": "${GITHUB_SHA}",
+          "component": "${repo}",
+          "reason": "sync build from nanvix/nanvix"
+        }
+      }
+      JSON
+      )
+
+        http_response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "$API_URL" \
+          -d "${PAYLOAD}")
+
+        if [[ "${http_response}" -ge 200 && "${http_response}" -lt 300 ]]; then
+          echo "Dispatched nanvix-release event to nanvix/${repo} (HTTP ${http_response})."
+        else
+          echo "::error::Failed to dispatch nanvix-release event to nanvix/${repo} (HTTP ${http_response})."
+          failed=1
+        fi
+      done
+
+      if [[ "${failed}" -eq 1 ]]; then
+        exit 1
+      fi
