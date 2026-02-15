@@ -1,0 +1,12 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Link Toolchain"
+description: "Create a symlink to the local toolchain directory"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Link Toolchain Directory"
+    shell: bash
+    run: ln -sfn "${HOME}/toolchain" toolchain
