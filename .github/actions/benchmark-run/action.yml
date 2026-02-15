@@ -35,5 +35,6 @@ runs:
           --hwloc "$HOME/hwloc.json" \
           --iterations "${ITERATIONS}" \
           --toolchain-bin-dir "$HOME/toolchain/bin" \
-          --output-dir "$(pwd)"
+          --output-dir "$(pwd)" \
+          --commit "${{ github.sha }}"
       done

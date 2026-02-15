@@ -1,4 +1,4 @@
-# Copyright(c) 2011-2024 The Maintainers of Nanvix.
+# Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
 # ======================================================================
@@ -6,11 +6,14 @@
 # ======================================================================
 
 import argparse
+import csv
+import io
 import itertools
 import os
 import pathlib
 import re
 import subprocess
+from typing import Optional
 
 # ======================================================================
 # Constants
@@ -47,6 +50,19 @@ WARM_START_VMM_BENCH = "warm-start-vmm"
 
 # How many user VMs do we spawn in parallel in the CONCURRENT* benchmarks.
 NUM_CONCURRENT_VMS = 100
+
+# Benchmarks that report simple p50/p95/p99 percentile values.
+PERCENTILE_BENCHMARKS = [
+    BOOT_TIME_BENCH,
+    COLD_START_BENCH,
+    COLD_START_L2_BENCH,
+    COLD_START_UVM_BENCH,
+    CONCURRENT_BENCH,
+    CONCURRENT_L2_BENCH,
+    WARM_START_BENCH,
+    WARM_START_L2_BENCH,
+    WARM_START_VMM_BENCH,
+]
 
 # ======================================================================
 # Helper Functions
@@ -191,31 +207,30 @@ def cleanup_stale_netns():
         print(f"[NETNS-CLEANUP] Traceback:\n{traceback.format_exc()}")
 
 
-def gen_filename_for_benchmark(benchmark, machine_type, arch):
+def gen_filename_for_benchmark(benchmark: str, machine_type: str, arch: str) -> str:
+    """Generate the CSV filename for a given benchmark, machine type, and architecture."""
     benchmark = benchmark.replace("-", "_")
     return f"nanvix_bench_{benchmark}_{machine_type}_{arch}.csv"
 
 
-def filter_benchmark_stdout(benchmark, raw_stdout):
+def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str:
     """
-    Helper method to convert a benchmark's raw stdout into a formatted CSV
-    string.
+    Convert a benchmark's raw stdout into a formatted CSV string.
+
+    Every CSV includes a ``commit`` column as the first field so that results
+    can be accumulated over time in a single history file.
+
+    # Parameters
+
+    - ``benchmark``: Name of the benchmark.
+    - ``raw_stdout``: Raw stdout captured from the benchmark binary.
+    - ``commit``: Commit SHA to tag this result with.
+
+    # Returns
+
+    A CSV string (header + data rows) with the benchmark metrics.
     """
-    # All these benchmarks report the results in the form of:
-    # p50: <val> us
-    # p95: <val> us
-    # p99: <val> us
-    if benchmark in [
-        BOOT_TIME_BENCH,
-        COLD_START_BENCH,
-        COLD_START_L2_BENCH,
-        COLD_START_UVM_BENCH,
-        CONCURRENT_BENCH,
-        CONCURRENT_L2_BENCH,
-        WARM_START_BENCH,
-        WARM_START_L2_BENCH,
-        WARM_START_VMM_BENCH,
-    ]:
+    if benchmark in PERCENTILE_BENCHMARKS:
         pattern = re.compile(
             r"^\s*(p50|p95|p99)\s*:\s*([0-9]+)\s*us\b", re.IGNORECASE | re.MULTILINE
         )
@@ -223,21 +238,21 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
         for k, v in pattern.findall(raw_stdout):
             values[k.lower()] = int(v)
 
-        # Ensure all three are present
-        missing = [percentile for percentile in PERCENTILES if percentile not in values]
+        # Ensure all three percentiles are present.
+        missing = [p for p in PERCENTILES if p not in values]
         if missing:
             print(
                 f"ERROR: missing percentile values for benchmark '{benchmark}': {missing}"
             )
             raise ValueError("Missing percentile values in benchmark results")
 
-        filtered_stdout = ",".join(PERCENTILES)
-        filtered_stdout += "\n"
-        filtered_stdout += ",".join(
-            [str(values[percentile]) for percentile in PERCENTILES]
-        )
+        header = "commit," + ",".join(PERCENTILES)
+        data = commit + "," + ",".join(str(values[p]) for p in PERCENTILES)
+        filtered_stdout = header + "\n" + data
+
     elif benchmark == ROUND_TRIP_LATENCY_BENCH:
-        filtered_stdout = "size," + ",".join(PERCENTILES)
+        header = "commit,size," + ",".join(PERCENTILES)
+        data_lines = []
         actual_sizes = []
         for line in raw_stdout.splitlines():
             if not line.strip():
@@ -256,7 +271,7 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
             size = parts[0].rstrip(":").replace(" ", "")
             actual_sizes.append(size)
             p50, p95, p99 = parts[1:4]
-            filtered_stdout += "\n" + ",".join([size, p50, p95, p99])
+            data_lines.append(",".join([commit, size, p50, p95, p99]))
 
         # Sanity check we have a value for each size.
         if actual_sizes != ROUND_TRIP_SIZES:
@@ -264,8 +279,53 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
             print(f"ERROR: expected: {ROUND_TRIP_SIZES} - got: {actual_sizes}")
             raise ValueError("Not expected values.")
 
+        filtered_stdout = header + "\n" + "\n".join(data_lines)
+
     elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
-        filtered_stdout = raw_stdout
+        columns = ["commit", "step", "label", "p50", "p95", "p99"]
+        buf = io.StringIO()
+        writer = csv.writer(buf, lineterminator="\n")
+        writer.writerow(columns)
+
+        row_count: int = 0
+        for line in raw_stdout.splitlines():
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+
+            # Match data steps with p50/p95/p99 values.
+            m = re.match(
+                r"^(\d+)\s*\|\s*(.+?)\s*\|\s*p50:\s*(\d+)\s*\|\s*p95:\s*(\d+)"
+                r"\s*\|\s*p99:?\s+(\d+)",
+                line_stripped,
+            )
+            if m:
+                step = m.group(1)
+                label = m.group(2).strip()
+                p50 = m.group(3)
+                p95 = m.group(4)
+                p99 = m.group(5)
+                writer.writerow([commit, step, label, p50, p95, p99])
+                row_count += 1
+                continue
+
+            # Match step 0 (first step, no metric values).
+            m = re.match(
+                r"^(\d+)\s*\|\s*(.+?)\s*\|\s*First Step",
+                line_stripped,
+            )
+            if m:
+                step = m.group(1)
+                label = m.group(2).strip()
+                writer.writerow([commit, step, label, "", "", ""])
+                row_count += 1
+                continue
+
+        if row_count == 0:
+            print("ERROR: no data parsed from echo-breakdown output")
+            raise ValueError("No data in echo-breakdown output")
+
+        filtered_stdout = buf.getvalue().rstrip("\r\n")
 
     else:
         print(f"ERROR: unrecognized benchmark '{benchmark}'")
@@ -274,53 +334,118 @@ def filter_benchmark_stdout(benchmark, raw_stdout):
     return filtered_stdout
 
 
-def read_benchmark_values_from_file(benchmark, file_path, percentile=None):
+def format_echo_breakdown_for_report(file_path: str) -> str:
     """
-    Helper method to read the benchmark results from a file.
+    Read an echo-breakdown CSV and format it as a readable table for the CI
+    report.
+
+    # Parameters
+
+    - ``file_path``: Path to the echo-breakdown CSV file.
+
+    # Returns
+
+    A human-readable table string reconstructed from the CSV data.
     """
-    # All these benchmarks have the same CSV format.
-    if benchmark in [
-        BOOT_TIME_BENCH,
-        COLD_START_BENCH,
-        COLD_START_L2_BENCH,
-        COLD_START_UVM_BENCH,
-        CONCURRENT_BENCH,
-        CONCURRENT_L2_BENCH,
-        WARM_START_BENCH,
-        WARM_START_L2_BENCH,
-        WARM_START_VMM_BENCH,
-    ]:
+    try:
+        with open(file_path, "r", newline="") as fh:
+            reader = csv.reader(fh)
+            rows = list(reader)
+    except FileNotFoundError:
+        return "No data available\n"
+
+    if len(rows) < 2:
+        return "No data available\n"
+
+    # Find the latest commit's rows.
+    if not rows[-1]:
+        return "No data available\n"
+    last_commit: str = rows[-1][0]
+
+    output_lines: list[str] = []
+    for row in rows[1:]:
+        if len(row) < 6:
+            continue
+        commit, step, label, p50, p95, p99 = row[:6]
+        if commit != last_commit:
+            continue
+
+        if p50 == "" and p95 == "" and p99 == "":
+            output_lines.append(f"{step:>2} | {label:<48} | First Step")
+        else:
+            output_lines.append(
+                f"{step:>2} | {label:<48} | p50: {p50:>5} | p95: {p95:>5} | p99 {p99:>5}"
+            )
+
+    return "\n".join(output_lines) + "\n"
+
+
+def read_benchmark_values_from_file(
+    benchmark: str, file_path: str, percentile: Optional[str] = None
+) -> dict[str, str]:
+    """
+    Read the latest commit's benchmark values from a CSV file.
+
+    Works for both single-run files (one data row) and history files
+    (multiple data rows). Always returns the values from the last commit
+    present in the file.
+
+    # Parameters
+
+    - ``benchmark``: Name of the benchmark.
+    - ``file_path``: Path to the CSV file.
+    - ``percentile``: For round-trip-latency, which percentile column to read.
+
+    # Returns
+
+    A dict mapping metric keys to their string values.
+    """
+    if benchmark in PERCENTILE_BENCHMARKS:
         try:
             with open(file_path, "r") as fh:
-                result_line = fh.readlines()[1].split(",")
-                result_dict = {}
+                lines = [line.strip() for line in fh.readlines() if line.strip()]
 
-                for percentile, result in zip(PERCENTILES, result_line):
-                    result_dict[percentile] = result
-        except Exception:
+            if len(lines) < 2:
+                raise ValueError("No data rows")
+
+            # Last data row format: commit,p50,p95,p99
+            last_row = lines[-1].split(",")
             result_dict = {}
-            for percentile in PERCENTILES:
-                result_dict[percentile] = NA
+            for p_name, val in zip(PERCENTILES, last_row[1:]):
+                result_dict[p_name] = val
+        except (FileNotFoundError, ValueError, IndexError) as exc:
+            print(f"WARNING: could not read {file_path}: {exc}")
+            result_dict = {p: NA for p in PERCENTILES}
+
     elif benchmark == ROUND_TRIP_LATENCY_BENCH:
-        line_idx = PERCENTILES.index(percentile) + 1
         try:
             with open(file_path, "r") as f:
-                lines = f.readlines()
-                lines = [line.strip() for line in lines][1:]
+                lines = [line.strip() for line in f.readlines() if line.strip()]
 
-                result_dict = {}
-                for msg_size, line in zip(ROUND_TRIP_SIZES, lines):
-                    line = line.split(",")
-                    if msg_size != line[0]:
-                        print(
-                            f"ERROR: unexpected message size, expected: {msg_size} - got: {line[0]}"
-                        )
-                        raise ValueError("Unexpected message size")
-                    result_dict[msg_size] = line[line_idx]
-        except Exception:
+            if len(lines) < 2:
+                raise ValueError("No data rows")
+
+            # Find the last commit present in the file.
+            last_commit = lines[-1].split(",")[0]
+
+            # Column layout: commit=0, size=1, p50=2, p95=3, p99=4
+            col_idx = PERCENTILES.index(percentile) + 2
+
             result_dict = {}
-            for msg_size in ROUND_TRIP_SIZES:
-                result_dict[msg_size] = NA
+            for line in lines[1:]:
+                parts = line.split(",")
+                if parts[0] == last_commit:
+                    size = parts[1]
+                    result_dict[size] = parts[col_idx]
+
+            # Fill in any missing sizes with NA.
+            for size in ROUND_TRIP_SIZES:
+                if size not in result_dict:
+                    result_dict[size] = NA
+        except (FileNotFoundError, ValueError, IndexError) as exc:
+            print(f"WARNING: could not read {file_path}: {exc}")
+            result_dict = {s: NA for s in ROUND_TRIP_SIZES}
+
     else:
         print(f"ERROR: unrecognized benchmark '{benchmark}'")
         raise ValueError("Unrecognized benchmark")
@@ -498,17 +623,7 @@ def ci_summary(args):
     # General-purpose benchmarks that we put in similar tables.
     bench_summary = "```"
     for benchmark in benchmarks:
-        if benchmark in [
-            BOOT_TIME_BENCH,
-            COLD_START_BENCH,
-            COLD_START_L2_BENCH,
-            COLD_START_UVM_BENCH,
-            CONCURRENT_BENCH,
-            CONCURRENT_L2_BENCH,
-            WARM_START_BENCH,
-            WARM_START_L2_BENCH,
-            WARM_START_VMM_BENCH,
-        ]:
+        if benchmark in PERCENTILE_BENCHMARKS:
             bench_summary += "\n" + generate_benchmark_table(
                 args.dev_dir, args.target_dir, benchmark, machines, archs
             )
@@ -551,8 +666,8 @@ def ci_summary(args):
                 )
 
                 file_name = gen_filename_for_benchmark(benchmark, machine, arch)
-                with open(os.path.join(args.target_dir, file_name), "r") as fh:
-                    echo_breakdown_summary += fh.read()
+                file_path = os.path.join(args.target_dir, file_name)
+                echo_breakdown_summary += format_echo_breakdown_for_report(file_path)
                 echo_breakdown_summary += "=" * table_width + "\n"
 
         echo_breakdown_summary += "\n```\n</details>\n"
@@ -580,6 +695,24 @@ def run_benchmark(args):
         f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
         f"toolchain_bin_dir={args.toolchain_bin_dir}"
     )
+
+    # Resolve the commit SHA used to tag this benchmark result.
+    commit: str = args.commit
+    if commit is None:
+        git_result: subprocess.CompletedProcess = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if git_result.returncode != 0:
+            print("ERROR: --commit not provided and 'git rev-parse HEAD' failed.")
+            raise RuntimeError(
+                "Cannot determine commit SHA. Pass --commit explicitly "
+                "or run from inside a git repository."
+            )
+        commit = git_result.stdout.strip()
+    print(f"[BENCHMARK] Commit: {commit}")
 
     # Before running L2 benchmarks, wait for TCP connections from previous runs to clear.
     # This is critical when L2 benchmarks run after non-L2 benchmarks in sequence.
@@ -668,7 +801,7 @@ def run_benchmark(args):
         print("[BENCHMARK] Processing benchmark output...")
         raw_stdout = result.stdout.decode("utf-8")
         print(f"[BENCHMARK] Raw stdout length: {len(raw_stdout)} bytes")
-        filtered_stdout = filter_benchmark_stdout(args.benchmark, raw_stdout)
+        filtered_stdout = filter_benchmark_stdout(args.benchmark, raw_stdout, commit)
         print(f"[BENCHMARK] Filtered stdout length: {len(filtered_stdout)} bytes")
         print(f"[BENCHMARK] Writing results to: {output_file}")
         with open(output_file, "w") as fh:
@@ -690,7 +823,22 @@ def run_benchmark(args):
     print(f"[BENCHMARK] Benchmark '{args.benchmark}' completed successfully.")
 
 
-def copy_results(args):
+def persist_results(args: argparse.Namespace) -> None:
+    """
+    Append current run results to history CSVs in the target directory.
+
+    Each history CSV accumulates rows over time. New data rows from the
+    source file are appended to the target file, preserving the header.
+    If the target file does not yet exist it is created with the header
+    from the source file.  Rows whose commit hash already exists in the
+    target are skipped to prevent duplicates from CI retries.
+
+    # Parameters
+
+    - ``args``: Parsed command-line arguments with benchmarks, machine_types,
+      archs, source_dir, target_dir, and max_history.
+    """
+    max_history: int = getattr(args, "max_history", 0)
     benchmarks = args.benchmarks.split(",")
     machines = args.machine_types.split(",")
     archs = args.archs.split(",")
@@ -698,10 +846,126 @@ def copy_results(args):
 
     for benchmark, machine, arch in groups:
         filename = gen_filename_for_benchmark(benchmark, machine, arch)
-        cmd = f"cp {args.source_dir}/{filename} {args.target_dir}/{filename}"
-        print(cmd)
-        # Tolerate failures in the cp command, indicating a missing benchmark.
-        subprocess.run(cmd, shell=True, check=False)
+        source_path = os.path.join(args.source_dir, filename)
+        target_path = os.path.join(args.target_dir, filename)
+
+        if not os.path.exists(source_path):
+            print(f"WARNING: source file not found: {source_path}, skipping.")
+            continue
+
+        with open(source_path, "r") as f:
+            source_lines = [line.strip() for line in f.readlines() if line.strip()]
+
+        if len(source_lines) < 2:
+            print(f"WARNING: source file has no data: {source_path}, skipping.")
+            continue
+
+        header = source_lines[0]
+        data_rows = source_lines[1:]
+
+        if os.path.exists(target_path):
+            # Read the target file once for header validation and
+            # duplicate-commit detection.
+            with open(target_path, "r") as f:
+                existing_content: str = f.read()
+            existing_lines: list[str] = [
+                line.strip() for line in existing_content.splitlines() if line.strip()
+            ]
+
+            existing_header: str = existing_lines[0] if existing_lines else ""
+            if existing_header != header:
+                print(
+                    f"WARNING: header mismatch for {filename}: "
+                    f"source='{header}' vs target='{existing_header}'. "
+                    f"Skipping."
+                )
+                continue
+
+            # Collect commit hashes already present in the target file to
+            # prevent duplicate rows from CI retries.
+            existing_commits: set[str] = set()
+            for existing_line in existing_lines[1:]:
+                parts: list[str] = existing_line.split(",")
+                if parts:
+                    existing_commits.add(parts[0])
+
+            # Filter out rows whose commit is already persisted.
+            new_rows: list[str] = [
+                row for row in data_rows if row.split(",")[0] not in existing_commits
+            ]
+
+            if not new_rows:
+                print(f"No new rows to persist for {filename} (commit already exists).")
+                continue
+
+            # Ensure the existing file ends with a newline before appending.
+            needs_newline: bool = bool(
+                existing_content
+            ) and not existing_content.endswith("\n")
+            with open(target_path, "a") as f:
+                if needs_newline:
+                    f.write("\n")
+                for row in new_rows:
+                    f.write(row + "\n")
+
+            # Prune old rows if max_history is set.
+            if max_history > 0:
+                _prune_history(target_path, header, max_history)
+        else:
+            new_rows = data_rows
+            with open(target_path, "w") as f:
+                f.write(header + "\n")
+                for row in new_rows:
+                    f.write(row + "\n")
+
+        print(f"Persisted {len(new_rows)} row(s) to {target_path}")
+
+
+def _prune_history(file_path: str, header: str, max_commits: int) -> None:
+    """
+    Keep only the last ``max_commits`` unique commits in a history CSV.
+
+    # Parameters
+
+    - ``file_path``: Path to the history CSV file.
+    - ``header``: The CSV header line.
+    - ``max_commits``: Maximum number of unique commits to retain.
+    """
+    with open(file_path, "r") as f:
+        lines: list[str] = [line.strip() for line in f.readlines() if line.strip()]
+
+    if len(lines) < 2:
+        return
+
+    data_lines: list[str] = lines[1:]
+
+    # Collect unique commits in order of appearance.
+    seen: set[str] = set()
+    ordered_commits: list[str] = []
+    for line in data_lines:
+        commit: str = line.split(",")[0]
+        if commit not in seen:
+            seen.add(commit)
+            ordered_commits.append(commit)
+
+    if len(ordered_commits) <= max_commits:
+        return
+
+    # Keep only rows belonging to the last max_commits commits.
+    keep_commits: set[str] = set(ordered_commits[-max_commits:])
+    kept_lines: list[str] = [
+        row for row in data_lines if row.split(",")[0] in keep_commits
+    ]
+
+    with open(file_path, "w") as f:
+        f.write(header + "\n")
+        for row in kept_lines:
+            f.write(row + "\n")
+
+    pruned: int = len(data_lines) - len(kept_lines)
+    print(
+        f"Pruned {pruned} old row(s) from {file_path} (kept last {max_commits} commits)."
+    )
 
 
 if __name__ == "__main__":
@@ -714,8 +978,8 @@ if __name__ == "__main__":
     ci_summary_parser = sub_parser.add_parser(
         "ci-summary", help="Generate a summary of the benchmark results"
     )
-    copy_results_parser = sub_parser.add_parser(
-        "copy-results", help="Copy results to a target directory"
+    persist_parser = sub_parser.add_parser(
+        "persist", help="Append benchmark results to history CSVs"
     )
 
     # Command-line arguments for the run command.
@@ -759,6 +1023,11 @@ if __name__ == "__main__":
         "--output-dir",
         help="Directory where to store the benchmark results. If not set prints to stdout",
     )
+    run_parser.add_argument(
+        "--commit",
+        default=None,
+        help="Commit SHA to tag this benchmark result. Defaults to HEAD.",
+    )
     run_parser.set_defaults(func=run_benchmark)
 
     # Command-line arguments for the ci-summary command.
@@ -790,29 +1059,35 @@ if __name__ == "__main__":
     )
     ci_summary_parser.set_defaults(func=ci_summary)
 
-    # Command-line arguments for the ci-summary command.
-    copy_results_parser.add_argument(
-        "--source-dir", required=True, help="Directory with results"
+    # Command-line arguments for the persist command.
+    persist_parser.add_argument(
+        "--source-dir", required=True, help="Directory with single-run result files"
     )
-    copy_results_parser.add_argument(
-        "--target-dir", required=True, help="Target directory to copy results"
+    persist_parser.add_argument(
+        "--target-dir", required=True, help="Target directory with history CSVs"
     )
-    copy_results_parser.add_argument(
+    persist_parser.add_argument(
         "--benchmarks",
         required=True,
-        help="Comma-separated list of benchmarks to aggregate",
+        help="Comma-separated list of benchmarks to persist",
     )
-    copy_results_parser.add_argument(
+    persist_parser.add_argument(
         "--machine-types",
         required=True,
-        help="Comma-separated list of machines types benchmarked",
+        help="Comma-separated list of machine types benchmarked",
     )
-    copy_results_parser.add_argument(
+    persist_parser.add_argument(
         "--archs",
         required=True,
         help="Comma-separated list of architectures benchmarked",
     )
-    copy_results_parser.set_defaults(func=copy_results)
+    persist_parser.add_argument(
+        "--max-history",
+        type=int,
+        default=0,
+        help="Maximum number of unique commits to keep in history files. 0 means unlimited.",
+    )
+    persist_parser.set_defaults(func=persist_results)
 
     args = parser.parse_args()
     # Dispatch the arguments to the selected top-level command.

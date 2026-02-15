@@ -33,7 +33,7 @@ runs:
     run: |
       python3 ./scripts/benchmark.py \
         ci-summary \
-        --dev-dir "$HOME/ubench-results-dev" \
+        --dev-dir "$(pwd)/data" \
         --target-dir "$(pwd)" \
         --benchmarks "${BENCHMARKS}" \
         --machine-types "${MACHINE_TYPES}" \
