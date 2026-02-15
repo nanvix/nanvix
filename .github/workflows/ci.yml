@@ -331,7 +331,9 @@ jobs:
       uses: ./.github/actions/build
       with:
         release: '${{ matrix.build-type }}'
-        log-level: 'trace'
+        # Use 'error' log level for release builds to match release archive settings,
+        # enabling reuse of build artifacts and avoiding a redundant rebuild.
+        log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: 'l2'
 
@@ -339,7 +341,7 @@ jobs:
       uses: ./.github/actions/test
       with:
         release: '${{ matrix.build-type }}'
-        log-level: 'trace'
+        log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: 'l2'
 
@@ -501,9 +503,6 @@ jobs:
       with:
         name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         path: .
-
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
 
     - name: "Package Release Archive"
       id: release-archive
