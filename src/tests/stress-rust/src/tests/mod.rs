@@ -14,6 +14,7 @@ mod memory_mapping_storm;
 mod mutex_churn;
 mod parallel_spawners;
 mod scoreboard_backpressure;
+mod scoreboard_saturation;
 mod sleep_burst;
 mod thread_data_area;
 mod thread_fan_out;
@@ -45,6 +46,7 @@ pub fn run_all() -> Result<(), Error> {
     thread_identity::run()?;
     kcall_hammer::run()?;
     scoreboard_backpressure::run()?;
+    scoreboard_saturation::run()?;
     heap_reclaim::run()?;
     sleep_burst::run()?;
     debug_console_spam::run()?;
