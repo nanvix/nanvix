@@ -40,9 +40,12 @@ runs:
       LOG_LEVEL: ${{ inputs.log-level }}
       BUILD_TIMEOUT: ${{ inputs.timeout }}
       RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
+      # For release builds, also run 'install' so that the sysroot is populated
+      # and can be reused directly by the release-package action without rebuilding.
+      BUILD_TARGETS: ${{ inputs.release == 'release' && 'all run-unit-tests install' || 'all run-unit-tests' }}
       MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
     run: |
-      ./z build --with-minimal-docker -- all run-unit-tests \
+      ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
         "MACHINE=${MACHINE_TYPE}" \
         TARGET=x86 \
         "LOG_LEVEL=${LOG_LEVEL}" \
