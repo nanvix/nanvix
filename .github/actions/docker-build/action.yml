@@ -40,9 +40,11 @@ runs:
       LOG_LEVEL: ${{ inputs.log-level }}
       BUILD_TIMEOUT: ${{ inputs.timeout }}
       RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
-      # For release builds, also run 'install' so that the sysroot is populated
-      # and can be reused directly by the release-package action without rebuilding.
-      BUILD_TARGETS: ${{ inputs.release == 'release' && 'all run-unit-tests install' || 'all run-unit-tests' }}
+      # For release builds, also run 'release' (which depends on 'all install'
+      # and creates a tar archive) so that the archive is built inside Docker
+      # with correct file permissions and can be reused directly by the
+      # release-package action.
+      BUILD_TARGETS: ${{ inputs.release == 'release' && 'all run-unit-tests release' || 'all run-unit-tests' }}
       MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
     run: |
       ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
