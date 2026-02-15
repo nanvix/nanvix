@@ -194,6 +194,7 @@ jobs:
           images/
           lib/
           sysroot-${{ matrix.build-type }}/
+          nanvix-*.tar.bz2
 
     - name: "Upload logs in case of failures"
       if: failure()
