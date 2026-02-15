@@ -266,3 +266,48 @@ impl ExecutorName {
         }
     }
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workload_spec_expected_exit_code_some() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), false);
+        assert_eq!(spec.expected_exit_code(), Some(0));
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_none() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
+        assert_eq!(spec.expected_exit_code(), None);
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_nonzero() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13), false);
+        assert_eq!(spec.expected_exit_code(), Some(13));
+    }
+
+    #[test]
+    fn workload_spec_skip_exit_code_validation() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), true);
+        assert!(spec.skip_exit_code_validation());
+        assert_eq!(spec.expected_exit_code(), Some(0));
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_negative() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1), false);
+        assert_eq!(spec.expected_exit_code(), Some(-1));
+    }
+}
