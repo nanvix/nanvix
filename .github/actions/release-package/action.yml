@@ -27,26 +27,20 @@ runs:
       MACHINE_TYPE: ${{ inputs.machine-type }}
       DEPLOYMENT_TYPE: ${{ inputs.deployment-type }}
     run: |
-      sysroot_dir="sysroot-release"
-
-      # Verify that the pre-built sysroot exists (populated by docker-build's
-      # install step and downloaded from ci-build artifacts).
-      if [[ ! -d "${sysroot_dir}" ]] || [[ -z "$(ls -A "${sysroot_dir}" 2>/dev/null)" ]]; then
-        echo "::error::Pre-built sysroot '${sysroot_dir}' is missing or empty. Ensure ci-build produced it."
+      # Find the pre-built release archive produced by 'make release' inside
+      # Docker during the ci-build step. Building the archive inside Docker
+      # preserves file permissions (e.g., the execute bit on ELF binaries)
+      # that GitHub Actions artifact transfer would otherwise strip.
+      archive_src=$(ls -1t nanvix-*.tar.bz2 2>/dev/null | head -n 1)
+      if [[ -z "${archive_src}" ]]; then
+        echo "::error::No pre-built release archive found. Ensure ci-build ran 'make release'."
         exit 1
       fi
 
-      # Create the release archive directly from the pre-built sysroot,
-      # avoiding a full rebuild.
       commit_id="${GITHUB_SHA}"
       archive_name="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${commit_id}.tar.bz2"
 
-      echo "Creating release archive ${archive_name} from ${sysroot_dir}..."
-      tar -cjf "${archive_name}" --exclude=./src -C "${sysroot_dir}" .
-
-      if [[ ! -f "${archive_name}" ]]; then
-        echo "::error::Failed to create release archive '${archive_name}'."
-        exit 1
-      fi
+      echo "Reusing pre-built release archive: ${archive_src} -> ${archive_name}"
+      mv "${archive_src}" "${archive_name}"
 
       echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
