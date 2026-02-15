@@ -1629,3 +1629,107 @@ fn parse_non_negative_integer(value: &Value, field_name: &str) -> Result<u64> {
 fn read_hwloc_file_path(table: &Table) -> Result<Option<String>> {
     read_optional_non_empty_string(table, "hwloc_file_path", "runner.hwloc_file_path")
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a minimal TOML table for a test case entry with the given executor and optional
+    /// `expected_exit_code` value.
+    fn build_test_table(executor: &str, expected_exit_code: Option<Value>) -> Table {
+        let mut table: Table = Table::new();
+        table.insert("executor".to_string(), Value::String(executor.to_string()));
+        table.insert("iterations".to_string(), Value::Integer(1));
+        if let Some(exit_code) = expected_exit_code {
+            table.insert("expected_exit_code".to_string(), exit_code);
+        }
+        table
+    }
+
+    #[test]
+    fn from_table_parses_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", Some(Value::Integer(0)));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, Some(0));
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_parses_negative_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", Some(Value::Integer(-1)));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, Some(-1));
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_parses_absent_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", None);
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, None);
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_rejects_string_expected_exit_code() {
+        let table: Table =
+            build_test_table("empty", Some(Value::String("not_a_number".to_string())));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_table_rejects_boolean_expected_exit_code() {
+        let table: Table = build_test_table("empty", Some(Value::Boolean(true)));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_table_rejects_overflowing_expected_exit_code() {
+        let overflow_value: i64 = i64::from(i32::MAX) + 1;
+        let table: Table = build_test_table("empty", Some(Value::Integer(overflow_value)));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_accepts_expected_exit_code() -> Result<()> {
+        let config: TestCaseConfig = TestCaseConfig {
+            executor: "empty".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: None,
+            input: None,
+            expected_output: None,
+            expect_empty_output: true,
+            extra_nanvixd_args: None,
+            expected_exit_code: Some(0),
+            runs_on: None,
+        };
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_accepts_absent_expected_exit_code() -> Result<()> {
+        let config: TestCaseConfig = TestCaseConfig {
+            executor: "empty".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: None,
+            input: None,
+            expected_output: None,
+            expect_empty_output: false,
+            extra_nanvixd_args: None,
+            expected_exit_code: None,
+            runs_on: None,
+        };
+        config.validate(0)?;
+        Ok(())
+    }
+}
