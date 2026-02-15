@@ -138,8 +138,7 @@ jobs:
   # in a separate ci-test job (typically on self-hosted runners) that depends
   # on the completion of the entire ci-build matrix, so tests start only after
   # all builds have finished rather than as soon as an individual build
-  # completes. On pull requests, only debug builds run (release is tested on
-  # dev push).
+  # completes.
   ci-build:
     name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
     needs: [precheck, checks, lint]
@@ -147,7 +146,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
+        build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [single-process, multi-process]
         exclude:
@@ -215,7 +214,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
+        build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [single-process, multi-process]
         exclude:
@@ -284,7 +283,6 @@ jobs:
 
   # L2 configurations require .git for generate-l2-initramfs.sh, so they build
   # from source on self-hosted runners with a local toolchain.
-  # On pull requests, only debug builds run (release is tested on dev push).
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
     needs: [precheck, checks]
@@ -292,7 +290,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name != 'pull_request' && '["debug","release"]' || '["debug"]') }}
+        build-type: [debug, release]
         machine-type: [microvm, hyperlight]
     runs-on:
       group: Test
