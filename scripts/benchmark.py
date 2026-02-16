@@ -740,7 +740,7 @@ def run_benchmark(args):
     nanvix_bench_cmd = [
         os.path.join(args.bin_dir, NANVIX_BENCH_ELF),
         f"-benchmark {args.benchmark}",
-        f"-hwloc {args.hwloc}" if not is_concurrent_bench else "",
+        f"-hwloc {args.hwloc}" if (not is_concurrent_bench and args.hwloc) else "",
         (
             f"-iterations {args.iterations}"
             if not is_concurrent_bench
@@ -996,11 +996,10 @@ if __name__ == "__main__":
         choices=[MICROVM_MACHINE_TYPE],
         help="Type of machine to run the benchmarks on",
     )
-    # Make the --hwloc file a mandatory argument for the wrapper script, to
-    # make sure that it is set.
     run_parser.add_argument(
         "--hwloc",
-        required=True,
+        required=False,
+        default=None,
         help="Path to file with the hardware locality information",
     )
     run_parser.add_argument(
