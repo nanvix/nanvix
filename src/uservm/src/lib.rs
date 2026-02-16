@@ -15,7 +15,6 @@
 
 // Lints
 #![forbid(clippy::unwrap_used)]
-#![forbid(clippy::expect_used)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
 #![forbid(clippy::char_lit_as_u8)]
@@ -29,6 +28,8 @@
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
 #![forbid(clippy::cast_possible_truncation)]
+// The following lints are allowed in tests to facilitate testing of error conditions.
+#![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
 // Public Modules
@@ -746,6 +747,7 @@ fn on_message_received_from_memory_thread(counters: &MessageCounters) {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::get_stderr_writer;
     use ::anyhow::{
@@ -756,7 +758,7 @@ mod tests {
         env,
         fs,
         fs::Metadata,
-        io::Write as IoWrite,
+        io::Write,
         path::PathBuf,
         time::{
             SystemTime,
@@ -803,7 +805,7 @@ mod tests {
         file_path.push(format!("nanvix-uservm-missing-{nanos}"));
         file_path.push("stderr.log");
 
-        let result: Result<Box<dyn Write + Send>> =
+        let result: AnyResult<Box<dyn Write + Send>> =
             get_stderr_writer(Some(file_path.to_string_lossy().into_owned()));
         assert!(result.is_err(), "expected failure when parent directory does not exist");
     }
