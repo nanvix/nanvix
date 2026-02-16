@@ -131,7 +131,7 @@ mod test {
         unsafe {
             let dst: *mut c_void = buf.as_mut_ptr().cast::<c_void>();
             let src: *const c_void = buf.as_ptr().cast::<c_void>();
-            memmove(dst, src, buf.len() as u32);
+            memmove(dst, src, u32::try_from(buf.len()).expect("buf len fits in u32"));
         }
         assert_eq!(buf, [10, 20, 30, 40]);
     }
