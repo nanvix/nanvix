@@ -13,7 +13,7 @@ homepage.workspace = true
 [dependencies]
 config = { workspace = true }
 syscomm = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
+log = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
 
