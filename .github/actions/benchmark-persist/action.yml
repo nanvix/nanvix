@@ -71,7 +71,7 @@ runs:
         max_attempts=3
         attempt=1
         while [ $attempt -le $max_attempts ]; do
-          if git push; then
+          if git push --no-verify; then
             echo "Push succeeded on attempt ${attempt}."
             break
           fi
