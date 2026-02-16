@@ -7,6 +7,13 @@
 
 use crate::vmm::KILL_SIGNAL;
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    info,
+    trace,
+    warn,
+};
 use ::std::{
     ops::ControlFlow::{
         self,
@@ -14,13 +21,6 @@ use ::std::{
         Continue,
     },
     pin::Pin,
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
-    trace,
-    warn,
 };
 use ::tokio::{
     select,

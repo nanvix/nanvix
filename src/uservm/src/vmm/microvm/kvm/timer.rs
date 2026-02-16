@@ -14,13 +14,13 @@ use ::kvm_ioctls::{
     Kvm,
     VmFd,
 };
+use ::log::{
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use kvm_bindings::{
     kvm_clock_data,

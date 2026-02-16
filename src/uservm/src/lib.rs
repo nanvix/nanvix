@@ -86,6 +86,10 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     fs::File,
     io::Write,
@@ -95,10 +99,6 @@ use ::std::{
 use ::sys::ipc::{
     Message,
     MessageType,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use ::tokio::{
     sync::{

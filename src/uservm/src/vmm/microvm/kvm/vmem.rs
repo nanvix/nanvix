@@ -9,6 +9,10 @@ use crate::vmm::microvm::ramfs::RamFs;
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     fs::File,
     io::{
@@ -21,10 +25,6 @@ use ::std::{
         self,
     },
     slice,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use kvm_ioctls::{
     Kvm,

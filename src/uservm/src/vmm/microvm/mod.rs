@@ -53,6 +53,11 @@ use ::libc::{
     sigaction,
     sigemptyset,
 };
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     ffi::OsStr,
     fs::File,
@@ -70,11 +75,6 @@ use ::std::{
     },
 };
 use ::sys::error::ErrorCode;
-use ::syslog::{
-    error,
-    trace,
-    warn,
-};
 use ::tokio::{
     runtime::Handle,
     sync::{
