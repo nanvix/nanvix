@@ -13,8 +13,8 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 libc = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
-syslog = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true
