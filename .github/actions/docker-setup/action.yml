@@ -8,19 +8,7 @@ runs:
   using: "composite"
   steps:
   - name: "Free Disk Space"
-    shell: bash
-    run: |
-      echo "=== Disk usage before cleanup ==="
-      df -h /
-      # Remove pre-installed software in parallel (I/O-bound, no ordering deps).
-      sudo rm -rf /usr/share/dotnet &
-      sudo rm -rf /usr/local/lib/android &
-      sudo rm -rf /opt/ghc &
-      sudo rm -rf /opt/hostedtoolcache &
-      sudo apt-get clean &
-      wait
-      echo "=== Disk usage after cleanup ==="
-      df -h /
+    uses: ./.github/actions/free-disk-space
 
   - name: "Resolve Docker Image Tag"
     id: image-tag
