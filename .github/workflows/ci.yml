@@ -446,6 +446,8 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm'
         archs: 'X64'
+        dev-dir: 'data'
+        runner-label: 'self-hosted'
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: "Persist results on dev"
@@ -455,6 +457,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm'
         archs: 'X64'
+        target-dir: 'data'
 
     - name: "Dump SCCACHE Statistics"
       if: always()
@@ -471,6 +474,97 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+          bench_*.txt
+
+  # Run micro-benchmarks on a GitHub-hosted runner using Docker so that
+  # results are collected even without self-hosted hardware.
+  # L2 benchmarks are intentionally excluded as they require self-hosted
+  # infrastructure. CI runner results are stored in data/ci/ to keep them
+  # isolated from the self-hosted runner baselines in data/.
+  benchmark-ci:
+    name: "Benchmark CI"
+    needs: [precheck, checks]
+    timeout-minutes: 120
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      needs.precheck.outputs.up_to_date == 'true' && (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ')
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
+
+    - name: "Build (Standard)"
+      uses: ./.github/actions/docker-benchmark-build
+      with:
+        machine-type: 'microvm'
+
+    - name: "Run Micro-Benchmarks (Standard)"
+      uses: ./.github/actions/docker-benchmark-run
+      with:
+        benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm'
+        machine-type: 'microvm'
+        iterations: '100'
+
+    - name: "Build (Echo-Breakdown)"
+      uses: ./.github/actions/docker-benchmark-build
+      with:
+        machine-type: 'microvm'
+        timestamp-msg: 'yes'
+
+    - name: "Run Echo-Breakdown Benchmarks"
+      uses: ./.github/actions/docker-benchmark-run
+      with:
+        benchmarks: 'echo-breakdown'
+        machine-type: 'microvm'
+        iterations: '1000'
+
+    - name: "Report Benchmark Results"
+      uses: ./.github/actions/benchmark-report
+      with:
+        benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
+        machine-types: 'microvm'
+        archs: 'X64'
+        dev-dir: 'data/ci'
+        runner-label: 'github-hosted'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: "Persist results on dev"
+      if: github.ref_name == 'dev'
+      uses: ./.github/actions/benchmark-persist
+      with:
+        benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
+        machine-types: 'microvm'
+        archs: 'X64'
+        target-dir: 'data/ci'
+
+    - name: "Upload logs in case of benchmark failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}
         overwrite: 'true'
         path: |
           logs/
