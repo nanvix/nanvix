@@ -13,8 +13,8 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 libc = { workspace = true }
+log = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 
