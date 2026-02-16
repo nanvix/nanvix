@@ -28,16 +28,44 @@ COPY . .
 # paths ($(TOOLCHAIN_DIR)/bin/...), so they do not depend on PATH ordering.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}
 
+# GitHub Actions cache backend for sccache (optional).
+# When SCCACHE_GHA_ENABLED is set to "true", sccache uses the GitHub Actions
+# cache as a remote backend instead of the local disk cache.
+# SCCACHE_GHA_ENABLED and SCCACHE_GHA_CACHE_TO are passed as build args.
+# ACTIONS_RESULTS_URL and ACTIONS_RUNTIME_TOKEN are injected as Docker secrets
+# so that their per-run values do not bust the BuildKit layer cache.
+ARG SCCACHE_GHA_ENABLED
+ARG SCCACHE_GHA_CACHE_TO
+
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/root/.cache/sccache,sharing=locked \
     --mount=type=cache,target=${WORKSPACE_PATH}/target,sharing=locked \
     --mount=type=cache,target=/opt/contrib-src,sharing=locked \
+    --mount=type=secret,id=actions_results_url \
+    --mount=type=secret,id=actions_runtime_token \
     set -e && \
     SCCACHE_ARG="" && \
     if [ -x /usr/local/bin/sccache ]; then SCCACHE_ARG="SCCACHE=/usr/local/bin/sccache"; fi && \
+    if [ -n "${SCCACHE_GHA_ENABLED}" ]; then \
+        export SCCACHE_GHA_ENABLED="${SCCACHE_GHA_ENABLED}"; \
+        export ACTIONS_CACHE_SERVICE_V2="on"; \
+        if [ -f /run/secrets/actions_results_url ]; then \
+            export ACTIONS_RESULTS_URL="$(cat /run/secrets/actions_results_url)"; \
+        fi; \
+        if [ -f /run/secrets/actions_runtime_token ]; then \
+            export ACTIONS_RUNTIME_TOKEN="$(cat /run/secrets/actions_runtime_token)"; \
+        fi; \
+    fi && \
+    if [ -n "${SCCACHE_GHA_CACHE_TO}" ]; then \
+        export SCCACHE_GHA_CACHE_TO="${SCCACHE_GHA_CACHE_TO}"; \
+    fi && \
     SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
-    make TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS}
+    make TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS} && \
+    if [ -x /usr/local/bin/sccache ]; then \
+        echo "=== sccache statistics ===" && \
+        /usr/local/bin/sccache --show-stats; \
+    fi
 
 # Create output directories to ensure they exist even if build produces no artifacts.
 RUN mkdir -p ${WORKSPACE_PATH}/bin ${WORKSPACE_PATH}/lib ${WORKSPACE_PATH}/images \

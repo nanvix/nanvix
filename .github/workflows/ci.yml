@@ -173,6 +173,11 @@ jobs:
     - name: "Setup"
       uses: ./.github/actions/docker-setup
 
+    - name: "Setup sccache"
+      uses: Mozilla-Actions/sccache-action@v0.0.9
+      with:
+        version: "v0.10.0"
+
     - name: "Build & Unit Test"
       uses: ./.github/actions/docker-build
       with:
@@ -182,6 +187,7 @@ jobs:
         log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
+        sccache-gha-enabled: 'true'
 
     - name: "Upload Build Artifacts"
       uses: actions/upload-artifact@v6
