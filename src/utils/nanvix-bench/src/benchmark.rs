@@ -5,10 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::env::get_proj_root;
 use ::nanvix::hwloc::HwLoc;
 use ::std::{
     fmt,
+    path::{
+        Path,
+        PathBuf,
+    },
     process::Child,
     str::FromStr,
 };
@@ -34,9 +37,11 @@ pub enum BenchmarkFlavour {
 }
 
 impl BenchmarkFlavour {
-    pub fn get_program(&self) -> String {
+    pub fn get_program(&self, root: &Path) -> String {
         match self {
-            BenchmarkFlavour::BootTime => format!("{}/bin/noop-rust-nostd.elf", get_proj_root()),
+            BenchmarkFlavour::BootTime => {
+                format!("{}/bin/noop-rust-nostd.elf", root.display())
+            },
             BenchmarkFlavour::ColdStart
             | BenchmarkFlavour::ColdStartL2
             | BenchmarkFlavour::ColdStartUvm
@@ -48,7 +53,7 @@ impl BenchmarkFlavour {
             | BenchmarkFlavour::WarmStart
             | BenchmarkFlavour::WarmStartL2
             | BenchmarkFlavour::WarmStartVMM => {
-                format!("{}/bin/echo-rust-nostd.elf", get_proj_root())
+                format!("{}/bin/echo-rust-nostd.elf", root.display())
             },
         }
     }
@@ -101,6 +106,7 @@ pub struct Benchmark {
     pub hwloc_file: Option<String>,
     pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
+    pub workspace_root: PathBuf,
     pub nanvixd: Option<Child>,
     pub nanvixd_client: reqwest::Client,
     pub nanvixd_toolchain_bin_dir: String,
