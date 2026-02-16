@@ -783,66 +783,84 @@ mod tests {
         Ok(dir)
     }
 
-    #[tokio::test(flavor = "multi_thread")] // Uses multi-thread runtime to mirror production
-    async fn cleanup_stale_unix_sockets_removes_only_sockets() -> Result<()> {
-        let temp_dir: PathBuf = unique_temp_dir("nvx-clean-sock")?;
-        let socket_path: PathBuf = temp_dir.join(format!("test{UNIX_SOCKET_SUFFIX}"));
-        let other_path: PathBuf = temp_dir.join("other.txt");
+    #[test]
+    fn cleanup_stale_unix_sockets_removes_only_sockets() -> Result<()> {
+        let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+        rt.block_on(async {
+            let temp_dir: PathBuf = unique_temp_dir("nvx-clean-sock")?;
+            let socket_path: PathBuf = temp_dir.join(format!("test{UNIX_SOCKET_SUFFIX}"));
+            let other_path: PathBuf = temp_dir.join("other.txt");
 
-        ::tokio::fs::write(&socket_path, b"socket").await?;
-        ::tokio::fs::write(&other_path, b"other").await?;
+            ::tokio::fs::write(&socket_path, b"socket").await?;
+            ::tokio::fs::write(&other_path, b"other").await?;
 
-        cleanup_stale_unix_sockets(temp_dir.as_path()).await;
+            cleanup_stale_unix_sockets(temp_dir.as_path()).await;
 
-        let socket_exists: bool = ::tokio::fs::try_exists(&socket_path).await.unwrap_or(false);
-        let other_exists: bool = ::tokio::fs::try_exists(&other_path).await.unwrap_or(false);
+            let socket_exists: bool = ::tokio::fs::try_exists(&socket_path).await.unwrap_or(false);
+            let other_exists: bool = ::tokio::fs::try_exists(&other_path).await.unwrap_or(false);
 
-        assert!(!socket_exists, "stale socket should be removed");
-        assert!(other_exists, "non-socket file must remain");
+            assert!(!socket_exists, "stale socket should be removed");
+            assert!(other_exists, "non-socket file must remain");
 
-        let _ = fs::remove_file(&other_path);
-        let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
+            let _ = fs::remove_file(&other_path);
+            let _ = fs::remove_dir_all(&temp_dir);
+            Ok(())
+        })
     }
 
-    #[tokio::test(flavor = "multi_thread")] // Ensures early return path is preserved
-    async fn prepare_l2_artifacts_reuses_existing_files() -> Result<()> {
-        let temp_dir: PathBuf = unique_temp_dir("nvx-artifacts")?;
-        let images_dir: PathBuf = temp_dir.join(DEFAULT_L2_SNAPSHOT_DIRECTORY);
-        ::tokio::fs::create_dir_all(&images_dir).await?;
+    #[test]
+    fn prepare_l2_artifacts_reuses_existing_files() -> Result<()> {
+        let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+        rt.block_on(async {
+            let temp_dir: PathBuf = unique_temp_dir("nvx-artifacts")?;
+            let images_dir: PathBuf = temp_dir.join(DEFAULT_L2_SNAPSHOT_DIRECTORY);
+            ::tokio::fs::create_dir_all(&images_dir).await?;
 
-        let snapshot_path: PathBuf = images_dir.join(SNAPSHOT_NAME);
-        let initramfs_path: PathBuf = images_dir.join(DEFAULT_SNAPSHOT_FILE_NAME);
-        ::tokio::fs::write(&snapshot_path, b"snapshot").await?;
-        ::tokio::fs::write(&initramfs_path, b"initramfs").await?;
+            let snapshot_path: PathBuf = images_dir.join(SNAPSHOT_NAME);
+            let initramfs_path: PathBuf = images_dir.join(DEFAULT_SNAPSHOT_FILE_NAME);
+            ::tokio::fs::write(&snapshot_path, b"snapshot").await?;
+            ::tokio::fs::write(&initramfs_path, b"initramfs").await?;
 
-        prepare_l2_artifacts("toolchain", temp_dir.as_path()).await?;
+            prepare_l2_artifacts("toolchain", temp_dir.as_path()).await?;
 
-        let snapshot_exists: bool = ::tokio::fs::try_exists(&snapshot_path)
-            .await
-            .unwrap_or(false);
-        let initramfs_exists: bool = ::tokio::fs::try_exists(&initramfs_path)
-            .await
-            .unwrap_or(false);
+            let snapshot_exists: bool = ::tokio::fs::try_exists(&snapshot_path)
+                .await
+                .unwrap_or(false);
+            let initramfs_exists: bool = ::tokio::fs::try_exists(&initramfs_path)
+                .await
+                .unwrap_or(false);
 
-        assert!(snapshot_exists, "snapshot must remain when artifacts pre-exist");
-        assert!(initramfs_exists, "initramfs must remain when artifacts pre-exist");
+            assert!(snapshot_exists, "snapshot must remain when artifacts pre-exist");
+            assert!(initramfs_exists, "initramfs must remain when artifacts pre-exist");
 
-        let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
+            let _ = fs::remove_dir_all(&temp_dir);
+            Ok(())
+        })
     }
 
-    #[tokio::test(flavor = "multi_thread")] // Validates missing script error path
-    async fn run_script_returns_error_when_missing() -> Result<()> {
-        let temp_dir: PathBuf = unique_temp_dir("nvx-run-script")?;
-        let missing_script: PathBuf = temp_dir.join("missing.sh");
+    #[test]
+    fn run_script_returns_error_when_missing() -> Result<()> {
+        let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+        rt.block_on(async {
+            let temp_dir: PathBuf = unique_temp_dir("nvx-run-script")?;
+            let missing_script: PathBuf = temp_dir.join("missing.sh");
 
-        let result: Result<()> =
-            run_script(missing_script.as_path(), temp_dir.as_path(), &[]).await;
+            let result: Result<()> =
+                run_script(missing_script.as_path(), temp_dir.as_path(), &[]).await;
 
-        assert!(result.is_err(), "missing script must produce an error");
+            assert!(result.is_err(), "missing script must produce an error");
 
-        let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
+            let _ = fs::remove_dir_all(&temp_dir);
+            Ok(())
+        })
     }
 }
