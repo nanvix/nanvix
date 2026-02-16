@@ -18,6 +18,12 @@ use ::core::{
     ffi,
     ffi::CStr,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::sys::{
     error::{
         Error,
@@ -78,12 +84,6 @@ use ::syscall::{
         WriteRequest,
         WriteResponse,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

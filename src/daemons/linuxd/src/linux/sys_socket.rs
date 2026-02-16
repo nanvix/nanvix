@@ -16,6 +16,12 @@ use ::core::{
     cmp,
     mem,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::sys::{
     error::{
         Error,
@@ -73,12 +79,6 @@ use ::syscall::{
         SocketAddr,
         SocketType,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

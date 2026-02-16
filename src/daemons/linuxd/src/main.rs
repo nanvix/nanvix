@@ -25,6 +25,10 @@ use ::linuxd::{
     syscalls::SyscallTable,
     LinuxDaemon,
 };
+use ::log::{
+    error,
+    info,
+};
 use ::std::{
     env,
     str::FromStr,
@@ -34,10 +38,6 @@ use ::syscomm::{
     SocketListener,
     SocketType,
     UnboundSocket,
-};
-use ::syslog::{
-    error,
-    info,
 };
 
 //==================================================================================================
