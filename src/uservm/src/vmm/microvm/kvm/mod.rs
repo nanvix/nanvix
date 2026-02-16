@@ -30,11 +30,11 @@ use crate::vmm::{
     },
 };
 use ::anyhow::Result;
+use ::log::trace;
 use ::serde::{
     Deserialize,
     Serialize,
 };
-use ::syslog::trace;
 
 //==================================================================================================
 // Structures

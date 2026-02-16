@@ -35,6 +35,10 @@ use ::hyperlight_host::{
         },
     },
 };
+use ::log::{
+    debug,
+    error,
+};
 use ::std::{
     io::Write,
     os::raw::c_int,
@@ -43,10 +47,6 @@ use ::std::{
     time::Duration,
 };
 use ::sys::error::ErrorCode;
-use ::syslog::{
-    debug,
-    error,
-};
 use ::tokio::{
     runtime::Handle,
     sync::{

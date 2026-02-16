@@ -9,6 +9,10 @@ use crate::vmm::microvm::kvm::vmem::VirtualMemory;
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::libc::c_int;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     fs::{
         File,
@@ -19,10 +23,6 @@ use ::std::{
         Path,
         PathBuf,
     },
-};
-use ::syslog::{
-    error,
-    trace,
 };
 
 //==================================================================================================

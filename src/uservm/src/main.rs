@@ -17,6 +17,11 @@ extern crate kvm_bindings;
 extern crate kvm_ioctls;
 
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    info,
+};
 use ::std::{
     convert::TryInto,
     env,
@@ -29,11 +34,6 @@ use ::syscomm::{
     SocketType,
     UnboundSocket,
     WriteAll,
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
 };
 use ::tokio::{
     sync::mpsc,

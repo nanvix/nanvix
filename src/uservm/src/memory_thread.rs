@@ -22,16 +22,16 @@ use ::anyhow::{
     Error,
     Result,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::std::{
     marker::Send,
     pin::Pin,
 };
 use ::sys::ipc::Message;
-use ::syslog::{
-    debug,
-    error,
-    trace,
-};
 use ::tokio::sync::mpsc::{
     Receiver,
     Sender,
