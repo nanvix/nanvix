@@ -1,0 +1,12 @@
+commit,step,label,p50,p95,p99
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,0,nanvix-bench::write_all(),,,
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,1,linuxd::worker_thread::handle_read_request(),995,1215,1776
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,2,uservm::io_thread::system_vm::read(),23,32,40
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,3,uservm::memory_thread::data_rx::recv(),2,3,5
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,4,uservm::lib::vm_input::vmexit(),30,58,584
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,5,uservm::lib::vm_input::vm_write_bytes(),0,1,1
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,6,uservm::lib::vm_output::send(),872,1027,1164
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,7,uservm::io_thread::system_vm::write(),23,32,43
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,8,linuxd::worker_thread::handle_write_request(),62,76,85
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,9,nanvix-bench::read_exact(),42,55,74
+31eae44f8d9fdaf74ee9e7167828ba6822d8b977,10,Total,2087,2602,3041
