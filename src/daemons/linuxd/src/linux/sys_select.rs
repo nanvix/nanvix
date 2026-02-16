@@ -16,6 +16,11 @@ use ::core::{
     cmp,
     ptr,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -29,11 +34,6 @@ use ::sysapi::sys_select::{
 use ::syscall::sys::select::message::{
     SelectRequest,
     SelectResponse,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
 };
 
 //==================================================================================================
