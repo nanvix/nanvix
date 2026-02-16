@@ -72,6 +72,10 @@ jobs:
     needs: gate-post-benchmark-comment
     if: needs.gate-post-benchmark-comment.outputs.should_run == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner-label: [self-hosted, github-hosted]
     steps:
     - name: Download benchmark comment payload
       id: download
@@ -79,7 +83,7 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         run_id: ${{ github.event.workflow_run.id }}
-        name: benchmark-comment-${{ github.event.workflow_run.id }}
+        name: benchmark-comment-${{ matrix.runner-label }}-${{ github.event.workflow_run.id }}
         path: payload
       continue-on-error: true
 
@@ -118,7 +122,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ steps.metadata.outputs.pr_number }}
         comment-author: "github-actions[bot]"
-        body-includes: "🔬 Benchmark Results"
+        body-includes: "🔬 Benchmark Results (${{ matrix.runner-label }})"
 
     - name: Create benchmark comment
       if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id == '' }}
