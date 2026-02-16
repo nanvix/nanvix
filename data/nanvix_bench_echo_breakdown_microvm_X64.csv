@@ -1,0 +1,12 @@
+commit,step,label,p50,p95,p99
+aab127b708a50350645644f288664ea224474046,0,nanvix-bench::write_all(),,,
+aab127b708a50350645644f288664ea224474046,1,linuxd::worker_thread::handle_read_request(),184,192,197
+aab127b708a50350645644f288664ea224474046,2,uservm::io_thread::system_vm::read(),13,13,14
+aab127b708a50350645644f288664ea224474046,3,uservm::memory_thread::data_rx::recv(),2,3,3
+aab127b708a50350645644f288664ea224474046,4,uservm::lib::vm_input::vmexit(),111,116,118
+aab127b708a50350645644f288664ea224474046,5,uservm::lib::vm_input::vm_write_bytes(),0,1,1
+aab127b708a50350645644f288664ea224474046,6,uservm::lib::vm_output::send(),31,32,32
+aab127b708a50350645644f288664ea224474046,7,uservm::io_thread::system_vm::write(),11,12,12
+aab127b708a50350645644f288664ea224474046,8,linuxd::worker_thread::handle_write_request(),25,27,28
+aab127b708a50350645644f288664ea224474046,9,nanvix-bench::read_exact(),23,25,26
+aab127b708a50350645644f288664ea224474046,10,Total,400,407,410
