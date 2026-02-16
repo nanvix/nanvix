@@ -7,7 +7,7 @@
 
 use ::anyhow::Result;
 use ::chrono::Local;
-use ::nanvix::log::error;
+use ::log::error;
 use ::std::{
     collections::HashSet,
     fs::{

@@ -11,7 +11,7 @@ use super::{
 };
 use crate::config::RunnerConfig;
 use ::anyhow::Result;
-use ::nanvix::log::{
+use ::log::{
     debug,
     error,
     trace,
