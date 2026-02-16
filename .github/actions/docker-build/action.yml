@@ -53,8 +53,12 @@ runs:
       # sccache GitHub Actions cache backend variables. When sccache-gha-enabled
       # is true, these are forwarded into the Docker build so that sccache inside
       # the container uses the GHA cache as a remote storage backend.
+      # SCCACHE_GHA_CACHE_TO sets the cache key for writing compilation results.
+      # SCCACHE_GHA_CACHE_FROM sets the cache key for reading cached results;
+      # without it sccache writes to the cache but never reads, causing 0% hit rate.
       SCCACHE_GHA_ENABLED: ${{ inputs.sccache-gha-enabled == 'true' && 'true' || '' }}
       SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
+      SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
     run: |
       ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
         "MACHINE=${MACHINE_TYPE}" \
