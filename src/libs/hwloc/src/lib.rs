@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::syslog::error;
+use ::log::error;
 use anyhow::Result;
 use libc::{
     cpu_set_t,
