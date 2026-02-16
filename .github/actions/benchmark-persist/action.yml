@@ -59,10 +59,10 @@ runs:
       # bypass actor for branch protection rules on dev).
       git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
 
-      echo "Pulling latest changes before staging..."
-      git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
-
       git add data/
+
+      echo "Pulling latest changes..."
+      git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
       if git diff --cached --quiet; then
         echo "No benchmark result changes to commit."
       else
@@ -77,7 +77,7 @@ runs:
           fi
           echo "Push failed on attempt ${attempt}/${max_attempts}. Retrying..."
           sleep $((attempt * 5))
-          git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
+          git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
           attempt=$((attempt + 1))
         done
         if [ $attempt -gt $max_attempts ]; then
