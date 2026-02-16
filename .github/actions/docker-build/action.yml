@@ -25,6 +25,10 @@ inputs:
     description: "Build timeout in seconds passed through to make"
     required: false
     default: "600"
+  sccache-gha-enabled:
+    description: "Enable sccache GitHub Actions cache backend (true/false)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -46,6 +50,11 @@ runs:
       # release-package action.
       BUILD_TARGETS: ${{ inputs.release == 'release' && 'all run-unit-tests release' || 'all run-unit-tests' }}
       MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
+      # sccache GitHub Actions cache backend variables. When sccache-gha-enabled
+      # is true, these are forwarded into the Docker build so that sccache inside
+      # the container uses the GHA cache as a remote storage backend.
+      SCCACHE_GHA_ENABLED: ${{ inputs.sccache-gha-enabled == 'true' && 'true' || '' }}
+      SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
     run: |
       ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
         "MACHINE=${MACHINE_TYPE}" \
