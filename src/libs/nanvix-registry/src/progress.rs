@@ -106,7 +106,7 @@ impl ProgressCallback for NoOpProgress {
 ///
 /// # Description
 ///
-/// A simple logging progress callback that logs progress to syslog.
+/// A simple logging progress callback that logs progress via the `log` crate.
 ///
 #[derive(Debug, Clone, Default)]
 pub struct LoggingProgress;
@@ -114,26 +114,26 @@ pub struct LoggingProgress;
 impl ProgressCallback for LoggingProgress {
     fn on_download_start(&self, package_name: &str, total_size: Option<u64>) {
         if let Some(size) = total_size {
-            ::syslog::info!("Starting download of {} ({} bytes)", package_name, size);
+            ::log::info!("Starting download of {} ({} bytes)", package_name, size);
         } else {
-            ::syslog::info!("Starting download of {}", package_name);
+            ::log::info!("Starting download of {}", package_name);
         }
     }
 
     fn on_download_complete(&self, package_name: &str) {
-        ::syslog::info!("Download complete: {}", package_name);
+        ::log::info!("Download complete: {}", package_name);
     }
 
     fn on_extract_start(&self, package_name: &str) {
-        ::syslog::info!("Extracting: {}", package_name);
+        ::log::info!("Extracting: {}", package_name);
     }
 
     fn on_extract_complete(&self, package_name: &str) {
-        ::syslog::info!("Extraction complete: {}", package_name);
+        ::log::info!("Extraction complete: {}", package_name);
     }
 
     fn on_dependency_start(&self, dependency_name: &str, parent_package: &str) {
-        ::syslog::info!("Installing dependency {} for {}", dependency_name, parent_package);
+        ::log::info!("Installing dependency {} for {}", dependency_name, parent_package);
     }
 }
 

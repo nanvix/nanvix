@@ -9,6 +9,7 @@ use ::anyhow::{
     anyhow,
     Result,
 };
+use ::log::error;
 use ::std::{
     collections::HashSet,
     path::{
@@ -18,7 +19,6 @@ use ::std::{
     },
     process::ExitStatus,
 };
-use ::syslog::error;
 use ::tokio::{
     fs,
     process::{
