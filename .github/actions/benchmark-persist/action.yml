@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Benchmark Persist"
-description: "Persist benchmark results to the dev baseline directory"
+description: "Persist benchmark results to the data/ directory in the source tree"
 
 inputs:
   benchmarks:
@@ -20,20 +20,67 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: "Persist results on dev"
+  - name: "Persist results to data/"
     shell: bash
     env:
       BENCHMARKS: ${{ inputs.benchmarks }}
       MACHINE_TYPES: ${{ inputs.machine-types }}
       ARCHS: ${{ inputs.archs }}
     run: |
-      target_dir="$HOME/ubench-results-dev"
+      set -e
+      target_dir="$(pwd)/data"
       mkdir -p "${target_dir}"
 
       python3 ./scripts/benchmark.py \
-        copy-results \
+        persist \
         --benchmarks "${BENCHMARKS}" \
         --machine-types "${MACHINE_TYPES}" \
         --archs "${ARCHS}" \
         --source-dir "$(pwd)" \
         --target-dir "${target_dir}"
+
+  - name: "Commit updated benchmark results"
+    shell: bash
+    run: |
+      # NOTE: This check uses GITHUB_REF_NAME which equals the branch name
+      # on push events. On pull_request events it would be the PR branch,
+      # so this action must only be called from push-triggered jobs.
+      if [[ "$GITHUB_REF_NAME" != "dev" ]]; then
+        echo "Skipping benchmark persist commit: not on dev branch."
+        exit 0
+      fi
+
+      set -e
+      git config user.name "github-actions[bot]"
+      git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Ensure the remote URL uses SSH so that the deploy key configured
+      # at checkout time is used for authentication (the deploy key is a
+      # bypass actor for branch protection rules on dev).
+      git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
+
+      git add data/
+      if git diff --cached --quiet; then
+        echo "No benchmark result changes to commit."
+      else
+        echo "Pulling latest changes before committing..."
+        git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
+        git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA}) [skip ci]"
+        echo "Pushing benchmark results..."
+        max_attempts=3
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          if git push; then
+            echo "Push succeeded on attempt ${attempt}."
+            break
+          fi
+          echo "Push failed on attempt ${attempt}/${max_attempts}. Retrying..."
+          sleep $((attempt * 5))
+          git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
+          attempt=$((attempt + 1))
+        done
+        if [ $attempt -gt $max_attempts ]; then
+          echo "ERROR: git push failed after ${max_attempts} attempts."
+          exit 1
+        fi
+      fi
