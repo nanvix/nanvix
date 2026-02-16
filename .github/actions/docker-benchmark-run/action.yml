@@ -1,0 +1,62 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Docker Benchmark Run"
+description: "Run micro-benchmarks using toolchain binaries extracted from the Docker image"
+
+inputs:
+  benchmarks:
+    description: "Space-separated list of benchmark names to run"
+    required: true
+  machine-type:
+    description: "Target machine type"
+    required: true
+    default: "microvm"
+  iterations:
+    description: "Number of benchmark iterations"
+    required: true
+    default: "100"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Extract Toolchain Binaries from Docker Image"
+    id: toolchain
+    shell: bash
+    run: |
+      version=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+      tag="v${version%.*}.x-minimal"
+      image="nanvix/toolchain:${tag}"
+      toolchain_dir="${HOME}/toolchain"
+      mkdir -p "${toolchain_dir}/bin"
+
+      echo "[INFO] Extracting toolchain binaries from ${image}..."
+      container_id=$(docker create "${image}")
+      docker cp "${container_id}:/opt/nanvix/bin/." "${toolchain_dir}/bin/"
+      docker rm "${container_id}" > /dev/null
+      echo "[INFO] Toolchain binaries extracted to ${toolchain_dir}/bin/"
+
+      echo "toolchain-bin-dir=${toolchain_dir}/bin" >> "$GITHUB_OUTPUT"
+
+  - name: "Setup KVM"
+    uses: ./.github/actions/setup-kvm
+
+  - name: "Run Benchmarks"
+    shell: bash
+    env:
+      BENCHMARKS: ${{ inputs.benchmarks }}
+      MACHINE_TYPE: ${{ inputs.machine-type }}
+      ITERATIONS: ${{ inputs.iterations }}
+      TOOLCHAIN_BIN_DIR: ${{ steps.toolchain.outputs.toolchain-bin-dir }}
+    run: |
+      for bench in ${BENCHMARKS}; do
+        echo "[INFO] Running benchmark '${bench}'..."
+        python3 ./scripts/benchmark.py \
+          run \
+          --benchmark "${bench}" \
+          --machine-type "${MACHINE_TYPE}" \
+          --iterations "${ITERATIONS}" \
+          --toolchain-bin-dir "${TOOLCHAIN_BIN_DIR}" \
+          --output-dir "$(pwd)" \
+          --commit "${{ github.sha }}"
+      done

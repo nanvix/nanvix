@@ -19,6 +19,9 @@ inputs:
   dev-dir:
     description: "Directory containing baseline results from the dev branch"
     required: true
+  runner-label:
+    description: "Label identifying the runner environment (e.g., self-hosted, github-hosted). Used to distinguish artifacts and PR comments."
+    required: true
   github-token:
     description: "GitHub token for posting PR comments"
     required: true
@@ -80,7 +83,7 @@ runs:
       token: ${{ inputs.github-token }}
       issue-number: ${{ steps.pr.outputs.pr_number }}
       comment-author: "github-actions[bot]"
-      body-includes: "🔬 Benchmark Results"
+      body-includes: "🔬 Benchmark Results (${{ inputs.runner-label }})"
 
   - name: "Post comment to PR (Create)"
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' && steps.comment-strategy.outputs.can_comment_directly == 'true' && steps.fc.outputs.comment-id == '' }}
@@ -89,7 +92,7 @@ runs:
       token: ${{ inputs.github-token }}
       issue-number: ${{ steps.pr.outputs.pr_number }}
       body: |
-        ## 🔬 Benchmark Results
+        ## 🔬 Benchmark Results (${{ inputs.runner-label }})
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
 
   - name: "Post comment to PR (Update)"
@@ -100,7 +103,7 @@ runs:
       comment-id: ${{ steps.fc.outputs.comment-id }}
       edit-mode: replace
       body: |
-        ## 🔬 Benchmark Results
+        ## 🔬 Benchmark Results (${{ inputs.runner-label }})
         ${{ steps.format.outputs.BENCHMARK_RESULT }}
 
   - name: "Prepare benchmark comment payload"
@@ -110,11 +113,12 @@ runs:
     env:
       BENCHMARK_RESULT: ${{ steps.format.outputs.BENCHMARK_RESULT }}
       NEEDS_DEFERRED: ${{ steps.comment-strategy.outputs.needs_deferred_comment || 'false' }}
+      RUNNER_LABEL: ${{ inputs.runner-label }}
     run: |
       mkdir -p comment-payload
 
       {
-        printf '## 🔬 Benchmark Results\n'
+        printf '## 🔬 Benchmark Results (%s)\n' "${RUNNER_LABEL}"
         printf '%s\n' "${BENCHMARK_RESULT}"
       } > comment-payload/body.md
 
@@ -136,6 +140,6 @@ runs:
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && steps.pr.outputs.pr_number != '' }}
     uses: actions/upload-artifact@v6
     with:
-      name: benchmark-comment-${{ github.run_id }}
+      name: benchmark-comment-${{ inputs.runner-label }}-${{ github.run_id }}
       path: comment-payload
       retention-days: 7

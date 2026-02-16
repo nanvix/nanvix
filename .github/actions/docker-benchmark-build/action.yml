@@ -1,0 +1,32 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Docker Benchmark Build"
+description: "Build Nanvix for benchmarking using the Docker toolchain"
+
+inputs:
+  machine-type:
+    description: "Target machine type"
+    required: true
+    default: "microvm"
+  timestamp-msg:
+    description: "Enable TIMESTAMP_MSG for echo-breakdown benchmarks (yes/no)"
+    required: false
+    default: "no"
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Build (${{ inputs.timestamp-msg == 'yes' && 'Echo-Breakdown' || 'Standard' }})"
+    shell: bash
+    env:
+      MACHINE_TYPE: ${{ inputs.machine-type }}
+      TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
+    run: |
+      ./z build --with-minimal-docker -- all \
+        "MACHINE=${MACHINE_TYPE}" \
+        TARGET=x86 \
+        LOG_LEVEL=panic \
+        VERBOSE=yes \
+        RELEASE=yes \
+        ${TIMESTAMP_MSG_FLAG}
