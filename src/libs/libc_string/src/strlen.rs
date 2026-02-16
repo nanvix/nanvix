@@ -68,7 +68,10 @@ mod test {
 
     // Helper to build a null-terminated Vec<c_char> from bytes (without the final null).
     fn make_c_string(bytes: &[u8]) -> Vec<c_char> {
-        let mut v: Vec<c_char> = bytes.iter().map(|b| *b as c_char).collect();
+        let mut v: Vec<c_char> = bytes
+            .iter()
+            .map(|b| c_char::try_from(*b).expect("byte fits in c_char"))
+            .collect();
         v.push(0 as c_char); // null terminator
         v
     }
@@ -102,7 +105,10 @@ mod test {
         let mut raw: Vec<u8> = b"abc".to_vec();
         raw.push(0); // embedded null
         raw.extend_from_slice(b"def");
-        let mut buf: Vec<c_char> = raw.iter().map(|b| *b as c_char).collect();
+        let mut buf: Vec<c_char> = raw
+            .iter()
+            .map(|b| c_char::try_from(*b).expect("byte fits in c_char"))
+            .collect();
         buf.push(0 as c_char); // final terminator (technically redundant after embedded null but ok)
         let len: usize = unsafe { strlen(buf.as_ptr()) as usize };
         assert_eq!(len, 3, "strlen should stop at first embedded null");
@@ -114,7 +120,7 @@ mod test {
         let storage: Vec<c_char> = make_c_string(b"nanvix");
         // Prepend one dummy byte to shift alignment.
         let mut padded: Vec<c_char> = Vec::with_capacity(storage.len() + 1);
-        padded.push('X' as c_char); // padding (not a null)
+        padded.push(c_char::try_from(b'X').expect("ASCII fits in c_char")); // padding (not a null)
         padded.extend_from_slice(&storage);
         let unaligned_ptr: *const c_char = unsafe { padded.as_ptr().add(1) }; // Points to start of "nanvix" string.
         let len: usize = unsafe { strlen(unaligned_ptr) as usize };
@@ -125,7 +131,7 @@ mod test {
     fn test_strlen_non_ascii_bytes() {
         // Bytes above 0x7F are still single bytes, strlen counts until null.
         let bytes: [u8; 4] = [0xFF, 0x80, 0xC3, 0x00];
-        let mut buf: Vec<c_char> = bytes[..3].iter().map(|b| *b as c_char).collect();
+        let mut buf: Vec<c_char> = bytes[..3].iter().map(|b| i8::from_ne_bytes([*b])).collect();
         buf.push(0 as c_char);
         let len: usize = unsafe { strlen(buf.as_ptr()) as usize };
         assert_eq!(len, 3, "strlen should count raw bytes irrespective of UTF-8 validity");
