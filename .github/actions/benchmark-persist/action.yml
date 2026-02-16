@@ -59,12 +59,13 @@ runs:
       # bypass actor for branch protection rules on dev).
       git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
 
+      echo "Pulling latest changes before staging..."
+      git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
+
       git add data/
       if git diff --cached --quiet; then
         echo "No benchmark result changes to commit."
       else
-        echo "Pulling latest changes before committing..."
-        git pull --rebase || { echo "ERROR: git pull --rebase failed."; exit 1; }
         git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA}) [skip ci]"
         echo "Pushing benchmark results..."
         max_attempts=3
