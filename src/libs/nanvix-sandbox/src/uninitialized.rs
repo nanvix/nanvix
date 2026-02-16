@@ -23,6 +23,7 @@ use crate::{
     SandboxConfig,
 };
 use ::anyhow::Result;
+use ::log::error;
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
@@ -30,7 +31,6 @@ use ::syscomm::{
     SocketListener,
     SocketType,
 };
-use ::syslog::error;
 use ::tokio::sync::{
     Mutex,
     MutexGuard,

@@ -16,7 +16,7 @@ use ::std::{
     io,
     os::unix::io::RawFd,
 };
-use ::syslog::error;
+use ::log::error;
 use ::tokio::process::Command;
 
 //==================================================================================================
