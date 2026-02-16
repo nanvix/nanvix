@@ -17,6 +17,10 @@ use crate::{
     tempfile::TemporaryFile,
 };
 use ::anyhow::Result;
+use ::log::{
+    error,
+    info,
+};
 use ::reqwest::{
     Client,
     Response,
@@ -27,10 +31,6 @@ use ::std::{
         Path,
         PathBuf,
     },
-};
-use ::syslog::{
-    error,
-    info,
 };
 
 //==================================================================================================

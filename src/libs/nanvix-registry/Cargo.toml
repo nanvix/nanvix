@@ -13,8 +13,8 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 bytes = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
 dirs = { workspace = true }
+log = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = [
     "json",
     "rustls",

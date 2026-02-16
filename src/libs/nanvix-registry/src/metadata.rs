@@ -11,6 +11,11 @@ use crate::{
     package::Package,
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    info,
+};
 use ::serde::{
     Deserialize,
     Serialize,
@@ -21,11 +26,6 @@ use ::std::{
         Path,
         PathBuf,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
 };
 use ::tokio::fs;
 
