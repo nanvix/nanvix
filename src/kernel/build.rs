@@ -113,16 +113,8 @@ fn main() {
     // Read Kernel Configuration
     //==============================================================================================
 
-    // Get CARGO_MANIFEST_DIR to find workspace root
-    let manifest_dir: String = match env::var("CARGO_MANIFEST_DIR") {
-        Ok(manifest_dir) => manifest_dir,
-        Err(_) => panic!("failed to get CARGO_MANIFEST_DIR environment variable"),
-    };
-    let workspace_dir: PathBuf = Path::new(&manifest_dir)
-        .ancestors()
-        .nth(2) // kernel is 2 levels deep: workspace/src/kernel
-        .expect("Failed to find workspace root")
-        .to_path_buf();
+    // Find the workspace root by locating the Cargo.toml with [workspace].
+    let workspace_dir: PathBuf = build_utils::find_workspace_root();
 
     // Read kernel configuration
     let kernel_config_path: PathBuf = workspace_dir.join(DEFAULT_KERNEL_CONFIG_PATH);
