@@ -446,6 +446,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm'
         archs: 'X64'
+        dev-dir: 'data'
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: "Persist results on dev"
@@ -455,6 +456,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm'
         archs: 'X64'
+        target-dir: 'data'
 
     - name: "Dump SCCACHE Statistics"
       if: always()
