@@ -16,12 +16,12 @@ use crate::{
     tcp_port::TcpPort,
 };
 use ::anyhow::Result;
+use ::log::error;
 #[cfg(not(feature = "single-process"))]
 use ::std::{
     fs,
     path::PathBuf,
 };
-use ::syslog::error;
 use ::tokio::time::Duration;
 use ::user_vm_api::UserVmIdentifier;
 

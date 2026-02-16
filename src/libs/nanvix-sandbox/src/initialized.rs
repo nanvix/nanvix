@@ -24,6 +24,11 @@ use crate::{
     UserVmArgs,
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
@@ -31,11 +36,6 @@ use ::syscomm::{
     SocketListener,
     SocketType,
     UnboundSocket,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
 };
 use ::tokio::{
     sync::{
