@@ -10,6 +10,10 @@ use crate::{
     SocketStream,
     SocketType,
 };
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     io::{
         self,
@@ -18,10 +22,6 @@ use ::std::{
         Result,
     },
     net::SocketAddr,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use ::tokio::net::{
     TcpListener,
