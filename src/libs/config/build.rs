@@ -412,14 +412,8 @@ fn generate_hyperlight_config(
 }
 
 fn main() {
-    // Read the TOML file using the workspace root for a reliable path
-    let manifest_dir: String =
-        env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
-    let workspace_dir: PathBuf = Path::new(&manifest_dir)
-        .ancestors()
-        .nth(3)
-        .expect("Failed to find workspace root")
-        .to_path_buf();
+    // Find the workspace root by locating the Cargo.toml with [workspace].
+    let workspace_dir: PathBuf = build_utils::find_workspace_root();
     let out_dir: String = env::var("OUT_DIR").unwrap();
 
     // Parse kernel configuration file.
