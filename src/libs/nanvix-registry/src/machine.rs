@@ -108,7 +108,7 @@ impl TryFrom<&str> for Machine {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -165,7 +165,7 @@ mod tests {
     fn test_try_from_valid_hyperlight() {
         let result: Result<Machine> = Machine::try_from("hyperlight");
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), Machine::Hyperlight));
+        assert!(matches!(result.expect("failed"), Machine::Hyperlight));
     }
 
     ///
@@ -177,7 +177,7 @@ mod tests {
     fn test_try_from_valid_microvm() {
         let result: Result<Machine> = Machine::try_from("microvm");
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), Machine::Microvm));
+        assert!(matches!(result.expect("failed"), Machine::Microvm));
     }
 
     ///
@@ -205,7 +205,7 @@ mod tests {
         let result: Result<Machine> = Machine::try_from("invalid-machine");
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown machine type"));
     }

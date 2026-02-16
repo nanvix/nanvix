@@ -108,7 +108,7 @@ impl TryFrom<&str> for Deployment {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -165,7 +165,7 @@ mod tests {
     fn test_try_from_valid_single_process() {
         let result: Result<Deployment> = Deployment::try_from("single-process");
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), Deployment::SingleProcess));
+        assert!(matches!(result.expect("failed"), Deployment::SingleProcess));
     }
 
     ///
@@ -177,7 +177,7 @@ mod tests {
     fn test_try_from_valid_multi_process() {
         let result: Result<Deployment> = Deployment::try_from("multi-process");
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), Deployment::MultiProcess));
+        assert!(matches!(result.expect("failed"), Deployment::MultiProcess));
     }
 
     ///
@@ -210,7 +210,7 @@ mod tests {
         let result: Result<Deployment> = Deployment::try_from("invalid-deployment");
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown deployment type"));
     }

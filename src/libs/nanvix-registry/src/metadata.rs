@@ -497,7 +497,7 @@ impl ReleaseRegistry {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::std::env;
@@ -552,7 +552,7 @@ mod tests {
             registry.get_release(Machine::Microvm, Deployment::SingleProcess);
         assert!(entry.is_some());
 
-        let entry: &ReleaseEntry = entry.unwrap();
+        let entry: &ReleaseEntry = entry.expect("failed");
         assert_eq!(entry.url(), url);
         assert_eq!(entry.commit_id(), commit_id);
     }
@@ -594,17 +594,17 @@ mod tests {
         // Verify each entry.
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::MultiProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Hyperlight, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc333def");
     }
 
@@ -640,7 +640,7 @@ mod tests {
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.url(), "https://test.com/new.tar.bz2");
         assert_eq!(entry.commit_id(), "abc222def");
     }
@@ -660,7 +660,7 @@ mod tests {
             "abc123def456".to_string(),
         );
 
-        let json: String = serde_json::to_string(&registry).unwrap();
+        let json: String = serde_json::to_string(&registry).expect("failed");
         assert!(json.contains("releases"));
         assert!(json.contains("microvm-single-process"));
         assert!(json.contains("https://example.com/release.tar.bz2"));
@@ -675,11 +675,11 @@ mod tests {
     #[test]
     fn test_deserialization() {
         let json: &str = r#"{"releases":{"microvm-single-process":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
-        let registry: ReleaseRegistry = serde_json::from_str(json).unwrap();
+        let registry: ReleaseRegistry = serde_json::from_str(json).expect("failed");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.url(), "https://example.com/release.tar.bz2");
         assert_eq!(entry.commit_id(), "abc123def456");
     }
@@ -717,17 +717,17 @@ mod tests {
         let load_result: Result<ReleaseRegistry> = ReleaseRegistry::load(&temp_dir).await;
         assert!(load_result.is_ok());
 
-        let loaded: ReleaseRegistry = load_result.unwrap();
+        let loaded: ReleaseRegistry = load_result.expect("failed");
         assert_eq!(loaded.len(), 2);
 
         let entry: &ReleaseEntry = loaded
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = loaded
             .get_release(Machine::Hyperlight, Deployment::MultiProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         // Cleanup.

@@ -152,8 +152,7 @@
 // Lint Configuration
 //==================================================================================================
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![forbid(clippy::unwrap_used)]
 #![forbid(clippy::cast_possible_truncation)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
@@ -168,6 +167,8 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
+// The following lints are allowed in tests to facilitate testing of error conditions.
+#![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
 // Private Modules
@@ -1173,7 +1174,7 @@ impl Default for Registry {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1228,7 +1229,7 @@ mod tests {
         let result: Result<PathBuf> = registry.get_cache_dir().await;
         assert!(result.is_ok());
 
-        let cache_dir: PathBuf = result.unwrap();
+        let cache_dir: PathBuf = result.expect("failed");
         assert!(cache_dir.to_string_lossy().contains("nanvix-registry"));
     }
 
@@ -1242,7 +1243,7 @@ mod tests {
         let custom_dir: PathBuf = ::std::env::temp_dir().join("nanvix-test-custom-cache");
         let registry: Registry = Registry::new(Some(custom_dir.clone()));
 
-        let cache_dir: PathBuf = registry.get_cache_dir().await.unwrap();
+        let cache_dir: PathBuf = registry.get_cache_dir().await.expect("failed");
         assert_eq!(cache_dir, custom_dir);
 
         // Cleanup
@@ -1264,7 +1265,7 @@ mod tests {
             ::std::process::id(),
             ::std::time::SystemTime::now()
                 .duration_since(::std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("failed")
                 .as_nanos()
         ));
 
@@ -1294,7 +1295,7 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown machine type"));
     }
@@ -1313,7 +1314,7 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown deployment type"));
     }
@@ -1346,7 +1347,7 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown machine type"));
     }
@@ -1365,7 +1366,7 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unknown deployment type"));
     }
@@ -1388,15 +1389,15 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir).await;
 
         // Create directory structure.
-        fs::create_dir_all(&sub_dir).await.unwrap();
-        fs::write(&test_file, "test content").await.unwrap();
+        fs::create_dir_all(&sub_dir).await.expect("failed");
+        fs::write(&test_file, "test content").await.expect("failed");
 
         // Test that the artifact can be found.
         let result: Option<PathBuf> =
             Registry::search_artifact(temp_dir.clone(), "test-artifact.txt".to_string()).await;
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), test_file);
+        assert_eq!(result.expect("failed"), test_file);
 
         // Test that non-existent artifact returns None.
         let result: Option<PathBuf> =
@@ -1451,28 +1452,34 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir).await;
 
         // Create directory structure.
-        fs::create_dir_all(&bin_dir).await.unwrap();
-        fs::create_dir_all(&lib_dir).await.unwrap();
-        fs::write(&root_artifact, "root config").await.unwrap();
-        fs::write(&bin_artifact, "bin config").await.unwrap();
-        fs::write(&lib_artifact, "lib config").await.unwrap();
+        fs::create_dir_all(&bin_dir).await.expect("failed");
+        fs::create_dir_all(&lib_dir).await.expect("failed");
+        fs::write(&root_artifact, "root config")
+            .await
+            .expect("failed");
+        fs::write(&bin_artifact, "bin config")
+            .await
+            .expect("failed");
+        fs::write(&lib_artifact, "lib config")
+            .await
+            .expect("failed");
 
         // Test that searching from cache root finds the root artifact.
         let result: Option<PathBuf> =
             Registry::search_artifact(temp_dir.clone(), "root-config.json".to_string()).await;
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), root_artifact);
+        assert_eq!(result.expect("failed"), root_artifact);
 
         // Test that searching from cache root finds artifacts in subdirectories.
         let result: Option<PathBuf> =
             Registry::search_artifact(temp_dir.clone(), "bin-config.json".to_string()).await;
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), bin_artifact);
+        assert_eq!(result.expect("failed"), bin_artifact);
 
         let result: Option<PathBuf> =
             Registry::search_artifact(temp_dir.clone(), "lib-config.json".to_string()).await;
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), lib_artifact);
+        assert_eq!(result.expect("failed"), lib_artifact);
 
         // Clean up.
         let _ = fs::remove_dir_all(&temp_dir).await;
@@ -1489,13 +1496,13 @@ mod tests {
         let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
-        assert_eq!(commit_id.unwrap(), "abc123def456");
+        assert_eq!(commit_id.expect("failed"), "abc123def456");
 
         // Test another valid URL format.
         let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-1a2b3c4d5e6f.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
-        assert_eq!(commit_id.unwrap(), "1a2b3c4d5e6f");
+        assert_eq!(commit_id.expect("failed"), "1a2b3c4d5e6f");
 
         // Test URL without release prefix.
         let url: &str =

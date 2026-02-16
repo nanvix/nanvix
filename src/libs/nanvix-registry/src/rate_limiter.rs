@@ -241,7 +241,7 @@ pub(crate) fn check_rate_limit(response: &Response) -> Result<()> {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -348,6 +348,6 @@ mod tests {
     ///
     #[test]
     fn test_delay_constants() {
-        assert!(AUTHENTICATED_MIN_REQUEST_DELAY_MS < UNAUTHENTICATED_MIN_REQUEST_DELAY_MS);
+        const { assert!(AUTHENTICATED_MIN_REQUEST_DELAY_MS < UNAUTHENTICATED_MIN_REQUEST_DELAY_MS) };
     }
 }
