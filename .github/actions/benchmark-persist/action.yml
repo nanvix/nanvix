@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Benchmark Persist"
-description: "Persist benchmark results to the data/ directory in the source tree"
+description: "Persist benchmark results to the target directory in the source tree"
 
 inputs:
   benchmarks:
@@ -16,20 +16,23 @@ inputs:
     description: "Comma-separated list of architectures"
     required: true
     default: "X64"
+  target-dir:
+    description: "Directory where history CSVs are stored"
+    required: true
 
 runs:
   using: "composite"
   steps:
-  - name: "Persist results to data/"
+  - name: "Persist results to ${{ inputs.target-dir }}"
     shell: bash
     env:
       BENCHMARKS: ${{ inputs.benchmarks }}
       MACHINE_TYPES: ${{ inputs.machine-types }}
       ARCHS: ${{ inputs.archs }}
+      TARGET_DIR: ${{ inputs.target-dir }}
     run: |
       set -e
-      target_dir="$(pwd)/data"
-      mkdir -p "${target_dir}"
+      mkdir -p "${TARGET_DIR}"
 
       python3 ./scripts/benchmark.py \
         persist \
@@ -37,10 +40,12 @@ runs:
         --machine-types "${MACHINE_TYPES}" \
         --archs "${ARCHS}" \
         --source-dir "$(pwd)" \
-        --target-dir "${target_dir}"
+        --target-dir "${TARGET_DIR}"
 
   - name: "Commit updated benchmark results"
     shell: bash
+    env:
+      TARGET_DIR: ${{ inputs.target-dir }}
     run: |
       # NOTE: This check uses GITHUB_REF_NAME which equals the branch name
       # on push events. On pull_request events it would be the PR branch,
@@ -59,7 +64,7 @@ runs:
       # bypass actor for branch protection rules on dev).
       git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
 
-      git add data/
+      git add "${TARGET_DIR}"
 
       echo "Pulling latest changes..."
       git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }

@@ -16,6 +16,9 @@ inputs:
     description: "Comma-separated list of architectures"
     required: true
     default: "X64"
+  dev-dir:
+    description: "Directory containing baseline results from the dev branch"
+    required: true
   github-token:
     description: "GitHub token for posting PR comments"
     required: true
@@ -30,10 +33,11 @@ runs:
       BENCHMARKS: ${{ inputs.benchmarks }}
       MACHINE_TYPES: ${{ inputs.machine-types }}
       ARCHS: ${{ inputs.archs }}
+      DEV_DIR: ${{ inputs.dev-dir }}
     run: |
       python3 ./scripts/benchmark.py \
         ci-summary \
-        --dev-dir "$(pwd)/data" \
+        --dev-dir "${DEV_DIR}" \
         --target-dir "$(pwd)" \
         --benchmarks "${BENCHMARKS}" \
         --machine-types "${MACHINE_TYPES}" \
