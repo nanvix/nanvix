@@ -28,13 +28,6 @@ pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
 ///
 /// # Description
 ///
-/// Default directory for logs
-///
-pub const DEFAULT_LOG_DIRECTORY: &str = "./logs";
-
-///
-/// # Description
-///
 /// Default path to the temporary directory.
 ///
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
