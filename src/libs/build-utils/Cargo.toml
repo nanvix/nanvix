@@ -1,0 +1,14 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "build-utils"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Shared build-script utilities for Nanvix."
+homepage.workspace = true
+
+[lints]
+workspace = true

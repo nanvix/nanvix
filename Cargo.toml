@@ -16,6 +16,7 @@ members = [
         "src/kernel",
         "src/libs/arch",
         "src/libs/bitmap",
+        "src/libs/build-utils",
         "src/libs/config",
         "src/libs/control-plane-api",
         "src/libs/elf",
@@ -75,6 +76,7 @@ arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.98"
 base64 = "0.22.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
+build-utils = { path = "src/libs/build-utils" }
 bytes = "1.10.1"
 cc = "1.2.26"
 cfg-if = "1.0.0"
