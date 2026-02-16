@@ -282,18 +282,14 @@ impl Condvar {
     /// - This function is invoked without holding any resources.
     ///
     pub unsafe fn wait(&self, alarm: Option<SystemTime>) -> Result<(), SleepError> {
-        let pid: ProcessIdentifier = unsafe { ProcessManager::get() }
-            .get_pid()
-            .map_err(SleepError::Generic)?;
+        let pid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_pid();
 
         // Check if the kernel process is trying to sleep.
         if pid == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot sleep");
         }
 
-        let tid: ThreadIdentifier = unsafe { ProcessManager::get() }
-            .get_tid()
-            .map_err(SleepError::Generic)?;
+        let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
 
         // Check if alarm has already expired.
         if let Some(alarm) = alarm {

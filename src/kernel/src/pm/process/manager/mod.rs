@@ -68,15 +68,10 @@ use ::alloc::{
         LinkedList,
     },
     ffi::CString,
-    rc::Rc,
 };
 use ::arch::mem::PAGE_SIZE;
 use ::config::memory_layout::USER_STACK_TOP_RAW;
-use ::core::cell::{
-    Ref,
-    RefCell,
-    RefMut,
-};
+
 use ::sys::{
     error::{
         Error,
@@ -1600,7 +1595,7 @@ impl ProcessManagerInner {
 // Process Manager
 //==================================================================================================
 
-pub struct ProcessManager(Rc<RefCell<ProcessManagerInner>>);
+pub struct ProcessManager(ProcessManagerInner);
 
 impl ProcessManager {
     ///
@@ -1610,12 +1605,10 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
-    /// code is returned instead.
+    /// The ID of the calling process.
     ///
-    pub fn get_pid(&self) -> Result<ProcessIdentifier, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        Ok(self.try_borrow()?.get_running().state().pid())
+    pub fn get_pid(&self) -> ProcessIdentifier {
+        self.0.get_running().state().pid()
     }
 
     ///
@@ -1625,11 +1618,10 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
-    /// code is returned instead.
+    /// The ID of the calling thread.
     ///
-    pub fn get_tid(&self) -> Result<ThreadIdentifier, Error> {
-        Ok(self.try_borrow()?.get_running().get_tid())
+    pub fn get_tid(&self) -> ThreadIdentifier {
+        self.0.get_running().get_tid()
     }
 
     ///
@@ -1656,7 +1648,7 @@ impl ProcessManager {
         args: &str,
         env: &str,
     ) -> Result<ProcessIdentifier, Error> {
-        self.try_borrow_mut()?.create_process(mm, elf, args, env)
+        self.0.create_process(mm, elf, args, env)
     }
 
     ///
@@ -1691,8 +1683,7 @@ impl ProcessManager {
         // Assert pre-conditions (these should have been checked by the caller).
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
 
-        self.try_borrow_mut()?
-            .create_thread(mm, pid, thread_create_args)
+        self.0.create_thread(mm, pid, thread_create_args)
     }
 
     ///
@@ -1715,7 +1706,6 @@ impl ProcessManager {
     /// This function fails with the following error codes:
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
     ///
     pub fn set_thread_data_area(
         &mut self,
@@ -1723,8 +1713,7 @@ impl ProcessManager {
         tid: ThreadIdentifier,
         user_tda: Option<VirtualAddress>,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .set_thread_data_area(pid, tid, user_tda)
+        self.0.set_thread_data_area(pid, tid, user_tda)
     }
 
     ///
@@ -1747,14 +1736,13 @@ impl ProcessManager {
     /// This function fails with the following error codes:
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
     ///
     pub fn get_thread_data_area(
         &self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<Option<VirtualAddress>, Error> {
-        self.try_borrow()?.get_thread_data_area(pid, tid)
+        self.0.get_thread_data_area(pid, tid)
     }
 
     pub fn has_capability(
@@ -1762,11 +1750,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         capability: Capability,
     ) -> Result<bool, Error> {
-        Ok(self
-            .try_borrow()?
-            .find_process(pid)?
-            .state()
-            .has_capability(capability))
+        Ok(self.0.find_process(pid)?.state().has_capability(capability))
     }
 
     pub fn capctl(
@@ -1775,11 +1759,11 @@ impl ProcessManager {
         capability: Capability,
         value: bool,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?.capctl(pid, capability, value)
+        self.0.capctl(pid, capability, value)
     }
 
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?.terminate(pid)
+        self.0.terminate(pid)
     }
 
     pub fn vmcopy_from_user(
@@ -1789,7 +1773,7 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?
+        self.0
             .find_process_mut(pid)?
             .state_mut()
             .copy_from_user_unaligned(dst, src, size)
@@ -1802,7 +1786,7 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?
+        self.0
             .find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
@@ -1816,7 +1800,7 @@ impl ProcessManager {
             VecDeque<ZombieThread>,
             Box<ProcessState>,
             ExitStatus,
-        ) = match self.try_borrow_mut()?.harvest_zombies() {
+        ) = match self.0.harvest_zombies() {
             Some((zombie_threads, state, status)) => (zombie_threads, state, status),
             None => return Ok(None),
         };
@@ -1862,8 +1846,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.alloc_upage(vmem, vaddr, access, true)
     }
@@ -1874,8 +1857,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.unmap_upage(vmem, vaddr)
     }
@@ -1887,8 +1869,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.ctrl_upage(vmem, vaddr, access)
     }
@@ -1898,8 +1879,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         region: IoMemoryRegion,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
         // TODO: change page permissions.
@@ -1926,8 +1906,7 @@ impl ProcessManager {
     /// Upon success, empty is returned. Upon failure, an error is returned instead.
     ///
     pub fn mmio_free(&mut self, pid: ProcessIdentifier, tag: MmioTag) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
         state.remove_mmio(tag);
 
@@ -1954,8 +1933,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         tag: MmioTag,
     ) -> Result<(PageAligned<VirtualAddress>, usize, AccessPermission), Error> {
-        let pm: Ref<ProcessManagerInner> = self.try_borrow()?;
-        let process: ProcessRef = pm.find_process(pid)?;
+        let process: ProcessRef = self.0.find_process(pid)?;
         let state: &ProcessState = process.state();
 
         match state.mmio_info(tag) {
@@ -1969,8 +1947,7 @@ impl ProcessManager {
     }
 
     pub fn attach_pmio(&mut self, pid: ProcessIdentifier, port: AnyIoPort) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         process.state_mut().add_pmio(port);
         Ok(())
     }
@@ -1980,8 +1957,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         port_number: u16,
     ) -> Result<AnyIoPort, Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         process.state_mut().remove_pmio(port_number)
     }
 
@@ -1991,8 +1967,7 @@ impl ProcessManager {
         port_number: u16,
         port_width: IoPortWidth,
     ) -> Result<u32, Error> {
-        let pm: Ref<ProcessManagerInner> = self.try_borrow()?;
-        let process: ProcessRef = pm.find_process(pid)?;
+        let process: ProcessRef = self.0.find_process(pid)?;
         process.state().read_pmio(port_number, port_width)
     }
 
@@ -2003,8 +1978,7 @@ impl ProcessManager {
         port_width: IoPortWidth,
         value: u32,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
         process
             .state_mut()
             .write_pmio(port_number, port_width, value)
@@ -2029,30 +2003,25 @@ impl ProcessManager {
         receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = match receiver.as_id() {
-            Ok(pid) => pm.find_process_mut(pid)?,
-            Err(tid) => pm.find_process_by_tid(tid)?,
-        };
-        process.state_mut().post_message(message);
-        pm.note_message_posted()?;
+        {
+            let mut process: ProcessRefMut = match receiver.as_id() {
+                Ok(pid) => self.0.find_process_mut(pid)?,
+                Err(tid) => self.0.find_process_by_tid(tid)?,
+            };
+            process.state_mut().post_message(message);
+        }
+        self.0.note_message_posted()?;
         Ok(())
     }
 
     pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .add_event(ownership);
+        self.0.get_running_mut().state_mut().add_event(ownership);
 
         Ok(())
     }
 
     pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .remove_event(ev);
+        self.0.get_running_mut().state_mut().remove_event(ev);
 
         Ok(())
     }
@@ -2064,37 +2033,14 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the number of buffered messages is returned. Otherwise, an error
-    /// code is returned instead.
+    /// The number of buffered messages.
     ///
     #[cfg(feature = "stdio")]
-    pub fn number_buffered_messages(&self) -> Result<usize, Error> {
-        Ok(self.try_borrow()?.count_buffered_messages())
+    pub fn number_buffered_messages(&self) -> usize {
+        self.0.count_buffered_messages()
     }
 
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
-        self.try_borrow_mut()?.handle_fpu_exception()
-    }
-
-    fn try_borrow(&self) -> Result<Ref<'_, ProcessManagerInner>, Error> {
-        match self.0.try_borrow() {
-            Ok(pm) => Ok(pm),
-            Err(_) => {
-                let reason: &str = "cannot borrow process manager";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::ResourceBusy, reason))
-            },
-        }
-    }
-
-    fn try_borrow_mut(&mut self) -> Result<RefMut<'_, ProcessManagerInner>, Error> {
-        match self.0.try_borrow_mut() {
-            Ok(pm) => Ok(pm),
-            Err(_) => {
-                let reason: &str = "cannot borrow process manager";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::ResourceBusy, reason))
-            },
-        }
+        self.0.handle_fpu_exception()
     }
 }
