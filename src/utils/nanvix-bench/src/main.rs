@@ -36,6 +36,11 @@ use ::indicatif::{
     ProgressBar,
     ProgressStyle,
 };
+use ::log::{
+    debug,
+    error,
+    warn,
+};
 use ::nanvix::{
     config::kernel::MEMORY_SIZE,
     http::{
@@ -51,12 +56,6 @@ use ::nanvix::{
     },
     hwloc,
     hwloc::HwLoc,
-    log,
-    log::{
-        debug,
-        error,
-        warn,
-    },
     sandbox::UserVmIdentifier,
     sys::{
         ipc::Message,
@@ -88,9 +87,6 @@ use ::nanvix::{
         },
     },
 };
-// FIXME(#1128): We need to re-export this import for the profiler macros.
-#[cfg(feature = "timestamp-messages")]
-use ::nanvix::log as syslog;
 use ::reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -1191,7 +1187,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
+    ::nanvix::log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {
