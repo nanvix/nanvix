@@ -407,7 +407,7 @@ jobs:
       with:
         # Use the deploy SSH key so that benchmark-persist can push results
         # to the dev branch (the deploy key is a bypass actor for branch
-        # protection rules, matching the approach in release-minor.yml).
+        # protection rules, matching the approach in create-minor-release).
         ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
     - name: "Pre-Cleanup Dangling Resources"
@@ -656,3 +656,32 @@ jobs:
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
+
+  # Create a minor release tag on merge commits to dev.
+  # This job runs independently of the CI pipeline because the pipeline skips
+  # merge commits while this job specifically targets them.
+  create-minor-release:
+    name: "Create Minor Release"
+    # Only run on merge commits to dev branch that were not made by github-actions[bot].
+    # This prevents infinite loops when the workflow commits back to dev.
+    # Checks:
+    # 1. Event is a push (not a PR or workflow_dispatch)
+    # 2. Actor is not github-actions[bot] (prevents workflow-triggered runs)
+    # 3. Commit author is not github-actions[bot] (prevents runs on bot commits)
+    if: >-
+      github.event_name == 'push' &&
+      github.actor != 'github-actions[bot]' &&
+      github.event.head_commit.author.username != 'github-actions[bot]' &&
+      github.event.head_commit.committer.username != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+          fetch-depth: 0
+
+      - name: "Create Minor Release"
+        uses: ./.github/actions/create-minor-release
