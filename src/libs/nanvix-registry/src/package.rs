@@ -19,6 +19,12 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::bytes::Bytes;
+use ::log::{
+    debug,
+    error,
+    info,
+    warn,
+};
 use ::reqwest::{
     Client,
     Response,
@@ -34,12 +40,6 @@ use ::std::{
         PathBuf,
     },
     sync::Arc,
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
-    warn,
 };
 use ::tokio::sync::OnceCell;
 

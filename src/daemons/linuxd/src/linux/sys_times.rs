@@ -12,6 +12,12 @@ use crate::{
         SyscallTable,
     },
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -21,12 +27,6 @@ use ::sysapi::sys_times::tms;
 use ::syscall::sys::times::message::{
     TimesRequest,
     TimesResponse,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

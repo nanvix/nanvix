@@ -215,6 +215,12 @@ use crate::{
     release::LatestRelease,
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    info,
+    warn,
+};
 use ::std::{
     collections::HashSet,
     path::{
@@ -222,12 +228,6 @@ use ::std::{
         PathBuf,
     },
     sync::Arc,
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
-    warn,
 };
 use ::tokio::fs;
 

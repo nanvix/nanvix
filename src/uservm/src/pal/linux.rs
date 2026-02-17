@@ -15,15 +15,15 @@ use ::libc::{
     c_char,
     c_int,
 };
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     ffi::CString,
     mem,
     ptr,
-};
-use ::syslog::{
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

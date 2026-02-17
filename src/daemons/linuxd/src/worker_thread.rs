@@ -39,6 +39,11 @@ use ::libc::{
     sigemptyset,
     SIGUSR1,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::std::{
     io::ErrorKind,
     mem,
@@ -148,11 +153,6 @@ use ::syscomm::{
     SocketStreamReader,
     SocketStreamWriter,
     WriteAll,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
 };
 use ::tokio::{
     runtime::Handle,

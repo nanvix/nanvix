@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::ReadExact;
+use ::log::error;
 use ::std::io::Result;
-use ::syslog::error;
 use ::tokio::{
     io::AsyncReadExt,
     net::{

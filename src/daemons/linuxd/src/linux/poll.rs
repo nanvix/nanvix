@@ -12,6 +12,12 @@ use crate::{
         SyscallTable,
     },
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
@@ -42,12 +48,6 @@ use ::syscall::{
         PollRequest,
         PollResponse,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

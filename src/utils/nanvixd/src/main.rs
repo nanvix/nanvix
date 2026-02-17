@@ -21,11 +21,10 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::error;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
-    log,
-    log::error,
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
     sandbox_cache::SandboxCacheConfig,
@@ -96,7 +95,7 @@ macro_rules! log_info {
         if let Some(true) = $crate::INTERACTIVE_MODE.get().copied() {
             eprintln!($fmt $(, $($args)*)?);
         } else {
-            ::nanvix::log::info!($fmt $(, $($args)*)?);
+            ::log::info!($fmt $(, $($args)*)?);
         }
     };
 }
@@ -141,7 +140,7 @@ async fn async_main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
+    ::nanvix::log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
 
     // Set the global INTERACTIVE_MODE flag.
     let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());

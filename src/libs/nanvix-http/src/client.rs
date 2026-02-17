@@ -33,6 +33,11 @@ use ::hyper::{
     Response,
     StatusCode,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::nanvix_sandbox_cache::SandboxCache;
 use ::std::{
     future::Future,
@@ -40,11 +45,6 @@ use ::std::{
     sync::Arc,
 };
 use ::syscomm::SocketType;
-use ::syslog::{
-    debug,
-    error,
-    trace,
-};
 use ::tokio::sync::Mutex;
 use ::user_vm_api::UserVmIdentifier;
 

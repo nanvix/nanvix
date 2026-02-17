@@ -27,15 +27,15 @@ use ::kvm_ioctls::{
     Kvm,
     VcpuFd,
 };
+use ::log::{
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
 };
 use ::std::mem;
-use ::syslog::{
-    error,
-    trace,
-};
 
 //==================================================================================================
 // Constants

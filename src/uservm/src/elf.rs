@@ -20,12 +20,12 @@
 
 use ::anyhow::Result;
 use ::core::ptr;
-use ::std::mem;
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,
 };
+use ::std::mem;
 
 //==================================================================================================
 // Constants

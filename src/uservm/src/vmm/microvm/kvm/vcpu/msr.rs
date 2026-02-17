@@ -15,13 +15,13 @@ use ::kvm_ioctls::{
     Kvm,
     VcpuFd,
 };
+use ::log::{
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use ::vmm_sys_util::fam::FamStructWrapper;
 

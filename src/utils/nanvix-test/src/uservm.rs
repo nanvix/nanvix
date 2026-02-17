@@ -7,6 +7,11 @@
 
 use crate::config::RunnerConfig;
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::nanvix::{
     http::message::{
         ErrorResponse,
@@ -16,11 +21,6 @@ use ::nanvix::{
         MessageType,
         New,
         NewResponse,
-    },
-    log::{
-        debug,
-        error,
-        trace,
     },
     sandbox::UserVmIdentifier,
     syscomm::{

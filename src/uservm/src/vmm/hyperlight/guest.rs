@@ -11,7 +11,7 @@ use ::hyperlight_host::mem::{
     mgr::SandboxMemoryManager,
     shared_mem::ExclusiveSharedMemory,
 };
-use ::syslog::error;
+use ::log::error;
 
 //==================================================================================================
 // Structures

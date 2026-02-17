@@ -32,6 +32,12 @@ pub use ::nanvix_sandbox::SyscallTable;
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 #[cfg(not(feature = "single-process"))]
 use ::nanvix_sandbox::netns::{
     NetnsHandle,
@@ -62,12 +68,6 @@ use ::std::marker::PhantomData;
 use ::std::{
     collections::HashMap,
     sync::Arc,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 use ::tokio::sync::Mutex;
 

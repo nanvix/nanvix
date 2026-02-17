@@ -17,6 +17,11 @@ use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::std::mem;
 use ::sys::ipc::Message;
 use ::syscomm::{
@@ -24,11 +29,6 @@ use ::syscomm::{
     SocketStreamReader,
     SocketStreamWriter,
     WriteAll,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
 };
 use ::tokio::{
     select,

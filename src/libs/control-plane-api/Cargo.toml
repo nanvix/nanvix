@@ -12,8 +12,8 @@ homepage.workspace = true
 
 [dependencies]
 config = { workspace = true }
+log = { workspace = true }
 num_enum = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]

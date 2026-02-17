@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use crate::SocketStream;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     fs,
     io::{
@@ -13,10 +17,6 @@ use ::std::{
         Result,
     },
     net::SocketAddr,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use ::tokio::net::{
     TcpListener,

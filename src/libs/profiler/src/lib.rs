@@ -10,7 +10,7 @@
 #[cfg(feature = "timestamp-messages")]
 macro_rules! timestamp_message {
     ($buffer_expr:expr, $buffer_offset:expr) => {{
-        syslog::trace!(
+        log::trace!(
             "timestamp injected at {}:{}",
             std::panic::Location::caller().file(),
             std::panic::Location::caller().line()
@@ -63,13 +63,13 @@ mod scope;
 // Imports
 //======================================================================================================================
 
+use ::log::error;
 use ::std::{
     self,
     cell::RefCell,
     io,
     rc::Rc,
 };
-use ::syslog::error;
 use scope::{
     Guard,
     Scope,

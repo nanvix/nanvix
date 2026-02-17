@@ -40,7 +40,7 @@ use ::syscomm::{
     SocketStream,
     WriteAll,
 };
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,

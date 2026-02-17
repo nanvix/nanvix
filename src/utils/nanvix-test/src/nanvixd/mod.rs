@@ -29,7 +29,7 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::libc;
-use ::nanvix::log::{
+use ::log::{
     debug,
     error,
     trace,

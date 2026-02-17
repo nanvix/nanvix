@@ -42,7 +42,7 @@ mod warning;
 macro_rules! warn_with_policy {
     ($($arg:tt)+) => {{
         let formatted_message: String = format!($($arg)+);
-        ::nanvix::log::warn!("{}", formatted_message);
+        ::log::warn!("{}", formatted_message);
         $crate::warning::record_warning(formatted_message);
     }};
 }
@@ -73,8 +73,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::log::{
-    self,
+use ::log::{
     debug,
     error,
 };
@@ -106,7 +105,7 @@ pub(crate) const DEFAULT_TENANT_ID: &str = "nanvix-test";
 /// Returns the status produced by `run()`.
 ///
 fn main() -> Result<()> {
-    log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
+    ::nanvix::log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
 
     let runtime: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
