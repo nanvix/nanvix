@@ -31,11 +31,14 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}
 # GitHub Actions cache backend for sccache (optional).
 # When SCCACHE_GHA_ENABLED is set to "true", sccache uses the GitHub Actions
 # cache as a remote backend instead of the local disk cache.
-# SCCACHE_GHA_ENABLED and SCCACHE_GHA_CACHE_TO are passed as build args.
+# SCCACHE_GHA_CACHE_TO sets the key for writing compilation results.
+# SCCACHE_GHA_CACHE_FROM sets the key for reading cached results; without it
+# sccache writes to the cache but never reads, causing 0% hit rate.
 # ACTIONS_RESULTS_URL and ACTIONS_RUNTIME_TOKEN are injected as Docker secrets
 # so that their per-run values do not bust the BuildKit layer cache.
 ARG SCCACHE_GHA_ENABLED
 ARG SCCACHE_GHA_CACHE_TO
+ARG SCCACHE_GHA_CACHE_FROM
 
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
@@ -59,6 +62,9 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     fi && \
     if [ -n "${SCCACHE_GHA_CACHE_TO}" ]; then \
         export SCCACHE_GHA_CACHE_TO="${SCCACHE_GHA_CACHE_TO}"; \
+    fi && \
+    if [ -n "${SCCACHE_GHA_CACHE_FROM}" ]; then \
+        export SCCACHE_GHA_CACHE_FROM="${SCCACHE_GHA_CACHE_FROM}"; \
     fi && \
     SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
     make TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS} && \

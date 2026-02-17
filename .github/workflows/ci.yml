@@ -522,10 +522,16 @@ jobs:
     - name: "Setup"
       uses: ./.github/actions/docker-setup
 
+    - name: "Setup sccache"
+      uses: Mozilla-Actions/sccache-action@v0.0.9
+      with:
+        version: "v0.10.0"
+
     - name: "Build (Standard)"
       uses: ./.github/actions/docker-benchmark-build
       with:
         machine-type: 'microvm'
+        sccache-gha-enabled: 'true'
 
     - name: "Run Micro-Benchmarks (Standard)"
       uses: ./.github/actions/docker-benchmark-run
@@ -539,6 +545,7 @@ jobs:
       with:
         machine-type: 'microvm'
         timestamp-msg: 'yes'
+        sccache-gha-enabled: 'true'
 
     - name: "Run Echo-Breakdown Benchmarks"
       uses: ./.github/actions/docker-benchmark-run
