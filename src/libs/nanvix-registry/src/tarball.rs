@@ -378,7 +378,7 @@ async fn validate_extracted_paths(dir: &Path) -> anyhow::Result<()> {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -433,7 +433,7 @@ mod tests {
         let result: Result<Tarball> = Tarball::open(&path);
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("Unsupported tarball format"));
     }
@@ -449,7 +449,7 @@ mod tests {
         let result: Result<Tarball> = Tarball::open(&path);
         assert!(result.is_ok());
 
-        match result.unwrap() {
+        match result.expect("failed") {
             Tarball::Bzip2 { path: p } => {
                 assert_eq!(p, path);
             },
@@ -501,11 +501,15 @@ mod tests {
     async fn test_validate_extracted_paths_valid() {
         let dir: PathBuf = unique_temp_dir("tarball_test_valid");
         let _ = fs::remove_dir_all(&dir).await;
-        fs::create_dir_all(dir.join("subdir")).await.unwrap();
-        fs::write(dir.join("file.txt"), "content").await.unwrap();
+        fs::create_dir_all(dir.join("subdir"))
+            .await
+            .expect("failed");
+        fs::write(dir.join("file.txt"), "content")
+            .await
+            .expect("failed");
         fs::write(dir.join("subdir/nested.txt"), "content")
             .await
-            .unwrap();
+            .expect("failed");
 
         let result: Result<()> = validate_extracted_paths(&dir).await;
         assert!(result.is_ok());
@@ -524,21 +528,21 @@ mod tests {
         let dir: PathBuf = base.join("dest");
         let outside: PathBuf = base.join("outside");
         let _ = fs::remove_dir_all(&base).await;
-        fs::create_dir_all(&dir).await.unwrap();
-        fs::create_dir_all(&outside).await.unwrap();
+        fs::create_dir_all(&dir).await.expect("failed");
+        fs::create_dir_all(&outside).await.expect("failed");
         fs::write(outside.join("secret.txt"), "secret")
             .await
-            .unwrap();
+            .expect("failed");
 
         // Create a symlink inside `dir` that points to a file outside `dir`.
         fs::symlink(outside.join("secret.txt"), dir.join("escape_link"))
             .await
-            .unwrap();
+            .expect("failed");
 
         let result: Result<()> = validate_extracted_paths(&dir).await;
         assert!(result.is_err());
         assert!(result
-            .unwrap_err()
+            .expect_err("should fail")
             .to_string()
             .contains("escapes destination directory"));
 
@@ -554,7 +558,7 @@ mod tests {
     async fn test_validate_extracted_paths_empty_dir() {
         let dir: PathBuf = unique_temp_dir("tarball_test_empty");
         let _ = fs::remove_dir_all(&dir).await;
-        fs::create_dir_all(&dir).await.unwrap();
+        fs::create_dir_all(&dir).await.expect("failed");
 
         let result: Result<()> = validate_extracted_paths(&dir).await;
         assert!(result.is_ok());

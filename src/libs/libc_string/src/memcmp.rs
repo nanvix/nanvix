@@ -106,10 +106,14 @@ mod test {
     #[test]
     fn test_memcmp_equal() {
         let size: usize = 32;
-        let buf1: Vec<u8> = (0..size as u8).collect();
-        let buf2: Vec<u8> = (0..size as u8).collect();
+        let buf1: Vec<u8> = (0..u8::try_from(size).expect("size fits in u8")).collect();
+        let buf2: Vec<u8> = (0..u8::try_from(size).expect("size fits in u8")).collect();
         let ret: c_int = unsafe {
-            memcmp(buf1.as_ptr() as *const _, buf2.as_ptr() as *const _, size as c_size_t)
+            memcmp(
+                buf1.as_ptr().cast(),
+                buf2.as_ptr().cast(),
+                c_size_t::try_from(size).expect("size fits in c_size_t"),
+            )
         };
         assert_eq!(ret, 0, "memcmp should return 0 for identical buffers");
     }
@@ -121,8 +125,13 @@ mod test {
         // Introduce first difference: a[2] < b[2].
         a[2] = 5;
         b[2] = 9;
-        let ret: c_int =
-            unsafe { memcmp(a.as_ptr() as *const _, b.as_ptr() as *const _, a.len() as c_size_t) };
+        let ret: c_int = unsafe {
+            memcmp(
+                a.as_ptr().cast(),
+                b.as_ptr().cast(),
+                c_size_t::try_from(a.len()).expect("len fits in c_size_t"),
+            )
+        };
         assert_eq!(
             ret,
             (5_i32 - 9_i32) as c_int,
@@ -138,8 +147,13 @@ mod test {
         // Introduce first difference: a[3] > b[3].
         a[3] = 100;
         b[3] = 42;
-        let ret: c_int =
-            unsafe { memcmp(a.as_ptr() as *const _, b.as_ptr() as *const _, a.len() as c_size_t) };
+        let ret: c_int = unsafe {
+            memcmp(
+                a.as_ptr().cast(),
+                b.as_ptr().cast(),
+                c_size_t::try_from(a.len()).expect("len fits in c_size_t"),
+            )
+        };
         assert_eq!(
             ret,
             (100_i32 - 42_i32) as c_int,
@@ -152,8 +166,7 @@ mod test {
     fn test_memcmp_zero_length() {
         let a: Vec<u8> = vec![1, 2, 3, 4];
         let b: Vec<u8> = vec![5, 6, 7, 8];
-        let ret: c_int =
-            unsafe { memcmp(a.as_ptr() as *const _, b.as_ptr() as *const _, 0 as c_size_t) };
+        let ret: c_int = unsafe { memcmp(a.as_ptr().cast(), b.as_ptr().cast(), 0) };
         assert_eq!(ret, 0, "memcmp should return 0 when length is zero");
     }
 
@@ -165,8 +178,13 @@ mod test {
         a[5] = 10;
         b[5] = 20;
         let len: usize = 5; // Exclude index 5.
-        let ret: c_int =
-            unsafe { memcmp(a.as_ptr() as *const _, b.as_ptr() as *const _, len as c_size_t) };
+        let ret: c_int = unsafe {
+            memcmp(
+                a.as_ptr().cast(),
+                b.as_ptr().cast(),
+                c_size_t::try_from(len).expect("len fits in c_size_t"),
+            )
+        };
         assert_eq!(ret, 0, "memcmp should not observe differences beyond provided length");
     }
 
@@ -179,7 +197,9 @@ mod test {
         let ptr1: *const u8 = buf.as_ptr();
         let ptr2: *const u8 = unsafe { buf.as_ptr().add(1) };
         let len: usize = 16;
-        let ret: c_int = unsafe { memcmp(ptr1 as *const _, ptr2 as *const _, len as c_size_t) };
+        let ret: c_int = unsafe {
+            memcmp(ptr1.cast(), ptr2.cast(), c_size_t::try_from(len).expect("len fits in c_size_t"))
+        };
         let expected: c_int = (buf[0] as c_int) - (buf[1] as c_int);
         assert_eq!(ret, expected, "memcmp should handle overlapping readable regions correctly");
     }

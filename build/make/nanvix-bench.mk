@@ -26,7 +26,7 @@ clean-nanvix-bench:
 	$(RM_CMD) $(BINARIES_DIR)/nanvix-bench.elf
 
 rust-lint-nanvix-bench:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench --fix --allow-dirty --allow-no-vcs
+	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-nanvix-bench:
-	$(HOST_CARGO_CLIPPY_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench -- -D warnings
+	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench -- -D warnings

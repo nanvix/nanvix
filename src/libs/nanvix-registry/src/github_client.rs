@@ -128,7 +128,7 @@ pub(crate) fn authenticated_get(client: &Client, url: &str) -> RequestBuilder {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

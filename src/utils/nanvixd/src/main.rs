@@ -12,8 +12,9 @@
 //==================================================================================================
 
 #![deny(clippy::all)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![forbid(clippy::unwrap_used)]
+// The following lints are allowed in tests to facilitate testing of error conditions.
+#![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
 // Imports
@@ -118,8 +119,25 @@ macro_rules! log_info {
 /// On success, returns the exit code of the workload in interactive mode or `ExitCode::SUCCESS`
 /// in HTTP mode. On failure, returns an error describing what went wrong.
 ///
-#[tokio::main]
-pub async fn main() -> Result<ExitCode> {
+// # NOTES
+//
+// - We build the tokio runtime manually instead of using `#[tokio::main]` because the macro
+//   expansion emits `#[allow(clippy::expect_used)]`, which is incompatible with our crate-level
+//   `#![forbid(clippy::expect_used)]` lint configuration.
+///
+pub fn main() -> Result<ExitCode> {
+    let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+    rt.block_on(async_main())
+}
+
+/// # Description
+///
+/// Asynchronous entry point for the nanvixd daemon.
+///
+async fn async_main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
@@ -447,6 +465,7 @@ fn encode_base64_filename(mut num: u128) -> String {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::needless_range_loop)]
 mod tests {
     use super::*;
 
@@ -504,19 +523,19 @@ mod tests {
         // First 26 should be A-Z.
         for i in 0..26 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'A' + i as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'A' + i as u8);
         }
 
         // Next 26 should be a-z.
         for i in 26..52 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'a' + (i - 26) as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'a' + (i - 26) as u8);
         }
 
         // Next 10 should be 0-9.
         for i in 52..62 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'0' + (i - 52) as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'0' + (i - 52) as u8);
         }
 
         // Last two should be - and _.
