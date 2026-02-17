@@ -97,7 +97,7 @@ runs:
         exit 0
       fi
 
-      repos=("cpython" "openblas" "openssl" "quickjs" "rusty_v8" "sqlite" "zlib")
+      repos=("bzip2" "cpython" "cymem" "kiwi" "libexpat" "libffi" "murmurhash" "numpy" "openblas" "openssl" "preshed" "quickjs" "rusty_v8" "sqlite" "srsly" "zlib")
       failed=0
 
       for repo in "${repos[@]}"; do
