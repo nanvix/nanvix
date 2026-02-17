@@ -121,7 +121,7 @@ impl Drop for TemporaryFile {
 //==================================================================================================
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::std::env;
@@ -174,7 +174,7 @@ mod tests {
         // Verify file was written.
         let contents: Result<Vec<u8>, std::io::Error> = fs::read(&path).await;
         assert!(contents.is_ok());
-        assert_eq!(contents.unwrap(), data);
+        assert_eq!(contents.expect("failed"), data);
 
         // Cleanup.
         let _: Result<(), std::io::Error> = fs::remove_file(&path).await;
@@ -215,7 +215,7 @@ mod tests {
         // Verify file size.
         let metadata: Result<std::fs::Metadata, std::io::Error> = fs::metadata(&path).await;
         assert!(metadata.is_ok());
-        assert_eq!(metadata.unwrap().len(), 1024 * 1024);
+        assert_eq!(metadata.expect("failed").len(), 1024 * 1024);
 
         // Cleanup.
         let _: Result<(), std::io::Error> = fs::remove_file(&path).await;
@@ -232,7 +232,8 @@ mod tests {
 
         // Create file in a scoped runtime.
         {
-            let runtime: ::tokio::runtime::Runtime = ::tokio::runtime::Runtime::new().unwrap();
+            let runtime: ::tokio::runtime::Runtime =
+                ::tokio::runtime::Runtime::new().expect("failed");
             runtime.block_on(async {
                 let tempfile: TemporaryFile = TemporaryFile::new(path.clone());
                 let result: Result<()> = tempfile.write(b"scoped test data").await;
@@ -242,10 +243,11 @@ mod tests {
         }
 
         // Check if file was removed by the destructor.
-        if path.exists() {
+        let still_exists: bool = path.exists();
+        if still_exists {
             // Cleanup before failing.
             let _: Result<(), std::io::Error> = ::std::fs::remove_file(&path);
-            panic!("Temporary file was not automatically removed by destructor");
         }
+        assert!(!still_exists, "Temporary file was not automatically removed by destructor");
     }
 }

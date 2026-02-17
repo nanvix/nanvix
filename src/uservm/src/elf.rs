@@ -519,6 +519,7 @@ pub unsafe fn load(
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::std::ffi::c_void;
@@ -526,16 +527,48 @@ mod tests {
     const ENTRY_POINT: u32 = 0x0040_2000;
     const VADDR: usize = 0x0010_0000;
 
+    /// Converts a `usize` to `u32`, panicking if it does not fit.
+    fn to_u32(v: usize) -> u32 {
+        u32::try_from(v).expect("value fits in u32")
+    }
+
+    /// Converts a `usize` to `u16`, panicking if it does not fit.
+    fn to_u16(v: usize) -> u16 {
+        u16::try_from(v).expect("value fits in u16")
+    }
+
     fn make_ident() -> [u8; EI_NIDENT] {
         let mut ident: [u8; EI_NIDENT] = [0; EI_NIDENT];
         ident[0] = ELFMAG0;
-        ident[1] = ELFMAG1 as u8;
-        ident[2] = ELFMAG2 as u8;
-        ident[3] = ELFMAG3 as u8;
+        ident[1] = u8::try_from(ELFMAG1).expect("ELF magic fits in u8");
+        ident[2] = u8::try_from(ELFMAG2).expect("ELF magic fits in u8");
+        ident[3] = u8::try_from(ELFMAG3).expect("ELF magic fits in u8");
         ident[4] = ELFCLASS32;
         ident[5] = ELFDATA2LSB;
-        ident[6] = EV_CURRENT as u8;
+        ident[6] = u8::try_from(EV_CURRENT).expect("EV_CURRENT fits in u8");
         ident
+    }
+
+    /// Builds a standard ELF header for tests.
+    fn make_header(e_phnum: u16) -> Elf32Fhdr {
+        let header_size: usize = mem::size_of::<Elf32Fhdr>();
+        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
+        Elf32Fhdr {
+            e_ident: make_ident(),
+            e_type: ET_EXEC,
+            e_machine: EM_386,
+            e_version: EV_CURRENT,
+            e_entry: ENTRY_POINT,
+            e_phoff: to_u32(header_size),
+            e_shoff: 0,
+            e_flags: 0,
+            e_ehsize: to_u16(header_size),
+            e_phentsize: to_u16(phdr_size),
+            e_phnum,
+            e_shentsize: 0,
+            e_shnum: 0,
+            e_shstrndx: 0,
+        }
     }
 
     unsafe fn write_struct<T>(buffer: &mut [u8], value: &T) {
@@ -555,31 +588,15 @@ mod tests {
         let memsz: usize = 16;
         let segment_data: [u8; 4] = [0xaa, 0xbb, 0xcc, 0xdd];
 
-        let ident: [u8; EI_NIDENT] = make_ident();
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: ident,
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(1);
 
         let phdr: Elf32Phdr = Elf32Phdr {
             p_type: PT_LOAD,
-            p_offset: segment_offset as u32,
-            p_vaddr: VADDR as u32,
+            p_offset: to_u32(segment_offset),
+            p_vaddr: to_u32(VADDR),
             p_paddr: 0,
-            p_filesz: filesz as u32,
-            p_memsz: memsz as u32,
+            p_filesz: to_u32(filesz),
+            p_memsz: to_u32(memsz),
             p_flags: PF_R | PF_W,
             p_align: 1,
         };
@@ -613,25 +630,9 @@ mod tests {
     #[test]
     fn load_rejects_invalid_program_header_size() {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
-        let mut ident: [u8; EI_NIDENT] = make_ident();
-        ident[4] = ELFCLASS32;
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: ident,
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: (mem::size_of::<Elf32Phdr>() as u16) - 1,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let mut header: Elf32Fhdr = make_header(1);
+        header.e_phentsize = to_u16(mem::size_of::<Elf32Phdr>()) - 1;
 
         let mut image: Vec<u8> = vec![0; header_size];
         unsafe {
@@ -656,30 +657,15 @@ mod tests {
         let memsz: usize = 8;
         let segment_data: [u8; 16] = [0x11; 16];
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(1);
 
         let phdr: Elf32Phdr = Elf32Phdr {
             p_type: PT_LOAD,
-            p_offset: segment_offset as u32,
-            p_vaddr: VADDR as u32,
+            p_offset: to_u32(segment_offset),
+            p_vaddr: to_u32(VADDR),
             p_paddr: 0,
-            p_filesz: filesz as u32,
-            p_memsz: memsz as u32,
+            p_filesz: to_u32(filesz),
+            p_memsz: to_u32(memsz),
             p_flags: PF_R | PF_W,
             p_align: 1,
         };
@@ -711,27 +697,12 @@ mod tests {
         let phdr_size: usize = mem::size_of::<Elf32Phdr>();
         let segment_offset: usize = header_size + phdr_size;
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(1);
 
         let phdr: Elf32Phdr = Elf32Phdr {
             p_type: PT_LOAD,
-            p_offset: segment_offset as u32,
-            p_vaddr: VADDR as u32,
+            p_offset: to_u32(segment_offset),
+            p_vaddr: to_u32(VADDR),
             p_paddr: 0,
             p_filesz: 0x100,
             p_memsz: 0x200,
@@ -760,22 +731,7 @@ mod tests {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
         let phdr_size: usize = mem::size_of::<Elf32Phdr>();
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 2,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(2);
 
         // First segment: starts at 0x1000, size 0x100.
         let phdr1: Elf32Phdr = Elf32Phdr {
@@ -831,25 +787,9 @@ mod tests {
     #[test]
     fn memory_footprint_rejects_invalid_magic() {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
-        let mut ident: [u8; EI_NIDENT] = [0; EI_NIDENT];
-        ident[0] = 0x00; // Invalid magic.
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: ident,
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: mem::size_of::<Elf32Phdr>() as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let mut header: Elf32Fhdr = make_header(1);
+        header.e_ident = [0; EI_NIDENT]; // Invalid magic.
 
         let mut image: Vec<u8> = vec![0; header_size];
         unsafe {
@@ -865,25 +805,9 @@ mod tests {
     #[test]
     fn memory_footprint_rejects_invalid_class() {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
-        let mut ident: [u8; EI_NIDENT] = make_ident();
-        ident[4] = ELFCLASS64; // 64-bit class, not supported.
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: ident,
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: mem::size_of::<Elf32Phdr>() as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let mut header: Elf32Fhdr = make_header(1);
+        header.e_ident[4] = ELFCLASS64; // 64-bit class, not supported.
 
         let mut image: Vec<u8> = vec![0; header_size];
         unsafe {
@@ -900,22 +824,8 @@ mod tests {
     fn memory_footprint_rejects_invalid_phentsize() {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: 1, // Invalid size.
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let mut header: Elf32Fhdr = make_header(1);
+        header.e_phentsize = 1; // Invalid size.
 
         let mut image: Vec<u8> = vec![0; header_size];
         unsafe {
@@ -931,24 +841,8 @@ mod tests {
     #[test]
     fn memory_footprint_rejects_phdr_exceeds_buffer() {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
-        let phdr_size: usize = mem::size_of::<Elf32Phdr>();
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 10, // Claims 10 segments but buffer is too small.
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(10); // Claims 10 segments but buffer is too small.
 
         // Buffer only has header, no room for program headers.
         let mut image: Vec<u8> = vec![0; header_size];
@@ -967,28 +861,13 @@ mod tests {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
         let phdr_size: usize = mem::size_of::<Elf32Phdr>();
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 1,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(1);
 
         // Non-loadable segment (PT_NOTE instead of PT_LOAD).
         let phdr: Elf32Phdr = Elf32Phdr {
             p_type: PT_NOTE,
             p_offset: 0,
-            p_vaddr: VADDR as u32,
+            p_vaddr: to_u32(VADDR),
             p_paddr: 0,
             p_filesz: 0x100,
             p_memsz: 0x100,
@@ -1013,22 +892,7 @@ mod tests {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
         let phdr_size: usize = mem::size_of::<Elf32Phdr>();
 
-        let header: Elf32Fhdr = Elf32Fhdr {
-            e_ident: make_ident(),
-            e_type: ET_EXEC,
-            e_machine: EM_386,
-            e_version: EV_CURRENT,
-            e_entry: ENTRY_POINT,
-            e_phoff: header_size as u32,
-            e_shoff: 0,
-            e_flags: 0,
-            e_ehsize: header_size as u16,
-            e_phentsize: phdr_size as u16,
-            e_phnum: 3,
-            e_shentsize: 0,
-            e_shnum: 0,
-            e_shstrndx: 0,
-        };
+        let header: Elf32Fhdr = make_header(3);
 
         // Non-loadable segment (should be skipped).
         let phdr1: Elf32Phdr = Elf32Phdr {

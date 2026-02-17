@@ -640,6 +640,7 @@ impl Args {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::anyhow::Result as AnyResult;
@@ -738,17 +739,17 @@ mod tests {
     #[test]
     fn parse_detects_memory_overflow() {
         let mut args_vec: Vec<String> = build_base_args();
-        let overflow_arg: String = format!("{}K", ::std::usize::MAX);
+        let overflow_arg: String = format!("{}K", usize::MAX);
         args_vec.push(Args::OPT_MEMORY_SIZE.to_string());
         args_vec.push(overflow_arg);
 
-        match Args::parse(args_vec) {
-            Err(error) => {
-                assert!(error.to_string().contains("memory size overflow"));
-            },
-            Ok(_) => {
-                assert!(false, "expected memory size overflow to produce an error");
-            },
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "expected memory size overflow to produce an error");
+        if let Err(error) = result {
+            assert!(
+                error.to_string().contains("memory size overflow"),
+                "error should mention memory size overflow"
+            );
         }
     }
 }

@@ -9,7 +9,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // Lints
 #![forbid(clippy::unwrap_used)]
-#![forbid(clippy::expect_used)]
 #![forbid(clippy::cast_possible_truncation)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
@@ -23,6 +22,8 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
+// The following lints are allowed in tests to facilitate testing of error conditions.
+#![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
 // Modules

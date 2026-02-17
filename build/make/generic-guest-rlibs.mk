@@ -20,6 +20,19 @@ endef
 
 $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target))))
 
+# Guest rlib test code is compiled for the host target (not the custom guest
+# target), so a separate host-side clippy pass with --tests is needed to lint
+# #[cfg(test)] modules.
+define GUEST_RLIB_LINT_TEST_RULES
+rust-lint-guest-rlib-tests-$(1):
+	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std -p $(1) --fix --allow-dirty
+
+rust-lint-check-guest-rlib-tests-$(1):
+	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std -p $(1) -- -D warnings
+endef
+
+$(foreach target,$(ALL_GUEST_RUST_LIBS_TEST_LIST),$(eval $(call GUEST_RLIB_LINT_TEST_RULES,$(target))))
+
 check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),check-guest-rlib-$(target))
 
 format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(target))
@@ -27,8 +40,10 @@ format-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-guest-rlib-$(
 format-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),format-check-guest-rlib-$(target))
 
 rust-lint-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-guest-rlib-$(target))
+rust-lint-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS_TEST_LIST),rust-lint-guest-rlib-tests-$(target))
 
 rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS),rust-lint-check-guest-rlib-$(target))
+rust-lint-check-guest-rlibs: $(foreach target,$(ALL_GUEST_RUST_LIBS_TEST_LIST),rust-lint-check-guest-rlib-tests-$(target))
 
 define GUEST_RLIB_TEST_RULES
 test-guest-rlib-$(1):

@@ -214,6 +214,7 @@ fn on_message_received_from_io_thread(counters: &MessageCounters) {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::anyhow::anyhow;

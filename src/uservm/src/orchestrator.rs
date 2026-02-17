@@ -688,6 +688,7 @@ impl Orchestrator {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::anyhow::Result as AnyResult;
@@ -768,13 +769,16 @@ mod tests {
                     Ok(())
                 })
             }),
-            Box::new(move || {
-                let flag = snapshot_flag.clone();
-                Box::pin(async move {
-                    flag.store(true, Ordering::SeqCst);
-                    Ok(())
+            {
+                let snapshot_flag2: Arc<AtomicBool> = snapshot_called.clone();
+                Box::new(move || {
+                    let flag = snapshot_flag2.clone();
+                    Box::pin(async move {
+                        flag.store(true, Ordering::SeqCst);
+                        Ok(())
+                    })
                 })
-            }),
+            },
         );
 
         Harness {
