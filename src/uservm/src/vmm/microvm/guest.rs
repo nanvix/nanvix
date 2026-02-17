@@ -14,6 +14,11 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
@@ -23,11 +28,6 @@ use ::std::{
     ptr,
 };
 use arch::mem::PAGE_SIZE;
-use syslog::{
-    debug,
-    error,
-    trace,
-};
 
 //==================================================================================================
 // Structures

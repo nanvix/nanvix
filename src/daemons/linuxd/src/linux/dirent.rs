@@ -17,6 +17,12 @@ use ::core::{
     cmp,
     mem,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::std::ffi::CStr;
 use ::sys::{
     error::ErrorCode,
@@ -29,12 +35,6 @@ use ::syscall::{
         GetDirectoryEntriesResponse,
     },
     message::MessagePartitioner,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 use sysapi::{
     dirent::{

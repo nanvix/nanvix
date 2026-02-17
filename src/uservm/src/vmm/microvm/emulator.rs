@@ -17,16 +17,16 @@ use crate::vmm::{
     microvm::kvm::vmem::VirtualMemory,
 };
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     io::Write,
     sync::Arc,
 };
-use ::syslog::{
-    error,
-    trace,
-};
 use ::tokio::sync::Mutex;
-use syslog::warn;
 
 //==================================================================================================
 // Structures

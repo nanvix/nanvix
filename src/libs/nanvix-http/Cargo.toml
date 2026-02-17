@@ -18,13 +18,13 @@ http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
 linuxd = { workspace = true, optional = true }
+log = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
 nanvix-terminal = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 uservm = { workspace = true }
 user-vm-api = { workspace = true }

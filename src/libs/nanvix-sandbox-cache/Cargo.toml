@@ -13,9 +13,9 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 config = { workspace = true }
+log = { workspace = true }
 nanvix-sandbox = { workspace = true }
 rand = { workspace = true }
-syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]

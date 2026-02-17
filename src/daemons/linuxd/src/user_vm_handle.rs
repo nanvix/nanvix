@@ -6,6 +6,10 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
@@ -14,10 +18,6 @@ use ::syscomm::{
     SocketStreamWriter,
     SocketType,
     UnboundSocket,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use ::tokio::{
     sync::{

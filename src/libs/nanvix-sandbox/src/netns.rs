@@ -34,6 +34,11 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     fmt,
     net::Ipv4Addr,
@@ -43,11 +48,6 @@ use ::std::{
         Mutex,
         MutexGuard,
     },
-};
-use ::syslog::{
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================

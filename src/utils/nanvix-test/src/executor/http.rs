@@ -28,16 +28,14 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::{
-    log::{
-        error,
-        trace,
-        warn,
-    },
-    syscomm::{
-        ReadExact,
-        WriteAll,
-    },
+use ::log::{
+    error,
+    trace,
+    warn,
+};
+use ::nanvix::syscomm::{
+    ReadExact,
+    WriteAll,
 };
 use ::std::{
     io::ErrorKind,

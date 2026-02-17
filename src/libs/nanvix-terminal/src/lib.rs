@@ -26,6 +26,11 @@ use ::libc::{
     sigemptyset,
     SIGUSR1,
 };
+use ::log::{
+    error,
+    info,
+    warn,
+};
 use ::nanvix_sandbox_cache::{
     syscomm::{
         SocketStream,
@@ -46,11 +51,6 @@ use ::std::{
     mem,
     ptr,
     sync::Arc,
-};
-use ::syslog::{
-    error,
-    info,
-    warn,
 };
 use ::tokio::{
     io::{

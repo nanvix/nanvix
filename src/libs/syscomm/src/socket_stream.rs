@@ -12,11 +12,11 @@ use crate::{
     SocketStreamWriter,
     WriteAll,
 };
-use ::std::io::Result;
-use ::syslog::{
+use ::log::{
     error,
     trace,
 };
+use ::std::io::Result;
 use ::tokio::{
     io::{
         AsyncReadExt,

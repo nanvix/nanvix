@@ -7,12 +7,12 @@
 
 use crate::warn_with_policy;
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    info,
+};
 use ::nanvix::{
     config::linuxd::SNAPSHOT_NAME,
-    log::{
-        debug,
-        info,
-    },
     sandbox::{
         NAMED_RESOURCE_PREFIX,
         NETNS_NAME_PREFIX,

@@ -32,7 +32,7 @@ use ::syscomm::{
     UnboundSocket,
     WriteAll,
 };
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,

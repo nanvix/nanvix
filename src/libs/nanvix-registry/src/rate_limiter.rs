@@ -7,6 +7,11 @@
 
 use crate::github_client;
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    warn,
+};
 use ::reqwest::Response;
 use ::std::{
     sync::Arc,
@@ -14,11 +19,6 @@ use ::std::{
         Duration,
         Instant,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    warn,
 };
 use ::tokio::sync::Mutex;
 

@@ -6,6 +6,11 @@
 //==================================================================================================
 
 use crate::WORKER_THREAD_CHANNEL_CAPACITY;
+use ::log::{
+    error,
+    info,
+    trace,
+};
 use ::std::collections::BTreeMap;
 use ::sys::{
     error::{
@@ -16,11 +21,6 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
-use ::syslog::{
-    error,
-    info,
-    trace,
-};
 use ::tokio::sync::mpsc::{
     channel,
     Receiver,

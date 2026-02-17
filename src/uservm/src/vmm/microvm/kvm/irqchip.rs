@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use kvm_bindings::kvm_irqchip;
 use kvm_ioctls::{

@@ -19,6 +19,10 @@ mod args;
 
 use self::args::Args;
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+};
 use ::serde_json::{
     json,
     Value,
@@ -34,10 +38,6 @@ use ::std::{
         Duration,
         Instant,
     },
-};
-use ::syslog::{
-    debug,
-    error,
 };
 use ::tokio::{
     io::{

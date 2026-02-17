@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+log = { workspace = true }
 nanvixd = { workspace = true }
 nanvix = { workspace = true, features = ["internal-api"] }
 no_fail = { workspace = true, features = ["std"] }

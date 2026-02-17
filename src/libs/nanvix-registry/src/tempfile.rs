@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::{
+    error,
+    warn,
+};
 use ::std::path::{
     Path,
     PathBuf,
-};
-use ::syslog::{
-    error,
-    warn,
 };
 use ::tokio::fs;
 

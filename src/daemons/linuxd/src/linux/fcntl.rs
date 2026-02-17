@@ -15,6 +15,12 @@ use crate::{
 };
 use ::alloc::ffi::CString;
 use ::core::ffi;
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::sys::{
     error::{
         Error,
@@ -140,12 +146,6 @@ use ::syscall::{
         SymbolicLinkAtRequest,
         SymbolicLinkAtResponse,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 use sysapi::fcntl::file_descriptor_flags::{
     FD_CLOEXEC,

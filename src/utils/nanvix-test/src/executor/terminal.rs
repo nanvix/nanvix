@@ -22,7 +22,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::log::{
+use ::log::{
     error,
     warn,
 };

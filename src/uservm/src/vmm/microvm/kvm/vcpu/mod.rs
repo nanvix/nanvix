@@ -60,14 +60,14 @@ use ::serde::{
     Serialize,
 };
 
-use ::std::{
-    mem,
-    slice,
-};
-use ::syslog::{
+use ::log::{
     error,
     trace,
     warn,
+};
+use ::std::{
+    mem,
+    slice,
 };
 use ::vmm_sys_util::fam::{
     FamStruct,

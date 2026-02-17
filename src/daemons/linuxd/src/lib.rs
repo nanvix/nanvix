@@ -36,6 +36,13 @@ use ::control_plane_api::{
     self,
     NanvixdControlMessage,
 };
+use ::log::{
+    debug,
+    error,
+    info,
+    trace,
+    warn,
+};
 use ::std::{
     collections::{
         HashMap,
@@ -68,13 +75,6 @@ use ::syscomm::{
     SocketType,
     UnboundSocket,
     WriteAll,
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
-    trace,
-    warn,
 };
 use ::tokio::{
     net::TcpListener,

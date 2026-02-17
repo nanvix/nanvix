@@ -16,17 +16,17 @@ use crate::client::HttpClient;
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
+use ::log::{
+    debug,
+    error,
+    info,
+};
 use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
     SandboxCacheStateSummary,
 };
 use ::std::sync::Arc;
-use ::syslog::{
-    debug,
-    error,
-    info,
-};
 use ::tokio::{
     net::{
         TcpListener,
