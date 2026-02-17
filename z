@@ -229,7 +229,8 @@ run_docker_build() {
 
     # Run the build with BuildKit using the external Dockerfile.
     # Forward GitHub Actions sccache cache backend variables when available.
-    # SCCACHE_GHA_ENABLED and SCCACHE_GHA_CACHE_TO are passed as build args.
+    # SCCACHE_GHA_ENABLED, SCCACHE_GHA_CACHE_TO, and SCCACHE_GHA_CACHE_FROM
+    # are passed as build args.
     # ACTIONS_RESULTS_URL and ACTIONS_RUNTIME_TOKEN are injected as Docker secrets
     # so that their per-run values do not bust the BuildKit layer cache.
     local gha_sccache_args=()
@@ -238,6 +239,9 @@ run_docker_build() {
     fi
     if [[ -n "${SCCACHE_GHA_CACHE_TO:-}" ]]; then
         gha_sccache_args+=(--build-arg "SCCACHE_GHA_CACHE_TO=${SCCACHE_GHA_CACHE_TO}")
+    fi
+    if [[ -n "${SCCACHE_GHA_CACHE_FROM:-}" ]]; then
+        gha_sccache_args+=(--build-arg "SCCACHE_GHA_CACHE_FROM=${SCCACHE_GHA_CACHE_FROM}")
     fi
     if [[ -n "${ACTIONS_RESULTS_URL:-}" ]]; then
         gha_sccache_args+=(--secret "id=actions_results_url,env=ACTIONS_RESULTS_URL")

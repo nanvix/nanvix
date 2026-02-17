@@ -13,6 +13,10 @@ inputs:
     description: "Enable TIMESTAMP_MSG for echo-breakdown benchmarks (yes/no)"
     required: false
     default: "no"
+  sccache-gha-enabled:
+    description: "Enable sccache GitHub Actions cache backend (true/false)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -22,6 +26,12 @@ runs:
     env:
       MACHINE_TYPE: ${{ inputs.machine-type }}
       TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
+      # sccache GitHub Actions cache backend variables. When sccache-gha-enabled
+      # is true, these are forwarded into the Docker build so that sccache inside
+      # the container uses the GHA cache as a remote storage backend.
+      SCCACHE_GHA_ENABLED: ${{ inputs.sccache-gha-enabled == 'true' && 'true' || '' }}
+      SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-bench-{0}-{1}', inputs.machine-type, inputs.timestamp-msg == 'yes' && 'echo-breakdown' || 'standard') || '' }}
+      SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-bench-{0}-{1}', inputs.machine-type, inputs.timestamp-msg == 'yes' && 'echo-breakdown' || 'standard') || '' }}
     run: |
       ./z build --with-minimal-docker -- all \
         "MACHINE=${MACHINE_TYPE}" \
