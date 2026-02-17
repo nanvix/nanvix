@@ -446,11 +446,29 @@ jobs:
         machine-type: 'microvm'
         iterations: '1000'
 
+    - name: "Build Hyperlight (Standard)"
+      uses: ./.github/actions/benchmark-build
+      with:
+        machine-type: 'hyperlight'
+
+    # NOTE: L2 benchmarks (cold-start-l2, concurrent-l2, warm-start-l2) are excluded
+    # until validated on CI runners. warm-start-vmm is excluded because the low-level
+    # VMM benchmark crashes (SIGKILL) on the Hyperlight VMM.
+    - name: "Run Hyperlight Micro-Benchmarks (Standard)"
+      uses: ./.github/actions/benchmark-run
+      with:
+        benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start'
+        machine-type: 'hyperlight'
+        iterations: '100'
+
+    # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight data
+    # path has fewer timestamp instrumentation points than expected (2 vs 10).
+
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
       with:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
-        machine-types: 'microvm'
+        machine-types: 'microvm,hyperlight'
         archs: 'X64'
         dev-dir: 'data'
         runner-label: 'self-hosted'
@@ -461,7 +479,7 @@ jobs:
       uses: ./.github/actions/benchmark-persist
       with:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
-        machine-types: 'microvm'
+        machine-types: 'microvm,hyperlight'
         archs: 'X64'
         target-dir: 'data'
 
@@ -554,11 +572,30 @@ jobs:
         machine-type: 'microvm'
         iterations: '1000'
 
+    - name: "Build Hyperlight (Standard)"
+      uses: ./.github/actions/docker-benchmark-build
+      with:
+        machine-type: 'hyperlight'
+        sccache-gha-enabled: 'true'
+
+    # NOTE: concurrent is excluded because spawning 100 Hyperlight VMs exceeds
+    # the ~7 GB RAM available on GitHub-hosted runners. warm-start-vmm is excluded
+    # because the low-level VMM benchmark crashes (SIGKILL) on the Hyperlight VMM.
+    - name: "Run Hyperlight Micro-Benchmarks (Standard)"
+      uses: ./.github/actions/docker-benchmark-run
+      with:
+        benchmarks: 'boot-time cold-start cold-start-uvm round-trip-latency warm-start'
+        machine-type: 'hyperlight'
+        iterations: '100'
+
+    # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight data
+    # path has fewer timestamp instrumentation points than expected (2 vs 10).
+
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
       with:
         benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
-        machine-types: 'microvm'
+        machine-types: 'microvm,hyperlight'
         archs: 'X64'
         dev-dir: 'data/ci'
         runner-label: 'github-hosted'
@@ -569,7 +606,7 @@ jobs:
       uses: ./.github/actions/benchmark-persist
       with:
         benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
-        machine-types: 'microvm'
+        machine-types: 'microvm,hyperlight'
         archs: 'X64'
         target-dir: 'data/ci'
 
