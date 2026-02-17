@@ -399,7 +399,7 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test
 endif
 
-ifneq ($(strip $(filter $(MACHINE),microvm)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 all-nanvix: all-nanvix-bench
 endif
 
