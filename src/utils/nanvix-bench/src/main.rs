@@ -17,7 +17,6 @@
 
 mod args;
 mod benchmark;
-mod env;
 
 //==================================================================================================
 // Imports
@@ -31,7 +30,6 @@ use crate::{
         LinuxdDeployment,
         UserVmDeployment,
     },
-    env::get_proj_root,
 };
 use ::anyhow::Result;
 use ::indicatif::{
@@ -184,7 +182,7 @@ impl Benchmark {
         let new_msg = message::New {
             tenant_id: tenant_id.unwrap_or(DEFAULT_TENANT_ID.to_string()),
             app_name: app_name.unwrap_or(DEFAULT_APP_NAME.to_string()),
-            program: self.flavour.get_program(),
+            program: self.flavour.get_program(&self.workspace_root),
             program_args: "".to_string(),
         };
 
@@ -194,7 +192,7 @@ impl Benchmark {
     /// Start nanvixd and, optionally, configure it to deploy linuxd inside an L2 VM.
     fn start_nanvixd(&self, linuxd_deployment: &LinuxdDeployment) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
-            format!("{}/bin/nanvixd.elf", get_proj_root()),
+            format!("{}/bin/nanvixd.elf", self.workspace_root.display()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
             ::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY.to_string(),
@@ -215,7 +213,7 @@ impl Benchmark {
             .args(&nanvixd_args[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .current_dir(get_proj_root())
+            .current_dir(&self.workspace_root)
             .spawn()?;
 
         Ok(nanvixd_cmd)
@@ -225,13 +223,13 @@ impl Benchmark {
     /// nanvixd.
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/bin/uservm.elf", get_proj_root()),
+            format!("{}/bin/uservm.elf", self.workspace_root.display()),
             uservm::args::Args::OPT_USER_VM_ID.to_string(),
             "1".to_string(),
             uservm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/bin/kernel.elf", get_proj_root()),
+            format!("{}/bin/kernel.elf", self.workspace_root.display()),
             uservm::args::Args::OPT_INITRD.to_string(),
-            self.flavour.get_program(),
+            self.flavour.get_program(&self.workspace_root),
         ];
         if let Some(gateway_addr) = gateway_addr {
             user_vm_args.push(uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
@@ -251,7 +249,7 @@ impl Benchmark {
             .args(&user_vm_args[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .current_dir(get_proj_root())
+            .current_dir(&self.workspace_root)
             .spawn()?;
 
         Ok(user_vm_cmd)
@@ -483,8 +481,9 @@ impl Benchmark {
             let (io_thread_data_tx, memory_thread_data_rx) =
                 mpsc::channel::<Message>(CHANNEL_CAPACITY);
 
-            let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
-            let initrd_filename: String = self.flavour.get_program();
+            let kernel_filename: String =
+                format!("{}/bin/kernel.elf", self.workspace_root.display());
+            let initrd_filename: String = self.flavour.get_program(&self.workspace_root);
 
             // Create shared counters for tracking message flow across threads.
             let counters: MessageCounters = MessageCounters::new();
@@ -927,8 +926,8 @@ impl Benchmark {
         let (io_control_tx, mut io_control_response_rx) =
             mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
-        let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
-        let program: String = self.flavour.get_program();
+        let kernel_filename: String = format!("{}/bin/kernel.elf", self.workspace_root.display());
+        let program: String = self.flavour.get_program(&self.workspace_root);
 
         // Create shared counters for tracking message flow across threads.
         let counters: MessageCounters = MessageCounters::new();
@@ -1237,6 +1236,7 @@ async fn main() -> Result<()> {
         hwloc_file: args.hwloc_file(),
         hwloc,
         flavour: args.benchmark(),
+        workspace_root: build_utils::find_workspace_root(),
         nanvixd: None,
         nanvixd_client: reqwest::Client::new(),
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
