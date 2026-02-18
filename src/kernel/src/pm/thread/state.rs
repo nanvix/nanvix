@@ -29,6 +29,7 @@ use ::alloc::{
 };
 use ::core::pin::Pin;
 use ::sys::{
+    error::Error,
     mm::VirtualAddress,
     pm::{
         MutexAddress,
@@ -229,6 +230,24 @@ impl ThreadState {
     ///
     pub(super) fn take_kernel_stack(&mut self) -> Option<KernelStack> {
         self.kernel_stack.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the guard watermark of the kernel stack for corruption.
+    ///
+    /// # Returns
+    ///
+    /// Upon success (watermark intact or no kernel stack), `Ok(())` is returned. Upon failure
+    /// (watermark corrupted), an error is returned.
+    ///
+    pub(super) fn check_guard_watermark(&self) -> Result<(), Error> {
+        if let Some(ref kstack) = self.kernel_stack {
+            kstack.check_guard_watermark()
+        } else {
+            Ok(())
+        }
     }
 
     ///
