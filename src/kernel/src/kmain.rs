@@ -329,6 +329,11 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             },
         };
 
+    // Check boot stack guard watermark for corruption.
+    if let Err(err) = mm::kstack::check_boot_stack_guard() {
+        panic!("boot stack overflow detected: {:?}", err);
+    }
+
     if let Err(err) = pm::init(&mut hal, root) {
         panic!("failed to initialize process manager: {:?}", err);
     }

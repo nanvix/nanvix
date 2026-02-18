@@ -23,6 +23,7 @@ use crate::{
 use ::alloc::boxed::Box;
 use ::core::fmt::Debug;
 use ::sys::{
+    error::Error,
     pm::{
         MutexAddress,
         ThreadIdentifier,
@@ -202,5 +203,20 @@ impl RunningThread {
     ///
     pub fn take_mutex_guard(&mut self, mutex_addr: MutexAddress) -> Option<MutexGuard> {
         self.state.take_mutex_guard(mutex_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the guard watermark of the kernel stack for corruption.
+    ///
+    /// # Returns
+    ///
+    /// Upon success (watermark intact or no kernel stack), `Ok(())` is returned. Upon failure
+    /// (watermark corrupted), an error is returned.
+    ///
+    #[inline]
+    pub fn check_guard_watermark(&self) -> Result<(), Error> {
+        self.state.check_guard_watermark()
     }
 }
