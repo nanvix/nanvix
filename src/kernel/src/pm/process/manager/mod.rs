@@ -106,7 +106,7 @@ pub enum SleepError {
 }
 
 //==================================================================================================
-// Process Manager Inner
+// Process Manager
 //==================================================================================================
 
 ///
@@ -114,7 +114,7 @@ pub enum SleepError {
 ///
 /// A type that represents the process manager.
 ///
-struct ProcessManagerInner {
+pub struct ProcessManager {
     /// Is this platform interrupt capable?
     interrupt_capable: bool,
     /// Reason for the last interrupt.
@@ -137,7 +137,7 @@ struct ProcessManagerInner {
     number_buffered_messages: usize,
 }
 
-impl ProcessManagerInner {
+impl ProcessManager {
     /// Initializes the process manager.
     pub fn new(
         interrupt_capable: bool,
@@ -262,7 +262,7 @@ impl ProcessManagerInner {
     ///   - `user_fn` must point to a user memory region that is executable.
     ///   - `user_stack` must point to a user memory region that is writable.
     ///
-    fn create_thread(
+    pub fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
@@ -389,7 +389,7 @@ impl ProcessManagerInner {
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
     ///
-    fn set_thread_data_area(
+    pub fn set_thread_data_area(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
@@ -441,7 +441,7 @@ impl ProcessManagerInner {
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
     ///
-    fn get_thread_data_area(
+    pub fn get_thread_data_area(
         &self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
@@ -485,7 +485,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, the process identifier of the new process is returned.
     /// Otherwise, an error is returned instead.
     ///
-    fn create_process(
+    pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
@@ -721,7 +721,7 @@ impl ProcessManagerInner {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
-    fn sleep(
+    fn do_sleep(
         &mut self,
         alarm: Option<SystemTime>,
     ) -> (
@@ -785,7 +785,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+    pub fn do_wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Check if thread belongs to the running process.
         if self.get_running().find_thread(tid).is_some() {
             let running_process: RunningProcess = self.take_running();
@@ -894,7 +894,7 @@ impl ProcessManagerInner {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
-    fn exit(
+    fn do_exit(
         &mut self,
         status: ExitStatus,
     ) -> (
@@ -976,7 +976,7 @@ impl ProcessManagerInner {
     ///
     /// - The calling process is not the kernel process.
     ///
-    fn exit_thread(
+    fn do_exit_thread(
         &mut self,
         status: ExitStatus,
     ) -> (
@@ -1196,7 +1196,7 @@ impl ProcessManagerInner {
         self.interrupt_reason.take()
     }
 
-    fn harvest_zombies(
+    fn pop_zombie_process(
         &mut self,
     ) -> Option<(VecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)> {
         if let Some(zombie) = self.zombies.pop_front() {
@@ -1261,7 +1261,7 @@ impl ProcessManagerInner {
     /// associated with the given address, a new mutex is created and returned. On failure, an error
     /// is returned instead.
     ///
-    fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
+    fn lookup_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         self.get_running_mut().state_mut().get_mutex(mutex_addr)
     }
 
@@ -1280,7 +1280,7 @@ impl ProcessManagerInner {
     /// no condition variable is associated with the given address, a new condition variable is
     /// created and returned. On failure, an error is returned instead.
     ///
-    fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
+    fn lookup_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         self.get_running_mut().state_mut().get_cond(cond_addr)
     }
 
@@ -1297,7 +1297,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
+    fn release_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
         self.get_running_mut().state_mut().put_cond(cond_addr)
     }
 
@@ -1311,7 +1311,7 @@ impl ProcessManagerInner {
     /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard to store.
     ///
-    fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
+    fn store_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
         self.get_running_mut()
             .running_mut()
             .put_mutex_guard(mutex_addr, guard);
@@ -1333,7 +1333,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
     /// instead.
     ///
-    fn take_mutex_guard(
+    fn remove_mutex_guard(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
@@ -1620,18 +1620,10 @@ impl ProcessManagerInner {
     /// The count of buffered messages.
     ///
     #[cfg(feature = "stdio")]
-    pub fn count_buffered_messages(&self) -> usize {
+    pub fn number_buffered_messages(&self) -> usize {
         self.number_buffered_messages
     }
-}
 
-//==================================================================================================
-// Process Manager
-//==================================================================================================
-
-pub struct ProcessManager(ProcessManagerInner);
-
-impl ProcessManager {
     ///
     /// # Description
     ///
@@ -1642,7 +1634,7 @@ impl ProcessManager {
     /// The ID of the calling process.
     ///
     pub fn get_pid(&self) -> ProcessIdentifier {
-        self.0.get_running().state().pid()
+        self.get_running().state().pid()
     }
 
     ///
@@ -1655,128 +1647,7 @@ impl ProcessManager {
     /// The ID of the calling thread.
     ///
     pub fn get_tid(&self) -> ThreadIdentifier {
-        self.0.get_running().get_tid()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a new process.
-    ///
-    /// # Parameters
-    ///
-    /// - `mm`: Memory manager to use.
-    /// - `elf`: ELF header of the executable to load.
-    /// - `args`: Command line arguments.
-    /// - `env`: Environment variables.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the process identifier of the new process is returned.
-    /// Otherwise, an error is returned instead.
-    ///
-    pub fn create_process(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
-        args: &str,
-        env: &str,
-    ) -> Result<ProcessIdentifier, Error> {
-        self.0.create_process(mm, elf, args, env)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a new thread in the running process.
-    ///
-    /// # Parameters
-    ///
-    /// - `mm`: Memory manager to use.
-    /// - `pid`: Process identifier.
-    /// - `thread_create_args`: Arguments for the thread creation.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the thread identifier of the new thread is returned.
-    /// Otherwise, an error is returned instead.
-    ///
-    /// # Safety Notes
-    ///
-    /// - `thread_create_args` must have valid fields, specifically:
-    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
-    ///   - `user_fn` must point to a user memory region that is executable.
-    ///   - `user_stack` must point to a user memory region that is writable.
-    ///
-    pub fn create_thread(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        thread_create_args: &ThreadCreateArgs,
-    ) -> Result<ThreadIdentifier, Error> {
-        // Assert pre-conditions (these should have been checked by the caller).
-        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
-
-        self.0.create_thread(mm, pid, thread_create_args)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Sets the base address for the user-space thread data area pointer for a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: Process identifier.
-    /// - `tid`: Thread identifier.
-    /// - `user_tda`: Optional base address for the user-space thread data area to set.
-    ///
-    /// # Return Value
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-    ///
-    /// # Errors
-    ///
-    /// This function fails with the following error codes:
-    ///
-    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    ///
-    pub fn set_thread_data_area(
-        &mut self,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-        user_tda: Option<VirtualAddress>,
-    ) -> Result<(), Error> {
-        self.0.set_thread_data_area(pid, tid, user_tda)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets the user-space thread data area of a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: The identifier of the process containing the thread.
-    /// - `tid`: The identifier of the thread whose thread data area pointer is to be retrieved.
-    ///
-    /// # Return Values
-    ///
-    /// Upon successful completion, this function returns the user-space thread data area of the
-    /// specified thread. Upon failure, this function returns an error.
-    ///
-    /// # Errors
-    ///
-    /// This function fails with the following error codes:
-    ///
-    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    ///
-    pub fn get_thread_data_area(
-        &self,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-    ) -> Result<Option<VirtualAddress>, Error> {
-        self.0.get_thread_data_area(pid, tid)
+        self.get_running().get_tid()
     }
 
     pub fn has_capability(
@@ -1784,20 +1655,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         capability: Capability,
     ) -> Result<bool, Error> {
-        Ok(self.0.find_process(pid)?.state().has_capability(capability))
-    }
-
-    pub fn capctl(
-        &mut self,
-        pid: ProcessIdentifier,
-        capability: Capability,
-        value: bool,
-    ) -> Result<(), Error> {
-        self.0.capctl(pid, capability, value)
-    }
-
-    pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
-        self.0.terminate(pid)
+        Ok(self.find_process(pid)?.state().has_capability(capability))
     }
 
     pub fn vmcopy_from_user(
@@ -1807,8 +1665,7 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.0
-            .find_process_mut(pid)?
+        self.find_process_mut(pid)?
             .state_mut()
             .copy_from_user_unaligned(dst, src, size)
     }
@@ -1820,8 +1677,7 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.0
-            .find_process_mut(pid)?
+        self.find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
     }
@@ -1834,7 +1690,7 @@ impl ProcessManager {
             VecDeque<ZombieThread>,
             Box<ProcessState>,
             ExitStatus,
-        ) = match self.0.harvest_zombies() {
+        ) = match self.pop_zombie_process() {
             Some((zombie_threads, state, status)) => (zombie_threads, state, status),
             None => return Ok(None),
         };
@@ -1880,7 +1736,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.alloc_upage(vmem, vaddr, access, true)
     }
@@ -1891,7 +1747,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.unmap_upage(vmem, vaddr)
     }
@@ -1903,7 +1759,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.ctrl_upage(vmem, vaddr, access)
     }
@@ -1913,7 +1769,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         region: IoMemoryRegion,
     ) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
         // TODO: change page permissions.
@@ -1940,7 +1796,7 @@ impl ProcessManager {
     /// Upon success, empty is returned. Upon failure, an error is returned instead.
     ///
     pub fn mmio_free(&mut self, pid: ProcessIdentifier, tag: MmioTag) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
         state.remove_mmio(tag);
 
@@ -1967,7 +1823,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         tag: MmioTag,
     ) -> Result<(PageAligned<VirtualAddress>, usize, AccessPermission), Error> {
-        let process: ProcessRef = self.0.find_process(pid)?;
+        let process: ProcessRef = self.find_process(pid)?;
         let state: &ProcessState = process.state();
 
         match state.mmio_info(tag) {
@@ -1981,7 +1837,7 @@ impl ProcessManager {
     }
 
     pub fn attach_pmio(&mut self, pid: ProcessIdentifier, port: AnyIoPort) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process.state_mut().add_pmio(port);
         Ok(())
     }
@@ -1991,7 +1847,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         port_number: u16,
     ) -> Result<AnyIoPort, Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process.state_mut().remove_pmio(port_number)
     }
 
@@ -2001,7 +1857,7 @@ impl ProcessManager {
         port_number: u16,
         port_width: IoPortWidth,
     ) -> Result<u32, Error> {
-        let process: ProcessRef = self.0.find_process(pid)?;
+        let process: ProcessRef = self.find_process(pid)?;
         process.state().read_pmio(port_number, port_width)
     }
 
@@ -2012,7 +1868,7 @@ impl ProcessManager {
         port_width: IoPortWidth,
         value: u32,
     ) -> Result<(), Error> {
-        let mut process: ProcessRefMut = self.0.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process
             .state_mut()
             .write_pmio(port_number, port_width, value)
@@ -2039,42 +1895,24 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         {
             let mut process: ProcessRefMut = match receiver.as_id() {
-                Ok(pid) => self.0.find_process_mut(pid)?,
-                Err(tid) => self.0.find_process_by_tid(tid)?,
+                Ok(pid) => self.find_process_mut(pid)?,
+                Err(tid) => self.find_process_by_tid(tid)?,
             };
             process.state_mut().post_message(message);
         }
-        self.0.note_message_posted()?;
+        self.note_message_posted()?;
         Ok(())
     }
 
     pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
-        self.0.get_running_mut().state_mut().add_event(ownership);
+        self.get_running_mut().state_mut().add_event(ownership);
 
         Ok(())
     }
 
     pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
-        self.0.get_running_mut().state_mut().remove_event(ev);
+        self.get_running_mut().state_mut().remove_event(ev);
 
         Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the number of buffered messages.
-    ///
-    /// # Returns
-    ///
-    /// The number of buffered messages.
-    ///
-    #[cfg(feature = "stdio")]
-    pub fn number_buffered_messages(&self) -> usize {
-        self.0.count_buffered_messages()
-    }
-
-    pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
-        self.0.handle_fpu_exception()
     }
 }
