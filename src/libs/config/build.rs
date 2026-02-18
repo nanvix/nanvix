@@ -113,6 +113,10 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kstack_size"), "kstack_size");
     constants.push_str(&format!("pub const KSTACK_SIZE: usize = {val};\n"));
 
+    // Stack guard watermark pattern.
+    // NOTE: This value must match KSTACK_GUARD_PATTERN in src/kernel/src/hal/arch/x86/start.S.
+    constants.push_str("pub const KSTACK_GUARD_PATTERN: u32 = 0xDEAD1234;\n");
+
     let val: u32 =
         parse_hex_or_decimal_u32(required_key(&kernel_config_toml, "timer_freq"), "timer_freq");
     constants.push_str(&format!("pub const TIMER_FREQ: u32 = {val};\n"));

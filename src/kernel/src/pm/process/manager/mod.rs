@@ -642,6 +642,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
 
@@ -728,6 +731,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -898,6 +904,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
         trace!(
             "pid={:?}, tid={:?}, status={status:?}",
@@ -978,6 +987,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
 
         trace!(
@@ -1365,6 +1377,28 @@ impl ProcessManagerInner {
 
         // Remove the selected process from the list of ready processes.
         self.ready.remove(selected.0)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the running thread's kernel stack guard watermark for corruption.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the watermark has been corrupted, indicating a stack overflow.
+    ///
+    fn check_running_stack_guard(&self) {
+        if let Some(ref running) = self.running {
+            if let Err(e) = running.check_guard_watermark() {
+                panic!(
+                    "stack overflow detected for thread {:?} in process {:?}: {:?}",
+                    running.get_tid(),
+                    running.state().pid(),
+                    e
+                );
+            }
+        }
     }
 
     fn take_running(&mut self) -> RunningProcess {

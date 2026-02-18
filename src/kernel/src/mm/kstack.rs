@@ -15,6 +15,8 @@ use crate::{
 use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::fmt;
+#[cfg(debug_assertions)]
+use ::sys::error::ErrorCode;
 use ::sys::{
     error::Error,
     mm::{
@@ -22,6 +24,15 @@ use ::sys::{
         VirtualAddress,
     },
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Watermark pattern used to detect kernel stack overflows.
+/// This value must match `KSTACK_GUARD_PATTERN` in `start.S`.
+#[cfg(debug_assertions)]
+const KSTACK_GUARD_PATTERN: u32 = config::kernel::KSTACK_GUARD_PATTERN;
 
 //==================================================================================================
 // Structures
@@ -44,7 +55,11 @@ impl KernelStack {
     ///
     /// # Description
     ///
-    /// Instantiates a new kernel stack.
+    /// Instantiates a new kernel stack with a guard page watermark at the bottom.
+    ///
+    /// The bottom page of the kernel stack is filled with a known watermark pattern. If a stack
+    /// overflow occurs, the watermark will be corrupted, allowing runtime detection via
+    /// [`KernelStack::check_guard_watermark`].
     ///
     /// # Parameters
     ///
@@ -58,7 +73,13 @@ impl KernelStack {
         let kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
 
-        Ok(Self { kpages })
+        let stack: Self = Self { kpages };
+
+        // Fill the bottom page of the stack with the watermark pattern.
+        #[cfg(debug_assertions)]
+        stack.fill_guard_watermark();
+
+        Ok(stack)
     }
 
     ///
@@ -112,6 +133,113 @@ impl KernelStack {
         debug_assert!(::sys::mm::is_aligned(base, PAGE_ALIGNMENT));
         debug_assert!(::sys::mm::is_aligned(size, PAGE_ALIGNMENT));
         PageAligned::from_raw_value(base + size).unwrap()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Fills the bottom page of the kernel stack with the watermark pattern.
+    ///
+    #[cfg(debug_assertions)]
+    fn fill_guard_watermark(&self) {
+        let guard_base: usize = self.kpages[0].base().into_raw_value();
+        let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
+        let guard_ptr: *mut u32 = guard_base as *mut u32;
+        for i in 0..word_count {
+            // SAFETY: The guard page is within allocated kernel memory and no other references
+            // to this memory exist at this point, so writing through a raw pointer derived from
+            // the page base address is sound.
+            unsafe {
+                guard_ptr.add(i).write_volatile(KSTACK_GUARD_PATTERN);
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the guard watermark at the bottom page of the kernel stack for corruption.
+    ///
+    /// # Returns
+    ///
+    /// Upon success (watermark intact), `Ok(())` is returned. Upon failure (watermark corrupted),
+    /// an error is returned.
+    ///
+    pub fn check_guard_watermark(&self) -> Result<(), Error> {
+        cfg_if::cfg_if! {
+            if #[cfg(debug_assertions)] {
+                check_guard_page(self.kpages[0].base().into_raw_value())
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Checks a guard page at the given base address for watermark pattern corruption.
+///
+/// # Parameters
+///
+/// - `guard_base`: The base address of the guard page to check.
+///
+/// # Returns
+///
+/// Upon success (watermark intact), `Ok(())` is returned. Upon failure (watermark corrupted),
+/// an error is returned.
+///
+#[cfg(debug_assertions)]
+fn check_guard_page(guard_base: usize) -> Result<(), Error> {
+    let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
+    let guard_ptr: *const u32 = guard_base as *const u32;
+    for i in 0..word_count {
+        // SAFETY: The caller guarantees that the guard page at `guard_base` is within valid
+        // kernel memory (either allocated kernel pages or the BSS section).
+        let val: u32 = unsafe { guard_ptr.add(i).read_volatile() };
+        if val != KSTACK_GUARD_PATTERN {
+            let reason: &str = "kernel stack guard watermark corrupted (possible stack overflow)";
+            error!("{}", reason);
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+    }
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Checks the boot stack guard watermark for corruption. The boot stack guard page is filled with a
+/// known pattern during early boot (see `start.S`). If a stack overflow has occurred, some or all
+/// of the guard page words will have been overwritten.
+///
+/// # Returns
+///
+/// Upon success (watermark intact), `Ok(())` is returned. Upon failure (watermark corrupted),
+/// an error is returned.
+///
+/// # Notes
+///
+/// This check runs after `mm::init()` completes. If the stack overflowed during `hal::init()` or
+/// `mm::init()`, the corruption may have been overwritten by later stack frames shrinking. The
+/// check is best-effort and may not detect all early-boot overflows.
+///
+pub fn check_boot_stack_guard() -> Result<(), Error> {
+    cfg_if::cfg_if! {
+        if #[cfg(debug_assertions)] {
+            unsafe extern "C" {
+                static kstack_guard: u8;
+            }
+            let guard_base: usize = unsafe { &kstack_guard as *const u8 as usize };
+            check_guard_page(guard_base)
+        } else {
+            Ok(())
+        }
     }
 }
 
