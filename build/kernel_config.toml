@@ -13,6 +13,7 @@ kpool_size = 4194304
 # Kernel stack size (in bytes)
 # Notes:
 # - This size should be a multiple of a page size.
+# - This size must be at least two pages (one guard page + one usable page).
 # - This size cannot exceed the size of a page table.
 kstack_size = 65536
 

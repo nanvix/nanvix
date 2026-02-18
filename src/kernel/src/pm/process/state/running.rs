@@ -316,6 +316,21 @@ impl RunningProcess {
         self.running.id()
     }
 
+    ///
+    /// # Description
+    ///
+    /// Checks the guard watermark of the running thread's kernel stack for corruption.
+    ///
+    /// # Returns
+    ///
+    /// Upon success (watermark intact or no kernel stack), `Ok(())` is returned. Upon failure
+    /// (watermark corrupted), an error is returned.
+    ///
+    #[inline]
+    pub fn check_guard_watermark(&self) -> Result<(), Error> {
+        self.running.check_guard_watermark()
+    }
+
     pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunningProcess, RunningProcess> {
         if let Some(sleeping_threads) = self.sleeping_threads.take() {
             match sleeping_threads.remove_if(|thread| thread.id() == tid) {
