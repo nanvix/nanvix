@@ -321,13 +321,12 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         };
 
     // Initialize the memory manager.
-    let (root, mut mm): (Vmem, VirtMemoryManager) =
-        match mm::init(&kimage, memory_regions, mmio_regions) {
-            Ok((root, mm)) => (root, mm),
-            Err(err) => {
-                panic!("failed to initialize memory manager: {:?}", err);
-            },
-        };
+    let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions) {
+        Ok(root) => root,
+        Err(err) => {
+            panic!("failed to initialize memory manager: {:?}", err);
+        },
+    };
 
     // Check boot stack guard watermark for corruption.
     if let Err(err) = mm::kstack::check_boot_stack_guard() {
@@ -374,15 +373,17 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
                 info!("starting application core {}...", coreid);
 
                 // Allocate a kernel stack for the application core.
-                let kstack: KernelStack = match KernelStack::new(&mut mm) {
-                    Ok(kstack) => kstack,
-                    Err(err) => {
-                        panic!(
-                            "failed to allocate kernel stack for application core (error={:?})",
-                            err
-                        );
-                    },
-                };
+                // SAFETY: the memory manager is initialized and access is synchronized.
+                let kstack: KernelStack =
+                    match KernelStack::new(unsafe { VirtMemoryManager::get_mut() }) {
+                        Ok(kstack) => kstack,
+                        Err(err) => {
+                            panic!(
+                                "failed to allocate kernel stack for application core (error={:?})",
+                                err
+                            );
+                        },
+                    };
 
                 // Obtain a cached version of the number of cores online.
                 let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
@@ -418,21 +419,23 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
 
-    let status: ExitStatus = if spawn_servers(&mut mm, &kernel_modules) > 0 {
-        // Initialize kernel call dispatcher.
-        kcall::init();
+    // SAFETY: the memory manager is initialized and access is synchronized.
+    let status: ExitStatus =
+        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
+            // Initialize kernel call dispatcher.
+            kcall::init();
 
-        // Enable timer interrupts, if they are supported.
-        if let Some(intman) = &mut hal.intman {
-            if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
-                panic!("failed to mask timer interrupt: {:?}", e);
+            // Enable timer interrupts, if they are supported.
+            if let Some(intman) = &mut hal.intman {
+                if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
+                    panic!("failed to mask timer interrupt: {:?}", e);
+                }
             }
-        }
 
-        kcall::handler(&mut hal, &mut mm)
-    } else {
-        ExitStatus::ok()
-    };
+            kcall::handler(&mut hal)
+        } else {
+            ExitStatus::ok()
+        };
 
     #[cfg(feature = "smp")]
     startup::wait().expect("failed to synchronize application cores");

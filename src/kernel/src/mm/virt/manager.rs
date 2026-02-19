@@ -41,9 +41,11 @@ use ::alloc::{
 use ::arch::mem;
 use ::core::{
     cell::RefCell,
-    hint::{
-        cold_path,
-        unlikely,
+    hint::unlikely,
+    mem::MaybeUninit,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
     },
 };
 use ::sys::error::{
@@ -52,11 +54,23 @@ use ::sys::error::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+// Use relaxed ordering for all atomic operations to mitigate synchronization overhead. It is safe
+// to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
+// interrupts disabled.
+const ORDER: Ordering = Ordering::Relaxed;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
-/// Memory manager.
-static mut MEMORY_MANAGER: Option<VirtMemoryManager> = None;
+/// Memory manager storage.
+static mut MEMORY_MANAGER: MaybeUninit<VirtMemoryManager> = MaybeUninit::uninit();
+
+/// Whether the memory manager has been initialized.
+static MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 
 //==================================================================================================
 // Structures
@@ -67,7 +81,6 @@ static mut MEMORY_MANAGER: Option<VirtMemoryManager> = None;
 ///
 /// Memory manager.
 ///
-#[derive(Clone)]
 pub struct VirtMemoryManager {
     /// Physical memory manager.
     physman: Rc<RefCell<PhysMemoryManager>>,
@@ -88,9 +101,9 @@ impl VirtMemoryManager {
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
         physman: PhysMemoryManager,
-    ) -> Result<(Vmem, VirtMemoryManager), Error> {
+    ) -> Result<Vmem, Error> {
         // Check if the memory manager is already initialized.
-        if unlikely(unsafe { MEMORY_MANAGER.is_some() }) {
+        if unlikely(MEMORY_MANAGER_INIT.load(ORDER)) {
             panic!("memory manager was already initialized");
         }
 
@@ -98,10 +111,10 @@ impl VirtMemoryManager {
             VirtMemoryManager::new(kernel_pages, kernel_page_tables, physman)?;
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
-        unsafe {
-            MEMORY_MANAGER = Some(manager.clone());
-        }
-        Ok((root, manager))
+        unsafe { MEMORY_MANAGER.write(manager) };
+        MEMORY_MANAGER_INIT.store(true, ORDER);
+
+        Ok(root)
     }
 
     ///
@@ -119,14 +132,14 @@ impl VirtMemoryManager {
     ///
     /// - Access to the memory manager is synchronized.
     ///
-    #[allow(dead_code)] // TODO: remove this ling allowance when the function is used.
+    #[allow(dead_code)] // TODO: remove this lint allowance when the function is used.
     pub unsafe fn get<'a>() -> &'a VirtMemoryManager {
-        if let Some(ref mm) = MEMORY_MANAGER {
-            mm
-        } else {
-            cold_path();
-            panic!("the memory manager is not initialized");
+        if unlikely(!MEMORY_MANAGER_INIT.load(ORDER)) {
+            panic!("memory manager is not initialized");
         }
+
+        // SAFETY: The memory manager has been initialized, so the value is valid.
+        MEMORY_MANAGER.assume_init_ref()
     }
 
     ///
@@ -145,12 +158,12 @@ impl VirtMemoryManager {
     /// - Access to the memory manager is synchronized.
     ///
     pub unsafe fn get_mut<'a>() -> &'a mut VirtMemoryManager {
-        if let Some(ref mut mm) = MEMORY_MANAGER {
-            mm
-        } else {
-            cold_path();
-            panic!("the memory manager is not initialized");
+        if unlikely(!MEMORY_MANAGER_INIT.load(ORDER)) {
+            panic!("memory manager is not initialized");
         }
+
+        // SAFETY: The memory manager has been initialized, so the value is valid.
+        MEMORY_MANAGER.assume_init_mut()
     }
 
     ///
