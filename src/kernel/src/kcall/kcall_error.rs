@@ -25,7 +25,9 @@ pub struct KcallError(i32);
 
 impl From<ErrorCode> for KcallError {
     fn from(code: ErrorCode) -> Self {
-        KcallError(code.get())
+        // Negate the error code following the Linux convention: kernel calls return negative errno
+        // values on failure so that they can be distinguished from non-negative success values.
+        KcallError(-code.get())
     }
 }
 
