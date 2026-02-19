@@ -7,10 +7,7 @@
 
 use crate::{
     hal::io::MmioTag,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -70,19 +67,23 @@ fn do_mmio_free(
 ///
 /// # Parameters
 ///
-/// - `pm`: Reference to the process manager.
-/// - `args`: Kernel call arguments containing the encoded tag.
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Low 32 bits of the encoded MMIO tag.
+/// - `arg1`: High 32 bits of the encoded MMIO tag.
 ///
 /// # Returns
 ///
 /// A [`KcallResult`] indicating success or the error code.
 ///
-pub fn mmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+pub fn mmio_free(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Parse arguments.
-    let tag_value: u64 = ((args.arg1 as u64) << 32) | args.arg0 as u64;
+    let tag_value: u64 = ((arg1 as u64) << 32) | arg0 as u64;
     let tag: MmioTag = MmioTag::from_u64(tag_value);
 
-    match do_mmio_free(pm, args.pid, tag) {
+    match do_mmio_free(pm, pid, tag) {
         Ok(_) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
     }

@@ -7,10 +7,7 @@
 
 use crate::{
     hal::io::IoPortWidth,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -46,11 +43,28 @@ fn do_pmio_read(
     pm.read_pmio(pid, port_number, port_width)
 }
 
-pub fn pmio_read(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for reading from a port-mapped I/O port.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Port number to read from (lower 16 bits used).
+/// - `arg1`: Encoded port width.
+///
+/// # Returns
+///
+/// A [`KcallResult`] containing the read value on success or the error code.
+///
+pub fn pmio_read(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let port_number: u16 = args.arg0 as u16;
-    let port_width: IoPortWidth = match IoPortWidth::try_from(args.arg1) {
+    let port_number: u16 = arg0 as u16;
+    let port_width: IoPortWidth = match IoPortWidth::try_from(arg1) {
         Ok(port_width) => port_width,
         Err(e) => return KcallResult::Error(e.code.into()),
     };

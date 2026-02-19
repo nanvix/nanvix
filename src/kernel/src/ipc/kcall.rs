@@ -7,10 +7,7 @@
 
 use crate::{
     event::EventManager,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::{
         self,
         ProcessManager,
@@ -43,13 +40,31 @@ fn do_send(pm: &mut ProcessManager, message: Message) -> Result<(), Error> {
     EventManager::post_message(pm, message.destination, message)
 }
 
-pub fn send(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    let src_pid: ProcessIdentifier = args.pid;
-    let src_tid: ThreadIdentifier = args.tid;
+///
+/// # Description
+///
+/// Kernel call handler for sending an inter-process message.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `tid`: Identifier of the calling thread.
+/// - `arg0`: User-space pointer to the [`Message`] to send.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn send(pid: ProcessIdentifier, tid: ThreadIdentifier, arg0: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
+    let src_pid: ProcessIdentifier = pid;
+    let src_tid: ThreadIdentifier = tid;
 
     // Copy message to kernel space.
     let mut message: Message = Message::default();
-    if let Err(e) = pm::copy_from_user(pm, src_pid, &mut message, args.arg0 as *const Message) {
+    if let Err(e) = pm::copy_from_user(pm, src_pid, &mut message, arg0 as *const Message) {
         return KcallResult::Error(e.code.into());
     }
 
