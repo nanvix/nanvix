@@ -86,13 +86,16 @@ pub fn copy_to_user<T>(
 }
 
 /// Initializes the processor manager.
-pub fn init(hal: &mut Hal, root: Vmem) -> Result<(), Error> {
+pub fn init(root: Vmem) -> Result<(), Error> {
     info!("initializing the processor manager...");
 
-    let interrupt_capable: bool = hal.intman.is_some();
+    // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+    let hal: &mut Hal = unsafe { Hal::get_mut() };
+
+    let interrupt_capable: bool = hal.is_interrupt_capable();
 
     // Register timer handler, if interrupts are supported.
-    if let Some(intman) = &mut hal.intman {
+    if let Some(intman) = hal.intman() {
         info!("registering timer interrupt handler...");
         intman.register_handler(InterruptNumber::Timer, timer_handler)?;
     }

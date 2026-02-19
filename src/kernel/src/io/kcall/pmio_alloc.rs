@@ -51,12 +51,12 @@ fn do_pmio_alloc(
     }
 
     let port: AnyIoPort = match port_type {
-        IoPortType::ReadOnly => AnyIoPort::ReadOnly(hal.ioports.allocate_read_only(port_number)?),
+        IoPortType::ReadOnly => AnyIoPort::ReadOnly(hal.ioports().allocate_read_only(port_number)?),
         IoPortType::WriteOnly => {
-            AnyIoPort::WriteOnly(hal.ioports.allocate_write_only(port_number)?)
+            AnyIoPort::WriteOnly(hal.ioports().allocate_write_only(port_number)?)
         },
         IoPortType::ReadWrite => {
-            AnyIoPort::ReadWrite(hal.ioports.allocate_read_write(port_number)?)
+            AnyIoPort::ReadWrite(hal.ioports().allocate_read_write(port_number)?)
         },
     };
 
