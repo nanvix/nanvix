@@ -41,6 +41,10 @@ use crate::{
             condvar::Condvar,
             mutex::Mutex,
         },
+        thread::{
+            ThreadRef,
+            ThreadRefMut,
+        },
     },
 };
 use ::alloc::collections::{
@@ -100,6 +104,29 @@ impl ProcessRefMut<'_> {
             ProcessRefMut::Zombie(process) => process.state_mut(),
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a mutable reference to a thread by identifier, searching across all process states.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If found, returns `Some` with a mutable thread reference. Otherwise, returns `None`.
+    ///
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
+        match self {
+            ProcessRefMut::Runnable(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Running(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Sleeping(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Interrupted(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Zombie(process) => process.find_thread_mut(tid),
+        }
+    }
 }
 
 pub enum ProcessRef<'a> {
@@ -118,6 +145,29 @@ impl ProcessRef<'_> {
             ProcessRef::Sleeping(process) => process.state(),
             ProcessRef::Interrupted(process) => process.state(),
             ProcessRef::Zombie(process) => process.state(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds an immutable reference to a thread by identifier, searching across all process states.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If found, returns `Some` with a thread reference. Otherwise, returns `None`.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
+        match self {
+            ProcessRef::Runnable(process) => process.find_thread(tid),
+            ProcessRef::Running(process) => process.find_thread(tid),
+            ProcessRef::Sleeping(process) => process.find_thread(tid),
+            ProcessRef::Interrupted(process) => process.find_thread(tid),
+            ProcessRef::Zombie(process) => process.find_thread(tid),
         }
     }
 }
