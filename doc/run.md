@@ -1,44 +1,94 @@
 # Running Nanvix
 
-> ℹ️ The instructions in this document assume that you already know how to build Nanvix. For more information on how to build Nanvix, please refer to the [build.md](build.md) document.
+> **Prerequisite:** You must build Nanvix before running it. See [build.md](build.md) for
+> instructions.
 
-This document provides instructions on how to run Nanvix.
+## Overview
+
+Nanvix instances are launched and managed through `nanvixd`, which operates in one
+of two mutually exclusive modes:
+
+- **Interactive Mode**: runs a single application, waits for it to exit, and forwards its exit code.
+- **HTTP Mode**: starts a REST server that spawns and kills applications on demand.
+
+## Quick Start
+
+Run a hello-world application and see its output on the terminal:
+
+```bash
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
+```
+
+> **Tip:** Run `./bin/nanvixd.elf -help` for the full list of command-line options.
 
 ## Table of Contents
 
-- [Running Nanvix with `nanvixd` (Preferred Method)](#running-nanvix-with-nanvixd-preferred-method)
-  - [Step 1: Run `nanvixd`](#step-1-run-nanvixd)
-  - [Step 2: Run an Application](#step-2-run-an-application)
-  - [HTTP Error Responses](#http-error-responses)
-- [Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)](#running-nanvix-components-manually-hyperlight-and-uservm-machines-only)
-  - [Step 1: Run the Linux Daemon](#step-1-run-the-linux-daemon)
-  - [Step 2: Run the UserVM](#step-2-run-the-uservm)
-  - [Redirecting Standard Error (Optional)](#redirecting-standard-error-optional)
-- [Running Nanvix Through the Build System](#running-nanvix-through-the-build-system)
+- [Interactive Mode](#interactive-mode)
+- [HTTP Mode](#http-mode)
+  - [Starting the Server](#starting-the-server)
+  - [Spawning an Application (NEW)](#spawning-an-application-new)
+  - [Communicating with an Application](#communicating-with-an-application)
+  - [Killing an Application (KILL)](#killing-an-application-kill)
+  - [Shutting Down the Server](#shutting-down-the-server)
+  - [HTTP API Reference](#http-api-reference)
+  - [HTTP Error Codes](#http-error-codes)
+- [Logging](#logging)
 
-## Running Nanvix with `nanvixd` (Preferred Method)
+## Interactive Mode
 
-Nanvixd is a utility script that manages the deployment of User VMs in Nanvix, and their corresponding linuxd instances.
+Interactive mode runs a single application, waits for it to exit, and forwards its exit code.
 
-Nanvixd exposes a unified RESTful API to interact with your deployment. To follow this guide we assume you have `jq` and `curl` installed.
+```bash
+./bin/nanvixd.elf -- ./bin/hello-rust-nostd.elf
+```
 
-### Step 1: Run `nanvixd`
+By default, console output goes to a log file under `logs/`. Use `-console-file /dev/stdout` to
+print it to the terminal instead:
 
-Open a terminal and run `nanvixd`:
+```bash
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
+```
+
+Everything after `--` is forwarded to the application as arguments:
+
+```bash
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf arg1 arg2
+```
+
+Arguments and environment variables are packed into a single string separated by `;`. Everything
+before the semicolon becomes command-line arguments; everything after it becomes environment
+variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`). Use an empty
+string when neither is needed. To pass only environment variables, start the string with `;`:
+
+```bash
+# Arguments and environment variables.
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf "arg1 arg2;VAR1=foo VAR2=bar"
+
+# Environment variables only.
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf ";VAR1=foo"
+```
+
+## HTTP Mode
+
+HTTP mode starts `nanvixd` as a long-running server that exposes a RESTful API for spawning and
+killing applications.
+
+> **Required tools:** `curl` and `jq` (for the examples below).
+
+### Starting the Server
 
 ```bash
 NANVIX_HTTP_ADDR=127.0.0.1:8080
 ./bin/nanvixd.elf -http-addr $NANVIX_HTTP_ADDR
 ```
 
-To enable logging, make sure to prepend the previous command with `RUST_LOG=debug` (or even `RUST_LOG=trace`).
+### Spawning an Application (NEW)
 
-### Step 2: Run an Application
-
-On a new terminal window, you can now spawn and kill applications by sending `POST` requests to nanvixd's HTTP address.
+In a **second terminal**, send a `POST` request with `X-NVX-Message-Type: NEW`:
 
 ```bash
 NANVIX_HTTP_ADDR=127.0.0.1:8080
+
 NEW_JSON=$(jq -n \
     --arg tenant_id "foo" \
     --arg app_name "bar" \
@@ -46,6 +96,7 @@ NEW_JSON=$(jq -n \
     --arg program_args "" \
     '{tenant_id: $tenant_id, app_name: $app_name, program: $program, program_args: $program_args}'
 )
+
 NEW_RESPONSE=$(curl \
     --silent \
     --header "Content-Type: application/json" \
@@ -53,27 +104,30 @@ NEW_RESPONSE=$(curl \
     --request POST \
     --data "${NEW_JSON}" \
     http://${NANVIX_HTTP_ADDR})
-VM_ID=$(echo ${NEW_RESPONSE} | jq -r '.user_vm_id')
+
+APP_ID=$(echo ${NEW_RESPONSE} | jq -r '.user_vm_id')
 GATEWAY_SOCKADDR=$(echo ${NEW_RESPONSE} | jq -r '.gateway_sockaddr')
 ```
 
-Once the user VM is running, you can feed input to its STDIN (and read from its STDOUT) by opening a netcat session to the address returned by `curl`:
+### Communicating with an Application
+
+Use the gateway socket to interact with the application's stdin/stdout via `netcat`:
 
 ```bash
-# Interactive session.
 nc -U ${GATEWAY_SOCKADDR}
 ```
 
 ```bash
-# One-off input.
 echo "Hello World!" | nc -U -q 0 ${GATEWAY_SOCKADDR}
 ```
 
-Once you are done, you can kill the user VM by sending a `KILL` POST request:
+### Killing an Application (KILL)
+
+Send a `POST` request with `X-NVX-Message-Type: KILL` to terminate an application:
 
 ```bash
 KILL_JSON=$(jq -n \
-    --argjson user_vm_id "${VM_ID}" \
+    --argjson user_vm_id "${APP_ID}" \
     '{user_vm_id: $user_vm_id}'
 )
 curl \
@@ -85,94 +139,85 @@ curl \
     http://${NANVIX_HTTP_ADDR}
 ```
 
-To gracefully shutdown nanvixd, you can just press `Ctrl-C` in its terminal.
+### Shutting Down the Server
 
-### HTTP Error Responses
+Press `Ctrl-C` in the terminal where `nanvixd` is running.
 
-`nanvixd` returns structured errors using the `ErrorResponse` schema.  Every failure path assigns a
-short `code` plus a human-readable `message`, which allows callers to branch on stable identifiers
-instead of scraping log text. The handler currently emits the following values:
+### HTTP API Reference
 
-| code                   | HTTP status               | When it is emitted                                                           |
-| ---------------------- | ------------------------- | ---------------------------------------------------------------------------- |
-| `MISSING_MESSAGE_TYPE` | 400 Bad Request           | The `X-NVX-Message-Type` header is absent or invalid.                        |
-| `BODY_READ_FAILED`     | 500 Internal Server Error | Hyper could not stream the request body.                                     |
-| `INVALID_NEW_PAYLOAD`  | 400 Bad Request           | The body is not valid JSON for a `NEW` request.                              |
-| `NEW_REQUEST_FAILED`   | 500 Internal Server Error | Sandbox creation or cache insertion failed after successful deserialization. |
-| `INVALID_KILL_PAYLOAD` | 400 Bad Request           | The body is not valid JSON for a `KILL` request.                             |
-| `KILL_REQUEST_FAILED`  | 500 Internal Server Error | Terminating the requested sandbox failed after validation.                   |
+All requests are `POST` to `http://<host:port>/`. The message type is specified via the
+`X-NVX-Message-Type` header.
 
-Client tooling (for example, `nanvix-test` and custom REST clients) should prefer inspecting `code`
-and then relaying the accompanying `message` for operator visibility.
+#### NEW — Spawn an Application
 
-## Running Nanvix Components Manually (Hyperlight and UserVM Machines Only)
+**Request header:** `X-NVX-Message-Type: NEW`
 
-This instructions show you how to run each Nanvix component individually. They require faking some control-plane components that would otherwise be provided by nanvixd.
+**Request body:**
 
-### Step 1: Run the Linux Daemon
+| Field          | Type   | Required | Description                              |
+| -------------- | ------ | -------- | ---------------------------------------- |
+| `tenant_id`    | string | yes      | Tenant identifier for resource isolation.|
+| `app_name`     | string | yes      | Application name for identification.     |
+| `program`      | string | yes      | Path to the program binary to execute.   |
+| `program_args` | string | yes      | Arguments and environment variables.     |
 
-First, open a terminal and start a netcat server to act as control-plane placeholder:
+Arguments and environment variables are packed into a single string separated by `;`. Everything
+before the semicolon becomes command-line arguments; everything after it becomes environment
+variables as space-separated `KEY=VALUE` pairs (e.g., `"arg1 arg2;VAR1=foo VAR2=bar"`). Use an empty
+string when neither is needed. To pass only environment variables, start the string with `;`.
 
-```bash
-nc -lU /tmp/control-plane.socket
+**Success response (200):**
+
+| Field              | Type    | Description                                |
+| ------------------ | ------- | ------------------------------------------ |
+| `user_vm_id`       | integer | Unique identifier for the application.     |
+| `gateway_sockaddr` | string  | Socket address for the application's I/O.  |
+
+#### KILL — Terminate an Application
+
+**Request header:** `X-NVX-Message-Type: KILL`
+
+**Request body:**
+
+| Field        | Type    | Required | Description                          |
+| ------------ | ------- | -------- | ------------------------------------ |
+| `user_vm_id` | integer | yes      | Identifier of the application.       |
+
+**Success response (200):**
+
+| Field       | Type    | Description                                   |
+| ----------- | ------- | --------------------------------------------- |
+| `exit_code` | integer | `0` for success, non-zero for failure.        |
+
+### HTTP Error Codes
+
+All error responses use the `ErrorResponse` schema with a machine-readable `code` and a
+human-readable `message`. Callers should branch on `code` and relay `message` for diagnostics.
+
+| Code                   | HTTP Status | Cause                                 |
+| ---------------------- | ----------- | ------------------------------------- |
+| `MISSING_MESSAGE_TYPE` | 400         | Missing or invalid message type.      |
+| `BODY_READ_FAILED`     | 500         | Could not read the request body.      |
+| `INVALID_NEW_PAYLOAD`  | 400         | Invalid JSON for a `NEW` request.     |
+| `NEW_REQUEST_FAILED`   | 500         | Application creation failed.          |
+| `INVALID_KILL_PAYLOAD` | 400         | Invalid JSON for a `KILL` request.    |
+| `KILL_REQUEST_FAILED`  | 500         | Application termination failed.       |
+
+**Example error response:**
+
+```json
+{
+  "code": "INVALID_NEW_PAYLOAD",
+  "message": "failed to deserialize request body: missing field `program`"
+}
 ```
 
-in another terminal, start linuxd:
+## Logging
+
+`nanvixd` uses the `RUST_LOG` environment variable for daemon-level logging (printed to stderr).
+This applies to both interactive and HTTP modes:
 
 ```bash
-./bin/linuxd.elf -control-plane-addr /tmp/control-plane.socket -user-vm-bind-addr /tmp/user-vm-bind.socket
-```
-
-all `-x-addr` flags have a corresponding `-x-socket-type` flag to switch between `tcp` or `unix` sockets. The default values are `unix`.
-
-To enable logging, consider prepending the above command with `RUST_LOG=debug` or `RUST_LOG=trace`.
-
-### Step 2: Run the UserVM
-
-Open another terminal to run the UserVM. Use the `-initrd` option to specify which application to run, and pass it additional arguments with `-initrd-args`.
-
-```bash
-./bin/uservm.elf -user-vm-id 1 -system-vm-addr /tmp/user-vm-bind.socket -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf [-gateway-addr /tmp/gw.sock] [-initrd-args <args>]
-```
-
-The `-gateway-addr` argument is optional, and should only be used if you want to connect to the VM's stdin/stdout. If you do set it, you next need to open a netcat session to connect to it:
-
-```bash
-nc -U /tmp/gw.socket
-```
-
-For example, the `./bin/echo-c.elf` binary uses the gateway because it reads input from stdin. Inside the netcat terminal, once you have written your message press `Ctrl-D` so that it is flushed to linuxd.
-
-Alternatively to an interactive netcat session, you can use something like the following:
-
-```bash
-echo "Hello world!" | nc -U -q 0 "/tmp/gw-bind.socket" | tr -d '\0'
-```
-
-### Redirecting Standard Error (Optional)
-
-Redirecting the standard error of the UserVM to another terminal can be useful for debugging.
-
-1. Open a new terminal and get its tty path:
-
-    ```bash
-    $ tty
-    /dev/pts/5
-    ```
-
-2. Run the UserVM with the `-stderr` option, specifying the tty path:
-
-    ```bash
-    # Assuming /dev/pts/5 is the tty of the new terminal.
-    RUST_LOG=trace ./bin/uservm.elf -user-vm-id 1 -kernel bin/kernel.elf -initrd bin/hello-rust-nostd.elf -stderr /dev/pts/5
-    ```
-
-## Running Nanvix Through the Build System
-
-> ℹ️ This runs Nanvix with the default build parameters. Check the [build.md](build.md) document for more information on how to change default build parameters.
-
-To run Nanvix through the build system, simply execute:
-
-```bash
-make run
+RUST_LOG=debug ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
+RUST_LOG=trace ./bin/nanvixd.elf -http-addr 127.0.0.1:8080
 ```
