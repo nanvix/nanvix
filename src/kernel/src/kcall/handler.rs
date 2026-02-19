@@ -84,10 +84,6 @@ pub fn kcall_handler(hal: &mut Hal) -> ExitStatus {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
                     let ret: KcallResult = match KcallNumber::from(args.number) {
-                        KcallNumber::MemoryMap => pm::mmap(pm!(), mm!(), args),
-                        KcallNumber::MemoryUnmap => pm::munmap(pm!(), mm!(), args),
-                        KcallNumber::MemoryCtrl => pm::mctrl(pm!(), mm!(), args),
-                        KcallNumber::MemoryCopy => pm::mcopy(pm!(), mm!(), args),
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm!(), args),
                         KcallNumber::AllocPmio => io::pmio_alloc(hal, pm!(), args),
                         KcallNumber::CreateThread => pm::create_thread(pm!(), mm!(), args),
