@@ -52,12 +52,27 @@ macro_rules! pm {
     };
 }
 
+// Convenience macro to obtain a mutable reference to the virtual memory manager.
+//
+// # Safety
+//
+// Each expansion produces a fresh `&mut VirtMemoryManager` via `get_mut()`. Callers must ensure
+// that borrows from separate expansions do not overlap (i.e., drop the reference before the
+// next `mm!()` invocation).
+macro_rules! mm {
+    () => {
+        // SAFETY: the memory manager is initialized, this is a single-core system,
+        // and the kernel runs with interrupts disabled.
+        unsafe { VirtMemoryManager::get_mut() }
+    };
+}
+
 ///
 /// # Description
 ///
 /// Kernel call handler.
 ///
-pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
+pub fn kcall_handler(hal: &mut Hal) -> ExitStatus {
     if let Err(e) = event::init(hal) {
         panic!("failed to initialize event manager: {:?}", e);
     }
@@ -69,13 +84,13 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
                     let ret: KcallResult = match KcallNumber::from(args.number) {
-                        KcallNumber::MemoryMap => pm::mmap(pm!(), mm, args),
-                        KcallNumber::MemoryUnmap => pm::munmap(pm!(), mm, args),
-                        KcallNumber::MemoryCtrl => pm::mctrl(pm!(), mm, args),
-                        KcallNumber::MemoryCopy => pm::mcopy(pm!(), mm, args),
+                        KcallNumber::MemoryMap => pm::mmap(pm!(), mm!(), args),
+                        KcallNumber::MemoryUnmap => pm::munmap(pm!(), mm!(), args),
+                        KcallNumber::MemoryCtrl => pm::mctrl(pm!(), mm!(), args),
+                        KcallNumber::MemoryCopy => pm::mcopy(pm!(), mm!(), args),
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm!(), args),
                         KcallNumber::AllocPmio => io::pmio_alloc(hal, pm!(), args),
-                        KcallNumber::CreateThread => pm::create_thread(pm!(), mm, args),
+                        KcallNumber::CreateThread => pm::create_thread(pm!(), mm!(), args),
                         _ => {
                             error!("invalid kernel call");
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())
@@ -142,7 +157,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
 
         // Attempt to harvest zombie processes.
         let mut harvested_process: bool = false;
-        match pm!().harvest_zombies(mm) {
+        match pm!().harvest_zombies(mm!()) {
             Ok(None) => {},
             Ok(Some((pid, status))) => {
                 // Check if init daemon process terminated.
@@ -176,7 +191,7 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
         }
     };
 
-    while let Ok(Some((pid, status))) = pm!().harvest_zombies(mm) {
+    while let Ok(Some((pid, status))) = pm!().harvest_zombies(mm!()) {
         info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
     }
 
