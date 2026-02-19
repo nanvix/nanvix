@@ -50,7 +50,7 @@ fn do_mmio_alloc(
     }
 
     // Attempt to allocate I/O memory region.
-    let region: IoMemoryRegion = hal.ioaddresses.allocate(tag)?;
+    let region: IoMemoryRegion = hal.ioaddresses().allocate(tag)?;
 
     // Attached I/O memory region to the process.
     pm.mmio_alloc(pid, region)?;

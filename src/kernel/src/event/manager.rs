@@ -1014,7 +1014,7 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
     }
 }
 
-pub fn init(hal: &mut Hal) -> Result<(), Error> {
+pub fn init() -> Result<(), Error> {
     let mut pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize] =
         unsafe { mem::zeroed() };
     for list in pending_interrupts.iter_mut() {
@@ -1053,12 +1053,15 @@ pub fn init(hal: &mut Hal) -> Result<(), Error> {
 
     let mut interrupt_capable: bool = true;
 
+    // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+    let hal: &mut Hal = unsafe { Hal::get_mut() };
+
     // TODO: add comments about safety.
     unsafe {
-        hal.excpman.register_handler(exception_handler)?;
+        hal.excpman().register_handler(exception_handler)?;
     }
 
-    if let Some(intman) = &mut hal.intman {
+    if let Some(intman) = hal.intman() {
         for intnum in InterruptNumber::VALUES {
             if intnum == InterruptNumber::Timer {
                 continue;
