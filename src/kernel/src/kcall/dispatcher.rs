@@ -112,6 +112,8 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::MemoryCtrl => pm::mctrl(pid, arg0, arg1, arg2),
         // Handle `mcopy()` locally.
         KcallNumber::MemoryCopy => pm::mcopy(pid, arg0, arg1, arg2, arg3),
+        // Handle `create_thread()` locally.
+        KcallNumber::CreateThread => pm::create_thread(pid, arg0),
         // Handle `send()` locally.
         KcallNumber::Send => ipc::send(pid, tid, arg0),
         // SAFETY: The calling thread is not the kernel and no resources are held.
