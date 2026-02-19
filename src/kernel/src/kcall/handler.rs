@@ -10,8 +10,6 @@ use crate::{
         self,
         EventManager,
     },
-    hal::Hal,
-    io,
     kcall::{
         KcallResult,
         ScoreBoard,
@@ -22,7 +20,6 @@ use crate::{
 use ::sys::{
     error::ErrorCode,
     event::ProcessTerminationInfo,
-    number::KcallNumber,
     pm::ProcessIdentifier,
     ExitStatus,
 };
@@ -64,21 +61,6 @@ macro_rules! mm {
     };
 }
 
-// Convenience macro to obtain a mutable reference to the hardware abstraction layer.
-//
-// # Safety
-//
-// Each expansion produces a fresh `&mut Hal` via `get_mut()`. Callers must ensure
-// that borrows from separate expansions do not overlap (i.e., drop the reference before the
-// next `hal!()` invocation).
-macro_rules! hal {
-    () => {
-        // SAFETY: the hardware abstraction layer is initialized, this is a single-core system,
-        // and the kernel runs with interrupts disabled.
-        unsafe { Hal::get_mut() }
-    };
-}
-
 ///
 /// # Description
 ///
@@ -95,14 +77,8 @@ pub fn kcall_handler() -> ExitStatus {
         match ScoreBoard::get_mut() {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
-                    let ret: KcallResult = match KcallNumber::from(args.number) {
-                        KcallNumber::AllocMmio => io::mmio_alloc(hal!(), pm!(), args),
-                        KcallNumber::AllocPmio => io::pmio_alloc(hal!(), pm!(), args),
-                        _ => {
-                            error!("invalid kernel call");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                    };
+                    error!("invalid kernel call (number={})", args.number);
+                    let ret: KcallResult = KcallResult::Error(ErrorCode::InvalidSysCall.into());
 
                     // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
                     if let Err(e) = unsafe { scoreboard.handled(ret) } {
