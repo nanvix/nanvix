@@ -11,10 +11,7 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     mm::{
         KernelPage,
         VirtMemoryManager,
@@ -67,9 +64,37 @@ fn do_mcopy(
     Ok(())
 }
 
-pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for copying memory between processes.
+///
+/// # Parameters
+///
+/// - `caller_pid`: Identifier of the calling process.
+/// - `arg0`: Source process identifier.
+/// - `arg1`: Source virtual address.
+/// - `arg2`: Destination process identifier.
+/// - `arg3`: Destination virtual address.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn mcopy(
+    caller_pid: ProcessIdentifier,
+    arg0: u32,
+    arg1: u32,
+    arg2: u32,
+    arg3: u32,
+) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    // SAFETY: the virtual memory manager is initialized and access is synchronized.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
     // Check if the calling process has memory management capabilities.
-    match pm.has_capability(args.pid, Capability::MemoryManagement) {
+    match pm.has_capability(caller_pid, Capability::MemoryManagement) {
         Ok(true) => (),
         Ok(false) => {
             let reason: &str = "process does not have memory management capabilities";
@@ -80,30 +105,28 @@ pub fn mcopy(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     }
 
     // Unpack kernel call arguments.
-    let src_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
+    let src_pid: ProcessIdentifier = match ProcessIdentifier::try_from(arg0) {
         Ok(pid) => pid,
         Err(error) => {
             error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };
-    let src_vaddr: PageAligned<VirtualAddress> =
-        match PageAligned::from_raw_value(args.arg1 as usize) {
-            Ok(vaddr) => vaddr,
-            Err(e) => return KcallResult::Error(e.code.into()),
-        };
-    let dst_pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg2) {
+    let src_vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(arg1 as usize) {
+        Ok(vaddr) => vaddr,
+        Err(e) => return KcallResult::Error(e.code.into()),
+    };
+    let dst_pid: ProcessIdentifier = match ProcessIdentifier::try_from(arg2) {
         Ok(pid) => pid,
         Err(error) => {
             error!("{error:?}");
             return KcallResult::Error(error.code.into());
         },
     };
-    let dst_vaddr: PageAligned<VirtualAddress> =
-        match PageAligned::from_raw_value(args.arg3 as usize) {
-            Ok(vaddr) => vaddr,
-            Err(e) => return KcallResult::Error(e.code.into()),
-        };
+    let dst_vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(arg3 as usize) {
+        Ok(vaddr) => vaddr,
+        Err(e) => return KcallResult::Error(e.code.into()),
+    };
 
     match do_mcopy(pm, mm, src_pid, src_vaddr, dst_pid, dst_vaddr) {
         Ok(_) => KcallResult::ok(),

@@ -272,36 +272,19 @@ impl ProcessManager {
 
         // Assert pre-conditions (these should have been checked by the caller).
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
+        debug_assert!(
+            self.get_running().state().pid() == pid,
+            "create_thread: pid must match the running process"
+        );
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
-
-            // Find corresponding process.
-            let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-
-            // Ensure that the process is in a valid state.
-            if let ProcessRefMut::Running(_) = process {
-                // TODO: Re-evaluate this condition when we support multicore.
-                let reason: &str = "process is running";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
-            if let ProcessRefMut::Interrupted(_) = process {
-                let reason: &str = "process is interrupted";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
-            if let ProcessRefMut::Zombie(_) = process {
-                let reason: &str = "process is a zombie";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
 
             // Create a kernel context.
             let (kernel_stack, context): (KernelStack, ContextInformation) =
                 Self::forge_user_context(
                     mm,
-                    process.state_mut().vmem_mut(),
+                    self.get_running_mut().state_mut().vmem_mut(),
                     thread_create_args,
                     enable_interrupts,
                 )?;
@@ -315,56 +298,11 @@ impl ProcessManager {
                 .create_thread(Some(kernel_stack), None, thread_create_args.user_tda, context)
         };
 
-        Ok(self.try_add_thread(pid, ready_thread))
-    }
-
-    fn try_add_thread(
-        &mut self,
-        pid: ProcessIdentifier,
-        ready_thread: ReadyThread,
-    ) -> ThreadIdentifier {
-        trace!("pid={pid:?}, ready_thread={ready_thread:?}");
+        // Add the new thread to the running process.
         let tid: ThreadIdentifier = ready_thread.id();
+        self.get_running_mut().add_thread(ready_thread);
 
-        // Search process in the list of sleeping processes.
-        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
-        while let Some(process) = self.suspended.pop_front() {
-            // Found.
-            if process.state().pid() == pid {
-                let ready_process: RunnableProcess = process.add_thread(ready_thread);
-                // Rollback list to its original state.
-                while let Some(process) = suspended.pop_back() {
-                    self.suspended.push_front(process);
-                }
-                // Push process to the list of ready processes.
-                self.ready.push_back(ready_process);
-                return tid;
-            }
-            suspended.push_back(process);
-        }
-        // Process is not in the list of sleeping processes, rollback list to its original state.
-        self.suspended = suspended;
-
-        // Search process in the list of ready processes.
-        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
-        while let Some(process) = self.ready.pop_front() {
-            // Found.
-            if process.state().pid() == pid {
-                let ready_process: RunnableProcess = process.add_thread(ready_thread);
-                // Rollback list to its original state.
-                while let Some(process) = ready.pop_back() {
-                    self.ready.push_front(process);
-                }
-                // Push process to the list of ready processes.
-                self.ready.push_back(ready_process);
-                return tid;
-            }
-            ready.push_back(process);
-        }
-        // Process is not in the list of ready processes, rollback list to its original state.
-        self.ready = ready;
-
-        unreachable!("process must be either sleeping or runnable")
+        Ok(tid)
     }
 
     ///
