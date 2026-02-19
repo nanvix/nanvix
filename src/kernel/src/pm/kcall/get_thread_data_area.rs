@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::pm::{
@@ -28,8 +25,8 @@ use ::sys::pm::{
 ///
 /// # Parameters
 ///
-/// - `pm`: A reference to the process manager.
-/// - `args`: The kernel call arguments.
+/// - `pid`: The process identifier of the calling process.
+/// - `tid`: The thread identifier of the calling thread.
 ///
 /// # Return Value
 ///
@@ -43,10 +40,9 @@ use ::sys::pm::{
 /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
 /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
 ///
-pub fn get_thread_data_area(pm: &ProcessManager, args: &KcallArgs) -> KcallResult {
-    // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let tid: ThreadIdentifier = args.tid;
+pub fn get_thread_data_area(pid: ProcessIdentifier, tid: ThreadIdentifier) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &ProcessManager = unsafe { ProcessManager::get() };
 
     trace!("pid={pid:?}, tid={tid:?}");
 

@@ -2,18 +2,16 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Imports
 //==================================================================================================
 
 use crate::{
-    debug,
     event::{
         self,
         EventManager,
     },
     hal::Hal,
     io,
-    ipc,
     kcall::{
         KcallResult,
         ScoreBoard,
@@ -71,38 +69,13 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
             Ok(scoreboard) => match scoreboard.handle() {
                 Ok(args) => {
                     let ret: KcallResult = match KcallNumber::from(args.number) {
-                        KcallNumber::Debug => debug::debug(pm!(), args),
-                        KcallNumber::GetPid => {
-                            // NOTE: this should be handled by the dispatcher.
-                            // However we emit an invalid system call, just in case.
-                            error!("cannot handle getpid()");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                        KcallNumber::GetTid => {
-                            // NOTE: this should be handled by the dispatcher.
-                            // However we emit an invalid system call, just in case.
-                            error!("cannot handle gettid()");
-                            KcallResult::Error(ErrorCode::InvalidSysCall.into())
-                        },
-                        KcallNumber::CapCtl => pm::capctl(pm!(), args),
-                        KcallNumber::Terminate => pm::terminate(pm!(), args),
-                        KcallNumber::EventCtrl => event::evctrl(pm!(), args),
                         KcallNumber::MemoryMap => pm::mmap(pm!(), mm, args),
                         KcallNumber::MemoryUnmap => pm::munmap(pm!(), mm, args),
                         KcallNumber::MemoryCtrl => pm::mctrl(pm!(), mm, args),
                         KcallNumber::MemoryCopy => pm::mcopy(pm!(), mm, args),
-                        KcallNumber::Send => ipc::send(pm!(), args),
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm!(), args),
-                        KcallNumber::FreeMmio => io::mmio_free(pm!(), args),
-                        KcallNumber::MmioInfo => io::mmio_info(pm!(), args),
                         KcallNumber::AllocPmio => io::pmio_alloc(hal, pm!(), args),
-                        KcallNumber::FreePmio => io::pmio_free(pm!(), args),
-                        KcallNumber::ReadPmio => io::pmio_read(pm!(), args),
-                        KcallNumber::WritePmio => io::pmio_write(pm!(), args),
-                        KcallNumber::GetTime => pm::gettime(pm!(), args),
                         KcallNumber::CreateThread => pm::create_thread(pm!(), mm, args),
-                        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pm!(), args),
-                        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pm!(), args),
                         _ => {
                             error!("invalid kernel call");
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())

@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::{
         clock,
         ProcessManager,
@@ -53,20 +50,23 @@ fn do_gettime(
 ///
 /// # Parameters
 ///
-/// - `pm`: A mutable reference to the process manager.
-/// - `args.argo0`: The address of the buffer where the system time should be stored.
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: The address of the buffer where the system time should be stored.
 ///
 /// # Returns
 ///
-/// If susccessful, `gettime` returns `KcallResult:Success`. Otherwise it returns a
+/// If successful, `gettime` returns `KcallResult::Success`. Otherwise it returns a
 /// `KcallResult::Error` to indicate the error.
 ///
-pub fn gettime(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+pub fn gettime(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack kernel call arguments.
-    let buffer_addr: VirtualAddress = VirtualAddress::new(args.arg0 as usize);
+    let buffer_addr: VirtualAddress = VirtualAddress::new(arg0 as usize);
 
     // Get system time and parse result.
-    match do_gettime(pm, args.pid, buffer_addr) {
+    match do_gettime(pm, pid, buffer_addr) {
         Ok(()) => KcallResult::ok(),
         Err(error) => KcallResult::Error(error.code.into()),
     }
