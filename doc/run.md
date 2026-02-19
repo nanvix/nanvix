@@ -33,6 +33,7 @@ Run a hello-world application and see its output on the terminal:
   - [HTTP API Reference](#http-api-reference)
   - [HTTP Error Codes](#http-error-codes)
 - [Logging](#logging)
+- [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)
 
 ## Interactive Mode
 
@@ -220,4 +221,37 @@ This applies to both interactive and HTTP modes:
 ```bash
 RUST_LOG=debug ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
 RUST_LOG=trace ./bin/nanvixd.elf -http-addr 127.0.0.1:8080
+```
+
+## Expert Mode: Standalone User VM
+
+> **Warning:** This is an expert-level feature intended for low-level debugging and kernel
+> development. Most users should use `nanvixd` instead (see [Interactive Mode](#interactive-mode)).
+
+The `uservm.elf` binary can be launched directly in **standalone mode**, bypassing the full Nanvix
+orchestration stack (no `nanvixd`, system VM, control-plane, or gateway connections). In this mode
+the guest kernel boots, runs the initrd payload, and exits. Outbound I/O messages from the guest
+are silently discarded.
+
+```bash
+./bin/uservm.elf -kernel ./bin/kernel.elf -initrd ./bin/hello-rust-nostd.elf -standalone
+```
+
+Optional flags:
+
+| Flag                  | Description                                                                   |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `-memory <size>`      | Guest memory size (e.g., `64M`, `256K`). Defaults to the kernel config value. |
+| `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.                       |
+| `-initrd_args <args>` | Arguments forwarded to the initrd payload.                                    |
+| `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.                          |
+| `-user-vm-id <id>`    | VM identifier (defaults to `0` in standalone mode).                           |
+| `-log-to-file`        | Write logs to files instead of stdout.                                        |
+| `-log-dir <dir>`      | Directory for log files (used with `-log-to-file`).                           |
+
+Enable verbose logging with `RUST_LOG`:
+
+```bash
+RUST_LOG=debug ./bin/uservm.elf -kernel ./bin/kernel.elf \
+    -initrd ./bin/hello-rust-nostd.elf -standalone
 ```

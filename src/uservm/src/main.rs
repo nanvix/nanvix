@@ -21,6 +21,7 @@ use ::log::{
     debug,
     error,
     info,
+    warn,
 };
 use ::std::{
     convert::TryInto,
@@ -85,6 +86,7 @@ pub async fn main() -> Result<ExitCode> {
     let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
+    let standalone: bool = args.standalone();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -96,14 +98,154 @@ pub async fn main() -> Result<ExitCode> {
 
     debug!(
         "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
-         memory_size_bytes={})",
+         memory_size_bytes={}, standalone={})",
         user_vm_id,
         &kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
-        memory_size
+        memory_size,
+        standalone
     );
 
+    if standalone {
+        run_standalone(
+            kernel_filename,
+            initrd_filename,
+            initrd_args,
+            ramfs_filename,
+            memory_size,
+            stderr,
+        )
+        .await
+    } else {
+        run_managed(
+            args,
+            kernel_filename,
+            initrd_filename,
+            initrd_args,
+            ramfs_filename,
+            memory_size,
+            stderr,
+        )
+        .await
+    }
+}
+
+///
+/// # Description
+///
+/// Runs the user VM in standalone mode without connecting to a system VM, control-plane, or
+/// gateway. The VM's stdout messages are drained and discarded; the VM's stderr is captured as
+/// usual. This mode is useful for debugging and local testing.
+///
+/// # Parameters
+///
+/// - `kernel_filename`: Path to the kernel binary.
+/// - `initrd_filename`: Optional path to the initrd payload.
+/// - `initrd_args`: Optional arguments forwarded to the initrd payload.
+/// - `ramfs_filename`: Optional path to a RAM filesystem image.
+/// - `memory_size`: Amount of guest physical memory in bytes.
+/// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
+///
+/// # Returns
+///
+/// On success, returns the guest's exit code. On failure, returns an error.
+///
+/// # Errors
+///
+/// Returns an error if the VM task panics or if the exit status cannot be converted to a
+/// process exit code.
+///
+async fn run_standalone(
+    kernel_filename: String,
+    initrd_filename: Option<String>,
+    initrd_args: Option<String>,
+    ramfs_filename: Option<String>,
+    memory_size: usize,
+    stderr: Option<String>,
+) -> Result<ExitCode> {
+    info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
+
+    // Create channels. In standalone mode these are wired directly without an I/O thread.
+    let (vcpu_thread_stdout_tx, mut standalone_data_rx) =
+        mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    // Nobody sends inbound data in standalone mode. The sender is kept alive so that the memory
+    // thread's receiver does not see an immediate channel close.
+    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    // Kept alive so the orchestrator's io_control_rx does not see an immediate channel close.
+    let (_io_cmd_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
+    // Kept alive so the orchestrator can send control responses without a closed-channel error.
+    let (io_control_tx, _io_resp_rx) = mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
+
+    let counters: MessageCounters = MessageCounters::new();
+
+    let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
+        memory_size,
+        initrd_filename,
+        initrd_args,
+        ramfs_filename,
+        stderr,
+        vcpu_thread_stdout_tx,
+        memory_thread_data_rx,
+        io_control_rx,
+        io_control_tx,
+        kernel_filename,
+        counters,
+    });
+
+    // Drain the VM's stdout channel. In standalone mode there is no system VM to forward messages
+    // to, so we simply consume and discard them to prevent the channel from blocking the VM.
+    let drain_handle: JoinHandle<()> = tokio::spawn(async move {
+        while let Some(_msg) = standalone_data_rx.recv().await {}
+        debug!("main(): standalone mode: VM stdout channel closed");
+    });
+
+    let vm_exit_status: Result<u16> = vmm_handle.await?;
+    debug!("main(): uservm completed (exit_status={vm_exit_status:?})");
+
+    // Wait for the drain task to finish.
+    if let Err(error) = drain_handle.await {
+        warn!("main(): standalone drain task failed (error={error:?})");
+    }
+
+    convert_exit_status(vm_exit_status)
+}
+
+///
+/// # Description
+///
+/// Runs the user VM in managed mode, connecting to the system VM, control-plane, and gateway as
+/// required by the full Nanvix deployment.
+///
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments (consumed for socket addresses).
+/// - `kernel_filename`: Path to the kernel binary.
+/// - `initrd_filename`: Optional path to the initrd payload.
+/// - `initrd_args`: Optional arguments forwarded to the initrd payload.
+/// - `ramfs_filename`: Optional path to a RAM filesystem image.
+/// - `memory_size`: Amount of guest physical memory in bytes.
+/// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
+///
+/// # Returns
+///
+/// On success, returns the guest's exit code. On failure, returns an error.
+///
+/// # Errors
+///
+/// Returns an error if the VM task panics, if socket connections to the system VM or
+/// control-plane fail or time out, or if the exit status cannot be converted to a process exit
+/// code.
+///
+async fn run_managed(
+    args: Args,
+    kernel_filename: String,
+    initrd_filename: Option<String>,
+    initrd_args: Option<String>,
+    ramfs_filename: Option<String>,
+    memory_size: usize,
+    stderr: Option<String>,
+) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
     let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
@@ -261,7 +403,28 @@ pub async fn main() -> Result<ExitCode> {
         error!("main(): {reason}");
     }
 
-    let result: Result<ExitCode> = match vm_exit_status {
+    convert_exit_status(vm_exit_status)
+}
+
+///
+/// # Description
+///
+/// Converts a VM exit status into a process exit code.
+///
+/// # Parameters
+///
+/// - `vm_exit_status`: The exit status returned by the virtual machine.
+///
+/// # Returns
+///
+/// On success, returns the corresponding [`ExitCode`]. On failure, returns an error.
+///
+/// # Errors
+///
+/// Returns an error if the VM itself failed or if the exit status exceeds the range of `u8`.
+///
+fn convert_exit_status(vm_exit_status: Result<u16>) -> Result<ExitCode> {
+    match vm_exit_status {
         Ok(0) => Ok(ExitCode::from(0)),
         Ok(exit_status) if exit_status != 0 => {
             let exit_code_result: ::std::result::Result<u8, ::std::num::TryFromIntError> =
@@ -281,7 +444,5 @@ pub async fn main() -> Result<ExitCode> {
             error!("main(): {reason}");
             Err(anyhow::anyhow!(reason))
         },
-    };
-
-    result
+    }
 }
