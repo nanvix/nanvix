@@ -667,13 +667,17 @@ ifneq ($(VERBOSE),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
 PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/.venv
+PYTHON_STAMP=$(PYTHON_VENV_DIRECTORY)/.requirements.stamp
 
-python-init:
+python-init: $(PYTHON_STAMP)
+
+$(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
 	@if [ ! -f $(PYTHON_VENV_DIRECTORY)/bin/pip3 ]; then \
 		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
 		python3 -m venv $(PYTHON_VENV_DIRECTORY); \
 	fi
-	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install "black>=24.0.0" "flake8>=7.0.0" > /dev/null
+	@$(PYTHON_VENV_DIRECTORY)/bin/pip3 install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
+	@touch $(PYTHON_STAMP)
 
 python-format: python-init
 	@$(PYTHON_VENV_DIRECTORY)/bin/python3 -m black $(PYTHON_FILES) $(PY_VERBOSE)
