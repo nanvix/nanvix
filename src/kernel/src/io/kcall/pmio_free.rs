@@ -7,10 +7,7 @@
 
 use crate::{
     hal::io::AnyIoPort,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -47,10 +44,26 @@ fn do_pmio_free(
     Ok(())
 }
 
-pub fn pmio_free(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for releasing a port-mapped I/O port.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Port number to release (lower 16 bits used).
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn pmio_free(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let port_number: u16 = args.arg0 as u16;
+    let port_number: u16 = arg0 as u16;
 
     // Execute kernel call.
     match do_pmio_free(pm, pid, port_number) {

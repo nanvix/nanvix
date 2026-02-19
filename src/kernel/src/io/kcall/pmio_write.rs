@@ -7,10 +7,7 @@
 
 use crate::{
     hal::io::IoPortWidth,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -47,15 +44,33 @@ fn do_pmio_write(
     pm.write_pmio(pid, port_number, port_width, value)
 }
 
-pub fn pmio_write(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for writing to a port-mapped I/O port.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Port number to write to (lower 16 bits used).
+/// - `arg1`: Encoded port width.
+/// - `arg2`: Value to write.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn pmio_write(pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let port_number: u16 = args.arg0 as u16;
-    let port_width: IoPortWidth = match IoPortWidth::try_from(args.arg1) {
+    let port_number: u16 = arg0 as u16;
+    let port_width: IoPortWidth = match IoPortWidth::try_from(arg1) {
         Ok(port_width) => port_width,
         Err(_) => return KcallResult::Error(ErrorCode::InvalidArgument.into()),
     };
-    let value: u32 = args.arg2;
+    let value: u32 = arg2;
 
     // Execute kernel call.
     match do_pmio_write(pm, pid, port_number, port_width, value) {

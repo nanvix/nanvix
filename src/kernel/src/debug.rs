@@ -7,15 +7,15 @@
 
 use crate::{
     hal::mem::VirtualAddress,
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -36,12 +36,30 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for writing a debug message from user space.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: User-space pointer to the message buffer.
+/// - `arg1`: Size of the message in bytes.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Buffer size in bytes.
     // NOTE: This value was chosen to be smaller than a page, but big enough for along messages.
     const BUFFER_SIZE: usize = 256;
-    let user_buffer: usize = args.arg0 as usize;
-    let size: usize = args.arg1 as usize;
+    let user_buffer: usize = arg0 as usize;
+    let size: usize = arg1 as usize;
 
     // skip zero-length messages
     if size == 0 {
@@ -60,7 +78,7 @@ pub fn debug(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
     let src: VirtualAddress = VirtualAddress::new(user_buffer);
     let dst: VirtualAddress = VirtualAddress::new(kernel_buffer.as_mut_ptr() as usize);
 
-    if let Err(e) = pm.vmcopy_from_user(args.pid, dst, src, size) {
+    if let Err(e) = pm.vmcopy_from_user(pid, dst, src, size) {
         return KcallResult::Error(e.code.into());
     }
 
