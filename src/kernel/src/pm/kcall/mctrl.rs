@@ -12,14 +12,10 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
-
 use ::sys::{
     error::{
         Error,
@@ -45,9 +41,30 @@ fn do_mctrl(
     pm.mctrl(mm, pid, vaddr, access)
 }
 
-pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for controlling memory access permissions.
+///
+/// # Parameters
+///
+/// - `caller_pid`: Identifier of the calling process.
+/// - `arg0`: Target process identifier.
+/// - `arg1`: Virtual address.
+/// - `arg2`: Access permission.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn mctrl(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    // SAFETY: the virtual memory manager is initialized and access is synchronized.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
     // Unpack kernel call arguments.
-    let pid: ProcessIdentifier = match ProcessIdentifier::try_from(args.arg0) {
+    let pid: ProcessIdentifier = match ProcessIdentifier::try_from(arg0) {
         Ok(pid) => pid,
         Err(error) => {
             error!("{error:?}");
@@ -56,8 +73,8 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
     };
 
     // Check if the calling process has memory management capabilities.
-    if pid != args.pid {
-        match pm.has_capability(args.pid, Capability::MemoryManagement) {
+    if pid != caller_pid {
+        match pm.has_capability(caller_pid, Capability::MemoryManagement) {
             Ok(true) => (),
             Ok(false) => {
                 let reason: &str = "process does not have memory management capabilities";
@@ -68,11 +85,11 @@ pub fn mctrl(pm: &mut ProcessManager, mm: &mut VirtMemoryManager, args: &KcallAr
         }
     }
 
-    let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(args.arg1 as usize) {
+    let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(arg1 as usize) {
         Ok(vaddr) => vaddr,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
-    let access: AccessPermission = match AccessPermission::try_from(args.arg2) {
+    let access: AccessPermission = match AccessPermission::try_from(arg2) {
         Ok(access) => access,
         Err(e) => return KcallResult::Error(e.code.into()),
     };

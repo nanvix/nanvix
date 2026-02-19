@@ -331,6 +331,28 @@ impl RunningProcess {
         self.running.check_guard_watermark()
     }
 
+    ///
+    /// # Description
+    ///
+    /// Adds a ready thread to the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `ready_thread`: Thread to add.
+    ///
+    pub fn add_thread(&mut self, ready_thread: ReadyThread) {
+        trace!("self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
+        match self.ready.take() {
+            Some(mut ready_threads) => {
+                ready_threads.push_back(ready_thread);
+                self.ready = Some(ready_threads);
+            },
+            None => {
+                self.ready = Some(NonEmptyVecDeque::new(ready_thread));
+            },
+        }
+    }
+
     pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunningProcess, RunningProcess> {
         if let Some(sleeping_threads) = self.sleeping_threads.take() {
             match sleeping_threads.remove_if(|thread| thread.id() == tid) {

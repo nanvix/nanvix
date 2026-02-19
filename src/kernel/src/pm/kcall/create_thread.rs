@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     mm::{
         VirtMemoryManager,
         Vmem,
@@ -40,28 +37,26 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// Creates a new thread in the calling process.
+/// Kernel call handler for creating a new thread in the calling process.
 ///
 /// # Parameters
 ///
-/// - `pm`: Handler to the process manager.
-/// - `mm`: Handler to the virtual memory manager.
-/// - `args`: Kernel call arguments containing the thread creation parameters.
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Pointer to the thread creation arguments in user space.
 ///
 /// # Returns
 ///
-/// If successful, this function returns the thread identifier of the newly created thread.
-/// Otherwise, it returns an error code.
+/// A [`KcallResult`] containing the thread identifier of the newly created thread on success or
+/// the error code.
 ///
-pub fn create_thread(
-    pm: &mut ProcessManager,
-    mm: &mut VirtMemoryManager,
-    args: &KcallArgs,
-) -> KcallResult {
+pub fn create_thread(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    // SAFETY: the virtual memory manager is initialized and access is synchronized.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
     // Unpack kernel call arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let unsafe_thread_create_args: VirtualAddress =
-        VirtualAddress::from_raw_value(args.arg0 as usize);
+    let unsafe_thread_create_args: VirtualAddress = VirtualAddress::from_raw_value(arg0 as usize);
 
     // Check if thread_create_args does not lie in user space.
     if !Vmem::is_user_region(unsafe_thread_create_args, size_of::<ThreadCreateArgs>()) {
@@ -74,7 +69,7 @@ pub fn create_thread(
     let mut thread_create_args: ThreadCreateArgs = ThreadCreateArgs::default();
     if let Err(error) = pm::copy_from_user(
         pm,
-        args.pid,
+        pid,
         &mut thread_create_args,
         unsafe_thread_create_args.into_raw_value() as *const ThreadCreateArgs,
     ) {
