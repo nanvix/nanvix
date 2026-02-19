@@ -6,7 +6,9 @@
 //==================================================================================================
 
 use crate::{
+    debug,
     event,
+    io,
     ipc,
     kcall::{
         KcallResult,
@@ -78,6 +80,32 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             let e: Error = unsafe { ProcessManager::exit_thread(arg0.into()).unwrap_err() };
             KcallResult::Error(e.code.into())
         },
+        // Handle `capctl()` locally.
+        KcallNumber::CapCtl => pm::capctl(pid, arg0, arg1),
+        // Handle `terminate()` locally.
+        KcallNumber::Terminate => pm::terminate(pid, arg0),
+        // Handle `evctrl()` locally.
+        KcallNumber::EventCtrl => event::evctrl(pid, arg0, arg1),
+        // Handle `set_thread_data_area()` locally.
+        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pid, tid, arg0),
+        // Handle `get_thread_data_area()` locally.
+        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pid, tid),
+        // Handle `mmio_free()` locally.
+        KcallNumber::FreeMmio => io::mmio_free(pid, arg0, arg1),
+        // Handle `mmio_info()` locally.
+        KcallNumber::MmioInfo => io::mmio_info(pid, arg0, arg1, arg2),
+        // Handle `pmio_free()` locally.
+        KcallNumber::FreePmio => io::pmio_free(pid, arg0),
+        // Handle `pmio_read()` locally.
+        KcallNumber::ReadPmio => io::pmio_read(pid, arg0, arg1),
+        // Handle `pmio_write()` locally.
+        KcallNumber::WritePmio => io::pmio_write(pid, arg0, arg1, arg2),
+        // Handle `gettime()` locally.
+        KcallNumber::GetTime => pm::gettime(pid, arg0),
+        // Handle `debug()` locally.
+        KcallNumber::Debug => debug::debug(pid, arg0, arg1),
+        // Handle `send()` locally.
+        KcallNumber::Send => ipc::send(pid, tid, arg0),
         // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Recv => match unsafe { ipc::recv(tid, pid, arg0 as usize) } {
             Ok(()) => KcallResult::ok(),

@@ -10,10 +10,7 @@ use crate::{
         EventManager,
         EventOwnership,
     },
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -38,20 +35,38 @@ fn do_evctrl(
     EventManager::evctrl(pm, pid, ev, req)
 }
 
-pub fn evctrl(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    trace!("ev={:?}, req={:?}", args.arg0, args.arg1);
+///
+/// # Description
+///
+/// Kernel call handler for controlling event ownership.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Encoded event identifier.
+/// - `arg1`: Encoded event control request.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn evctrl(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
 
-    let ev: Event = match Event::try_from(args.arg0) {
+    trace!("ev={:?}, req={:?}", arg0, arg1);
+
+    let ev: Event = match Event::try_from(arg0) {
         Ok(ev) => ev,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
 
-    let req: EventCtrlRequest = match EventCtrlRequest::try_from(args.arg1) {
+    let req: EventCtrlRequest = match EventCtrlRequest::try_from(arg1) {
         Ok(req) => req,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
 
-    match do_evctrl(pm, args.pid, ev, req) {
+    match do_evctrl(pm, pid, ev, req) {
         Ok(Some(ownership)) => match pm.add_event(ownership) {
             Ok(_) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),

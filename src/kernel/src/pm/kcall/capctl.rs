@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -37,15 +34,33 @@ fn do_capctl(
     pm.capctl(pid, capability, value)
 }
 
-pub fn capctl(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+///
+/// # Description
+///
+/// Kernel call handler for controlling process capabilities.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Encoded capability identifier.
+/// - `arg1`: Capability value (nonzero means enabled).
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn capctl(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack arguments.
-    let capability: Capability = match Capability::try_from(args.arg0) {
+    let capability: Capability = match Capability::try_from(arg0) {
         Ok(capability) => capability,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
-    let value: bool = args.arg1 != 0;
+    let value: bool = arg1 != 0;
 
-    match do_capctl(pm, args.pid, capability, value) {
+    match do_capctl(pm, pid, capability, value) {
         Ok(()) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
     }
