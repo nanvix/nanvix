@@ -311,14 +311,11 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let mut hal: Hal =
-        match hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
-        {
-            Ok(hal) => hal,
-            Err(err) => {
-                panic!("failed to initialize hardware abstraction layer: {:?}", err);
-            },
-        };
+    if let Err(err) =
+        Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
+    {
+        panic!("failed to initialize hardware abstraction layer: {:?}", err);
+    }
 
     // Initialize the memory manager.
     let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions) {
@@ -333,7 +330,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         panic!("boot stack overflow detected: {:?}", err);
     }
 
-    if let Err(err) = pm::init(&mut hal, root) {
+    if let Err(err) = pm::init(root) {
         panic!("failed to initialize process manager: {:?}", err);
     }
 
@@ -389,9 +386,10 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
                 let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
 
                 // Start core.
-                if let Err(e) = hal
-                    .intman
-                    .as_mut()
+                // SAFETY: the hardware abstraction layer is initialized and access is
+                // synchronized.
+                if let Err(e) = unsafe { Hal::get_mut() }
+                    .intman()
                     .expect("interrupts must be supported")
                     .start_core(
                         coreid,
@@ -426,13 +424,14 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
             kcall::init();
 
             // Enable timer interrupts, if they are supported.
-            if let Some(intman) = &mut hal.intman {
+            // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+            if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
                 if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
                     panic!("failed to mask timer interrupt: {:?}", e);
                 }
             }
 
-            kcall::handler(&mut hal)
+            kcall::handler()
         } else {
             ExitStatus::ok()
         };

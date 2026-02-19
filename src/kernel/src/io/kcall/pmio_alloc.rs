@@ -13,10 +13,7 @@ use crate::{
         },
         Hal,
     },
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    kcall::KcallResult,
     pm::ProcessManager,
 };
 use ::sys::{
@@ -51,28 +48,46 @@ fn do_pmio_alloc(
     }
 
     let port: AnyIoPort = match port_type {
-        IoPortType::ReadOnly => AnyIoPort::ReadOnly(hal.ioports.allocate_read_only(port_number)?),
+        IoPortType::ReadOnly => AnyIoPort::ReadOnly(hal.ioports().allocate_read_only(port_number)?),
         IoPortType::WriteOnly => {
-            AnyIoPort::WriteOnly(hal.ioports.allocate_write_only(port_number)?)
+            AnyIoPort::WriteOnly(hal.ioports().allocate_write_only(port_number)?)
         },
         IoPortType::ReadWrite => {
-            AnyIoPort::ReadWrite(hal.ioports.allocate_read_write(port_number)?)
+            AnyIoPort::ReadWrite(hal.ioports().allocate_read_write(port_number)?)
         },
     };
 
     pm.attach_pmio(pid, port)
 }
 
-pub fn pmio_alloc(hal: &mut Hal, pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
-    // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let port_number: u16 = args.arg0 as u16;
-    let port_type: IoPortType = match IoPortType::try_from(args.arg1) {
+///
+/// # Description
+///
+/// Kernel call handler for allocating a PMIO port.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the calling process.
+/// - `arg0`: Port number.
+/// - `arg1`: Port type.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn pmio_alloc(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
+    // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+    let hal: &mut Hal = unsafe { Hal::get_mut() };
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
+    // Parse arguments.
+    let port_number: u16 = arg0 as u16;
+    let port_type: IoPortType = match IoPortType::try_from(arg1) {
         Ok(port_type) => port_type,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
 
-    // Execute kernel call.
     match do_pmio_alloc(hal, pm, pid, port_type, port_number) {
         Ok(_) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
