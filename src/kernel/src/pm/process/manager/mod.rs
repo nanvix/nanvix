@@ -277,6 +277,9 @@ impl ProcessManager {
             "create_thread: pid must match the running process"
         );
 
+        // Reserve the next thread identifier early, before any resource allocation.
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
 
@@ -294,9 +297,17 @@ impl ProcessManager {
             //==============================================================
 
             // Create a new thread.
-            self.tm
-                .create_thread(Some(kernel_stack), None, thread_create_args.user_tda, context)
+            self.tm.create_thread(
+                tid,
+                Some(kernel_stack),
+                None,
+                thread_create_args.user_tda,
+                context,
+            )
         };
+
+        // Commit the next thread identifier now that all fallible operations have succeeded.
+        self.tm.commit_next_tid(next_tid);
 
         // Add the new thread to the running process.
         let tid: ThreadIdentifier = ready_thread.id();
@@ -425,6 +436,10 @@ impl ProcessManager {
 
         trace!("args={:?}, env={:?}", args, env);
 
+        // Reserve the next process and thread identifiers early, before any resource allocation.
+        let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
 
@@ -531,13 +546,17 @@ impl ProcessManager {
         // NOTE: if we fail beyond this point we need to page mappings.
         //==============================================================
 
-        let thread: ReadyThread =
-            self.tm
-                .create_thread(Some(kernel_stack), Some(user_stack), args.user_tda, context);
+        let thread: ReadyThread = self.tm.create_thread(
+            tid,
+            Some(kernel_stack),
+            Some(user_stack),
+            args.user_tda,
+            context,
+        );
 
-        // Create process.
-        let pid: ProcessIdentifier = self.next_pid;
-        self.next_pid = ProcessIdentifier::from(i32::from(pid) + 1);
+        // Commit the next process and thread identifiers now that all fallible operations have succeeded.
+        self.next_pid = next_pid;
+        self.tm.commit_next_tid(next_tid);
         let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
         // Add process to the queue of ready processes.
@@ -1282,6 +1301,40 @@ impl ProcessManager {
         self.get_running_mut().state_mut().put_mutex(mutex_addr)?;
 
         Ok(mutex_guard)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reserves the next process identifier, performing a checked increment.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this function returns a tuple containing the reserved [`ProcessIdentifier`]
+    /// and the next [`ProcessIdentifier`] value. The caller must commit the next identifier by
+    /// updating `self.next_pid` after all fallible operations have succeeded.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the process identifier would overflow.
+    ///
+    /// # Known Bugs
+    ///
+    /// - FIXME (#1440): process identifiers are never recycled, so a fork bomb or repeated
+    ///   `create_process` calls can exhaust the identifier space.
+    ///
+    fn try_next_pid(&self) -> Result<(ProcessIdentifier, ProcessIdentifier), Error> {
+        let pid: ProcessIdentifier = self.next_pid;
+        let raw_pid: i32 = i32::from(pid);
+        let next_raw_pid: i32 = match raw_pid.checked_add(1) {
+            Some(val) => val,
+            None => {
+                let reason: &str = "process identifier overflow";
+                error!("{reason} (next_pid={raw_pid:?})");
+                return Err(Error::new(ErrorCode::ValueOverflow, reason));
+            },
+        };
+        Ok((pid, ProcessIdentifier::from(next_raw_pid)))
     }
 
     fn take_earliest_ready(&mut self) -> RunnableProcess {
