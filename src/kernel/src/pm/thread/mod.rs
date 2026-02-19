@@ -16,6 +16,10 @@ use crate::{
     pm::thread::state::ThreadState,
 };
 use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     mm::VirtualAddress,
     pm::ThreadIdentifier,
 };
@@ -178,10 +182,58 @@ impl ThreadManager {
     ///
     /// # Description
     ///
+    /// Reserves the next thread identifier, performing a checked increment.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this function returns a tuple containing the reserved [`ThreadIdentifier`]
+    /// and the next [`ThreadIdentifier`] value. The caller must commit the next identifier via
+    /// [`commit_next_tid`] after all fallible operations have succeeded.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the thread identifier would overflow.
+    ///
+    /// # Known Bugs
+    ///
+    /// - FIXME (#1440): thread identifiers are never recycled, so a fork bomb or repeated
+    ///   `create_thread` calls can exhaust the identifier space.
+    ///
+    pub(crate) fn try_next_tid(&self) -> Result<(ThreadIdentifier, ThreadIdentifier), Error> {
+        let id: ThreadIdentifier = self.next_id;
+        let raw_id: i32 = <i32>::from(self.next_id);
+        let next_raw_id: i32 = match raw_id.checked_add(1) {
+            Some(val) => val,
+            None => {
+                let reason: &str = "thread identifier overflow";
+                error!("{reason} (next_id={raw_id:?})");
+                return Err(Error::new(ErrorCode::ValueOverflow, reason));
+            },
+        };
+        Ok((id, ThreadIdentifier::from(next_raw_id)))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits the next thread identifier after all fallible operations have succeeded.
+    ///
+    /// # Parameters
+    ///
+    /// - `next_tid`: The next thread identifier (obtained from [`try_next_tid`]).
+    ///
+    pub(crate) fn commit_next_tid(&mut self, next_tid: ThreadIdentifier) {
+        self.next_id = next_tid;
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a new thread with the specified parameters.
     ///
     /// # Parameters
     ///
+    /// - `id`: Pre-allocated thread identifier (obtained from [`try_next_tid`]).
     /// - `kernel_stack`: Optional kernel stack for the thread.
     /// - `user_stack`: Optional user stack for the thread.
     /// - `user_tda`: Optional base address to user-space thread data area.
@@ -192,15 +244,13 @@ impl ThreadManager {
     /// This function returns a new [`ReadyThread`] instance.
     ///
     pub fn create_thread(
-        &mut self,
+        &self,
+        id: ThreadIdentifier,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         user_tda: Option<VirtualAddress>,
         context: ContextInformation,
     ) -> ReadyThread {
-        let id: ThreadIdentifier = self.next_id;
-        self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);
-
         ReadyThread::new(
             id,
             kernel_stack,
