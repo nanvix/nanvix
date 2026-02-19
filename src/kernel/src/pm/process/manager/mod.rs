@@ -395,20 +395,16 @@ impl ProcessManager {
         tid: ThreadIdentifier,
         user_tda: Option<VirtualAddress>,
     ) -> Result<(), Error> {
-        // Search for the process in the list of sleeping processes.
-        let sleeping_process: &mut SleepingProcess = self
-            .suspended
-            .iter_mut()
-            .find(|p| p.state().pid() == pid)
-            .ok_or_else(|| {
-                let reason: &str = "process not found";
-                error!("{reason} (pid={pid:?}, tid={tid:?}, user_tda={user_tda:?})");
-                Error::new(ErrorCode::NoSuchEntry, reason)
-            })?;
+        // Search for the process across all states.
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
 
-        // Search for the thread.
-        match sleeping_process.find_thread_mut(tid) {
+        // Search for the thread and set its data area.
+        match process.find_thread_mut(tid) {
             Some(ThreadRefMut::Sleeping(thread)) => {
+                thread.set_thread_data_area(user_tda);
+                Ok(())
+            },
+            Some(ThreadRefMut::Running(thread)) => {
                 thread.set_thread_data_area(user_tda);
                 Ok(())
             },
@@ -446,20 +442,13 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<Option<VirtualAddress>, Error> {
-        // Search for the process in the list of sleeping processes.
-        let sleeping_process: &SleepingProcess = self
-            .suspended
-            .iter()
-            .find(|p| p.state().pid() == pid)
-            .ok_or_else(|| {
-                let reason: &str = "process not found";
-                error!("{reason} (pid={pid:?}, tid={tid:?})");
-                Error::new(ErrorCode::NoSuchEntry, reason)
-            })?;
+        // Search for the process across all states.
+        let process: ProcessRef = self.find_process(pid)?;
 
-        // Attempt to get thread data area and check for errors.
-        match sleeping_process.find_thread(tid) {
+        // Search for the thread and get its data area.
+        match process.find_thread(tid) {
             Some(ThreadRef::Sleeping(thread)) => Ok(thread.get_thread_data_area()),
+            Some(ThreadRef::Running(thread)) => Ok(thread.get_thread_data_area()),
             _ => {
                 let reason: &str = "thread not found";
                 error!("{reason} (tid={tid:?}, pid={pid:?})");

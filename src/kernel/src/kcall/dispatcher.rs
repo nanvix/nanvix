@@ -86,6 +86,10 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::Terminate => pm::terminate(pid, arg0),
         // Handle `evctrl()` locally.
         KcallNumber::EventCtrl => event::evctrl(pid, arg0, arg1),
+        // Handle `set_thread_data_area()` locally.
+        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pid, tid, arg0),
+        // Handle `get_thread_data_area()` locally.
+        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pid, tid),
         // Handle `mmio_free()` locally.
         KcallNumber::FreeMmio => io::mmio_free(pid, arg0, arg1),
         // Handle `mmio_info()` locally.

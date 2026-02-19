@@ -76,8 +76,6 @@ pub fn kcall_handler(hal: &mut Hal, mm: &mut VirtMemoryManager) -> ExitStatus {
                         KcallNumber::AllocMmio => io::mmio_alloc(hal, pm!(), args),
                         KcallNumber::AllocPmio => io::pmio_alloc(hal, pm!(), args),
                         KcallNumber::CreateThread => pm::create_thread(pm!(), mm, args),
-                        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pm!(), args),
-                        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pm!(), args),
                         _ => {
                             error!("invalid kernel call");
                             KcallResult::Error(ErrorCode::InvalidSysCall.into())
