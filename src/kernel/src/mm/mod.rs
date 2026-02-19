@@ -245,7 +245,7 @@ pub fn init(
     kimage: &KernelImage,
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<(Vmem, VirtMemoryManager), Error> {
+) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
@@ -269,8 +269,7 @@ pub fn init(
         LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
-    let (mut vmem, mut mm): (Vmem, VirtMemoryManager) =
-        VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+    let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
@@ -279,25 +278,29 @@ pub fn init(
         let end: VirtualAddress =
             VirtualAddress::new(region.start().into_raw_value() + (region.size() - 1));
 
-        while vaddr.into_inner() < end {
-            let kpage: KernelPage = mm.alloc_kpage(false)?;
+        {
+            // SAFETY: the memory manager is initialized and access is synchronized.
+            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+            while vaddr.into_inner() < end {
+                let kpage: KernelPage = mm.alloc_kpage(false)?;
 
-            let page_table_allocator = || {
-                let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                    [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
-                ));
-                let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                Ok(page_table)
-            };
+                let page_table_allocator = || {
+                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
+                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                    ));
+                    let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+                    Ok(page_table)
+                };
 
-            vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
+                vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
 
-            match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
-                Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
-                None => break,
-            };
+                match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
+                    Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
+                    None => break,
+                };
+            }
         }
     }
 
-    Ok((vmem, mm))
+    Ok(vmem)
 }
