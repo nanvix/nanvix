@@ -666,7 +666,7 @@ PY_VERBOSE :=
 ifneq ($(VERBOSE),yes)
 PY_VERBOSE += >> /dev/null 2>&1
 endif
-PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/venv
+PYTHON_VENV_DIRECTORY=$(ROOT_DIR)/.venv
 
 python-init:
 	@if [ ! -f $(PYTHON_VENV_DIRECTORY)/bin/pip3 ]; then \
