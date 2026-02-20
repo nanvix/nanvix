@@ -287,6 +287,25 @@ impl IoThread {
                                 },
                                 IoControlResponse::Shutdown => {
                                     debug!(
+                                        "shutdown received, draining outbound messages (elapsed_ms={})",
+                                        start_instant.elapsed().as_millis()
+                                    );
+                                    // Close the channel and drain any buffered outbound
+                                    // messages before dropping the system VM socket.
+                                    data_rx.close();
+                                    while let Some(mut msg) = data_rx.recv().await {
+                                        // Label: uservm::io_thread::system_vm::write()
+                                        profiler::timestamp_message!(&mut msg.payload,
+                                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                                        );
+                                        let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.to_bytes();
+                                        if let Err(e) = system_vm_tx.write_all(&bytes).await {
+                                            error!("failed to flush message to system VM during shutdown: {e}");
+                                            break;
+                                        }
+                                    }
+                                    debug!(
                                         "shutdown completed (elapsed_ms={})",
                                         start_instant.elapsed().as_millis()
                                     );
