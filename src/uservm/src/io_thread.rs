@@ -343,3 +343,171 @@ impl IoThread {
 fn on_message_received_from_system_vm(counters: &MessageCounters) {
     counters.increment_io_thread_messages_received();
 }
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::orchestrator::IoControlResponse;
+    use ::std::mem;
+    use ::sys::ipc::Message;
+    use ::syscomm::SocketStream;
+    use ::tokio::{
+        net::UnixStream,
+        sync::mpsc,
+        task::JoinHandle,
+        time::{
+            Duration,
+            timeout,
+        },
+    };
+
+    /// Maximum time any single test is allowed to run before it is considered hung.
+    const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Creates a pair of connected [`SocketStream`] instances backed by Unix sockets.
+    fn unix_stream_pair() -> (SocketStream, SocketStream) {
+        let (a, b): (UnixStream, UnixStream) =
+            UnixStream::pair().expect("failed to create unix stream pair");
+        (SocketStream::Unix(a), SocketStream::Unix(b))
+    }
+
+    /// Validates that when `IoControlResponse::Shutdown` is received, all messages previously
+    /// buffered in `data_rx` are forwarded to the system VM socket before the I/O thread exits.
+    #[tokio::test]
+    async fn shutdown_drains_buffered_outbound_messages() {
+        let result: ::anyhow::Result<()> = timeout(TEST_TIMEOUT, async {
+            // Wire up the channels.
+            let (data_tx, data_rx): (mpsc::Sender<Message>, mpsc::Receiver<Message>) =
+                mpsc::channel(64);
+            let (inbound_tx, _inbound_rx): (mpsc::Sender<Message>, mpsc::Receiver<Message>) =
+                mpsc::channel(1);
+            let (ctrl_cmd_tx, _ctrl_cmd_rx): (
+                mpsc::Sender<IoControlCommand>,
+                mpsc::Receiver<IoControlCommand>,
+            ) = mpsc::channel(1);
+            let (ctrl_resp_tx, ctrl_resp_rx): (
+                mpsc::Sender<IoControlResponse>,
+                mpsc::Receiver<IoControlResponse>,
+            ) = mpsc::channel(1);
+
+            // System VM socket: the I/O thread writes to one end, we read from the other.
+            let (system_vm_stream, system_vm_peer): (SocketStream, SocketStream) =
+                unix_stream_pair();
+            // Control-plane socket: unused, but required by IoThread::run().
+            let (cp_stream, _cp_peer): (SocketStream, SocketStream) = unix_stream_pair();
+
+            let counters: MessageCounters = MessageCounters::new();
+
+            // Pre-load 3 outbound messages with distinguishable payloads.
+            let num_messages: usize = 3;
+            for i in 0..num_messages {
+                let mut msg: Message = Message::default();
+                msg.payload[0] = u8::try_from(i).expect("num_messages fits in u8");
+                data_tx.send(msg).await.expect("send message");
+            }
+            // Drop the only sender so the channel will close after draining.
+            drop(data_tx);
+
+            // Spawn the I/O thread.
+            let io_handle: JoinHandle<::anyhow::Result<()>> = IoThread::spawn(
+                system_vm_stream,
+                data_rx,
+                inbound_tx,
+                ctrl_cmd_tx,
+                ctrl_resp_rx,
+                cp_stream,
+                counters,
+            )
+            .expect("spawn io thread");
+
+            // Send Shutdown to trigger the drain path.
+            ctrl_resp_tx
+                .send(IoControlResponse::Shutdown)
+                .await
+                .expect("send shutdown");
+
+            // Wait for the I/O thread to finish.
+            let io_result: ::anyhow::Result<()> = io_handle.await.expect("join io thread");
+            assert!(io_result.is_ok(), "I/O thread returned an error: {io_result:?}");
+
+            // Read back all messages from the peer end of the system VM socket.
+            let msg_size: usize = mem::size_of::<Message>();
+            let mut buf: Vec<u8> = vec![0u8; msg_size * num_messages];
+            let mut total_read: usize = 0;
+            let (mut peer_rx, _peer_tx) = system_vm_peer.split();
+            while total_read < buf.len() {
+                let n: usize = peer_rx
+                    .read(&mut buf[total_read..])
+                    .await
+                    .expect("read from peer socket");
+                assert!(n > 0, "peer socket returned 0 bytes before all messages were read");
+                total_read += n;
+            }
+
+            assert_eq!(
+                total_read,
+                msg_size * num_messages,
+                "expected {} bytes ({} messages), got {} bytes",
+                msg_size * num_messages,
+                num_messages,
+                total_read
+            );
+
+            // Verify that message content arrived intact and in order.
+            for i in 0..num_messages {
+                let offset: usize = i * msg_size;
+                let received: Message = Message::try_from_bytes(
+                    buf[offset..offset + msg_size]
+                        .try_into()
+                        .expect("slice len"),
+                )
+                .expect("decode message");
+                let expected: u8 = u8::try_from(i).expect("num_messages fits in u8");
+                assert_eq!(
+                    received.payload[0], expected,
+                    "message {i} payload mismatch: expected {expected}, got {}",
+                    received.payload[0]
+                );
+            }
+
+            Ok(())
+        })
+        .await
+        .expect("test timed out — I/O thread likely hung (regression of issue #1450)");
+        result.expect("test failed");
+    }
+
+    /// Validates that an `mpsc` channel's `recv()` returns `None` once the sole `Sender` is
+    /// dropped, after all buffered messages have been consumed. This property is a prerequisite
+    /// for the shutdown drain loop: if the channel never closes, the drain would block forever.
+    #[tokio::test]
+    async fn channel_closes_when_sole_sender_dropped() {
+        let result: ::anyhow::Result<()> = timeout(TEST_TIMEOUT, async {
+            let (tx, mut rx): (mpsc::Sender<Message>, mpsc::Receiver<Message>) = mpsc::channel(64);
+
+            // Enqueue some messages, then drop the only sender.
+            tx.send(Message::default()).await.expect("send");
+            tx.send(Message::default()).await.expect("send");
+            drop(tx);
+
+            // Drain buffered messages.
+            let mut drained: usize = 0;
+            while let Some(_msg) = rx.recv().await {
+                drained += 1;
+            }
+
+            // recv() must have returned None after draining, proving the channel closed.
+            assert_eq!(drained, 2, "expected to drain 2 buffered messages");
+
+            Ok(())
+        })
+        .await
+        .expect("test timed out — channel did not close (sender lifetime leak)");
+        result.expect("test failed");
+    }
+}
