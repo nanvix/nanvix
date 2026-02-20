@@ -23,6 +23,7 @@ use ::sys::error::{
 
 #[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
+mod tls;
 
 //==================================================================================================
 // Constants
@@ -50,6 +51,8 @@ const EXIT_CODE: i32 = 13;
 pub fn main() -> Result<(), Error> {
     #[cfg(not(feature = "hyperlight"))]
     mmio_ramfs::run()?;
+
+    tls::run()?;
 
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.

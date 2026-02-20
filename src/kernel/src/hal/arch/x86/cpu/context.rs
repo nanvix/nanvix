@@ -104,13 +104,21 @@ impl ContextInformation {
         }
 
         // Set thread data area.
+        // NOTE: use `set_thread_data_area_base()` (GDT-only, no segment reload). The actual
+        // %gs/%fs reload for the next context is performed by the interrupt/exception return
+        // path using the values saved in `ContextInformation`, not by `__context_switch()`
+        // itself.
         if let Some(user_tda) = user_tda {
             (*to).gs = SegmentSelector::UserThreadDataArea as u32;
             (*to).fs = SegmentSelector::UserThreadDataArea as u32;
-            Gdt::set_thread_data_area(user_tda.into());
+            Gdt::set_thread_data_area_base(user_tda.into());
         } else {
+            // Clear %gs/%fs so they do not reference a stale TDA.
+            // Also zero the GDT entry base so a stale selector load cannot
+            // silently reference the old TDA address.
             (*to).gs = SegmentSelector::Null as u32;
             (*to).fs = SegmentSelector::Null as u32;
+            Gdt::set_thread_data_area_base(0);
         }
 
         let tss: *const Tss = tss::get_curr();
