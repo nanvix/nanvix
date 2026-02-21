@@ -244,7 +244,7 @@ mod tests {
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
         mut add_credit: impl FnMut() -> Result<()> + Send + 'static,
-    ) -> JoinHandle<()> {
+    ) -> (JoinHandle<()>, MessageCounters) {
         // Wrap the synchronous test closure into the asynchronous AddCreditFn expected by
         // `MemoryThread::new` in test builds.
         let add_credit_box: Box<AddCreditFn> = Box::new(move || {
@@ -252,8 +252,16 @@ mod tests {
             Box::pin(async move { res })
         });
         let counters: MessageCounters = MessageCounters::new();
-        MemoryThread::new(data_rx, data_tx, control_rx, control_tx, add_credit_box, counters)
-            .spawn()
+        let handle: JoinHandle<()> = MemoryThread::new(
+            data_rx,
+            data_tx,
+            control_rx,
+            control_tx,
+            add_credit_box,
+            counters.clone(),
+        )
+        .spawn();
+        (handle, counters)
     }
 
     // Helper: small timeout to avoid hanging tests.
@@ -277,13 +285,17 @@ mod tests {
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
 
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            credits_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        });
+        let (handle, counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                credits_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
 
         // Send a message that should be forwarded.
         let original: Message = Message::default();
+        // Pre-increment the I/O counter to satisfy the debug_assert in
+        // on_message_received_from_io_thread (mem_received <= io_received).
+        counters.increment_io_thread_messages_received();
         io_tx
             .send(original.clone())
             .await
@@ -330,10 +342,11 @@ mod tests {
 
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            credits_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        });
+        let (handle, _counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                credits_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
 
         // Immediate shutdown.
         control_tx
@@ -364,12 +377,16 @@ mod tests {
             ::tokio::sync::mpsc::channel::<MemoryControlResponse>(1);
 
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            // Simulate a failure on first credit attempt.
-            Err(anyhow!("simulated credit failure"))
-        });
+        let (handle, counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                // Simulate a failure on first credit attempt.
+                Err(anyhow!("simulated credit failure"))
+            });
 
         let msg: Message = Message::default();
+        // Pre-increment the I/O counter to satisfy the debug_assert in
+        // on_message_received_from_io_thread (mem_received <= io_received).
+        counters.increment_io_thread_messages_received();
         io_tx.send(msg.clone()).await.expect("send first message");
 
         // Forwarded even though credit fails afterwards.
