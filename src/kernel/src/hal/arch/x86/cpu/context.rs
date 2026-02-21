@@ -104,10 +104,10 @@ impl ContextInformation {
         }
 
         // Set thread data area.
-        // NOTE: use `set_thread_data_area_base()` (GDT-only, no segment reload). The actual
-        // %gs/%fs reload for the next context is performed by the interrupt/exception return
-        // path using the values saved in `ContextInformation`, not by `__context_switch()`
-        // itself.
+        // Update the GDT TDA entry base and write the appropriate selector
+        // into `(*to).gs` / `(*to).fs`.  `__context_switch()` restores
+        // `%gs`/`%fs` from these fields, which forces the CPU to re-read the
+        // GDT entry and refresh the hidden descriptor cache.
         if let Some(user_tda) = user_tda {
             (*to).gs = SegmentSelector::UserThreadDataArea as u32;
             (*to).fs = SegmentSelector::UserThreadDataArea as u32;
