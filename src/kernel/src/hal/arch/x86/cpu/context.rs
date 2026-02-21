@@ -104,13 +104,21 @@ impl ContextInformation {
         }
 
         // Set thread data area.
+        // Update the GDT TDA entry base and write the appropriate selector
+        // into `(*to).gs` / `(*to).fs`.  `__context_switch()` restores
+        // `%gs`/`%fs` from these fields, which forces the CPU to re-read the
+        // GDT entry and refresh the hidden descriptor cache.
         if let Some(user_tda) = user_tda {
             (*to).gs = SegmentSelector::UserThreadDataArea as u32;
             (*to).fs = SegmentSelector::UserThreadDataArea as u32;
-            Gdt::set_thread_data_area(user_tda.into());
+            Gdt::set_thread_data_area_base(user_tda.into());
         } else {
+            // Clear %gs/%fs so they do not reference a stale TDA.
+            // Also zero the GDT entry base so a stale selector load cannot
+            // silently reference the old TDA address.
             (*to).gs = SegmentSelector::Null as u32;
             (*to).fs = SegmentSelector::Null as u32;
+            Gdt::set_thread_data_area_base(0);
         }
 
         let tss: *const Tss = tss::get_curr();

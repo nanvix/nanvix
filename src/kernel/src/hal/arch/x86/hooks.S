@@ -459,6 +459,8 @@ __context_switch:
     movl %edi, CONTEXT_EDI(%eax)
     movl %ebp, CONTEXT_EBP(%eax)
     movl %esp, CONTEXT_ESP(%eax)
+    movw %gs,  CONTEXT_GS(%eax)
+    movw %fs,  CONTEXT_FS(%eax)
     pushf
     pop CONTEXT_EFLAGS(%eax)
 
@@ -475,6 +477,8 @@ __context_switch:
     movl CONTEXT_EDI(%edx), %edi
     movl CONTEXT_EBP(%edx), %ebp
     movl CONTEXT_ESP(%edx), %esp
+    movw CONTEXT_GS(%edx), %gs
+    movw CONTEXT_FS(%edx), %fs
     push CONTEXT_EFLAGS(%edx)
     popfl
 

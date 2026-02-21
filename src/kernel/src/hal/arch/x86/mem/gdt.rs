@@ -265,11 +265,14 @@ impl Gdt {
     ///
     /// # Description
     ///
-    /// Sets the base address for the user-space thread data area segment.
+    /// Sets the base address for the user-space thread data area GDT entry without reloading
+    /// segment registers. Use this variant in the context-switch path, where `%gs`/`%fs` are
+    /// restored from the saved context struct by the interrupt/exception return path
+    /// (`context_restore`/`iret`) after the stack switch performed by `__context_switch()`.
     ///
     /// # Parameters
     ///
-    /// `tda_base`: The base address of the user-space thread data area segment.
+    /// - `tda_base`: The base address of the user-space thread data area segment.
     ///
     /// # Safety
     ///
@@ -277,7 +280,88 @@ impl Gdt {
     ///
     /// It is safe to use this function if and only if the processor is running in privileged mode.
     ///
-    pub unsafe fn set_thread_data_area(tda_base: u32) {
+    pub unsafe fn set_thread_data_area_base(tda_base: u32) {
         GDT[GdtEntries::UserThreadDataArea as usize].set_base(tda_base);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the base address for the user-space thread data area segment and reloads the `%gs`
+    /// and `%fs` segment registers so the CPU picks up the new descriptor from the GDT
+    /// immediately. Use this variant in the kcall path, where no context switch follows.
+    ///
+    /// # Parameters
+    ///
+    /// - `tda_base`: The base address of the user-space thread data area segment.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it modifies the global descriptor table and reloads segment
+    /// registers.
+    ///
+    /// It is safe to use this function if and only if the processor is running in privileged mode.
+    ///
+    pub unsafe fn set_thread_data_area(tda_base: u32) {
+        Self::set_thread_data_area_base(tda_base);
+        // Reload %gs and %fs with the UserThreadDataArea selector to force the
+        // CPU to re-read the updated GDT entry. Without this reload, the CPU
+        // continues using the stale base address cached in the hidden portion
+        // of the segment register.
+        Self::reload_thread_data_area_segments();
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Clears the user-space thread data area GDT entry and the `%gs` and `%fs` segment registers
+    /// by zeroing the GDT base and loading the null selector. Use this when the thread data area is
+    /// being removed so that both the descriptor and the cached segment bases are invalidated.
+    ///
+    /// **Note:** This function reloads segment registers and is intended for the kcall path only.
+    /// In the context-switch path, use [`Self::set_thread_data_area_base()`] instead, because
+    /// `__context_switch()` restores `%gs`/`%fs` from the saved context struct.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it modifies the global descriptor table and segment
+    /// registers.
+    ///
+    /// It is safe to use this function if and only if the processor is running in privileged mode.
+    ///
+    pub unsafe fn clear_thread_data_area_segments() {
+        // Zero the GDT entry base so that a stale selector load cannot
+        // silently reference the old TDA address.
+        Self::set_thread_data_area_base(0);
+        arch::asm!(
+            "movw {sel:x}, %gs",
+            "movw {sel:x}, %fs",
+            sel = in(reg) SegmentSelector::Null as u16,
+            options(nostack, preserves_flags, att_syntax),
+        );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reloads the `%gs` and `%fs` segment registers with the user thread data area selector.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it modifies segment registers.
+    ///
+    /// It is safe to use this function if and only if:
+    /// - The processor is running in privileged mode.
+    /// - The GDT entry at [`GdtEntries::UserThreadDataArea`] contains a valid descriptor with the
+    ///   desired base address. The caller must update the GDT entry (via
+    ///   [`Self::set_thread_data_area_base()`]) **before** calling this function.
+    ///
+    unsafe fn reload_thread_data_area_segments() {
+        arch::asm!(
+            "movw {sel:x}, %gs",
+            "movw {sel:x}, %fs",
+            sel = in(reg) SegmentSelector::UserThreadDataArea as u16,
+            options(nostack, preserves_flags, att_syntax),
+        );
     }
 }
