@@ -231,8 +231,10 @@ impl UserVm {
             },
         };
 
+        // Move the stdout sender out of args so no extra clone keeps the
+        // data_rx channel alive after the VMM thread finishes.
         // Output function used for emulating I/O port writes.
-        let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx.clone());
+        let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
 
         // Input function used for emulating I/O port reads.
         #[cfg(not(feature = "hyperlight"))]
