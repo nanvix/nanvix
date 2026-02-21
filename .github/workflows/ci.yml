@@ -390,21 +390,40 @@ jobs:
 
   # Build from source and run micro-benchmarks on baremetal self-hosted runners.
   # Benchmarks require L2_VM=yes which needs .git, so they cannot use Docker builds.
+  # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark:
-    name: "Benchmark"
+    name: "Benchmark (${{ matrix.machine-type }})"
     needs: [precheck, checks]
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine-type: microvm
+            # FIXME(1171): the current L2 deployment involves a very slow network
+            # namespace creation, particularly at high-churn, so we must temporarily
+            # reduce the number of iterations of the benchmarks.
+            standard-benchmarks: 'boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency warm-start warm-start-l2 warm-start-vmm'
+            standard-iterations: '100'
+            echo-benchmarks: 'echo-breakdown echo-breakdown-l2'
+            echo-iterations: '1000'
+          - machine-type: hyperlight
+            # NOTE: L2 benchmarks (cold-start-l2, concurrent-l2, warm-start-l2) are
+            # excluded until validated on CI runners. warm-start-vmm is excluded
+            # because the low-level VMM benchmark crashes (SIGKILL) on the Hyperlight
+            # VMM.
+            standard-benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start'
+            standard-iterations: '100'
+            # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight
+            # data path has fewer timestamp instrumentation points than expected
+            # (2 vs 10).
+            echo-benchmarks: ''
+            echo-iterations: ''
     runs-on:
       group: Benchmark
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
 
-    # NOTE: contents:write is needed for the benchmark-persist action to push
-    # results to the data/ directory. The actual git push only runs on dev
-    # (see benchmark-persist/action.yml). On PRs from forks the GITHUB_TOKEN
-    # is read-only anyway, so write permission is effectively a no-op there.
     if: |
       github.repository == 'nanvix/nanvix' &&
       needs.precheck.outputs.up_to_date == 'true' && (
@@ -418,11 +437,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
-      with:
-        # Use the deploy SSH key so that benchmark-persist can push results
-        # to the dev branch (the deploy key is a bypass actor for branch
-        # protection rules, matching the approach in create-minor-release).
-        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
     - name: "Isolate Cargo Home"
       shell: bash
@@ -442,48 +456,89 @@ jobs:
     - name: "Build (Standard)"
       uses: ./.github/actions/benchmark-build
       with:
-        machine-type: 'microvm'
+        machine-type: '${{ matrix.machine-type }}'
 
-    # FIXME(1171): the current L2 deployment involves a very slow network
-    # namespace creation, particularly at high-churn, so we must temporarily
-    # reduce the number of iterations of the benchmarks.
     - name: "Run Micro-Benchmarks (Standard)"
       uses: ./.github/actions/benchmark-run
       with:
-        benchmarks: 'boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency warm-start warm-start-l2 warm-start-vmm'
-        machine-type: 'microvm'
-        iterations: '100'
+        benchmarks: '${{ matrix.standard-benchmarks }}'
+        machine-type: '${{ matrix.machine-type }}'
+        iterations: '${{ matrix.standard-iterations }}'
 
     - name: "Build (Echo-Breakdown)"
+      if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/benchmark-build
       with:
-        machine-type: 'microvm'
+        machine-type: '${{ matrix.machine-type }}'
         timestamp-msg: 'yes'
 
     - name: "Run Echo-Breakdown Benchmarks"
+      if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/benchmark-run
       with:
-        benchmarks: 'echo-breakdown echo-breakdown-l2'
-        machine-type: 'microvm'
-        iterations: '1000'
+        benchmarks: '${{ matrix.echo-benchmarks }}'
+        machine-type: '${{ matrix.machine-type }}'
+        iterations: '${{ matrix.echo-iterations }}'
 
-    - name: "Build Hyperlight (Standard)"
-      uses: ./.github/actions/benchmark-build
+    - name: "Upload Benchmark Results"
+      if: always() && !cancelled()
+      uses: actions/upload-artifact@v6
       with:
-        machine-type: 'hyperlight'
+        name: benchmark-results-${{ matrix.machine-type }}
+        overwrite: true
+        retention-days: 1
+        path: nanvix_bench_*.csv
 
-    # NOTE: L2 benchmarks (cold-start-l2, concurrent-l2, warm-start-l2) are excluded
-    # until validated on CI runners. warm-start-vmm is excluded because the low-level
-    # VMM benchmark crashes (SIGKILL) on the Hyperlight VMM.
-    - name: "Run Hyperlight Micro-Benchmarks (Standard)"
-      uses: ./.github/actions/benchmark-run
+    - name: "Dump SCCACHE Statistics"
+      if: always()
+      uses: ./.github/actions/sccache-stats
+
+    - name: "Post-Cleanup Dangling Resources"
+      if: always()
+      uses: ./.github/actions/cleanup
       with:
-        benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start'
-        machine-type: 'hyperlight'
-        iterations: '100'
+        phase: post
 
-    # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight data
-    # path has fewer timestamp instrumentation points than expected (2 vs 10).
+    - name: "Upload logs in case of benchmark failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+          bench_*.txt
+
+  # Aggregate benchmark results from all machine types, post a PR comment,
+  # and persist the updated baselines on dev.
+  benchmark-finalize:
+    name: "Benchmark Finalize"
+    needs: [benchmark]
+    if: ${{ !cancelled() && needs.benchmark.result == 'success' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        # Use the deploy SSH key so that benchmark-persist can push results
+        # to the dev branch (the deploy key is a bypass actor for branch
+        # protection rules, matching the approach in create-minor-release).
+        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+    - name: "Download Benchmark Results"
+      uses: actions/download-artifact@v7
+      with:
+        pattern: benchmark-results-*
+        path: .
+        merge-multiple: true
 
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
@@ -504,43 +559,52 @@ jobs:
         archs: 'X64'
         target-dir: 'data'
 
-    - name: "Dump SCCACHE Statistics"
-      if: always()
-      uses: ./.github/actions/sccache-stats
-
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
-
-    - name: "Upload logs in case of benchmark failures"
+    - name: "Upload logs in case of finalize failures"
       if: failure()
       uses: actions/upload-artifact@v6
       with:
-        name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}
+        name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
         overwrite: 'true'
         path: |
           logs/
           **/*.log
           **/*.out
           **/*.err
-          bench_*.txt
 
   # Run micro-benchmarks on a GitHub-hosted runner using Docker so that
   # results are collected even without self-hosted hardware.
   # L2 benchmarks are intentionally excluded as they require self-hosted
   # infrastructure. CI runner results are stored in data/ci/ to keep them
   # isolated from the self-hosted runner baselines in data/.
+  # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark-ci:
-    name: "Benchmark CI"
+    name: "Benchmark CI (${{ matrix.machine-type }})"
     needs: [precheck, checks]
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine-type: microvm
+            standard-benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm'
+            standard-iterations: '100'
+            echo-benchmarks: 'echo-breakdown'
+            echo-iterations: '1000'
+          - machine-type: hyperlight
+            # NOTE: concurrent is excluded because spawning 100 Hyperlight VMs
+            # exceeds the ~7 GB RAM available on GitHub-hosted runners.
+            # warm-start-vmm is excluded because the low-level VMM benchmark
+            # crashes (SIGKILL) on the Hyperlight VMM.
+            standard-benchmarks: 'boot-time cold-start cold-start-uvm round-trip-latency warm-start'
+            standard-iterations: '100'
+            # NOTE: echo-breakdown is excluded for Hyperlight because the
+            # Hyperlight data path has fewer timestamp instrumentation points
+            # than expected (2 vs 10).
+            echo-benchmarks: ''
+            echo-iterations: ''
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
 
     if: |
       github.repository == 'nanvix/nanvix' &&
@@ -555,8 +619,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
-      with:
-        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
     - name: "Setup"
       uses: ./.github/actions/docker-setup
@@ -569,48 +631,80 @@ jobs:
     - name: "Build (Standard)"
       uses: ./.github/actions/docker-benchmark-build
       with:
-        machine-type: 'microvm'
+        machine-type: '${{ matrix.machine-type }}'
         sccache-gha-enabled: 'true'
 
     - name: "Run Micro-Benchmarks (Standard)"
       uses: ./.github/actions/docker-benchmark-run
       with:
-        benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm'
-        machine-type: 'microvm'
-        iterations: '100'
+        benchmarks: '${{ matrix.standard-benchmarks }}'
+        machine-type: '${{ matrix.machine-type }}'
+        iterations: '${{ matrix.standard-iterations }}'
 
     - name: "Build (Echo-Breakdown)"
+      if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/docker-benchmark-build
       with:
-        machine-type: 'microvm'
+        machine-type: '${{ matrix.machine-type }}'
         timestamp-msg: 'yes'
         sccache-gha-enabled: 'true'
 
     - name: "Run Echo-Breakdown Benchmarks"
+      if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/docker-benchmark-run
       with:
-        benchmarks: 'echo-breakdown'
-        machine-type: 'microvm'
-        iterations: '1000'
+        benchmarks: '${{ matrix.echo-benchmarks }}'
+        machine-type: '${{ matrix.machine-type }}'
+        iterations: '${{ matrix.echo-iterations }}'
 
-    - name: "Build Hyperlight (Standard)"
-      uses: ./.github/actions/docker-benchmark-build
+    - name: "Upload Benchmark Results"
+      if: always() && !cancelled()
+      uses: actions/upload-artifact@v6
       with:
-        machine-type: 'hyperlight'
-        sccache-gha-enabled: 'true'
+        name: benchmark-ci-results-${{ matrix.machine-type }}
+        overwrite: true
+        retention-days: 1
+        path: nanvix_bench_*.csv
 
-    # NOTE: concurrent is excluded because spawning 100 Hyperlight VMs exceeds
-    # the ~7 GB RAM available on GitHub-hosted runners. warm-start-vmm is excluded
-    # because the low-level VMM benchmark crashes (SIGKILL) on the Hyperlight VMM.
-    - name: "Run Hyperlight Micro-Benchmarks (Standard)"
-      uses: ./.github/actions/docker-benchmark-run
+    - name: "Upload logs in case of benchmark failures"
+      if: failure()
+      uses: actions/upload-artifact@v6
       with:
-        benchmarks: 'boot-time cold-start cold-start-uvm round-trip-latency warm-start'
-        machine-type: 'hyperlight'
-        iterations: '100'
+        name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+          bench_*.txt
 
-    # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight data
-    # path has fewer timestamp instrumentation points than expected (2 vs 10).
+  # Aggregate CI benchmark results from all machine types, post a PR comment,
+  # and persist the updated baselines on dev.
+  # NOTE: all matrix legs must succeed; partial results are intentionally
+  # discarded so that baselines stay consistent across machine types.
+  benchmark-ci-finalize:
+    name: "Benchmark CI Finalize"
+    needs: [benchmark-ci]
+    if: ${{ !cancelled() && needs.benchmark-ci.result == 'success' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+    - name: "Download Benchmark Results"
+      uses: actions/download-artifact@v7
+      with:
+        pattern: benchmark-ci-results-*
+        path: .
+        merge-multiple: true
 
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
@@ -631,18 +725,17 @@ jobs:
         archs: 'X64'
         target-dir: 'data/ci'
 
-    - name: "Upload logs in case of benchmark failures"
+    - name: "Upload logs in case of finalize failures"
       if: failure()
       uses: actions/upload-artifact@v6
       with:
-        name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}
+        name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
         overwrite: 'true'
         path: |
           logs/
           **/*.log
           **/*.out
           **/*.err
-          bench_*.txt
 
   # ==========================================================================================
   # Stage 4: Post Actions (Conditional)
