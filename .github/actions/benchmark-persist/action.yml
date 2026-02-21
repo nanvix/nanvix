@@ -64,10 +64,16 @@ runs:
       # bypass actor for branch protection rules on dev).
       git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
 
-      git add "${TARGET_DIR}"
-
       echo "Pulling latest changes..."
       git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
+
+      # Stage AFTER pull --rebase. If git add ran before the pull, the
+      # autostash triggered by --autostash would stash the staged changes
+      # and pop them back WITHOUT preserving the index (git stash pop does
+      # not use --index), silently un-staging all our work and causing the
+      # git diff --cached check below to see nothing to commit.
+      git add "${TARGET_DIR}"
+
       if git diff --cached --quiet; then
         echo "No benchmark result changes to commit."
       else
@@ -82,6 +88,8 @@ runs:
           fi
           echo "Push failed on attempt ${attempt}/${max_attempts}. Retrying..."
           sleep $((attempt * 5))
+          # autostash is safe here: our changes are already committed, so
+          # there is nothing unstaged for stash pop to mishandle.
           git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
           attempt=$((attempt + 1))
         done
