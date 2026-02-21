@@ -56,6 +56,27 @@ runs:
           }
         }
 
+        // Clean up orphaned draft releases left behind by prior runs that
+        // failed after creating a draft but before publishing it.
+        // getReleaseByTag() only finds published releases, so draft orphans
+        // are invisible to the deleteReleaseByTag() cleanup above.
+        async function deleteStaleDraftReleases() {
+          const releases = await github.paginate(
+            github.rest.repos.listReleases,
+            { owner, repo, per_page: 100 }
+          );
+          const stale = releases.filter(r =>
+            r.draft && r.tag_name === tag
+          );
+          for (const rel of stale) {
+            core.info(`Deleting stale draft release ${rel.id} ("${rel.name}").`);
+            await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
+          }
+          if (stale.length === 0) {
+            core.info('No stale draft releases found.');
+          }
+        }
+
         async function deleteTagRef() {
           try {
             await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
@@ -70,22 +91,95 @@ runs:
         }
 
         await deleteReleaseByTag();
+        await deleteStaleDraftReleases();
         await deleteTagRef();
 
-  - name: "Update Latest Release"
-    uses: ncipollo/release-action@v1
+  - name: "Create Latest Release"
+    uses: actions/github-script@v8
+    env:
+      RELEASE_VERSION: ${{ steps.version.outputs.version }}
     with:
-      token: ${{ inputs.github-token }}
-      tag: latest
-      name: Nanvix ${{ steps.version.outputs.version }}
-      draft: false
-      prerelease: false
-      allowUpdates: false
-      makeLatest: true
-      removeArtifacts: true
-      artifacts: release-artifacts/**/*.tar.bz2
-      artifactContentType: application/x-bzip2
-      body: Automated release for Nanvix ${{ steps.version.outputs.version }}.
+      github-token: ${{ inputs.github-token }}
+      script: |
+        const fs = require('fs');
+        const path = require('path');
+        const glob = require('@actions/glob');
+
+        const owner = context.repo.owner;
+        const repo = context.repo.repo;
+        const tag = 'latest';
+        const version = process.env.RELEASE_VERSION;
+        const commitSha = context.sha;
+
+        // Create a published release, explicitly targeting the workflow commit
+        // to prevent benchmark-persist (which may have advanced the default
+        // branch HEAD) from causing the tag to point to the wrong commit.
+        core.info(`Creating release "Nanvix ${version}" at ${commitSha}...`);
+        const { data: release } = await github.rest.repos.createRelease({
+          owner,
+          repo,
+          tag_name: tag,
+          target_commitish: commitSha,
+          name: `Nanvix ${version}`,
+          body: `Automated release for Nanvix ${version}.`,
+          draft: false,
+          prerelease: false,
+          make_latest: true,
+        });
+        core.info(`Created release ${release.id} (${release.html_url}).`);
+
+        // Upload a single release asset with retries on transient failures.
+        async function uploadAssetWithRetry(releaseId, name, data, retries = 3) {
+          for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: releaseId,
+                name,
+                data,
+                headers: {
+                  'content-type': 'application/x-bzip2',
+                  'content-length': data.length,
+                },
+              });
+              return;
+            } catch (error) {
+              if (attempt < retries) {
+                const delay = attempt * 2000;
+                core.warning(`Upload of ${name} failed (attempt ${attempt}/${retries}): ${error.message}. Retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+              } else {
+                throw error;
+              }
+            }
+          }
+        }
+
+        // Upload release artifacts.
+        const globber = await glob.create('release-artifacts/**/*.tar.bz2');
+        const files = await globber.glob();
+        core.info(`Found ${files.length} artifact(s) to upload.`);
+
+        for (const filePath of files) {
+          const name = path.basename(filePath);
+          const data = fs.readFileSync(filePath);
+          core.info(`Uploading ${name} (${data.length} bytes)...`);
+          await uploadAssetWithRetry(release.id, name, data);
+        }
+
+        // Verify the release is published and not draft.
+        const { data: verify } = await github.rest.repos.getRelease({
+          owner,
+          repo,
+          release_id: release.id,
+        });
+
+        if (verify.draft) {
+          core.setFailed(`Release ${release.id} is unexpectedly a draft after creation.`);
+          return;
+        }
+        core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
 
   - name: "Trigger Nanvix Release Dispatch"
     shell: bash
