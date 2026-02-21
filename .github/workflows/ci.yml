@@ -514,9 +514,13 @@ jobs:
 
   # Aggregate benchmark results from all machine types, post a PR comment,
   # and persist the updated baselines on dev.
+  # NOTE: all matrix legs must succeed; partial results are intentionally
+  # discarded so that baselines stay consistent across machine types.
   benchmark-finalize:
     name: "Benchmark Finalize"
     needs: [benchmark]
+    # NOTE: needs.benchmark.result is the aggregate result across all matrix
+    # legs. It is 'success' only when every leg succeeds.
     if: ${{ !cancelled() && needs.benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
@@ -686,6 +690,8 @@ jobs:
   benchmark-ci-finalize:
     name: "Benchmark CI Finalize"
     needs: [benchmark-ci]
+    # NOTE: needs.benchmark-ci.result is the aggregate result across all matrix
+    # legs. It is 'success' only when every leg succeeds.
     if: ${{ !cancelled() && needs.benchmark-ci.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
@@ -744,12 +750,14 @@ jobs:
   # Create release archives for all applicable configurations.
   release-archive:
     name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [ci-test, ci-l2]
+    needs: [ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
       needs.ci-test.result == 'success' &&
-      needs.ci-l2.result == 'success'
+      needs.ci-l2.result == 'success' &&
+      needs.benchmark-finalize.result == 'success' &&
+      needs.benchmark-ci-finalize.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -789,7 +797,7 @@ jobs:
   # Publish the latest release to GitHub.
   publish-latest:
     name: "Publish Latest Release"
-    needs: release-archive
+    needs: [release-archive]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
