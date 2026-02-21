@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    hal::arch::x86::mem::gdt::Gdt,
     kcall::KcallResult,
     mm::Vmem,
     pm::ProcessManager,
@@ -60,7 +61,7 @@ pub fn set_thread_data_area(
 
     trace!("pid={pid:?}, tid={tid:?}, user_tda={user_tda:?}");
 
-    // Check if tread-local storage does not lie within the user space.
+    // Check if thread-local storage does not lie within the user space.
     let user_tda: Option<VirtualAddress> = if user_tda != VirtualAddress::from_raw_value(0) {
         if !Vmem::is_user_addr(user_tda) {
             error!(
@@ -78,7 +79,25 @@ pub fn set_thread_data_area(
     // Handle kernel call.
     match pm.set_thread_data_area(pid, tid, user_tda) {
         Ok(()) => {
-            trace!("success");
+            // Update the GDT entry immediately so the GS/FS base takes effect
+            // without waiting for a context switch. This is critical for
+            // thread_local variables (accessed via %gs on x86) to work in
+            // single-threaded processes.
+            //
+            // SAFETY: We are in the kcall dispatcher, running in privileged
+            // mode with interrupts disabled. Modifying the GDT is safe here.
+            if let Some(tda_addr) = user_tda {
+                unsafe {
+                    Gdt::set_thread_data_area(tda_addr.into());
+                }
+            } else {
+                // Clear %gs/%fs so they do not reference a stale TDA.
+                unsafe {
+                    Gdt::clear_thread_data_area_segments();
+                }
+            }
+
+            trace!("success (user_tda={user_tda:?})");
             KcallResult::ok()
         },
 
