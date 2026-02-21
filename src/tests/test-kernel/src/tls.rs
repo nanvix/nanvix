@@ -29,6 +29,11 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm,
+    mm::VirtualAddress,
+    pm::{
+        ThreadCreateArgs,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -44,6 +49,18 @@ const TDA_SLOTS: usize = 16;
 
 /// Number of iterations for the repeated-overwrite and reassignment stress tests.
 const REPEAT_ITERATIONS: u32 = 64;
+
+/// Magic value for the main thread's TDA in cross-thread tests.
+const MAIN_TDA_MAGIC: u32 = 0xFEED_FACE;
+
+/// Magic value for the worker thread's TDA in cross-thread tests.
+const WORKER_TDA_MAGIC: u32 = 0xCAFE_BABE;
+
+/// Expected exit status returned by the worker thread.
+const WORKER_EXIT_STATUS: usize = 0xDEAD_BEEF;
+
+/// Worker stack size in bytes (512 KiB, matching `config::memory_layout::USER_STACK_SIZE`).
+const WORKER_STACK_SIZE: usize = 512 * 1024;
 
 //==================================================================================================
 // Types
@@ -420,6 +437,295 @@ fn test_repeated_reassignment() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Worker Thread Infrastructure
+//==================================================================================================
+
+/// # Description
+///
+/// A heap-allocated user stack with RAII cleanup.
+struct WorkerStack {
+    /// Raw pointer to the base of the allocated memory.
+    ptr: *mut u8,
+    /// Layout used for allocation (needed for deallocation).
+    layout: core::alloc::Layout,
+    /// Size of the stack in bytes.
+    size: usize,
+}
+
+impl WorkerStack {
+    /// # Description
+    ///
+    /// Allocates a new worker stack of the given size, aligned to pointer width.
+    ///
+    /// # Parameters
+    ///
+    /// - `size`: Stack size in bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorCode::OutOfMemory`] if the allocation fails.
+    fn new(size: usize) -> Result<Self, Error> {
+        let layout: core::alloc::Layout =
+            core::alloc::Layout::from_size_align(size, core::mem::align_of::<usize>())
+                .map_err(|_| Error::new(ErrorCode::OutOfMemory, "invalid stack layout"))?;
+        // SAFETY: layout is non-zero and properly aligned.
+        let ptr: *mut u8 = unsafe { ::alloc::alloc::alloc(layout) };
+        if ptr.is_null() {
+            return Err(Error::new(ErrorCode::OutOfMemory, "stack allocation failed"));
+        }
+        Ok(Self { ptr, layout, size })
+    }
+
+    /// Returns the base address as a `VirtualAddress`.
+    fn base(&self) -> VirtualAddress {
+        VirtualAddress::from_raw_value(self.ptr as usize)
+    }
+
+    /// Returns the stack size.
+    fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl Drop for WorkerStack {
+    fn drop(&mut self) {
+        // SAFETY: `ptr` was allocated with the same `layout`.
+        unsafe { ::alloc::alloc::dealloc(self.ptr, self.layout) };
+    }
+}
+
+/// # Description
+///
+/// Worker thread entry point for the cross-thread TDA test.
+///
+/// Receives a pointer to a `[u32; TDA_SLOTS]` buffer in `arg`.  Installs it as
+/// the thread's TDA and verifies that `%gs:0x0` reads the expected magic value.
+///
+/// # Returns
+///
+/// [`WORKER_EXIT_STATUS`] on success, `0` on failure.
+extern "C" fn tda_worker(arg: usize) -> usize {
+    // `arg` is the raw address of the worker's TDA buffer.
+    let tda_ptr: *mut u8 = arg as *mut u8;
+
+    // Install the worker's TDA.
+    if pm::set_thread_data_area(tda_ptr).is_err() {
+        return 0;
+    }
+
+    // Read %gs:0x0 and verify it matches the worker magic.
+    let gs_value: u32 = unsafe { read_gs_offset_0() };
+    if gs_value != WORKER_TDA_MAGIC {
+        ::syslog::error!("tda_worker: expected {WORKER_TDA_MAGIC:#010x}, got {gs_value:#010x}");
+        return 0;
+    }
+
+    WORKER_EXIT_STATUS
+}
+
+/// # Description
+///
+/// Builds [`ThreadCreateArgs`] for a worker thread.
+///
+/// # Parameters
+///
+/// - `stack`: The pre-allocated user stack.
+/// - `entry`: The worker entry point.
+/// - `arg`: The argument passed to the worker.
+fn make_thread_args(
+    stack: &WorkerStack,
+    entry: extern "C" fn(usize) -> usize,
+    arg: usize,
+) -> ThreadCreateArgs {
+    ThreadCreateArgs {
+        user_fn: ThreadCreateArgs::NULL_USER_FN,
+        user_fn_arg0: entry as usize,
+        user_fn_arg1: arg,
+        user_stack_base: stack.base(),
+        user_stack_size: stack.size(),
+        user_tda: None,
+    }
+}
+
+//==================================================================================================
+// Cross-Thread Test Cases
+//==================================================================================================
+
+/// # Description
+///
+/// Test 8 – TDA survives a create/join cycle (regression for stale `%gs` hidden cache).
+///
+/// Mirrors the C test in `tda.c`:
+/// 1. Main thread installs a TDA with [`MAIN_TDA_MAGIC`] at offset 0.
+/// 2. Verifies `%gs:0x0 == MAIN_TDA_MAGIC`.
+/// 3. Spawns a worker that installs its own TDA ([`WORKER_TDA_MAGIC`]) and verifies it.
+/// 4. Joins the worker.
+/// 5. Reads `%gs:0x0` again and verifies it still equals [`MAIN_TDA_MAGIC`].
+///
+/// Without the `__context_switch` fix that saves/restores `%gs`/`%fs`, step 5
+/// fails because the hidden descriptor cache retains the worker's TDA base.
+///
+/// # Errors
+///
+/// Returns an error if any step produces a mismatched read or a kcall failure.
+fn test_tda_survives_create_join() -> Result<(), Error> {
+    // --- Set up main thread's TDA ---
+    let mut main_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+    let original: *mut u8 = setup_tda(&mut main_tda)?;
+    unsafe { core::ptr::write_volatile(main_tda.as_mut_ptr(), MAIN_TDA_MAGIC) };
+
+    // Verify before spawning worker.
+    let before: u32 = unsafe { read_gs_offset_0() };
+    assert_eq_or_fail("tda_create_join_before", MAIN_TDA_MAGIC, before)?;
+
+    // --- Set up worker TDA buffer (stays alive until after join) ---
+    let mut worker_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+    unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), WORKER_TDA_MAGIC) };
+
+    // --- Spawn and join worker ---
+    let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+    let mut args: ThreadCreateArgs =
+        make_thread_args(&stack, tda_worker, worker_tda.as_mut_ptr() as usize);
+    let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+
+    let mut retval: usize = 0;
+    pm::join_thread(tid, &mut retval)?;
+    drop(stack);
+
+    if retval != WORKER_EXIT_STATUS {
+        ::syslog::error!(
+            "tda_create_join: worker retval mismatch (expected {WORKER_EXIT_STATUS:#x}, got \
+             {retval:#x})"
+        );
+        teardown_tda(original)?;
+        return Err(Error::new(ErrorCode::InvalidArgument, "worker retval mismatch"));
+    }
+
+    // --- Critical check: main thread's %gs must still resolve to its own TDA ---
+    let after: u32 = unsafe { read_gs_offset_0() };
+    let result: Result<(), Error> =
+        assert_eq_or_fail("tda_create_join_after", MAIN_TDA_MAGIC, after);
+
+    teardown_tda(original)?;
+    result
+}
+
+/// # Description
+///
+/// Test 9 – Repeated create/join cycles preserve the main thread's TDA.
+///
+/// Runs [`REPEAT_ITERATIONS`] create/join cycles, verifying after each one that
+/// the main thread's `%gs:0x0` still reads the correct magic.  This catches
+/// intermittent stale-cache bugs that only manifest after several context
+/// switches.
+///
+/// # Errors
+///
+/// Returns the first error encountered.
+fn test_repeated_create_join() -> Result<(), Error> {
+    let mut main_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+    let original: *mut u8 = setup_tda(&mut main_tda)?;
+    unsafe { core::ptr::write_volatile(main_tda.as_mut_ptr(), MAIN_TDA_MAGIC) };
+
+    let mut result: Result<(), Error> = Ok(());
+
+    for i in 0..REPEAT_ITERATIONS {
+        // Worker TDA with a per-iteration magic to ensure each worker writes a unique value.
+        let worker_magic: u32 = 0xBB00_0000 | i;
+        let mut worker_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+        unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), worker_magic) };
+
+        let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+        let mut args: ThreadCreateArgs =
+            make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
+        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+
+        let mut retval: usize = 0;
+        pm::join_thread(tid, &mut retval)?;
+        drop(stack);
+
+        // Check that the worker succeeded.
+        if retval == 0 {
+            ::syslog::error!("repeated_create_join: worker failed at iteration {i}");
+            result = Err(Error::new(ErrorCode::InvalidArgument, "worker failed"));
+            break;
+        }
+
+        // Verify main thread's TDA is intact.
+        let after: u32 = unsafe { read_gs_offset_0() };
+        if let Err(e) = assert_eq_or_fail("repeated_create_join", MAIN_TDA_MAGIC, after) {
+            ::syslog::error!("repeated_create_join: stale %%gs at iteration {i}");
+            result = Err(e);
+            break;
+        }
+    }
+
+    teardown_tda(original)?;
+    result
+}
+
+/// # Description
+///
+/// Generic worker that installs whatever TDA buffer `arg` points to, reads
+/// `%gs:0x0`, and returns the read value as the exit status.  The caller can
+/// verify the value after joining.
+extern "C" fn tda_worker_generic(arg: usize) -> usize {
+    let tda_ptr: *mut u8 = arg as *mut u8;
+    if pm::set_thread_data_area(tda_ptr).is_err() {
+        return 0;
+    }
+    let gs_value: u32 = unsafe { read_gs_offset_0() };
+    gs_value as usize
+}
+
+/// # Description
+///
+/// Test 10 – Worker TDA is independent from main TDA.
+///
+/// Verifies that the worker thread reads its own TDA value (not the main
+/// thread's) and that the main thread's TDA is unaffected by the worker's
+/// writes.  This is the kernel-level equivalent of the C `tda.c` test that
+/// checks thread-specific data isolation.
+///
+/// # Errors
+///
+/// Returns an error on any mismatch.
+fn test_worker_tda_independence() -> Result<(), Error> {
+    let mut main_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+    let original: *mut u8 = setup_tda(&mut main_tda)?;
+    unsafe { core::ptr::write_volatile(main_tda.as_mut_ptr(), MAIN_TDA_MAGIC) };
+
+    // Verify main's TDA before spawn.
+    let before: u32 = unsafe { read_gs_offset_0() };
+    assert_eq_or_fail("worker_independence_before", MAIN_TDA_MAGIC, before)?;
+
+    // Worker gets its own distinct TDA.
+    let mut worker_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
+    unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), WORKER_TDA_MAGIC) };
+
+    let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+    let mut args: ThreadCreateArgs =
+        make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
+    let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+
+    let mut retval: usize = 0;
+    pm::join_thread(tid, &mut retval)?;
+    drop(stack);
+
+    // Verify the worker read its own magic (not the main thread's).
+    let worker_read: u32 = retval as u32;
+    assert_eq_or_fail("worker_independence_worker", WORKER_TDA_MAGIC, worker_read)?;
+
+    // Verify main's TDA is still intact.
+    let after: u32 = unsafe { read_gs_offset_0() };
+    let result: Result<(), Error> =
+        assert_eq_or_fail("worker_independence_after", MAIN_TDA_MAGIC, after);
+
+    teardown_tda(original)?;
+    result
+}
+
+//==================================================================================================
 // Public Entry Point
 //==================================================================================================
 
@@ -427,7 +733,7 @@ fn test_repeated_reassignment() -> Result<(), Error> {
 ///
 /// Runs all TLS stress tests.
 ///
-/// Executes seven test cases that exercise the `set_thread_data_area()` and
+/// Executes ten test cases that exercise the `set_thread_data_area()` and
 /// `get_thread_data_area()` kernel calls in various scenarios:
 ///
 /// 1. Basic GDT update (original regression test).
@@ -437,6 +743,9 @@ fn test_repeated_reassignment() -> Result<(), Error> {
 /// 5. Repeated overwrite of the value at offset 0.
 /// 6. `get_thread_data_area()` / `set_thread_data_area()` round-trip.
 /// 7. Repeated alternation between two TDA buffers.
+/// 8. TDA survives a create/join cycle (stale `%gs` hidden-cache regression).
+/// 9. Repeated create/join cycles preserve the main thread's TDA.
+/// 10. Worker TDA is independent from the main thread's TDA.
 ///
 /// # Returns
 ///
@@ -468,6 +777,15 @@ pub fn run() -> Result<(), Error> {
 
     test_repeated_reassignment()?;
     ::syslog::info!("test-kernel: tls: PASS - repeated_reassignment");
+
+    test_tda_survives_create_join()?;
+    ::syslog::info!("test-kernel: tls: PASS - tda_survives_create_join");
+
+    test_repeated_create_join()?;
+    ::syslog::info!("test-kernel: tls: PASS - repeated_create_join");
+
+    test_worker_tda_independence()?;
+    ::syslog::info!("test-kernel: tls: PASS - worker_tda_independence");
 
     ::syslog::info!("test-kernel: tls: all tests passed");
 
