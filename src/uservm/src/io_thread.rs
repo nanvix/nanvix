@@ -21,6 +21,7 @@ use ::log::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::std::mem;
 use ::sys::ipc::Message;
@@ -46,6 +47,27 @@ use ::tokio::{
 
 /// Event loop responsible for bridging the system VM, control-plane, and guest channels.
 pub struct IoThread;
+
+/// Timestamps, serialises, and writes a single [`Message`] to the system VM socket.
+async fn forward_message_to_system_vm(
+    msg: &mut Message,
+    system_vm_tx: &mut SocketStreamWriter,
+) -> Result<()> {
+    // Label: uservm::io_thread::system_vm::write()
+    profiler::timestamp_message!(
+        &mut msg.payload,
+        std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+            + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+    );
+    // SAFETY: `Message` derives `Clone`; cloning avoids consuming the caller's binding.
+    let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.clone().to_bytes();
+    system_vm_tx.write_all(&bytes).await.map_err(|e| {
+        let reason: String = format!("failed writing message to system VM socket: {e}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })?;
+    Ok(())
+}
 
 impl IoThread {
     ///
@@ -189,18 +211,7 @@ impl IoThread {
                     trace!("forwarding message to system VM");
                     match result {
                         Some(mut msg) => {
-                            // Label: uservm::io_thread::system_vm::write()
-                            profiler::timestamp_message!(&mut msg.payload,
-                                std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                    + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
-                            );
-
-                            let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.to_bytes();
-                            system_vm_tx.write_all(&bytes).await.map_err(|e| {
-                                let reason: String = format!("failed writing message to system VM socket: {e}");
-                                error!("{reason}");
-                                anyhow::Error::msg(reason)
-                            })?;
+                            forward_message_to_system_vm(&mut msg, &mut system_vm_tx).await?;
                         },
                         None => {
                             debug!(
@@ -293,18 +304,16 @@ impl IoThread {
                                     // Close the channel and drain any buffered outbound
                                     // messages before dropping the system VM socket.
                                     data_rx.close();
+                                    let mut drained: usize = 0;
                                     while let Some(mut msg) = data_rx.recv().await {
-                                        // Label: uservm::io_thread::system_vm::write()
-                                        profiler::timestamp_message!(&mut msg.payload,
-                                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
-                                        );
-                                        let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.to_bytes();
-                                        if let Err(e) = system_vm_tx.write_all(&bytes).await {
-                                            error!("failed to flush message to system VM during shutdown: {e}");
+                                        if let Err(e) = forward_message_to_system_vm(&mut msg, &mut system_vm_tx).await {
+                                            let remaining: usize = data_rx.len();
+                                            warn!("drain aborted after {drained} messages, {remaining} messages dropped: {e}");
                                             break;
                                         }
+                                        drained += 1;
                                     }
+                                    debug!("drained {drained} outbound messages");
                                     debug!(
                                         "shutdown completed (elapsed_ms={})",
                                         start_instant.elapsed().as_millis()
