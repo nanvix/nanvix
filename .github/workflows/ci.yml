@@ -247,6 +247,13 @@ jobs:
 
     - uses: actions/checkout@v6
 
+    - name: "Isolate Cargo Home"
+      shell: bash
+      run: |
+        # Isolate Cargo home per job to prevent concurrent git-cache races on
+        # self-hosted runners that share the same filesystem.
+        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+
     - name: "Pre-Cleanup Dangling Resources"
       uses: ./.github/actions/cleanup
       with:
@@ -317,6 +324,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+
+    - name: "Isolate Cargo Home"
+      shell: bash
+      run: |
+        # Isolate Cargo home per job to prevent concurrent git-cache races on
+        # self-hosted runners that share the same filesystem.
+        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
     - name: "Pre-Cleanup Dangling Resources"
       uses: ./.github/actions/cleanup
@@ -409,6 +423,13 @@ jobs:
         # to the dev branch (the deploy key is a bypass actor for branch
         # protection rules, matching the approach in create-minor-release).
         ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+    - name: "Isolate Cargo Home"
+      shell: bash
+      run: |
+        # Isolate Cargo home per job to prevent concurrent git-cache races on
+        # self-hosted runners that share the same filesystem.
+        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
     - name: "Pre-Cleanup Dangling Resources"
       uses: ./.github/actions/cleanup
@@ -687,6 +708,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+
+    - name: "Isolate Cargo Home"
+      shell: bash
+      run: |
+        # Isolate Cargo home per job to prevent concurrent git-cache races on
+        # self-hosted runners that share the same filesystem.
+        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
     - name: "Publish Release"
       uses: ./.github/actions/publish-release
