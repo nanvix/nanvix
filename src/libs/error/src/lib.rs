@@ -286,11 +286,22 @@ impl ErrorCode {
     }
 }
 
-// Manual conversion from i32 to ErrorCode using constants
+// Manual conversion from i32 to ErrorCode using constants.
+// Accepts both positive and negative errno values (the Linux kernel call convention negates errno
+// on the kernel side, so user-space may receive either form).
 impl TryFrom<i32> for ErrorCode {
     type Error = Error;
 
     fn try_from(value: i32) -> Result<Self, Error> {
+        // Normalize to a positive errno value when possible, avoiding overflow on i32::MIN.
+        let value: i32 = if value < 0 {
+            match value.checked_abs() {
+                Some(abs) => abs,
+                None => value,
+            }
+        } else {
+            value
+        };
         match value {
             EPERM => Ok(ErrorCode::OperationNotPermitted),
             ENOENT => Ok(ErrorCode::NoSuchEntry),
