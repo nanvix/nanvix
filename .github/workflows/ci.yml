@@ -550,7 +550,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm,hyperlight'
         archs: 'X64'
-        dev-dir: 'data'
+        dev-dir: 'data/baremetal'
         runner-label: 'self-hosted'
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -561,7 +561,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
         machine-types: 'microvm,hyperlight'
         archs: 'X64'
-        target-dir: 'data'
+        target-dir: 'data/baremetal'
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
@@ -578,8 +578,8 @@ jobs:
   # Run micro-benchmarks on a GitHub-hosted runner using Docker so that
   # results are collected even without self-hosted hardware.
   # L2 benchmarks are intentionally excluded as they require self-hosted
-  # infrastructure. CI runner results are stored in data/ci/ to keep them
-  # isolated from the self-hosted runner baselines in data/.
+  # infrastructure. GitHub runner results are stored in data/github/ to keep
+  # them isolated from the self-hosted runner baselines in data/baremetal/.
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark-ci:
     name: "Benchmark CI (${{ matrix.machine-type }})"
@@ -718,7 +718,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
         machine-types: 'microvm,hyperlight'
         archs: 'X64'
-        dev-dir: 'data/ci'
+        dev-dir: 'data/github'
         runner-label: 'github-hosted'
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -729,7 +729,7 @@ jobs:
         benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
         machine-types: 'microvm,hyperlight'
         archs: 'X64'
-        target-dir: 'data/ci'
+        target-dir: 'data/github'
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
