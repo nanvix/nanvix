@@ -190,7 +190,7 @@ runs:
         exit 0
       fi
 
-      repos=("bzip2" "cpython" "cymem" "kiwi" "libexpat" "libffi" "murmurhash" "numpy" "openblas" "openssl" "preshed" "quickjs" "rusty_v8" "sqlite" "srsly" "zlib")
+      repos=("bzip2" "libexpat" "libffi" "openblas" "openssl" "quickjs" "rusty_v8" "sqlite" "zlib")
       failed=0
 
       for repo in "${repos[@]}"; do
@@ -217,9 +217,9 @@ runs:
           -d "${PAYLOAD}")
 
         if [[ "${http_response}" -ge 200 && "${http_response}" -lt 300 ]]; then
-          echo "Dispatched nanvix-release event to nanvix/${repo} (HTTP ${http_response})."
+          echo "Dispatched nanvix-minor-release event to nanvix/${repo} (HTTP ${http_response})."
         else
-          echo "::error::Failed to dispatch nanvix-release event to nanvix/${repo} (HTTP ${http_response})."
+          echo "::error::Failed to dispatch nanvix-minor-release event to nanvix/${repo} (HTTP ${http_response})."
           failed=1
         fi
       done
