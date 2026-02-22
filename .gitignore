@@ -17,12 +17,12 @@ build-gdb
 toolchain
 
 # Build artifacts
+.venv/
 bin/
 /lib/
 /logs/
 images/
 target/
-venv/
 /sysroot-debug/
 /sysroot-release/
 sysroot
