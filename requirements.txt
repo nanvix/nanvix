@@ -1,0 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Development tools.
+black>=24.0.0
+flake8>=7.0.0
