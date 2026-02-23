@@ -53,7 +53,7 @@ pub fn getpid() -> Result<ProcessIdentifier, Error> {
     if unlikely(result < 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to getpid()"))
     } else {
-    ProcessIdentifier::try_from(result)
+        ProcessIdentifier::try_from(result)
     }
 }
 
@@ -78,7 +78,7 @@ pub fn gettid() -> Result<ThreadIdentifier, Error> {
     if unlikely(result < 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to gettid()"))
     } else {
-    ThreadIdentifier::try_from(result)
+        ThreadIdentifier::try_from(result)
     }
 }
 
@@ -126,10 +126,11 @@ pub fn exit(status: i32) -> Result<!, Error> {
 pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
     let result: i64 = kcall2!(KcallNumber::CapCtl.into(), capability as u32, value as u32);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because capability control typically succeeds.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to capctl()"))
+    } else {
+        Ok(())
     }
 }
 
@@ -153,10 +154,11 @@ pub fn capctl(capability: Capability, value: bool) -> Result<(), Error> {
 pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::Terminate.into(), u32::try_from(pid)?);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because terminate typically succeeds for a valid process.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate()"))
+    } else {
+        Ok(())
     }
 }
 
@@ -283,7 +285,7 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
     if unlikely(result < 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to create_thread()"))
     } else {
-    ThreadIdentifier::try_from(result)
+        ThreadIdentifier::try_from(result)
     }
 }
 
@@ -333,7 +335,8 @@ pub fn join_thread(tid: ThreadIdentifier, retval: &mut usize) -> Result<(), Erro
     let result: i64 =
         kcall2!(KcallNumber::JoinThread.into(), i32::from(tid) as u32, retval as *mut usize as u32);
 
-    if result != 0 {
+    // NOTE: errors are unlikely because join typically succeeds for a valid thread.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to join thread"))
     } else {
         Ok(())
@@ -379,10 +382,11 @@ pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Resu
         nanoseconds
     );
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because lock typically succeeds for a valid mutex.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to lock mutex"))
+    } else {
+        Ok(())
     }
 }
 
@@ -406,10 +410,11 @@ pub fn lock_mutex(mutex_addr: MutexAddress, timeout: Option<SystemTime>) -> Resu
 pub fn unlock_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::MutexUnlock.into(), usize::from(mutex_addr) as u32);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because unlock typically succeeds for a valid, held mutex.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to unlock mutex"))
+    } else {
+        Ok(())
     }
 }
 
@@ -441,10 +446,11 @@ pub fn signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Result<usize
         u32::MAX
     );
 
-    if result >= 0 {
-        Ok(result as usize)
-    } else {
+    // NOTE: errors are unlikely because signal typically succeeds for a valid condition variable.
+    if unlikely(result < 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to signal condition variable"))
+    } else {
+        Ok(result as usize)
     }
 }
 
@@ -493,10 +499,11 @@ pub fn wait_cond(
         nanoseconds
     );
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because wait typically succeeds for valid condition/mutex.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to wait condition variable"))
+    } else {
+        Ok(())
     }
 }
 
@@ -522,10 +529,11 @@ pub fn gettime(buffer: &mut SystemTime) -> Result<(), Error> {
     let result: i64 =
         kcall1!(KcallNumber::GetTime.into(), buffer as *mut SystemTime as usize as u32);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because gettime typically succeeds for a valid buffer.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to get time"))
+    } else {
+        Ok(())
     }
 }
 
@@ -555,10 +563,11 @@ pub fn sleep(timeout: Duration) -> Result<(), Error> {
 
     let result: i64 = kcall2!(KcallNumber::Sleep.into(), seconds, nanoseconds);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because sleep typically succeeds for a valid timeout.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to sleep"))
+    } else {
+        Ok(())
     }
 }
 
@@ -588,10 +597,11 @@ pub fn sleep(timeout: Duration) -> Result<(), Error> {
 pub fn get_thread_data_area() -> Result<*mut u8, Error> {
     let result: i64 = kcall0!(KcallNumber::GetThreadDataArea.into());
 
-    if result >= 0 {
-        Ok(result as *mut u8)
-    } else {
+    // NOTE: errors are unlikely because get_thread_data_area typically succeeds.
+    if unlikely(result < 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to get thread data area"))
+    } else {
+        Ok(result as *mut u8)
     }
 }
 
@@ -625,9 +635,10 @@ pub fn get_thread_data_area() -> Result<*mut u8, Error> {
 pub fn set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::SetThreadDataArea.into(), user_tda as usize as u32);
 
-    if result == 0 {
-        Ok(())
-    } else {
+    // NOTE: errors are unlikely because set_thread_data_area typically succeeds.
+    if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to set data area"))
+    } else {
+        Ok(())
     }
 }
