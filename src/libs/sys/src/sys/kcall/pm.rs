@@ -27,7 +27,10 @@ use crate::{
     },
     time::SystemTime,
 };
-use ::core::time::Duration;
+use ::core::{
+    hint::unlikely,
+    time::Duration,
+};
 
 //==================================================================================================
 // Get Process Identifier
@@ -38,7 +41,7 @@ use ::core::time::Duration;
 ///
 /// Gets the process identifier of the calling process.
 ///
-/// # Return Values
+/// # Returns
 ///
 /// Upon successful completion, the process identifier of the calling process is returned. Upon
 /// failure, an error is returned instead.
@@ -46,7 +49,12 @@ use ::core::time::Duration;
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
     let result: i64 = kcall0!(KcallNumber::GetPid.into());
 
+    // NOTE: errors are unlikely because getpid() always succeeds for a valid calling process.
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to getpid()"))
+    } else {
     ProcessIdentifier::try_from(result)
+    }
 }
 
 //==================================================================================================
@@ -58,7 +66,7 @@ pub fn getpid() -> Result<ProcessIdentifier, Error> {
 ///
 /// Gets the thread identifier of the calling thread.
 ///
-/// # Return Values
+/// # Returns
 ///
 /// Upon successful completion, the thread identifier of the calling thread is returned. Upon
 /// failure, an error is returned instead.
@@ -66,7 +74,12 @@ pub fn getpid() -> Result<ProcessIdentifier, Error> {
 pub fn gettid() -> Result<ThreadIdentifier, Error> {
     let result: i64 = kcall0!(KcallNumber::GetTid.into());
 
+    // NOTE: errors are unlikely because gettid() always succeeds for a valid calling thread.
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to gettid()"))
+    } else {
     ThreadIdentifier::try_from(result)
+    }
 }
 
 //==================================================================================================
@@ -266,7 +279,12 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
     let result: i64 =
         kcall1!(KcallNumber::CreateThread.into(), args as *const ThreadCreateArgs as usize as u32);
 
+    // NOTE: errors may happen on resource exhaustion, but are still unlikely in general.
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to create_thread()"))
+    } else {
     ThreadIdentifier::try_from(result)
+    }
 }
 
 //==================================================================================================
