@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use ::config::kernel::KREDZONE_SIZE;
 use ::core::mem;
 use ::sys::error::{
     Error,
@@ -13,20 +14,6 @@ use ::sys::error::{
 extern "C" {
     static mut kredzone: usize;
 }
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Size of the kernel red zone (in bytes).
-///
-/// # Note
-///
-/// - This size should match what is defined in start.S
-const KREDZONE_SIZE: usize = 128;
 
 //==================================================================================================
 // Standalone Public Functions

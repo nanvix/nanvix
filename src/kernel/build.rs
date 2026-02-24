@@ -120,20 +120,129 @@ fn main() {
     let kernel_config_path: PathBuf = workspace_dir.join(DEFAULT_KERNEL_CONFIG_PATH);
     let kernel_config: HashMap<String, String> = load_toml(&kernel_config_path);
 
-    // Extract kstack_size from config
-    let kstack_size: usize = match kernel_config.get("kstack_size") {
-        Some(size_str) => size_str
-            .parse::<usize>()
-            .expect("Failed to parse kstack_size"),
-        None => panic!("kstack_size not found in kernel_config.toml"),
-    };
+    /// Helper to retrieve a required key from the kernel config, panicking with a clear message
+    /// if missing.
+    fn required_key<'a>(config: &'a HashMap<String, String>, key: &str) -> &'a str {
+        config
+            .get(key)
+            .unwrap_or_else(|| panic!("Missing required key '{}' in kernel_config.toml", key))
+            .as_str()
+    }
 
-    // Extract kpool_base from config
-    let kpool_base_str: &str = match kernel_config.get("kpool_base") {
-        Some(s) => s.as_str(),
-        None => panic!("kpool_base not found in kernel_config.toml"),
+    // Page size (architectural constant).
+    const PAGE_SIZE: usize = 4096;
+
+    // Extract kstack_size from config.
+    let kstack_size: usize =
+        parse_hex_or_decimal(required_key(&kernel_config, "kstack_size"), "kstack_size");
+
+    // Extract kpool_base from config.
+    let kpool_base: usize =
+        parse_hex_or_decimal(required_key(&kernel_config, "kpool_base"), "kpool_base");
+
+    // Extract kpool_size from config.
+    let kpool_size: usize =
+        parse_hex_or_decimal(required_key(&kernel_config, "kpool_size"), "kpool_size");
+
+    // Extract kredzone_size from config.
+    let kredzone_size: usize =
+        parse_hex_or_decimal(required_key(&kernel_config, "kredzone_size"), "kredzone_size");
+
+    // Extract kstack_guard_pattern from config.
+    let kstack_guard_pattern: usize = parse_hex_or_decimal(
+        required_key(&kernel_config, "kstack_guard_pattern"),
+        "kstack_guard_pattern",
+    );
+
+    //==============================================================================================
+    // Build-Time Assertions
+    //==============================================================================================
+
+    const PAGE_TABLE_SIZE: usize = 4 * 1024 * 1024;
+
+    // kstack_size must be a multiple of the page size.
+    assert!(
+        kstack_size.is_multiple_of(PAGE_SIZE),
+        "kstack_size ({}) must be a multiple of PAGE_SIZE ({})",
+        kstack_size,
+        PAGE_SIZE,
+    );
+
+    // kstack_size must be at least two pages (one guard page + one usable page).
+    assert!(
+        kstack_size >= 2 * PAGE_SIZE,
+        "kstack_size ({}) must be at least 2 * PAGE_SIZE ({})",
+        kstack_size,
+        2 * PAGE_SIZE,
+    );
+
+    // kstack_size must not exceed the size of a page table.
+    assert!(
+        kstack_size <= PAGE_TABLE_SIZE,
+        "kstack_size ({}) must not exceed PAGE_TABLE_SIZE ({})",
+        kstack_size,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kpool_size must be a multiple of the page size.
+    assert!(
+        kpool_size.is_multiple_of(PAGE_SIZE),
+        "kpool_size ({}) must be a multiple of PAGE_SIZE ({})",
+        kpool_size,
+        PAGE_SIZE,
+    );
+
+    // kpool_size must not exceed the size of a page table.
+    assert!(
+        kpool_size <= PAGE_TABLE_SIZE,
+        "kpool_size ({}) must not exceed PAGE_TABLE_SIZE ({})",
+        kpool_size,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kpool_base + kpool_size must fit within physical memory.
+    let memory_size: usize =
+        parse_hex_or_decimal(required_key(&kernel_config, "memory_size"), "memory_size");
+    let kpool_end: usize = match kpool_base.checked_add(kpool_size) {
+        Some(sum) => sum,
+        None => panic!(
+            "kpool_base ({:#x}) + kpool_size ({:#x}) overflows usize",
+            kpool_base, kpool_size,
+        ),
     };
-    let kpool_base: usize = parse_hex_or_decimal(kpool_base_str, "kpool_base");
+    assert!(
+        kpool_end <= memory_size,
+        "kpool_base ({:#x}) + kpool_size ({:#x}) = {:#x} exceeds memory_size ({:#x})",
+        kpool_base,
+        kpool_size,
+        kpool_end,
+        memory_size,
+    );
+
+    // kpool_base must be aligned to a page table boundary (4 MB).
+    assert!(
+        kpool_base.is_multiple_of(PAGE_TABLE_SIZE),
+        "kpool_base ({:#x}) must be aligned to a page table boundary ({:#x})",
+        kpool_base,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kstack_guard_pattern must fit in a 32-bit word.
+    assert!(
+        kstack_guard_pattern <= u32::MAX as usize,
+        "kstack_guard_pattern ({:#x}) must fit in a 32-bit word",
+        kstack_guard_pattern,
+    );
+
+    // kredzone_size must be a multiple of the word size so that usize-indexed loads/stores
+    // in kredzone.rs never silently truncate the usable slot count.
+    const WORD_SIZE: usize = core::mem::size_of::<u32>();
+    assert!(
+        kredzone_size.is_multiple_of(WORD_SIZE),
+        "kredzone_size ({}) must be a multiple of the word size ({})",
+        kredzone_size,
+        WORD_SIZE,
+    );
 
     // Tell Cargo to rerun build script if config changes
     println!("cargo::rerun-if-changed={}", kernel_config_path.display());
@@ -156,8 +265,10 @@ fn main() {
         "-Werror".to_string(),
     ];
 
-    // Add KSTACK_SIZE define from config
+    // Add defines from config for assembly constants.
     cflags.push(format!("-DKSTACK_SIZE={}", kstack_size));
+    cflags.push(format!("-DKREDZONE_SIZE={}", kredzone_size));
+    cflags.push(format!("-DKSTACK_GUARD_PATTERN={:#x}", kstack_guard_pattern));
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {

@@ -114,8 +114,18 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     constants.push_str(&format!("pub const KSTACK_SIZE: usize = {val};\n"));
 
     // Stack guard watermark pattern.
-    // NOTE: This value must match KSTACK_GUARD_PATTERN in src/kernel/src/hal/arch/x86/start.S.
-    constants.push_str("pub const KSTACK_GUARD_PATTERN: u32 = 0xDEAD1234;\n");
+    let val: u32 = parse_hex_or_decimal_u32(
+        required_key(&kernel_config_toml, "kstack_guard_pattern"),
+        "kstack_guard_pattern",
+    );
+    constants.push_str(&format!("pub const KSTACK_GUARD_PATTERN: u32 = {val:#x};\n"));
+
+    // Kernel red zone size.
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kredzone_size"),
+        "kredzone_size",
+    );
+    constants.push_str(&format!("pub const KREDZONE_SIZE: usize = {val};\n"));
 
     let val: u32 =
         parse_hex_or_decimal_u32(required_key(&kernel_config_toml, "timer_freq"), "timer_freq");
@@ -157,13 +167,107 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     );
     constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));
 
-    let val: usize =
-        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
-    constants.push_str(&format!("pub const KPOOL_BASE: usize = {val};\n"));
-
     constants.push_str("}\n");
 
-    // Write the generated file
+    //==============================================================================================
+    // Build-Time Assertions
+    //==============================================================================================
+
+    // Re-read constants needed for cross-validation.
+    let memory_size: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "memory_size"), "memory_size");
+    let kpool_base: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_base"), "kpool_base");
+    let kpool_size: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kpool_size"), "kpool_size");
+    let kstack_size: usize =
+        parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "kstack_size"), "kstack_size");
+    let kredzone_size: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "kredzone_size"),
+        "kredzone_size",
+    );
+
+    // Architectural constants.
+    const PAGE_SIZE: usize = 4096;
+    const PAGE_TABLE_SIZE: usize = 4 * 1024 * 1024;
+    const WORD_SIZE: usize = core::mem::size_of::<u32>();
+
+    // memory_size must accommodate the kernel pool.
+    let kpool_end: usize = match kpool_base.checked_add(kpool_size) {
+        Some(sum) => sum,
+        None => panic!(
+            "kpool_base ({:#x}) + kpool_size ({:#x}) overflows usize",
+            kpool_base, kpool_size,
+        ),
+    };
+    assert!(
+        kpool_end <= memory_size,
+        "kpool_base ({:#x}) + kpool_size ({:#x}) = {:#x} exceeds memory_size ({:#x})",
+        kpool_base,
+        kpool_size,
+        kpool_end,
+        memory_size,
+    );
+
+    // kpool_base must be page-table aligned (4 MB boundary).
+    assert!(
+        kpool_base.is_multiple_of(PAGE_TABLE_SIZE),
+        "kpool_base ({:#x}) must be aligned to a page table boundary ({:#x})",
+        kpool_base,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kpool_size must be page-aligned.
+    assert!(
+        kpool_size.is_multiple_of(PAGE_SIZE),
+        "kpool_size ({}) must be a multiple of PAGE_SIZE ({})",
+        kpool_size,
+        PAGE_SIZE,
+    );
+
+    // kpool_size must not exceed the size of a page table.
+    assert!(
+        kpool_size <= PAGE_TABLE_SIZE,
+        "kpool_size ({}) must not exceed PAGE_TABLE_SIZE ({})",
+        kpool_size,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kstack_size must be page-aligned.
+    assert!(
+        kstack_size.is_multiple_of(PAGE_SIZE),
+        "kstack_size ({}) must be a multiple of PAGE_SIZE ({})",
+        kstack_size,
+        PAGE_SIZE,
+    );
+
+    // kstack_size must be at least two pages (one guard page + one usable page).
+    assert!(
+        kstack_size >= 2 * PAGE_SIZE,
+        "kstack_size ({}) must be at least 2 * PAGE_SIZE ({})",
+        kstack_size,
+        2 * PAGE_SIZE,
+    );
+
+    // kstack_size must not exceed the size of a page table.
+    assert!(
+        kstack_size <= PAGE_TABLE_SIZE,
+        "kstack_size ({}) must not exceed PAGE_TABLE_SIZE ({})",
+        kstack_size,
+        PAGE_TABLE_SIZE,
+    );
+
+    // kstack_guard_pattern is parsed as u32, so it is guaranteed to fit in a 32-bit word.
+
+    // kredzone_size must be a multiple of the word size.
+    assert!(
+        kredzone_size.is_multiple_of(WORD_SIZE),
+        "kredzone_size ({}) must be a multiple of the word size ({})",
+        kredzone_size,
+        WORD_SIZE,
+    );
+
+    // Write the generated file.
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
 }
 

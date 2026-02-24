@@ -10,12 +10,11 @@
 /* Page size. */
 #define PAGE_SIZE 4096
 
-/* Kernel Red Zone Size */
-#define KREDZONE_SIZE 128
+/* KSTACK_SIZE is defined via -DKSTACK_SIZE=<value> from build.rs. */
 
-/* Stack guard watermark pattern (repeated 32-bit word).
- * NOTE: This value must match KSTACK_GUARD_PATTERN in src/libs/config/build.rs. */
-#define KSTACK_GUARD_PATTERN 0xDEAD1234
+/* KREDZONE_SIZE is defined via -DKREDZONE_SIZE=<value> from build.rs. */
+
+/* KSTACK_GUARD_PATTERN is defined via -DKSTACK_GUARD_PATTERN=<value> from build.rs. */
 
 /* Multiboot2 magic constant */
 #define MBOOT2_HEADER_MAGIC 0xe85250d6
