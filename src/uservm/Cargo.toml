@@ -29,7 +29,7 @@ log = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }
-sys = { workspace = true }
+sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true }
 syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }

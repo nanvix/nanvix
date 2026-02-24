@@ -46,6 +46,8 @@ pub type GlobalThreadIdentifier = u64;
 ///
 pub enum VenvCommand {
     Work(Message),
+    /// Bulk data received from a user VM for the worker thread.
+    BulkData(::sys::ipc::DataChunk),
     Shutdown,
 }
 

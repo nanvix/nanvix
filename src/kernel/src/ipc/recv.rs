@@ -25,14 +25,33 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Receives an inter-process message by waiting on the event manager and copying the result to
+/// user space.
+///
+/// # Parameters
+///
+/// - `tid`: Thread identifier of the calling thread.
+/// - `pid`: Process identifier of the calling process.
+/// - `msg`: User-space address where the received message will be stored.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. On failure, a sleep error is returned instead.
+///
+/// # Safety
+///
+/// The calling thread must not be the kernel thread and must not hold a reference to the process
+/// manager. The `msg` pointer must be a valid user-space address within the calling process.
+///
 pub unsafe fn recv(
     tid: ThreadIdentifier,
     pid: ProcessIdentifier,
     msg: usize,
 ) -> Result<(), SleepError> {
-    if pid != ProcessIdentifier::INITD {
-        trace!("pid={:?}", pid);
-    }
+    trace!("pid={:?}", pid);
 
     match EventManager::wait(tid, pid) {
         Ok(message) => {

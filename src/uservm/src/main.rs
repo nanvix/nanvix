@@ -29,7 +29,7 @@ use ::std::{
     process::ExitCode,
     str::FromStr,
 };
-use ::sys::ipc::Message;
+use ::sys::ipc::IkcFrame;
 use ::syscomm::{
     SocketStream,
     SocketType,
@@ -168,10 +168,10 @@ async fn run_standalone(
 
     // Create channels. In standalone mode these are wired directly without an I/O thread.
     let (vcpu_thread_stdout_tx, mut standalone_data_rx) =
-        mpsc::channel::<Message>(CHANNEL_CAPACITY);
+        mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
     // Nobody sends inbound data in standalone mode. The sender is kept alive so that the memory
     // thread's receiver does not see an immediate channel close.
-    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
     // Kept alive so the orchestrator's io_control_rx does not see an immediate channel close.
     let (_io_cmd_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
     // Kept alive so the orchestrator can send control responses without a closed-channel error.
@@ -247,8 +247,8 @@ async fn run_managed(
     stderr: Option<String>,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
-    let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
-    let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+    let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
+    let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
     let (io_thread_control_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
     let (io_control_tx, io_thread_control_rx) =
         mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);

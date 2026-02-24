@@ -573,6 +573,31 @@ impl Vmem {
     ///
     /// # Description
     ///
+    /// Translates a user-space virtual address to a guest physical address by walking the page
+    /// tables. The returned physical address includes the intra-page offset from the original
+    /// virtual address.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: User-space virtual address to translate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the guest physical address corresponding to `vaddr` is returned. Upon
+    /// failure, an error is returned instead.
+    ///
+    #[cfg(feature = "stdio")]
+    pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
+        let page_aligned: PageAligned<VirtualAddress> =
+            PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
+        let offset: usize = vaddr.into_raw_value() - page_aligned.into_raw_value();
+        let frame: FrameAddress = self.find_user_frame(page_aligned)?;
+        Ok(frame.into_raw_value() + offset)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Copies data from user space to kernel space. The source and destination addresses do not
     /// have to be aligned, but the source address range must lie in user space, and the destination
     /// address range must lie in kernel space.

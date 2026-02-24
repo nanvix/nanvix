@@ -127,7 +127,7 @@ impl ProcessEnvironmentBlock {
     /// This function is unsafe because it uses a static mutable variable.
     pub unsafe fn vmbus_write(data: &[u8]) -> Result<(), Error> {
         let failure_reason: &'static str = "vmbus_write: failed to write data";
-        let count = GUEST_HANDLE
+        let count: i32 = GUEST_HANDLE
             .call_host_function::<i32>(
                 "VmbusWrite",
                 Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(data))])),
@@ -136,6 +136,34 @@ impl ProcessEnvironmentBlock {
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))?;
 
         if count != data.len() as i32 {
+            Err(Error::new(ErrorCode::IoErr, failure_reason))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Writes a data chunk transfer header to the host via the `VmbusBulkWrite` host function. The
+    /// host function reads the actual bulk payload directly from guest shared memory at the GPA
+    /// stored in the header's `data_addr` field.
+    ///
+    /// # Parameters
+    ///
+    /// - `header`: Serialized [`DataChunkHeader`] bytes.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it uses a static mutable variable.
+    pub unsafe fn vmbus_bulk_write(header: &[u8]) -> Result<(), Error> {
+        let failure_reason: &'static str = "vmbus_bulk_write: failed to write data";
+        let count: i32 = GUEST_HANDLE
+            .call_host_function::<i32>(
+                "VmbusBulkWrite",
+                Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(header))])),
+                ReturnType::Int,
+            )
+            .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))?;
+
+        if count < 0 {
             Err(Error::new(ErrorCode::IoErr, failure_reason))
         } else {
             Ok(())

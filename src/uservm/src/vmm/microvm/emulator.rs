@@ -26,6 +26,7 @@ use ::std::{
     io::Write,
     sync::Arc,
 };
+use ::sys::ipc::VmBusMessage;
 use ::tokio::sync::Mutex;
 
 //==================================================================================================
@@ -93,6 +94,33 @@ impl Emulator {
     ///
     /// # Description
     ///
+    /// Reads a [`VmBusMessage`] from guest virtual memory at the given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `envelope_addr`: Guest virtual address of the vmbus message.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns the parsed vmbus message. If an error is
+    /// encountered, an error is returned instead.
+    ///
+    fn read_envelope(&self, envelope_addr: u32) -> Result<VmBusMessage> {
+        let mut envelope_bytes: [u8; VmBusMessage::SIZE] = [0; VmBusMessage::SIZE];
+        self.vmem
+            .blocking_lock()
+            .read_bytes(envelope_addr as u64, &mut envelope_bytes)?;
+        let envelope: VmBusMessage = VmBusMessage::try_from_bytes(envelope_bytes).map_err(|e| {
+            let reason: String = format!("failed to parse vmbus message: {e:?}");
+            error!("read_envelope(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        Ok(envelope)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Emulates an I/O port access.
     ///
     /// # Parameters
@@ -136,14 +164,24 @@ impl Emulator {
                         let buf: &[u8] = &[ch as u8];
                         self.stderr_fn.write_all(buf)?;
                     } else if *width == PmioWidth::Dword {
-                        (self.stdout_fn)(&self.vmem, *data)?;
+                        // Read the vmbus message from guest memory and forward it to the
+                        // stdout callback, which handles both IKC messages and data chunk transfers.
+                        let envelope: VmBusMessage = self.read_envelope(*data)?;
+                        (self.stdout_fn)(&self.vmem, &envelope)?;
                     } else {
                         warn!("handle_pmio_access(): invalid write size (size={width:?})");
                     }
                 },
                 // Read from standard input.
                 ::config::microvm::DEFAULT_STDIN_PORT => {
-                    (self.stdin_fn)(&self.guest, &self.vmem, *data, width.into())?;
+                    // Read the vmbus message from guest memory.
+                    let envelope: VmBusMessage = self.read_envelope(*data)?;
+                    (self.stdin_fn)(
+                        &self.guest,
+                        &self.vmem,
+                        envelope.message_addr(),
+                        width.into(),
+                    )?;
                 },
                 // Write to the virtual machine monitor port.
                 ::config::microvm::DEFAULT_VMM_PORT => {

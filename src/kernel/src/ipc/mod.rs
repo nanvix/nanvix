@@ -5,6 +5,8 @@
 //  Modules
 //==================================================================================================
 
+#[cfg(feature = "stdio")]
+pub mod bulk_pull;
 mod mbx;
 mod pull;
 mod push;

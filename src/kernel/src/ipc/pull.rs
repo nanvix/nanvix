@@ -5,6 +5,8 @@
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "stdio")]
+use crate::pm::ProcessManager;
 use crate::pm::SleepError;
 use ::sys::{
     error::{
@@ -25,6 +27,11 @@ use ::sys::{
 /// # Description
 ///
 /// Pulls data from a sender process using rendezvous synchronization.
+///
+/// When the sender is the kernel (linuxd), data is transferred via the vmbus data chunk transfer path.
+/// In this mode, the user buffer must reside entirely within a single physical page because the
+/// vmbus translates only the first page's virtual address to a guest physical address. Callers
+/// must split larger transfers into page-aligned chunks at the syscall library layer.
 ///
 /// # Parameters
 ///
@@ -80,17 +87,73 @@ pub fn pull(
         );
         SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
     })?;
-    let buffer_ptr: *mut u8 = buffer_raw as *mut u8;
 
     trace!(
-        "tid={:?}, pid={:?}, src_tid={:?}, src_pid={:?}, buffer={:?}, len={}",
+        "tid={:?}, pid={:?}, src_tid={:?}, src_pid={:?}, buffer={:#x}, len={}",
         caller_tid,
         caller_pid,
         sender_tid,
         sender_pid,
-        buffer_ptr,
+        buffer_raw,
         transfer_len
     );
+
+    // When the source is the kernel (linuxd), use the vmbus for data chunk transfer instead of the
+    // rendezvous cross-process copy. The user buffer virtual address is translated to a guest
+    // physical address so the VMM can write data directly into guest physical memory without an
+    // intermediate kernel buffer copy. After the transfer completes the data is already in place.
+    #[cfg(feature = "stdio")]
+    if sender_pid == ProcessIdentifier::KERNEL {
+        // Reject transfers that cross a page boundary. The vmbus data chunk transfer path translates
+        // only the first page's virtual address to a guest physical address, so the entire buffer
+        // must reside within a single physical page.
+        if transfer_len > 0 {
+            let page_offset: usize = buffer_raw & (::arch::mem::PAGE_SIZE - 1);
+            if page_offset.saturating_add(transfer_len) > ::arch::mem::PAGE_SIZE {
+                let reason: &str = "bulk pull buffer crosses a page boundary";
+                error!(
+                    "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
+                     buffer={buffer_raw:#x}, len={transfer_len}, page_offset={page_offset})"
+                );
+                return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+            }
+        }
+
+        trace!(
+            "pull(): data chunk transfer via vmbus (caller_pid={caller_pid:?}, \
+             caller_tid={caller_tid:?}, len={transfer_len})"
+        );
+
+        // Translate user virtual address to guest physical address.
+        let pm: &ProcessManager = unsafe { ProcessManager::get() };
+        let vaddr: crate::hal::mem::VirtualAddress =
+            crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw);
+        let paddr: usize = pm
+            .user_vaddr_to_paddr(caller_pid, vaddr)
+            .map_err(SleepError::Generic)?;
+        let gpa: u32 = u32::try_from(paddr).map_err(|_| {
+            let reason: &str = "guest physical address exceeds u32";
+            error!(
+                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, paddr={paddr:#x})"
+            );
+            SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
+        })?;
+
+        crate::stdio::write_bulk(
+            caller_pid,
+            caller_tid,
+            sender_pid,
+            sender_tid,
+            gpa,
+            transfer_len_raw,
+        )
+        .map_err(SleepError::Generic)?;
+
+        // Register a pending bulk pull and sleep until the completion arrives. The VMM writes
+        // data directly into the guest physical page backing the user buffer, so no post-wake
+        // copy is needed.
+        return super::bulk_pull::register_and_sleep(caller_tid);
+    }
 
     super::rendezvous::do_pull(
         caller_pid,

@@ -180,11 +180,35 @@ pub unsafe fn puts(message: &str) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
     use crate::PERF_VMBUS_WRITE;
+    use ::sys::ipc::{
+        DataChunkHeader,
+        VmBusMessage,
+    };
 
     PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    let data = core::slice::from_raw_parts(addr, config::kernel::IPC_MESSAGE_SIZE);
-    let _ = ProcessEnvironmentBlock::vmbus_write(data);
+    // Read the vmbus message from the given address.
+    let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
+
+    if vmbus_msg.is_ikc() {
+        // IKC message: read the message bytes from the address stored in the vmbus message and
+        // send them to the host via the VmbusWrite host function (unchanged protocol).
+        let message_data: &[u8] = core::slice::from_raw_parts(
+            vmbus_msg.message_addr() as *const u8,
+            vmbus_msg.size() as usize,
+        );
+        let _ = ProcessEnvironmentBlock::vmbus_write(message_data);
+    } else {
+        // Data chunk transfer: vmbus_msg.message_addr() points to a DataChunkHeader on the stack.
+        // Send only the header bytes (24 bytes) to the host via VmbusBulkWrite. The host
+        // function reads the actual bulk payload directly from guest shared memory using the
+        // GPA stored in header.data_addr(). This avoids allocating a large buffer on the
+        // kernel heap.
+        let header: DataChunkHeader =
+            core::ptr::read_unaligned(vmbus_msg.message_addr() as *const DataChunkHeader);
+        let header_bytes: [u8; DataChunkHeader::SIZE] = header.to_bytes();
+        let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&header_bytes);
+    }
 }
 
 ///
@@ -206,13 +230,21 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_read(addr: *mut u8) {
     use crate::PERF_VMBUS_READ;
+    use ::sys::ipc::VmBusMessage;
 
     PERF_VMBUS_READ.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    let data = core::slice::from_raw_parts_mut(addr, config::kernel::IPC_MESSAGE_SIZE);
-    let bytes = ProcessEnvironmentBlock::vmbus_read();
+    // Read the vmbus message from the given address.
+    let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
+
+    // Write received message bytes to the address stored in the vmbus message.
+    let bytes: Result<alloc::vec::Vec<u8>, _> = ProcessEnvironmentBlock::vmbus_read();
     if let Ok(bytes) = bytes {
-        data.copy_from_slice(&bytes);
+        let dest: &mut [u8] = core::slice::from_raw_parts_mut(
+            vmbus_msg.message_addr() as *mut u8,
+            vmbus_msg.size() as usize,
+        );
+        dest.copy_from_slice(&bytes);
     }
 }
 
