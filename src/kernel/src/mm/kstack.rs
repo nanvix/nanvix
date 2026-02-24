@@ -14,6 +14,8 @@ use crate::{
 };
 use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
+#[cfg(debug_assertions)]
+use ::config::kernel::KSTACK_GUARD_PATTERN;
 use ::core::fmt;
 #[cfg(debug_assertions)]
 use ::sys::error::ErrorCode;
@@ -24,15 +26,6 @@ use ::sys::{
         VirtualAddress,
     },
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Watermark pattern used to detect kernel stack overflows.
-/// This value must match `KSTACK_GUARD_PATTERN` in `start.S`.
-#[cfg(debug_assertions)]
-const KSTACK_GUARD_PATTERN: u32 = config::kernel::KSTACK_GUARD_PATTERN;
 
 //==================================================================================================
 // Structures
