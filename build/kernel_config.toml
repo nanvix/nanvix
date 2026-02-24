@@ -1,39 +1,97 @@
-# Total size of physical memory (in bytes)
+#==================================================================================================
+# Kernel Build-Time Configuration
+#==================================================================================================
+#
+# This file defines the build-time constants for the Nanvix kernel. Values are consumed by:
+#   - src/libs/config/build.rs  (generates Rust constants for the config crate)
+#   - src/kernel/build.rs       (passes values to the linker script and assembly)
+#
+# Both build scripts validate these values at build time. Invalid configurations will cause a build
+# failure with a descriptive assertion message.
+#
+#==================================================================================================
+
+#==================================================================================================
+# Memory Layout
+#==================================================================================================
+
+# Total size of physical memory (in bytes).
+# Constraints
+# - Must be large enough to hold the kernel image plus the kernel pool.
 memory_size = 134217728
 
 # Number of processors.
 num_processors = 1
 
-# Total size of the kernel pool (in bytes)
-# Notes:
-# - This size should be a multiple of a page size.
-# - This size cannot exceed the size of a page table.
+# Total size of the kernel pool (in bytes).
+# Constraints:
+# - Must be a multiple of the page size.
+# - Must not exceed the size of a page table.
 kpool_size = 4194304
 
-# Kernel stack size (in bytes)
-# Notes:
-# - This size should be a multiple of a page size.
-# - This size must be at least two pages (one guard page + one usable page).
-# - This size cannot exceed the size of a page table.
+# Base address of the kernel pool.
+# Constraints:
+# - Must be aligned to a page table boundary (4 MB).
+# - Must be greater than the kernel image end plus any machine-reserved space.
+# - Must not cause kpool_base + kpool_size to exceed memory_size.
+kpool_base = 0x00800000
+
+#==================================================================================================
+# Stack Configuration
+#==================================================================================================
+
+# Kernel stack size (in bytes).
+# Constraints:
+# - Must be a multiple of the page size.
+# - Must be at least two pages (one guard page + one usable page).
+# - Must not exceed the size of a page table.
 kstack_size = 65536
 
-# Timer frequency (in Hz)
+# Kernel stack guard watermark pattern (repeated 32-bit word).
+# The bottom page of each kernel stack is filled with this pattern at boot. If a stack overflow
+# corrupts the guard page, the pattern mismatch is detected at runtime.
+# Constraints:
+# - Must fit in a 32-bit word.
+kstack_guard_pattern = 0xDEAD1234
+
+# Kernel red zone size (in bytes).
+# The red zone is a small memory area used for inter-processor communication during AP startup.
+# Constraints
+# - Must be a multiple of the word size (4 bytes on x86-32).
+kredzone_size = 128
+
+#==================================================================================================
+# Scheduling and Timing
+#==================================================================================================
+
+# Timer frequency (in Hz).
 timer_freq = 10000
 
-# Scheduler frequency (in ticks)
+# Scheduler frequency (in ticks).
 scheduler_freq = 1000
 
-# Maximum number of messages that can be buffered by the kernel
+#==================================================================================================
+# Inter-Kernel / Inter-Process Communication
+#==================================================================================================
+
+# Maximum number of messages that can be buffered by the kernel.
 # Notes:
 # - When this threshold is reached, inter-kernel communication is blocked.
-#  - This value should be set according to the amount of memory available in the kernel heap.
+# - This value should be set according to the amount of memory available in the kernel heap.
 max_ikc_messages = 128
 
-# Size of an IPC message.
+# Size of an IPC message (in bytes).
 # Notes:
 # - The value of this function has direct impact on IPC performance.
 # - The default value is set to match the size of a cache line in x86 processors.
 ipc_message_size = 64
+
+# Number of IKC messages to poll at a time.
+ikc_poll_batch_size = 1
+
+#==================================================================================================
+# Synchronization Limits
+#==================================================================================================
 
 # Maximum number of mutexes a process may hold at the same time.
 # Notes:
@@ -44,12 +102,3 @@ mutex_open_max = 32
 # Notes:
 # - This number was arbitrarily chosen.
 cond_open_max = 32
-
-# Number of IKC messages to poll at a time.
-ikc_poll_batch_size = 1
-
-# Base address of the kernel pool.
-# Notes:
-# - This value must be aligned to a page table boundary.
-# - This value is used in both the Rust code and the linker script.
-kpool_base = 0x00800000
