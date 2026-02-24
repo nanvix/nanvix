@@ -877,6 +877,116 @@ impl Vmem {
     ///
     /// # Description
     ///
+    /// Copies data directly between the user spaces of two processes. The source address is
+    /// resolved using `src_vmem` and the destination address is resolved using `dst_vmem`. Both
+    /// addresses must lie in user space. The copy is performed page-by-page using physical frame
+    /// addresses, bypassing kernel space entirely.
+    ///
+    /// # Parameters
+    ///
+    /// - `src_vmem`: Source process's virtual memory space.
+    /// - `src`: Source address in `src_vmem`'s user space.
+    /// - `dst_vmem`: Destination process's virtual memory space.
+    /// - `dst`: Destination address in `dst_vmem`'s user space.
+    /// - `size`: Number of bytes to copy.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. On failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`]: The size of the copy is zero.
+    /// - [`ErrorCode::BadAddress`]: The source memory region does not lie in user space.
+    /// - [`ErrorCode::BadAddress`]: The destination memory region does not lie in user space.
+    /// - [`ErrorCode::NoSuchEntry`]: A page in the source or destination region is not mapped.
+    ///
+    pub fn copy_user_to_user(
+        src_vmem: &Vmem,
+        src: VirtualAddress,
+        dst_vmem: &Vmem,
+        dst: VirtualAddress,
+        size: usize,
+    ) -> Result<(), Error> {
+        // Check if size is invalid.
+        if size == 0 {
+            let reason: &str = "zero-length copy";
+            error!("copy_user_to_user(): {reason} (src={src:?}, dst={dst:?}, size={size:?})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Check if the source memory region lies entirely in user space.
+        if !Self::is_user_region(src, size) {
+            let reason: &str = "source memory region does not lie entirely in user space";
+            error!("copy_user_to_user(): {reason} (src={src:?}, dst={dst:?}, size={size:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // Check if the destination memory region lies entirely in user space.
+        if !Self::is_user_region(dst, size) {
+            let reason: &str = "destination memory region does not lie entirely in user space";
+            error!("copy_user_to_user(): {reason} (src={src:?}, dst={dst:?}, size={size:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let copy_user_to_user_impl = |dry_run: bool,
+                                      mut cur_src: VirtualAddress,
+                                      mut cur_dst: VirtualAddress,
+                                      mut remaining: usize|
+         -> Result<(), Error> {
+            while remaining > 0 {
+                // Resolve source page and offset within it.
+                let src_page: PageAligned<VirtualAddress> =
+                    PageAligned::from_address(cur_src.align_down(PAGE_ALIGNMENT))?;
+                let src_offset: usize = cur_src.into_raw_value() - src_page.into_raw_value();
+                let src_avail: usize = mem::PAGE_SIZE - src_offset;
+
+                // Resolve destination page and offset within it.
+                let dst_page: PageAligned<VirtualAddress> =
+                    PageAligned::from_address(cur_dst.align_down(PAGE_ALIGNMENT))?;
+                let dst_offset: usize = cur_dst.into_raw_value() - dst_page.into_raw_value();
+                let dst_avail: usize = mem::PAGE_SIZE - dst_offset;
+
+                // Copy size is bounded by the nearest page boundary on either side.
+                let copy_size: usize = remaining.min(src_avail).min(dst_avail);
+
+                let src_frame: FrameAddress = src_vmem.find_user_frame(src_page)?;
+                let dst_frame: FrameAddress = dst_vmem.find_user_frame(dst_page)?;
+
+                if !dry_run {
+                    // Copy memory from source frame to destination frame.
+                    // SAFETY: both frame addresses are valid physical addresses obtained from
+                    // page table lookups, and the regions do not overlap (different processes).
+                    unsafe {
+                        __phys_memcpy(
+                            (dst_frame.into_raw_value() + dst_offset) as *mut u8,
+                            (src_frame.into_raw_value() + src_offset) as *const u8,
+                            copy_size,
+                        );
+                    }
+                }
+
+                remaining -= copy_size;
+                cur_src = VirtualAddress::new(cur_src.into_raw_value() + copy_size);
+                cur_dst = VirtualAddress::new(cur_dst.into_raw_value() + copy_size);
+            }
+
+            Ok(())
+        };
+
+        // Two-pass approach: the dry run walks all page tables to verify that every source and
+        // destination page is mapped before any bytes are copied. This prevents partial transfers
+        // that would leave the destination in an inconsistent state if a page fault were
+        // encountered mid-copy.
+        copy_user_to_user_impl(true, src, dst, size)?;
+        copy_user_to_user_impl(false, src, dst, size)?;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Fills a page with a given value in the target virtual address space.
     ///
     /// # Parameters

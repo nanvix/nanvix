@@ -865,6 +865,10 @@ impl ProcessManager {
             panic!("kernel process cannot exit");
         }
 
+        // Clean up any pending rendezvous entries for this process and wake up counterpart
+        // threads that would otherwise block forever.
+        self.cleanup_rendezvous(running_process.state().pid(), "do_exit");
+
         // Terminate the calling thread.
         let previous_context: *mut ContextInformation = match running_process.exit(status) {
             // The calling process still has runnable threads, put it in the list of ready processes.
@@ -1001,6 +1005,10 @@ impl ProcessManager {
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+
+        // Clean up any pending rendezvous entries for the terminated process and wake up
+        // counterpart threads that would otherwise block forever.
+        self.cleanup_rendezvous(pid, "terminate");
 
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
@@ -1381,6 +1389,32 @@ impl ProcessManager {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Cleans up pending rendezvous push/pull entries for a process and wakes up counterpart
+    /// threads that would otherwise block forever. This is called during both voluntary exit
+    /// (`do_exit`) and forced termination (`terminate`).
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the exiting/terminated process.
+    /// - `caller`: Label used in log messages to identify the call site.
+    ///
+    fn cleanup_rendezvous(&mut self, pid: ProcessIdentifier, caller: &str) {
+        // SAFETY: single-core system with interrupts disabled.
+        let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
+            unsafe { crate::ipc::rendezvous::cleanup_process(pid) };
+        for tid in orphaned_tids {
+            if let Err(e) = self.do_wakeup(tid) {
+                warn!(
+                    "{caller}(): failed to wake orphaned rendezvous thread (tid={tid:?}, \
+                     error={e:?})"
+                );
+            }
+        }
+    }
+
     fn take_running(&mut self) -> RunningProcess {
         // NOTE: it is safe to call unwrap because there is always a process running.
         self.running.take().expect("the kernel should be running")
@@ -1660,6 +1694,38 @@ impl ProcessManager {
         self.find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Copies data directly between the user spaces of two processes.
+    ///
+    /// # Parameters
+    ///
+    /// - `src_pid`: Source process identifier.
+    /// - `src`: Source address in `src_pid`'s user space.
+    /// - `dst_pid`: Destination process identifier.
+    /// - `dst`: Destination address in `dst_pid`'s user space.
+    /// - `size`: Number of bytes to copy.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. On failure, an error is returned instead.
+    ///
+    pub fn vmcopy_user_to_user(
+        &self,
+        src_pid: ProcessIdentifier,
+        src: VirtualAddress,
+        dst_pid: ProcessIdentifier,
+        dst: VirtualAddress,
+        size: usize,
+    ) -> Result<(), Error> {
+        let src_proc: ProcessRef<'_> = self.find_process(src_pid)?;
+        let dst_proc: ProcessRef<'_> = self.find_process(dst_pid)?;
+        let src_vmem: &Vmem = src_proc.state().vmem();
+        let dst_vmem: &Vmem = dst_proc.state().vmem();
+        Vmem::copy_user_to_user(src_vmem, src, dst_vmem, dst, size)
     }
 
     pub fn harvest_zombies(
