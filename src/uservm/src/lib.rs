@@ -23,7 +23,8 @@
 #![forbid(clippy::ptr_as_ptr)]
 #![forbid(clippy::unnecessary_cast)]
 #![forbid(invalid_reference_casting)]
-#![forbid(clippy::panic)]
+// NOTE: `deny` instead of `forbid` so that test modules can `#[allow(clippy::panic)]`.
+#![deny(clippy::panic)]
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
@@ -97,7 +98,12 @@ use ::std::{
     time::Duration,
 };
 use ::sys::ipc::{
+    DataChunk,
+    DataChunkHeader,
+    IkcFrame,
     Message,
+    MessageReceiver,
+    MessageSender,
     MessageType,
 };
 use ::tokio::{
@@ -156,10 +162,10 @@ pub struct UserVmArgs {
     pub ramfs_filename: Option<String>,
     /// Optional path to a file used to capture the guest's stderr stream.
     pub stderr: Option<String>,
-    /// Channel used to forward port-I/O writes from the guest to the Linux daemon.
-    pub vcpu_thread_stdout_tx: Sender<Message>,
-    /// Channel providing messages emitted by the Linux daemon destined for the guest.
-    pub memory_thread_data_rx: Receiver<Message>,
+    /// Channel used to forward port-I/O writes (messages and data chunk transfers) from the guest.
+    pub vcpu_thread_stdout_tx: Sender<IkcFrame>,
+    /// Channel providing transfers emitted by the Linux daemon destined for the guest.
+    pub memory_thread_data_rx: Receiver<IkcFrame>,
     /// Channel receiving control commands from the orchestrator's I/O subsystem.
     pub io_control_rx: Receiver<IoControlCommand>,
     /// Channel transmitting responses back to the orchestrator's I/O subsystem.
@@ -200,8 +206,8 @@ impl UserVm {
     ///
     async fn run(args: UserVmArgs) -> Result<u16> {
         trace!("spawn()");
-        let (memory_thread_data_tx, vcpu_thread_stdin_rx): (Sender<Message>, Receiver<Message>) =
-            mpsc::channel::<Message>(CHANNEL_CAPACITY);
+        let (memory_thread_data_tx, vcpu_thread_stdin_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (memory_control_tx, memory_thread_control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -234,6 +240,8 @@ impl UserVm {
         // Move the stdout sender out of args so no extra clone keeps the
         // data_rx channel alive after the VMM thread finishes.
         // Output function used for emulating I/O port writes.
+        #[cfg(feature = "hyperlight")]
+        let bulk_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
 
         // Input function used for emulating I/O port reads.
@@ -244,6 +252,11 @@ impl UserVm {
         #[cfg(feature = "hyperlight")]
         let handles: UserVmHandles = handles::UserVmHandles::default();
 
+        // Bulk output function for hyperlight VmbusBulkWrite host function.
+        #[cfg(feature = "hyperlight")]
+        let vmm_bulk_stdout_fn: Box<crate::vmm::BulkStdoutFn> =
+            bulk_output_fn(bulk_stdout_tx, handles.clone());
+
         #[cfg(feature = "hyperlight")]
         let vmm_stdin_fn: Box<StdinFn> =
             build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), handles.clone());
@@ -251,6 +264,8 @@ impl UserVm {
         let microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
+            #[cfg(feature = "hyperlight")]
+            bulk_output: vmm_bulk_stdout_fn,
             stderr: vmm_stderr_fn,
             memory_size: args.memory_size,
             control_rx: vcpu_thread_control_rx,
@@ -449,7 +464,7 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 ///
 #[cfg(not(feature = "hyperlight"))]
 pub fn build_input_fn(
-    mut input_queue: Receiver<Message>,
+    mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
 ) -> Box<StdinFn> {
     // Input function used for emulating I/O port reads.
@@ -469,28 +484,85 @@ pub fn build_input_fn(
         }
 
         match input_queue.blocking_recv() {
-            Some(mut msg) => {
-                // Label: uservm::lib::vm_input::vm_exit()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
+            Some(transfer) => {
+                match transfer {
+                    IkcFrame::Message(mut msg) => {
+                        // Label: uservm::lib::vm_input::vm_exit()
+                        profiler::timestamp_message!(
+                            &mut msg.payload,
+                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                        );
 
-                on_message_received_from_memory_thread(&counters);
-                msg.message_type = MessageType::Ikc;
-                let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
-                let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
+                        on_message_received_from_memory_thread(&counters);
+                        msg.message_type = MessageType::Ikc;
+                        let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
+                        let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
 
-                // Label: uservm::lib::vm_input::vm_write_bytes()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
+                        // Label: uservm::lib::vm_input::vm_write_bytes()
+                        profiler::timestamp_message!(
+                            &mut msg.payload,
+                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                        );
 
-                locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
-                locked_guest.consume_credit(&mut locked_vm)?;
+                        locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
+                        locked_guest.consume_credit(&mut locked_vm)?;
+                    },
+                    IkcFrame::Bulk(mut bulk) => {
+                        // Write bulk data directly into guest memory at the address specified
+                        // by the pull request.
+                        //
+                        // NOTE: this creates a temporal coupling with the kernel's main
+                        // loop. The PullResponse notification message written below must be
+                        // consumed by the kernel before the next IKC message arrives on the
+                        // same `data` buffer. On a single-core guest this is guaranteed
+                        // because the kernel processes messages sequentially, but the
+                        // invariant should be preserved if the design evolves.
+                        on_message_received_from_memory_thread(&counters);
+                        // Label: uservm::lib::vm_input::vmexit()
+                        profiler::timestamp_message!(bulk.data_mut(), 0);
+                        let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
+                        let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
+
+                        let dest_addr: u64 = bulk.header().data_addr() as u64;
+                        let actual_len: usize = bulk.data().len();
+                        trace!(
+                            "input(): writing {actual_len} bulk bytes to guest at {dest_addr:#x}"
+                        );
+                        // Label: uservm::lib::vm_input::vm_write_bytes()
+                        profiler::timestamp_message!(bulk.data_mut(), 0);
+                        locked_vm.write_bytes(dest_addr, bulk.data())?;
+
+                        // Construct a PullResponse notification message. The kernel's
+                        // main loop reads this from the regular message buffer, detects the
+                        // message type, and wakes the sleeping pull thread.
+                        let completion_header: DataChunkHeader = DataChunkHeader::new(
+                            bulk.header().source_pid(),
+                            bulk.header().source_tid(),
+                            bulk.header().destination_pid(),
+                            bulk.header().destination_tid(),
+                            bulk.header().data_addr(),
+                            u32::try_from(actual_len).map_err(|e| {
+                                let reason: String = format!("bulk data length exceeds u32: {e}");
+                                error!("{reason}");
+                                anyhow::Error::msg(reason)
+                            })?,
+                        );
+                        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+                        payload[..DataChunkHeader::SIZE]
+                            .copy_from_slice(&completion_header.to_bytes());
+                        let completion_msg: Message = Message::new(
+                            MessageSender::KERNEL,
+                            MessageReceiver::KERNEL,
+                            MessageType::PullResponse,
+                            None,
+                            payload,
+                        );
+                        locked_vm.write_bytes(data as u64, &completion_msg.to_bytes())?;
+                        locked_guest.consume_credit(&mut locked_vm)?;
+                    },
+                }
             },
             // Channel has disconnected.
             None => {
@@ -508,14 +580,14 @@ pub fn build_input_fn(
 
 #[cfg(feature = "hyperlight")]
 pub fn build_input_fn(
-    mut input_queue: Receiver<Message>,
+    mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
     handles: UserVmHandles,
 ) -> Box<StdinFn> {
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
         on_input_function_called(&counters);
         match input_queue.blocking_recv() {
-            Some(mut msg) => {
+            Some(IkcFrame::Message(mut msg)) => {
                 // Label: uservm::lib::vm_input::vm_exit()
                 profiler::timestamp_message!(
                     &mut msg.payload,
@@ -553,6 +625,79 @@ pub fn build_input_fn(
                 locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(msg.to_bytes().to_vec())
             },
+            Some(IkcFrame::Bulk(mut bulk)) => {
+                // Handle data chunk transfer: write data directly into guest memory at the address
+                // specified by the pull request header, then return a PullResponse
+                // notification message to the kernel.
+                //
+                // NOTE: this creates a temporal coupling with the kernel's main
+                // loop. The returned PullResponse message must be consumed by the
+                // kernel before the next IKC message arrives on the same buffer.
+                // On a single-core guest this is guaranteed because the kernel
+                // processes messages sequentially.
+                on_message_received_from_memory_thread(&counters);
+
+                // Label: uservm::lib::vm_input::vmexit()
+                profiler::timestamp_message!(bulk.data_mut(), 0);
+
+                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
+                    let reason: &str = "guest handle not set in UserVmHandles";
+                    error!("input(): {reason}");
+                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                })?;
+                let vmem_arc: Arc<Mutex<VirtualMemory>> =
+                    handles.get_vmem_handle().ok_or_else(|| {
+                        let reason: &str = "vmem handle not set in UserVmHandles";
+                        error!("input(): {reason}");
+                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                    })?;
+
+                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
+                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
+
+                let dest_addr: u64 = bulk.header().data_addr() as u64;
+                let actual_len: usize = bulk.data().len();
+                trace!("input(): writing {actual_len} bulk bytes to guest at {dest_addr:#x}");
+                // Label: uservm::lib::vm_input::vm_write_bytes()
+                profiler::timestamp_message!(bulk.data_mut(), 0);
+                locked_vmem
+                    .write_bytes(dest_addr, bulk.data())
+                    .map_err(|e| {
+                        let reason: String = format!(
+                            "failed to write bulk data to guest at {dest_addr:#x} ({actual_len} \
+                             bytes): {e}"
+                        );
+                        error!("input(): {reason}");
+                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                    })?;
+
+                // Construct a PullResponse notification message.
+                let actual_len_u32: u32 = u32::try_from(actual_len).map_err(|e| {
+                    let reason: String = format!("bulk data length exceeds u32: {e}");
+                    error!("input(): {reason}");
+                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+                })?;
+                let completion_header: DataChunkHeader = DataChunkHeader::new(
+                    bulk.header().source_pid(),
+                    bulk.header().source_tid(),
+                    bulk.header().destination_pid(),
+                    bulk.header().destination_tid(),
+                    bulk.header().data_addr(),
+                    actual_len_u32,
+                );
+                let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+                payload[..DataChunkHeader::SIZE].copy_from_slice(&completion_header.to_bytes());
+                let completion_msg: Message = Message::new(
+                    MessageSender::KERNEL,
+                    MessageReceiver::KERNEL,
+                    MessageType::PullResponse,
+                    None,
+                    payload,
+                );
+
+                locked_guest.consume_credit(&mut locked_vmem)?;
+                Ok(completion_msg.to_bytes().to_vec())
+            },
 
             // Channel has disconnected.
             None => {
@@ -569,54 +714,94 @@ pub fn build_input_fn(
 ///
 /// # Description
 ///
-/// Builds an output callback that forwards messages emitted by the virtual machine.
+/// Builds an output callback that forwards messages and data chunk transfers emitted by the virtual
+/// machine. The callback inspects the [`VmBusMessage`] to determine whether the guest is
+/// sending a standard IKC message or a data chunk transfer and constructs the appropriate
+/// [`Transfer`] variant.
 ///
 /// # Parameters
 ///
-/// - `queue` - Channel used to forward messages emitted by the virtual machine to the Linux daemon.
+/// - `queue` - Channel used to forward transfers emitted by the virtual machine to the Linux
+///   daemon.
 ///
 /// # Returns
 ///
 /// A boxed closure compatible with the VMM's stdout handler implementation.
 ///
-pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
+pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
     // Output function used for emulating I/O port writes.
     #[cfg(not(feature = "hyperlight"))]
-    let output = move |vm: &Arc<Mutex<VirtualMemory>>, data| -> Result<()> {
-        use std::mem;
+    let output =
+        move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
+            use std::mem;
 
-        // Write to the standard output device.
-        let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
-        trace!("output(): reading message from user VM");
-        vm.blocking_lock().read_bytes(data as u64, &mut bytes)?;
+            if envelope.is_ikc() {
+                // Standard IKC message: read the message from guest memory.
+                let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
+                trace!("output(): reading message from user VM");
+                vm.blocking_lock()
+                    .read_bytes(envelope.message_addr() as u64, &mut bytes)?;
 
-        let mut message: Message = match Message::try_from_bytes(bytes) {
-            Ok(message) => message,
-            Err(err) => {
-                let reason: String = format!("failed to parse message: {err:?}");
-                error!("output(): {reason}");
-                anyhow::bail!(reason);
-            },
+                let mut message: Message = match Message::try_from_bytes(bytes) {
+                    Ok(message) => message,
+                    Err(err) => {
+                        let reason: String = format!("failed to parse message: {err:?}");
+                        error!("output(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                };
+
+                // Label: uservm::lib::vm_output::send()
+                profiler::timestamp_message!(
+                    &mut message.payload,
+                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
+                );
+
+                trace!("output(): forwarding message to system VM");
+                if let Err(e) = queue.blocking_send(IkcFrame::Message(message)) {
+                    let reason: String = format!("failed to send message: {e:?}");
+                    error!("output(): {reason}");
+                    anyhow::bail!(reason);
+                }
+
+                trace!("output(): message forwarded to system VM");
+            } else {
+                // Data chunk transfer: `message_addr` points to a DataChunkHeader.
+                let mut header_bytes: [u8; DataChunkHeader::SIZE] = [0; DataChunkHeader::SIZE];
+                vm.blocking_lock()
+                    .read_bytes(envelope.message_addr() as u64, &mut header_bytes)?;
+                let header: DataChunkHeader = DataChunkHeader::try_from_bytes(header_bytes)
+                    .map_err(|e| {
+                        let reason: String =
+                            format!("failed to parse data chunk transfer header: {e:?}");
+                        error!("output(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+
+                let data_len: usize = header.data_len() as usize;
+                let data_addr: u64 = header.data_addr() as u64;
+
+                // Allocate a buffer and read the bulk payload from guest memory.
+                let mut data: Vec<u8> = vec![0u8; data_len];
+                trace!("output(): reading {data_len} bytes from guest memory at {data_addr:#x}");
+                vm.blocking_lock().read_bytes(data_addr, &mut data)?;
+
+                // Label: uservm::lib::vm_output::send()
+                profiler::timestamp_message!(&mut data, 0);
+
+                let bulk: DataChunk = DataChunk::new(header, data);
+
+                trace!("output(): forwarding data chunk transfer ({data_len} bytes)");
+                if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
+                    let reason: String = format!("failed to send data chunk transfer: {e:?}");
+                    error!("output(): {reason}");
+                    anyhow::bail!(reason);
+                }
+            }
+
+            Ok(())
         };
-
-        // Label: uservm::lib::vm_output::send()
-        profiler::timestamp_message!(
-            &mut message.payload,
-            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
-        );
-
-        trace!("output(): forwarding message to system VM");
-        if let Err(e) = queue.blocking_send(message) {
-            let reason: String = format!("failed to send message: {e:?}");
-            error!("output(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        trace!("output(): message forwarded to system VM");
-
-        Ok(())
-    };
 
     #[cfg(feature = "hyperlight")]
     let output = move |data: Vec<u8>| -> Result<i32, hyperlight_host::HyperlightError> {
@@ -655,7 +840,7 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
                 + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
         );
 
-        if let Err(e) = queue.blocking_send(message) {
+        if let Err(e) = queue.blocking_send(IkcFrame::Message(message)) {
             let reason: String = format!("failed to send message: {:?}", e);
             error!("output(): {}", reason);
             return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
@@ -667,6 +852,99 @@ pub fn output_fn(queue: Sender<Message>) -> Box<StdoutFn> {
                 let reason: String =
                     format!("failed to convert payload length {} to i32", data.len());
                 error!("output(): {}", reason);
+                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
+            },
+        }
+    };
+
+    Box::new(output)
+}
+
+///
+/// # Description
+///
+/// Builds a bulk output callback for the hyperlight VmbusBulkWrite host function. The kernel
+/// sends only the serialized [`DataChunkHeader`] (24 bytes). This callback reads the actual
+/// bulk payload from guest shared memory using the GPA stored in the header's `data_addr` field,
+/// then constructs a [`IkcFrame::Bulk`] that is forwarded to linuxd via the standard transfer
+/// queue.
+///
+/// # Parameters
+///
+/// - `queue` - Channel used to forward transfers emitted by the virtual machine to the Linux
+///   daemon.
+/// - `handles` - Shared handles for guest and virtual memory manager for reading guest memory.
+///
+/// # Returns
+///
+/// A boxed closure compatible with the VMM's bulk output handler implementation.
+///
+#[cfg(feature = "hyperlight")]
+pub fn bulk_output_fn(
+    queue: Sender<IkcFrame>,
+    handles: UserVmHandles,
+) -> Box<crate::vmm::BulkStdoutFn> {
+    let output = move |data: Vec<u8>| -> Result<i32, hyperlight_host::HyperlightError> {
+        // Parse the DataChunkHeader from the received data.
+        if data.len() < DataChunkHeader::SIZE {
+            let reason: String = format!(
+                "bulk output data too short: expected at least {} bytes, got {}",
+                DataChunkHeader::SIZE,
+                data.len()
+            );
+            error!("bulk_output(): {reason}");
+            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
+        }
+
+        let mut header_bytes: [u8; DataChunkHeader::SIZE] = [0u8; DataChunkHeader::SIZE];
+        header_bytes.copy_from_slice(&data[..DataChunkHeader::SIZE]);
+        let header: DataChunkHeader =
+            DataChunkHeader::try_from_bytes(header_bytes).map_err(|e| {
+                let reason: String = format!("failed to parse data chunk transfer header: {e:?}");
+                error!("bulk_output(): {reason}");
+                hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+            })?;
+
+        // Read the actual bulk payload from guest shared memory at the GPA in the header.
+        let data_addr: u64 = header.data_addr() as u64;
+        let data_len: usize = header.data_len() as usize;
+
+        let vmem_arc: Arc<Mutex<VirtualMemory>> = handles.get_vmem_handle().ok_or_else(|| {
+            let reason: &str = "vmem handle not set in UserVmHandles";
+            error!("bulk_output(): {reason}");
+            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+        })?;
+        let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
+
+        let mut payload_data: Vec<u8> = vec![0u8; data_len];
+        locked_vmem
+            .read_bytes(data_addr, &mut payload_data)
+            .map_err(|e| {
+                let reason: String =
+                    format!("failed to read bulk data from guest at {data_addr:#x}: {e}");
+                error!("bulk_output(): {reason}");
+                hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+            })?;
+
+        // Label: uservm::lib::vm_output::send()
+        profiler::timestamp_message!(&mut payload_data, 0);
+
+        let bulk: DataChunk = DataChunk::new(header, payload_data);
+
+        trace!("bulk_output(): forwarding data chunk transfer ({data_len} bytes)");
+        if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
+            let reason: String = format!("failed to send data chunk transfer: {e:?}");
+            error!("bulk_output(): {reason}");
+            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
+        }
+
+        // Return the total logical size (header + data) to signal success to the kernel.
+        let total_len: usize = DataChunkHeader::SIZE + data_len;
+        match i32::try_from(total_len) {
+            Ok(length) => Ok(length),
+            Err(_) => {
+                let reason: String = format!("failed to convert payload length {total_len} to i32");
+                error!("bulk_output(): {reason}");
                 Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
             },
         }

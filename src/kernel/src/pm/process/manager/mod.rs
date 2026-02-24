@@ -1728,6 +1728,30 @@ impl ProcessManager {
         Vmem::copy_user_to_user(src_vmem, src, dst_vmem, dst, size)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Translates a user-space virtual address to a guest physical address for a given process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process whose page tables should be walked.
+    /// - `vaddr`: User-space virtual address to translate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the guest physical address is returned. Upon failure, an error is returned.
+    ///
+    #[cfg(feature = "stdio")]
+    pub fn user_vaddr_to_paddr(
+        &self,
+        pid: ProcessIdentifier,
+        vaddr: VirtualAddress,
+    ) -> Result<usize, Error> {
+        let proc_ref: ProcessRef<'_> = self.find_process(pid)?;
+        proc_ref.state().vmem().user_vaddr_to_paddr(vaddr)
+    }
+
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,

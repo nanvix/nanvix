@@ -14,8 +14,6 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::config::constants::KILOBYTE;
-use ::core::cmp;
 use ::sys::{
     error::{
         Error,
@@ -29,9 +27,118 @@ use sysapi::{
     unistd::STDIN_FILENO,
 };
 
+use super::util::page_chunk_size;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Reads a single page-aligned chunk from a file descriptor via linuxd. Sends a ReadRequest,
+/// pulls the chunk data, and receives the ReadResponse.
+///
+/// # Parameters
+///
+/// - `tid`: Thread identifier of the calling thread.
+/// - `fd`: File descriptor.
+/// - `chunk`: Mutable byte slice to read into (must not cross a page boundary).
+///
+/// # Returns
+///
+/// Upon successful completion, the number of bytes read by linuxd is returned. Otherwise, an
+/// error is returned.
+///
+fn read_chunk(
+    tid: ThreadIdentifier,
+    fd: RawFileDescriptor,
+    chunk: &mut [u8],
+) -> Result<c_size_t, Error> {
+    // Send metadata-only ReadRequest via IKC message.
+    let request: Message = ReadRequest::build(tid, fd, chunk.len() as c_size_t);
+    ::sys::kcall::ipc::send(&request)?;
+
+    // Pull data from linuxd via data chunk transfer.
+    let bytes_pulled: usize = ::sys::kcall::ipc::pull(
+        ::sys::pm::ProcessIdentifier::KERNEL,
+        ::sys::pm::ThreadIdentifier::KERNEL,
+        chunk,
+    )?;
+
+    // Receive response metadata (count, status). The bulk data is already in the buffer.
+    let response: Message = ::sys::kcall::ipc::recv()?;
+
+    // Check whether system call succeeded or not.
+    if response.status != 0 {
+        ::syslog::error!(
+            "read_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
+            fd,
+            chunk.len(),
+            { response.status }
+        );
+
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => return Err(Error::new(error_code, "read() failed")),
+            Err(error) => {
+                ::syslog::error!(
+                    "read_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
+                    fd,
+                    chunk.len(),
+                    error
+                );
+                return Err(Error::new(ErrorCode::TryAgain, "read() failed"));
+            },
+        }
+    }
+
+    // Parse response.
+    let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+    match message.header {
+        LinuxDaemonMessageHeader::ReadResponse => {
+            let resp: ReadResponse = ReadResponse::from_bytes(message.payload);
+            let count: i32 = resp.count;
+
+            // Guard against a negative count that would wrap when cast to usize.
+            if count < 0 {
+                ::syslog::error!(
+                    "read_chunk(): linuxd returned negative count (fd={:?}, count={:?})",
+                    fd,
+                    count
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "read response count is negative",
+                ));
+            }
+
+            // Sanity-check: the number of bytes reported by linuxd should match the bytes
+            // actually pulled via the data chunk transfer.
+            if (count as usize) != bytes_pulled {
+                ::syslog::error!(
+                    "read_chunk(): byte count mismatch (resp.count={:?}, bytes_pulled={:?})",
+                    count,
+                    bytes_pulled
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "read response count does not match bytes pulled",
+                ));
+            }
+
+            Ok(count as c_size_t)
+        },
+        header => {
+            ::syslog::error!(
+                "read_chunk(): failed to parse response (fd={:?}, chunk.len={:?}, header={:?})",
+                fd,
+                chunk.len(),
+                header
+            );
+            Err(Error::new(ErrorCode::InvalidMessage, "read() failed"))
+        },
+    }
+}
 
 ///
 /// # Description
@@ -60,86 +167,23 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
     let mut offset: usize = 0;
 
     while offset < buffer.len() {
-        let chunk_size: usize = cmp::min(ReadResponse::BUFFER_SIZE, buffer.len() - offset);
+        let chunk_size: usize =
+            page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
+        let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        // Build request and send it.
-        let request: Message = ReadRequest::build(tid, fd, chunk_size as c_size_t);
-        ::sys::kcall::ipc::send(&request)?;
+        let count: c_size_t = read_chunk(tid, fd, chunk)?;
 
-        // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        // EOF or zero-length read.
+        if count == 0 {
+            break;
+        }
 
-        // Check whether system call succeeded or not.
-        if response.status != 0 {
-            ::syslog::error!(
-                "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
-                fd,
-                buffer.len(),
-                { response.status }
-            );
+        total_read += count;
+        offset += count as usize;
 
-            match ErrorCode::try_from(response.status) {
-                // Error code was successfully parsed.
-                Ok(error_code) => return Err(Error::new(error_code, "read() failed")),
-                // Error code was not successfully parsed.
-                Err(error) => {
-                    ::syslog::error!(
-                        "read(): failed (fd={:?}, buffer.len={:?}, error_code={:?})",
-                        fd,
-                        buffer.len(),
-                        error
-                    );
-                    return Err(Error::new(ErrorCode::TryAgain, "read() failed"));
-                },
-            }
-        } else {
-            // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
-            // Response was successfully parsed.
-            match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::ReadResponse => {
-                    // Parse response.
-                    let response: ReadResponse = ReadResponse::from_bytes(message.payload);
-
-                    // Display progress if not STDIN.
-                    if fd != STDIN_FILENO && total_read.is_multiple_of(KILOBYTE as c_size_t) {
-                        let percentage = (total_read as f64 / buffer.len() as f64) * 100.0;
-                        ::syslog::trace!(
-                            "read(): {:?}/{:?} bytes read from fd={} ({:.2}%)",
-                            total_read,
-                            buffer.len(),
-                            fd,
-                            percentage
-                        );
-                    }
-
-                    // Check if any data was read.
-                    if response.count == 0 {
-                        break;
-                    }
-
-                    // Copy response buffer to user buffer.
-                    buffer[offset..offset + chunk_size]
-                        .copy_from_slice(&response.buffer[..chunk_size]);
-                    total_read += response.count as c_size_t;
-                    offset += chunk_size;
-
-                    // Check for partial read.
-                    if (response.count as usize) < chunk_size {
-                        break;
-                    }
-                },
-                header => {
-                    ::syslog::error!(
-                        "read(): failed to parse response (fd={:?}, buffer.len={:?}, header={:?})",
-                        fd,
-                        buffer.len(),
-                        header
-                    );
-                    return Err(Error::new(ErrorCode::InvalidMessage, "read() failed"));
-                },
-            }
+        // Short read: linuxd returned fewer bytes than the chunk size.
+        if (count as usize) < chunk_size {
+            break;
         }
     }
 

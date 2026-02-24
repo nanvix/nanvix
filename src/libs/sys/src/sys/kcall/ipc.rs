@@ -55,6 +55,26 @@ pub fn recv() -> Result<Message, Error> {
 // Rendezvous Push
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Pushes data to a destination thread using rendezvous synchronization.
+///
+/// # Parameters
+///
+/// - `destination_pid`: Process identifier of the destination.
+/// - `destination_tid`: Thread identifier of the destination.
+/// - `buffer`: Byte slice containing the data to send.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+/// # Errors
+///
+/// - [`ErrorCode::InvalidArgument`]: Invalid destination identifiers, self-push, or transfer
+///   length exceeds `u32::MAX`.
+///
 pub fn push(
     destination_pid: ProcessIdentifier,
     destination_tid: ThreadIdentifier,
@@ -86,6 +106,27 @@ pub fn push(
 // Rendezvous Pull
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Pulls data from a source thread using rendezvous synchronization.
+///
+/// # Parameters
+///
+/// - `sender_pid`: Process identifier of the expected sender.
+/// - `sender_tid`: Thread identifier of the expected sender.
+/// - `buffer`: Mutable byte slice where received data will be stored.
+///
+/// # Returns
+///
+/// Upon successful completion, the number of bytes actually transferred is returned. Upon failure,
+/// an error is returned instead.
+///
+/// # Errors
+///
+/// - [`ErrorCode::InvalidArgument`]: Invalid sender identifiers, self-pull, or transfer length
+///   exceeds `u32::MAX`.
+///
 pub fn pull(
     sender_pid: ProcessIdentifier,
     sender_tid: ThreadIdentifier,

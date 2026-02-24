@@ -58,7 +58,12 @@ use ::nanvix::{
     hwloc::HwLoc,
     sandbox::UserVmIdentifier,
     sys::{
-        ipc::Message,
+        ipc::{
+            DataChunk,
+            DataChunkHeader,
+            IkcFrame,
+            Message,
+        },
         pm::ThreadIdentifier,
     },
     syscall::{
@@ -459,7 +464,7 @@ impl Benchmark {
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
             let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
             let stdout_drain: JoinHandle<()> =
                 ::tokio::spawn(
                     async move { while vcpu_thread_stdout_rx.recv().await.is_some() {} },
@@ -475,7 +480,7 @@ impl Benchmark {
                 );
 
             let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
             let kernel_filename: String =
                 format!("{}/bin/kernel.elf", self.workspace_root.display());
@@ -912,11 +917,10 @@ impl Benchmark {
         let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
         payload.extend_from_slice(&DEFAULT_PAYLOAD_SIZE.to_le_bytes());
         payload.extend_from_slice(&data);
-        let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-        response_buf[..payload.len()].copy_from_slice(&payload);
         let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-            mpsc::channel::<Message>(CHANNEL_CAPACITY);
-        let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+            mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
+        let (io_thread_data_tx, memory_thread_data_rx) =
+            mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (io_control_command_tx, io_control_rx) =
             mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
         let (io_control_tx, mut io_control_response_rx) =
@@ -944,8 +948,16 @@ impl Benchmark {
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
+            // Step 1: Receive the ReadRequest IKC message from the guest.
             let ipc_read_message: Message = match vcpu_thread_stdout_rx.recv().await {
-                Some(message) => message,
+                Some(IkcFrame::Message(message)) => message,
+                Some(IkcFrame::Bulk(_)) => {
+                    let reason: String = "unexpected data chunk transfer received while waiting \
+                                          for ReadRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
                 None => {
                     let reason: String = "user VM channel closed unexpectedly while waiting for \
                                           ReadRequest"
@@ -968,15 +980,62 @@ impl Benchmark {
                 Ok(pid) => return Err(anyhow::anyhow!("unexpected message source: {pid:?}")),
             };
             let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
-            let read_response: Message =
-                ReadResponse::build(tid, payload.len() as i32, response_buf);
 
-            // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
+            // Step 2: Receive the bulk pull request from the guest kernel.
+            let pull_header: DataChunkHeader = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+                Some(IkcFrame::Message(_)) => {
+                    let reason: String = "unexpected IKC message received while waiting for bulk \
+                                          pull request"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          bulk pull request"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
+
+            // Now we are ready to push bulk data and ReadResponse, and wait for a WriteRequest.
             let start = Instant::now();
-            io_thread_data_tx.send(read_response).await?;
 
+            // Step 3: Send the bulk data response back to the kernel buffer.
+            let bulk_response: DataChunk = DataChunk::new(
+                DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    pull_header.data_addr(),
+                    payload.len() as u32,
+                ),
+                payload.clone(),
+            );
+            io_thread_data_tx
+                .send(IkcFrame::Bulk(bulk_response))
+                .await?;
+
+            // Step 4: Send ReadResponse metadata (buffer is empty; data was sent via bulk).
+            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+            let read_response: Message = ReadResponse::build(tid, payload.len() as i32, empty_buf);
+            io_thread_data_tx
+                .send(IkcFrame::Message(read_response))
+                .await?;
+
+            // Step 5: Receive the WriteRequest IKC message from the guest.
             let _write_request: Message = match vcpu_thread_stdout_rx.recv().await {
-                Some(message) => message,
+                Some(IkcFrame::Message(message)) => message,
+                Some(IkcFrame::Bulk(_)) => {
+                    let reason: String = "unexpected data chunk transfer received while waiting \
+                                          for WriteRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
                 None => {
                     let reason: String = "user VM channel closed unexpectedly while waiting for \
                                           WriteRequest"
@@ -986,11 +1045,32 @@ impl Benchmark {
                 },
             };
 
+            // Step 6: Receive the bulk push data from the guest.
+            let _push_data: DataChunk = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(bulk)) => bulk,
+                Some(IkcFrame::Message(_)) => {
+                    let reason: String = "unexpected IKC message received while waiting for bulk \
+                                          push data"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          bulk push data"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
+
             latencies.push(start.elapsed().as_micros());
 
-            // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
+            // Step 7: Send WriteResponse to acknowledge the write.
             let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
-            io_thread_data_tx.send(write_response).await?;
+            io_thread_data_tx
+                .send(IkcFrame::Message(write_response))
+                .await?;
 
             sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
 

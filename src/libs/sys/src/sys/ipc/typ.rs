@@ -36,6 +36,8 @@ pub enum MessageType {
     ProcessTerminationEvent,
     /// The message carries information sent from one kernel to another.
     Ikc,
+    /// The message signals completion of a bulk pull transfer.
+    PullResponse,
 }
 ::static_assert::assert_eq_size!(MessageType, 1);
 
@@ -63,6 +65,7 @@ impl MessageType {
             MessageType::Ipc => [3],
             MessageType::ProcessTerminationEvent => [4],
             MessageType::Ikc => [5],
+            MessageType::PullResponse => [6],
         }
     }
 
@@ -87,6 +90,7 @@ impl MessageType {
             [3] => Ok(MessageType::Ipc),
             [4] => Ok(MessageType::ProcessTerminationEvent),
             [5] => Ok(MessageType::Ikc),
+            [6] => Ok(MessageType::PullResponse),
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message type")),
         }
     }
@@ -100,6 +104,7 @@ impl fmt::Debug for MessageType {
             MessageType::Ipc => write!(f, "inter-process communication"),
             MessageType::ProcessTerminationEvent => write!(f, "process termination event"),
             MessageType::Ikc => write!(f, "inter-kernel communication"),
+            MessageType::PullResponse => write!(f, "pull response"),
         }
     }
 }
