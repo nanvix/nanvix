@@ -129,7 +129,10 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address for memory-mapped objects.
+    /// Base address for the unified mmap region.
+    ///
+    /// All dynamic memory allocations (heap, shared libraries, and explicit memory mappings) are
+    /// backed by this unified region.
     ///
     /// # Notes
     ///
@@ -137,58 +140,39 @@ pub mod memory_layout {
     ///
     pub const USER_MMAP_BASE_RAW: usize = 0x6000_0000;
 
+    ///
     /// # Description
     ///
-    /// End address for memory-mapped objects.
+    /// End address for the unified mmap region.
     ///
     /// # Notes
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_MMAP_END_RAW: usize = 0xa000_0000;
+    pub const USER_MMAP_END_RAW: usize = 0xd000_0000;
 
     ///
     /// # Description
     ///
-    /// Base address for shared libraries.
+    /// Size of the unified mmap region in bytes.
     ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_BASE_RAW: usize = USER_MMAP_END_RAW;
+    pub const USER_MMAP_SIZE: usize = USER_MMAP_END_RAW - USER_MMAP_BASE_RAW;
 
     ///
     /// # Description
     ///
-    /// End address for shared libraries.
+    /// Maximum capacity of the user heap in bytes. The heap is backed by the unified mmap region
+    /// and grows lazily on demand.
     ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_END_RAW: usize = 0xb0000000;
+    pub const USER_HEAP_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
 
     ///
     /// # Description
     ///
-    /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
+    /// Maximum capacity of the C runtime heap (`sbrk`) in bytes. The sbrk heap is backed by the
+    /// unified mmap region and grows lazily on demand.
     ///
-    pub const USER_HEAP_BASE_RAW: usize = USER_LIBS_END_RAW;
-
-    ///
-    /// # Description
-    ///
-    /// Provides the raw value for [`USER_HEAP_END`], which can be used in constant-value expressions.
-    ///
-    pub const USER_HEAP_END_RAW: usize = USER_HEAP_BASE_RAW + USER_HEAP_SIZE;
-
-    ///
-    /// # Description
-    ///
-    /// Size of the user heap.
-    ///
-    pub const USER_HEAP_SIZE: usize = 32 * crate::constants::MEGABYTE;
+    pub const USER_SBRK_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================

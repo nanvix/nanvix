@@ -13,7 +13,6 @@ use super::common::{
 use ::config::constants::KILOBYTE;
 use ::core::convert::TryFrom;
 use ::sys::{
-    config::memory_layout::USER_MMAP_BASE,
     error::{
         Error,
         ErrorCode,
@@ -61,7 +60,12 @@ pub fn run() -> Result<(), StressError> {
     let mut cap_guard: CapabilityGuard = CapabilityGuard::enable(Capability::MemoryManagement)?;
 
     let pid: ProcessIdentifier = getpid()?;
-    let mut current_addr: VirtualAddress = USER_MMAP_BASE;
+
+    // Reserve address space from the unified bump allocator so we don't conflict with the heap
+    // or sbrk regions.
+    let region_size: usize = MMAP_STRESS_PAGES * MMAP_STRESS_STRIDE_BYTES;
+    let region_base: VirtualAddress = ::syscall::sys::mman::mmap_reserve(region_size)?;
+    let mut current_addr: VirtualAddress = region_base;
 
     for iteration in 0..MMAP_STRESS_PAGES {
         let addr: VirtualAddress = current_addr;
