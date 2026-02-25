@@ -58,6 +58,8 @@ use ::sys::{
         ErrorCode,
     },
     ipc::{
+        DataChunk,
+        IkcFrame,
         Message,
         MessageReceiver,
         MessageSender,
@@ -567,32 +569,74 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     };
 
                     match event {
-                        UserVmEvent::Message { uvm_id, message } => {
+                        UserVmEvent::Transfer { uvm_id, transfer } => {
                             let Some(uvm_handle) = user_vm_connections.get(&uvm_id).cloned() else {
                                 warn!(
-                                    "run(): received message for unknown VM (uvm_id={uvm_id}), ignoring"
+                                    "run(): received transfer for unknown VM (uvm_id={uvm_id}), ignoring"
                                 );
                                 continue 'main_loop;
                             };
 
-                            if let Err(e) = self.forward_user_vm_msg_to_worker_thread(
-                                    uvm_id,
-                                    uvm_handle,
-                                    message,
-                                    worker_threads.clone(),
-                                )
-                                .await
-                            {
-                                let reason: &'static str = "error processing message from user VM, terminating it";
-                                error!("run(): {reason} (uvm_id={uvm_id}, error={e:?})");
+                            match transfer {
+                                IkcFrame::Message(message) => {
+                                    if let Err(e) = self.forward_user_vm_msg_to_worker_thread(
+                                            uvm_id,
+                                            uvm_handle,
+                                            message,
+                                            worker_threads.clone(),
+                                        )
+                                        .await
+                                    {
+                                        let reason: &'static str = "error processing message from user VM, terminating it";
+                                        error!("run(): {reason} (uvm_id={uvm_id}, error={e:?})");
 
-                                // Shutdown faulty user VM.
-                                Self::close_connection(
-                                    user_vm_connections.remove(&uvm_id),
-                                    worker_threads.lock().await.remove(&uvm_id),
-                                ).await;
+                                        // Shutdown faulty user VM.
+                                        Self::close_connection(
+                                            user_vm_connections.remove(&uvm_id),
+                                            worker_threads.lock().await.remove(&uvm_id),
+                                        ).await;
 
-                                continue 'main_loop;
+                                        continue 'main_loop;
+                                    }
+                                },
+                                IkcFrame::Bulk(bulk) => {
+                                    // Route data chunk transfer to the appropriate worker thread using
+                                    // the source thread identifier from the header.
+                                    let source_tid: ThreadIdentifier = bulk.header().source_tid();
+                                    trace!(
+                                        "run(): routing data chunk transfer to worker thread \
+                                         (uvm_id={uvm_id}, source_tid={source_tid:?}, \
+                                         data_len={})",
+                                        bulk.header().data_len(),
+                                    );
+
+                                    let venv_dir: Arc<Mutex<VirtualEnviromentDirectory>> =
+                                        self.venv.clone();
+                                    let channel_tx: Option<Sender<VenvCommand>> = {
+                                        let guard: MutexGuard<'_, VirtualEnviromentDirectory> =
+                                            venv_dir.lock().await;
+                                        guard
+                                            .get(uvm_id, source_tid)
+                                            .map(|env| env.get_channel_tx())
+                                    };
+
+                                    if let Some(tx) = channel_tx {
+                                        if let Err(error) =
+                                            tx.send(VenvCommand::BulkData(bulk)).await
+                                        {
+                                            error!(
+                                                "run(): failed to dispatch data chunk transfer to \
+                                                 worker thread (uvm_id={uvm_id}, \
+                                                 source_tid={source_tid:?}, error={error:?})"
+                                            );
+                                        }
+                                    } else {
+                                        warn!(
+                                            "run(): no worker thread found for data chunk transfer \
+                                             (uvm_id={uvm_id}, source_tid={source_tid:?})"
+                                        );
+                                    }
+                                },
                             }
                         },
 
@@ -622,24 +666,68 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     ///
     /// # Description
     ///
-    /// Read a message from the user VM stream.
+    /// Read a transfer (message or bulk) from the user VM stream. The stream uses a framing
+    /// protocol: a single frame-type byte precedes each frame.
     ///
-    async fn recv(uvm_reader: &mut SocketStreamReader) -> Result<Message, ErrorKind> {
-        let mut buf: [u8; IPC_MESSAGE_SIZE] = [0u8; IPC_MESSAGE_SIZE];
-        uvm_reader
-            .read_exact(&mut buf)
-            .await
-            .map_err(|e| e.kind())?;
-
-        let message: Message = match Message::try_from_bytes(buf) {
-            Ok(message) => message,
-            Err(e) => {
-                let reason: String = format!("failed to parse message (error={e:?})");
-                unimplemented!("handle: {}", reason);
+    async fn recv(uvm_reader: &mut SocketStreamReader) -> Result<IkcFrame, ErrorKind> {
+        // Read the frame type byte. An EOF here means the connection was closed cleanly.
+        let mut frame_type: [u8; 1] = [0u8; 1];
+        match uvm_reader.read_exact(&mut frame_type).await {
+            Ok(_) => {},
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                return Err(ErrorKind::ConnectionAborted);
             },
-        };
+            Err(e) => return Err(e.kind()),
+        }
 
-        Ok(message)
+        match frame_type[0] {
+            // Standard IPC message.
+            IkcFrame::MESSAGE_FRAME => {
+                let mut buf: [u8; IPC_MESSAGE_SIZE] = [0u8; IPC_MESSAGE_SIZE];
+                uvm_reader
+                    .read_exact(&mut buf)
+                    .await
+                    .map_err(|e| e.kind())?;
+
+                let message: Message = match Message::try_from_bytes(buf) {
+                    Ok(message) => message,
+                    Err(e) => {
+                        error!("recv(): failed to parse message (error={e:?})");
+                        return Err(ErrorKind::InvalidData);
+                    },
+                };
+
+                Ok(IkcFrame::Message(message))
+            },
+            // Data chunk transfer.
+            IkcFrame::DATA_CHUNK_FRAME => {
+                // Read the 4-byte little-endian length prefix.
+                let mut len_buf: [u8; 4] = [0u8; 4];
+                uvm_reader
+                    .read_exact(&mut len_buf)
+                    .await
+                    .map_err(|e| e.kind())?;
+                let payload_len: usize = u32::from_le_bytes(len_buf) as usize;
+
+                // Read the full data chunk transfer payload (header + data).
+                let mut payload: Vec<u8> = vec![0u8; payload_len];
+                uvm_reader
+                    .read_exact(&mut payload)
+                    .await
+                    .map_err(|e| e.kind())?;
+
+                let bulk: DataChunk = DataChunk::try_from_bytes(&payload).map_err(|e| {
+                    error!("recv(): failed to parse data chunk transfer (error={e:?})");
+                    ErrorKind::InvalidData
+                })?;
+
+                Ok(IkcFrame::Bulk(bulk))
+            },
+            unknown => {
+                error!("recv(): unknown frame type (type={unknown:#04x})");
+                Err(ErrorKind::InvalidData)
+            },
+        }
     }
 }
 
@@ -664,17 +752,30 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 
         loop {
             match Self::recv(&mut uvm_reader).await {
-                Ok(message) => {
-                    trace!(
-                        "uservm.id={uvm_id}, message.source={:?}, message.destination={:?}, \
-                         message.type={:?}",
-                        { message.source },
-                        { message.destination },
-                        message.message_type,
-                    );
+                Ok(transfer) => {
+                    match &transfer {
+                        IkcFrame::Message(message) => {
+                            trace!(
+                                "uservm.id={uvm_id}, message.source={:?}, \
+                                 message.destination={:?}, message.type={:?}",
+                                { message.source },
+                                { message.destination },
+                                message.message_type,
+                            );
+                        },
+                        IkcFrame::Bulk(bulk) => {
+                            trace!(
+                                "uservm.id={uvm_id}, bulk.source_pid={:?}, \
+                                 bulk.destination_pid={:?}, bulk.data_len={}",
+                                bulk.header().source_pid(),
+                                bulk.header().destination_pid(),
+                                bulk.header().data_len(),
+                            );
+                        },
+                    }
 
                     if uvm_events_tx
-                        .send(UserVmEvent::Message { uvm_id, message })
+                        .send(UserVmEvent::Transfer { uvm_id, transfer })
                         .await
                         .is_err()
                     {

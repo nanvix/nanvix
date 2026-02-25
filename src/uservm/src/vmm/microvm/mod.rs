@@ -169,7 +169,8 @@ struct InteriorMicroVmHandle {
 pub type StdinFn =
     dyn FnMut(&Arc<Mutex<Guest>>, &Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<()> + Send;
 
-pub type StdoutFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32) -> Result<()> + Send;
+pub type StdoutFn =
+    dyn FnMut(&Arc<Mutex<VirtualMemory>>, &::sys::ipc::VmBusMessage) -> Result<()> + Send;
 
 pub type StderrFn = dyn Write + Send;
 

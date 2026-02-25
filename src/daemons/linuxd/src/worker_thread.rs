@@ -43,6 +43,7 @@ use ::log::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::std::{
     io::ErrorKind,
@@ -68,6 +69,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::{
+        IkcFrame,
         Message,
         MessageReceiver,
         MessageSender,
@@ -179,6 +181,12 @@ const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
 /// Frequency to poll for cancellation flag.
 const CANCELLATION_POLL_FREQUENCY: Duration = Duration::from_millis(100);
+
+/// Maximum time (in seconds) a worker thread will wait for the bulk data message that must follow
+/// a `ReadRequest` or `WriteRequest`. If the guest VM crashes (or the channel stalls) after
+/// sending the IKC request but before the corresponding push/pull arrives, this timeout prevents
+/// the worker thread from blocking forever.
+const BULK_DATA_TIMEOUT: Duration = Duration::from_secs(30);
 
 //==================================================================================================
 // Thread-Local Storage
@@ -292,6 +300,44 @@ impl WorkerThreadHandle {
         })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Receives the next [`VenvCommand`] from the worker channel with a timeout and cancellation
+    /// support. This prevents the worker thread from blocking indefinitely when the guest VM
+    /// crashes after sending an IKC request but before sending the corresponding bulk data.
+    ///
+    /// # Parameters
+    ///
+    /// - `channel_rx`: The channel receiver to read from.
+    /// - `timeout`: Maximum duration to wait for the message.
+    ///
+    /// # Returns
+    ///
+    /// The received command, or a [`WorkerThreadError`] if the operation times out, the channel
+    /// closes, or the thread is cancelled.
+    ///
+    fn recv_with_timeout(
+        channel_rx: &mut Receiver<VenvCommand>,
+        timeout: Duration,
+    ) -> Result<VenvCommand, WorkerThreadError> {
+        Handle::current().block_on(async {
+            match ::tokio::time::timeout(timeout, channel_rx.recv()).await {
+                Ok(Some(cmd)) => Ok(cmd),
+                Ok(None) => {
+                    error!("recv_with_timeout(): channel closed");
+                    Err(WorkerThreadError::Interrupted)
+                },
+                Err(_elapsed) => {
+                    error!(
+                        "recv_with_timeout(): timed out after {timeout:?} waiting for bulk data"
+                    );
+                    Err(WorkerThreadError::Interrupted)
+                },
+            }
+        })
+    }
+
     /// Spawn an interruptible worker thread.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_worker_thread<T: Sync + Send + 'static>(
@@ -379,6 +425,14 @@ impl WorkerThreadHandle {
         loop {
             let message: Message = match channel_rx.blocking_recv() {
                 Some(VenvCommand::Work(message)) => message,
+                Some(VenvCommand::BulkData(_)) => {
+                    // Bulk data without a preceding Work message is unexpected; skip it.
+                    warn!(
+                        "handle_message(): received unexpected bulk data without request \
+                         (worker_tid={worker_tid:?})"
+                    );
+                    continue;
+                },
                 Some(VenvCommand::Shutdown) => {
                     debug!(
                         "handle_message(): thread received shutdown message \
@@ -402,11 +456,27 @@ impl WorkerThreadHandle {
             };
 
             match message.message_type {
-                sys::ipc::MessageType::Interrupt => panic!("received interrupt message"),
-                sys::ipc::MessageType::Exception => panic!("received exception message"),
-                sys::ipc::MessageType::Ipc => panic!("received IPC message"),
+                sys::ipc::MessageType::Interrupt => {
+                    error!("handle_message(): received unexpected interrupt message, stopping");
+                    break;
+                },
+                sys::ipc::MessageType::Exception => {
+                    error!("handle_message(): received unexpected exception message, stopping");
+                    break;
+                },
+                sys::ipc::MessageType::Ipc => {
+                    error!("handle_message(): received unexpected IPC message, stopping");
+                    break;
+                },
                 sys::ipc::MessageType::ProcessTerminationEvent => {
-                    panic!("received process termination event message")
+                    error!(
+                        "handle_message(): received unexpected process termination event, stopping"
+                    );
+                    break;
+                },
+                sys::ipc::MessageType::PullResponse => {
+                    error!("handle_message(): received unexpected pull response, stopping");
+                    break;
                 },
                 sys::ipc::MessageType::Ikc => {
                     match LinuxDaemonMessage::try_from_bytes(message.payload) {
@@ -423,16 +493,17 @@ impl WorkerThreadHandle {
                                         gateway_writer.clone(),
                                         source,
                                         message,
+                                        &mut channel_rx,
+                                        uvm_stream.clone(),
                                     ) {
                                         Ok(message) => message,
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
-                                            // WorkerThreadErrors other than Interrupted should be
-                                            // caught by downstream functions, and converted to
-                                            // Messages with the appropriate return code.
-                                            unreachable!(
-                                                "fatal error in working thread (error={e:?})"
+                                            error!(
+                                                "handle_message(): fatal error in worker thread, \
+                                                 stopping (error={e:?})"
                                             );
+                                            break;
                                         },
                                     }
                                 },
@@ -476,12 +547,11 @@ impl WorkerThreadHandle {
                                         Ok(message) => message,
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
-                                            // WorkerThreadErrors other than Interrupted should be
-                                            // caught by downstream functions, and converted to
-                                            // Messages with the appropriate return code.
-                                            unreachable!(
-                                                "fatal error in working thread (error={e:?})"
+                                            error!(
+                                                "handle_message(): fatal error in worker thread, \
+                                                 stopping (error={e:?})"
                                             );
+                                            break;
                                         },
                                     }
                                 },
@@ -502,12 +572,11 @@ impl WorkerThreadHandle {
                                         Ok(message) => message,
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
-                                            // WorkerThreadErrors other than Interrupted should be
-                                            // caught by downstream functions, and converted to
-                                            // Messages with the appropriate return code.
-                                            unreachable!(
-                                                "fatal error in working thread (error={e:?})"
+                                            error!(
+                                                "handle_message(): fatal error in worker thread, \
+                                                 stopping (error={e:?})"
                                             );
+                                            break;
                                         },
                                     }
                                     continue;
@@ -540,12 +609,11 @@ impl WorkerThreadHandle {
                                         Ok(()) => {},
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
-                                            // WorkerThreadErrors other than Interrupted should be
-                                            // caught by downstream functions, and converted to
-                                            // Messages with the appropriate return code.
-                                            unreachable!(
-                                                "fatal error in working thread (error={e:?})"
+                                            error!(
+                                                "handle_message(): fatal error in worker thread, \
+                                                 stopping (error={e:?})"
                                             );
+                                            break;
                                         },
                                     }
                                     continue;
@@ -585,6 +653,8 @@ impl WorkerThreadHandle {
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
+        channel_rx: &mut Receiver<VenvCommand>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
     ) -> Result<Message, WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
@@ -593,11 +663,24 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(syscall_table, gateway_reader, source, request)
+                Self::handle_read_request(
+                    syscall_table,
+                    gateway_reader,
+                    source,
+                    request,
+                    channel_rx,
+                    uvm_stream,
+                )
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
-                Self::handle_write_request(syscall_table, gateway_writer, source, request)
+                Self::handle_write_request(
+                    syscall_table,
+                    gateway_writer,
+                    source,
+                    request,
+                    channel_rx,
+                )
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -911,7 +994,26 @@ impl WorkerThreadHandle {
         message: Message,
     ) -> Result<(), std::io::Error> {
         let mut guard: MutexGuard<'_, SocketStreamWriter> = uvm_stream.lock().await;
+        guard.write_all(&[IkcFrame::MESSAGE_FRAME]).await?;
         guard.write_all(&message.to_bytes()).await?;
+        Ok(())
+    }
+
+    /// Sends a data chunk transfer to the user VM. The frame is: frame type byte + 4-byte LE length
+    /// prefix + serialized DataChunk payload (header + data).
+    async fn send_bulk(
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        bulk: &::sys::ipc::DataChunk,
+    ) -> Result<(), std::io::Error> {
+        let payload: Vec<u8> = bulk.to_bytes();
+        let payload_len: u32 = u32::try_from(payload.len()).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "bulk payload length exceeds u32")
+        })?;
+        let len_prefix: [u8; 4] = payload_len.to_le_bytes();
+        let mut guard: MutexGuard<'_, SocketStreamWriter> = uvm_stream.lock().await;
+        guard.write_all(&[IkcFrame::DATA_CHUNK_FRAME]).await?;
+        guard.write_all(&len_prefix).await?;
+        guard.write_all(&payload).await?;
         Ok(())
     }
 
@@ -948,34 +1050,58 @@ impl WorkerThreadHandle {
         syscall_table: &SyscallTable<T>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
-        mut request: WriteRequest,
+        request: WriteRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
+
+        // Receive bulk data that carries the actual write payload. A timeout prevents the worker
+        // thread from blocking forever if the guest VM crashes mid-protocol.
+        let mut bulk_data: Vec<u8> = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+            Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
+            Ok(VenvCommand::Shutdown) => {
+                debug!("handle_write_request(): received shutdown while waiting for bulk data");
+                return Err(WorkerThreadError::Interrupted);
+            },
+            Ok(VenvCommand::Work(_)) => {
+                error!("handle_write_request(): expected bulk data, got IKC message");
+                return Ok(build_error(source, ErrorCode::InvalidMessage));
+            },
+            Err(e) => {
+                error!("handle_write_request(): failed to receive bulk data");
+                return Err(e);
+            },
+        };
+
+        // Label: linuxd::worker_thread::handle_write_request()
+        profiler::timestamp_message!(&mut bulk_data, 0);
+
+        let count: usize = request.count as usize;
+        let write_buf: &[u8] = if bulk_data.len() >= count {
+            &bulk_data[..count]
+        } else {
+            &bulk_data
+        };
+
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
             // Check if write size is invalid.
-            if request.count == 0 {
+            if count == 0 {
                 // Writing zero-bytes to STDOUT is not allowed, as we used this to signal EOF.
                 error!("handle_write_request(): trying to write zero bytes to STDOUT");
                 Ok(build_error(source, ErrorCode::InvalidArgument))
             } else {
-                // Label: linuxd::worker_thread::handle_write_request()
-                profiler::timestamp_message!(&mut request.buffer, 0);
-                let count: usize = request.count as usize;
-
                 let mut locked_gateway_writer: MutexGuard<'_, SocketStreamWriter> =
                     gateway_writer.blocking_lock();
 
                 // Run blocking write as a cancellable operation.
-                let result: ::std::io::Result<()> = Self::run_cancellable_operation(
-                    locked_gateway_writer.write_all(&request.buffer[..count]),
-                );
+                let result: ::std::io::Result<()> =
+                    Self::run_cancellable_operation(locked_gateway_writer.write_all(write_buf));
 
-                // Use write_all() to ensure all bytes are written atomically while holding the lock.
                 match result {
                     Ok(()) => {
-                        debug!("wrote {count} bytes to the gateway");
-                        Ok(WriteResponse::build(source, count as i32))
+                        debug!("wrote {} bytes to the gateway", write_buf.len());
+                        Ok(WriteResponse::build(source, write_buf.len() as i32))
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => {
                         debug!("handle_write_request(): write interrupted");
@@ -988,8 +1114,42 @@ impl WorkerThreadHandle {
                 }
             }
         } else {
-            // Write to other file descriptor.
-            unistd::do_write(syscall_table, source, request)
+            // Write to other file descriptor via syscall table redirection.
+            let fd: libc::c_int = request.fd;
+            let ret: libc::ssize_t = unsafe {
+                unistd::do_write(
+                    syscall_table,
+                    fd,
+                    write_buf.as_ptr() as *const libc::c_void,
+                    count,
+                )
+            };
+            if ret >= 0 {
+                Ok(WriteResponse::build(source, ret as i32))
+            } else {
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                if errno == libc::EINTR {
+                    error!(
+                        "handle_write_request(): worker thread interrupted while blocked on \
+                         write()"
+                    );
+                    Err(WorkerThreadError::Interrupted)
+                } else {
+                    error!(
+                        "handle_write_request(): write via syscall table failed (errno={errno})"
+                    );
+                    Ok(build_error(
+                        source,
+                        ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                            error!(
+                                "handle_write_request(): unmapped errno={errno}, falling back to \
+                                 IoErr"
+                            );
+                            ErrorCode::IoErr
+                        }),
+                    ))
+                }
+            }
         }
     }
 
@@ -998,65 +1158,152 @@ impl WorkerThreadHandle {
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
         source: ThreadIdentifier,
         request: ReadRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
-        // Check if reading from gateway.
-        if request.fd == STDIN_FILENO {
-            // We need a mutable message to be able to timestamp it during profiling of the data
-            // path. The profiler macro is designed to silence this warnings when compiled without
-            // the timestamp-messages macro. However, in this case we need to unwrap the message
-            // before timestamping, wrapping the macro itself in a #[cfg()]. This means we need to
-            // manually silence the warning.
-            #[allow(unused_mut)]
-            let mut response: Result<Message, WorkerThreadError> = {
-                // Take the lock.
-                let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
-                    gateway_reader.blocking_lock();
 
-                // Read from the gateway.
-                let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                    [0u8; ReadResponse::BUFFER_SIZE];
-
-                // Run blocking read as a cancellable operation.
-                let result: ::std::io::Result<usize> =
-                    Self::run_cancellable_operation(locked_gateway_reader.read(&mut response_buf));
-
-                match result {
-                    Ok(0) => {
-                        debug!("handle_read_request(): eof");
-                        Ok(ReadResponse::eof(source))
-                    },
-                    Ok(n) => {
-                        debug!("read {n} bytes from gateway: {response_buf:?}");
-                        Ok(ReadResponse::build(source, n as c_ssize_t, response_buf))
-                    },
-                    Err(e) if e.kind() == ErrorKind::Interrupted => {
-                        debug!("handle_read_request(): read interrupted");
-                        return Err(WorkerThreadError::Interrupted);
-                    },
-                    Err(e) => {
-                        error!(
-                            "handle_read_request(): error reading data from gateway (error={e:?})"
-                        );
-                        Ok(ReadResponse::eof(source))
-                    },
-                }
+        // Wait for the BulkData pull request from the kernel. This contains the kernel buffer
+        // address where the response data should be written. A timeout prevents the worker thread
+        // from blocking forever if the guest VM crashes mid-protocol.
+        let pull_header: ::sys::ipc::DataChunkHeader =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                Ok(VenvCommand::BulkData(bulk)) => *bulk.header(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_read_request(): received shutdown while waiting for bulk data");
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_read_request(): expected BulkData, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_read_request(): failed to receive bulk data");
+                    return Err(e);
+                },
             };
 
-            #[cfg(feature = "timestamp-messages")]
-            if let Ok(read_response) = &mut response {
-                // Label: linuxd::worker_thread::handle_read_request()
-                profiler::timestamp_message!(
-                    &mut read_response.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
-            }
+        let return_addr: u32 = pull_header.data_addr();
+        let max_len: usize = pull_header.data_len() as usize;
 
-            response
+        // Helper closure: send a bulk response back to the kernel buffer.
+        let send_bulk_response = |data: Vec<u8>, len: u32| -> Result<(), WorkerThreadError> {
+            let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
+                ::sys::ipc::DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    return_addr,
+                    len,
+                ),
+                data,
+            );
+            Handle::current()
+                .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
+                .map_err(|e| {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        debug!("handle_read_request(): UVM stream closed (broken pipe)");
+                        WorkerThreadError::Interrupted
+                    } else {
+                        error!("handle_read_request(): failed to send bulk response (error={e:?})");
+                        WorkerThreadError::Interrupted
+                    }
+                })
+        };
+
+        if request.fd == STDIN_FILENO {
+            // Read from gateway.
+            let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
+                gateway_reader.blocking_lock();
+
+            let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
+            let result: ::std::io::Result<usize> =
+                Self::run_cancellable_operation(locked_gateway_reader.read(&mut read_buf));
+            drop(locked_gateway_reader);
+
+            match result {
+                Ok(0) => {
+                    debug!("handle_read_request(): eof");
+                    send_bulk_response(Vec::new(), 0)?;
+                    Ok(ReadResponse::eof(source))
+                },
+                Ok(n) => {
+                    debug!("read {n} bytes from gateway");
+                    read_buf.truncate(n);
+                    // Label: linuxd::worker_thread::handle_read_request()
+                    profiler::timestamp_message!(&mut read_buf, 0);
+                    send_bulk_response(read_buf, n as u32)?;
+                    let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                        [0u8; ReadResponse::BUFFER_SIZE];
+                    Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                },
+                Err(e) if e.kind() == ErrorKind::Interrupted => {
+                    debug!("handle_read_request(): read interrupted");
+                    // Send empty bulk to unblock the kernel pull before returning.
+                    if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                        warn!(
+                            "handle_read_request(): failed to send empty bulk response on \
+                             interrupt, kernel pull thread may block (error={bulk_err:?})"
+                        );
+                    }
+                    Err(WorkerThreadError::Interrupted)
+                },
+                Err(e) => {
+                    error!("handle_read_request(): error reading data from gateway (error={e:?})");
+                    send_bulk_response(Vec::new(), 0)?;
+                    Ok(ReadResponse::eof(source))
+                },
+            }
         } else {
-            // Read from other file descriptor.
-            unistd::do_read(syscall_table, source, request)
+            // Read from other file descriptor via syscall table redirection with bulk support.
+            let fd: libc::c_int = request.fd;
+            let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
+            let ret: libc::ssize_t = unsafe {
+                unistd::do_read(
+                    syscall_table,
+                    fd,
+                    read_buf.as_mut_ptr() as *mut libc::c_void,
+                    max_len,
+                )
+            };
+            if ret > 0 {
+                let n: usize = ret as usize;
+                read_buf.truncate(n);
+                send_bulk_response(read_buf, n as u32)?;
+                let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+                Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+            } else if ret == 0 {
+                send_bulk_response(Vec::new(), 0)?;
+                Ok(ReadResponse::eof(source))
+            } else {
+                let errno: i32 = unsafe { *libc::__errno_location() };
+                if errno == libc::EINTR {
+                    error!(
+                        "handle_read_request(): worker thread interrupted while blocked on read()"
+                    );
+                    if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                        warn!(
+                            "handle_read_request(): failed to send empty bulk response on \
+                             interrupt, kernel pull thread may block (error={bulk_err:?})"
+                        );
+                    }
+                    Err(WorkerThreadError::Interrupted)
+                } else {
+                    error!("handle_read_request(): read via syscall table failed (errno={errno})");
+                    send_bulk_response(Vec::new(), 0)?;
+                    Ok(build_error(
+                        source,
+                        ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                            error!(
+                                "handle_read_request(): unmapped errno={errno}, falling back to \
+                                 IoErr"
+                            );
+                            ErrorCode::IoErr
+                        }),
+                    ))
+                }
+            }
         }
     }
 

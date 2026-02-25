@@ -37,6 +37,8 @@ pub struct MicroVmArgs {
     pub ramfs_filename: Option<String>,
     pub input: Box<StdinFn>,
     pub output: Box<StdoutFn>,
+    #[cfg(feature = "hyperlight")]
+    pub bulk_output: Box<BulkStdoutFn>,
     pub stderr: Box<StderrFn>,
 }
 

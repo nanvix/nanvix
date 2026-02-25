@@ -77,12 +77,8 @@ use ::syscall::{
         PartialWriteRequest,
         PartialWriteResponse,
         PipeResponse,
-        ReadRequest,
-        ReadResponse,
         SeekRequest,
         SeekResponse,
-        WriteRequest,
-        WriteResponse,
     },
 };
 
@@ -459,40 +455,39 @@ pub fn do_ftruncate<T>(
 // do_write
 //==================================================================================================
 
-pub fn do_write<T>(
+///
+/// # Description
+///
+/// Dispatches a write operation through the syscall table.
+///
+/// # Parameters
+///
+/// - `syscall_table`: The syscall table for dispatching the write.
+/// - `fd`: The file descriptor to write to.
+/// - `buf`: A pointer to the buffer containing data to write.
+/// - `count`: The number of bytes to write.
+///
+/// # Returns
+///
+/// The number of bytes written on success, or `-1` on failure (with `errno` set).
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` points to a valid memory region of at least `count` bytes.
+///
+pub(crate) unsafe fn do_write<T>(
     syscall_table: &SyscallTable<T>,
-    tid: ThreadIdentifier,
-    request: WriteRequest,
-) -> Result<Message, WorkerThreadError> {
-    trace!("write(): tid={tid:?}, request={request:?}");
-
-    // Check if count is invalid.
-    if request.count > WriteRequest::BUFFER_SIZE as c_size_t {
-        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
-    }
-    let fd: i32 = request.fd;
-    let count: usize = request.count as usize;
-
-    let buffer: &[u8] = &request.buffer[..count];
-
-    debug!("libc::write(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { handle_write(syscall_table, fd, buffer.as_ptr() as *const _, count) } {
-        ret if ret >= 0 => Ok(WriteResponse::build(tid, ret as i32)),
-        ret => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
-
-            // Check if the thread has been interrupted.
-            if errno == libc::EINTR {
-                error!("do_write(): worker thread interrupted while blocked on write()");
-                return Err(WorkerThreadError::Interrupted);
-            }
-
-            debug!("libc::write(): errno={errno:?}");
-            Ok(crate::build_error(
-                tid,
-                ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
-            ))
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    match &syscall_table.write {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count)
         },
     }
 }
@@ -501,40 +496,39 @@ pub fn do_write<T>(
 // do_read
 //==================================================================================================
 
-pub fn do_read<T>(
+///
+/// # Description
+///
+/// Dispatches a read operation through the syscall table.
+///
+/// # Parameters
+///
+/// - `syscall_table`: The syscall table for dispatching the read.
+/// - `fd`: The file descriptor to read from.
+/// - `buf`: A pointer to the buffer where read data will be stored.
+/// - `count`: The maximum number of bytes to read.
+///
+/// # Returns
+///
+/// The number of bytes read on success, or `-1` on failure (with `errno` set).
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` points to a valid memory region of at least `count` bytes.
+///
+pub(crate) unsafe fn do_read<T>(
     syscall_table: &SyscallTable<T>,
-    tid: ThreadIdentifier,
-    request: ReadRequest,
-) -> Result<Message, WorkerThreadError> {
-    trace!("read(): tid={tid:?}, request={request:?}");
-
-    // Check if count is invalid.
-    if request.count > ReadResponse::BUFFER_SIZE as c_size_t {
-        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
-    }
-    let fd: i32 = request.fd;
-    let count: usize = request.count as usize;
-
-    let mut buffer: [u8; ReadResponse::BUFFER_SIZE] = [0; ReadResponse::BUFFER_SIZE];
-
-    debug!("libc::read(): fd={fd:?}, buffer={buffer:?}");
-    match unsafe { handle_read(syscall_table, fd, buffer.as_mut_ptr() as *mut _, count) } {
-        ret if ret >= 0 => Ok(ReadResponse::build(tid, ret as i32, buffer)),
-        ret => {
-            let errno: i32 = unsafe { *libc::__errno_location() };
-
-            // Check if the thread has been interrupted.
-            if errno == libc::EINTR {
-                error!("do_read(): worker thread interrupted while blocked on read()");
-                return Err(WorkerThreadError::Interrupted);
-            }
-
-            debug!("libc::read(): errno={errno:?}");
-            Ok(crate::build_error(
-                tid,
-                ErrorCode::try_from(errno)
-                    .unwrap_or_else(|_| panic!("invalid error code: {ret:?}")),
-            ))
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+) -> libc::ssize_t {
+    match &syscall_table.read {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count)
         },
     }
 }
@@ -963,42 +957,6 @@ unsafe fn handle_ftruncate<T>(
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
             syscall_fn(&syscall_table.state, fd, length)
-        },
-    }
-}
-
-/// Handler for `libc::write()`.
-unsafe fn handle_write<T>(
-    syscall_table: &SyscallTable<T>,
-    fd: libc::c_int,
-    buf: *const libc::c_void,
-    count: libc::size_t,
-) -> libc::ssize_t {
-    match &syscall_table.write {
-        SyscallAction::Block => {
-            unsafe { *libc::__errno_location() = libc::EPERM };
-            -1
-        },
-        SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(&syscall_table.state, fd, buf, count)
-        },
-    }
-}
-
-/// Handler for `libc::read()`.
-unsafe fn handle_read<T>(
-    syscall_table: &SyscallTable<T>,
-    fd: libc::c_int,
-    buf: *mut libc::c_void,
-    count: libc::size_t,
-) -> libc::ssize_t {
-    match &syscall_table.read {
-        SyscallAction::Block => {
-            unsafe { *libc::__errno_location() = libc::EPERM };
-            -1
-        },
-        SyscallAction::Forward(syscall_fn) => unsafe {
-            syscall_fn(&syscall_table.state, fd, buf, count)
         },
     }
 }

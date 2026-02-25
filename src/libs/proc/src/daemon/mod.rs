@@ -108,6 +108,10 @@ impl ProcessDaemon {
                                 },
                             }
                         },
+                        MessageType::PullResponse => {
+                            ::syslog::error!("received unexpected pull response, ignoring");
+                            continue;
+                        },
                     }
                 },
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),

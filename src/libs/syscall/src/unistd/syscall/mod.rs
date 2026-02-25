@@ -35,6 +35,7 @@ mod readlinkat;
 mod symlink;
 mod symlinkat;
 mod unlink;
+mod util;
 mod write;
 
 #[cfg(feature = "sbrk")]

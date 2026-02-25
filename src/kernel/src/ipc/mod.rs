@@ -5,15 +5,21 @@
 //  Modules
 //==================================================================================================
 
-mod kcall;
+#[cfg(feature = "stdio")]
+pub mod bulk_pull;
 mod mbx;
+mod pull;
+mod push;
+mod recv;
+pub(crate) mod rendezvous;
+mod send;
 
 //==================================================================================================
 //  Exports
 //==================================================================================================
 
-pub use kcall::{
-    recv,
-    send,
-};
 pub use mbx::Mailbox;
+pub use pull::pull;
+pub use push::push;
+pub use recv::recv;
+pub use send::send;
