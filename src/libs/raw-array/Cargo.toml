@@ -13,9 +13,13 @@ homepage.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 cfg-if = { workspace = true }
 sys = { workspace = true }
+vstd = { workspace = true }
 
 [features]
 default = []
