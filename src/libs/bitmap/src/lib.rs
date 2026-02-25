@@ -325,7 +325,7 @@ impl Bitmap {
 
         let mut start: usize = 0;
 
-        // Search for a contiguous free range.
+        // Traverse the bitmap until the last possible starting bit.
         while start <= self.number_of_bits - size
             invariant
                 self.inv(),
@@ -344,16 +344,18 @@ impl Bitmap {
             decreases
                 self.number_of_bits - start as int,
         {
-            // Fast skip: if the starting word is full, skip 8 bits.
+            // Check for fast skip/ path.
             let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
             if is_aligned {
                 let word: usize = start / u8::BITS as usize;
+                // Fast skip: if the starting word is full, skip to the next word.
                 if self.bits[word] == u8::MAX {
                     proof {
                         self.lemma_full_byte_no_free_range(start as int, size as int);
                     }
 
-                    start = start + u8::BITS as usize;
+                    // Jump to next byte boundary.
+                    start += u8::BITS as usize;
                     continue;
                 }
             }
@@ -393,7 +395,7 @@ impl Bitmap {
             {
                 let idx: usize = start + offset;
                 let (w, b): (usize, usize) = self.index_unchecked(idx);
-                if (self.bits[w] & (1u8 << b)) != 0 {
+                if (self.bits[w] & (1 << b)) != 0 {
                     free = false;
                     start += offset + 1;
                     proof {
@@ -461,7 +463,7 @@ impl Bitmap {
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
                     let ghost loop_old_self = *self;
 
-                    self.bits.set(w, self.bits[w] | (1u8 << b));
+                    self.bits.set(w, self.bits[w] | (1 << b));
 
                     proof {
                         loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
@@ -652,10 +654,7 @@ impl Bitmap {
             (index as int) < self@.number_of_bits() ==> result is Ok,
     {
         let (word, bit): (usize, usize) = self.index(index)?;
-        let byte_val: u8 = self.bits[word];
-        let result_val: bool = (byte_val & (1 << bit)) != 0;
-
-        Ok(result_val)
+        Ok((self.bits[word] & (1 << bit)) != 0)
     }
 
     //==================================================================================================
@@ -675,17 +674,17 @@ impl Bitmap {
     ///
     /// The `(word, bit)` pair of the index.
     ///
-    fn index_unchecked(&self, bit_index: usize) -> (result: (usize, usize))
+    fn index_unchecked(&self, index: usize) -> (result: (usize, usize))
         requires
-            bit_index < self.bits@.len() * u8::BITS as usize,
+            index < self.bits@.len() * u8::BITS as usize,
         ensures
             result.0 < self.bits@.len(),
             result.1 < u8::BITS as usize,
-            result.0 as int == bit_index as int / (u8::BITS as int),
-            result.1 as int == bit_index as int % (u8::BITS as int),
+            result.0 as int == index as int / (u8::BITS as int),
+            result.1 as int == index as int % (u8::BITS as int),
     {
-        let word: usize = bit_index / u8::BITS as usize;
-        let bit: usize = bit_index % u8::BITS as usize;
+        let word: usize = index / u8::BITS as usize;
+        let bit: usize = index % u8::BITS as usize;
         (word, bit)
     }
 
@@ -703,26 +702,26 @@ impl Bitmap {
     /// Upon success, the `(word, bit)` pair of the index is returned. Upon
     /// failure, an error is returned instead.
     ///
-    fn index(&self, bit_index: usize) -> (result: Result<(usize, usize), Error>)
+    fn index(&self, index: usize) -> (result: Result<(usize, usize), Error>)
         requires
             self.inv(),
         ensures
             result is Ok ==> {
-                &&& bit_index < self.number_of_bits
+                &&& index < self.number_of_bits
                 &&& result->Ok_0.0 < self.bits@.len()
                 &&& result->Ok_0.1 < u8::BITS as usize
-                &&& result->Ok_0.0 as int == bit_index as int / (u8::BITS as int)
-                &&& result->Ok_0.1 as int == bit_index as int % (u8::BITS as int)
+                &&& result->Ok_0.0 as int == index as int / (u8::BITS as int)
+                &&& result->Ok_0.1 as int == index as int % (u8::BITS as int)
             },
-            result is Err ==> bit_index >= self.number_of_bits,
-            bit_index < self.number_of_bits ==> result is Ok,
+            result is Err ==> index >= self.number_of_bits,
+            index < self.number_of_bits ==> result is Ok,
     {
         // Check if the index is out of bounds.
-        if bit_index >= self.bits.len() * u8::BITS as usize {
+        if index >= self.bits.len() * u8::BITS as usize {
             let reason: &str = "index out of bounds";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        Ok(self.index_unchecked(bit_index))
+        Ok(self.index_unchecked(index))
     }
 }
 
