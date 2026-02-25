@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::std::process;
-use globset::{
+use ::globset::{
     Glob,
     GlobSet,
     GlobSetBuilder,
 };
-use log::error;
+use ::log::error;
+use ::std::process;
 
 //==================================================================================================
 // Structures
@@ -185,7 +185,7 @@ Required positional arguments:
     pub fn glob_filter(&self) -> Option<GlobSet> {
         self.test_filter
             .as_ref()
-            .map(|filter_str| Self::build_globset(filter_str))
+            .map(|filter_str: &String| Self::build_globset(filter_str))
     }
 
     //==================================================================================================
