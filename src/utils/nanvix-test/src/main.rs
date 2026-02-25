@@ -73,15 +73,16 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::globset::GlobSet;
 use ::log::{
     debug,
     error,
+    info,
 };
 use ::std::{
     fs::create_dir_all,
     path::Path,
 };
-use globset::GlobSet;
 
 //==================================================================================================
 // Constants
@@ -147,7 +148,7 @@ async fn run() -> Result<()> {
     let total_tests: usize = tests.len();
     let selected_tests: Vec<TestCaseConfig> = tests
         .into_iter()
-        .filter(|test_config| test_config.matches_filter(test_glob_filter.clone()))
+        .filter(|test_config| test_config.matches_filter(test_glob_filter.as_ref()))
         .collect();
     let selected_count: usize = selected_tests.len();
 
@@ -164,8 +165,8 @@ async fn run() -> Result<()> {
         return Err(::anyhow::anyhow!(reason));
     }
 
-    debug!(
-        "info: selected {selected_count} of {total_tests} tests to run (filter={})",
+    info!(
+        "main(): selected {selected_count} of {total_tests} tests to run (filter={})",
         parsed_args
             .test_filter()
             .map(|f| format!("\"{}\"", f))

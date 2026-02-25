@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::globset::GlobSet;
 use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::{
     fs,
@@ -18,7 +19,6 @@ use ::toml::{
     Value,
     value::Table,
 };
-use globset::GlobSet;
 
 //==================================================================================================
 // Constants
@@ -788,7 +788,7 @@ impl TestCaseConfig {
     ///
     /// Returns `true` if the test case name matches the filter; otherwise returns `false`.
     ///
-    pub fn matches_filter(&self, filter: Option<GlobSet>) -> bool {
+    pub fn matches_filter(&self, filter: Option<&GlobSet>) -> bool {
         match filter {
             None => true,
             Some(globset) => globset.is_match(self.name.as_str()),
