@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use ::std::io::ErrorKind;
-use ::sys::ipc::Message;
+use ::sys::ipc::IkcFrame;
 use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
@@ -20,9 +20,10 @@ use ::user_vm_api::UserVmIdentifier;
 /// main linuxd thread for processing.
 ///
 pub enum UserVmEvent {
-    Message {
+    /// A transfer (message or bulk) received from a user VM.
+    Transfer {
         uvm_id: UserVmIdentifier,
-        message: Message,
+        transfer: IkcFrame,
     },
     ConnectionClosed {
         uvm_id: UserVmIdentifier,

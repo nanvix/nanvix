@@ -79,6 +79,10 @@ pub enum KcallNumber {
     SetThreadDataArea = KcallNumber::NR_SET_TDA_SYSCALL,
     /// Gets the thread-local storage.
     GetThreadDataArea = KcallNumber::NR_GET_TDA_SYSCALL,
+    /// Initiates a rendezvous send transfer.
+    Push = KcallNumber::NR_PUSH_SYSCALL,
+    /// Initiates a rendezvous receive transfer.
+    Pull = KcallNumber::NR_PULL_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -117,6 +121,9 @@ impl KcallNumber {
     const NR_SLEEP_SYSCALL: u32 = 29;
     const NR_SET_TDA_SYSCALL: u32 = 30;
     const NR_GET_TDA_SYSCALL: u32 = 31;
+    // NOTE: number 32 is already used by NR_MMIO_INFO_SYSCALL (assigned out of order above).
+    const NR_PUSH_SYSCALL: u32 = 33;
+    const NR_PULL_SYSCALL: u32 = 34;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -157,6 +164,8 @@ impl From<u32> for KcallNumber {
             Self::NR_SLEEP_SYSCALL => KcallNumber::Sleep,
             Self::NR_SET_TDA_SYSCALL => KcallNumber::SetThreadDataArea,
             Self::NR_GET_TDA_SYSCALL => KcallNumber::GetThreadDataArea,
+            Self::NR_PUSH_SYSCALL => KcallNumber::Push,
+            Self::NR_PULL_SYSCALL => KcallNumber::Pull,
             _ => KcallNumber::Invalid,
         }
     }
@@ -199,6 +208,8 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Sleep => KcallNumber::NR_SLEEP_SYSCALL,
             KcallNumber::SetThreadDataArea => KcallNumber::NR_SET_TDA_SYSCALL,
             KcallNumber::GetThreadDataArea => KcallNumber::NR_GET_TDA_SYSCALL,
+            KcallNumber::Push => KcallNumber::NR_PUSH_SYSCALL,
+            KcallNumber::Pull => KcallNumber::NR_PULL_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

@@ -23,6 +23,8 @@ use ::sys::error::{
 
 #[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
+#[cfg(not(feature = "hyperlight"))]
+mod rendezvous;
 mod tls;
 
 //==================================================================================================
@@ -53,6 +55,9 @@ pub fn main() -> Result<(), Error> {
     mmio_ramfs::run()?;
 
     tls::run()?;
+
+    #[cfg(not(feature = "hyperlight"))]
+    rendezvous::run()?;
 
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.

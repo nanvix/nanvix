@@ -125,6 +125,19 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Ok(()) => KcallResult::ok(),
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },
+        // SAFETY: The calling thread is not the kernel and no resources are held.
+        KcallNumber::Push => match ipc::push(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+            Ok(()) => KcallResult::ok(),
+            Err(sleep_error) => handle_sleep_error(sleep_error),
+        },
+        // SAFETY: The calling thread is not the kernel and no resources are held.
+        KcallNumber::Pull => match ipc::pull(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+            Ok(bytes_transferred) => match u32::try_from(bytes_transferred) {
+                Ok(bytes_u32) => KcallResult::Success(bytes_u32.into()),
+                Err(_) => KcallResult::Error(ErrorCode::InvalidArgument.into()),
+            },
+            Err(sleep_error) => handle_sleep_error(sleep_error),
+        },
         // SAFETY: The calling thread does not hold a reference to the process manager.
         KcallNumber::Resume => unsafe { event::resume(arg0 as usize) },
         // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.

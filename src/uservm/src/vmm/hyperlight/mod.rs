@@ -79,6 +79,11 @@ pub type StdinFn = dyn FnMut() -> Result<Vec<u8>, HyperlightError> + Send;
 
 pub type StdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
 
+/// Output function for data chunk transfers (VmbusBulkWrite host function). The kernel sends only the
+/// DataChunkHeader, and this function reads the actual data from guest shared memory at the GPA
+/// stored in the header.
+pub type BulkStdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
+
 pub type StderrFn = dyn Write + Send;
 
 //==================================================================================================
@@ -87,6 +92,72 @@ pub type StderrFn = dyn Write + Send;
 
 pub struct VirtualMemory {
     manager: SandboxMemoryManager<ExclusiveSharedMemory>,
+}
+
+//==================================================================================================
+// VirtualMemory Implementations
+//==================================================================================================
+
+impl VirtualMemory {
+    ///
+    /// # Description
+    ///
+    /// Writes a byte slice into guest memory at the given guest physical address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Guest physical address (identity-mapped to shared memory offset).
+    /// - `data`: Byte slice to write.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn write_bytes(&mut self, addr: u64, data: &[u8]) -> ::anyhow::Result<()> {
+        let offset: usize = usize::try_from(addr).map_err(|e| {
+            let reason: String = format!("write_bytes address overflow at {addr:#x}: {e}");
+            error!("{reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        self.manager
+            .get_shared_mem_mut()
+            .copy_from_slice(data, offset)
+            .map_err(|e| {
+                let reason: String = format!("write_bytes failed at {addr:#x}: {e}");
+                error!("{reason}");
+                anyhow::anyhow!(reason)
+            })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads bytes from guest memory at the given guest physical address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Guest physical address (identity-mapped to shared memory offset).
+    /// - `data`: Destination buffer to read into.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn read_bytes(&mut self, addr: u64, data: &mut [u8]) -> ::anyhow::Result<()> {
+        let offset: usize = usize::try_from(addr).map_err(|e| {
+            let reason: String = format!("read_bytes address overflow at {addr:#x}: {e}");
+            error!("{reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        self.manager
+            .get_shared_mem_mut()
+            .copy_to_slice(data, offset)
+            .map_err(|e| {
+                let reason: String = format!("read_bytes failed at {addr:#x}: {e}");
+                error!("{reason}");
+                anyhow::anyhow!(reason)
+            })
+    }
 }
 
 #[derive(Clone)]
@@ -322,6 +393,13 @@ impl Vmm {
         let mut output_fn: Box<StdoutFn> = args.output;
         sandbox.register("VmbusWrite", move |data: Vec<u8>| -> i32 {
             output_fn(data).unwrap_or(-1)
+        })?;
+
+        // Create a closure for VmbusBulkWrite that handles data chunk transfers.
+        // NOTE: bulk output function is FnMut, so we must keep it mutable when captured.
+        let mut bulk_output_fn: Box<BulkStdoutFn> = args.bulk_output;
+        sandbox.register("VmbusBulkWrite", move |data: Vec<u8>| -> i32 {
+            bulk_output_fn(data).unwrap_or(-1)
         })?;
 
         // Create a closure for VmbusRead that matches the expected signature

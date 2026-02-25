@@ -23,6 +23,13 @@ use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
+use ::log::{
+    debug,
+    error,
+    info,
+    trace,
+    warn,
+};
 use ::std::{
     mem,
     os::unix::process::ExitStatusExt,
@@ -32,20 +39,13 @@ use ::std::{
     },
     str::FromStr,
 };
-use ::sys::ipc::Message;
+use ::sys::ipc::IkcFrame;
 use ::syscomm::{
     SocketListener,
     SocketStream,
     SocketType,
     UnboundSocket,
     WriteAll,
-};
-use ::log::{
-    debug,
-    error,
-    info,
-    trace,
-    warn,
 };
 use ::tokio::{
     runtime::Handle,
@@ -143,9 +143,9 @@ impl UserVm {
         let uservm_task: JoinHandle<Result<u8>> = task::spawn_blocking(move || {
             Handle::current().block_on(async move {
                 let (vcpu_thread_stdout_tx, io_thread_data_rx) =
-                    mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                    mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
                 let (io_thread_data_tx, memory_thread_data_rx) =
-                    mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                    mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
                 let (io_thread_control_tx, io_control_rx) =
                     mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
                 let (io_control_tx, io_thread_control_rx) =
