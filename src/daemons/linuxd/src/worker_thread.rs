@@ -182,6 +182,12 @@ const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 /// Frequency to poll for cancellation flag.
 const CANCELLATION_POLL_FREQUENCY: Duration = Duration::from_millis(100);
 
+/// Maximum time (in seconds) a worker thread will wait for the bulk data message that must follow
+/// a `ReadRequest` or `WriteRequest`. If the guest VM crashes (or the channel stalls) after
+/// sending the IKC request but before the corresponding push/pull arrives, this timeout prevents
+/// the worker thread from blocking forever.
+const BULK_DATA_TIMEOUT: Duration = Duration::from_secs(30);
+
 //==================================================================================================
 // Thread-Local Storage
 //==================================================================================================
@@ -290,6 +296,44 @@ impl WorkerThreadHandle {
                         }
                     }
                 }
+            }
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Receives the next [`VenvCommand`] from the worker channel with a timeout and cancellation
+    /// support. This prevents the worker thread from blocking indefinitely when the guest VM
+    /// crashes after sending an IKC request but before sending the corresponding bulk data.
+    ///
+    /// # Parameters
+    ///
+    /// - `channel_rx`: The channel receiver to read from.
+    /// - `timeout`: Maximum duration to wait for the message.
+    ///
+    /// # Returns
+    ///
+    /// The received command, or a [`WorkerThreadError`] if the operation times out, the channel
+    /// closes, or the thread is cancelled.
+    ///
+    fn recv_with_timeout(
+        channel_rx: &mut Receiver<VenvCommand>,
+        timeout: Duration,
+    ) -> Result<VenvCommand, WorkerThreadError> {
+        Handle::current().block_on(async {
+            match ::tokio::time::timeout(timeout, channel_rx.recv()).await {
+                Ok(Some(cmd)) => Ok(cmd),
+                Ok(None) => {
+                    error!("recv_with_timeout(): channel closed");
+                    Err(WorkerThreadError::Interrupted)
+                },
+                Err(_elapsed) => {
+                    error!(
+                        "recv_with_timeout(): timed out after {timeout:?} waiting for bulk data"
+                    );
+                    Err(WorkerThreadError::Interrupted)
+                },
             }
         })
     }
@@ -1011,20 +1055,21 @@ impl WorkerThreadHandle {
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
 
-        // Receive bulk data that carries the actual write payload.
-        let mut bulk_data: Vec<u8> = match channel_rx.blocking_recv() {
-            Some(VenvCommand::BulkData(bulk)) => bulk.into_data(),
-            Some(VenvCommand::Shutdown) => {
+        // Receive bulk data that carries the actual write payload. A timeout prevents the worker
+        // thread from blocking forever if the guest VM crashes mid-protocol.
+        let mut bulk_data: Vec<u8> = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+            Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
+            Ok(VenvCommand::Shutdown) => {
                 debug!("handle_write_request(): received shutdown while waiting for bulk data");
                 return Err(WorkerThreadError::Interrupted);
             },
-            Some(VenvCommand::Work(_)) => {
+            Ok(VenvCommand::Work(_)) => {
                 error!("handle_write_request(): expected bulk data, got IKC message");
                 return Ok(build_error(source, ErrorCode::InvalidMessage));
             },
-            None => {
-                error!("handle_write_request(): channel closed while waiting for bulk data");
-                return Err(WorkerThreadError::Interrupted);
+            Err(e) => {
+                error!("handle_write_request(): failed to receive bulk data");
+                return Err(e);
             },
         };
 
@@ -1119,22 +1164,24 @@ impl WorkerThreadHandle {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
 
         // Wait for the BulkData pull request from the kernel. This contains the kernel buffer
-        // address where the response data should be written.
-        let pull_header: ::sys::ipc::DataChunkHeader = match channel_rx.blocking_recv() {
-            Some(VenvCommand::BulkData(bulk)) => *bulk.header(),
-            Some(VenvCommand::Shutdown) => {
-                debug!("handle_read_request(): received shutdown while waiting for bulk data");
-                return Err(WorkerThreadError::Interrupted);
-            },
-            Some(VenvCommand::Work(_)) => {
-                error!("handle_read_request(): expected BulkData, got IKC message");
-                return Ok(build_error(source, ErrorCode::InvalidMessage));
-            },
-            None => {
-                error!("handle_read_request(): channel closed while waiting for bulk data");
-                return Err(WorkerThreadError::Interrupted);
-            },
-        };
+        // address where the response data should be written. A timeout prevents the worker thread
+        // from blocking forever if the guest VM crashes mid-protocol.
+        let pull_header: ::sys::ipc::DataChunkHeader =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                Ok(VenvCommand::BulkData(bulk)) => *bulk.header(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_read_request(): received shutdown while waiting for bulk data");
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_read_request(): expected BulkData, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_read_request(): failed to receive bulk data");
+                    return Err(e);
+                },
+            };
 
         let return_addr: u32 = pull_header.data_addr();
         let max_len: usize = pull_header.data_len() as usize;
@@ -1194,7 +1241,12 @@ impl WorkerThreadHandle {
                 Err(e) if e.kind() == ErrorKind::Interrupted => {
                     debug!("handle_read_request(): read interrupted");
                     // Send empty bulk to unblock the kernel pull before returning.
-                    let _ = send_bulk_response(Vec::new(), 0);
+                    if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                        warn!(
+                            "handle_read_request(): failed to send empty bulk response on \
+                             interrupt, kernel pull thread may block (error={bulk_err:?})"
+                        );
+                    }
                     Err(WorkerThreadError::Interrupted)
                 },
                 Err(e) => {
@@ -1230,7 +1282,12 @@ impl WorkerThreadHandle {
                     error!(
                         "handle_read_request(): worker thread interrupted while blocked on read()"
                     );
-                    let _ = send_bulk_response(Vec::new(), 0);
+                    if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                        warn!(
+                            "handle_read_request(): failed to send empty bulk response on \
+                             interrupt, kernel pull thread may block (error={bulk_err:?})"
+                        );
+                    }
                     Err(WorkerThreadError::Interrupted)
                 } else {
                     error!("handle_read_request(): read via syscall table failed (errno={errno})");
