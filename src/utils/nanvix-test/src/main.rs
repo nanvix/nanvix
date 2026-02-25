@@ -73,9 +73,11 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::globset::GlobSet;
 use ::log::{
     debug,
     error,
+    info,
 };
 use ::std::{
     fs::create_dir_all,
@@ -141,6 +143,36 @@ async fn run() -> Result<()> {
     } = NanvixTestConfig::from_path(Path::new(parsed_args.config_file_path()))?;
     warning::configure(runner_config.fatal);
 
+    // Select tests before preparing the environment to avoid unnecessary environment setup.
+    let test_glob_filter: Option<GlobSet> = parsed_args.glob_filter();
+    let total_tests: usize = tests.len();
+    let selected_tests: Vec<TestCaseConfig> = tests
+        .into_iter()
+        .filter(|test_config| test_config.matches_filter(test_glob_filter.as_ref()))
+        .collect();
+    let selected_count: usize = selected_tests.len();
+
+    // Fail early when no tests match the requested filter.
+    if selected_tests.is_empty() {
+        let reason: String = format!(
+            "no tests selected (filter={})",
+            parsed_args
+                .test_filter()
+                .map(|f| format!("\"{}\"", f))
+                .unwrap_or("None".to_string())
+        );
+        error!("main(): {reason}");
+        return Err(::anyhow::anyhow!(reason));
+    }
+
+    info!(
+        "main(): selected {selected_count} of {total_tests} tests to run (filter={})",
+        parsed_args
+            .test_filter()
+            .map(|f| format!("\"{}\"", f))
+            .unwrap_or("None".to_string())
+    );
+
     let log_directory: &str = runner_config.log_directory.as_str();
     if let Err(error) = create_dir_all(log_directory) {
         let reason: String =
@@ -181,19 +213,24 @@ async fn run() -> Result<()> {
     #[cfg(feature = "microvm")]
     let machine: &str = "microvm";
 
-    for test_config in tests {
+    for test_config in selected_tests {
         // Skip tests that are not applicable to the current machine.
         if !test_config.should_run_on(machine) {
             debug!(
-                "main(): skipping test not applicable to machine (executor={}, program={:?}, \
-                 machine={}, runs_on={:?})",
-                test_config.executor, test_config.program, machine, test_config.runs_on
+                "main(): skipping test not applicable to machine (executor={}, name={}, \
+                 program={:?}, machine={}, runs_on={:?})",
+                test_config.executor,
+                test_config.name,
+                test_config.program,
+                machine,
+                test_config.runs_on
             );
             continue;
         }
 
         let TestCaseConfig {
             executor,
+            name,
             iterations,
             program,
             program_args,
@@ -222,10 +259,11 @@ async fn run() -> Result<()> {
         };
 
         debug!(
-            "main(): running test (executor={}, iterations={}, program={:?}, program_args={:?}, \
-             expected_output={:?}, expect_empty_output={}, expected_exit_code={:?}, \
-             extra_nanvixd_args={:?})",
+            "main(): running test (executor={}, name={}, iterations={}, program={:?}, \
+             program_args={:?}, expected_output={:?}, expect_empty_output={}, \
+             expected_exit_code={:?}, extra_nanvixd_args={:?})",
             executor,
+            name,
             iterations,
             program,
             program_args,

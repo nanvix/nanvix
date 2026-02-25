@@ -23,6 +23,7 @@ serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 shell-words = { workspace = true }
+globset = { workspace = true }
 
 [features]
 default = ["microvm"]
