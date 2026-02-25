@@ -25,7 +25,6 @@ use ::core::{
     },
 };
 use ::sys::{
-    config::memory_layout::USER_MMAP_BASE,
     error::{
         Error,
         ErrorCode,
@@ -73,6 +72,9 @@ const SCOREBOARD_PRESSURE_FAILURE: usize = usize::MAX;
 //==================================================================================================
 
 static SCOREBOARD_PRESSURE_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+/// Base address for the reserved mmap region used by scoreboard pressure workers.
+static SCOREBOARD_REGION_BASE: AtomicUsize = AtomicUsize::new(0);
+
 static SCOREBOARD_PRESSURE_ERROR_CODE: AtomicUsize = AtomicUsize::new(0);
 
 //==================================================================================================
@@ -97,6 +99,14 @@ pub fn run() -> Result<(), StressError> {
         CapabilityGuard::enable(Capability::MemoryManagement)?;
 
     let worker_count: usize = cmp::max(SCOREBOARD_SLOT_HINT * 2, MIN_SCOREBOARD_PRESSURE_WORKERS);
+
+    // Reserve address space for all workers from the unified bump allocator so that direct
+    // kcall mmap/munmap calls don't conflict with the heap or sbrk regions.
+    let total_region_size: usize = worker_count * SCOREBOARD_PRESSURE_REGION_STRIDE_BYTES;
+    let region_base: ::sys::mm::VirtualAddress =
+        ::syscall::sys::mman::mmap_reserve(total_region_size)?;
+    SCOREBOARD_REGION_BASE
+        .store(::sys::mm::Address::into_raw_value(region_base), Ordering::Release);
 
     let mut tids: Vec<ThreadIdentifier> = Vec::with_capacity(worker_count);
     let mut stacks: Vec<WorkerStack> = Vec::with_capacity(worker_count);
@@ -232,7 +242,7 @@ fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
 /// Returns `ValueOutOfRange` when address arithmetic overflows.
 ///
 fn worker_region_base(worker_id: usize) -> Result<usize, Error> {
-    let user_base: usize = usize::from(USER_MMAP_BASE);
+    let user_base: usize = SCOREBOARD_REGION_BASE.load(Ordering::Acquire);
     let offset: usize = worker_id
         .checked_mul(SCOREBOARD_PRESSURE_REGION_STRIDE_BYTES)
         .ok_or_else(|| Error::new(ErrorCode::ValueOutOfRange, "worker offset overflow"))?;

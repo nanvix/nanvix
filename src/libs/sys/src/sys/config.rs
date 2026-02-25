@@ -99,26 +99,4 @@ pub mod memory_layout {
     /// - This should be aligned to page and page table boundaries.
     ///
     pub const USER_MMAP_END: VirtualAddress = VirtualAddress::new(USER_MMAP_END_RAW);
-
-    ///
-    /// # Description
-    ///
-    /// Base address for shared libraries.
-    ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_BASE: VirtualAddress = VirtualAddress::new(USER_LIBS_BASE_RAW);
-
-    ///
-    /// # Description
-    ///
-    /// Base address of user heap.
-    ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_HEAP_BASE: VirtualAddress = VirtualAddress::new(USER_HEAP_BASE_RAW);
 }

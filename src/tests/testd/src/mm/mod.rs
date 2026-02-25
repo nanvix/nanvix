@@ -6,12 +6,8 @@
 //==================================================================================================
 
 use ::arch::mem::PAGE_SIZE;
-use ::config::memory_layout::{
-    USER_MMAP_BASE_RAW,
-    USER_MMAP_END_RAW,
-};
 use ::sys::{
-    config::memory_layout::USER_MMAP_BASE,
+    config::memory_layout::USER_MMAP_END,
     mm::{
         AccessPermission,
         Address,
@@ -22,6 +18,21 @@ use ::sys::{
         ProcessIdentifier,
     },
 };
+
+/// Number of pages to exercise in the "many times" tests.
+const MM_TEST_NTIMES: usize = 64;
+
+// NOTE: these low-level kcall tests map pages starting at `USER_MMAP_END`, which lies in the
+// guard region between the unified mmap region and the user stack. This address is deliberately
+// outside the bump-allocated mmap region so that direct kcall mappings do not conflict with
+// heap, sbrk, or higher-level mmap reservations.
+
+// Compile-time check: ensure the test pages fit within the guard region.
+const _: () = assert!(
+    ::config::memory_layout::USER_MMAP_END_RAW + MM_TEST_NTIMES * PAGE_SIZE
+        <= ::config::memory_layout::USER_STACK_TOP_RAW,
+    "testd mm tests: test pages overflow the guard region into the user stack",
+);
 
 //==================================================================================================
 // Tests mmap() and munmap()
@@ -48,7 +59,7 @@ fn test_mmap_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = USER_MMAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
     match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -92,7 +103,7 @@ fn test_mmap_write_munmap() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = USER_MMAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
     match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY) {
@@ -152,10 +163,8 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = ((USER_MMAP_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
-
-    for _ in 0..ntimes {
-        let vaddr: VirtualAddress = USER_MMAP_BASE;
+    for _ in 0..MM_TEST_NTIMES {
+        let vaddr: VirtualAddress = USER_MMAP_END;
 
         // Map a page.
         match ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::RDONLY) {
@@ -200,9 +209,10 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         Err(_) => return false,
     };
 
-    let ntimes: usize = ((USER_MMAP_END_RAW - USER_MMAP_BASE_RAW) / 64) / PAGE_SIZE;
+    let mmap_end_raw: usize = USER_MMAP_END.into_raw_value();
 
-    for vaddr in (0..ntimes).map(|i| USER_MMAP_BASE_RAW + i * PAGE_SIZE) {
+    // Map pages at consecutive addresses starting at the guard region.
+    for vaddr in (0..MM_TEST_NTIMES).map(|i| mmap_end_raw + i * PAGE_SIZE) {
         let vaddr: VirtualAddress = VirtualAddress::from_raw_value(vaddr);
 
         // Map a page.
@@ -247,7 +257,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
         Err(_) => return false,
     };
 
-    let vaddr: VirtualAddress = USER_MMAP_BASE;
+    let vaddr: VirtualAddress = USER_MMAP_END;
 
     // Map a page.
     if ::sys::kcall::mm::mmap(mypid, vaddr, AccessPermission::WRONLY).is_err() {
