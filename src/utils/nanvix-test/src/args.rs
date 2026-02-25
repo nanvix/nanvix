@@ -185,42 +185,118 @@ Required positional arguments:
     pub fn glob_filter(&self) -> Option<GlobSet> {
         self.test_filter
             .as_ref()
-            .map(|filter_str: &String| Self::build_globset(filter_str))
+            .map(|filter_str: &String| build_globset(filter_str))
     }
+}
 
-    //==================================================================================================
-    // Helper Functions
-    //==================================================================================================
+//==================================================================================================
+// Helper Functions
+//==================================================================================================
 
-    ///
-    /// # Description
-    ///
-    /// Constructs a `GlobSet` from the test filter string, which can be a comma-separated list of test
-    /// names or patterns.
-    ///
-    /// # Parameters
-    ///
-    /// - `filter`: Comma-separated list of test names or patterns.
-    ///
-    /// # Return Value
-    ///
-    /// Returns a `GlobSet` containing the compiled patterns.
-    ///
-    fn build_globset(filter: &str) -> GlobSet {
-        let mut builder = GlobSetBuilder::new();
-
-        for pattern in filter.split(',') {
-            let trimmed = pattern.trim();
-            if !trimmed.is_empty() {
-                builder.add(Glob::new(trimmed).unwrap_or_else(|err| {
-                    error!("Invalid glob pattern '{trimmed}': {err}");
-                    process::exit(1);
-                }));
-            }
-        }
-        builder.build().unwrap_or_else(|err| {
-            error!("Failed to build glob set from filter '{filter}': {err}");
+///
+/// # Description
+///
+/// Constructs a `GlobSet` from `build_globset_internal` that wraps GlobSetBuilder::build.
+/// Returns the `GlobSet` if successful; otherwise logs the error and exits the program with a
+/// non-zero status code.
+///
+/// # Parameters
+///
+/// - `filter`: Comma-separated list of test names or patterns.
+///
+/// # Return Value
+///
+/// Returns a `GlobSet` containing the compiled patterns.
+///
+fn build_globset(filter: &str) -> GlobSet {
+    match build_globset_internal(filter) {
+        Ok(globset) => globset,
+        Err(message) => {
+            error!("{message}");
             process::exit(1);
-        })
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Constructs a `GlobSet` from the test filter string, which can be a comma-separated list of test
+/// names or patterns.
+///
+/// # Parameters
+///
+/// - `filter`: Comma-separated list of test names or patterns.
+///
+/// # Return Value
+///
+/// Returns a `GlobSet` containing the compiled patterns.
+///
+fn build_globset_internal(filter: &str) -> Result<GlobSet, String> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in filter.split(',') {
+        let trimmed = pattern.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let glob =
+            Glob::new(trimmed).map_err(|err| format!("Invalid glob pattern '{trimmed}': {err}"))?;
+        builder.add(glob);
+    }
+    builder
+        .build()
+        .map_err(|err| format!("Failed to build glob set from filter '{filter}': {err}"))
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::build_globset_internal;
+    #[test]
+    fn single_pattern_matching() {
+        let filter: &str = "http/*";
+        let globset =
+            build_globset_internal(filter).expect("Failed to build glob set for a single pattern");
+        assert!(globset.is_match("http/test1"));
+        assert!(!globset.is_match("db/test1"));
+    }
+    #[test]
+    fn comma_separated_pattern_list_matching() {
+        let filter: &str = "http/*,db/*";
+        let globset = build_globset_internal(filter)
+            .expect("Failed to build glob set for comma-separated patterns");
+        assert!(globset.is_match("http/test1"));
+        assert!(globset.is_match("db/test1"));
+        assert!(!globset.is_match("cache/test1"));
+    }
+    #[test]
+    fn whitespace_handling_in_patterns() {
+        let filter: &str = "  http/*  ,   db/*  ";
+        let globset = build_globset_internal(filter)
+            .expect("Failed to build glob set with whitespace in filter");
+        assert!(globset.is_match("http/test2"));
+        assert!(globset.is_match("db/test2"));
+        assert!(!globset.is_match("cache/test2"));
+    }
+    #[test]
+    fn empty_filter_handling() {
+        let empty_filter: &str = "";
+        let globset_empty = build_globset_internal(empty_filter)
+            .expect("Failed to build glob set for empty filter");
+        assert!(!globset_empty.is_match("any/test"));
+        let whitespace_filter: &str = "  ,   ,  ";
+        let globset_whitespace = build_globset_internal(whitespace_filter)
+            .expect("Failed to build glob set for whitespace-only filter");
+        assert!(!globset_whitespace.is_match("any/test"));
+    }
+    #[test]
+    fn invalid_glob_pattern_returns_error() {
+        let filter: &str = "[";
+        let err = build_globset_internal(filter)
+            .expect_err("Expected invalid glob pattern to return an error");
+        assert!(err.contains("Invalid glob pattern '['"));
     }
 }
