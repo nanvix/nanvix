@@ -1875,11 +1875,7 @@ mod tests {
     fn auto_generated_name_executor_only() {
         // No explicit name and no program; only executor is provided.
         let table: Table = build_test_table("my-executor-only", None);
-        let config: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
-        assert_eq!(
-            config.is_err(),
-            true,
-            "auto-generating a name with only the executor should fail"
-        );
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
     }
 }
