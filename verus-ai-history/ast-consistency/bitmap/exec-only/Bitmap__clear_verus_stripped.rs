@@ -1,0 +1,20 @@
+    pub fn clear(&mut self, index: usize) -> Result<(), Error>
+    {
+        // Check if the bit is already cleared.
+        if !self.test(index)? {
+            let reason: &str = "bit is already cleared";
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let (word, bit): (usize, usize) = self.index(index)?;
+        
+
+        // At this point, we know:
+        // - old_self.inv() holds
+        // - old_self.is_bit_set(index as int) (the bit is set)
+        self.bits.set(word, self.bits[word] & !(1 << bit));
+
+        self.usage = self.usage - 1;
+
+        Ok(())
+    }

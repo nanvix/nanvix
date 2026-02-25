@@ -1,0 +1,38 @@
+--- source:Bitmap::new
++++ verus:Bitmap::new
+@@ -1,4 +1,16 @@
+-    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
++    pub fn new(number_of_bits: usize) -> (result: Result<Self, Error>)
++        ensures
++            result is Ok ==> {
++                let bitmap = result->Ok_0;
++                &&& bitmap.inv()
++                &&& bitmap@.number_of_bits() == number_of_bits as int
++                &&& bitmap@.is_empty()
++                &&& forall|i: int| 0 <= i < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(i)
++            },
++            (number_of_bits == 0 ||
++             number_of_bits >= u32::MAX as usize ||
++             number_of_bits % (u8::BITS as usize) != 0) ==> result is Err,
++    {
+         // Check if the length is invalid.
+         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
+             let reason: &str = "invalid length";
+@@ -15,9 +27,15 @@
+         // Note: RawArray::new() guarantees zero-initialization of the backing storage.
+         let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
+ 
+-        Ok(Self {
++        let result = Self {
+             number_of_bits,
+             bits: array,
+             usage: 0,
+-        })
++        };
++
++        proof {
++            Self::lemma_new_bitmap_inv(&result);
++        }
++
++        Ok(result)
+     }

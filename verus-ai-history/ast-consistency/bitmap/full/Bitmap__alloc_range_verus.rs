@@ -1,0 +1,229 @@
+    pub fn alloc_range(&mut self, size: usize) -> (result: Result<usize, Error>)
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            result is Ok ==> {
+                let start = result->Ok_0 as int;
+                &&& 0 <= start < self@.number_of_bits()
+                &&& 0 < size <= self@.number_of_bits()
+                &&& start + (size as int) <= self@.number_of_bits()
+                &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                &&& self.all_bits_set_in_range(start, start + (size as int))
+                &&& old(self).all_bits_unset_in_range(start, start + (size as int))
+                // Frame: only the allocated range changed.
+                &&& forall|i: int| 0 <= i < self@.number_of_bits() &&
+                    (i < start || i >= start + (size as int)) ==>
+                    self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame.
+                &&& self@.set_bits =~= old(self)@.set_bits.union(BitmapView::range_set(start, start + (size as int)))
+                &&& self@.usage() == old(self)@.usage() + (size as int)
+            },
+            result is Err ==> self@ == old(self)@,
+            (size > 0 && old(self).exists_contiguous_free_range(size as int)) ==> result is Ok,
+    {
+        let ghost old_self = *self;
+
+        // Check if the size is valid.
+        if size == 0 || size > self.number_of_bits {
+            proof {
+                if size > self.number_of_bits {
+                    old_self.lemma_no_free_range_when_size_exceeds(size as int);
+                }
+            }
+            let reason: &str = "invalid size";
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Check if allocation exceeds the bitmap capacity.
+        if self.usage > self.number_of_bits - size {
+            proof {
+                old_self.lemma_no_free_range_when_usage_exceeds(size as int);
+            }
+            let reason: &str = "allocation exceeds bitmap capacity";
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        // Note: debug_assert_eq! is not supported by Verus, so we guard it
+        // with cfg. The invariant self.inv() already proves this property.
+        #[cfg(not(verus_keep_ghost))]
+        debug_assert_eq!(
+            self.bits.len() * u8::BITS as usize,
+            self.number_of_bits,
+            "bitmap length must match the number of bits"
+        );
+
+        let mut start: usize = 0;
+
+        // Traverse the bitmap until the last possible starting bit.
+        while start <= self.number_of_bits - size
+            invariant
+                self.inv(),
+                old_self.inv(),
+                old_self == *old(self),
+                size > 0,
+                size <= self.number_of_bits,
+                start <= self.number_of_bits,
+                self@.set_bits =~= old(self)@.set_bits,
+                self.usage <= self.number_of_bits - size,
+                // number_of_bits is unchanged.
+                self.number_of_bits == old_self.number_of_bits,
+                // All positions before start don't have a free range.
+                forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                    0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
+            decreases
+                self.number_of_bits - start as int,
+        {
+            // Check for fast skip/ path.
+            let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
+            if is_aligned {
+                let word: usize = start / u8::BITS as usize;
+                // Fast skip: if the starting word is full, skip to the next word.
+                if self.bits[word] == u8::MAX {
+                    proof {
+                        self.lemma_full_byte_no_free_range(start as int, size as int);
+                    }
+
+                    // Jump to next byte boundary.
+                    start += u8::BITS as usize;
+                    continue;
+                }
+            }
+
+            // Check if all bits in the range are free.
+            let ghost start_before_inner: usize = start;
+            let mut offset: usize = 0;
+            let mut free: bool = true;
+
+            while offset < size
+                invariant_except_break
+                    start == start_before_inner,  // start doesn't change until break
+                    free,  // free remains true unless we break
+                invariant
+                    self.inv(),
+                    old_self.inv(),
+                    old_self == *old(self),
+                    0 < size <= self.number_of_bits,
+                    offset <= size,
+                    start_before_inner <= self.number_of_bits - size,  // from outer loop
+                    self@.set_bits =~= old(self)@.set_bits,
+                    forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                        0 <= p < start_before_inner as int ==> !self.has_free_range_at(p, size as int),
+                    // All bits checked so far are unset.
+                    free ==> forall|i: int| 0 <= i < offset ==>
+                        !#[trigger] self.is_bit_set((start_before_inner + i) as int),
+                ensures
+                    start <= self.number_of_bits,
+                    free ==> start == start_before_inner && start <= self.number_of_bits - size &&
+                        forall|i: int| 0 <= i < size ==>
+                            !#[trigger] self.is_bit_set((start + i) as int),
+                    !free ==> start > start_before_inner,
+                    !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                        0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
+                decreases
+                    size - offset,
+            {
+                let idx: usize = start + offset;
+                let (w, b): (usize, usize) = self.index_unchecked(idx);
+                if (self.bits[w] & (1 << b)) != 0 {
+                    free = false;
+                    start += offset + 1;
+                    proof {
+                        self.lemma_set_bit_blocks_free_range(
+                            start_before_inner as int, idx as int, offset as int, size as int);
+                    }
+                    break;
+                }
+                offset += 1;
+            }
+
+            if free {
+                // Found a free range at [start, start + size).
+                proof {
+                    self.lemma_free_range_was_unset_in_old(&old_self, start as int, size as int);
+                    assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
+                }
+
+                // Allocate the range.
+                let ghost pre_alloc_self = *self;
+                let mut alloc_offset: usize = 0;
+
+                proof {
+                    assert(self@.number_of_bits() == old_self@.number_of_bits());
+                    assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
+                }
+
+                // Verus note: `for offset in 0..size` is not supported;
+                // `self.bits[w] |= 1 << b` is not supported for mutable index.
+                while alloc_offset < size
+                    invariant
+                        // Basic structure preservation.
+                        self.bits@.len() == pre_alloc_self.bits@.len(),
+                        self.bits@.len() == old_self.bits@.len(),
+                        self@.number_of_bits() > 0,
+                        self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+                        self.number_of_bits == pre_alloc_self.number_of_bits,
+                        self.number_of_bits as int == self@.number_of_bits(),
+                        // Usage unchanged during this loop (updated after).
+                        self.usage == pre_alloc_self.usage,
+                        // Ghost state.
+                        old_self.inv(),
+                        pre_alloc_self.inv(),
+                        old_self == *old(self),
+                        // Bounds.
+                        0 < size <= self.number_of_bits,
+                        start <= self.number_of_bits - size,
+                        alloc_offset <= size,
+                        // Bits [start, start+alloc_offset) are set.
+                        forall|i: int| 0 <= i < alloc_offset ==>
+                            #[trigger] self.is_bit_set((start + i) as int),
+                        // Bits outside [start, start+alloc_offset) are unchanged.
+                        forall|i: int| (0 <= i < self@.number_of_bits() &&
+                            (i < start as int || i >= (start + alloc_offset) as int)) ==>
+                            #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
+                        // Set-based invariant.
+                        self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int))),
+                        self@.set_bits.finite(),
+                        // The range [start, start+size) was free in old_self.
+                        old_self.all_bits_unset_in_range(start as int, start as int + (size as int)),
+                    decreases
+                        size - alloc_offset,
+                {
+                    let idx: usize = start + alloc_offset;
+                    let (w, b): (usize, usize) = self.index_unchecked(idx);
+                    let ghost loop_old_self = *self;
+
+                    self.bits.set(w, self.bits[w] | (1 << b));
+
+                    proof {
+                        loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
+                        Self::lemma_alloc_loop_step_inv(
+                            &old_self, &loop_old_self, self, start as int, alloc_offset as int, idx as int);
+                    }
+
+                    alloc_offset += 1;
+                }
+                // Verus note: compound assignment on struct fields not supported.
+                // Equivalent to source's `self.usage += size`.
+                self.usage = self.usage + size;
+
+                proof {
+                    old_self.lemma_alloc_range_establishes_inv(self, start as int, size as int);
+                }
+
+                return Ok(start);
+            }
+            // !free: start was advanced past the blocked position.
+            proof {
+                assert(start > start_before_inner);
+            }
+        }
+
+        // No free range found.
+        proof {
+            self.lemma_no_range_found_frame(&old_self, size as int);
+            assert(!old(self).exists_contiguous_free_range(size as int));
+        }
+        let reason: &str = "bitmap is full";
+        Err(Error::new(ErrorCode::OutOfMemory, reason))
+    }

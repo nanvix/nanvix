@@ -1,0 +1,51 @@
+    pub fn clear(&mut self, index: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            result is Ok ==> {
+                &&& (index as int) < self@.number_of_bits()
+                &&& !self.is_bit_set(index as int)
+                &&& old(self).is_bit_set(index as int)
+                &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                // Frame.
+                &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != (index as int) ==>
+                    self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame.
+                &&& self@.set_bits =~= old(self)@.set_bits.remove(index as int)
+                &&& self@.usage() == old(self)@.usage() - 1
+            },
+            result is Err ==> *self == *old(self),
+            ((index as int) < old(self)@.number_of_bits() && old(self).is_bit_set(index as int))
+                ==> result is Ok,
+    {
+        // Check if the bit is already cleared.
+        if !self.test(index)? {
+            let reason: &str = "bit is already cleared";
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let (word, bit): (usize, usize) = self.index(index)?;
+        let ghost old_self = *self;
+
+        // At this point, we know:
+        // - old_self.inv() holds
+        // - old_self.is_bit_set(index as int) (the bit is set)
+        proof {
+            assert(old_self@.set_bits.contains(index as int));
+        }
+
+        self.bits.set(word, self.bits[word] & !(1 << bit));
+
+        proof {
+            old_self.lemma_clear_bit_preserves_inv(self, word as int, bit as int, index as int);
+        }
+
+        self.usage = self.usage - 1;
+
+        proof {
+            assert(self.usage as int == self@.usage());
+        }
+
+        Ok(())
+    }

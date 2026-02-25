@@ -1,0 +1,31 @@
+--- source:Bitmap::from_raw_array
++++ verus:Bitmap::from_raw_array
+@@ -1,14 +1,19 @@
+-    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error> {
+-        let number_of_bits: usize =
+-            array.len().checked_mul(u8::BITS as usize).ok_or_else(|| {
+-                Error::new(ErrorCode::InvalidArgument, "bitmap size overflow: array too large")
+-            })?;
++    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error>
++    {
++        // Check for overflow: array.len() * u8::BITS would overflow usize.
++        // Verus note: checked_mul and closures are not supported in Verus,
++        // so we use a manual overflow check. Semantically equivalent to
++        // source's array.len().checked_mul(u8::BITS as usize).ok_or_else(...).
++        if array.len() > usize::MAX / (u8::BITS as usize) {
++            let reason: &str = "bitmap size overflow: array too large";
++            return Err(Error::new(ErrorCode::InvalidArgument, reason));
++        }
++        let number_of_bits: usize = array.len() * u8::BITS as usize;
+ 
+-        // Note: RawArray guarantees zero-initialization of the backing storage.
+-
+-        Ok(Self {
++        let result = Self {
+             number_of_bits,
+             bits: array,
+             usage: 0,
+-        })
++        };
++        Ok(result)
+     }
