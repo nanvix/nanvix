@@ -68,51 +68,24 @@ runs:
       RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
       MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
     run: |
-      set -Euo pipefail
+      set -Eeuo pipefail
 
       MAGIC_STRING="hello, world!"
       TIMEOUT=600
 
-      rm -f run-stdout.log
-      touch run-stdout.log
-
-      # Start the system in the background and tee output to a log file.
-      ./z build \
-        --toolchain-dir "$HOME/toolchain" \
-        -- \
-        run \
+      # Build the ISO from the locally built artifacts.
+      make image \
         "MACHINE=${MACHINE_TYPE}" \
         TARGET=x86 \
         "LOG_LEVEL=${LOG_LEVEL}" \
-        VERBOSE=yes \
         ${RELEASE_FLAG} \
-        ${MAKE_FLAGS} \
-        > >(tee run-stdout.log) 2>&1 &
-      CMD_PID=$!
+        ${MAKE_FLAGS}
 
-      # Monitor stdout for the magic string with a timeout.
-      elapsed=0
-      while [ "${elapsed}" -lt "${TIMEOUT}" ]; do
-        if grep -q "${MAGIC_STRING}" run-stdout.log 2>/dev/null; then
-          echo "Magic string found. Sending SIGINT to terminate QEMU."
-          kill -INT "${CMD_PID}" 2>/dev/null || true
-          wait "${CMD_PID}" 2>/dev/null || true
-          echo "Integration test passed."
-          exit 0
-        fi
+      # Run QEMU via the shared script with magic-string monitoring.
+      if ! bash scripts/run-qemu.sh x86 "${MACHINE_TYPE}" nanvix.iso --no-debug "${TIMEOUT}" \
+        --wait-for-string "${MAGIC_STRING}"; then
+        echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
+        exit 1
+      fi
 
-        # Check if the process has already exited.
-        if ! kill -0 "${CMD_PID}" 2>/dev/null; then
-          break
-        fi
-
-        sleep 1
-        elapsed=$((elapsed + 1))
-      done
-
-      # Timeout or process exited without the magic string.
-      kill -INT "${CMD_PID}" 2>/dev/null || true
-      wait "${CMD_PID}" 2>/dev/null || true
-
-      echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-      exit 1
+      echo "Integration test passed."
