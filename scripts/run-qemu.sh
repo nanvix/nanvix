@@ -3,41 +3,95 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-# Script Arguments
-TARGET=$1   # Target
-MACHINE=$2  # Machine
-IMAGE=$3    # Image
-MODE=$4     # Run Mode
-TIMEOUT=$5  # Timeout
+#
+# Runs Nanvix in QEMU.
+#
+# Usage:
+#   run-qemu.sh <target> <machine> <image> [mode] [timeout] [--wait-for-string <string>]
+#
+# Modes:
+#   --no-debug (default)  Run QEMU normally.
+#   --debug               Run QEMU with GDB server attached.
+#   --wait-for-string <s> Run QEMU in the background, monitor stdout for <s>,
+#                         and terminate QEMU when found or on timeout.
+#
 
+# Fast fail on errors and unset variables.
+set -euo pipefail
+
+#==================================================================================================
+# Imports
+#==================================================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+source "${SCRIPT_DIR}/common/utils.sh"
+
+#==================================================================================================
 # Global Variables
-export SCRIPT_NAME=$0
-SCRIPT_DIR=
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd)"
-export SCRIPT_DIR=${SCRIPT_DIR}
-export NANVIX_HOME=${NANVIX_HOME:-$(git rev-parse --show-toplevel)}
+#==================================================================================================
 
-# Target configuration
-MEMSIZE=$(grep 'memory_size' "${SCRIPT_DIR}/../build/kernel_config.toml" | awk -F'=' '{print $2}' | tr -d ' ')
-echo ">>> Memory Size: $MEMSIZE"
+export SCRIPT_NAME="$0"
+export SCRIPT_DIR
+export NANVIX_HOME="${NANVIX_HOME:-$(git rev-parse --show-toplevel)}"
 
-# Check if MEMSIZE is invalid.
-if [[ -z "$MEMSIZE" || ! "$MEMSIZE" =~ ^[0-9]+$ ]];
-then
-	echo "Error: MEMSIZE is not set or is not a valid integer."
+# Kernel configuration file.
+KERNEL_CONFIG="${SCRIPT_DIR}/../build/kernel_config.toml"
+
+#==================================================================================================
+# Argument Parsing
+#==================================================================================================
+
+# Positional arguments.
+TARGET="${1:-}"
+MACHINE="${2:-}"
+IMAGE="${3:-}"
+MODE="${4:---no-debug}"
+TIMEOUT="${5:-}"
+
+# Optional: --wait-for-string <string>.
+WAIT_FOR_STRING=""
+shift $(( $# > 5 ? 5 : $# ))
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--wait-for-string)
+			if [[ $# -lt 2 ]]; then
+				print_error "Missing argument for --wait-for-string."
+				exit 1
+			fi
+			WAIT_FOR_STRING="$2"
+			shift 2
+			;;
+		*)
+			print_error "Unknown option: $1"
+			exit 1
+			;;
+	esac
+done
+
+#==================================================================================================
+# Target Configuration
+#==================================================================================================
+
+# Parse memory size from kernel configuration file.
+MEMSIZE=$(get_value_from_toml "${KERNEL_CONFIG}" "memory_size")
+if [[ -z "${MEMSIZE}" || ! "${MEMSIZE}" =~ ^[0-9]+$ ]]; then
+	print_error "MEMSIZE is not set or is not a valid integer in ${KERNEL_CONFIG}."
 	exit 1
 fi
+
+print_info "Memory Size: ${MEMSIZE}"
 
 #===================================================================================================
 # usage()
 #===================================================================================================
 
 #
-# Prints script usage and exits.
+# Description
+#   Prints script usage and exits.
 #
 function usage
 {
-	echo "$SCRIPT_NAME <target> <machine> <image> [mode] [timeout]"
+	echo "${SCRIPT_NAME} <target> <machine> <image> [mode] [timeout] [--wait-for-string <string>]"
 	exit 1
 }
 
@@ -45,13 +99,14 @@ function usage
 # check_args()
 #===================================================================================================
 
-# Check script arguments.
+#
+# Description
+#   Validates required script arguments.
+#
 function check_args
 {
-	# Missing binary?
-	if [ -z "$IMAGE" ];
-	then
-		echo "$SCRIPT_NAME: missing image"
+	if [[ -z "${IMAGE}" ]]; then
+		print_error "Missing image argument."
 		usage
 	fi
 }
@@ -60,7 +115,17 @@ function check_args
 # run_qemu()
 #===================================================================================================
 
-# Runs a binary in QEMU.
+#
+# Description
+#   Runs a binary in QEMU.
+#
+# Arguments
+#   $1 - Target architecture (e.g., i386).
+#   $2 - Machine type (e.g., qemu-pc).
+#   $3 - Image file (e.g., nanvix.iso).
+#   $4 - Run mode (--no-debug, --debug, or --no-debug with WAIT_FOR_STRING set).
+#   $5 - Timeout in seconds (optional).
+#
 function run_qemu
 {
 	local target=$1     # Target architecture.
@@ -72,110 +137,176 @@ function run_qemu
 	local cmd=""
 
 	# Check if the target is unsupported.
-	if [ "$target" != "i386" ]; then
-		echo "Unsupported target: $target"
+	if [[ "${target}" != "i386" ]]; then
+		print_error "Unsupported target: ${target}"
 		exit 1
 	fi
 
-	case "$machine" in
+	local qemu_machine=""
+	local stdout=""
+	local smp=""
+
+	case "${machine}" in
 		"qemu-baremetal")
-			machine="-machine pc"
+			qemu_machine="-machine pc"
 			stdout="-serial stdio"
 			smp=""
 			;;
 		"qemu-baremetal-smp")
-			machine="-machine pc"
+			qemu_machine="-machine pc"
 			stdout="-serial stdio"
 			smp="-smp 2"
 			;;
 		"qemu-pc")
-			machine="-machine pc"
+			qemu_machine="-machine pc"
 			stdout="-debugcon stdio"
 			smp=""
 			;;
 		"qemu-pc-smp")
-			machine="-machine pc"
+			qemu_machine="-machine pc"
 			stdout="-debugcon stdio"
 			smp="-smp 2"
 			;;
 		"qemu-isapc")
-			machine="-machine isapc"
+			qemu_machine="-machine isapc"
 			stdout="-debugcon stdio"
 			smp=""
 			;;
 		*)
-			echo "Unsupported machine: $MACHINE"
+			print_error "Unsupported machine: ${machine}"
 			exit 1
 			;;
 	esac
 
 	# Select QEMU from path, if available.
-	if command -v "qemu-system-$target" >/dev/null 2>&1;
-	then
-		qemu_cmd="qemu-system-$target"
+	local qemu_bin=""
+	if command -v "qemu-system-${target}" >/dev/null 2>&1; then
+		qemu_bin="qemu-system-${target}"
 	else
-		qemu_cmd="$TOOLCHAIN_DIR/qemu/bin/qemu-system-$target"
+		qemu_bin="${TOOLCHAIN_DIR}/qemu/bin/qemu-system-${target}"
 	fi
 
-	qemu_cmd="$qemu_cmd
-	  		$machine
-			$stdout
-			$smp
-			-display none
-			-cpu pentium3
-			-m ${MEMSIZE}B
-			-mem-prealloc"
+	local qemu_cmd="${qemu_bin} \
+		${qemu_machine} \
+		${stdout} \
+		${smp} \
+		-display none \
+		-cpu pentium3 \
+		-m ${MEMSIZE}B \
+		-mem-prealloc"
 
-	cmd="$qemu_cmd -cdrom $image"
+	cmd="${qemu_cmd} -cdrom ${image}"
 
-	# Run.
-	if [ "$mode" = "--debug" ];
-	then
-		cmd="$cmd -gdb tcp::$GDB_PORT -S"
-		$cmd
-	else
-
-	if [ -n "$timeout" ];
-		then
-			cmd="timeout -s SIGINT --preserve-status --foreground $timeout $cmd"
-		fi
-
-		$cmd 2> stderr.log
+	# Debug mode: attach GDB server and wait.
+	if [[ "${mode}" = "--debug" ]]; then
+		cmd="${cmd} -gdb tcp::${GDB_PORT} -S"
+		${cmd}
+		return
 	fi
+
+	# Wait-for-string mode: run QEMU in the background, monitor stdout for a
+	# specific string, and terminate QEMU when the string is found or on timeout.
+	if [[ -n "${WAIT_FOR_STRING}" ]]; then
+		run_qemu_wait_for_string "${cmd}" "${timeout}"
+		return
+	fi
+
+	# Normal mode: run QEMU with optional timeout.
+	if [[ -n "${timeout}" ]]; then
+		cmd="timeout -s SIGINT --preserve-status --foreground ${timeout} ${cmd}"
+	fi
+
+	${cmd} 2> stderr.log
 }
 
 #===================================================================================================
+# run_qemu_wait_for_string()
+#===================================================================================================
 
-# No debug mode.
-if [ -z "$MODE" ];
-then
-	MODE="--no-debug"
-fi
+#
+# Description
+#   Runs QEMU in the background, monitors stdout for a specific string, and
+#   terminates QEMU when the string is found or on timeout.
+#
+# Arguments
+#   $1 - The full QEMU command to run.
+#   $2 - Timeout in seconds.
+#
+function run_qemu_wait_for_string
+{
+	local cmd="$1"
+	local timeout="${2:-600}"
+	local log_file="run-stdout.log"
+
+	rm -f "${log_file}"
+	touch "${log_file}"
+
+	print_info "Waiting for string '${WAIT_FOR_STRING}' (timeout: ${timeout}s)..."
+
+	# Run QEMU in the background with stdout teed to a log file.
+	# Use setsid to create a new process group for clean termination.
+	setsid ${cmd} > >(tee "${log_file}") 2>&1 &
+	local qemu_pid=$!
+
+	# Monitor stdout for the magic string.
+	local elapsed=0
+	while [[ "${elapsed}" -lt "${timeout}" ]]; do
+		if grep -q "${WAIT_FOR_STRING}" "${log_file}" 2>/dev/null; then
+			print_success "String '${WAIT_FOR_STRING}' found. Terminating QEMU."
+			kill -INT -"${qemu_pid}" 2>/dev/null || true
+			wait "${qemu_pid}" 2>/dev/null || true
+			return 0
+		fi
+
+		# Check if QEMU has already exited.
+		if ! kill -0 "${qemu_pid}" 2>/dev/null; then
+			break
+		fi
+
+		sleep 1
+		elapsed=$((elapsed + 1))
+	done
+
+	# Timeout or QEMU exited without the expected string.
+	kill -INT -"${qemu_pid}" 2>/dev/null || true
+	wait "${qemu_pid}" 2>/dev/null || true
+
+	print_error "String '${WAIT_FOR_STRING}' not found within ${timeout}s."
+	cat "${log_file}" || true
+	return 1
+}
+
+#===================================================================================================
+# Main
+#===================================================================================================
 
 # Verbose mode.
 echo "====================================================================="
-echo "TARGET      = $TARGET"
-echo "MACHINE     = $MACHINE"
-echo "SCRIPT_DIR  = $SCRIPT_DIR"
-echo "SCRIPT_NAME = $SCRIPT_NAME"
-echo "IMAGE       = $IMAGE"
-echo "MODE        = $MODE"
-echo "TIMEOUT     = $TIMEOUT"
+echo "TARGET           = ${TARGET}"
+echo "MACHINE          = ${MACHINE}"
+echo "SCRIPT_DIR       = ${SCRIPT_DIR}"
+echo "SCRIPT_NAME      = ${SCRIPT_NAME}"
+echo "IMAGE            = ${IMAGE}"
+echo "MODE             = ${MODE}"
+echo "TIMEOUT          = ${TIMEOUT}"
+echo "WAIT_FOR_STRING  = ${WAIT_FOR_STRING}"
 echo "====================================================================="
 
-case "$TARGET" in
+case "${TARGET}" in
 	"x86")
 		check_args
-		case "$MACHINE" in
+		case "${MACHINE}" in
 			"qemu-baremetal" | "qemu-baremetal-smp" | "qemu-pc" | "qemu-pc-smp" | "qemu-isapc")
-				run_qemu "i386" "$MACHINE" "$IMAGE" "$MODE" "$TIMEOUT"
+				run_qemu "i386" "${MACHINE}" "${IMAGE}" "${MODE}" "${TIMEOUT}"
 				;;
 			*)
-				echo "Unsupported machine: $MACHINE"
+				print_error "Unsupported machine: ${MACHINE}"
+				exit 1
 				;;
 		esac
 		;;
-    *)
-        echo "Unsupported target: $TARGET"
-        ;;
+	*)
+		print_error "Unsupported target: ${TARGET}"
+		exit 1
+		;;
 esac
