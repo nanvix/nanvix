@@ -1842,9 +1842,15 @@ impl ProcessManager {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
-        // TODO: change page permissions.
+        // Map all pages in the MMIO region.
         let vmem: &mut Vmem = state.vmem_mut();
-        vmem.kctrl(region.base(), region.perm())?;
+        let base: usize = region.base().into_raw_value();
+        let npages: usize = region.size().div_ceil(PAGE_SIZE);
+        for i in 0..npages {
+            let vaddr: PageAligned<VirtualAddress> =
+                PageAligned::from_raw_value(base + i * PAGE_SIZE)?;
+            vmem.mmio_ctrl(vaddr, region.perm())?;
+        }
 
         state.add_mmio(region);
 

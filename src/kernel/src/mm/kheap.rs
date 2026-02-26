@@ -24,7 +24,7 @@ use ::sys::error::{
 //==================================================================================================
 
 pub const NUM_OF_SLABS: usize = 8;
-const SLAB_COUNT: usize = 32;
+const SLAB_COUNT: usize = 160;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
