@@ -34,7 +34,7 @@ git clone https://github.com/nanvix/nanvix.git && cd nanvix
 - [doc/setup.md](doc/setup.md) - Instructions for setting up your development environment.
 - [doc/build.md](doc/build.md) - Instructions for building Nanvix.
 - [doc/run.md](doc/run.md) - Instructions for running Nanvix.
-- [doc/dev.md](doc/test.md) - Instructions for testing Nanvix.
+- [doc/test.md](doc/test.md) - Instructions for testing Nanvix.
 - [doc/benchmark.md](doc/benchmark.md) - Instructions for benchmarking Nanvix.
 
 ## Software Ecosystem
