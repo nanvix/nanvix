@@ -24,12 +24,7 @@ use ::sys::error::{
 //==================================================================================================
 
 pub const NUM_OF_SLABS: usize = 8;
-// Large MMIO regions (e.g., 486 MB RAMFS images) need 122+ page tables, one per 4 MB.
-// Hyperlight has tighter kernel size constraints, so keep the original count.
-#[cfg(feature = "hyperlight")]
 const SLAB_COUNT: usize = 32;
-#[cfg(not(feature = "hyperlight"))]
-const SLAB_COUNT: usize = 160;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
