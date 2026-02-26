@@ -1172,6 +1172,7 @@ impl Vmem {
     }
 
     // Changes access permissions on a kernel page.
+    #[allow(dead_code)]
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1214,6 +1215,47 @@ impl Vmem {
         let page_address: PageAddress = PageAddress::new(vaddr);
 
         // Change access permissions on the page.
+        page_table
+            .borrow_mut()
+            .1
+            .ctrl(false, page_address, access)?;
+
+        Ok(())
+    }
+
+    /// Changes access permissions on an MMIO page.
+    ///
+    /// Unlike [`kctrl`] and [`uctrl`], this method does not enforce address
+    /// range restrictions because MMIO regions may span both kernel and user
+    /// address ranges while their page tables reside in the kernel set.
+    pub fn mmio_ctrl(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+        access: AccessPermission,
+    ) -> Result<(), Error> {
+        let page_table = {
+            let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+                ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+            )?;
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
+                Some(pde) => pde,
+                None => {
+                    let reason: &str = "failed to read page directory entry";
+                    error!("{reason}");
+                    return Err(Error::new(ErrorCode::TryAgain, reason));
+                },
+            };
+
+            if !pde.is_present() {
+                let reason: &str = "page table not present";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            };
+
+            self.lookup_kernel_page_table(&pde)?
+        };
+
+        let page_address: PageAddress = PageAddress::new(vaddr);
         page_table
             .borrow_mut()
             .1
