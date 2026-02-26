@@ -120,29 +120,21 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
-// Ensure that the user heap base address is aligned to a page boundary.
+// Ensure that the mmap base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
-// Ensure that the user heap base address is aligned to a page table boundary.
+// Ensure that the mmap base address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
-//Ensure that the user libraries base address is aligned to a page boundary.
+// Ensure that the mmap end address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
-// Ensure that the user libraries base address is aligned to a page table boundary.
+// Ensure that the mmap end address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
-);
-// Ensure that the user libraries end address is aligned to a page boundary.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
-);
-// Ensure that the user libraries end address is aligned to a page table boundary.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 // Ensure that the user and kernel address spaces do not overlap.
 ::static_assert::assert_eq!(
@@ -162,13 +154,15 @@ use ::sys::error::Error;
     config::memory_layout::KPOOL_BASE_RAW + config::kernel::KPOOL_SIZE
         < config::memory_layout::KERNEL_END_RAW
 );
-// Ensure that the user heap lies within the user base and end addresses.
+// Ensure that the mmap region lies within the user base and end addresses.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW >= config::memory_layout::USER_BASE_RAW
+    config::memory_layout::USER_MMAP_BASE_RAW >= config::memory_layout::USER_BASE_RAW
 );
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW + config::memory_layout::USER_HEAP_SIZE
-        < config::memory_layout::USER_END_RAW
+    config::memory_layout::USER_MMAP_END_RAW > config::memory_layout::USER_MMAP_BASE_RAW
+);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_MMAP_END_RAW < config::memory_layout::USER_END_RAW
 );
 // Ensure that the user stack lies within the user base and end addresses.
 ::static_assert::assert_eq!(
@@ -176,19 +170,6 @@ use ::sys::error::Error;
 );
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_TOP_RAW >= config::memory_layout::USER_BASE_RAW
-);
-// Ensure that the user libraries base address lies within the user base and end addresses.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW >= config::memory_layout::USER_BASE_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW < config::memory_layout::USER_END_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW > config::memory_layout::USER_LIBS_BASE_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW < config::memory_layout::USER_END_RAW
 );
 
 //==================================================================================================

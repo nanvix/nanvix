@@ -5,14 +5,18 @@
 // Modules
 //==================================================================================================
 
+mod allocator_interleave;
 mod common;
 mod debug_console_spam;
 mod event_registration;
+mod heap_max_capacity;
 mod heap_reclaim;
 mod kcall_hammer;
 mod memory_mapping_storm;
+mod mmap_rapid_cycle;
 mod mutex_churn;
 mod parallel_spawners;
+mod sbrk_churn;
 mod scoreboard_backpressure;
 mod sleep_burst;
 mod thread_data_area;
@@ -46,10 +50,14 @@ pub fn run_all() -> Result<(), Error> {
     kcall_hammer::run()?;
     scoreboard_backpressure::run()?;
     heap_reclaim::run()?;
+    heap_max_capacity::run()?;
     sleep_burst::run()?;
     debug_console_spam::run()?;
     event_registration::run()?;
     memory_mapping_storm::run()?;
     thread_data_area::run()?;
+    sbrk_churn::run()?;
+    mmap_rapid_cycle::run()?;
+    allocator_interleave::run()?;
     Ok(())
 }

@@ -24,7 +24,6 @@ use ::spin::{
     MutexGuard,
 };
 use ::sys::{
-    config::memory_layout::USER_HEAP_BASE,
     error::{
         Error,
         ErrorCode,
@@ -38,27 +37,6 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::talc::*;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "staticlib")] {
-        /// Heap size for Rust runtime.
-        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
-        /// Heap size for C runtime.
-        pub const C_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
-    } else  {
-        /// Heap size for Rust runtime.
-        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE;
-        /// Heap size for C runtime.
-        pub const C_HEAP_SIZE: usize = 0;
-    }
-}
-
-/// Based address for break address.
-pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + RUST_HEAP_SIZE;
 
 //==================================================================================================
 //  Allocator
@@ -225,17 +203,21 @@ impl OomHandler for NanvixOomHandler {
 ///
 /// Initializes the heap.
 ///
+/// # Parameters
+///
+/// - `base`: Base virtual address for the heap. Must be page-aligned and reside within a
+///   valid mmap region.
+/// - `capacity`: Maximum size of the heap in bytes.
+///
 /// # Returns
 ///
-/// Upon success, empty is returned. Upon failure, an error is returned instead
+/// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 #[allow(static_mut_refs)]
-pub fn init() -> Result<(), Error> {
+pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
     let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
-    let addr: VirtualAddress = USER_HEAP_BASE;
     let size: usize = PAGE_SIZE;
-    let capacity: usize = RUST_HEAP_SIZE;
 
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     // Check if the heap was already initialized.
@@ -243,7 +225,7 @@ pub fn init() -> Result<(), Error> {
         return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
     }
 
-    *locked_heap = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
+    *locked_heap = Some(NanvixOomHandler::new(pid, base, size, capacity)?);
 
     Ok(())
 }

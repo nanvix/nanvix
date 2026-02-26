@@ -231,6 +231,27 @@ pub use ::sys::error::Error as StressError;
 ///
 /// # Description
 ///
+/// 32-bit xorshift PRNG for deterministic pseudo-random sequences in stress tests.
+///
+/// # Parameters
+///
+/// - `state`: Current PRNG state (must be non-zero for useful output).
+///
+/// # Returns
+///
+/// Next PRNG state.
+///
+pub fn xorshift32(state: u32) -> u32 {
+    let mut s: u32 = state;
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    s
+}
+
+///
+/// # Description
+///
 /// Converts an `ErrorCode` to `usize` without relying on unsafe `as` casts.
 ///
 /// # Returns

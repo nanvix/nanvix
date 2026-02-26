@@ -84,10 +84,12 @@ pub fn main() {
         }
     }
 
-    // Force a page fault.
+    // Force a page fault by writing to an address that is guaranteed to be unmapped.
+    // This address lies in the gap between the end of the unified mmap region and the user stack,
+    // so it is never backed by physical memory.
     ::syslog::info!("triggering a page fault...");
     unsafe {
-        let ptr: *mut u8 = ::config::memory_layout::USER_MMAP_BASE_RAW as *mut u8;
+        let ptr: *mut u8 = ::config::memory_layout::USER_MMAP_END_RAW as *mut u8;
         *ptr = 1;
     }
 

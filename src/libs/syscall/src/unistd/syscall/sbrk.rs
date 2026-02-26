@@ -28,9 +28,10 @@
 //==================================================================================================
 
 use ::arch::mem::PAGE_ALIGNMENT;
-use ::spin::mutex::{
-    SpinMutex,
-    SpinMutexGuard,
+use ::spin::{
+    Lazy,
+    Mutex,
+    MutexGuard,
 };
 use ::sys::{
     error::{
@@ -40,6 +41,7 @@ use ::sys::{
     kcall::pm,
     mm::{
         align_up,
+        Address,
         VirtualAddress,
     },
     pm::ProcessIdentifier,
@@ -47,15 +49,55 @@ use ::sys::{
 use ::sysalloc::{
     map_range,
     unmap_range,
-    BREAK_BASE_RAW,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Maximum capacity of the sbrk heap in bytes.
+const SBRK_CAPACITY: usize = ::config::memory_layout::USER_SBRK_CAPACITY;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// State of the sbrk program break allocator.
+struct SbrkState {
+    /// Base address of the sbrk region (beginning of the reserved virtual address range).
+    base: VirtualAddress,
+    /// Current end of the program break (next byte to be allocated).
+    current: VirtualAddress,
+    /// Maximum end address (base + capacity).
+    end: VirtualAddress,
+}
 
 //==================================================================================================
 // Global Variables
 //==================================================================================================
 
-/// Program break base address.
-static BREAK_BASE: SpinMutex<usize> = SpinMutex::new(BREAK_BASE_RAW);
+/// Lazily initialized sbrk state. The virtual address space is reserved from the unified mmap
+/// region on first access. If reservation fails, the state is `None` and every subsequent `sbrk()`
+/// call returns `OutOfMemory`.
+static SBRK_STATE: Lazy<Mutex<Option<SbrkState>>> =
+    Lazy::new(|| match ::sysalloc::vaddr::reserve(SBRK_CAPACITY) {
+        Ok(base) => {
+            let end_raw: usize = base.into_raw_value() + SBRK_CAPACITY;
+            Mutex::new(Some(SbrkState {
+                base,
+                current: base,
+                end: VirtualAddress::new(end_raw),
+            }))
+        },
+        Err(e) => {
+            ::syslog::error!(
+                "SBRK_STATE: failed to reserve virtual address space (capacity={} bytes): {:?}",
+                SBRK_CAPACITY,
+                e
+            );
+            Mutex::new(None)
+        },
+    });
 
 //==================================================================================================
 // Standalone Functions
@@ -82,17 +124,23 @@ static BREAK_BASE: SpinMutex<usize> = SpinMutex::new(BREAK_BASE_RAW);
 pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
     ::syslog::trace!("sbrk(): size={size:?}");
 
-    let mut locked_base: SpinMutexGuard<'_, usize> = BREAK_BASE.lock();
+    let mut locked: MutexGuard<'_, Option<SbrkState>> = SBRK_STATE.lock();
+
+    let state: &mut SbrkState = locked.as_mut().ok_or_else(|| {
+        let reason: &str = "sbrk region was not initialized";
+        ::syslog::error!("sbrk(): {reason}");
+        Error::new(ErrorCode::OutOfMemory, reason)
+    })?;
 
     // Check if querying the current program break.
     if size == 0 {
-        return Ok(*locked_base as *mut u8);
+        return Ok(state.current.into_raw_value() as *mut u8);
     }
 
     let old_end: *mut u8 = {
-        let old_end: *mut u8 = *locked_base as *mut u8;
+        let old_end: *mut u8 = state.current.into_raw_value() as *mut u8;
         // Compute the new end of the program break.
-        let new_end: *mut u8 = match locked_base.checked_add_signed(size) {
+        let new_end: *mut u8 = match state.current.into_raw_value().checked_add_signed(size) {
             Some(new_end) => new_end as *mut u8,
             None => {
                 let reason: &'static str = "not enough memory";
@@ -117,8 +165,8 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         if size > 0 {
             // Allocate memory.
 
-            // Check if we would exceed the heap size.
-            if new_end >= (sysalloc::BREAK_BASE_RAW + sysalloc::C_HEAP_SIZE) as *mut u8 {
+            // Check if we would exceed the sbrk capacity.
+            if new_end as usize > state.end.into_raw_value() {
                 let reason: &'static str = "out of memory";
                 ::syslog::error!(
                     "sbrk(): {reason} (size={size:?}), old_end={old_end:x?}, new_end={new_end:x?}"
@@ -137,8 +185,8 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
         } else {
             // Free memory.
 
-            // Check if we would free memory below the heap base address.
-            if new_end < sysalloc::BREAK_BASE_RAW as *mut u8 {
+            // Check if we would free memory below the sbrk base address.
+            if (new_end as usize) < state.base.into_raw_value() {
                 let reason: &'static str = "invalid allocation size";
                 ::syslog::error!(
                     "sbrk(): {reason} (size={size:?}), old_end={old_end:x?}, new_end={new_end:x?}"
@@ -156,7 +204,7 @@ pub fn sbrk(size: isize) -> Result<*mut u8, Error> {
             )?;
         }
 
-        *locked_base = new_end as usize;
+        state.current = VirtualAddress::from_raw_value(new_end as usize);
         old_end
     };
 

@@ -294,8 +294,17 @@ fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
 /// Initializes system runtime.
 fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    if let Err(e) = sysalloc::init() {
-        panic!("failed to initialize memory manager: {:?}", e);
+    {
+        // Reserve virtual address space for the heap from the unified mmap region.
+        let heap_capacity: usize = ::config::memory_layout::USER_HEAP_CAPACITY;
+        let heap_base: ::sys::mm::VirtualAddress = match sysalloc::vaddr::reserve(heap_capacity) {
+            core::prelude::v1::Ok(base) => base,
+            Err(e) => panic!("failed to reserve virtual address space for heap: {:?}", e),
+        };
+
+        if let Err(e) = sysalloc::init(heap_base, heap_capacity) {
+            panic!("failed to initialize memory manager: {:?}", e);
+        }
     }
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     match sysalloc::tda::alloc() {

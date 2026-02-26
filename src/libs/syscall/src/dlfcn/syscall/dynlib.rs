@@ -42,12 +42,10 @@ use ::goblin::elf::{
     SectionHeader,
 };
 use ::spin::{
-    Lazy,
     Mutex,
     MutexGuard,
 };
 use ::sys::{
-    config::memory_layout::USER_LIBS_BASE,
     error::{
         Error,
         ErrorCode,
@@ -88,13 +86,6 @@ impl DlHandle {
         DlHandle(ptr as c_int)
     }
 }
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Base virtual address for dynamic libraries.
-static LIBRARIES_BASE: Lazy<Mutex<VirtualAddress>> = Lazy::new(|| Mutex::new(USER_LIBS_BASE));
 
 //==================================================================================================
 // DlFile
@@ -162,10 +153,6 @@ impl DynamicLibrary {
         let mut bytes: Vec<u8> = vec![0; file_size.try_into()?];
         fd.read(&mut bytes)?;
 
-        // Lock the base address for libraries to prevent any other thread to modify it while we
-        // load this library.
-        let mut libraries_base: MutexGuard<'_, VirtualAddress> = LIBRARIES_BASE.lock();
-
         // Parse ELF file.
         match Elf::parse(&bytes) {
             Ok(elf) => {
@@ -176,12 +163,16 @@ impl DynamicLibrary {
                     return Err(Error::new(ErrorCode::BadFile, reason));
                 }
 
-                let load_address: VirtualAddress = *libraries_base;
+                // First pass: compute the total size needed for all loadable segments.
+                let total_size: usize = Self::compute_load_size(&elf)?;
+
+                // Reserve virtual address space from the unified mmap region.
+                let load_address: VirtualAddress = ::sysalloc::vaddr::reserve(total_size)?;
                 let mut end_address: VirtualAddress = load_address;
 
                 let mut segments: Vec<MemorySegment> = Vec::new();
 
-                // Traverse table of program headers, looking for the loadable ones.
+                // Second pass: load segments at the reserved address.
                 for phdr in elf.program_headers.iter() {
                     // Check if program header is loadable.
                     if phdr.p_type == goblin::elf::program_header::PT_LOAD {
@@ -293,12 +284,6 @@ impl DynamicLibrary {
                 let dynrel: Option<RelocationTable> =
                     Self::get_dynrel(&section_headers, load_address);
 
-                //==================================================================
-                // Commit new base address for libraries.
-                // No fail can happen after this point, else we leak address space.
-                //==================================================================
-                *libraries_base = end_address;
-
                 Ok(DynamicLibrary {
                     filename,
                     fd,
@@ -317,6 +302,58 @@ impl DynamicLibrary {
                 Err(Error::new(ErrorCode::IoErr, reason))
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the total virtual address space needed for all loadable segments of the ELF.
+    ///
+    /// The size is calculated as the distance from the lowest segment base to the highest segment
+    /// end, both page-aligned. This produces a tight reservation even for shared libraries whose
+    /// link-time `p_vaddr` values do not start at zero.
+    ///
+    /// # Parameters
+    ///
+    /// - `elf`: A parsed ELF binary.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the total size in bytes needed for all loadable segments.
+    /// On failure, returns an [`Error`].
+    ///
+    fn compute_load_size(elf: &Elf) -> Result<usize, Error> {
+        // NOTE: The returned size spans from the lowest segment base to the highest segment end.
+        // For position-independent shared libraries whose link-time `p_vaddr` starts near zero,
+        // the reservation may be larger than the sum of individual segment sizes because
+        // inter-segment gaps (e.g., between .text and .data) are included. This is intentional:
+        // the library loader maps segments at offsets relative to a single contiguous base.
+        let mut min_base: usize = usize::MAX;
+        let mut max_end: usize = 0;
+        for phdr in elf.program_headers.iter() {
+            if phdr.p_type == goblin::elf::program_header::PT_LOAD {
+                let seg_base: usize = mm::align_down(phdr.p_vaddr as usize, PAGE_ALIGNMENT);
+                if seg_base < min_base {
+                    min_base = seg_base;
+                }
+                let unaligned_end: usize = phdr.p_vaddr as usize + phdr.p_memsz as usize;
+                let aligned_end: usize =
+                    mm::align_up(unaligned_end, PAGE_ALIGNMENT).ok_or_else(|| {
+                        let reason: &str = "align_up overflow in compute_load_size";
+                        ::syslog::error!("compute_load_size(): {reason}");
+                        Error::new(ErrorCode::BadFile, reason)
+                    })?;
+                if aligned_end > max_end {
+                    max_end = aligned_end;
+                }
+            }
+        }
+        if max_end == 0 {
+            let reason: &str = "no loadable segments found";
+            ::syslog::error!("compute_load_size(): {}", reason);
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        }
+        Ok(max_end - min_base)
     }
 
     /// Returns the name of the dynamic library.
