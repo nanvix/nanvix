@@ -144,7 +144,7 @@ impl OomHandler for NanvixOomHandler {
         // Round up to page alignment and add one extra page so that the
         // allocator's per-chunk metadata overhead never causes the growth to
         // fall just short of the required chunk size.
-        const MIN_GROWTH: usize = 1024 * 1024; // 1 MB minimum growth.
+        const MIN_GROWTH: usize = 4 * 1024 * 1024; // 4 MB minimum growth.
         let aligned: usize = match mm::align_up(layout.size(), PAGE_ALIGNMENT) {
             Some(v) => v,
             None => {
