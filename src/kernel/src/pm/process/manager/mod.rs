@@ -1825,7 +1825,7 @@ impl ProcessManager {
         for i in 0..n_pages {
             let page_addr: usize = start_addr + (i as usize) * PAGE_SIZE;
             let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
-            mm.alloc_upage(vmem, vaddr, access, true)?;
+            mm.alloc_upage(vmem, vaddr, access, false)?;
         }
         Ok(())
     }
