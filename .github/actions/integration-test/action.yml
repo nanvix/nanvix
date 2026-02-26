@@ -41,67 +41,36 @@ runs:
       echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
       ./bin/nanvix-test.elf "${TEST_CONFIG}"
 
-  # For qemu-pc: use z utility to run the system via QEMU and check for magic string.
-  - name: "Link Toolchain Directory"
-    if: inputs.machine-type == 'qemu-pc'
-    uses: ./.github/actions/link-toolchain
-
+  # For qemu-pc: create an ISO from the pre-built artifacts and run QEMU directly.
   - name: "Integration Test (qemu-pc)"
     if: inputs.machine-type == 'qemu-pc'
     shell: bash
-    env:
-      RELEASE_FLAG: ${{ inputs.build-type == 'release' && 'RELEASE=yes' || '' }}
     run: |
-      set -Euo pipefail
+      set -Eeuo pipefail
 
       MAGIC_STRING="hello, world!"
       TIMEOUT=600
 
-      single_process="no"
-      if [[ "${{ inputs.deployment-type }}" == "single-process" ]]; then
-        single_process="yes"
+      # Build the ISO image from pre-built artifacts.
+      mkdir -p image/boot/grub
+      cp build/iso/boot/grub/grub.cfg image/boot/grub/
+      cp bin/*.elf image/
+      grub-mkrescue image -o nanvix.iso
+
+      if [[ "${{ inputs.build-type }}" == "release" ]]; then
+        # In release builds, CI sets LOG_LEVEL=error, which suppresses the debug-level
+        # magic string. Validate success by requiring QEMU to exit cleanly before timeout.
+        if ! bash scripts/run-qemu.sh x86 qemu-pc nanvix.iso --no-debug "${TIMEOUT}"; then
+          echo "::error::Integration test failed: QEMU did not exit cleanly within ${TIMEOUT}s."
+          exit 1
+        fi
+      else
+        # In debug builds, assert successful execution by waiting for kernel magic string.
+        if ! bash scripts/run-qemu.sh x86 qemu-pc nanvix.iso --no-debug "${TIMEOUT}" \
+          --wait-for-string "${MAGIC_STRING}"; then
+          echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
+          exit 1
+        fi
       fi
 
-      rm -f run-stdout.log
-      touch run-stdout.log
-
-      # Start the system in the background and tee output to a log file.
-      ./z build \
-        --toolchain-dir "$HOME/toolchain" \
-        -- \
-        run \
-        MACHINE=qemu-pc \
-        TARGET=x86 \
-        LOG_LEVEL=trace \
-        VERBOSE=yes \
-        ${RELEASE_FLAG} \
-        "SINGLE_PROCESS=${single_process}" \
-        > >(tee run-stdout.log) 2>&1 &
-      CMD_PID=$!
-
-      # Monitor stdout for the magic string with a timeout.
-      elapsed=0
-      while [ "${elapsed}" -lt "${TIMEOUT}" ]; do
-        if grep -q "${MAGIC_STRING}" run-stdout.log 2>/dev/null; then
-          echo "Magic string found. Sending SIGINT to terminate QEMU."
-          kill -INT "${CMD_PID}" 2>/dev/null || true
-          wait "${CMD_PID}" 2>/dev/null || true
-          echo "Integration test passed."
-          exit 0
-        fi
-
-        # Check if the process has already exited.
-        if ! kill -0 "${CMD_PID}" 2>/dev/null; then
-          break
-        fi
-
-        sleep 1
-        elapsed=$((elapsed + 1))
-      done
-
-      # Timeout or process exited without the magic string.
-      kill -INT "${CMD_PID}" 2>/dev/null || true
-      wait "${CMD_PID}" 2>/dev/null || true
-
-      echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-      exit 1
+      echo "Integration test passed."

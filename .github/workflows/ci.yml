@@ -217,7 +217,7 @@ jobs:
   ci-test:
     name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
     needs: [ci-build]
-    timeout-minutes: 120
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
