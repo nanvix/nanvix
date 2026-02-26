@@ -99,3 +99,76 @@ pub fn mmap(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> K
         Err(e) => KcallResult::Error(e.code.into()),
     }
 }
+
+///
+/// # Description
+///
+/// Kernel call handler for mapping a contiguous range of memory pages.
+///
+/// Maps `n_pages` pages starting at `arg1` in a single kernel call,
+/// amortizing the per-page `int 0x80` trap overhead.
+///
+/// # Parameters
+///
+/// - `caller_pid`: Identifier of the calling process.
+/// - `arg0`: Target process identifier.
+/// - `arg1`: Starting virtual address (must be page-aligned).
+/// - `arg2`: Number of pages to map.
+/// - `arg3`: Access permission.
+///
+/// # Returns
+///
+/// A [`KcallResult`] indicating success or the error code.
+///
+pub fn mmap_range(
+    caller_pid: ProcessIdentifier,
+    arg0: u32,
+    arg1: u32,
+    arg2: u32,
+    arg3: u32,
+) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    // SAFETY: the virtual memory manager is initialized and access is synchronized.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
+    let pid: ProcessIdentifier = match ProcessIdentifier::try_from(arg0) {
+        Ok(pid) => pid,
+        Err(error) => {
+            error!("{error:?}");
+            return KcallResult::Error(error.code.into());
+        },
+    };
+
+    let start_addr: usize = arg1 as usize;
+    let n_pages: u32 = arg2;
+    let access: AccessPermission = match AccessPermission::try_from(arg3) {
+        Ok(access) => access,
+        Err(e) => return KcallResult::Error(e.code.into()),
+    };
+
+    // Validate starting address alignment.
+    let _start_vaddr: PageAligned<VirtualAddress> =
+        match PageAligned::from_raw_value(start_addr) {
+            Ok(v) => v,
+            Err(e) => return KcallResult::Error(e.code.into()),
+        };
+
+    // Check capabilities for cross-process mapping.
+    if pid != caller_pid {
+        match pm.has_capability(caller_pid, Capability::MemoryManagement) {
+            Ok(true) => (),
+            Ok(false) => {
+                return KcallResult::Error(ErrorCode::PermissionDenied.into());
+            },
+            Err(e) => return KcallResult::Error(e.code.into()),
+        }
+    }
+
+    // Look up the process once, then map all pages without re-lookup.
+    // Delegate to ProcessManager::mmap_range which avoids per-page process lookup.
+    match pm.mmap_range(mm, pid, start_addr, n_pages, access) {
+        Ok(_) => KcallResult::ok(),
+        Err(e) => KcallResult::Error(e.code.into()),
+    }
+}

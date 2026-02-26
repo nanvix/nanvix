@@ -35,6 +35,7 @@ pub use lock_mutex::lock_mutex;
 pub use mcopy::mcopy;
 pub use mctrl::mctrl;
 pub use mmap::mmap;
+pub use mmap::mmap_range;
 pub use munmap::munmap;
 pub use set_thread_data_area::set_thread_data_area;
 pub use signal_cond::signal_cond;

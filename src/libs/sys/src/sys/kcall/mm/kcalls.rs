@@ -12,6 +12,7 @@ use crate::{
     },
     kcall2,
     kcall3,
+    kcall4,
     mm::{
         AccessPermission,
         Address,
@@ -52,6 +53,35 @@ pub fn mmap(
         Ok(())
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to mmap()"))
+    }
+}
+
+//==================================================================================================
+// Map Memory Page Range
+//==================================================================================================
+
+/// Maps a contiguous range of memory pages in a single kernel call.
+///
+/// This amortizes the per-page trap overhead by mapping `n_pages` pages starting
+/// at `vaddr` in one `int 0x80` trap instead of one trap per page.
+pub fn mmap_range(
+    pid: ProcessIdentifier,
+    vaddr: VirtualAddress,
+    n_pages: u32,
+    access: AccessPermission,
+) -> Result<(), Error> {
+    let result: i64 = kcall4!(
+        KcallNumber::MemoryMapRange.into(),
+        pid.try_into()?,
+        vaddr.into_raw_value() as u32,
+        n_pages,
+        access.into()
+    );
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to mmap_range()"))
     }
 }
 
