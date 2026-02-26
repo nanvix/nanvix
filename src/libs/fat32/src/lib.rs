@@ -80,13 +80,34 @@ pub mod vfs;
 // Public Re-exports
 //==================================================================================================
 
-pub use crate::error::FsError;
-pub use crate::file::{
-    chdir, cwd, file_raw_region, mkdir, open, read_dir, rename, rmdir,
-    stat, unlink, DirEntry, File, OpenOptions, Stat, SEEK_CUR, SEEK_END,
-    SEEK_SET,
-};
-pub use crate::state::{
-    create_mount, init, is_initialized, mount, unmount,
-    MAX_FAT_SIZE, MIN_FAT_SIZE,
+pub use crate::{
+    error::FsError,
+    file::{
+        chdir,
+        cwd,
+        file_raw_region,
+        mkdir,
+        open,
+        read_dir,
+        rename,
+        rmdir,
+        stat,
+        unlink,
+        DirEntry,
+        File,
+        OpenOptions,
+        Stat,
+        SEEK_CUR,
+        SEEK_END,
+        SEEK_SET,
+    },
+    state::{
+        create_mount,
+        init,
+        is_initialized,
+        mount,
+        unmount,
+        MAX_FAT_SIZE,
+        MIN_FAT_SIZE,
+    },
 };

@@ -25,24 +25,19 @@ mod time;
 //==================================================================================================
 
 pub use self::file::FatFile;
-pub(crate) use self::filesystem::Fat;
-pub(crate) use self::storage::RawMemoryStorage;
+pub(crate) use self::{
+    filesystem::Fat,
+    storage::RawMemoryStorage,
+};
 
 //==================================================================================================
 // Type Aliases
 //==================================================================================================
 
 /// Type alias for the FAT filesystem with our storage and time provider.
-pub(crate) type InternalFatFs = ::fatfs::FileSystem<
-    RawMemoryStorage,
-    time::NanvixTimeProvider,
-    ::fatfs::LossyOemCpConverter,
->;
+pub(crate) type InternalFatFs =
+    ::fatfs::FileSystem<RawMemoryStorage, time::NanvixTimeProvider, ::fatfs::LossyOemCpConverter>;
 
 /// Type alias for a FAT file handle.
-pub(crate) type InternalFatFile<'a> = ::fatfs::File<
-    'a,
-    RawMemoryStorage,
-    time::NanvixTimeProvider,
-    ::fatfs::LossyOemCpConverter,
->;
+pub(crate) type InternalFatFile<'a> =
+    ::fatfs::File<'a, RawMemoryStorage, time::NanvixTimeProvider, ::fatfs::LossyOemCpConverter>;

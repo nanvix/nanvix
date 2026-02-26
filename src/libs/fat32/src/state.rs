@@ -17,14 +17,24 @@
 // Imports
 //==================================================================================================
 
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    string::String,
+    vec::Vec,
+};
 use core::cell::UnsafeCell;
 
-use crate::error::FsError;
-use crate::fat::{Fat, RawMemoryStorage};
-use crate::vfs::{Mount, Vfs};
+use crate::{
+    error::FsError,
+    fat::{
+        Fat,
+        RawMemoryStorage,
+    },
+    vfs::{
+        Mount,
+        Vfs,
+    },
+};
 
 //==================================================================================================
 // Constants
@@ -73,8 +83,7 @@ impl VfsStateCell {
 
 /// Tracks guest-created mounts for unmount permission checks and
 /// memory deallocation.
-static GUEST_MOUNTS: GuestMountsCell =
-    GuestMountsCell(UnsafeCell::new(Vec::new()));
+static GUEST_MOUNTS: GuestMountsCell = GuestMountsCell(UnsafeCell::new(Vec::new()));
 
 struct GuestMountsCell(UnsafeCell<Vec<GuestMountInfo>>);
 
@@ -121,8 +130,7 @@ impl GuestMountsCell {
 }
 
 /// Tracks the number of open files per mount path.
-static OPEN_FILE_COUNTS: OpenFileCountsCell =
-    OpenFileCountsCell(UnsafeCell::new(Vec::new()));
+static OPEN_FILE_COUNTS: OpenFileCountsCell = OpenFileCountsCell(UnsafeCell::new(Vec::new()));
 
 struct OpenFileCountsCell(UnsafeCell<Vec<OpenFileCount>>);
 
@@ -225,11 +233,7 @@ pub fn is_initialized() -> bool {
 /// - `ptr` points to valid memory containing a FAT filesystem image.
 /// - The memory remains valid for the lifetime of the mount.
 /// - The memory region is at least `size` bytes.
-pub unsafe fn mount(
-    mount_path: &str,
-    ptr: *mut u8,
-    size: usize,
-) -> Result<(), FsError> {
+pub unsafe fn mount(mount_path: &str, ptr: *mut u8, size: usize) -> Result<(), FsError> {
     if !mount_path.starts_with('/') {
         return Err(FsError::InvalidPath);
     }
@@ -264,10 +268,7 @@ pub unsafe fn mount(
 /// - [`FsError::InvalidArgument`] if `size` is out of range.
 /// - [`FsError::AlreadyExists`] if a mount already exists at this path.
 /// - [`FsError::IoError`] if formatting fails.
-pub fn create_mount(
-    mount_path: &str,
-    size: usize,
-) -> Result<(), FsError> {
+pub fn create_mount(mount_path: &str, size: usize) -> Result<(), FsError> {
     if !mount_path.starts_with('/') {
         return Err(FsError::InvalidPath);
     }
@@ -283,21 +284,17 @@ pub fn create_mount(
     let _ = vfs()?;
 
     // Allocate memory for the FAT image.
-    let memory: Box<[u8]> =
-        alloc::vec![0u8; size].into_boxed_slice();
+    let memory: Box<[u8]> = alloc::vec![0u8; size].into_boxed_slice();
     let memory_ptr: *mut u8 = Box::into_raw(memory) as *mut u8;
 
     // Format the memory as FAT.
     // SAFETY: memory_ptr points to valid, zeroed memory of `size` bytes.
-    let format_result: Result<(), FsError> =
-        unsafe { format_fat_in_memory(memory_ptr, size) };
+    let format_result: Result<(), FsError> = unsafe { format_fat_in_memory(memory_ptr, size) };
 
     if let Err(e) = format_result {
         // SAFETY: memory_ptr was created from Box::into_raw above.
         unsafe {
-            let _ = Box::from_raw(
-                core::ptr::slice_from_raw_parts_mut(memory_ptr, size),
-            );
+            let _ = Box::from_raw(core::ptr::slice_from_raw_parts_mut(memory_ptr, size));
         }
         return Err(e);
     }
@@ -309,29 +306,22 @@ pub fn create_mount(
         Err(e) => {
             // SAFETY: memory_ptr was created from Box::into_raw above.
             unsafe {
-                let _ = Box::from_raw(
-                    core::ptr::slice_from_raw_parts_mut(memory_ptr, size),
-                );
+                let _ = Box::from_raw(core::ptr::slice_from_raw_parts_mut(memory_ptr, size));
             }
             return Err(e);
-        }
+        },
     };
 
-    let mount: Mount =
-        match Mount::new(String::from(mount_path), fat) {
-            Ok(mount) => mount,
-            Err(e) => {
-                // SAFETY: memory_ptr was created from Box::into_raw above.
-                unsafe {
-                    let _ = Box::from_raw(
-                        core::ptr::slice_from_raw_parts_mut(
-                            memory_ptr, size,
-                        ),
-                    );
-                }
-                return Err(e);
+    let mount: Mount = match Mount::new(String::from(mount_path), fat) {
+        Ok(mount) => mount,
+        Err(e) => {
+            // SAFETY: memory_ptr was created from Box::into_raw above.
+            unsafe {
+                let _ = Box::from_raw(core::ptr::slice_from_raw_parts_mut(memory_ptr, size));
             }
-        };
+            return Err(e);
+        },
+    };
 
     // Add to VFS.
     // SAFETY: Not holding any other VFS references.
@@ -339,9 +329,7 @@ pub fn create_mount(
     if let Err(e) = vfs.add_mount(mount) {
         // SAFETY: memory_ptr was created from Box::into_raw above.
         unsafe {
-            let _ = Box::from_raw(
-                core::ptr::slice_from_raw_parts_mut(memory_ptr, size),
-            );
+            let _ = Box::from_raw(core::ptr::slice_from_raw_parts_mut(memory_ptr, size));
         }
         return Err(e);
     }
@@ -372,8 +360,7 @@ pub fn create_mount(
 pub fn unmount(mount_path: &str) -> Result<(), FsError> {
     if !GUEST_MOUNTS.contains(mount_path) {
         let vfs: &Vfs = vfs()?;
-        let mount_exists: bool =
-            vfs.mounts().any(|m| m.path() == mount_path);
+        let mount_exists: bool = vfs.mounts().any(|m| m.path() == mount_path);
         if mount_exists {
             return Err(FsError::PermissionDenied);
         } else {
@@ -387,20 +374,14 @@ pub fn unmount(mount_path: &str) -> Result<(), FsError> {
     }
 
     // Remove from tracking first.
-    let info: GuestMountInfo = GUEST_MOUNTS
-        .remove(mount_path)
-        .ok_or(FsError::NotFound)?;
+    let info: GuestMountInfo = GUEST_MOUNTS.remove(mount_path).ok_or(FsError::NotFound)?;
 
     // Remove from VFS.
     // SAFETY: Not holding any other VFS references.
     let vfs: &mut Vfs = unsafe { vfs_mut()? };
     if let Err(e) = vfs.remove_mount(mount_path) {
         // Rollback: put the tracking info back.
-        GUEST_MOUNTS.add(
-            info.path.clone(),
-            info.memory_ptr,
-            info.memory_size,
-        );
+        GUEST_MOUNTS.add(info.path.clone(), info.memory_ptr, info.memory_size);
         return Err(e);
     }
 
@@ -408,10 +389,8 @@ pub fn unmount(mount_path: &str) -> Result<(), FsError> {
     // SAFETY: info.memory_ptr was created from Box::into_raw in
     // create_mount().
     unsafe {
-        let _ = Box::from_raw(core::ptr::slice_from_raw_parts_mut(
-            info.memory_ptr,
-            info.memory_size,
-        ));
+        let _ =
+            Box::from_raw(core::ptr::slice_from_raw_parts_mut(info.memory_ptr, info.memory_size));
     }
 
     Ok(())
@@ -442,8 +421,7 @@ pub(crate) fn vfs() -> Result<&'static Vfs, FsError> {
 /// Returns [`FsError::NotInitialized`] if `init()` has not been called.
 pub(crate) unsafe fn vfs_mut() -> Result<&'static mut Vfs, FsError> {
     // SAFETY: Caller guarantees no aliasing references exist.
-    let state: &mut Option<Vfs> =
-        unsafe { &mut *VFS_STATE.0.get() };
+    let state: &mut Option<Vfs> = unsafe { &mut *VFS_STATE.0.get() };
     state.as_mut().ok_or(FsError::NotInitialized)
 }
 
@@ -468,17 +446,12 @@ pub(crate) fn decrement_open_count(mount_path: &str) {
 /// The caller must ensure:
 /// - `ptr` points to valid, writable memory of at least `size` bytes.
 /// - The memory is not accessed by other code during formatting.
-unsafe fn format_fat_in_memory(
-    ptr: *mut u8,
-    size: usize,
-) -> Result<(), FsError> {
+unsafe fn format_fat_in_memory(ptr: *mut u8, size: usize) -> Result<(), FsError> {
     // SAFETY: Caller guarantees ptr/size validity.
-    let mut storage: RawMemoryStorage =
-        unsafe { RawMemoryStorage::new(ptr, size)? };
+    let mut storage: RawMemoryStorage = unsafe { RawMemoryStorage::new(ptr, size)? };
 
     let options = ::fatfs::FormatVolumeOptions::new();
-    ::fatfs::format_volume(&mut storage, options)
-        .map_err(|_| FsError::IoError)?;
+    ::fatfs::format_volume(&mut storage, options).map_err(|_| FsError::IoError)?;
 
     Ok(())
 }

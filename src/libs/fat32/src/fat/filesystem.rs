@@ -9,13 +9,18 @@
 
 use core::fmt;
 
-use ::fatfs::{Seek, SeekFrom};
+use ::fatfs::{
+    Seek,
+    SeekFrom,
+};
 
-use super::error::map_fatfs_error;
-use super::file::FatFile;
-use super::storage::RawMemoryStorage;
-use super::time::NanvixTimeProvider;
-use super::InternalFatFs;
+use super::{
+    error::map_fatfs_error,
+    file::FatFile,
+    storage::RawMemoryStorage,
+    time::NanvixTimeProvider,
+    InternalFatFs,
+};
 use crate::error::FsError;
 
 //==================================================================================================
@@ -63,18 +68,12 @@ impl Fat {
     ///
     /// The caller must ensure the memory region is valid, properly aligned,
     /// and remains valid for the lifetime of this [`Fat`].
-    pub unsafe fn from_memory(
-        ptr: *mut u8,
-        size: usize,
-    ) -> Result<Self, FsError> {
+    pub unsafe fn from_memory(ptr: *mut u8, size: usize) -> Result<Self, FsError> {
         // SAFETY: Caller guarantees memory region validity.
-        let storage: RawMemoryStorage =
-            unsafe { RawMemoryStorage::new(ptr, size)? };
-        let options = ::fatfs::FsOptions::new()
-            .time_provider(NanvixTimeProvider);
+        let storage: RawMemoryStorage = unsafe { RawMemoryStorage::new(ptr, size)? };
+        let options = ::fatfs::FsOptions::new().time_provider(NanvixTimeProvider);
         let fs: InternalFatFs =
-            ::fatfs::FileSystem::new(storage, options)
-                .map_err(map_fatfs_error)?;
+            ::fatfs::FileSystem::new(storage, options).map_err(map_fatfs_error)?;
         Ok(Self {
             fs,
             base_ptr: ptr as *const u8,
@@ -116,17 +115,15 @@ impl Fat {
                         file.truncate().map_err(map_fatfs_error)?;
                     }
                     Ok(FatFile::new(file, read, write))
-                }
+                },
                 Err(::fatfs::Error::NotFound) => {
-                    let file =
-                        root.create_file(path).map_err(map_fatfs_error)?;
+                    let file = root.create_file(path).map_err(map_fatfs_error)?;
                     Ok(FatFile::new(file, read, write))
-                }
+                },
                 Err(e) => Err(map_fatfs_error(e)),
             }
         } else {
-            let mut file =
-                root.open_file(path).map_err(map_fatfs_error)?;
+            let mut file = root.open_file(path).map_err(map_fatfs_error)?;
             if truncate && write {
                 file.truncate().map_err(map_fatfs_error)?;
             }
@@ -150,10 +147,7 @@ impl Fat {
     ///
     /// - [`FsError::AlreadyExists`] if file already exists.
     /// - [`FsError::NotFound`] if parent directory doesn't exist.
-    pub fn create_new(
-        &self,
-        path: &str,
-    ) -> Result<FatFile<'_>, FsError> {
+    pub fn create_new(&self, path: &str) -> Result<FatFile<'_>, FsError> {
         let root = self.fs.root_dir();
 
         // fatfs::Dir::create_file does NOT fail if file exists - it opens it.
@@ -191,8 +185,7 @@ impl Fat {
 
         // Try opening as file first.
         if let Ok(mut file) = root.open_file(path) {
-            let size: u64 =
-                file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
+            let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
             return Ok(FatStat {
                 size,
                 is_dir: false,
@@ -220,10 +213,7 @@ impl Fat {
     /// # Parameters
     ///
     /// - `path`: Path relative to the FAT root.
-    pub fn file_raw_region(
-        &self,
-        path: &str,
-    ) -> Option<(*const u8, usize)> {
+    pub fn file_raw_region(&self, path: &str) -> Option<(*const u8, usize)> {
         let root = self.fs.root_dir();
         let mut file = root.open_file(path).ok()?;
 
@@ -267,10 +257,7 @@ impl Fat {
     ///
     /// - [`FsError::NotFound`] if directory doesn't exist.
     /// - [`FsError::IoError`] if path is a file.
-    pub fn read_dir(
-        &self,
-        path: &str,
-    ) -> Result<alloc::vec::Vec<FatDirEntry>, FsError> {
+    pub fn read_dir(&self, path: &str) -> Result<alloc::vec::Vec<FatDirEntry>, FsError> {
         let root = self.fs.root_dir();
 
         let dir = if path.is_empty() || path == "/" || path == "." {
@@ -279,8 +266,7 @@ impl Fat {
             root.open_dir(path).map_err(map_fatfs_error)?
         };
 
-        let mut entries: alloc::vec::Vec<FatDirEntry> =
-            alloc::vec::Vec::new();
+        let mut entries: alloc::vec::Vec<FatDirEntry> = alloc::vec::Vec::new();
         for entry in dir.iter() {
             let entry = entry.map_err(map_fatfs_error)?;
             let name: alloc::string::String = entry.file_name();
@@ -375,11 +361,7 @@ impl Fat {
     ///
     /// - [`FsError::NotFound`] if source doesn't exist.
     /// - [`FsError::AlreadyExists`] if destination already exists.
-    pub fn rename(
-        &self,
-        old_path: &str,
-        new_path: &str,
-    ) -> Result<(), FsError> {
+    pub fn rename(&self, old_path: &str, new_path: &str) -> Result<(), FsError> {
         let root = self.fs.root_dir();
         root.rename(old_path, &root, new_path)
             .map_err(map_fatfs_error)

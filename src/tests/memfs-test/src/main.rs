@@ -31,11 +31,13 @@ extern crate nvx;
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    mm::Address,
 };
-use ::sys::mm::Address;
 use ::sysapi::ffi::c_int;
 
 //==================================================================================================
@@ -115,8 +117,7 @@ pub fn main() -> Result<(), Error> {
     write_stderr(b"[memfs-test] step 1f: PASS\n");
 
     write_stderr(b"[memfs-test] step 1g: fat32::mount\n");
-    let leaked: &'static mut [u8] =
-        alloc::boxed::Box::leak(buffer.into_boxed_slice());
+    let leaked: &'static mut [u8] = alloc::boxed::Box::leak(buffer.into_boxed_slice());
     unsafe {
         if let Err(_e) = fat32::mount("/data", leaked.as_mut_ptr(), leaked.len()) {
             write_stderr(b"[memfs-test] FAIL: fat32::mount failed\n");
