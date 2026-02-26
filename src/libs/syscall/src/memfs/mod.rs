@@ -31,11 +31,6 @@ use ::sysapi::{
 
 extern crate alloc;
 
-use alloc::{
-    boxed::Box,
-    vec,
-};
-
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -415,24 +410,16 @@ fn init_from_ramfs_inner(mount_path: &str) -> Result<(), c_int> {
             ::sys::kcall::mm::mmio_info(RAMFS_MMIO_TAG).map_err(|_| -1)?;
         let total_size: usize = info.size();
 
-        // Copy RAMFS to heap buffer (RAMFS is read-only in guest).
-        let mut buffer: alloc::vec::Vec<u8> = vec![0u8; total_size];
+        // Mount the FAT image directly from the MMIO region (zero-copy).
+        // The RAMFS is read-only, but the FAT32 library's storage interface
+        // requires *mut u8. Since we never write to it, the cast is safe.
+        let base_ptr: *mut u8 = info.base().as_ptr() as *mut u8;
         unsafe {
-            let src: *const u8 = info.base().as_ptr();
-            ::core::ptr::copy_nonoverlapping(src, buffer.as_mut_ptr(), total_size);
+            fat32::mount(mount_path, base_ptr, total_size).map_err(|_| -1)?;
         }
 
-        // Release MMIO region.
-        ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG).map_err(|_| -1)?;
+        // Release IO management capability but keep the MMIO mapping alive.
         ::sys::kcall::pm::capctl(Capability::IoManagement, false).map_err(|_| -1)?;
-
-        // Leak the buffer so it lives for the program's lifetime.
-        let leaked: &'static mut [u8] = Box::leak(buffer.into_boxed_slice());
-
-        // Mount the FAT image.
-        unsafe {
-            fat32::mount(mount_path, leaked.as_mut_ptr(), leaked.len()).map_err(|_| -1)?;
-        }
 
         Ok(())
     })();
