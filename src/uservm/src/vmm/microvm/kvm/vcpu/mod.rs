@@ -35,7 +35,10 @@ use crate::vmm::kvm::{
 use ::anyhow::Result;
 use ::arch::cpu::cpuid::{
     CPUID_FEATURES,
+    CPUID_STRUCTURED_EXTENDED_FEATURES,
+    EcxFeature,
     EdxFeature,
+    Leaf7EbxFeature,
 };
 use ::kvm_bindings::{
     CpuId,
@@ -47,6 +50,7 @@ use ::kvm_bindings::{
     kvm_regs,
     kvm_sregs,
     kvm_vcpu_events,
+    kvm_xcr,
     kvm_xcrs,
 };
 use ::kvm_ioctls::{
@@ -166,6 +170,7 @@ impl VirtualProcessor {
         let mut fd: VcpuFd = vm_fd.create_vcpu(id)?;
 
         Self::setup_pentium4_cpu_features(kvm_fd, &mut fd)?;
+        Self::setup_avx_state(&mut fd)?;
 
         let fpu: Fpu = Fpu::new(kvm_fd, &fd)?;
 
@@ -420,6 +425,39 @@ impl VirtualProcessor {
                         | (EdxFeature::Tm as u32)         // Thermal Monitor
                         | (EdxFeature::Pbe as u32)        // Pending Break Enable
                         ;
+
+                    // Enable extended SSE/AVX features in ECX.
+                    // AVX state is preserved by KVM across VM-exits; the kernel
+                    // uses FXSAVE/FXRSTOR for thread context switching which
+                    // only covers x87+SSE (not AVX YMM), but this is acceptable
+                    // because llama.cpp runs as a single-threaded process.
+                    // XCR0 and CR4.OSXSAVE are configured from the host via KVM
+                    // ioctls in setup_avx_state(), so the kernel does not need
+                    // to execute xsetbv.
+                    // Only enable features the host actually supports.
+                    let host_ecx: u32 = entry.ecx;
+                    let desired_ecx: u32 = (EcxFeature::Sse3 as u32)
+                        | (EcxFeature::Pclmulqdq as u32)
+                        | (EcxFeature::Ssse3 as u32)
+                        | (EcxFeature::Fma as u32)
+                        | (EcxFeature::Cx16 as u32)
+                        | (EcxFeature::Sse41 as u32)
+                        | (EcxFeature::Sse42 as u32)
+                        | (EcxFeature::Popcnt as u32)
+                        | (EcxFeature::Xsave as u32)
+                        | (EcxFeature::Osxsave as u32)
+                        | (EcxFeature::Avx as u32)
+                        | (EcxFeature::F16c as u32);
+                    entry.ecx = host_ecx & desired_ecx;
+                },
+                CPUID_STRUCTURED_EXTENDED_FEATURES if entry.index == 0 => {
+                    // Enable AVX2 and BMI1 features in EBX (leaf 7, subleaf 0).
+                    // BMI2 is NOT enabled because its 64-bit intrinsics
+                    // (_pdep_u64) are unavailable on i686.
+                    let host_ebx: u32 = entry.ebx;
+                    let desired_ebx: u32 =
+                        (Leaf7EbxFeature::Bmi1 as u32) | (Leaf7EbxFeature::Avx2 as u32);
+                    entry.ebx = host_ebx & desired_ebx;
                 },
                 _ => continue,
             }
@@ -432,6 +470,62 @@ impl VirtualProcessor {
             return Err(anyhow::anyhow!(reason));
         }
 
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Configures AVX state for the guest via KVM ioctls.
+    ///
+    /// Sets XCR0 to enable x87, SSE, and AVX state components, and enables
+    /// CR4.OSXSAVE so the guest can use AVX instructions without needing to
+    /// execute the privileged `xsetbv` instruction itself.
+    ///
+    /// # Parameters
+    ///
+    /// - `fd`: Handle to the virtual processor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function returns empty. Otherwise, it returns an error.
+    ///
+    fn setup_avx_state(fd: &mut VcpuFd) -> Result<()> {
+        // Set XCR0 to enable x87 (bit 0) + SSE (bit 1) + AVX (bit 2).
+        let mut xcrs: kvm_xcrs = kvm_xcrs {
+            nr_xcrs: 1,
+            flags: 0,
+            xcrs: [kvm_xcr {
+                xcr: 0,
+                reserved: 0,
+                value: 0x7, // x87 | SSE | AVX
+            }; 16],
+            padding: [0u64; 16],
+        };
+        // Only the first entry matters; zero the rest.
+        for i in 1..16 {
+            xcrs.xcrs[i] = kvm_xcr {
+                xcr: 0,
+                reserved: 0,
+                value: 0,
+            };
+        }
+        if let Err(error) = fd.set_xcrs(&xcrs) {
+            let reason: String = format!("failed to set xcrs (error={error:?})");
+            error!("setup_avx_state(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Enable CR4.OSXSAVE so the guest sees XSAVE as OS-enabled.
+        let mut sregs: kvm_sregs = fd.get_sregs()?;
+        sregs.cr4 |= 1 << 18; // CR4.OSXSAVE (bit 18).
+        if let Err(error) = fd.set_sregs(&sregs) {
+            let reason: String = format!("failed to set sregs for OSXSAVE (error={error:?})");
+            error!("setup_avx_state(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        trace!("setup_avx_state(): XCR0=0x7, CR4.OSXSAVE=1");
         Ok(())
     }
 
