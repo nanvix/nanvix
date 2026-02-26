@@ -1811,6 +1811,25 @@ impl ProcessManager {
         mm.alloc_upage(vmem, vaddr, access, true)
     }
 
+    /// Maps a contiguous range of pages with a single process lookup.
+    pub fn mmap_range(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        start_addr: usize,
+        n_pages: u32,
+        access: AccessPermission,
+    ) -> Result<(), Error> {
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        let vmem: &mut Vmem = process.state_mut().vmem_mut();
+        for i in 0..n_pages {
+            let page_addr: usize = start_addr + (i as usize) * PAGE_SIZE;
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
+            mm.alloc_upage(vmem, vaddr, access, true)?;
+        }
+        Ok(())
+    }
+
     pub fn munmap(
         &mut self,
         mm: &mut VirtMemoryManager,
