@@ -2,6 +2,10 @@
 # Licensed under the MIT License.
 
 GUEST_STATICLIB_FEATURES := staticlib $(LOG_LEVEL)
+# Enable in-memory FAT32 filesystem for POSIX file I/O interception.
+ifeq ($(MEMFS),yes)
+GUEST_STATICLIB_FEATURES += memfs
+endif
 GUEST_STATICLIB_FEATURES := $(strip $(GUEST_STATICLIB_FEATURES))
 GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$(GUEST_STATICLIB_FEATURES)")
 

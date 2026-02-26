@@ -21,6 +21,25 @@ extern crate alloc;
 #[cfg(feature = "syscall")]
 extern crate syslog;
 
+// Force inclusion of memfs C-callable symbols in `libposix.a`.
+// The `#[used]` attribute on function pointers and `core::hint::black_box`
+// prevent the compiler from dead-stripping the wrapper functions.
+#[cfg(feature = "memfs")]
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub unsafe extern "C" fn memfs_init_from_ramfs(
+    mount_path: *const ::core::ffi::c_char,
+) -> ::sysapi::ffi::c_int {
+    ::core::hint::black_box(::syscall::memfs::memfs_init_from_ramfs(mount_path))
+}
+
+#[cfg(feature = "memfs")]
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub unsafe extern "C" fn memfs_file_size(path: *const ::core::ffi::c_char) -> i64 {
+    ::core::hint::black_box(::syscall::memfs::memfs_file_size(path))
+}
+
 // Address and routing parameter area.
 pub mod arpa;
 

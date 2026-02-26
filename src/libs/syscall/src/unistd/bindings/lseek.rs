@@ -45,6 +45,20 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t {
+    // Check if this is an in-memory filesystem file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_fd(fd) {
+            match crate::memfs::memfs_lseek(fd, offset, whence) {
+                Ok(pos) => return pos,
+                Err(_) => {
+                    *__errno_location() = ::sys::error::ErrorCode::InvalidArgument.get();
+                    return -1;
+                },
+            }
+        }
+    }
+
     // Attempt to seek the file descriptor and check for errors.
     match unistd::lseek(fd, offset, whence) {
         Ok(offset) => offset,

@@ -24,6 +24,20 @@ use sysapi::ffi::c_int;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
+    // Check if this is an in-memory filesystem file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_fd(fd) {
+            match crate::memfs::memfs_fstat(fd, &mut *buf) {
+                Ok(()) => return 0,
+                Err(_) => {
+                    *__errno_location() = ::sysapi::errno::EBADF;
+                    return -1;
+                },
+            }
+        }
+    }
+
     match crate::sys::stat::fstat(fd, &mut *buf) {
         Ok(_) => 0,
         Err(error) => {

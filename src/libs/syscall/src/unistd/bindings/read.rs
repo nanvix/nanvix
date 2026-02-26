@@ -79,6 +79,20 @@ pub unsafe extern "C" fn read(fd: c_int, buffer: *mut c_void, count: c_size_t) -
     let buffer: &mut [u8] =
         unsafe { ::core::slice::from_raw_parts_mut(buffer as *mut u8, count as usize) };
 
+    // Check if this is an in-memory filesystem file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_fd(fd) {
+            match crate::memfs::memfs_read(fd, buffer) {
+                Ok(n) => return n as c_ssize_t,
+                Err(_) => {
+                    *__errno_location() = ::sys::error::ErrorCode::InvalidArgument.get();
+                    return -1;
+                },
+            }
+        }
+    }
+
     // Attempt to read from the file descriptor and check for errors.
     match crate::unistd::read(fd, buffer) {
         Ok(bytes_read) => bytes_read as c_ssize_t,

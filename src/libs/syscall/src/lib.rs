@@ -17,6 +17,9 @@
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
+#[cfg(feature = "memfs")]
+extern crate fat32;
+
 #[cfg(any(feature = "syscall", feature = "rustc-dep-of-std"))]
 extern crate syslog;
 
@@ -83,6 +86,10 @@ pub mod sys;
 
 /// Definitions for I/O polling.
 pub mod poll;
+
+/// In-memory filesystem interception layer.
+#[cfg(feature = "memfs")]
+pub mod memfs;
 
 // Safe wrappers.
 #[cfg(feature = "syscall")]

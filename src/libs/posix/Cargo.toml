@@ -35,6 +35,7 @@ type-safe = { workspace = true }
 default = ["syscall", "allocator", "staticlib"]
 allocator = ["dep:sysalloc"]
 syscall = ["syslog", "syscall/dlfcn", "syscall/sbrk"]
+memfs = ["syscall/memfs"]
 std = []
 staticlib = ["nvx/staticlib"]
 
