@@ -1,0 +1,26 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "fat32"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+fatfs = { git = "https://github.com/rafalh/rust-fatfs", rev = "4eccb50d011146fbed20e133d33b22f3c27292e7", default-features = false, features = [
+    "alloc",
+    "lfn",
+] }
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true

@@ -46,6 +46,13 @@ expected_exit_code = 13
 
 [[tests]]
 executor = "http"
+program = "./bin/fat32-test.elf"
+extra_nanvixd_args = "-ramfs src/tests/fat32-test/test.fat"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/echo-c.elf"
 input = "hello world!"
 expected_output = "hello world!"
@@ -164,6 +171,12 @@ extra_nanvixd_args = "-ramfs README.md"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
+program = "./bin/fat32-test.elf"
+extra_nanvixd_args = "-ramfs src/tests/fat32-test/test.fat"
+expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
