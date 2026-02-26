@@ -139,38 +139,21 @@ pub fn map_range(
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(start < end);
 
-    // TODO: use iterator.
-    let start: usize = start.into_raw_value();
-    let end: usize = end.into_raw_value();
-    for vaddr in (start..end).step_by(mem::PAGE_SIZE) {
-        debug_assert!(vaddr != end);
+    let start_val: usize = start.into_raw_value();
+    let end_val: usize = end.into_raw_value();
+    let n_pages: usize = (end_val - start_val) / mem::PAGE_SIZE;
 
-        // Attempt to map page.
-        let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = kcall::mm::mmap(pid, vaddr, AccessPermission::RDWR) {
-            // Failed to map page, attempt to rollback.
-
-            ::syslog::error!(
-                "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
-                vaddr,
-                error
-            );
-
-            // Attempt to unmap pages.
-            if let Err(_error) = unmap_range(pid, VirtualAddress::new(start), vaddr) {
-                // Failed to unmap range, warn.
-                ::syslog::warn!(
-                    "map_range(): failed to unmap pages at {:X?}..{:X?} (error={:?})",
-                    start,
-                    vaddr,
-                    _error
-                );
-            }
-
-            return Err(error);
-        }
-
-        // NOTE: pages allocated with mmap() are always zeroed.
+    // Use batch mmap_range to map all pages in a single kernel call.
+    if let Err(error) =
+        kcall::mm::mmap_range(pid, start, n_pages as u32, AccessPermission::RDWR)
+    {
+        ::syslog::error!(
+            "map_range(): mmap_range failed at {:X?} ({} pages, error={:?})",
+            start,
+            n_pages,
+            error
+        );
+        return Err(error);
     }
 
     Ok(())
