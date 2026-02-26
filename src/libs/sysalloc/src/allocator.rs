@@ -135,11 +135,16 @@ impl OomHandler for NanvixOomHandler {
 
         // The span already covers all committed memory — grow the backing heap.
         //
-        // Round up to page alignment and add one extra page so that the allocator's per-chunk
-        // metadata overhead never causes the growth to fall just short of the required chunk
-        // size. Without this margin, a page-aligned layout.size() produces a growth of exactly
-        // layout.size() bytes, but the allocator needs layout.size() + TAG_SIZE for the chunk,
-        // triggering a redundant second OOM call that doubles heap consumption per allocation.
+        // Grow in large chunks (minimum 1 MB) to amortize the per-page kcall
+        // overhead. Each page mapping requires a full int 0x80 trap which,
+        // under KVM, triggers a VM-exit → VM-entry round-trip. Growing 1 MB
+        // at a time reduces the number of OOM handler invocations by ~256x
+        // compared to page-granularity growth.
+        //
+        // Round up to page alignment and add one extra page so that the
+        // allocator's per-chunk metadata overhead never causes the growth to
+        // fall just short of the required chunk size.
+        const MIN_GROWTH: usize = 1024 * 1024; // 1 MB minimum growth.
         let aligned: usize = match mm::align_up(layout.size(), PAGE_ALIGNMENT) {
             Some(v) => v,
             None => {
@@ -152,12 +157,19 @@ impl OomHandler for NanvixOomHandler {
                 return Err(());
             },
         };
-        let increment: usize = aligned.saturating_add(PAGE_SIZE);
+        // Use whichever is larger: the required size + overhead or MIN_GROWTH.
+        let desired: usize = aligned.saturating_add(PAGE_SIZE);
+        let increment: usize = if desired < MIN_GROWTH {
+            MIN_GROWTH
+        } else {
+            desired
+        };
 
-        // Attempt to grow with the overhead page. If that fails (near capacity), fall back to
-        // the exact aligned increment — existing free space inside Talc may supply the missing
-        // metadata bytes.
+        // Attempt to grow with the preferred increment. If that fails (near
+        // capacity), fall back to the exact aligned increment — existing free
+        // space inside Talc may supply the missing metadata bytes.
         if talc.oom_handler.heap.grow(increment).is_err()
+            && talc.oom_handler.heap.grow(desired).is_err()
             && talc.oom_handler.heap.grow(aligned).is_err()
         {
             #[cfg(feature = "warn")]
