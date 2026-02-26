@@ -13,6 +13,9 @@
 
 pub const CPUID_FEATURES: u32 = 1;
 
+/// CPUID leaf 7, subleaf 0: Structured Extended Feature Flags.
+pub const CPUID_STRUCTURED_EXTENDED_FEATURES: u32 = 7;
+
 //==================================================================================================
 //  Structures
 //==================================================================================================
@@ -104,6 +107,59 @@ pub enum EdxFeature {
     Ia64 = 1 << 30,
     /// Pending Break Enable.
     Pbe = 1 << 31,
+}
+
+/// CPUID leaf 1 ECX feature flags.
+///
+/// Represents individual feature bits in the ECX register returned by
+/// `CPUID.01H`. Each variant encodes its bit position as a bitmask.
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum EcxFeature {
+    /// SSE3 (Streaming SIMD Extensions 3).
+    Sse3 = 1 << 0,
+    /// PCLMULQDQ instruction.
+    Pclmulqdq = 1 << 1,
+    /// SSSE3 (Supplemental SSE3).
+    Ssse3 = 1 << 9,
+    /// FMA (Fused Multiply-Add).
+    Fma = 1 << 12,
+    /// CMPXCHG16B instruction.
+    Cx16 = 1 << 13,
+    /// SSE4.1 extensions.
+    Sse41 = 1 << 19,
+    /// SSE4.2 extensions.
+    Sse42 = 1 << 20,
+    /// MOVBE instruction.
+    Movbe = 1 << 22,
+    /// POPCNT instruction.
+    Popcnt = 1 << 23,
+    /// AES-NI instruction set.
+    Aesni = 1 << 25,
+    /// XSAVE/XRSTOR/XSETBV/XGETBV support.
+    Xsave = 1 << 26,
+    /// OS has set CR4.OSXSAVE to enable XSAVE.
+    Osxsave = 1 << 27,
+    /// AVX (Advanced Vector Extensions).
+    Avx = 1 << 28,
+    /// F16C (half-precision float conversion).
+    F16c = 1 << 29,
+}
+
+/// CPUID leaf 7 EBX feature flags (structured extended features).
+///
+/// Represents individual feature bits in the EBX register returned by
+/// `CPUID.(EAX=07H, ECX=0H)`. Each variant encodes its bit position as a
+/// bitmask.
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum Leaf7EbxFeature {
+    /// BMI1 (Bit Manipulation Instruction Set 1).
+    Bmi1 = 1 << 3,
+    /// AVX2 (Advanced Vector Extensions 2).
+    Avx2 = 1 << 5,
+    /// BMI2 (Bit Manipulation Instruction Set 2).
+    Bmi2 = 1 << 8,
 }
 
 //==================================================================================================
