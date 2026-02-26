@@ -144,9 +144,7 @@ pub fn map_range(
     let n_pages: usize = (end_val - start_val) / mem::PAGE_SIZE;
 
     // Use batch mmap_range to map all pages in a single kernel call.
-    if let Err(error) =
-        kcall::mm::mmap_range(pid, start, n_pages as u32, AccessPermission::RDWR)
-    {
+    if let Err(error) = kcall::mm::mmap_range(pid, start, n_pages as u32, AccessPermission::RDWR) {
         ::syslog::error!(
             "map_range(): mmap_range failed at {:X?} ({} pages, error={:?})",
             start,

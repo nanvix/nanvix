@@ -11,13 +11,22 @@
 // Imports
 //==================================================================================================
 
-use core::fmt;
-use core::marker::PhantomData;
+use core::{
+    fmt,
+    marker::PhantomData,
+};
 
-use ::fatfs::{Read, Seek, SeekFrom, Write};
+use ::fatfs::{
+    Read,
+    Seek,
+    SeekFrom,
+    Write,
+};
 
-use super::error::map_fatfs_error;
-use super::InternalFatFile;
+use super::{
+    error::map_fatfs_error,
+    InternalFatFile,
+};
 use crate::error::FsError;
 
 //==================================================================================================
@@ -58,11 +67,7 @@ impl<'a> FatFile<'a> {
     /// - `file`: The underlying fatfs file handle.
     /// - `can_read`: Whether the file is open for reading.
     /// - `can_write`: Whether the file is open for writing.
-    pub(super) fn new(
-        file: InternalFatFile<'a>,
-        can_read: bool,
-        can_write: bool,
-    ) -> Self {
+    pub(super) fn new(file: InternalFatFile<'a>, can_read: bool, can_write: bool) -> Self {
         Self {
             file,
             can_read,
@@ -97,10 +102,7 @@ impl<'a> FatFile<'a> {
             .file
             .seek(SeekFrom::Current(0))
             .map_err(map_fatfs_error)?;
-        let size: u64 = self
-            .file
-            .seek(SeekFrom::End(0))
-            .map_err(map_fatfs_error)?;
+        let size: u64 = self.file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
         self.file
             .seek(SeekFrom::Start(current))
             .map_err(map_fatfs_error)?;

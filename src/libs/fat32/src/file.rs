@@ -14,12 +14,16 @@
 // Imports
 //==================================================================================================
 
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 
-use crate::error::FsError;
-use crate::fat::FatFile;
-use crate::state;
+use crate::{
+    error::FsError,
+    fat::FatFile,
+    state,
+};
 
 //==================================================================================================
 // Constants
@@ -168,14 +172,7 @@ impl OpenOptions {
             self.read
         };
 
-        open_with_options(
-            path,
-            read,
-            self.write,
-            self.create,
-            self.create_new,
-            self.truncate,
-        )
+        open_with_options(path, read, self.write, self.create, self.create_new, self.truncate)
     }
 }
 
@@ -273,18 +270,14 @@ impl File {
     /// - [`FsError::InvalidArgument`] if `whence` is invalid or offset is
     ///   negative for `SEEK_SET`.
     /// - [`FsError::IoError`] if seeking to an invalid position.
-    pub fn seek(
-        &mut self,
-        whence: i32,
-        offset: i64,
-    ) -> Result<u64, FsError> {
+    pub fn seek(&mut self, whence: i32, offset: i64) -> Result<u64, FsError> {
         let pos: ::fatfs::SeekFrom = match whence {
             SEEK_SET => {
                 if offset < 0 {
                     return Err(FsError::InvalidArgument);
                 }
                 ::fatfs::SeekFrom::Start(offset as u64)
-            }
+            },
             SEEK_CUR => ::fatfs::SeekFrom::Current(offset),
             SEEK_END => ::fatfs::SeekFrom::End(offset),
             _ => return Err(FsError::InvalidArgument),
@@ -333,17 +326,14 @@ impl File {
     /// - [`FsError::NotSupported`] if file is not open for reading.
     /// - [`FsError::IoError`] on read failure.
     pub fn read_to_vec(&mut self) -> Result<Vec<u8>, FsError> {
-        let file_size: u64 = self.inner.seek(
-            ::fatfs::SeekFrom::End(0),
-        )?;
+        let file_size: u64 = self.inner.seek(::fatfs::SeekFrom::End(0))?;
         self.inner.seek(::fatfs::SeekFrom::Start(0))?;
 
         let mut buf: Vec<u8> = alloc::vec![0u8; file_size as usize];
         let mut total_read: usize = 0;
 
         while total_read < buf.len() {
-            let n: usize =
-                self.inner.read(&mut buf[total_read..])?;
+            let n: usize = self.inner.read(&mut buf[total_read..])?;
             if n == 0 {
                 break;
             }
@@ -587,10 +577,7 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, FsError> {
 /// - [`FsError::NotFound`] if `old_path` doesn't exist.
 /// - [`FsError::AlreadyExists`] if `new_path` already exists.
 /// - [`FsError::InvalidPath`] if paths are on different mounts.
-pub fn rename(
-    old_path: &str,
-    new_path: &str,
-) -> Result<(), FsError> {
+pub fn rename(old_path: &str, new_path: &str) -> Result<(), FsError> {
     let (old_idx, old_rel) = resolve_path(old_path)?;
     let (new_idx, new_rel) = resolve_path(new_path)?;
 
@@ -649,9 +636,7 @@ pub fn chdir(path: &str) -> Result<(), FsError> {
 /// # Returns
 ///
 /// A tuple of `(mount_index, relative_path)`.
-fn resolve_path(
-    path: &str,
-) -> Result<(usize, String), FsError> {
+fn resolve_path(path: &str) -> Result<(usize, String), FsError> {
     let vfs = state::vfs()?;
     vfs.resolve(path)
 }
@@ -683,8 +668,7 @@ fn open_with_options(
 
     // SAFETY: Single-threaded guest, no other VFS refs held.
     let vfs_mut = unsafe { state::vfs_mut()? };
-    let mount =
-        vfs_mut.get_mount_mut(mount_idx).ok_or(FsError::NotFound)?;
+    let mount = vfs_mut.get_mount_mut(mount_idx).ok_or(FsError::NotFound)?;
 
     let fat_file: FatFile<'static> = if create_new {
         mount.fat_mut().create_new(&relative_path)?

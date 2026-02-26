@@ -9,7 +9,13 @@
 
 use core::fmt;
 
-use ::fatfs::{IoBase, Read, Seek, SeekFrom, Write};
+use ::fatfs::{
+    IoBase,
+    Read,
+    Seek,
+    SeekFrom,
+    Write,
+};
 
 use super::error::MemoryIoError;
 use crate::error::FsError;
@@ -161,7 +167,7 @@ impl Seek for RawMemoryStorage {
                     return Err(MemoryIoError::OutOfBounds);
                 }
                 offset as i64
-            }
+            },
             SeekFrom::End(offset) => self.size as i64 + offset,
             SeekFrom::Current(offset) => self.position as i64 + offset,
         };

@@ -40,7 +40,7 @@ impl fmt::Display for MemoryIoError {
         match self {
             MemoryIoError::OutOfBounds => {
                 write!(f, "seek beyond end of memory region")
-            }
+            },
             MemoryIoError::InvalidSeek => write!(f, "invalid seek position"),
             MemoryIoError::UnexpectedEof => write!(f, "unexpected end of file"),
             MemoryIoError::WriteZero => write!(f, "write returned zero bytes"),

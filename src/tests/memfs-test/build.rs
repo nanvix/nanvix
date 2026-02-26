@@ -74,13 +74,17 @@ fn generate_fat_image(path: &Path) {
         let root = fs.root_dir();
 
         // Create test.txt.
-        let mut txt = root.create_file("test.txt").expect("failed to create test.txt");
+        let mut txt = root
+            .create_file("test.txt")
+            .expect("failed to create test.txt");
         fatfs::Write::write_all(&mut txt, b"Hello from memfs!\n")
             .expect("failed to write test.txt");
         fatfs::Write::flush(&mut txt).expect("failed to flush test.txt");
 
         // Create data.bin with a known pattern.
-        let mut bin = root.create_file("data.bin").expect("failed to create data.bin");
+        let mut bin = root
+            .create_file("data.bin")
+            .expect("failed to create data.bin");
         let pattern: Vec<u8> = (0..4096).map(|i| (i & 0xFF) as u8).collect();
         fatfs::Write::write_all(&mut bin, &pattern).expect("failed to write data.bin");
         fatfs::Write::flush(&mut bin).expect("failed to flush data.bin");

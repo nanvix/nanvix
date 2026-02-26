@@ -17,11 +17,15 @@
 // Imports
 //==================================================================================================
 
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 
-use crate::error::FsError;
-use crate::fat::Fat;
+use crate::{
+    error::FsError,
+    fat::Fat,
+};
 
 //==================================================================================================
 // Structures
@@ -246,15 +250,15 @@ impl Vfs {
 
         for component in abs_path.split('/') {
             match component {
-                "" | "." => {}
+                "" | "." => {},
                 ".." => {
                     if components.pop().is_none() {
                         return Err(FsError::InvalidPath);
                     }
-                }
+                },
                 other => {
                     components.push(other);
-                }
+                },
             }
         }
 
@@ -285,10 +289,7 @@ impl Vfs {
     /// # Errors
     ///
     /// Returns [`FsError::NotFound`] if no mount matches the path.
-    pub fn resolve(
-        &self,
-        path: &str,
-    ) -> Result<(usize, String), FsError> {
+    pub fn resolve(&self, path: &str) -> Result<(usize, String), FsError> {
         let normalized: String = self.normalize_path(path)?;
 
         for (idx, mount) in self.mounts.iter().enumerate() {
@@ -308,10 +309,7 @@ impl Vfs {
 
     /// Gets a mutable reference to a mount by index.
     #[inline]
-    pub fn get_mount_mut(
-        &mut self,
-        index: usize,
-    ) -> Option<&mut Mount> {
+    pub fn get_mount_mut(&mut self, index: usize) -> Option<&mut Mount> {
         self.mounts.get_mut(index)
     }
 

@@ -25,9 +25,6 @@ impl ::fatfs::TimeProvider for NanvixTimeProvider {
     }
 
     fn get_current_date_time(&self) -> ::fatfs::DateTime {
-        ::fatfs::DateTime::new(
-            ::fatfs::Date::new(1980, 1, 1),
-            ::fatfs::Time::new(0, 0, 0, 0),
-        )
+        ::fatfs::DateTime::new(::fatfs::Date::new(1980, 1, 1), ::fatfs::Time::new(0, 0, 0, 0))
     }
 }

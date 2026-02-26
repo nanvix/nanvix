@@ -447,8 +447,7 @@ impl VirtualProcessor {
                         | (EcxFeature::Xsave as u32)
                         | (EcxFeature::Osxsave as u32)
                         | (EcxFeature::Avx as u32)
-                        | (EcxFeature::F16c as u32)
-                        ;
+                        | (EcxFeature::F16c as u32);
                     entry.ecx = host_ecx & desired_ecx;
                 },
                 CPUID_STRUCTURED_EXTENDED_FEATURES if entry.index == 0 => {
@@ -456,9 +455,8 @@ impl VirtualProcessor {
                     // BMI2 is NOT enabled because its 64-bit intrinsics
                     // (_pdep_u64) are unavailable on i686.
                     let host_ebx: u32 = entry.ebx;
-                    let desired_ebx: u32 = (Leaf7EbxFeature::Bmi1 as u32)
-                        | (Leaf7EbxFeature::Avx2 as u32)
-                        ;
+                    let desired_ebx: u32 =
+                        (Leaf7EbxFeature::Bmi1 as u32) | (Leaf7EbxFeature::Avx2 as u32);
                     entry.ebx = host_ebx & desired_ebx;
                 },
                 _ => continue,
