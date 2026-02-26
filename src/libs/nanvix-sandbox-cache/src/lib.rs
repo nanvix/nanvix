@@ -67,6 +67,8 @@ use ::nanvix_sandbox::{
 use ::std::marker::PhantomData;
 use ::std::{
     collections::HashMap,
+    fs,
+    path::PathBuf,
     sync::Arc,
 };
 use ::tokio::sync::Mutex;
@@ -524,6 +526,22 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 let gateway_socket_address: String = gateway_sockaddr.clone();
                 let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
 
+                // Work-out the temporary directory for this sandbox based on the base temporary
+                // directory for the sandbox cache, and the tenant id.
+                let sandbox_tmp_dir: PathBuf =
+                    PathBuf::from(self.config.tmp_directory()).join(tag.tenant_id());
+                if let Err(error) = fs::create_dir_all(&sandbox_tmp_dir) {
+                    let reason: String = format!(
+                        "failed to create sandbox temporary directory (tenant_id={}, program={}, \
+                         app_name={}, tmp_dir={sandbox_tmp_dir:?}, error={error:?})",
+                        tag.tenant_id(),
+                        tag.program(),
+                        tag.app_name()
+                    );
+                    error!("get(): {reason}");
+                    anyhow::bail!(reason);
+                }
+
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.sandbox_id(),
                     (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
@@ -547,7 +565,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         self.config.control_plane_sockaddr_type(),
                     ),
                     Some(self.config.toolchain_binary_directory().to_string()),
-                    Some(self.config.tmp_directory().to_string()),
+                    Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(self.config.l2()),
                     Some(self.config.l2_snapshot_path().to_string()),
                 );
