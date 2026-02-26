@@ -93,6 +93,15 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
 
     let val: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "memory_size"), "memory_size");
+    // Hyperlight imposes a hard 1 GiB guest-memory ceiling. When the `hyperlight` feature is
+    // active, cap MEMORY_SIZE to 128 MiB (the pre-RAMFS default) so the kernel image and
+    // frame-allocator storage stay within the hyperlight sandbox budget.
+    let val: usize = if env::var("CARGO_FEATURE_HYPERLIGHT").is_ok() {
+        const HYPERLIGHT_MEMORY_SIZE: usize = 128 * 1024 * 1024;
+        val.min(HYPERLIGHT_MEMORY_SIZE)
+    } else {
+        val
+    };
     constants.push_str(&format!("pub const MEMORY_SIZE: usize = {val};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(
