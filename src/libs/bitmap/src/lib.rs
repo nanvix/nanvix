@@ -40,6 +40,8 @@ pub struct Bitmap {
     usage: usize,
     /// Underlying bits.
     bits: RawArray<u8>,
+    /// Hint: first bit index that might be free. Avoids O(n) rescans.
+    next_free: usize,
 }
 
 //==================================================================================================
@@ -81,6 +83,7 @@ impl Bitmap {
             number_of_bits,
             bits: array,
             usage: 0,
+            next_free: 0,
         })
     }
 
@@ -114,6 +117,7 @@ impl Bitmap {
             number_of_bits,
             bits: array,
             usage: 0,
+            next_free: 0,
         })
     }
 
@@ -177,7 +181,7 @@ impl Bitmap {
             "bitmap length must match the number of bits"
         );
 
-        let mut start: usize = 0;
+        let mut start: usize = self.next_free;
 
         // Traverse the bitmap until the last possible starting bit.
         while start <= self.number_of_bits - size {
@@ -212,6 +216,7 @@ impl Bitmap {
                     self.bits[w] |= 1 << b;
                 }
                 self.usage += size;
+                self.next_free = start + size;
                 return Ok(start);
             }
         }
@@ -267,6 +272,9 @@ impl Bitmap {
         let (word, bit): (usize, usize) = self.index(index)?;
         self.bits[word] &= !(1 << bit);
         self.usage -= 1;
+        if index < self.next_free {
+            self.next_free = index;
+        }
         Ok(())
     }
 
