@@ -318,6 +318,53 @@ impl VirtMemoryManager {
         Ok(())
     }
 
+    /// Maps a contiguous range of user pages using batch frame allocation and batch mapping.
+    ///
+    /// Allocates N contiguous physical frames in a single bitmap operation,
+    /// then maps them all with cached page table lookup (only 1 lookup per
+    /// page table boundary instead of per page).
+    pub fn alloc_upages_contiguous(
+        &mut self,
+        vmem: &mut Vmem,
+        vaddr: PageAligned<VirtualAddress>,
+        n_pages: usize,
+        access: AccessPermission,
+    ) -> Result<(), Error> {
+        trace!("vaddr={:?}, n_pages={}", vaddr, n_pages);
+
+        // 1. Allocate contiguous frames (single RefCell borrow, single bitmap scan).
+        let start_frame_number: usize = match self.physman.try_borrow_mut() {
+            Ok(mut physman) => physman.alloc_contiguous_user_frames(n_pages)?,
+            Err(_) => {
+                let reason: &str = "failed to borrow physical memory manager";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            },
+        };
+
+        // 2. Create page table allocator closure for new page tables.
+        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
+        let page_table_allocator = move || {
+            let kframe: KernelFrame = match physman.try_borrow_mut() {
+                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
+                Err(_) => {
+                    let reason: &str = "failed to borrow physical memory manager";
+                    error!("{reason}");
+                    return Err(Error::new(ErrorCode::ResourceBusy, reason));
+                },
+            };
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+            Ok(page_table)
+        };
+
+        // 3. Map all pages with cached page table lookup.
+        vmem.map_range(start_frame_number, vaddr, n_pages, access, &page_table_allocator)?;
+
+        Ok(())
+    }
+
     ///
     /// # Description
     ///

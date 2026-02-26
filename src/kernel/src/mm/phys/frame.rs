@@ -112,6 +112,19 @@ impl FrameAllocator {
         }
     }
 
+    /// Allocates a contiguous range of frames.
+    ///
+    /// Returns the starting frame number (bitmap index) on success.
+    pub fn alloc_contiguous(&mut self, n: usize) -> Result<usize, Error> {
+        match self.bitmap.alloc_range(n) {
+            Ok(start) => Ok(start),
+            Err(error) => {
+                error!("alloc_contiguous: {error:?} (n={n})");
+                Err(error)
+            },
+        }
+    }
+
     ///
     /// # Description
     ///

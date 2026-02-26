@@ -40,6 +40,12 @@ impl PhysMemoryManager {
         self.upool.alloc_many(nframes)
     }
 
+    /// Allocates a contiguous range of user frames.
+    /// Returns the starting frame number (bitmap index).
+    pub fn alloc_contiguous_user_frames(&mut self, n: usize) -> Result<usize, Error> {
+        self.upool.alloc_contiguous(n)
+    }
+
     ///
     /// # Description
     ///
