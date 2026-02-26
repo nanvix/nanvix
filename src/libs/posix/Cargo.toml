@@ -36,7 +36,7 @@ default = ["syscall", "allocator", "staticlib"]
 allocator = ["dep:sysalloc"]
 syscall = ["syslog", "syscall/dlfcn", "syscall/sbrk"]
 std = []
-staticlib = ["nvx/staticlib", "sysalloc/staticlib"]
+staticlib = ["nvx/staticlib"]
 
 # Logging
 trace = ["syslog/trace"]

@@ -74,7 +74,7 @@ pub fn run() -> Result<(), StressError> {
 
         for slot in 0..ALLOCS_PER_ROUND {
             // Pick a block size pseudo-randomly.
-            rng = xorshift32(rng);
+            rng = super::common::xorshift32(rng);
             let size_index: usize = usize::try_from(rng).unwrap_or(0) % BLOCK_SIZES.len();
             let size: usize = BLOCK_SIZES[size_index];
 
@@ -103,27 +103,6 @@ pub fn run() -> Result<(), StressError> {
 //==================================================================================================
 // Private Functions
 //==================================================================================================
-
-///
-/// # Description
-///
-/// 32-bit xorshift PRNG. Produces a deterministic pseudo-random sequence from a non-zero seed.
-///
-/// # Parameters
-///
-/// - `state`: Current PRNG state (must be non-zero).
-///
-/// # Returns
-///
-/// Next pseudo-random value.
-///
-fn xorshift32(state: u32) -> u32 {
-    let mut s: u32 = state;
-    s ^= s << 13;
-    s ^= s >> 17;
-    s ^= s << 5;
-    s
-}
 
 ///
 /// # Description
