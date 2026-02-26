@@ -148,11 +148,10 @@ pub fn mmap_range(
     };
 
     // Validate starting address alignment.
-    let _start_vaddr: PageAligned<VirtualAddress> =
-        match PageAligned::from_raw_value(start_addr) {
-            Ok(v) => v,
-            Err(e) => return KcallResult::Error(e.code.into()),
-        };
+    let _start_vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(start_addr) {
+        Ok(v) => v,
+        Err(e) => return KcallResult::Error(e.code.into()),
+    };
 
     // Check capabilities for cross-process mapping.
     if pid != caller_pid {
