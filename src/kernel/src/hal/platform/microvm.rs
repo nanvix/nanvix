@@ -108,7 +108,11 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::arch::cpu::halt();
+    // Use PAUSE instead of HLT to allow the kernel event loop to continue
+    // polling for IKC messages without waiting for the next timer interrupt.
+    // This trades idle CPU power for lower IPC latency, which is critical
+    // when the timer frequency is low (e.g., 100 Hz).
+    ::arch::cpu::pause();
 }
 
 ///
