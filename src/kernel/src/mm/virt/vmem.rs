@@ -38,12 +38,18 @@ use crate::{
     },
 };
 use ::alloc::{
-    collections::LinkedList,
+    collections::{
+        BTreeMap,
+        LinkedList,
+    },
     rc::Rc,
 };
 use ::arch::mem::{
     self,
-    paging::PageDirectoryEntry,
+    paging::{
+        FrameNumber,
+        PageDirectoryEntry,
+    },
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
@@ -142,8 +148,8 @@ pub struct Vmem {
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
     /// List of private kernel pages.
     private_kernel_pages: LinkedList<KernelPage>,
-    /// List of user page tables.
-    user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+    /// Map of user page tables (keyed by virtual page table address for O(log n) lookup).
+    user_page_tables: BTreeMap<PageTableAddress, PageTable<PageTableStorage>>,
 }
 
 impl Vmem {
@@ -180,7 +186,7 @@ impl Vmem {
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
             private_kernel_pages: LinkedList::new(),
-            user_page_tables: LinkedList::new(),
+            user_page_tables: BTreeMap::new(),
         })
     }
 
@@ -212,7 +218,7 @@ impl Vmem {
             kernel_page_tables,
             kernel_pages,
             private_kernel_pages: LinkedList::new(),
-            user_page_tables: LinkedList::new(),
+            user_page_tables: BTreeMap::new(),
         })
     }
 
@@ -332,7 +338,7 @@ impl Vmem {
             )?;
             let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
             // Get the corresponding page directory entry.
-            let mut pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
@@ -355,16 +361,10 @@ impl Vmem {
                 // NOTE: if we fail beyond this point we should unmap the page table.
                 //===================================================================
 
-                self.user_page_tables.push_back((pgtable_vaddr, page_table));
-
-                // Get the corresponding page directory entry.
-                pde = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
-                    Some(pde) => pde,
-                    None => unreachable!("failed to read page directory entry"),
-                };
+                self.user_page_tables.insert(pgtable_vaddr, page_table);
             };
 
-            self.lookup_page_table(&pde)?
+            self.lookup_page_table(pgtable_vaddr)?
         };
 
         // Map the page to the target virtual address space.
@@ -373,6 +373,87 @@ impl Vmem {
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
         //=============================================================
+
+        Ok(())
+    }
+
+    /// Maps a contiguous range of physical frames to consecutive virtual pages.
+    ///
+    /// Iterates per page table instead of per page: only one BTreeMap lookup per
+    /// page table boundary (~116 lookups for 118K pages instead of 118K lookups).
+    pub fn map_range<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
+        &mut self,
+        start_frame_number: usize,
+        start_vaddr: PageAligned<VirtualAddress>,
+        n_pages: usize,
+        access: AccessPermission,
+        page_table_allocator: &T,
+    ) -> Result<(), Error> {
+        let start_raw: usize = start_vaddr.into_raw_value();
+
+        // Validate that the entire range lies in user space.
+        if !Self::is_user_addr(start_vaddr.into_inner()) {
+            let reason: &str = "address is not in user space";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        let mut page_idx: usize = 0;
+
+        while page_idx < n_pages {
+            let raw_vaddr: usize = start_raw + page_idx * mem::PAGE_SIZE;
+
+            // Compute the page table virtual address for this page.
+            let pgtab_raw: usize = ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT);
+            let pgtab_vaddr: PageTableAddress =
+                PageTableAddress::new(PageTableAligned::from_raw_value(pgtab_raw)?);
+
+            // Ensure page table exists (PDE check + creation).
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtab_vaddr) {
+                Some(pde) => pde,
+                None => {
+                    let reason: &str = "failed to read page directory entry";
+                    error!("{reason}");
+                    return Err(Error::new(ErrorCode::TryAgain, reason));
+                },
+            };
+            if !pde.is_present() {
+                let page_table: PageTable<PageTableStorage> = page_table_allocator()?;
+                let page_table_address: FrameAddress = page_table.physical_address()?;
+                self.pgdir
+                    .map(pgtab_vaddr, page_table_address, false, AccessPermission::RDWR)?;
+                self.user_page_tables.insert(pgtab_vaddr, page_table);
+            }
+
+            // Compute how many pages fit in this page table.
+            let pgtab_end: usize = pgtab_raw + PGTAB_ALIGNMENT as usize;
+            let pages_in_table: usize = (pgtab_end - raw_vaddr) / mem::PAGE_SIZE;
+            let pages_to_map: usize = core::cmp::min(pages_in_table, n_pages - page_idx);
+
+            // Get page table ONCE and map all pages within it.
+            let page_table: &mut PageTable<PageTableStorage> =
+                self.lookup_page_table(pgtab_vaddr)?;
+
+            for j in 0..pages_to_map {
+                let idx: usize = page_idx + j;
+                let v_raw: usize = start_raw + idx * mem::PAGE_SIZE;
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(v_raw)?;
+
+                let frame_number: FrameNumber =
+                    match FrameNumber::from_raw_value(start_frame_number + idx) {
+                        Some(fn_) => fn_,
+                        None => {
+                            let reason: &str = "frame number is out of bounds";
+                            error!("{reason}");
+                            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+                        },
+                    };
+                let frame_addr: FrameAddress = FrameAddress::from_frame_number(frame_number)?;
+                page_table.map(PageAddress::new(vaddr), frame_addr, false, false, true, access)?;
+            }
+
+            page_idx += pages_to_map;
+        }
 
         Ok(())
     }
@@ -468,31 +549,12 @@ impl Vmem {
         }
     }
 
-    /// Looks up a page table in the list of page tables.
+    /// Looks up a page table by its virtual address.
     fn lookup_page_table(
         &mut self,
-        pde: &PageDirectoryEntry,
+        pgtab_vaddr: PageTableAddress,
     ) -> Result<&mut PageTable<PageTableStorage>, Error> {
-        // Check if corresponding page table does not exist.
-        if !pde.is_present() {
-            let reason: &str = "page table not present";
-            error!("{reason:?} (pde={pde:?})");
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        // Get corresponding page table.
-        let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame())?;
-
-        // Find corresponding page table.
-        let mut page_table: Option<&mut PageTable<PageTableStorage>> = None;
-        for (_pgtable_vaddr, pt) in self.user_page_tables.iter_mut() {
-            if pt.physical_address()? == pgtab_addr {
-                page_table = Some(pt);
-                break;
-            }
-        }
-
-        match page_table {
+        match self.user_page_tables.get_mut(&pgtab_vaddr) {
             Some(pt) => Ok(pt),
             None => {
                 let reason: &str = "page table not found";
@@ -556,18 +618,15 @@ impl Vmem {
             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
         )?);
 
-        // Look for the corresponding page table.
-        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
-            // Found.
-            if lookup_pgtable_addr == &pgtab_addr {
-                // Look for the corresponding page.
-                return page_table.lookup(page_addr);
-            }
+        // Look up the corresponding page table.
+        match self.user_page_tables.get(&pgtab_addr) {
+            Some(page_table) => page_table.lookup(page_addr),
+            None => {
+                let reason: &str = "page not found";
+                error!("{reason} (vaddr={vaddr:?})");
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
         }
-
-        let reason: &str = "page not found";
-        error!("{reason} (vaddr={vaddr:?})");
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
     ///
@@ -1087,7 +1146,7 @@ impl Vmem {
                     return Err(Error::new(ErrorCode::NoSuchEntry, reason));
                 };
 
-                (pgtable_vaddr, self.lookup_page_table(&pde)?)
+                (pgtable_vaddr, self.lookup_page_table(pgtable_vaddr)?)
             };
 
             let page_address: PageAddress = PageAddress::new(vaddr);
@@ -1110,14 +1169,10 @@ impl Vmem {
         //====================================================================================
 
         if unmap_pgtable {
-            // Remove page table from the list of user page tables.
-            let at = self
-                .user_page_tables
-                .iter()
-                .position(|(addr, _)| addr == &pgtable_vaddr)
-                .expect("page table must be in the list of user page tables");
-
-            let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
+            // Remove page table from the map.
+            self.user_page_tables
+                .remove(&pgtable_vaddr)
+                .expect("page table must be in the map of user page tables");
 
             self.pgdir.unmap(pgtable_vaddr)?;
         }
@@ -1143,8 +1198,9 @@ impl Vmem {
             let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
             )?;
+            let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
             // Get the corresponding page directory entry.
-            let pde: PageDirectoryEntry = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
+            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
                 Some(pde) => pde,
                 None => {
                     let reason: &str = "failed to read page directory entry";
@@ -1160,7 +1216,7 @@ impl Vmem {
                 return Err(Error::new(ErrorCode::NoSuchEntry, reason));
             };
 
-            self.lookup_page_table(&pde)?
+            self.lookup_page_table(pgtable_vaddr)?
         };
 
         let page_address: PageAddress = PageAddress::new(vaddr);
@@ -1267,9 +1323,7 @@ impl Vmem {
 
 impl Drop for Vmem {
     fn drop(&mut self) {
-        while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
-            drop(user_page_table);
-        }
+        self.user_page_tables.clear();
 
         // Unmap all kernel private kernel pages.
         while let Some(kpage) = self.private_kernel_pages.pop_front() {

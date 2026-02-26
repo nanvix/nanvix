@@ -1812,6 +1812,7 @@ impl ProcessManager {
     }
 
     /// Maps a contiguous range of pages with a single process lookup.
+    /// Uses contiguous frame allocation and batch page table mapping.
     pub fn mmap_range(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -1822,12 +1823,8 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
-        for i in 0..n_pages {
-            let page_addr: usize = start_addr + (i as usize) * PAGE_SIZE;
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
-            mm.alloc_upage(vmem, vaddr, access, false)?;
-        }
-        Ok(())
+        let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(start_addr)?;
+        mm.alloc_upages_contiguous(vmem, vaddr, n_pages as usize, access)
     }
 
     pub fn munmap(

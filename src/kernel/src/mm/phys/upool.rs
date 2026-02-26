@@ -86,6 +86,11 @@ impl UpoolInner {
         Ok(pages)
     }
 
+    /// Allocates a contiguous range of frames. Returns the starting frame number.
+    fn alloc_contiguous(&mut self, n: usize) -> Result<usize, Error> {
+        self.frame_allocator.alloc_contiguous(n)
+    }
+
     ///
     /// # Description
     ///
@@ -218,6 +223,12 @@ impl Upool {
         }
 
         Ok(upages)
+    }
+
+    /// Allocates a contiguous range of user frames.
+    /// Returns the starting frame number (bitmap index).
+    pub fn alloc_contiguous(&mut self, n: usize) -> Result<usize, Error> {
+        self.inner.borrow_mut().alloc_contiguous(n)
     }
 
     ///
