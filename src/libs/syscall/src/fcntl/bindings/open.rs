@@ -73,6 +73,20 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
         },
     };
 
+    // Check if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_path(pathname) {
+            match crate::memfs::memfs_open(pathname, flags) {
+                Ok(fd) => return fd,
+                Err(_) => {
+                    *__errno_location() = ::sys::error::ErrorCode::NoSuchEntry.get();
+                    return -1;
+                },
+            }
+        }
+    }
+
     // Run system call and check for errors.
     match fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,

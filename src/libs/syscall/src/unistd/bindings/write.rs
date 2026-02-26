@@ -84,6 +84,20 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t
     // Construct buffer from raw parts.
     let buffer: &[u8] = slice::from_raw_parts(buffer as *const u8, count as usize);
 
+    // Check if this is an in-memory filesystem file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_fd(fd) {
+            match crate::memfs::memfs_write(fd, buffer) {
+                Ok(n) => return n as c_ssize_t,
+                Err(_) => {
+                    *__errno_location() = ::sys::error::ErrorCode::InvalidArgument.get();
+                    return -1;
+                },
+            }
+        }
+    }
+
     // Attempt to write to file descriptor and check for errors.
     match crate::unistd::syscall::write(fd, buffer) {
         Ok(bytes_written) => bytes_written as c_ssize_t,

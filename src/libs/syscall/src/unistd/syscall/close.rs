@@ -72,6 +72,22 @@ pub mod bindings {
     #[unsafe(no_mangle)]
     #[trace_syscall]
     pub extern "C" fn close(fd: c_int) -> c_int {
+        // Check if this is an in-memory filesystem file descriptor.
+        #[cfg(feature = "memfs")]
+        {
+            if crate::memfs::is_memfs_fd(fd) {
+                match crate::memfs::memfs_close(fd) {
+                    Ok(()) => return 0,
+                    Err(_) => {
+                        unsafe {
+                            *__errno_location() = ::sys::error::ErrorCode::InvalidArgument.get();
+                        }
+                        return -1;
+                    },
+                }
+            }
+        }
+
         match crate::unistd::close(fd) {
             Ok(()) => 0,
             Err(error) => {

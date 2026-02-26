@@ -56,6 +56,24 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::s
 
     let statbuf: &mut sys_stat::stat = &mut *statbuf;
 
+    // Check if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if crate::memfs::is_memfs_path(pathname) {
+            if let Ok(info) = fat32::stat(pathname) {
+                // Zero-initialize the stat buffer.
+                ::core::ptr::write_bytes(statbuf as *mut sys_stat::stat, 0, 1);
+                statbuf.st_size = info.size as ::sysapi::sys_types::off_t;
+                statbuf.st_mode = if info.is_dir { 0o40755 } else { 0o100444 };
+                statbuf.st_blksize = 4096;
+                statbuf.st_blocks = ((info.size + 511) / 512) as ::sysapi::sys_types::off_t;
+                return 0;
+            }
+            *__errno_location() = ErrorCode::NoSuchEntry.get();
+            return -1;
+        }
+    }
+
     match crate::sys::stat::stat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {

@@ -37,6 +37,7 @@ type-safe = { workspace = true }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
+fat32 = { workspace = true, optional = true }
 
 [features]
 default = ["syscall"]
@@ -65,6 +66,7 @@ rustc-dep-of-std = [
     "spin/rustc-dep-of-std",
 ]
 sbrk = ["dep:sysalloc"]
+memfs = ["dep:fat32", "dep:sysalloc"]
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []
