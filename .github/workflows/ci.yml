@@ -582,7 +582,7 @@ jobs:
         ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
     - name: "Download Benchmark Results"
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: benchmark-results-*
         path: .
@@ -750,7 +750,7 @@ jobs:
         ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
     - name: "Download Benchmark Results"
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         pattern: benchmark-ci-results-*
         path: .
@@ -819,7 +819,7 @@ jobs:
     - uses: actions/checkout@v6
 
     - name: "Download CI Build Artifacts"
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         path: .
