@@ -234,7 +234,7 @@ jobs:
         sccache-gha-enabled: 'true'
 
     - name: "Upload Build Artifacts"
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         overwrite: true
@@ -248,7 +248,7 @@ jobs:
 
     - name: "Upload logs in case of failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         overwrite: 'true'
@@ -325,7 +325,7 @@ jobs:
 
     - name: "Upload logs in case of failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         overwrite: 'true'
@@ -422,7 +422,7 @@ jobs:
 
     - name: "Upload logs in case of failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
         overwrite: 'true'
@@ -526,7 +526,7 @@ jobs:
 
     - name: "Upload Benchmark Results"
       if: always() && !cancelled()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: benchmark-results-${{ matrix.machine-type }}
         overwrite: true
@@ -545,7 +545,7 @@ jobs:
 
     - name: "Upload logs in case of benchmark failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
         overwrite: 'true'
@@ -609,7 +609,7 @@ jobs:
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
         overwrite: 'true'
@@ -707,7 +707,7 @@ jobs:
 
     - name: "Upload Benchmark Results"
       if: always() && !cancelled()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: benchmark-ci-results-${{ matrix.machine-type }}
         overwrite: true
@@ -716,7 +716,7 @@ jobs:
 
     - name: "Upload logs in case of benchmark failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
         overwrite: 'true'
@@ -777,7 +777,7 @@ jobs:
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
         overwrite: 'true'
@@ -832,7 +832,7 @@ jobs:
         deployment-type: '${{ matrix.deployment-type }}'
 
     - name: "Upload Release Artifact"
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
         path: ${{ steps.release-archive.outputs.archive-path }}
