@@ -181,17 +181,34 @@ impl Bitmap {
             "bitmap length must match the number of bits"
         );
 
-        let mut start: usize = self.next_free;
+        let initial_start: usize = self.next_free;
+        let mut start: usize = initial_start;
+        let mut wrapped: bool = false;
 
-        // Traverse the bitmap until the last possible starting bit.
-        while start <= self.number_of_bits - size {
-            // Check for fast skip/ path.
+        // Traverse the bitmap, wrapping around once if needed.
+        loop {
+            // Stop condition: exceeded the last valid starting position.
+            if start > self.number_of_bits - size {
+                // If we haven't wrapped yet and started past 0, retry from beginning.
+                if !wrapped && initial_start > 0 {
+                    start = 0;
+                    wrapped = true;
+                } else {
+                    break;
+                }
+            }
+
+            // After wrap-around, stop if we've reached the initial position.
+            if wrapped && start >= initial_start {
+                break;
+            }
+
+            // Check for fast skip path.
             let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
             if is_aligned {
                 let word: usize = start / u8::BITS as usize;
                 // Fast skip: if the starting word is full, skip to the next word.
                 if self.bits[word] == u8::MAX {
-                    // Jump to next byte boundary.
                     start += u8::BITS as usize;
                     continue;
                 }
@@ -209,7 +226,7 @@ impl Bitmap {
                 }
             }
             if free {
-                // Allocate the range
+                // Allocate the range.
                 for offset in 0..size {
                     let idx: usize = start + offset;
                     let (w, b): (usize, usize) = self.index_unchecked(idx);

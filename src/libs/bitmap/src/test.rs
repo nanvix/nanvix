@@ -301,3 +301,41 @@ fn test_alloc_random_ranges_in_partial_bitmap() {
         }
     }
 }
+
+/// Tests that `alloc()` can find free bits that exist before `next_free`.
+///
+/// This reproduces a bug where `alloc_range(n)` skips free bits that don't
+/// form a contiguous range of size n, advancing `next_free` past them.
+/// Without wrap-around, those free bits become unreachable.
+#[test]
+fn test_alloc_wraparound_next_free() {
+    let mut data: [u8; 1] = [0; 1];
+    let mut bitmap: Bitmap =
+        test_helper_create_bitmap_from_raw_array(&mut data).expect("failed to create bitmap");
+
+    // Allocate bits 0, 1, 2 -> next_free = 3.
+    assert_eq!(bitmap.alloc().expect("alloc 0"), 0);
+    assert_eq!(bitmap.alloc().expect("alloc 1"), 1);
+    assert_eq!(bitmap.alloc().expect("alloc 2"), 2);
+
+    // Free bit 1 -> creates a hole at position 1, next_free = 1.
+    bitmap.clear(1).expect("clear 1");
+
+    // alloc_range(2): starts at 1, [1,2] won't work (bit 2 is set),
+    // skips to 3 and allocates [3,4]. next_free = 5.
+    assert_eq!(bitmap.alloc_range(2).expect("alloc_range 2"), 3);
+
+    // Fill remaining bits 5, 6, 7 -> next_free = 8 (past end).
+    assert_eq!(bitmap.alloc().expect("alloc 5"), 5);
+    assert_eq!(bitmap.alloc().expect("alloc 6"), 6);
+    assert_eq!(bitmap.alloc().expect("alloc 7"), 7);
+
+    // State: [set, FREE, set, set, set, set, set, set], usage=7, next_free=8.
+    // alloc() must find bit 1 via wrap-around, not return OutOfMemory.
+    assert_eq!(
+        bitmap
+            .alloc()
+            .expect("alloc should wrap around and find bit 1"),
+        1
+    );
+}
