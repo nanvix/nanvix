@@ -22,8 +22,6 @@ USER $USER
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-ARG RUST_VERSION=nightly-2025-12-08
-
 # Install runtime and build dependencies via shared setup script (keeps parity with full image).
 COPY --from=source /opt/nanvix/src/nanvix/scripts/setup/ubuntu.sh /tmp/ubuntu.sh
 
@@ -58,13 +56,24 @@ RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_
     | tar xz -C /usr/local/bin --strip-components=1 --wildcards '*/sccache' && \
     chmod +x /usr/local/bin/sccache
 
+# Copy rust-toolchain file so rustup installs the exact channel, components,
+# and targets specified by the project. This prevents rustup from
+# re-downloading the toolchain at build time when it detects the file in the
+# mounted workspace.
+COPY --from=source /opt/nanvix/src/nanvix/rust-toolchain /workspace/rust-toolchain
+
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
 ENV PATH="$HOME/.cargo/bin:$PATH"
 
-# Install Rust toolchain and components.
-RUN rustup toolchain install "$RUST_VERSION" && \
-    rustup default "$RUST_VERSION" && \
+# Install Rust toolchain and components from the rust-toolchain file.
+# `rustup show` reads the file and auto-installs the specified channel,
+# components (e.g. rust-src), and targets (e.g. wasm32-wasip1).
+RUN cd /workspace && rustup show && \
+    # Remove the copied rust-toolchain file and empty directory so they cannot
+    # shadow a workspace mount or leave stale artifacts in the image.
+    rm -f /workspace/rust-toolchain && \
+    rmdir /workspace 2>/dev/null || true && \
     # Link custom Rust toolchain for Nanvix.
     rustup toolchain link nanvix-x86 /opt/nanvix/rust-toolchain && \
     # Copy cargo and other tools to stage2/bin so they're accessible.
