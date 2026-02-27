@@ -168,6 +168,11 @@ compatibility. Follow these steps to update your environment:
 
 > **Note:** This update process is only required for major releases, not for minor updates or patches.
 
+### Verus (Formal Verification)
+
+Verus is installed automatically when you run `make verify`. The expected version is pinned in
+`build/verus-version` and installed to `toolchain/verus`. No manual setup is required.
+
 ## Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.
