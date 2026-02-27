@@ -23,8 +23,9 @@ The pipeline runs these steps in order:
 1. **Spell Check** — Checks spelling in source code.
 2. **Format Check** — Verifies code formatting.
 3. **Lint Check** — Runs Clippy and other linters.
-4. **Build** — Compiles all targets.
-5. **Test** — Runs unit and system integration tests.
+4. **Verify** — Runs Verus formal verification on annotated crates.
+5. **Build** — Compiles all targets.
+6. **Test** — Runs unit and system integration tests.
 
 ## Configuration Matrix
 
@@ -63,6 +64,9 @@ excluded in `is_excluded()`).
 # Lint check.
 ./z build --with-cached-options -- lint-check
 
+# Formal verification.
+./z build --with-cached-options -- verify
+
 # Unit tests.
 ./z build --with-cached-options -- run-unit-tests
 ```
@@ -76,8 +80,8 @@ pull requests and pushes to `dev`.
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `ci-build`, `ci-test`: `qemu-pc`, `microvm`, `hyperlight` with `single-process` and
-  `multi-process` (excluding `qemu-pc + single-process`).
+- `lint`, `verify`, `ci-build`, `ci-test`: `qemu-pc`, `microvm`, `hyperlight` with `single-process`
+  and `multi-process` (excluding `qemu-pc + single-process`).
 - `ci-l2`: separate L2 jobs for `microvm` and `hyperlight`.
 
 ## Release Process

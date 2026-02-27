@@ -308,7 +308,7 @@ export SETCAP_CMD := setcap
 #===================================================================================================
 
 # Path to the Verus installation directory.
-export VERUS_DIR ?= $(HOME)/verus
+export VERUS_DIR ?= $(TOOLCHAIN_DIR)/verus
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap
@@ -551,8 +551,13 @@ help:
 .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
 verify: $(addprefix verify-,$(VERUS_CRATES))
 
+# Ensures the correct Verus version is installed before verification.
+.PHONY: ensure-verus
+ensure-verus:
+	@$(SCRIPTS_DIR)/setup/verus.sh "$(VERUS_DIR)"
+
 # Pattern rule for verifying individual crates.
-$(addprefix verify-,$(VERUS_CRATES)): verify-%:
+$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Fixes code linting issues.

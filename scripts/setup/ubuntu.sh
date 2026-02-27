@@ -54,5 +54,6 @@ apt-get install -y        \
     qemu-system-x86       \
     shellcheck            \
     texinfo               \
+    unzip                 \
     wget                  \
     xorriso

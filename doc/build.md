@@ -78,3 +78,25 @@ To build Nanvix using your local toolchain and default build parameters, run:
 ```bash
 make all
 ```
+
+## Formal Verification with Verus
+
+Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected
+kernel crates. The correct Verus version is pinned in `build/verus-version` and is automatically
+downloaded on the first verification run.
+
+To run formal verification:
+
+```bash
+# Verify all annotated crates.
+./z build --with-cached-options -- verify
+
+# Verify a single crate (e.g., bitmap).
+./z build --with-cached-options -- verify-bitmap
+```
+
+Verus is installed to `$(TOOLCHAIN_DIR)/verus` by default. Override with `VERUS_DIR`:
+
+```bash
+./z build --with-cached-options -- verify VERUS_DIR=/path/to/verus
+```

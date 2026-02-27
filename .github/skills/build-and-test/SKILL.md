@@ -130,6 +130,22 @@ Test configurations are auto-selected based on deployment mode:
 ./z build --with-cached-options -- test
 ```
 
+## Formal Verification
+
+Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version` and auto-installed to `$(TOOLCHAIN_DIR)/verus` on the first run.
+
+```bash
+# Verify all annotated crates.
+./z build --with-cached-options -- verify
+
+# Verify a single crate.
+./z build --with-cached-options -- verify-bitmap
+```
+
+- The `ensure-verus` prerequisite downloads the correct Verus release automatically.
+- Override the install location with `VERUS_DIR=/path/to/verus`.
+- The `vstd` crate version in `Cargo.toml` is exact-pinned (`=`) to match the Verus binary.
+
 ## Cleaning
 
 ```bash
