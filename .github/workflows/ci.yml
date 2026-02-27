@@ -134,6 +134,50 @@ jobs:
         machine-type: '${{ matrix.machine-type }}'
         deployment-type: '${{ matrix.deployment-type }}'
 
+  # Verus formal verification is config-dependent (kernel cargo flags vary per
+  # machine-type + deployment-type) and runs once per unique pair, like lint.
+  verify:
+    name: "Verify (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    needs: [precheck, checks, lint]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        machine-type: [qemu-pc, microvm, hyperlight]
+        deployment-type: [single-process, multi-process]
+        exclude:
+          - machine-type: qemu-pc
+            deployment-type: single-process
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      needs.precheck.outputs.up_to_date == 'true' && (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ')
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup"
+      uses: ./.github/actions/docker-setup
+
+    - name: "Verify"
+      uses: ./.github/actions/docker-check
+      with:
+        target: 'verify'
+        release: 'debug'
+        log-level: 'trace'
+        machine-type: '${{ matrix.machine-type }}'
+        deployment-type: '${{ matrix.deployment-type }}'
+
   # Each matrix entry builds on a GitHub-hosted runner. Integration tests run
   # in a separate ci-test job (typically on self-hosted runners) that depends
   # on the completion of the entire ci-build matrix, so tests start only after
@@ -141,7 +185,7 @@ jobs:
   # completes.
   ci-build:
     name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck, checks, lint]
+    needs: [precheck, checks, lint, verify]
     timeout-minutes: 120
     strategy:
       fail-fast: false
