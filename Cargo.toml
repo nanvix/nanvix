@@ -49,6 +49,7 @@ members = [
         "src/libs/type-safe",
         "src/libs/user-vm-api",
         "src/tests/arch-rust",
+        "src/tests/fat32-test",
         "src/tests/file-rust",
         "src/tests/thread-rust",
         "src/tests/stress-rust",
