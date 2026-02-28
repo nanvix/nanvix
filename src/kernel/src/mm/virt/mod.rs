@@ -205,7 +205,7 @@ pub fn init(
             raw_vaddr += mem::PAGE_SIZE;
             paddr = match region.typ() {
                 MemoryRegionType::Mmio => {
-                    let mmio_addr: VirtualAddress = region.start().into_inner();
+                    let mmio_addr: VirtualAddress = VirtualAddress::new(raw_vaddr);
                     let phys_addr: PhysicalAddress =
                     // FIXME: ensure safety here.
                     unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
