@@ -324,13 +324,13 @@ export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH=
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := posix
-ALL_GUEST_RUST_LIBS := arch bitmap config elf error type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string
-ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error type-safe proc raw-array slab static_assert libc_string syslog-macros syslog
+ALL_GUEST_RUST_LIBS := arch bitmap config elf error fat32 type-safe nvx proc raw-array slab static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string
+ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error fat32 type-safe proc raw-array slab static_assert libc_string syslog-macros syslog
 
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel linux-app arch-rust
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel linux-app arch-rust fat32-test
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 

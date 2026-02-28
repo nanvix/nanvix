@@ -1,0 +1,38 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "fat32-test"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Validation tests for the fat32 filesystem library"
+homepage.workspace = true
+
+[[bin]]
+name = "fat32-test"
+
+[dependencies]
+fat32 = { workspace = true }
+libc_string = { workspace = true }
+nvx = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syslog/trace"]
+debug = ["nvx/debug", "syslog/debug"]
+info = ["nvx/info", "syslog/info"]
+warn = ["nvx/warn", "syslog/warn"]
+error = ["nvx/error", "syslog/error"]
+panic = ["nvx/panic", "syslog/panic"]
+
+[lints]
+workspace = true

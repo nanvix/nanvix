@@ -30,6 +30,7 @@ sysroot
 *.a
 *.elf
 *.exe
+*.img
 *.iso
 *.log
 *.o
