@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "fat32"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "no_std FAT32 filesystem library for nanvix guest applications"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+error = { workspace = true }
+fatfs = { workspace = true, features = ["alloc", "lfn"] }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+sysapi = { workspace = true }
+
+[features]
+default = []
+std = []
+
+[lints]
+workspace = true
