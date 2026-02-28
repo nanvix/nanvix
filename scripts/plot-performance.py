@@ -9,13 +9,16 @@ Generate performance plots for Nanvix benchmarks.
 The script auto-discovers ``nanvix_bench_*.csv`` files under the data
 directory's ``baremetal/`` subdirectory (for self-hosted runner results) and
 ``github/`` subdirectory (for GitHub runner results), keeps only the last *N*
-commits (default 100), and produces one PNG plot per benchmark.  GitHub runner
-plots are saved with a ``github_`` prefix.
+commits (default 100), and produces PNG plots for each benchmark: single-series
+benchmarks generate one PNG per benchmark, while sized benchmarks generate one
+PNG per message size.  Runner-specific plots are saved with ``github_`` and
+``baremetal_`` prefixes.
 
-Only benchmarks whose CSV files follow the ``commit,p50,p95,p99`` schema are
-supported.  Benchmarks with different schemas (e.g. ``echo_breakdown`` which
-uses ``commit,step,label,p50,p95,p99`` or ``round_trip_latency`` which uses
-``commit,size,p50,p95,p99``) are not yet supported and will be skipped.
+Benchmarks whose CSV files follow the ``commit,p50,p95,p99`` schema and the
+``commit,size,p50,p95,p99`` schema (e.g. ``round_trip_latency``) are
+supported.  Benchmarks with other schemas (e.g. ``echo_breakdown`` which
+uses ``commit,step,label,p50,p95,p99``) are not yet supported and will be
+skipped.
 
 # Usage
 
@@ -68,7 +71,6 @@ SHORT_SHA_LEN: int = 7
 # Supported benchmarks whose CSV files follow the ``commit,p50,p95,p99``
 # schema.  Benchmarks with different schemas are intentionally excluded:
 #   - ``echo_breakdown``: uses ``commit,step,label,p50,p95,p99``.
-#   - ``round_trip_latency``: uses ``commit,size,p50,p95,p99``.
 SUPPORTED_BENCHMARKS: list[str] = [
     "boot_time",
     "cold_start",
@@ -79,6 +81,12 @@ SUPPORTED_BENCHMARKS: list[str] = [
     "warm_start",
     "warm_start_l2",
     "warm_start_vmm",
+]
+
+# Benchmarks whose CSV files follow the ``commit,size,p50,p95,p99`` schema.
+# Each produces one plot per message size.
+SIZED_BENCHMARKS: list[str] = [
+    "round_trip_latency",
 ]
 
 # Human-readable titles for each benchmark.
@@ -429,6 +437,124 @@ def plot_benchmark_multiplot(
     return out_path
 
 
+def plot_sized_benchmark_multiplot(
+    bench_name: str,
+    csv_infos: list[CsvFileInfo],
+    output_dir: str,
+    max_commits: int,
+    file_prefix: str = "",
+) -> list[str]:
+    """Plot a sized benchmark with one PNG per message size.
+
+    Each PNG contains three vertically-stacked subplots (p50, p95, p99)
+    with one line per machine, identical in layout to the standard
+    multiplot but filtered to a single message size.
+
+    CSV schema: ``commit,size,p50,p95,p99``.
+
+    # Parameters
+
+    - ``bench_name``: Short benchmark identifier.
+    - ``csv_infos``: List of ``CsvFileInfo`` objects for different machines.
+    - ``output_dir``: Directory where the PNGs will be saved.
+    - ``max_commits``: Maximum number of commits to plot.
+    - ``file_prefix``: Optional prefix for the output filename.
+
+    # Returns
+
+    List of paths to the generated PNG files.
+    """
+    # Read data for each machine, keyed by (machine, size, commit).
+    machine_rows: dict[str, list[list[str]]] = {}
+    all_commit_shas: set[str] = set()
+    all_sizes_ordered: list[str] = []
+    seen_sizes: set[str] = set()
+
+    for info in csv_infos:
+        _, rows = read_csv(info.file_path)
+        if rows:
+            machine_rows[info.machine] = rows
+            for row in rows:
+                all_commit_shas.add(row[0])
+                size_val: str = row[1]
+                if size_val not in seen_sizes:
+                    seen_sizes.add(size_val)
+                    all_sizes_ordered.append(size_val)
+
+    if not machine_rows:
+        print(f"WARNING: no data for '{bench_name}', skipping.")
+        return []
+
+    # Sort commits chronologically using the git history.
+    commits: list[str] = git_commit_order(all_commit_shas)
+    if len(commits) > max_commits:
+        commits = commits[-max_commits:]
+    commit_set: set[str] = set(commits)
+    commit_idx: dict[str, int] = {c: i for i, c in enumerate(commits)}
+
+    # For each machine build a mapping: (size, commit) -> (p50, p95, p99).
+    machine_values: dict[str, dict[tuple[str, str], tuple[int, int, int]]] = {}
+    active_sizes: set[str] = set()
+    for machine, rows in machine_rows.items():
+        vals: dict[tuple[str, str], tuple[int, int, int]] = {}
+        for row in rows:
+            if row[0] in commit_set:
+                vals[(row[1], row[0])] = (int(row[2]), int(row[3]), int(row[4]))
+                active_sizes.add(row[1])
+        machine_values[machine] = vals
+
+    # Keep only sizes that have data in the selected commit window.
+    all_sizes_ordered = [s for s in all_sizes_ordered if s in active_sizes]
+
+    generated: list[str] = []
+    sorted_machines: list[str] = sorted(machine_values.keys())
+    bench_title: str = BENCHMARK_TITLES.get(bench_name, bench_name)
+    num_percentiles: int = len(PERCENTILE_LABELS)
+
+    for size in all_sizes_ordered:
+        fig, axes = plt.subplots(
+            num_percentiles,
+            1,
+            figsize=(max(10, len(commits) * 0.35), 5 * num_percentiles),
+            sharex=True,
+        )
+
+        for p_idx, (ax, p_label) in enumerate(zip(axes, PERCENTILE_LABELS)):
+            for m_idx, machine in enumerate(sorted_machines):
+                vals = machine_values[machine]
+                x: list[int] = []
+                y: list[int] = []
+                for commit in commits:
+                    key = (size, commit)
+                    if key in vals:
+                        x.append(commit_idx[commit])
+                        y.append(vals[key][p_idx])
+                style: dict[str, str] = MACHINE_STYLES[m_idx % len(MACHINE_STYLES)]
+                ax.plot(
+                    x,
+                    y,
+                    marker=style["marker"],
+                    color=style["color"],
+                    markersize=3,
+                    linewidth=1.2,
+                    label=machine.title(),
+                )
+
+            title: str = f"{bench_title} ({size}) \u2014 {p_label}"
+            _configure_axes(ax, commits, title, Y_LABEL)
+
+        fig.tight_layout()
+        # Sanitize size token for filename (e.g. "1KiB" -> "1KiB").
+        size_token: str = size.replace("/", "_")
+        out_name: str = f"{file_prefix}{bench_name}_{size_token}"
+        out_path: str = os.path.join(output_dir, f"{out_name}.png")
+        fig.savefig(out_path, dpi=150)
+        plt.close(fig)
+        generated.append(out_path)
+
+    return generated
+
+
 # ======================================================================
 # Main
 # ======================================================================
@@ -479,8 +605,9 @@ def _plot_csv_files(
 ) -> list[str]:
     """Generate multiplots for discovered CSV files, grouped by benchmark.
 
-    For each benchmark, a single PNG is produced with three subplots
-    (p50, p95, p99) showing one line per machine type.
+    For standard benchmarks a single PNG is produced with three subplots
+    (p50, p95, p99) showing one line per machine type.  Sized benchmarks
+    produce one PNG per message size with the same subplot layout.
 
     # Parameters
 
@@ -495,11 +622,15 @@ def _plot_csv_files(
     """
     # Group CSV files by benchmark name.
     bench_groups: dict[str, list[CsvFileInfo]] = {}
+    sized_groups: dict[str, list[CsvFileInfo]] = {}
     for info in sorted(csv_files, key=lambda i: i.file_path):
-        if info.bench_name not in SUPPORTED_BENCHMARKS:
+        if info.bench_name in SIZED_BENCHMARKS:
+            sized_groups.setdefault(info.bench_name, []).append(info)
+        elif info.bench_name in SUPPORTED_BENCHMARKS:
+            bench_groups.setdefault(info.bench_name, []).append(info)
+        else:
             print(f"Skipping unsupported benchmark '{info.bench_name}'.")
             continue
-        bench_groups.setdefault(info.bench_name, []).append(info)
 
     generated: list[str] = []
     for bench_name in sorted(bench_groups.keys()):
@@ -512,6 +643,16 @@ def _plot_csv_files(
         )
         if out:
             generated.append(out)
+
+    for bench_name in sorted(sized_groups.keys()):
+        infos = sized_groups[bench_name]
+        machines = ", ".join(i.machine for i in infos)
+        print(f"Plotting {file_prefix}{bench_name} ({machines}) ...")
+
+        outs: list[str] = plot_sized_benchmark_multiplot(
+            bench_name, infos, output_dir, max_commits, file_prefix=file_prefix
+        )
+        generated.extend(outs)
 
     return generated
 
@@ -537,6 +678,7 @@ def main() -> None:
         sys.exit(1)
 
     # If the user requested specific benchmarks, filter the discovered files.
+    all_supported: set[str] = set(SUPPORTED_BENCHMARKS) | set(SIZED_BENCHMARKS)
     if args.benchmarks:
         all_known: set[str] = {i.bench_name for i in csv_files} | {
             i.bench_name for i in github_csv_files
@@ -544,6 +686,11 @@ def main() -> None:
         unknown: list[str] = [b for b in args.benchmarks if b not in all_known]
         if unknown:
             print(f"WARNING: unknown benchmarks ignored: {unknown}")
+        unsupported: list[str] = [
+            b for b in args.benchmarks if b in all_known and b not in all_supported
+        ]
+        if unsupported:
+            print(f"WARNING: unsupported benchmarks skipped: {unsupported}")
         bench_set: set[str] = set(args.benchmarks)
         csv_files = [i for i in csv_files if i.bench_name in bench_set]
         github_csv_files = [i for i in github_csv_files if i.bench_name in bench_set]
@@ -555,7 +702,14 @@ def main() -> None:
     # Plot bare-metal benchmark data.
     if csv_files:
         print("--- Bare-metal benchmarks ---")
-        generated.extend(_plot_csv_files(csv_files, args.output_dir, args.max_commits))
+        generated.extend(
+            _plot_csv_files(
+                csv_files,
+                args.output_dir,
+                args.max_commits,
+                file_prefix="baremetal_",
+            )
+        )
 
     # Plot GitHub runner benchmark data.
     if github_csv_files:
