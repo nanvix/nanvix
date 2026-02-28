@@ -37,6 +37,15 @@ static const int EXPECTED_WORKER_THREAD_THREAD_LOCAL_VARIABLE_VALUE = 0xabcd;
  */
 _Thread_local volatile int thread_local_var = 0;
 
+/*
+ * Zero-initialized thread-local variable for regression testing of overlapping TLS.
+ *
+ * NOTE: Do NOT add an explicit `= 0` initializer. Without one, the compiler places this variable in
+ * .tbss (NOBITS); adding `= 0` would move it to .tdata (PROGBITS), which would mask the overlap bug
+ * this test is designed to catch.
+ */
+_Thread_local volatile int thread_local_zero_init_var;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -45,6 +54,9 @@ _Thread_local volatile int thread_local_var = 0;
 static void *worker_thread(void *arg)
 {
     (void)arg;
+
+    // Verify that zero-initialized thread-local variable starts at zero (GitHub issue #1486).
+    assert(thread_local_zero_init_var == 0);
 
     // Set thread-local variable.
     thread_local_var = EXPECTED_WORKER_THREAD_THREAD_LOCAL_VARIABLE_VALUE;
@@ -59,6 +71,9 @@ static void *worker_thread(void *arg)
 // Main thread for thread-local storage test.
 static void main_thread(void)
 {
+    // Verify that zero-initialized thread-local variable starts at zero (GitHub issue #1486).
+    assert(thread_local_zero_init_var == 0);
+
     // Set thread-local variable.
     thread_local_var = EXPECTED_MAIN_THREAD_THREAD_LOCAL_VARIABLE_VALUE;
 

@@ -45,15 +45,6 @@ SECTIONS
 		*(.rodata*)
 	}
 
-	/* Thread-local storage. */
-	.tls : ALIGN(PAGE_SIZE)
-	{
-		__TLS_START = .;
-		*(.tdata)
-		*(.tbss)
-		__TLS_END = .;
-	}
-
 	/* Exception handling frame header */
 	.eh_frame_hdr : ALIGN(4)
 	{
@@ -68,6 +59,34 @@ SECTIONS
 		PROVIDE(__eh_frame_start = .);
 		KEEP(*(.eh_frame))
 		PROVIDE(__eh_frame_end = .);
+	}
+
+	/*
+	 * Thread-local storage.
+	 *
+	 * Must appear after all PROGBITS sections (.eh_frame, etc.) so that the NOBITS .tbss
+	 * sub-section does not cause virtual-address (VMA) overlap with subsequent PROGBITS sections.
+	 */
+	.tls : ALIGN(PAGE_SIZE)
+	{
+		__TLS_START = .;
+		*(.tdata)
+		*(.tbss)
+		__TLS_END = .;
+	}
+
+	/*
+	 * PROGBITS companion for .tls.
+	 *
+	 * Because .tbss is NOBITS it does not produce a LOAD segment.  The TDA allocator (tda.rs)
+	 * copies __TLS_START..__TLS_END into each new thread, so the kernel must have allocated and
+	 * zero-filled the pages backing that range.  This zero-filled PROGBITS section creates a LOAD
+	 * segment that covers the .tbss region, causing the ELF loader to map and clear those pages.
+	 */
+	.tls_init ADDR(.tls) : AT(ADDR(.tls))
+	{
+		FILL(0x00000000);
+		. = __TLS_END;
 	}
 
 	/* Discarded. */
