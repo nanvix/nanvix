@@ -342,10 +342,9 @@ impl RunningProcess {
     ///
     pub fn add_thread(&mut self, ready_thread: ReadyThread) {
         trace!("self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
-        match self.ready.take() {
-            Some(mut ready_threads) => {
+        match self.ready.as_mut() {
+            Some(ready_threads) => {
                 ready_threads.push_back(ready_thread);
-                self.ready = Some(ready_threads);
             },
             None => {
                 self.ready = Some(NonEmptyVecDeque::new(ready_thread));
