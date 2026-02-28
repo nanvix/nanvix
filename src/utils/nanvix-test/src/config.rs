@@ -1302,8 +1302,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns an error when the field exists but is not a string, or when the executor
-/// field is missing.
+/// Returns an error when the field exists but is not a string, when the executor
+/// field is missing, or when `program` is present but cannot be used to derive a name.
 ///
 fn read_optional_name_field(table: &Table, key: &str, name_field: &str) -> Result<String> {
     match read_optional_string(table, key, name_field)? {
@@ -1321,14 +1321,25 @@ fn read_optional_name_field(table: &Table, key: &str, name_field: &str) -> Resul
                             entry_prefix
                         )
                     })?;
-            match table
-                .get("program")
-                .and_then(|v| v.as_str())
-                .and_then(|path| ::std::path::Path::new(path).file_name())
-                .and_then(|name| name.to_str())
-            {
-                Some(program) => Ok(format!("{executor}/{program}")),
-                None => Ok(executor.to_string()),
+            // Only fall back to the executor when 'program' is absent. If 'program'
+            // is present but invalid (wrong type or unusable path), return an error
+            // so misconfigurations are caught early.
+            if let Some(program_value) = table.get("program") {
+                let program_str = program_value.as_str().ok_or_else(|| {
+                    ::anyhow::anyhow!("'program' in {} must be a string", entry_prefix)
+                })?;
+                let program = ::std::path::Path::new(program_str)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or_else(|| {
+                        ::anyhow::anyhow!(
+                            "cannot derive default name: invalid 'program' in {}",
+                            entry_prefix
+                        )
+                    })?;
+                Ok(format!("{executor}/{program}"))
+            } else {
+                Ok(executor.to_string())
             }
         },
     }
@@ -1879,5 +1890,17 @@ mod tests {
             "auto-generated test name must fall back to just the executor when program is absent"
         );
         Ok(())
+    }
+
+    #[test]
+    fn auto_generated_name_invalid_program() {
+        // Program is present but has an unusable path (empty string), should error.
+        let mut table: Table = build_test_table("test-executor", None);
+        table.insert("program".to_string(), Value::String("".to_string()));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(
+            result.is_err(),
+            "auto-generated name must fail when 'program' is present but invalid"
+        );
     }
 }

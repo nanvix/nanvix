@@ -27,10 +27,12 @@ gateway_connect_timeout_ms = 15000
 
 [[tests]]
 executor = "empty"
+name = "empty/1"
 iterations = 1
 
 [[tests]]
 executor = "empty"
+name = "empty/2"
 iterations = 2
 
 #===================================================================================================
