@@ -1842,9 +1842,20 @@ impl ProcessManager {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
-        // TODO: change page permissions.
+        // Map all pages in the MMIO region.
         let vmem: &mut Vmem = state.vmem_mut();
-        vmem.kctrl(region.base(), region.perm())?;
+        let base: usize = region.base().into_raw_value();
+        let end: usize = base.checked_add(region.size()).ok_or_else(|| {
+            let reason: &str = "mmio region end address overflow";
+            error!("{reason} (base={base:#x}, size={:#?})", region.size());
+            Error::new(ErrorCode::ValueOverflow, reason)
+        })?;
+        for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+            // FIXME (#1482): Use infallible logic for address conversion.
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            // FIXME (#1481): If we fail, we need to revert operation.
+            vmem.kctrl(vaddr, region.perm())?;
+        }
 
         state.add_mmio(region);
 
