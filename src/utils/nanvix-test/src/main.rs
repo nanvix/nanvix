@@ -152,6 +152,38 @@ async fn run() -> Result<()> {
         .collect();
     let selected_count: usize = selected_tests.len();
 
+    // List mode: print selected tests and exit without executing.
+    if parsed_args.list() {
+        println!(
+            "Tests in {} ({selected_count} of {total_tests} selected):\n",
+            parsed_args.config_file_path()
+        );
+
+        // Compute column widths from the data.
+        let name_width: usize = selected_tests
+            .iter()
+            .map(|t| t.name.len())
+            .max()
+            .unwrap_or(4)
+            .max(4); // "Name" header length
+        let exec_width: usize = selected_tests
+            .iter()
+            .map(|t| t.executor.len())
+            .max()
+            .unwrap_or(8)
+            .max(8); // "Executor" header length
+
+        // Header.
+        println!("  {:<name_width$}  {:<exec_width$}", "Name", "Executor");
+        println!("  {:-<name_width$}  {:-<exec_width$}", "", "");
+
+        // Rows.
+        for test_config in &selected_tests {
+            println!("  {:<name_width$}  {:<exec_width$}", test_config.name, test_config.executor);
+        }
+        return Ok(());
+    }
+
     // Fail early when no tests match the requested filter.
     if selected_tests.is_empty() {
         let reason: String = format!(

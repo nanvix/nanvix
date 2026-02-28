@@ -27,6 +27,8 @@ pub struct Args {
     config_file_path: String,
     /// Optional test filter to select specific tests to run.
     test_filter: Option<String>,
+    /// When true, list selected tests and exit without running them.
+    list: bool,
 }
 
 //==================================================================================================
@@ -36,6 +38,7 @@ pub struct Args {
 impl Args {
     const OPT_HELP: &'static str = "-help";
     const OPT_TEST_SELECTOR: &'static str = "-test";
+    const OPT_LIST: &'static str = "-list";
 
     ///
     /// # Description
@@ -62,6 +65,7 @@ Options:
     {help}                   Show this help message and exit.
     {filter} <pattern>         Specify a comma-separated list or a matching pattern of test(s) to \
              run (e.g., '-test http/*' to run all tests in the 'http' executor).
+    {list}                   List selected tests and exit without running them.
 
 Required positional arguments:
     config-file             Path to the TOML configuration that describes the runner and test case.
@@ -69,6 +73,7 @@ Required positional arguments:
             program_name = program_name,
             help = Self::OPT_HELP,
             filter = Self::OPT_TEST_SELECTOR,
+            list = Self::OPT_LIST,
         );
     }
 
@@ -89,6 +94,7 @@ Required positional arguments:
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut config_file_path: Option<String> = None;
         let mut test_filter_string: Option<String> = None;
+        let mut list: bool = false;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -96,6 +102,9 @@ Required positional arguments:
                 Self::OPT_HELP => {
                     Self::usage(args[0].as_str());
                     process::exit(0);
+                },
+                Self::OPT_LIST => {
+                    list = true;
                 },
                 Self::OPT_TEST_SELECTOR => {
                     if i + 1 < args.len() {
@@ -143,6 +152,7 @@ Required positional arguments:
         Ok(Self {
             config_file_path,
             test_filter,
+            list,
         })
     }
 
@@ -170,6 +180,19 @@ Required positional arguments:
     ///
     pub fn test_filter(&self) -> Option<&str> {
         self.test_filter.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the `-list` flag was specified on the command line.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the user requested test listing without execution.
+    ///
+    pub fn list(&self) -> bool {
+        self.list
     }
 
     ///
@@ -298,5 +321,36 @@ mod tests {
         let err = build_globset_internal(filter)
             .expect_err("Expected invalid glob pattern to return an error");
         assert!(err.contains("Invalid glob pattern '['"));
+    }
+    #[test]
+    fn list_flag() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-list".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        let parsed = super::Args::parse(args).expect("Failed to parse -list flag");
+        assert!(parsed.list(), "-list flag must set list to true");
+        assert_eq!(parsed.config_file_path(), "test/test.toml");
+    }
+    #[test]
+    fn list_flag_combined_with_test_filter() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-list".to_string(),
+            "-test".to_string(),
+            "http/*".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        let parsed = super::Args::parse(args).expect("Failed to parse -list with -test filter");
+        assert!(parsed.list(), "-list flag must be set");
+        assert_eq!(parsed.test_filter(), Some("http/*"));
+        assert_eq!(parsed.config_file_path(), "test/test.toml");
+    }
+    #[test]
+    fn no_list_flag_defaults_to_false() {
+        let args = vec!["nanvix-test".to_string(), "test/test.toml".to_string()];
+        let parsed = super::Args::parse(args).expect("Failed to parse args without -list");
+        assert!(!parsed.list(), "list must default to false");
     }
 }
