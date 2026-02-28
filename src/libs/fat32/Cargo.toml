@@ -21,7 +21,10 @@ sysapi = { workspace = true }
 
 [features]
 default = []
-std = []
+std = ["fatfs/std"]
+
+[dev-dependencies]
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 
 [lints]
 workspace = true
