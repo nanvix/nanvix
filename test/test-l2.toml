@@ -49,6 +49,14 @@ expected_exit_code = 13
 
 [[tests]]
 executor = "http"
+program = "./bin/fat32-test.elf"
+extra_nanvixd_args = "-ramfs ./bin/fat32-test.img"
+input = "[]"
+expect_empty_output = true
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "http"
 program = "./bin/echo-c.elf"
 input = "hello world!"
 expected_output = "hello world!"
