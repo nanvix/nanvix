@@ -21,6 +21,7 @@ members = [
         "src/libs/control-plane-api",
         "src/libs/elf",
         "src/libs/error",
+        "src/libs/fat32",
         "src/libs/hwloc",
         "src/libs/nanvix",
         "src/libs/nanvix-http",
@@ -91,6 +92,10 @@ control-plane-api = { path = "src/libs/control-plane-api", default-features = fa
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
 error = { path = "src/libs/error", default-features = false }
+fat32 = { path = "src/libs/fat32", default-features = false }
+# fatfs: pinned to a git revision because the crate is not published on
+# crates.io and we need the no_std + alloc feature set.
+fatfs = { git = "https://github.com/rafalh/rust-fatfs", rev = "4eccb50d011146fbed20e133d33b22f3c27292e7", default-features = false }
 flexi_logger = "0.31.2"
 globset = { version = "0.4.18", default-features = false }
 goblin = { version = "0.10.0", default-features = false }
