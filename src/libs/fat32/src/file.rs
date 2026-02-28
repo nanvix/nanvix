@@ -718,3 +718,136 @@ fn open_with_options(
         mount_path,
     })
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- OpenOptions builder tests -----------------------------------------------
+
+    /// Tests that default OpenOptions has all flags false.
+    #[test]
+    fn open_options_default() {
+        let opts: OpenOptions = OpenOptions::new();
+        assert!(!opts.read, "read should default to false");
+        assert!(!opts.write, "write should default to false");
+        assert!(!opts.create, "create should default to false");
+        assert!(!opts.create_new, "create_new should default to false");
+        assert!(!opts.truncate, "truncate should default to false");
+    }
+
+    /// Tests builder method chaining.
+    #[test]
+    fn open_options_builder_chaining() {
+        let opts: OpenOptions = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true);
+        assert!(opts.read, "read should be true");
+        assert!(opts.write, "write should be true");
+        assert!(opts.create, "create should be true");
+        assert!(opts.truncate, "truncate should be true");
+    }
+
+    /// Tests that truncate without write is rejected.
+    #[test]
+    fn open_options_truncate_requires_write() {
+        let result = OpenOptions::new().truncate(true).open("/nonexistent");
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::InvalidArgument,
+            "truncate without write should be rejected"
+        );
+    }
+
+    /// Tests that create_new + create is rejected.
+    #[test]
+    fn open_options_create_new_excludes_create() {
+        let result = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .create_new(true)
+            .open("/nonexistent");
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::InvalidArgument,
+            "create_new + create should be rejected"
+        );
+    }
+
+    /// Tests that create_new + truncate is rejected.
+    #[test]
+    fn open_options_create_new_excludes_truncate() {
+        let result = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create_new(true)
+            .open("/nonexistent");
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::InvalidArgument,
+            "create_new + truncate should be rejected"
+        );
+    }
+
+    /// Tests that Default trait matches OpenOptions::new().
+    #[test]
+    fn open_options_implements_default() {
+        let default: OpenOptions = OpenOptions::default();
+        let new: OpenOptions = OpenOptions::new();
+        assert_eq!(default.read, new.read);
+        assert_eq!(default.write, new.write);
+        assert_eq!(default.create, new.create);
+        assert_eq!(default.create_new, new.create_new);
+        assert_eq!(default.truncate, new.truncate);
+    }
+
+    /// Tests that OpenOptions implements Debug.
+    #[test]
+    fn open_options_debug() {
+        let opts: OpenOptions = OpenOptions::new().read(true);
+        let debug: alloc::string::String = alloc::format!("{opts:?}");
+        assert!(debug.contains("OpenOptions"), "debug output should contain type name");
+    }
+
+    // -- Stat tests --------------------------------------------------------------
+
+    /// Tests Stat equality and debug.
+    #[test]
+    fn stat_clone_eq_debug() {
+        let s: Stat = Stat::new(42, false);
+        let cloned: Stat = s;
+        assert_eq!(s, cloned, "clone should preserve equality");
+
+        let other: Stat = Stat::new(0, true);
+        assert_ne!(s, other, "different stats should not be equal");
+
+        assert_eq!(s.size(), 42, "size accessor should return 42");
+        assert!(!s.is_dir(), "is_dir accessor should return false");
+
+        let debug: alloc::string::String = alloc::format!("{s:?}");
+        assert!(debug.contains("42"), "debug should contain size");
+    }
+
+    // -- DirEntry tests ----------------------------------------------------------
+
+    /// Tests DirEntry equality and debug.
+    #[test]
+    fn dir_entry_clone_eq_debug() {
+        let entry: DirEntry = DirEntry::new(String::from("test.txt"), false, 100);
+        let cloned: DirEntry = entry.clone();
+        assert_eq!(entry, cloned, "clone should preserve equality");
+
+        assert_eq!(entry.name(), "test.txt", "name accessor should return name");
+        assert!(!entry.is_dir(), "is_dir accessor should return false");
+        assert_eq!(entry.size(), 100, "size accessor should return 100");
+
+        let debug: alloc::string::String = alloc::format!("{entry:?}");
+        assert!(debug.contains("test.txt"), "debug should contain name");
+    }
+}
