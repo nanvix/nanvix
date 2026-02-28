@@ -117,7 +117,7 @@ kvm-bindings = "0.14.0"
 kvm-ioctls = "0.24.0"
 libc = "0.2.172"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
-log = "0.4.27"
+log = "0.4.29"
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
