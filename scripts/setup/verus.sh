@@ -164,17 +164,30 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     rm -rf "${tmp_dir}"
     trap - EXIT
 
-    # Install the Rust toolchain that Verus was built against (read from version.json).
+    print_success "Verus ${version} installed to ${install_dir}."
+}
+
+#
+# DESCRIPTION
+#   Ensures the Rust toolchain required by Verus is installed.
+#   Reads the required toolchain from version.json and installs it if missing.
+#
+# ARGUMENTS
+#   $1 - The Verus installation directory.
+#
+ensure_verus_toolchain() {
+    local install_dir="$1"
+
     if [[ -f "${install_dir}/version.json" ]] && command -v rustup &>/dev/null; then
         local required_toolchain
         required_toolchain=$(python3 -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 print(data.get('verus', {}).get('toolchain', ''))
-" "${install_dir}/version.json" 2>/dev/null || {
-            print_warning "Failed to parse ${install_dir}/version.json; skipping toolchain install."
-            echo ""
-        })
+" "${install_dir}/version.json" 2>/dev/null) || {
+            print_warning "Failed to parse ${install_dir}/version.json; skipping toolchain check."
+            return 0
+        }
 
         if [[ -n "${required_toolchain}" ]]; then
             if ! rustup run "${required_toolchain}" rustc --version &>/dev/null; then
@@ -183,8 +196,6 @@ print(data.get('verus', {}).get('toolchain', ''))
             fi
         fi
     fi
-
-    print_success "Verus ${version} installed to ${install_dir}."
 }
 
 #===================================================================================================
@@ -202,6 +213,7 @@ main() {
 
     if [[ "${installed_version}" == "${expected_version}" ]]; then
         print_info "Verus ${expected_version} is already installed in ${install_dir}."
+        ensure_verus_toolchain "${install_dir}"
         return 0
     fi
 
@@ -222,6 +234,7 @@ main() {
     fi
 
     install_verus "${install_dir}" "${expected_version}"
+    ensure_verus_toolchain "${install_dir}"
 }
 
 main "$@"
