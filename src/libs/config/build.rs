@@ -93,6 +93,17 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
 
     let val: usize =
         parse_hex_or_decimal_usize(required_key(&kernel_config_toml, "memory_size"), "memory_size");
+    // Hyperlight imposes a hard 1 GiB guest-memory ceiling. Fail the build if the configured
+    // memory_size exceeds the hyperlight sandbox budget so the mismatch is caught immediately.
+    if env::var("CARGO_FEATURE_HYPERLIGHT").is_ok() {
+        const HYPERLIGHT_MEMORY_CEILING: usize = 1024 * 1024 * 1024;
+        assert!(
+            val <= HYPERLIGHT_MEMORY_CEILING,
+            "memory_size ({val}) exceeds the Hyperlight guest-memory ceiling \
+             ({HYPERLIGHT_MEMORY_CEILING}). Reduce memory_size in kernel_config.toml for \
+             hyperlight builds.",
+        );
+    }
     constants.push_str(&format!("pub const MEMORY_SIZE: usize = {val};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(
