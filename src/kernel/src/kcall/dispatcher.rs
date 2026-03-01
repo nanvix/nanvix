@@ -10,10 +10,7 @@ use crate::{
     event,
     io,
     ipc,
-    kcall::{
-        KcallResult,
-        ScoreBoard,
-    },
+    kcall::KcallResult,
     pm::{
         self,
         InterruptReason,
@@ -179,16 +176,10 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },
 
-        // Dispatch kernel call for remote execution.
-        _ => match ScoreBoard::get_mut() {
-            // SAFETY: The calling thread is not the kernel and no resources are held.
-            Ok(scoreboard) => {
-                match unsafe { scoreboard.dispatch(number, pid, tid, arg0, arg1, arg2, arg3) } {
-                    Ok(result) => result,
-                    Err(sleep_error) => handle_sleep_error(sleep_error),
-                }
-            },
-            Err(e) => KcallResult::Error(e.code.into()),
+        // Unknown kernel call.
+        _ => {
+            error!("invalid kernel call (number={})", number);
+            KcallResult::Error(ErrorCode::InvalidSysCall.into())
         },
     }
     .into()

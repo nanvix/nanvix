@@ -420,9 +420,6 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     // SAFETY: the memory manager is initialized and access is synchronized.
     let status: ExitStatus =
         if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
-            // Initialize kernel call dispatcher.
-            kcall::init();
-
             // Enable timer interrupts, if they are supported.
             // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
             if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
