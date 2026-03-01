@@ -1,11 +1,11 @@
-// Copyright (c) The Maintainers of Nanvix.
-// Licensed under the MIT license.
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
 
 //! Global filesystem state management.
 //!
 //! This module manages the global VFS state and provides mount/unmount
 //! operations for FAT filesystems. The guest application must call [`init()`]
-//! before using any filesystem operations, then use [`mount()`] or
+//! before using any filesystem operations, then use [`mount_image()`] or
 //! [`create_mount()`] to add FAT filesystems.
 //!
 //! # Thread Safety
@@ -18,16 +18,14 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Fat32Error,
-    fat::{
-        Fat,
-        RawMemoryStorage,
-    },
-    vfs::{
-        Mount,
-        Vfs,
-    },
+use ::fat32::{
+    Fat32Error,
+    Fat,
+    RawMemoryStorage,
+};
+use crate::mount::{
+    Mount,
+    Vfs,
 };
 use ::alloc::{
     boxed::Box,
@@ -179,7 +177,7 @@ pub fn is_initialized() -> bool {
 /// - `ptr` points to valid memory containing a FAT filesystem image.
 /// - The memory remains valid for the lifetime of the mount.
 /// - The memory region is at least `size` bytes.
-pub unsafe fn mount(mount_path: &str, ptr: *mut u8, size: usize) -> Result<(), Fat32Error> {
+pub unsafe fn mount_image(mount_path: &str, ptr: *mut u8, size: usize) -> Result<(), Fat32Error> {
     if !mount_path.starts_with('/') {
         return Err(Fat32Error::InvalidPath);
     }
@@ -274,7 +272,7 @@ pub fn create_mount(mount_path: &str, size: usize) -> Result<(), Fat32Error> {
 /// Unmounts a guest-created FAT mount and frees its memory.
 ///
 /// Only mounts created via [`create_mount()`] can be unmounted.
-/// Attempting to unmount a mount created via [`mount()`] will fail with
+/// Attempting to unmount a mount created via [`mount_image()`] will fail with
 /// [`Fat32Error::PermissionDenied`].
 ///
 /// # Parameters

@@ -2,12 +2,12 @@
 # Licensed under the MIT License.
 
 [package]
-name = "fat32"
+name = "vfs"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "no_std FAT32 filesystem library for nanvix guest applications"
+description = "Virtual file system for Nanvix guest applications"
 homepage.workspace = true
 
 [lib]
@@ -15,11 +15,14 @@ crate-type = ["lib"]
 
 [dependencies]
 error = { workspace = true }
+fat32 = { workspace = true }
 fatfs = { workspace = true, features = ["alloc", "lfn"] }
+spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+sysapi = { workspace = true }
 
 [features]
 default = []
-std = ["fatfs/std"]
+std = ["fat32/std"]
 
 [dev-dependencies]
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }

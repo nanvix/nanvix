@@ -1,5 +1,5 @@
-// Copyright (c) The Maintainers of Nanvix.
-// Licensed under the MIT license.
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
 
 //! Unified file handle and POSIX-like filesystem operations.
 //!
@@ -14,11 +14,11 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Fat32Error,
-    fat::FatFile,
-    state,
+use ::fat32::{
+    Fat32Error,
+    FatFile,
 };
+use crate::state;
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -41,7 +41,7 @@ use ::sysapi::unistd::file_seek;
 /// # Description
 ///
 /// ```ignore
-/// use fat32::{OpenOptions, File};
+/// use vfs::{OpenOptions, File};
 ///
 /// // Open for reading (implicit default)
 /// let file = OpenOptions::new().open("/data/config.txt")?;
@@ -180,9 +180,9 @@ impl OpenOptions {
 /// # Description
 ///
 /// ```ignore
-/// use fat32;
+/// use vfs;
 ///
-/// let mut file = fat32::open("/data/hello.txt")?;
+/// let mut file = vfs::open("/data/hello.txt")?;
 /// let mut buf = [0u8; 256];
 /// let n = file.read(&mut buf)?;
 /// ```
@@ -380,6 +380,30 @@ pub fn open(path: &str) -> Result<File, Fat32Error> {
     open_with_options(path, true, false, false, false, false)
 }
 
+/// Returns a pointer and size for zero-copy access to a file's data in
+/// the in-memory FAT image.
+///
+/// If the file is stored contiguously, returns `Some((data_ptr, file_size))`
+/// where `data_ptr` points directly into the FAT image buffer. Returns
+/// `None` if the file is empty, not found, fragmented, or no mount handles
+/// the path.
+///
+/// # Parameters
+///
+/// - `path`: The path to the file.
+pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
+    let (mount_idx, relative_path): (usize, String) = resolve_path(path).ok()?;
+    state::with_vfs(|vfs| {
+        let mount: &crate::mount::Mount =
+            vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+        mount
+            .fat()
+            .file_raw_region(&relative_path)
+            .ok_or(Fat32Error::NotFound)
+    })
+    .ok()
+}
+
 /// File metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stat {
@@ -396,7 +420,7 @@ impl Stat {
     ///
     /// - `size`: File size in bytes (0 for directories).
     /// - `is_dir`: Whether this entry is a directory.
-    pub(crate) fn new(size: u64, is_dir: bool) -> Self {
+    pub fn new(size: u64, is_dir: bool) -> Self {
         Self { size, is_dir }
     }
 
@@ -461,7 +485,7 @@ impl DirEntry {
     /// - `name`: Entry name (filename only, not full path).
     /// - `is_dir`: Whether this entry is a directory.
     /// - `size`: Size in bytes (0 for directories).
-    pub(crate) fn new(name: String, is_dir: bool, size: u64) -> Self {
+    pub fn new(name: String, is_dir: bool, size: u64) -> Self {
         Self { name, is_dir, size }
     }
 

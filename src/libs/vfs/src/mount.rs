@@ -1,5 +1,5 @@
-// Copyright (c) The Maintainers of Nanvix.
-// Licensed under the MIT license.
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
 
 //! Virtual filesystem layer.
 //!
@@ -17,9 +17,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    error::Fat32Error,
-    fat::Fat,
+use ::fat32::{
+    Fat32Error,
+    Fat,
 };
 use ::alloc::{
     string::String,
@@ -438,7 +438,7 @@ mod tests {
     ///
     /// The returned `Vec<u8>` must be kept alive for the lifetime of the Mount.
     fn make_mount(mount_path: &str) -> (Mount, Vec<u8>) {
-        use crate::fat::{
+        use ::fat32::{
             Fat,
             RawMemoryStorage,
         };
@@ -510,12 +510,12 @@ mod tests {
         let mut buf: Vec<u8> = alloc::vec![0u8; size];
         let ptr: *mut u8 = buf.as_mut_ptr();
 
-        let mut storage: crate::fat::RawMemoryStorage =
-            unsafe { crate::fat::RawMemoryStorage::new(ptr, size).expect("valid storage") };
+        let mut storage: ::fat32::RawMemoryStorage =
+            unsafe { ::fat32::RawMemoryStorage::new(ptr, size).expect("valid storage") };
         ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
             .expect("format should succeed");
-        let fat: crate::fat::Fat =
-            unsafe { crate::fat::Fat::from_memory(ptr, size).expect("valid fat") };
+        let fat: ::fat32::Fat =
+            unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
 
         let result = Mount::new(String::from("relative"), fat);
         match result {
