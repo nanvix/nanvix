@@ -216,6 +216,15 @@ impl RamFs {
     ///
     /// Writes the RAMFS base and size registers exposed to the guest.
     ///
+    /// # Note
+    ///
+    /// The RAMFS registers at [`config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE`] (GPA `0xC`)
+    /// and [`config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE`] (GPA `0x10`) fall inside the
+    /// kernel ELF's `.zero` section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The
+    /// ELF loader zero-fills this range when `load_kernel()` runs. This method must therefore
+    /// execute **after** the ELF has been loaded, so that the VMM-written values are not
+    /// overwritten.
+    ///
     /// # Parameters
     ///
     /// - `vmem`: Virtual memory instance that holds the control registers.

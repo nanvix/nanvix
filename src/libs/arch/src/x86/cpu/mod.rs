@@ -94,12 +94,24 @@ pub unsafe fn sti() {
 ///
 /// The value of the `rdtsc` instruction.
 ///
+/// # Note
+///
+/// An `lfence` is issued before `rdtsc` to serialize the instruction stream,
+/// preventing speculative execution from reordering the TSC read relative to
+/// preceding memory accesses.
+///
 pub fn rdtsc() -> u64 {
     let mut low: u32;
     let mut high: u32;
 
     unsafe {
-        core::arch::asm!("rdtsc", out("edx") high, out("eax") low);
+        core::arch::asm!(
+            "lfence",
+            "rdtsc",
+            out("edx") high,
+            out("eax") low,
+            options(nostack, nomem, preserves_flags)
+        );
     }
 
     ((high as u64) << 32) | (low as u64)

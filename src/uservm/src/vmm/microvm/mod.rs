@@ -248,6 +248,33 @@ impl Vmm {
 
             guest.reset(&mut vmem, &mut vcpu)?;
 
+            // Setup KVM paravirtualized clock.
+            //
+            // NOTE: The pvclock page at DEFAULT_PVCLOCK_PAGE (GPA 0x1000) falls inside
+            // the kernel ELF's `.zero` section (LOAD segment at GPA 0x0 with MemSiz
+            // 0x8000). The ELF loader zero-fills this range when `load_kernel()` runs
+            // above. Both `setup_pvclock()` (which causes KVM to populate the page)
+            // and the boot-time write below must therefore execute **after** the ELF
+            // has been loaded. This is the same pattern used by the microvm control
+            // registers at GPA 0x0–0x10 (credits, pause-requested, ramfs).
+            let pvclock_gpa: u64 = ::config::microvm::DEFAULT_PVCLOCK_PAGE as u64;
+            vcpu.setup_pvclock(pvclock_gpa)?;
+
+            // Write boot time (UTC nanoseconds since Unix epoch) to the pvclock page so
+            // the guest can compute wall-clock time from the monotonic pvclock.
+            let boot_time_ns: u64 = {
+                let d: std::time::Duration = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
+                let nanos_per_sec: u64 = u64::from(::sys::time::NANOSECONDS_PER_SECOND);
+                d.as_secs() * nanos_per_sec + u64::from(d.subsec_nanos())
+            };
+            let boot_time_offset: u64 = (::config::microvm::DEFAULT_PVCLOCK_PAGE
+                + ::config::microvm::PVCLOCK_BOOT_TIME_NS_OFFSET)
+                as u64;
+            vmem.write_bytes(boot_time_offset, &boot_time_ns.to_le_bytes())?;
+            trace!("pvclock: boot_time_ns={boot_time_ns}, page_gpa={pvclock_gpa:#010x}");
+
             Arc::new(Mutex::new(guest))
         };
 
