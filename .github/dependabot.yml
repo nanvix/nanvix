@@ -25,6 +25,7 @@ updates:
       - dependency-name: "hyperlight-common"
       - dependency-name: "hyperlight-host"
       - dependency-name: "hyperlight-guest"
+      - dependency-name: "fatfs"
 
     groups:
       kvm-stack:
