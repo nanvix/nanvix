@@ -1374,21 +1374,42 @@ impl WorkerThreadHandle {
 
         trace!("handle_long_request(): source={source:?}, part={part:?}");
 
-        let result: Result<Option<Vec<Message>>, WorkerThreadError> = assembler
+        // Phase 1: Assemble message parts under the lock.  The lock is
+        // released as soon as assembly completes (before any blocking
+        // syscall runs) so that other worker threads are not starved.
+        let assembled_request: Result<Option<T>, WorkerThreadError> = assembler
             .blocking_lock()
-            .process_message::<S, T>(syscall_table, source, part);
+            .assemble_and_take::<S, T>(source, part);
 
-        match result {
-            Ok(Some(messages)) => {
-                for message in messages {
-                    if let Err(e) =
-                        Handle::current().block_on(Self::send(uvm_stream.clone(), message))
-                    {
-                        error!("failed to send message (error={e:?})");
-                    }
+        // Phase 2: Process the assembled request *outside* the lock.
+        match assembled_request {
+            Ok(Some(request)) => {
+                let result: Result<Vec<Message>, WorkerThreadError> =
+                    T::process_request(syscall_table, source, request);
+                match result {
+                    Ok(messages) => {
+                        for message in messages {
+                            if let Err(e) =
+                                Handle::current().block_on(Self::send(uvm_stream.clone(), message))
+                            {
+                                error!("failed to send message (error={e:?})");
+                            }
+                        }
+                        Ok(())
+                    },
+                    Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
+                    Err(WorkerThreadError::Error(e)) => {
+                        error!("failed to process request (error={e:?})");
+                        // TODO: proper error code conversion.
+                        if let Err(e) = Handle::current().block_on(Self::send(
+                            uvm_stream.clone(),
+                            Self::do_error(source, ErrorCode::IoErr),
+                        )) {
+                            error!("failed to send error message (error={e:?})");
+                        }
+                        Ok(())
+                    },
                 }
-
-                Ok(())
             },
             Ok(None) => Ok(()),
             Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
@@ -1401,7 +1422,6 @@ impl WorkerThreadHandle {
                 )) {
                     error!("failed to send error message (error={e:?})");
                 }
-
                 Ok(())
             },
         }

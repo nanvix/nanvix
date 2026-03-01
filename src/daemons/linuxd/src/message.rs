@@ -31,14 +31,17 @@ pub struct RequestAssembler {
 }
 
 impl RequestAssembler {
-    pub fn process_message<S, T: RequestAssemblerTrait<S>>(
+    /// Assembles a message part and, if all parts have arrived, extracts the
+    /// deserialized request without executing it. This is intended to be called
+    /// while the assembler lock is held so that the lock can be released before
+    /// the potentially-blocking syscall runs.
+    pub fn assemble_and_take<S, T: RequestAssemblerTrait<S>>(
         &mut self,
-        syscall_table: &SyscallTable<S>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
-    ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
-        match self.process_message_internal::<S, T>(syscall_table, source, part) {
-            Ok(messages) => Ok(messages),
+    ) -> Result<Option<T>, WorkerThreadError> {
+        match self.assemble_and_take_internal::<S, T>(source, part) {
+            Ok(request) => Ok(request),
             Err(WorkerThreadError::Interrupted) => Err(WorkerThreadError::Interrupted),
             Err(WorkerThreadError::Error(e)) => {
                 self.inflight.remove(&source);
@@ -47,12 +50,11 @@ impl RequestAssembler {
         }
     }
 
-    fn process_message_internal<S, T: RequestAssemblerTrait<S>>(
+    fn assemble_and_take_internal<S, T: RequestAssemblerTrait<S>>(
         &mut self,
-        syscall_table: &SyscallTable<S>,
         source: ThreadIdentifier,
         part: LinuxDaemonMessagePart,
-    ) -> Result<Option<Vec<Message>>, WorkerThreadError> {
+    ) -> Result<Option<T>, WorkerThreadError> {
         let message_complete: bool = {
             match self.assemble_parts::<S, T>(source, part) {
                 Ok(message_complete) => message_complete,
@@ -66,8 +68,8 @@ impl RequestAssembler {
             return Ok(None);
         }
 
-        match self.process_request::<S, T>(syscall_table, source) {
-            Ok(messages) => Ok(Some(messages)),
+        match self.take_request::<S, T>(source) {
+            Ok(request) => Ok(Some(request)),
             Err(e) => Err(e),
         }
     }
@@ -85,19 +87,17 @@ impl RequestAssembler {
         Ok(T::is_complete(assembler)?)
     }
 
-    fn process_request<S, T: RequestAssemblerTrait<S>>(
+    fn take_request<S, T: RequestAssemblerTrait<S>>(
         &mut self,
-        syscall_table: &SyscallTable<S>,
         source: ThreadIdentifier,
-    ) -> Result<Vec<Message>, WorkerThreadError> {
+    ) -> Result<T, WorkerThreadError> {
         let assembler: RequestAssemblerType = self
             .inflight
             .remove(&source)
             .expect("inflight request does exist");
 
         let parts: Vec<LinuxDaemonMessagePart> = T::take_parts(assembler);
-        let request: T = T::from_parts(&parts)?;
-        T::process_request(syscall_table, source, request)
+        Ok(T::from_parts(&parts)?)
     }
 }
 
@@ -140,4 +140,159 @@ where
         source: ThreadIdentifier,
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError>;
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::std::{
+        sync::Arc,
+        time::{
+            Duration,
+            Instant,
+        },
+    };
+    use ::syscall::{
+        fcntl::message::OpenAtRequest,
+        message::MessagePartitioner,
+        LinuxDaemonMessage,
+    };
+    use ::tokio::sync::Mutex;
+
+    /// Extracts `LinuxDaemonMessagePart` payloads from the IPC `Message` objects
+    /// produced by `MessagePartitioner::into_parts()`.
+    #[allow(clippy::expect_used)]
+    fn extract_parts(messages: Vec<Message>) -> Vec<LinuxDaemonMessagePart> {
+        messages
+            .into_iter()
+            .map(|msg| {
+                let daemon_msg: LinuxDaemonMessage =
+                    LinuxDaemonMessage::try_from_bytes(msg.payload)
+                        .expect("valid LinuxDaemonMessage");
+                LinuxDaemonMessagePart::from_bytes(daemon_msg.payload)
+            })
+            .collect()
+    }
+
+    /// Verifies that `assemble_and_take` returns the deserialized request
+    /// without executing `process_request`. This is the core property
+    /// introduced by the fix for issue #1493 — assembly is separated from
+    /// execution so the caller can release the lock before running the
+    /// potentially-blocking syscall.
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn assemble_and_take_returns_request_without_executing() {
+        let source: ThreadIdentifier = ThreadIdentifier::from(42_i32);
+        let original: OpenAtRequest =
+            OpenAtRequest::new(-100, "/tmp/test.txt", 0x41, 0o644).expect("valid OpenAtRequest");
+
+        let parts: Vec<LinuxDaemonMessagePart> =
+            extract_parts(original.into_parts(source).expect("valid parts"));
+
+        let mut assembler: RequestAssembler = RequestAssembler::default();
+
+        let mut result: Option<OpenAtRequest> = None;
+        for part in parts {
+            let r: Option<OpenAtRequest> = assembler
+                .assemble_and_take::<(), OpenAtRequest>(source, part)
+                .expect("assembly should succeed");
+            if r.is_some() {
+                result = r;
+            }
+        }
+
+        let request: OpenAtRequest = result.expect("request should be fully assembled");
+        assert_eq!(request.dirfd, -100, "dirfd mismatch");
+        assert_eq!(request.flags, 0x41, "flags mismatch");
+        assert_eq!(request.mode, 0o644, "mode mismatch");
+        assert_eq!(request.pathname, "/tmp/test.txt", "pathname mismatch");
+    }
+
+    /// Regression test for issue #1493: deadlock when the assembler lock was
+    /// held across blocking syscall execution.
+    ///
+    /// This test replicates the `handle_long_request` two-phase pattern
+    /// introduced by the fix.  Thread A acquires the assembler lock, calls
+    /// `assemble_and_take`, **drops the lock**, and then simulates a slow
+    /// `process_request` (500 ms sleep).  Thread B attempts to acquire the
+    /// same lock shortly after Thread A.
+    ///
+    /// With the fix (lock released before processing), Thread B acquires the
+    /// lock almost immediately.  If someone were to revert to the old pattern
+    /// (lock held during `process_request`), Thread B would be blocked for the
+    /// full 500 ms, causing the assertion to fail.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[allow(clippy::expect_used)]
+    async fn assembler_lock_released_before_process_request() {
+        let assembler: Arc<Mutex<RequestAssembler>> =
+            Arc::new(Mutex::new(RequestAssembler::default()));
+
+        let source_a: ThreadIdentifier = ThreadIdentifier::from(1_i32);
+        let request_a: OpenAtRequest =
+            OpenAtRequest::new(-100, "/tmp/a.txt", 0x41, 0o644).expect("valid OpenAtRequest");
+        let parts_a: Vec<LinuxDaemonMessagePart> =
+            extract_parts(request_a.into_parts(source_a).expect("valid parts"));
+
+        let source_b: ThreadIdentifier = ThreadIdentifier::from(2_i32);
+        let request_b: OpenAtRequest =
+            OpenAtRequest::new(-100, "/tmp/b.txt", 0x41, 0o644).expect("valid OpenAtRequest");
+        let parts_b: Vec<LinuxDaemonMessagePart> =
+            extract_parts(request_b.into_parts(source_b).expect("valid parts"));
+
+        // Barrier: signal when Thread A has released the lock.
+        let lock_released: Arc<tokio::sync::Notify> = Arc::new(tokio::sync::Notify::new());
+
+        // Thread A: assemble under lock → drop lock → simulate slow process_request.
+        let asm_a: Arc<Mutex<RequestAssembler>> = assembler.clone();
+        let notify: Arc<tokio::sync::Notify> = lock_released.clone();
+        let task_a: tokio::task::JoinHandle<()> = tokio::spawn(async move {
+            // Phase 1: assemble under lock (mirrors the fixed handle_long_request).
+            {
+                let mut guard: tokio::sync::MutexGuard<'_, RequestAssembler> = asm_a.lock().await;
+                for part in parts_a {
+                    let _: Option<OpenAtRequest> = guard
+                        .assemble_and_take::<(), OpenAtRequest>(source_a, part)
+                        .expect("assembly should succeed");
+                }
+            } // Lock dropped here — the core of the fix.
+
+            notify.notify_one();
+
+            // Phase 2: simulate blocking process_request (e.g., libc::openat).
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        });
+
+        // Wait until Thread A has released the lock.
+        lock_released.notified().await;
+
+        // Thread B: should acquire the lock almost immediately.
+        let start: Instant = Instant::now();
+        let asm_b: Arc<Mutex<RequestAssembler>> = assembler.clone();
+        let task_b: tokio::task::JoinHandle<()> = tokio::spawn(async move {
+            let mut guard: tokio::sync::MutexGuard<'_, RequestAssembler> = asm_b.lock().await;
+            for part in parts_b {
+                let _: Option<OpenAtRequest> = guard
+                    .assemble_and_take::<(), OpenAtRequest>(source_b, part)
+                    .expect("assembly should succeed");
+            }
+        });
+
+        task_b.await.expect("task_b should complete");
+        let elapsed: Duration = start.elapsed();
+
+        // If the lock were held during process_request (the old, buggy
+        // pattern), this would take ~500 ms.  With the fix, it takes < 50 ms.
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "Thread B waited {}ms for the assembler lock — expected < 100ms. The lock is likely \
+             still held during process_request (issue #1493).",
+            elapsed.as_millis()
+        );
+
+        task_a.await.expect("task_a should complete");
+    }
 }
