@@ -34,6 +34,18 @@ use ::sysapi::{
 pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
     ::syslog::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_lseek(fd, offset, whence).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("lseek(): VFS lseek failed (fd={fd}, error={e})");
+                Error::new(code, "vfs lseek failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

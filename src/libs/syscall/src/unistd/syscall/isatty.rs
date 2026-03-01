@@ -37,6 +37,14 @@ use ::sysapi::unistd::{
 pub fn isatty(fd: RawFileDescriptor) -> Result<bool, Error> {
     ::syslog::trace!("isatty(): fd={}", fd);
 
+    // VFS file descriptors are never terminals.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return Ok(false);
+        }
+    }
+
     match fd {
         STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => Ok(true),
         fd if fd > 0 => {

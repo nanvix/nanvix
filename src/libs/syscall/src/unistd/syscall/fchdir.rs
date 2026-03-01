@@ -37,6 +37,15 @@ use ::sysapi::ffi::c_int;
 pub fn fchdir(fd: c_int) -> Result<(), Error> {
     ::syslog::trace!("fchdir(): fd={:?}", fd);
 
+    // VFS file descriptors are not directory handles — fchdir is not applicable.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            ::syslog::error!("fchdir(): fchdir not supported on VFS fd (fd={fd})");
+            return Err(Error::new(ErrorCode::InvalidArgument, "fchdir on VFS fd not supported"));
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it

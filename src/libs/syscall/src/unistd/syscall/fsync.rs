@@ -38,6 +38,18 @@ use ::sysapi::ffi::c_int;
 /// Upon successful completion, empty is returned. Otherwise, an error is returned.
 ///
 pub fn fsync(fd: c_int) -> Result<(), Error> {
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("fsync(): VFS fsync failed (fd={fd}, error={e})");
+                Error::new(code, "vfs fsync failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

@@ -32,5 +32,18 @@ use ::sysapi::{
 ///
 pub fn mkdir(pathname: &str, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("mkdir(): pathname={pathname:?}, mode={mode:?}");
+
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("mkdir(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs mkdir failed")
+            });
+        }
+    }
+
     mkdirat(AT_FDCWD, pathname, mode)
 }

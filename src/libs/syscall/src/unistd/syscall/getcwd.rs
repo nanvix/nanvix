@@ -37,6 +37,19 @@ use ::sys::{
 
 /// Gets the current working directory.
 pub fn getcwd() -> Result<String, Error> {
+    // When memfs is enabled, return the VFS cwd if it has been changed from
+    // the default ("/"). If it is still "/" the user may have chdir'd via
+    // linuxd, so fall through to the standard IPC path.
+    // If the VFS is not initialized or getcwd fails, also fall through.
+    #[cfg(feature = "memfs")]
+    {
+        if let Ok(vfs_cwd) = ::nvx::vfs::fd::vfs_getcwd() {
+            if vfs_cwd != "/" {
+                return Ok(vfs_cwd);
+            }
+        }
+    }
+
     // Send request.
     getcwd_request()?;
 

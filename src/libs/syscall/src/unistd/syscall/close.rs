@@ -27,6 +27,18 @@ use ::sys::{
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_close(fd).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("close(): VFS close failed (fd={fd}, error={e})");
+                Error::new(code, "vfs close failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
