@@ -137,7 +137,7 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::arch::cpu::halt();
+    ::arch::cpu::pause();
 }
 
 ///
