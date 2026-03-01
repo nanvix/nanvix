@@ -277,6 +277,15 @@ impl Guest {
     ///
     /// Resets the value of the credits control register.
     ///
+    /// # Note
+    ///
+    /// The credits register at [`config::microvm::DEFAULT_MICROVM_CTRL_CREDITS`] (GPA `0x4`)
+    /// falls inside the kernel ELF's `.zero` section (`LOAD` segment at GPA `0x0` with
+    /// `MemSiz=0x8000`). The ELF loader zero-fills this range when `load_kernel()` runs.
+    /// This method — and all other writes to the control registers at GPA `0x0`–`0x10` — must
+    /// therefore execute **after** the ELF has been loaded, so that the VMM-written values
+    /// are not overwritten.
+    ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
