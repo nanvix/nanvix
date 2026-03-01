@@ -225,6 +225,15 @@ pub mod microvm {
 
     /// Magic value that flags that the VMM requested the guest OS to pause MicroVM execution.
     pub const PAUSE_REQUEST: u32 = 0x00000001;
+
+    /// Guest physical address of the pvclock page (page-aligned, 4KB).
+    /// KVM populates this page with the `KvmPvclockVcpuTimeInfo` structure
+    /// when the `MSR_KVM_SYSTEM_TIME_NEW` MSR is enabled.
+    pub const DEFAULT_PVCLOCK_PAGE: usize = 0x00001000;
+
+    /// Offset within the pvclock page for the boot time in nanoseconds since
+    /// the Unix epoch (u64). The VMM writes this value during VM initialization.
+    pub const PVCLOCK_BOOT_TIME_NS_OFFSET: usize = 0x20;
 }
 
 #[cfg(feature = "pc")]
