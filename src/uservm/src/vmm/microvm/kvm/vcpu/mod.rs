@@ -33,9 +33,12 @@ use crate::vmm::kvm::{
     },
 };
 use ::anyhow::Result;
-use ::arch::cpu::cpuid::{
-    CPUID_FEATURES,
-    EdxFeature,
+use ::arch::{
+    cpu::cpuid::{
+        CPUID_FEATURES,
+        EdxFeature,
+    },
+    mem::PAGE_SIZE,
 };
 use ::kvm_bindings::{
     CpuId,
@@ -44,6 +47,7 @@ use ::kvm_bindings::{
     kvm_debugregs,
     kvm_lapic_state,
     kvm_mp_state,
+    kvm_msr_entry,
     kvm_regs,
     kvm_sregs,
     kvm_vcpu_events,
@@ -80,6 +84,15 @@ use ::vmm_sys_util::fam::{
 
 /// Interrupt Enable flag in RFLAGS register.
 pub const RFLAGS_INTERRUPT_ENABLE: u64 = 1 << 1;
+
+/// MSR for KVM pvclock system time (new version).
+/// Writing a GPA with bit 0 set enables KVM to populate a `KvmPvclockVcpuTimeInfo`
+/// structure at that address.
+const MSR_KVM_SYSTEM_TIME_NEW: u32 = 0x4b564d01;
+
+/// IA32_TSC MSR — holds the current value of the Time Stamp Counter.
+/// Writing this MSR sets the guest's TSC to the specified value.
+const MSR_IA32_TSC: u32 = 0x10;
 
 //==================================================================================================
 // Structures
@@ -166,6 +179,7 @@ impl VirtualProcessor {
         let mut fd: VcpuFd = vm_fd.create_vcpu(id)?;
 
         Self::setup_pentium4_cpu_features(kvm_fd, &mut fd)?;
+        Self::setup_rdtsc(&mut fd)?;
 
         let fpu: Fpu = Fpu::new(kvm_fd, &fd)?;
 
@@ -214,6 +228,75 @@ impl VirtualProcessor {
         self.online = true;
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets up the KVM paravirtualized clock for the guest.
+    ///
+    /// Enables the `MSR_KVM_SYSTEM_TIME_NEW` MSR so that KVM populates a shared
+    /// memory page with TSC calibration data. The guest reads this page along
+    /// with the CPU's TSC to compute the current time without VM exits.
+    ///
+    /// # Parameters
+    ///
+    /// - `clock_page_gpa`: Guest physical address of the pvclock page (must be page-aligned).
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn setup_pvclock(&mut self, clock_page_gpa: u64) -> Result<()> {
+        trace!("setup_pvclock(): clock_page_gpa={clock_page_gpa:#010x}");
+
+        // Ensure that the pvclock page GPA is page-aligned. Bit 0 is used as the enable flag
+        // in the MSR value, and KVM expects the remaining bits to contain a page-aligned GPA.
+        if !clock_page_gpa.is_multiple_of(PAGE_SIZE as u64) {
+            let reason: String = format!(
+                "pvclock page GPA is not page-aligned (clock_page_gpa={clock_page_gpa:#018x})"
+            );
+            error!("setup_pvclock(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // Bit 0 = enable.
+        let msr_value: u64 = clock_page_gpa | 1;
+
+        let msr_entries: Vec<kvm_msr_entry> = vec![kvm_msr_entry {
+            index: MSR_KVM_SYSTEM_TIME_NEW,
+            data: msr_value,
+            ..Default::default()
+        }];
+
+        let msrs: ::kvm_bindings::Msrs = match ::kvm_bindings::Msrs::from_entries(&msr_entries) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed to create MSRs for pvclock (error={e:?})");
+                error!("setup_pvclock(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        match self.fd.set_msrs(&msrs) {
+            Ok(written) if written == msr_entries.len() => {
+                trace!("setup_pvclock(): pvclock MSR set (value={msr_value:#018x})");
+                Ok(())
+            },
+            Ok(written) => {
+                let reason: String = format!(
+                    "failed to set all pvclock MSRs: written {written} of {} entries",
+                    msr_entries.len()
+                );
+                error!("setup_pvclock(): {reason}");
+                anyhow::bail!(reason)
+            },
+            Err(e) => {
+                let reason: String = format!("failed to set pvclock MSR (error={e:?})");
+                error!("setup_pvclock(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
     }
 
     ///
@@ -368,6 +451,59 @@ impl VirtualProcessor {
             Err(error) => {
                 error!("run(): error running vCPU (error={error:?})");
                 VirtualProcessorExitContext::Interrupted
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Initializes the guest's TSC by writing `IA32_TSC` MSR to zero.
+    ///
+    /// This ensures the guest has a deterministic RDTSC starting point and
+    /// that the TSC feature is functional for pvclock calibration.
+    ///
+    /// # Parameters
+    ///
+    /// - `fd`: Handle to the virtual processor.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function returns empty. Otherwise, it returns an error.
+    ///
+    fn setup_rdtsc(fd: &mut VcpuFd) -> Result<()> {
+        let msr_entries: Vec<kvm_msr_entry> = vec![kvm_msr_entry {
+            index: MSR_IA32_TSC,
+            data: 0,
+            ..Default::default()
+        }];
+
+        let msrs: ::kvm_bindings::Msrs = match ::kvm_bindings::Msrs::from_entries(&msr_entries) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed to create MSRs for RDTSC (error={e:?})");
+                error!("setup_rdtsc(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        match fd.set_msrs(&msrs) {
+            Ok(written) if written == msr_entries.len() => {
+                trace!("setup_rdtsc(): IA32_TSC MSR set to 0");
+                Ok(())
+            },
+            Ok(written) => {
+                let reason: String = format!(
+                    "failed to set all RDTSC MSRs: written {written} of {} entries",
+                    msr_entries.len()
+                );
+                error!("setup_rdtsc(): {reason}");
+                anyhow::bail!(reason)
+            },
+            Err(e) => {
+                let reason: String = format!("failed to set IA32_TSC MSR (error={e:?})");
+                error!("setup_rdtsc(): {reason}");
+                anyhow::bail!(reason)
             },
         }
     }

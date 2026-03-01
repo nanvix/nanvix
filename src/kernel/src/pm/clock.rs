@@ -31,6 +31,10 @@ use ::sys::time::{
     NANOSECONDS_PER_SECOND,
 };
 
+#[cfg(feature = "microvm")]
+#[path = "pvclock.rs"]
+mod pvclock;
+
 //==================================================================================================
 // Global Variables
 //==================================================================================================
@@ -143,9 +147,24 @@ pub fn ticks() -> u64 {
 ///
 /// # Description
 ///
-/// Returns the number of timer ticks since the system started.
+/// Returns the current kernel time.
+///
+/// When the KVM paravirtualized clock is available (microvm feature), this function reads the
+/// pvclock page and TSC to compute a wall-clock timestamp (UTC) without a VM exit.
+///
+/// If pvclock is not initialized or not available, this function falls back to PIT-based tick
+/// counting derived from `TIMER_TICKS`. In that case, the returned value represents a
+/// monotonic time since system boot (uptime) and is **not** guaranteed to be an epoch-based
+/// wall-clock/UTC timestamp.
 ///
 pub fn now() -> SystemTime {
+    // Try pvclock first when running on a microvm.
+    #[cfg(feature = "microvm")]
+    if let Some(time) = pvclock::now() {
+        return time;
+    }
+
+    // Fallback: PIT-based tick counting.
     #[cfg(feature = "pit")]
     let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
     #[cfg(not(feature = "pit"))]

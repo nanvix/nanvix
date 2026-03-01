@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+pub mod pvclock;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -426,6 +432,14 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
+    // Ensure the CPU exposes the TSC feature (CPUID.01H:EDX[4]).
+    // The pvclock subsystem and RDTSC-based timekeeping depend on this.
+    if !::arch::cpu::cpuid::has_tsc() {
+        let reason: &str = "CPU does not support TSC (RDTSC)";
+        error!("{}", reason);
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.
@@ -437,6 +451,16 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(scratch_region);
+
+    // Register pvclock page so the kernel can read TSC calibration data.
+    let pvclock_region: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+        "pvclock-page",
+        VirtualAddress::from_raw_value(::config::microvm::DEFAULT_PVCLOCK_PAGE),
+        mem::PAGE_SIZE,
+        MemoryRegionType::Mmio,
+        AccessPermission::RDONLY,
+    )?;
+    memory_regions.push_back(pvclock_region);
 
     log_control_registers();
     register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
