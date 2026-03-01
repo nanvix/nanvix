@@ -47,6 +47,14 @@ use ::sysapi::{
 /// error.
 ///
 pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
+    // FAT32 does not support permissions — silently succeed for VFS paths.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return Ok(());
+        }
+    }
+
     // Send request.
     chmodat_request(dirfd, path, mode, flag)?;
 

@@ -42,6 +42,14 @@ use ::sysapi::time::timespec;
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
+    // FAT32 does not support fine-grained timestamps — silently succeed.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return Ok(());
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

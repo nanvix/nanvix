@@ -25,6 +25,10 @@ mod panic;
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
 
+/// Re-export the VFS crate when the `memfs` feature is enabled.
+#[cfg(feature = "memfs")]
+pub use ::vfs;
+
 #[cfg(not(feature = "staticlib"))]
 use ::core::sync::atomic::{
     AtomicI32,
@@ -320,6 +324,10 @@ fn init() {
             panic!("init(): create thread data area (error={error:?})");
         },
     }
+
+    // Initialize in-memory filesystem from RAMFS MMIO region (if present).
+    #[cfg(feature = "memfs")]
+    memfs_init();
 }
 
 /// Cleans up system runtime.
@@ -331,5 +339,98 @@ fn cleanup() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     if let Err(e) = sysalloc::cleanup() {
         panic!("failed to cleanup memory manager: {:?}", e);
+    }
+}
+
+//==================================================================================================
+// In-Memory Filesystem Initialization
+//==================================================================================================
+
+/// Initializes the VFS and mounts the RAMFS MMIO region at `/ramfs`.
+///
+/// Called automatically during guest startup when the `memfs` feature is
+/// enabled. The RAMFS MMIO region is provided by the hypervisor via a
+/// well-known tag. If no RAMFS region is present, this function silently
+/// returns (the guest may not have been launched with `-ramfs`).
+#[cfg(feature = "memfs")]
+fn memfs_init() {
+    use ::sys::{
+        mm::Address,
+        pm::Capability,
+    };
+
+    /// Encoded 8-byte "RAMFS   " tag exposed by the MicroVM RAMFS MMIO region.
+    const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
+
+    /// Default mount path for the RAMFS image.
+    const RAMFS_MOUNT_PATH: &str = "/ramfs";
+
+    // Initialize the VFS (idempotent — ignore AlreadyInitialized).
+    if ::vfs::init().is_err() && !::vfs::is_initialized() {
+        ::syslog::warn!("memfs_init(): failed to initialize VFS");
+        return;
+    }
+
+    // Acquire IO management capability.
+    if ::sys::kcall::pm::capctl(Capability::IoManagement, true).is_err() {
+        ::syslog::warn!("memfs_init(): failed to acquire IoManagement capability");
+        return;
+    }
+
+    // Attempt to allocate and mount the RAMFS MMIO region.
+    let mounted: bool = (|| -> bool {
+        if ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG).is_err() {
+            // No RAMFS region available — this is not an error, the guest
+            // was simply not launched with `-ramfs`.
+            return false;
+        }
+
+        let info: ::sys::mm::MmioRegionInfo = match ::sys::kcall::mm::mmio_info(RAMFS_MMIO_TAG) {
+            Ok(i) => i,
+            Err(_) => {
+                // Free the MMIO mapping on failure.
+                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                return false;
+            },
+        };
+        let total_size: usize = info.size();
+        let base_raw: usize = info.base().into_raw_value();
+        let base_ptr: *mut u8 = base_raw as *mut u8;
+
+        // The kernel exposes the RAMFS MMIO region as read-only. The VFS
+        // backend requires writable memory, so upgrade each page to RDWR.
+        let pid: ::sys::pm::ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+            Ok(p) => p,
+            Err(_) => {
+                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                return false;
+            },
+        };
+
+        for offset in (0..total_size).step_by(::sysalloc::PAGE_SIZE) {
+            let vaddr: ::sys::mm::VirtualAddress =
+                ::sys::mm::VirtualAddress::from_raw_value(base_raw + offset);
+            if ::sys::kcall::mm::mprotect(pid, vaddr, ::sys::mm::AccessPermission::RDWR).is_err() {
+                ::syslog::warn!("memfs_init(): failed to set MMIO page writable");
+                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+                return false;
+            }
+        }
+
+        // Mount the FAT image directly from the now-writable MMIO region.
+        if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, base_ptr, total_size) }.is_err() {
+            ::syslog::warn!("memfs_init(): failed to mount RAMFS image");
+            let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
+            return false;
+        }
+
+        true
+    })();
+
+    // Release IO management capability (keep the MMIO mapping alive).
+    let _ = ::sys::kcall::pm::capctl(Capability::IoManagement, false);
+
+    if mounted {
+        ::syslog::info!("memfs_init(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);
     }
 }

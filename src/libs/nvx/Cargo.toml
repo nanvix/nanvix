@@ -18,6 +18,7 @@ syslog = { workspace = true, default-features = true }
 sys = { workspace = true, features = ["kcall"] }
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
+vfs = { workspace = true, optional = true }
 
 # Platform-specific dependencies.
 [target.'cfg(any(target_os = "none", target_os = "nanvix"))'.dependencies]
@@ -28,6 +29,7 @@ sysalloc = { workspace = true }
 [features]
 default = ["staticlib"]
 staticlib = []
+memfs = ["dep:vfs"]
 rustc-dep-of-std = [
     "alloc",
     "core",

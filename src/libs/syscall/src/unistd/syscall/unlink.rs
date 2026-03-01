@@ -37,5 +37,18 @@ use ::sysapi::fcntl::atflags::AT_FDCWD;
 ///
 pub fn unlink(path: &str) -> Result<(), Error> {
     ::syslog::trace!("unlink(): path = {:?}", path);
+
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return ::nvx::vfs::fd::vfs_unlink(path).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("unlink(): VFS unlink failed (path={path:?}, error={e})");
+                Error::new(code, "vfs unlink failed")
+            });
+        }
+    }
+
     fcntl::unlinkat(AT_FDCWD, path, 0)
 }

@@ -34,5 +34,18 @@ use ::sysapi::{
 ///
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
+
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs open failed")
+            });
+        }
+    }
+
     fcntl::openat(AT_FDCWD, pathname, flags, mode)
 }

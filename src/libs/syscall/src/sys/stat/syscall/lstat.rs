@@ -38,5 +38,18 @@ use ::sysapi::{
 ///
 pub fn lstat(pathname: &str, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
+
+    // FAT32 has no symlinks — lstat behaves like stat on VFS paths.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_stat(pathname, buf).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("lstat(): VFS lstat failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs lstat failed")
+            });
+        }
+    }
+
     sys::stat::fstatat(AT_FDCWD, pathname, buf, AT_SYMLINK_NOFOLLOW)
 }

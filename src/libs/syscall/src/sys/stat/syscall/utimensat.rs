@@ -60,6 +60,14 @@ pub fn utimensat(
         flags
     );
 
+    // FAT32 does not support fine-grained timestamps — silently succeed.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return Ok(());
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: UpdateFileAccessTimeAtRequest =

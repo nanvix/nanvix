@@ -51,6 +51,18 @@ use ::sysapi::sys_types::{
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_pwrite(fd, buffer, offset).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("pwrite(): VFS pwrite failed (fd={fd}, error={e})");
+                Error::new(code, "vfs pwrite failed")
+            });
+        }
+    }
+
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
