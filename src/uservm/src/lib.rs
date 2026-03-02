@@ -248,8 +248,11 @@ impl UserVm {
 
         // Input function used for emulating I/O port reads.
         #[cfg(not(feature = "hyperlight"))]
+        let ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool> =
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        #[cfg(not(feature = "hyperlight"))]
         let vmm_stdin_fn: Box<StdinFn> =
-            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone());
+            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
 
         #[cfg(feature = "hyperlight")]
         let handles: UserVmHandles = handles::UserVmHandles::default();
@@ -277,6 +280,8 @@ impl UserVm {
             initrd_args: args.initrd_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
             restoring_from_snapshot: args.snapshot_path.is_some(),
+            #[cfg(feature = "microvm")]
+            ikc_pending: ikc_pending.clone(),
         })?;
 
         // If a snapshot path is provided, restore VM state from the snapshot.
@@ -300,7 +305,12 @@ impl UserVm {
             memory_thread_data_tx,
             memory_thread_control_rx,
             memory_thread_control_tx,
-            add_credit_fn(guest.clone(), vmem.clone()),
+            add_credit_fn(
+                guest.clone(),
+                vmem.clone(),
+                #[cfg(not(feature = "hyperlight"))]
+                microvm.ikc_notifier(),
+            ),
             args.counters.clone(),
         );
         let memory_thread: JoinHandle<()> = memory_thread.spawn();
@@ -403,14 +413,29 @@ fn resume_microvm(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> 
     })
 }
 
-fn add_credit_fn(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> Box<AddCreditFn> {
+fn add_credit_fn(
+    guest: Arc<Mutex<Guest>>,
+    vmem: Arc<Mutex<VirtualMemory>>,
+    #[cfg(not(feature = "hyperlight"))] notifier: crate::vmm::IkcNotifier,
+) -> Box<AddCreditFn> {
     Box::new(move || {
         let guest: Arc<Mutex<Guest>> = guest.clone();
         let vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
+        #[cfg(not(feature = "hyperlight"))]
+        let notifier: crate::vmm::IkcNotifier = notifier.clone();
         Box::pin(async move {
-            let mut guest = guest.lock().await;
-            let mut vmem = vmem.lock().await;
-            guest.add_credit(&mut vmem)
+            // Scope the locks so they are released before the IRQ injection.
+            {
+                let mut guest = guest.lock().await;
+                let mut vmem = vmem.lock().await;
+                guest.add_credit(&mut vmem)?;
+            }
+            // Inject an edge-triggered IRQ to wake the guest from HLT
+            // immediately, rather than waiting for the next PIT timer tick.
+            // This is lock-free — the notifier uses a duplicated VM fd.
+            #[cfg(not(feature = "hyperlight"))]
+            notifier.notify()?;
+            Ok(())
         })
     })
 }
@@ -474,6 +499,7 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 pub fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
+    ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> Box<StdinFn> {
     // Input function used for emulating I/O port reads.
     let input = move |guest: &Arc<Mutex<Guest>>,
@@ -516,6 +542,7 @@ pub fn build_input_fn(
 
                         locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                         locked_guest.consume_credit(&mut locked_vm)?;
+                        ikc_pending.store(false, std::sync::atomic::Ordering::Release);
                     },
                     IkcFrame::Bulk(mut bulk) => {
                         // Write bulk data directly into guest memory at the address specified
@@ -569,6 +596,7 @@ pub fn build_input_fn(
                         );
                         locked_vm.write_bytes(data as u64, &completion_msg.to_bytes())?;
                         locked_guest.consume_credit(&mut locked_vm)?;
+                        ikc_pending.store(false, std::sync::atomic::Ordering::Release);
                     },
                 }
             },
