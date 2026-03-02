@@ -221,6 +221,23 @@ pub fn shutdown(status: usize) -> ! {
 ///
 /// # Description
 ///
+/// Requests the VMM to create a snapshot of the virtual machine state.
+/// The snapshot command is issued via a port I/O write to the VMM control port.
+/// The VMM will pause the vCPU, save VM state to disk, and resume execution.
+/// On restore, execution resumes from the instruction following this call.
+///
+pub fn snapshot() {
+    // SAFETY: The port I/O write targets the VMM control port with a well-known snapshot
+    // command value. The VMM is guaranteed to support this command on the microvm platform.
+    unsafe {
+        let cmd: u16 = ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD;
+        ::arch::io::out32(::config::microvm::DEFAULT_VMM_PORT, (cmd as u32) << 16);
+    }
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
