@@ -55,6 +55,26 @@ pub use process::{
 };
 pub use thread::InterruptReason;
 
+///
+/// # Description
+///
+/// Interrupt handler for IKC (inter-kernel communication) notifications.
+///
+/// The VMM injects this interrupt (IRQ 9) whenever a new message is enqueued for the guest.
+/// The handler polls IKC messages immediately so the kernel does not have to wait for the
+/// next timer tick to process newly arrived messages.
+///
+/// # Safety
+///
+/// Called from interrupt context with interrupts disabled on a single-core system.
+/// At that point the CPU was halted (HLT), so no mutable references to kernel state
+/// are alive and it is safe to re-enter the process manager.
+///
+#[cfg(feature = "microvm")]
+unsafe fn ikc_interrupt_handler(_intnum: InterruptNumber) {
+    crate::kcall::poll_ikc_messages();
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -98,6 +118,14 @@ pub fn init(root: Vmem) -> Result<(), Error> {
     if let Some(intman) = hal.intman() {
         info!("registering timer interrupt handler...");
         intman.register_handler(InterruptNumber::Timer, timer_handler)?;
+
+        // Register a dedicated IKC notification handler (microvm only). The VMM injects
+        // IRQ 9 whenever a new IKC message is enqueued, waking the kernel from HLT.
+        #[cfg(feature = "microvm")]
+        {
+            info!("registering IKC interrupt handler...");
+            intman.register_handler(InterruptNumber::Ikc, ikc_interrupt_handler)?;
+        }
     }
 
     // Initialize the thread manager.

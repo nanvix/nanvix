@@ -87,7 +87,7 @@ max_ikc_messages = 128
 ipc_message_size = 64
 
 # Number of IKC messages to poll at a time.
-ikc_poll_batch_size = 1
+ikc_poll_batch_size = 8
 
 #==================================================================================================
 # Synchronization Limits
