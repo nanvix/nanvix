@@ -9,6 +9,10 @@ on:
     - cron: "0 4 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-dependabot-cargo-upgrade
+  cancel-in-progress: true
+
 jobs:
   cargo-upgrade:
     name: "Upgrade Crate Versions"
