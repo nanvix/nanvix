@@ -15,7 +15,7 @@ updates:
     schedule:
       interval: "daily"
       time: "03:00"
-    versioning-strategy: increase
+    versioning-strategy: auto
     labels:
       - "enhancement"
     open-pull-requests-limit: 20
