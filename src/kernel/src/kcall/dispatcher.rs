@@ -179,6 +179,16 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },
 
+        // Handle `snapshot()` locally (microvm platform only).
+        #[cfg(feature = "microvm")]
+        KcallNumber::Snapshot => {
+            crate::hal::platform::snapshot();
+            KcallResult::ok()
+        },
+        // Snapshot is not supported on non-microvm platforms.
+        #[cfg(not(feature = "microvm"))]
+        KcallNumber::Snapshot => KcallResult::Error(ErrorCode::OperationNotSupported.into()),
+
         // Unknown kernel call.
         _ => {
             error!("invalid kernel call (number={})", number);
