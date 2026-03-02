@@ -160,6 +160,11 @@ struct InteriorMicroVmHandle {
     control_rx: Receiver<VcpuControlCommand>,
     /// Channel to send control responses to the VMM.
     control_tx: Sender<VcpuControlResponse>,
+    /// Path to the kernel file, used for deriving snapshot file paths.
+    kernel_filename: String,
+    /// When true, skip the next snapshot command (set after loading a snapshot to avoid
+    /// re-triggering the snapshot when KVM re-executes the `out` instruction on restore).
+    skip_next_snapshot: bool,
 }
 
 //==================================================================================================
@@ -208,7 +213,11 @@ impl Vmm {
         let timer: Timer = Timer::new(&mut kvm, &mut vm)?;
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&mut kvm, &mut vm, 0)?;
         let mut vmem: VirtualMemory = VirtualMemory::new(&mut kvm, &mut vm, args.memory_size)?;
-        let guest: Arc<Mutex<Guest>> = {
+        let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
+            // When restoring from a snapshot, skip kernel/initrd/ramfs loading and vCPU reset.
+            // The snapshot restore will overwrite memory and CPU state.
+            Arc::new(Mutex::new(Guest::default()))
+        } else {
             let mut guest = Guest::default();
 
             guest.load_kernel(&mut vmem, &args.kernel_filename)?;
@@ -297,6 +306,8 @@ impl Vmm {
                 emulator,
                 control_rx: args.control_rx,
                 control_tx: args.control_tx,
+                kernel_filename: args.kernel_filename,
+                skip_next_snapshot: false,
             })),
         })
     }
@@ -382,7 +393,9 @@ impl Vmm {
                         .emulator
                         .handle_pmio_access(access)?;
                     if let Some(exit_status) = exit_status {
-                        if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                        if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
+                            Handle::current().block_on(self.handle_snapshot())?;
+                        } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
 
                             break Ok(exit_status);
@@ -581,6 +594,40 @@ impl Vmm {
     ///
     /// # Description
     ///
+    /// Handles a guest-initiated snapshot request from the VMM run loop.
+    /// If the `skip_next_snapshot` flag is set (i.e., we are resuming from a restored snapshot),
+    /// the request is silently skipped and the flag is cleared.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    async fn handle_snapshot(&self) -> Result<()> {
+        // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
+        let kernel_filename: String = {
+            let mut locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
+            if locked_inner.skip_next_snapshot {
+                trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
+                locked_inner.skip_next_snapshot = false;
+                return Ok(());
+            }
+            locked_inner.kernel_filename.clone()
+        };
+        match self.create_snapshot(kernel_filename).await {
+            Ok(()) => {
+                trace!("handle_snapshot(): snapshot created successfully");
+                Ok(())
+            },
+            Err(error) => {
+                error!("handle_snapshot(): failed to create snapshot: {error:?}");
+                Err(error)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Saves the virtual memory and the KVM state to files.
     ///
     /// # Parameters
@@ -718,6 +765,10 @@ impl Vmm {
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
+
+        // Mark that the next snapshot command from the guest should be skipped,
+        // since KVM will re-execute the `out` instruction that triggered the original snapshot.
+        locked_inner.skip_next_snapshot = true;
 
         Ok(())
     }

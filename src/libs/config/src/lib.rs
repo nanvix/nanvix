@@ -202,6 +202,9 @@ pub mod microvm {
     /// Default VMM pause command. This MUST be a value that's never an exit code.
     pub const DEFAULT_VMM_PAUSE_CMD: u16 = 0x3000;
 
+    /// Default VMM snapshot command. Triggers a guest-initiated VM snapshot.
+    pub const DEFAULT_VMM_SNAPSHOT_CMD: u16 = 0x4000;
+
     /// Default base address for MicroVM control registers.
     pub const DEFAULT_MICROVM_CTRL_BASE: usize = 0x00000000;
 
