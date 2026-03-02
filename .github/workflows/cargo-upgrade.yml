@@ -58,6 +58,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          base: dev
           branch: dependabot-cargo-upgrade
           commit-message: "[build] Upgrade crate versions"
           title: "[build] Upgrade crate versions"
