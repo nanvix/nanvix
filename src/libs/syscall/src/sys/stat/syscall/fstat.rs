@@ -33,6 +33,18 @@ use sysapi::sys_stat;
 /// instead.
 ///
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_fstat(fd, buf).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("fstat(): VFS fstat failed (fd={fd}, error={e})");
+                Error::new(code, "vfs fstat failed")
+            });
+        }
+    }
+
     // Send request.
     fstat_request(fd)?;
 

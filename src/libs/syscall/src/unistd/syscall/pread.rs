@@ -51,6 +51,18 @@ use sysapi::sys_types::{
 pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_pread(fd, buffer, offset).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("pread(): VFS pread failed (fd={fd}, error={e})");
+                Error::new(code, "vfs pread failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;

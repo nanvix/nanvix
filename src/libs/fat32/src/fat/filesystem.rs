@@ -39,7 +39,14 @@ use ::fatfs::{
 pub struct Fat {
     /// The underlying fatfs FileSystem.
     fs: InternalFatFs,
+    /// Base pointer to the FAT image in memory (for zero-copy file access).
+    base_ptr: *const u8,
 }
+
+// SAFETY: Fat is only accessed through the VFS Mutex, which ensures
+// exclusive access. The raw pointer represents memory managed by the
+// state module and is only used for zero-copy reads.
+unsafe impl Send for Fat {}
 
 //==================================================================================================
 // Implementations
@@ -72,7 +79,10 @@ impl Fat {
         let options = ::fatfs::FsOptions::new().time_provider(NanvixTimeProvider);
         let fs: InternalFatFs =
             ::fatfs::FileSystem::new(storage, options).map_err(map_fatfs_error)?;
-        Ok(Self { fs })
+        Ok(Self {
+            fs,
+            base_ptr: ptr as *const u8,
+        })
     }
 
     /// Opens a file with the specified mode.
@@ -203,6 +213,56 @@ impl Fat {
         }
 
         Err(Fat32Error::NotFound)
+    }
+
+    /// Returns a pointer and size for zero-copy access to a file's data.
+    ///
+    /// If the file's clusters are stored contiguously in the FAT image,
+    /// returns `Some((data_ptr, file_size))` where `data_ptr` points directly
+    /// into the in-memory FAT image. Returns `None` if the file is empty,
+    /// not found, or its clusters are not contiguous.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path relative to the FAT root.
+    pub fn file_raw_region(&self, path: &str) -> Option<(*const u8, usize)> {
+        let root: ::fatfs::Dir<
+            '_,
+            RawMemoryStorage,
+            NanvixTimeProvider,
+            ::fatfs::LossyOemCpConverter,
+        > = self.fs.root_dir();
+        let mut file: ::fatfs::File<
+            '_,
+            RawMemoryStorage,
+            NanvixTimeProvider,
+            ::fatfs::LossyOemCpConverter,
+        > = root.open_file(path).ok()?;
+
+        let mut first_offset: Option<u64> = None;
+        let mut total_size: usize = 0;
+        let mut next_expected: u64 = 0;
+
+        for (i, extent_result) in file.extents().enumerate() {
+            let extent: ::fatfs::Extent = extent_result.ok()?;
+            if i == 0 {
+                first_offset = Some(extent.offset);
+            } else if extent.offset != next_expected {
+                return None; // Not contiguous.
+            }
+            next_expected = extent.offset + extent.size as u64;
+            total_size += extent.size as usize;
+        }
+
+        let offset: u64 = first_offset?;
+        if total_size == 0 {
+            return None;
+        }
+
+        // SAFETY: base_ptr is valid for the lifetime of the Fat instance,
+        // and offset + total_size is within the FAT image bounds.
+        let data_ptr: *const u8 = unsafe { self.base_ptr.add(offset as usize) };
+        Some((data_ptr, total_size))
     }
 
     /// Reads directory contents.
@@ -374,4 +434,394 @@ pub struct FatDirEntry {
     pub is_dir: bool,
     /// Size in bytes (0 for directories).
     pub size: u64,
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(all(test, feature = "std"))]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::fat::RawMemoryStorage;
+    use ::alloc::{
+        vec,
+        vec::Vec,
+    };
+
+    /// Helper: creates formatted FAT image in a heap buffer and returns a `Fat`.
+    ///
+    /// The returned `Vec<u8>` must be kept alive for the lifetime of the `Fat`.
+    /// Drop the `Fat` before the `Vec` to avoid use-after-free during
+    /// fatfs `FileSystem::drop()`.
+    fn make_fat(size: usize) -> (Fat, Vec<u8>) {
+        let mut buf: Vec<u8> = vec![0u8; size];
+        let ptr: *mut u8 = buf.as_mut_ptr();
+
+        let mut storage: RawMemoryStorage =
+            unsafe { RawMemoryStorage::new(ptr, size).expect("valid storage") };
+        ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
+            .expect("format should succeed");
+
+        let fat: Fat = unsafe { Fat::from_memory(ptr, size).expect("valid fat") };
+        (fat, buf)
+    }
+
+    /// Wrapper that ensures `Fat` is dropped before its backing buffer.
+    ///
+    /// When `Fat` is dropped, fatfs `FileSystem::drop()` flushes dirty metadata
+    /// back to `RawMemoryStorage`. The buffer must remain valid during that flush.
+    /// This wrapper enforces the correct drop order.
+    struct FatHandle {
+        /// Fat filesystem — dropped first.
+        fat: core::mem::ManuallyDrop<Fat>,
+        /// Backing memory — dropped second (after `fat`).
+        _buf: Vec<u8>,
+    }
+
+    impl FatHandle {
+        fn new() -> Self {
+            let (fat, buf) = make_fat(IMG_SIZE);
+            Self {
+                fat: core::mem::ManuallyDrop::new(fat),
+                _buf: buf,
+            }
+        }
+    }
+
+    impl core::ops::Deref for FatHandle {
+        type Target = Fat;
+        fn deref(&self) -> &Fat {
+            &self.fat
+        }
+    }
+
+    impl Drop for FatHandle {
+        fn drop(&mut self) {
+            // SAFETY: `fat` is dropped exactly once, before `_buf`.
+            unsafe {
+                core::mem::ManuallyDrop::drop(&mut self.fat);
+            }
+        }
+    }
+
+    const IMG_SIZE: usize = 128 * 1024;
+
+    // -- from_memory tests -------------------------------------------------------
+
+    /// Tests that `from_memory` rejects a null pointer.
+    #[test]
+    fn from_memory_null_ptr_fails() {
+        let result: Result<Fat, Fat32Error> =
+            unsafe { Fat::from_memory(core::ptr::null_mut(), 1024) };
+        assert!(result.is_err(), "null pointer should be rejected");
+    }
+
+    /// Tests that `from_memory` rejects zero size.
+    #[test]
+    fn from_memory_zero_size_fails() {
+        let mut buf: Vec<u8> = vec![0u8; 1024];
+        let result: Result<Fat, Fat32Error> = unsafe { Fat::from_memory(buf.as_mut_ptr(), 0) };
+        assert!(result.is_err(), "zero size should be rejected");
+    }
+
+    /// Tests that `from_memory` succeeds on a formatted image.
+    #[test]
+    fn from_memory_valid_image() {
+        let _fat: FatHandle = FatHandle::new();
+    }
+
+    // -- open / create / read / write tests --------------------------------------
+
+    /// Tests creating a file, writing, and reading it back.
+    #[test]
+    fn write_and_read_file() {
+        let fat: FatHandle = FatHandle::new();
+
+        // Create and write.
+        {
+            let mut file = fat
+                .open("test.txt", false, true, true, false)
+                .expect("create should succeed");
+            file.write(b"hello fat32").expect("write should succeed");
+            file.flush().expect("flush should succeed");
+        }
+
+        // Read back.
+        {
+            let mut file = fat
+                .open("test.txt", true, false, false, false)
+                .expect("open for read should succeed");
+            let mut buf: [u8; 64] = [0u8; 64];
+            let n: usize = file.read(&mut buf).expect("read should succeed");
+            assert_eq!(n, 11, "should read 11 bytes");
+            assert_eq!(&buf[..n], b"hello fat32");
+        }
+    }
+
+    /// Tests that opening a non-existent file without create fails.
+    #[test]
+    fn open_nonexistent_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result = fat.open("nonexistent.txt", true, false, false, false);
+        assert!(result.is_err(), "opening non-existent file should fail");
+    }
+
+    /// Tests open with truncate.
+    #[test]
+    fn open_truncate() {
+        let fat: FatHandle = FatHandle::new();
+
+        // Write initial content.
+        {
+            let mut file = fat
+                .open("trunc.txt", false, true, true, false)
+                .expect("create should succeed");
+            file.write(b"initial content")
+                .expect("write should succeed");
+            file.flush().expect("flush should succeed");
+        }
+
+        // Open with truncate.
+        {
+            let mut file = fat
+                .open("trunc.txt", true, true, false, true)
+                .expect("open with truncate should succeed");
+            let mut buf: [u8; 64] = [0u8; 64];
+            let n: usize = file.read(&mut buf).expect("read should succeed");
+            assert_eq!(n, 0, "truncated file should be empty");
+        }
+    }
+
+    /// Tests `create_new` succeeds for a new file.
+    #[test]
+    fn create_new_succeeds() {
+        let fat: FatHandle = FatHandle::new();
+        let _file = fat
+            .create_new("new.txt", true, true)
+            .expect("create_new should succeed");
+    }
+
+    /// Tests `create_new` fails if file already exists.
+    #[test]
+    fn create_new_existing_fails() {
+        let fat: FatHandle = FatHandle::new();
+
+        {
+            let mut f = fat
+                .open("exists.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"data").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+
+        let result: Result<FatFile<'_>, Fat32Error> = fat.create_new("exists.txt", true, true);
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::AlreadyExists,
+            "create_new on existing file should return AlreadyExists"
+        );
+    }
+
+    // -- stat tests --------------------------------------------------------------
+
+    /// Tests stat on root directory.
+    #[test]
+    fn stat_root() {
+        let fat: FatHandle = FatHandle::new();
+        let info: FatStat = fat.stat("").expect("stat root should succeed");
+        assert!(info.is_dir, "root should be a directory");
+    }
+
+    /// Tests stat on a file.
+    #[test]
+    fn stat_file() {
+        let fat: FatHandle = FatHandle::new();
+
+        {
+            let mut f = fat
+                .open("sized.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"12345").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+
+        let info: FatStat = fat.stat("sized.txt").expect("stat should succeed");
+        assert!(!info.is_dir, "should not be a directory");
+        assert_eq!(info.size, 5, "file size should be 5");
+    }
+
+    /// Tests stat on a non-existent path.
+    #[test]
+    fn stat_nonexistent() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<FatStat, Fat32Error> = fat.stat("nope.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
+    // -- mkdir / rmdir tests -----------------------------------------------------
+
+    /// Tests creating and stat-ing a directory.
+    #[test]
+    fn mkdir_and_stat() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("subdir").expect("mkdir should succeed");
+        let info: FatStat = fat.stat("subdir").expect("stat subdir should succeed");
+        assert!(info.is_dir, "should be a directory");
+    }
+
+    /// Tests that creating a duplicate directory fails.
+    #[test]
+    fn mkdir_duplicate_fails() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("dup").expect("first mkdir should succeed");
+        let result: Result<(), Fat32Error> = fat.mkdir("dup");
+        assert_eq!(result.unwrap_err(), Fat32Error::AlreadyExists);
+    }
+
+    /// Tests removing an empty directory.
+    #[test]
+    fn rmdir_empty() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("torm").expect("mkdir should succeed");
+        fat.rmdir("torm").expect("rmdir should succeed");
+        let result: Result<FatStat, Fat32Error> = fat.stat("torm");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
+    /// Tests that rmdir on a file fails.
+    #[test]
+    fn rmdir_on_file_fails() {
+        let fat: FatHandle = FatHandle::new();
+        {
+            let mut f = fat
+                .open("file-a.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"x").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+        let result: Result<(), Fat32Error> = fat.rmdir("file-a.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotADirectory);
+    }
+
+    // -- unlink tests ------------------------------------------------------------
+
+    /// Tests deleting a file.
+    #[test]
+    fn unlink_file() {
+        let fat: FatHandle = FatHandle::new();
+        {
+            let mut f = fat
+                .open("del.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"bye").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+        fat.unlink("del.txt").expect("unlink should succeed");
+        assert_eq!(fat.stat("del.txt").unwrap_err(), Fat32Error::NotFound);
+    }
+
+    /// Tests that unlink on a directory fails.
+    #[test]
+    fn unlink_on_dir_fails() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("adir").expect("mkdir should succeed");
+        let result: Result<(), Fat32Error> = fat.unlink("adir");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotAFile);
+    }
+
+    // -- read_dir tests ----------------------------------------------------------
+
+    /// Tests listing an empty root directory.
+    #[test]
+    fn read_dir_empty_root() {
+        let fat: FatHandle = FatHandle::new();
+        let entries: Vec<FatDirEntry> = fat.read_dir("").expect("read_dir root should succeed");
+        assert!(entries.is_empty(), "fresh root should be empty");
+    }
+
+    /// Tests listing root with files and directories.
+    #[test]
+    fn read_dir_with_entries() {
+        let fat: FatHandle = FatHandle::new();
+        {
+            let mut f = fat
+                .open("f1.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"a").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+        fat.mkdir("d1").expect("mkdir should succeed");
+
+        let entries: Vec<FatDirEntry> = fat.read_dir("").expect("read_dir should succeed");
+        assert_eq!(entries.len(), 2, "should have 2 entries");
+
+        let names: alloc::vec::Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"f1.txt"), "should contain f1.txt");
+        assert!(names.contains(&"d1"), "should contain d1");
+    }
+
+    // -- rename tests ------------------------------------------------------------
+
+    /// Tests renaming a file.
+    #[test]
+    fn rename_file() {
+        let fat: FatHandle = FatHandle::new();
+        {
+            let mut f = fat
+                .open("old.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(b"content").expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+
+        fat.rename("old.txt", "new.txt")
+            .expect("rename should succeed");
+        assert_eq!(fat.stat("old.txt").unwrap_err(), Fat32Error::NotFound);
+        let info: FatStat = fat.stat("new.txt").expect("stat new.txt should succeed");
+        assert!(!info.is_dir);
+        assert_eq!(info.size, 7);
+    }
+
+    // -- file_raw_region tests ---------------------------------------------------
+
+    /// Tests that file_raw_region returns None for non-existent files.
+    #[test]
+    fn raw_region_nonexistent() {
+        let fat: FatHandle = FatHandle::new();
+        assert!(fat.file_raw_region("nope.txt").is_none());
+    }
+
+    /// Tests that file_raw_region returns a valid region for a contiguous file.
+    #[test]
+    fn raw_region_contiguous_file() {
+        let fat: FatHandle = FatHandle::new();
+        let data: &[u8] = b"raw region data";
+        {
+            let mut f = fat
+                .open("raw.txt", false, true, true, false)
+                .expect("create should succeed");
+            f.write(data).expect("write should succeed");
+            f.flush().expect("flush should succeed");
+        }
+
+        if let Some((ptr, size)) = fat.file_raw_region("raw.txt") {
+            assert_eq!(size, data.len(), "raw region size should match");
+            let slice: &[u8] = unsafe { core::slice::from_raw_parts(ptr, size) };
+            assert_eq!(slice, data, "raw region data should match");
+        }
+        // Note: if clusters are not contiguous, None is acceptable.
+    }
+
+    // -- Debug trait test --------------------------------------------------------
+
+    /// Tests that Fat implements Debug.
+    #[test]
+    fn fat_debug() {
+        let handle: FatHandle = FatHandle::new();
+        let fat: &Fat = &handle;
+        let debug: alloc::string::String = alloc::format!("{fat:?}");
+        assert!(debug.contains("Fat"), "debug should contain type name");
+    }
 }

@@ -42,6 +42,18 @@ use ::sys::{
 pub fn chdir(path: &str) -> Result<(), Error> {
     ::syslog::trace!("chdir(): path={:?}", path);
 
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
+                Error::new(code, "vfs chdir failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

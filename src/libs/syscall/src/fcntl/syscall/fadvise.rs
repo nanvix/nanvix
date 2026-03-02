@@ -56,6 +56,14 @@ pub fn posix_fadvise(
         advice
     );
 
+    // No-op for VFS file descriptors (FAT32 does not support advisory info).
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return Ok(());
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

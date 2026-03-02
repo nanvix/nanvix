@@ -1,61 +1,15 @@
-// Copyright (c) The Maintainers of Nanvix.
-// Licensed under the MIT license.
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
 
-//! FAT32 filesystem library for nanvix guest applications.
+//! Low-level FAT32 filesystem library for Nanvix guest applications.
 //!
-//! This library provides a `no_std`-compatible FAT32 filesystem implementation
-//! with a POSIX-like interface. It operates on in-memory FAT images and is
-//! designed for use in guest applications running on the nanvix kernel.
+//! This crate provides a `no_std`-compatible FAT32 filesystem implementation
+//! that operates on in-memory FAT images. It exposes the raw FAT filesystem
+//! operations — file I/O, directory management, and metadata queries — on a
+//! single FAT image.
 //!
-//! # Usage
-//!
-//! ## Initialization
-//!
-//! ```ignore
-//! // Initialize the filesystem.
-//! fat32::init()?;
-//!
-//! // Create a 1MB FAT mount at /data.
-//! fat32::create_mount("/data", 1024 * 1024)?;
-//! ```
-//!
-//! ## File Operations
-//!
-//! ```ignore
-//! use fat32::OpenOptions;
-//!
-//! // Create and write a file.
-//! let mut file = OpenOptions::new()
-//!     .write(true)
-//!     .create(true)
-//!     .open("/data/hello.txt")?;
-//! file.write(b"Hello, nanvix!")?;
-//! file.flush()?;
-//! drop(file);
-//!
-//! // Read the file back.
-//! let mut file = fat32::open("/data/hello.txt")?;
-//! let content = file.read_to_vec()?;
-//! ```
-//!
-//! ## Directory Operations
-//!
-//! ```ignore
-//! fat32::mkdir("/data/subdir")?;
-//!
-//! for entry in fat32::read_dir("/data")? {
-//!     // Process each entry.
-//! }
-//!
-//! fat32::rmdir("/data/subdir")?;
-//! ```
-//!
-//! ## Metadata
-//!
-//! ```ignore
-//! let info = fat32::stat("/data/hello.txt")?;
-//! // info.size, info.is_dir
-//! ```
+//! Mount management, global state, path normalization, and the POSIX-like
+//! high-level API live in the `vfs` crate, which uses this crate as a backend.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -70,10 +24,7 @@ extern crate alloc;
 //==================================================================================================
 
 pub mod error;
-mod fat;
-pub mod file;
-mod state;
-pub mod vfs;
+pub mod fat;
 
 //==================================================================================================
 // Public Re-exports
@@ -81,28 +32,9 @@ pub mod vfs;
 
 pub use crate::{
     error::Fat32Error,
-    file::{
-        chdir,
-        cwd,
-        mkdir,
-        open,
-        read_dir,
-        rename,
-        rmdir,
-        stat,
-        unlink,
-        DirEntry,
-        File,
-        OpenOptions,
-        Stat,
-    },
-    state::{
-        create_mount,
-        init,
-        is_initialized,
-        mount,
-        unmount,
-        MAX_FAT_SIZE,
-        MIN_FAT_SIZE,
+    fat::{
+        Fat,
+        FatFile,
+        RawMemoryStorage,
     },
 };

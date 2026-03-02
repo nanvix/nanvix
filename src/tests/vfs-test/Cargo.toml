@@ -2,19 +2,19 @@
 # Licensed under the MIT License.
 
 [package]
-name = "fat32-test"
+name = "vfs-test"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Validation tests for the fat32 filesystem library"
+description = "Validation tests for the VFS layer"
 homepage.workspace = true
 
 [[bin]]
-name = "fat32-test"
+name = "vfs-test"
 
 [dependencies]
-fat32 = { workspace = true }
+vfs = { workspace = true }
 libc_string = { workspace = true }
 nvx = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }

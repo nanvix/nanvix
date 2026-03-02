@@ -51,6 +51,18 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         flag
     );
 
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("faccessat(): VFS access failed (path={path:?}, error={e})");
+                Error::new(code, "vfs access failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileAccessAtRequest = FileAccessAtRequest::new(dirfd, path, mode, flag)?;

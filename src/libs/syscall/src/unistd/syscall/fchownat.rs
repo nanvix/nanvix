@@ -65,6 +65,14 @@ pub fn fchownat(
         flag
     );
 
+    // FAT32 does not support ownership — silently succeed for VFS paths.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return Ok(());
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;

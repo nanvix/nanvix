@@ -7,6 +7,8 @@
 
 use crate::unistd;
 use ::sys::error::Error;
+#[cfg(feature = "memfs")]
+use ::sys::error::ErrorCode;
 use ::sysapi::{
     fcntl::atflags::AT_FDCWD,
     sys_types::c_ssize_t,
@@ -33,5 +35,18 @@ use ::sysapi::{
 ///
 pub fn readlink(path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): path={path:?}, buf.len={}", buf.len());
+
+    // FAT32 does not support symbolic links.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            ::syslog::error!("readlink(): symlinks not supported on VFS (path={path:?})");
+            return Err(Error::new(
+                ErrorCode::OperationNotSupported,
+                "symbolic links not supported on VFS",
+            ));
+        }
+    }
+
     unistd::readlinkat(AT_FDCWD, path, buf)
 }

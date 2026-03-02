@@ -43,6 +43,14 @@ use sysapi::sys_types::off_t;
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
+    // No-op for VFS file descriptors (FAT32 does not support pre-allocation).
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return Ok(());
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

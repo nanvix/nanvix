@@ -21,8 +21,40 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/348
-    ::syslog::debug!("rmdir(): not implemented");
+    // Validate the path pointer.
+    if path.is_null() {
+        ::syslog::error!("rmdir(): path is null (path={path:?})");
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Convert C string to Rust string.
+    let pathname: &str = match core::ffi::CStr::from_ptr(path).to_str() {
+        Ok(p) => p,
+        Err(_) => {
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Route to the VFS if the path matches an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            match ::nvx::vfs::fd::vfs_rmdir(pathname) {
+                Ok(()) => return 0,
+                Err(e) => {
+                    let code: ErrorCode = e.into();
+                    ::syslog::error!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
+                    *__errno_location() = code.get();
+                    return -1;
+                },
+            }
+        }
+    }
+
+    // linuxd does not support rmdir — return ENOSYS for non-VFS paths.
+    ::syslog::debug!("rmdir(): not supported for non-VFS path {:?}", pathname);
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

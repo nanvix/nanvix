@@ -7,6 +7,8 @@
 
 use crate::unistd;
 use ::sys::error::Error;
+#[cfg(feature = "memfs")]
+use ::sys::error::ErrorCode;
 use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
@@ -29,5 +31,18 @@ use ::sysapi::fcntl::atflags::AT_FDCWD;
 ///
 pub fn link(oldpath: &str, newpath: &str) -> Result<(), Error> {
     ::syslog::trace!("link(): oldpath = {:?}, newpath = {:?}", oldpath, newpath);
+
+    // FAT32 does not support hard links.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(oldpath) {
+            ::syslog::error!("link(): hard links not supported on VFS (oldpath={oldpath:?})");
+            return Err(Error::new(
+                ErrorCode::OperationNotSupported,
+                "hard links not supported on VFS",
+            ));
+        }
+    }
+
     unistd::linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }

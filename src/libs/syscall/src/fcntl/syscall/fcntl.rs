@@ -30,6 +30,18 @@ use ::sysapi::ffi::c_int;
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_fcntl(fd, cmd).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("fcntl(): VFS fcntl failed (fd={fd}, cmd={cmd}, error={e})");
+                Error::new(code, "vfs fcntl failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
