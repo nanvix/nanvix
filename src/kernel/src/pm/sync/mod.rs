@@ -7,7 +7,6 @@
 
 pub mod condvar;
 pub mod mutex;
-pub mod semaphore;
 
 #[cfg(feature = "smp")]
 pub mod spinlock;
