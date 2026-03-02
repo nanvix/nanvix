@@ -27,7 +27,7 @@ jobs:
         with:
           ref: dev
 
-      - name: "Install Rust Toolchain"
+      - name: "Set Up Rust Toolchain"
         run: rustup show
 
       - name: "Install cargo-edit"
