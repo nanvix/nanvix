@@ -24,8 +24,8 @@ mod time;
 // Public Re-exports
 //==================================================================================================
 
-pub use self::file::FatFile;
-pub(crate) use self::{
+pub use self::{
+    file::FatFile,
     filesystem::Fat,
     storage::RawMemoryStorage,
 };

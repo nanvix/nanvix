@@ -40,6 +40,18 @@ use ::sys::{
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     ::syslog::trace!("fdatasync(): fd={:?}", fd);
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("fdatasync(): VFS fdatasync failed (fd={fd}, error={e})");
+                Error::new(code, "vfs fdatasync failed")
+            });
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

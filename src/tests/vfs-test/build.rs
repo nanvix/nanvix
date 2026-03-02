@@ -48,10 +48,10 @@ fn main() {
         .expect("no parent: root");
     let bin_dir = workspace_root.join("bin");
     std::fs::create_dir_all(&bin_dir).expect("failed to create bin directory");
-    std::fs::copy(&img_path, bin_dir.join("fat32-test.img"))
+    std::fs::copy(&img_path, bin_dir.join("vfs-test.img"))
         .expect("failed to copy test.img to bin directory");
 
-    println!("cargo:rustc-env=FAT32_TEST_IMG={}", img_path.display());
+    println!("cargo:rustc-env=VFS_TEST_IMG={}", img_path.display());
     println!("cargo:rerun-if-changed=build.rs");
 }
 

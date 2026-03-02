@@ -161,6 +161,19 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
+    // Route to the VFS if this is a VFS file descriptor.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            let n: c_size_t = ::nvx::vfs::fd::vfs_read(fd, buffer).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("read(): VFS read failed (fd={fd}, error={e})");
+                Error::new(code, "vfs read failed")
+            })?;
+            return Ok(n);
+        }
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;
