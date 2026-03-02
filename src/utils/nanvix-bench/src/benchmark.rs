@@ -31,6 +31,7 @@ pub enum BenchmarkFlavour {
     EchoBreakdown,
     EchoBreakdownL2,
     RoundTripLatency,
+    SnapshotRestore,
     WarmStart,
     WarmStartL2,
     WarmStartVMM,
@@ -41,6 +42,9 @@ impl BenchmarkFlavour {
         match self {
             BenchmarkFlavour::BootTime => {
                 format!("{}/bin/noop-rust-nostd.elf", root.display())
+            },
+            BenchmarkFlavour::SnapshotRestore => {
+                format!("{}/bin/snapshot-rust-nostd.elf", root.display())
             },
             BenchmarkFlavour::ColdStart
             | BenchmarkFlavour::ColdStartL2
@@ -71,6 +75,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
             BenchmarkFlavour::EchoBreakdownL2 => "echo-breakdown-l2",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
+            BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
@@ -93,6 +98,7 @@ impl FromStr for BenchmarkFlavour {
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             "echo-breakdown-l2" => Ok(BenchmarkFlavour::EchoBreakdownL2),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
+            "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
