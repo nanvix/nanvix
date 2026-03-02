@@ -10,15 +10,10 @@ use crate::{
         self,
         EventManager,
     },
-    kcall::{
-        KcallResult,
-        ScoreBoard,
-    },
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
 use ::sys::{
-    error::ErrorCode,
     event::ProcessTerminationInfo,
     pm::ProcessIdentifier,
     ExitStatus,
@@ -72,37 +67,6 @@ pub fn kcall_handler() -> ExitStatus {
     }
 
     let status: ExitStatus = loop {
-        // Attempt to handle a kernel call.
-        let mut kcall_handled: bool = false;
-        match ScoreBoard::get_mut() {
-            Ok(scoreboard) => match scoreboard.handle() {
-                Ok(args) => {
-                    error!("invalid kernel call (number={})", args.number);
-                    let ret: KcallResult = KcallResult::Error(ErrorCode::InvalidSysCall.into());
-
-                    // SAFETY: the calling process does not hold a reference to the inner state of the process manager.
-                    if let Err(e) = unsafe { scoreboard.handled(ret) } {
-                        warn!("failed to signal kernel call handled: {:?}", e)
-                    }
-
-                    kcall_handled = true;
-                },
-                Err(error) => match error.code {
-                    ErrorCode::TryAgain => {},
-                    _ => {
-                        // This condition should never happen because the only error that should
-                        // happen for `ScoreBoard::handle()` is `OperationWouldBlock`.
-                        unreachable!("failed to handle kernel call (error={:?})", error);
-                    },
-                },
-            },
-            Err(error) => {
-                // This condition should never occur because the scoreboard is accessed exclusively,
-                // and no process should block while holding a reference to it.
-                unreachable!("failed to get scoreboard (error={:?})", error);
-            },
-        };
-
         // Check if inter-kernel communication messages are available.
         cfg_if::cfg_if! {
             if #[cfg(feature = "stdio")] {
@@ -166,7 +130,7 @@ pub fn kcall_handler() -> ExitStatus {
         }
 
         // No work to do, so yield the CPU.
-        if !kcall_handled && !message_received && !harvested_process {
+        if !message_received && !harvested_process {
             // SAFETY: the kernel process does not hold any resources.
             if let Err(error) = unsafe { ProcessManager::giveup() } {
                 error!("context switch failed (error={:?})", error);
