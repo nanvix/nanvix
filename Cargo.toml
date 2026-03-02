@@ -9,6 +9,7 @@ members = [
         "src/benchmarks/echo-wasm-rust",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/noop-wasm-rust",
+        "src/benchmarks/snapshot-rust-nostd",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/procd",

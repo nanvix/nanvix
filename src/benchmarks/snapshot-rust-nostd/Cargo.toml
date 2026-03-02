@@ -1,0 +1,37 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "snapshot-rust-nostd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Snapshot Benchmark"
+homepage.workspace = true
+
+[[bin]]
+name = "snapshot-rust-nostd"
+
+[dependencies]
+cfg-if = { workspace = true }
+nvx = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true }
+sysalloc = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]
+
+[lints]
+workspace = true
