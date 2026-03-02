@@ -10,7 +10,10 @@ use crate::{
     event,
     io,
     ipc,
-    kcall::KcallResult,
+    kcall::{
+        handler::poll_ikc_messages,
+        KcallResult,
+    },
     pm::{
         self,
         InterruptReason,
@@ -54,7 +57,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
     let pid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_pid();
     let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
 
-    match KcallNumber::from(number) {
+    let result: KcallResult = match KcallNumber::from(number) {
         // Handle `getpid()` locally.
         KcallNumber::GetPid => KcallResult::Success(<i64>::from(pid).into()),
         // Handle `gettid()` locally.
@@ -181,8 +184,15 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             error!("invalid kernel call (number={})", number);
             KcallResult::Error(ErrorCode::InvalidSysCall.into())
         },
-    }
-    .into()
+    };
+
+    // Poll for inter-kernel communication messages after handling the kernel call. Polling after
+    // (rather than before) ensures that any outbound messages produced by the current kernel call
+    // are already enqueued, so the poll can immediately dispatch replies and follow-up messages
+    // without waiting for the next scheduling opportunity.
+    poll_ikc_messages();
+
+    result.into()
 }
 
 fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
