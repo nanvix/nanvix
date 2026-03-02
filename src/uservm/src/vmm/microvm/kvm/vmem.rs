@@ -20,6 +20,7 @@ use ::std::{
         Write,
     },
     mem,
+    os::unix::io::AsRawFd,
     path::Path,
     ptr::{
         self,
@@ -68,10 +69,13 @@ unsafe impl Sync for VirtualMemory {}
 //==================================================================================================
 
 const SIZE_OF_HEADER: usize = mem::size_of::<SnapshotHeader>();
-// The virtual memory contents come right after the header. If the header is 64-byte aligned, then
-// the contents of the virtual memory inside the snapshot file are 64-byte aligned. Reading the
-// snapshot file leads to 64-byte aligned data.
-static_assert::assert_eq_size!(SnapshotHeader, 8);
+
+/// The offset within the snapshot file where memory contents begin.
+/// This is page-aligned to enable direct MAP_FIXED remapping during restore.
+const SNAPSHOT_DATA_OFFSET: usize = PAGE_SIZE;
+
+// Compile-time assertion that the snapshot header fits before the data section.
+static_assert::assert_eq!(SIZE_OF_HEADER <= SNAPSHOT_DATA_OFFSET);
 
 //==================================================================================================
 // Implementations
@@ -284,6 +288,17 @@ impl VirtualMemory {
             anyhow::bail!(reason)
         }
 
+        // Pad to SNAPSHOT_DATA_OFFSET so the memory contents start at a page boundary.
+        // NOTE: The compile-time assertion at module level guarantees
+        // SIZE_OF_HEADER <= SNAPSHOT_DATA_OFFSET, so this subtraction cannot underflow.
+        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
+            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
+        if let Err(e) = file.write_all(&padding) {
+            let reason: String = format!("failed writing padding to snapshot file (error={e:?})");
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
         // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
         if !(self.ptr as usize).is_multiple_of(PAGE_SIZE) {
             let reason: &str = "memory pointer is not aligned to page size";
@@ -327,7 +342,7 @@ impl VirtualMemory {
     pub fn load_snapshot(&mut self, path: &Path) -> Result<()> {
         trace!("load_snapshot(): reading from {:?}", path);
 
-        let mut file: File = match File::open(path) {
+        let file: File = match File::open(path) {
             Ok(f) => f,
             Err(e) => {
                 let reason: String =
@@ -337,20 +352,17 @@ impl VirtualMemory {
             },
         };
 
-        // Read the header
+        // Read the header.
         let mut header_bytes: [u8; SIZE_OF_HEADER] = [0u8; SIZE_OF_HEADER];
-        let header: SnapshotHeader = match file.read_exact(&mut header_bytes) {
-            Ok(()) => SnapshotHeader::from_bytes(&header_bytes),
-            Err(e) => {
-                let reason: String = format!(
-                    "failed reading header from virtual memory snapshot file (error={e:?})"
-                );
-                error!("load_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
+        if let Err(e) = (&file).read_exact(&mut header_bytes) {
+            let reason: String =
+                format!("failed reading header from virtual memory snapshot file (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+        let header: SnapshotHeader = SnapshotHeader::from_bytes(&header_bytes);
 
-        // Validate that the memory size matches
+        // Validate that the memory size matches.
         if header.memory_size != self.size {
             let reason: String =
                 format!("memory size mismatch: expected {}, got {}", self.size, header.memory_size);
@@ -358,14 +370,65 @@ impl VirtualMemory {
             anyhow::bail!(reason)
         }
 
-        // Read the memory contents
-        // SAFETY: We're making a slice of the size of the virtual memory starting at its base.
-        let memory_slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(self.ptr, self.size) };
-        if let Err(e) = file.read_exact(memory_slice) {
-            let reason: String = format!("failed to read memory contents (error={e:?})");
+        // Validate that the snapshot file is large enough for the header plus all memory contents.
+        // If the file is truncated, a MAP_FIXED mmap could later cause SIGBUS on guest access.
+        {
+            let file_len: u64 = match file.metadata() {
+                Ok(m) => m.len(),
+                Err(e) => {
+                    let reason: String =
+                        format!("failed reading snapshot file metadata (error={e:?})");
+                    error!("load_snapshot(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            let required: u64 = (SNAPSHOT_DATA_OFFSET + self.size) as u64;
+            if file_len < required {
+                let reason: String = format!(
+                    "snapshot file too small: expected at least {required} bytes, got {file_len}"
+                );
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            }
+        }
+
+        // Remap the KVM guest memory region directly onto the snapshot file using MAP_FIXED.
+        // Memory contents start at SNAPSHOT_DATA_OFFSET (page-aligned) in the file.
+        // MAP_PRIVATE gives copy-on-write semantics: only pages the guest writes to are copied.
+        // MAP_FIXED atomically replaces the existing anonymous mapping at self.ptr, so the KVM
+        // memory region is now backed by the snapshot file with demand paging — only pages the
+        // guest accesses are faulted in from disk. If called more than once, each MAP_FIXED call
+        // atomically replaces the previous mapping without requiring an explicit munmap.
+        let file_offset: libc::off_t = match libc::off_t::try_from(SNAPSHOT_DATA_OFFSET) {
+            Ok(v) => v,
+            Err(_) => {
+                let reason: &str = "snapshot data offset exceeds off_t range";
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+        let mmap_ptr: *mut u8 = unsafe {
+            libc::mmap(
+                self.ptr.cast::<libc::c_void>(),
+                self.size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_FIXED,
+                file.as_raw_fd(),
+                file_offset,
+            )
+            .cast::<u8>()
+        };
+
+        if mmap_ptr == libc::MAP_FAILED.cast::<u8>() {
+            let reason: String = format!(
+                "failed to mmap snapshot file with MAP_FIXED (error={})",
+                ::std::io::Error::last_os_error()
+            );
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
+        // MAP_FIXED guarantees the returned address equals the requested address.
+        debug_assert_eq!(mmap_ptr, self.ptr, "MAP_FIXED should return the exact requested address");
         // TODO: validate header checksum matches the checksum computed off of the memory slice https://github.com/nanvix/nanvix/issues/1014
 
         trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
@@ -423,5 +486,160 @@ impl SnapshotHeader {
         // The header is at the beginning of the file, so alignment is guaranteed.
         unsafe { mem::transmute::<[u8; SIZE_OF_HEADER], SnapshotHeader>(*bytes) }
         // TODO: #1014 Add a magic number to the header and check it after deserialization.
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use ::anyhow::Result as AnyResult;
+    use ::std::{
+        env,
+        fs,
+        path::PathBuf,
+        time::{
+            SystemTime,
+            UNIX_EPOCH,
+        },
+    };
+
+    /// Minimum VM memory size used by tests (1 page).
+    const TEST_MEM_SIZE: usize = PAGE_SIZE;
+
+    /// Creates a KVM VM with a `VirtualMemory` region for testing.
+    /// Returns the `Kvm` and `VmFd` handles alongside the `VirtualMemory` so that the KVM
+    /// file descriptors remain open for the lifetime of the test.
+    fn create_test_vmem() -> AnyResult<(Kvm, VmFd, VirtualMemory)> {
+        let mut kvm: Kvm = Kvm::new().expect("failed to open /dev/kvm");
+        let mut vm: VmFd = kvm.create_vm().expect("failed to create VM");
+        let vmem: VirtualMemory =
+            VirtualMemory::new(&mut kvm, &mut vm, TEST_MEM_SIZE).expect("failed to create vmem");
+        Ok((kvm, vm, vmem))
+    }
+
+    /// Returns a unique temporary file path for snapshot tests.
+    fn unique_snapshot_path(suffix: &str) -> PathBuf {
+        let nanos: u128 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("failed to compute timestamp")
+            .as_nanos();
+        let mut path: PathBuf = env::temp_dir();
+        path.push(format!("nanvix-vmem-{suffix}-{nanos}.vmem"));
+        path
+    }
+
+    /// Verifies that `save_snapshot` creates a file with the expected size.
+    #[test]
+    fn save_snapshot_creates_correctly_sized_file() -> AnyResult<()> {
+        let (_kvm, _vm, vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let path: PathBuf = unique_snapshot_path("save-size");
+
+        vmem.save_snapshot(&path).expect("save_snapshot failed");
+
+        let file_len: u64 = fs::metadata(&path).expect("failed to read metadata").len();
+        let expected: u64 = (SNAPSHOT_DATA_OFFSET + TEST_MEM_SIZE) as u64;
+        assert_eq!(file_len, expected, "snapshot file should be header + padding + memory");
+
+        fs::remove_file(&path).ok();
+        Ok(())
+    }
+
+    /// Verifies that a save → load round trip preserves memory contents.
+    #[test]
+    fn save_load_round_trip_preserves_contents() -> AnyResult<()> {
+        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let path: PathBuf = unique_snapshot_path("round-trip");
+
+        // Write a recognizable pattern into guest memory.
+        // NOTE: 251 is prime and fits in u8, so (i % 251) is always in [0, 250].
+        let pattern: Vec<u8> = (0..TEST_MEM_SIZE)
+            .map(|i| u8::try_from(i % 251).expect("i % 251 always fits in u8"))
+            .collect();
+        vmem.write_bytes(0, &pattern).expect("write_bytes failed");
+
+        // Save snapshot.
+        vmem.save_snapshot(&path).expect("save_snapshot failed");
+
+        // Zero out memory so we can confirm load restores it.
+        let zeros: Vec<u8> = vec![0u8; TEST_MEM_SIZE];
+        vmem.write_bytes(0, &zeros)
+            .expect("write_bytes (zero) failed");
+
+        // Load snapshot.
+        vmem.load_snapshot(&path).expect("load_snapshot failed");
+
+        // Read back and verify.
+        let mut readback: Vec<u8> = vec![0u8; TEST_MEM_SIZE];
+        vmem.read_bytes(0, &mut readback)
+            .expect("read_bytes failed");
+        assert_eq!(readback, pattern, "memory contents should match after save-load round trip");
+
+        fs::remove_file(&path).ok();
+        Ok(())
+    }
+
+    /// Verifies that `load_snapshot` rejects a file with a mismatched memory size.
+    #[test]
+    fn load_snapshot_rejects_size_mismatch() -> AnyResult<()> {
+        let path: PathBuf = unique_snapshot_path("size-mismatch");
+
+        // Write a snapshot with a different memory size in the header.
+        let bad_header: SnapshotHeader = SnapshotHeader::new(TEST_MEM_SIZE * 2);
+        let mut file: File = File::create(&path).expect("failed to create file");
+        file.write_all(bad_header.as_bytes())
+            .expect("failed to write header");
+        // Pad to SNAPSHOT_DATA_OFFSET.
+        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
+            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
+        file.write_all(&padding).expect("failed to write padding");
+        // Write dummy memory contents (matching the *bad* header size).
+        let dummy: Vec<u8> = vec![0u8; TEST_MEM_SIZE * 2];
+        file.write_all(&dummy)
+            .expect("failed to write dummy memory");
+        drop(file);
+
+        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let result: AnyResult<()> = vmem.load_snapshot(&path);
+        assert!(result.is_err(), "load_snapshot should reject size mismatch");
+
+        fs::remove_file(&path).ok();
+        Ok(())
+    }
+
+    /// Verifies that `load_snapshot` rejects a truncated file.
+    #[test]
+    fn load_snapshot_rejects_truncated_file() -> AnyResult<()> {
+        let path: PathBuf = unique_snapshot_path("truncated");
+
+        // Write a valid header but no memory contents.
+        let header: SnapshotHeader = SnapshotHeader::new(TEST_MEM_SIZE);
+        let mut file: File = File::create(&path).expect("failed to create file");
+        file.write_all(header.as_bytes())
+            .expect("failed to write header");
+        drop(file);
+
+        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let result: AnyResult<()> = vmem.load_snapshot(&path);
+        assert!(result.is_err(), "load_snapshot should reject a truncated file");
+
+        fs::remove_file(&path).ok();
+        Ok(())
+    }
+
+    /// Verifies that `load_snapshot` fails gracefully when the file does not exist.
+    #[test]
+    fn load_snapshot_rejects_missing_file() -> AnyResult<()> {
+        let path: PathBuf = unique_snapshot_path("missing");
+
+        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
+        let result: AnyResult<()> = vmem.load_snapshot(&path);
+        assert!(result.is_err(), "load_snapshot should fail for a non-existent file");
+
+        Ok(())
     }
 }

@@ -502,6 +502,7 @@ impl Benchmark {
                 io_control_rx,
                 io_control_tx,
                 counters,
+                snapshot_path: None,
             });
 
             let join_result = user_vm_handle.await;
@@ -944,6 +945,7 @@ impl Benchmark {
             io_control_rx,
             io_control_tx,
             counters,
+            snapshot_path: None,
         });
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);

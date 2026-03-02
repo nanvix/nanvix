@@ -160,4 +160,153 @@ impl Fpu {
 
         Ok(FpuState { xsave_bytes: bytes })
     }
+
+    ///
+    /// # Description
+    ///
+    /// Restores the FPU state from a previously saved snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `fd`: Reference to the VCPU device.
+    /// - `state`: The FPU state to restore.
+    ///
+    /// # Return Value
+    ///
+    /// On success, this function returns empty. On failure, an error object that
+    /// describes the error is returned instead.
+    ///
+    pub fn load_state(&self, fd: &VcpuFd, state: &FpuState) -> Result<()> {
+        trace!("load_state()");
+
+        if self.xsave2_size > 0 {
+            // Reconstruct Xsave (FamStructWrapper<kvm_xsave2>) from serialized bytes.
+            let header_size: usize = mem::size_of::<kvm_bindings::kvm_xsave2>();
+            let entry_size: usize = mem::size_of::<u32>();
+            if state.xsave_bytes.len() < header_size {
+                let reason: &str = "xsave2 data too short for header";
+                error!("load_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+            let payload_len: usize = state.xsave_bytes.len() - header_size;
+            if !payload_len.is_multiple_of(entry_size) {
+                let reason: String = format!(
+                    "xsave2 payload size {} not divisible by entry size {}",
+                    payload_len, entry_size
+                );
+                error!("load_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+            let num_entries: usize = payload_len / entry_size;
+            let mut xsave2: Xsave = match Xsave::new(num_entries) {
+                Ok(v) => v,
+                Err(e) => {
+                    let reason: String = format!("failed creating xsave2 (error={e:?})");
+                    error!("load_state(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            // SAFETY: We copy exactly the saved bytes into the freshly-allocated Xsave region.
+            // The FamStructWrapper guarantees contiguous layout matching the serialized data.
+            unsafe {
+                let dst: *mut u8 = xsave2.as_mut_fam_struct_ptr().cast::<u8>();
+                std::ptr::copy_nonoverlapping(
+                    state.xsave_bytes.as_ptr(),
+                    dst,
+                    state.xsave_bytes.len(),
+                );
+            }
+            // SAFETY: The Xsave buffer has been populated with valid data from the snapshot.
+            if let Err(e) = unsafe { fd.set_xsave2(&xsave2) } {
+                let reason: String = format!("failed setting xsave2 (error={e:?})");
+                error!("load_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+        } else {
+            // Reconstruct kvm_xsave from serialized bytes.
+            if state.xsave_bytes.len() != mem::size_of::<kvm_xsave>() {
+                let reason: String = format!(
+                    "xsave data size mismatch: expected {}, got {}",
+                    mem::size_of::<kvm_xsave>(),
+                    state.xsave_bytes.len()
+                );
+                error!("load_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+            // SAFETY: kvm_xsave is repr(C), we've verified the byte length matches, and we use
+            // read_unaligned because the Vec<u8> buffer does not guarantee kvm_xsave alignment.
+            let xsave: kvm_xsave =
+                unsafe { std::ptr::read_unaligned(state.xsave_bytes.as_ptr().cast::<kvm_xsave>()) };
+            // SAFETY: The xsave buffer has been populated with valid data from the snapshot.
+            if let Err(e) = unsafe { fd.set_xsave(&xsave) } {
+                let reason: String = format!("failed setting xsave (error={e:?})");
+                error!("load_state(): {reason}");
+                anyhow::bail!(reason)
+            }
+        }
+
+        Ok(())
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use ::anyhow::Result as AnyResult;
+    use ::kvm_ioctls::VmFd;
+
+    /// Creates a minimal KVM VM with one vCPU for testing.
+    /// Returns the `Kvm` and `VmFd` handles alongside the `VcpuFd` so that the KVM
+    /// file descriptors remain open for the lifetime of the test.
+    fn create_test_vcpu() -> AnyResult<(Kvm, VmFd, VcpuFd)> {
+        let kvm: Kvm = Kvm::new().expect("failed to open /dev/kvm");
+        let vm: VmFd = kvm.create_vm().expect("failed to create VM");
+        let vcpu: VcpuFd = vm.create_vcpu(0).expect("failed to create vCPU");
+        Ok((kvm, vm, vcpu))
+    }
+
+    /// Verifies that `save_state` followed by `load_state` followed by another `save_state`
+    /// produces identical FPU state bytes (round-trip invariant).
+    #[test]
+    fn save_load_round_trip() -> AnyResult<()> {
+        let (kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
+        let fpu: Fpu = Fpu::new(&kvm, &vcpu_fd).expect("failed to create FPU");
+
+        // Save the initial FPU state.
+        let state_before: FpuState = fpu.save_state(&vcpu_fd).expect("first save_state failed");
+        assert!(!state_before.xsave_bytes.is_empty(), "saved FPU state should not be empty");
+
+        // Load the saved state back.
+        fpu.load_state(&vcpu_fd, &state_before)
+            .expect("load_state failed");
+
+        // Save again and verify the bytes are identical.
+        let state_after: FpuState = fpu.save_state(&vcpu_fd).expect("second save_state failed");
+        assert_eq!(
+            state_before.xsave_bytes, state_after.xsave_bytes,
+            "FPU state should be identical after a save-load-save round trip"
+        );
+
+        Ok(())
+    }
+
+    /// Verifies that `load_state` rejects data that is too short for the xsave header.
+    #[test]
+    fn load_state_rejects_truncated_data() -> AnyResult<()> {
+        let (kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
+        let fpu: Fpu = Fpu::new(&kvm, &vcpu_fd).expect("failed to create FPU");
+
+        let bad_state: FpuState = FpuState {
+            xsave_bytes: vec![0u8; 4],
+        };
+        let result: AnyResult<()> = fpu.load_state(&vcpu_fd, &bad_state);
+        assert!(result.is_err(), "load_state should reject truncated data");
+
+        Ok(())
+    }
 }

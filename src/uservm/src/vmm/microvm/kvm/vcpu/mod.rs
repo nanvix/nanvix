@@ -43,6 +43,7 @@ use ::arch::{
 use ::kvm_bindings::{
     CpuId,
     KVM_MAX_CPUID_ENTRIES,
+    kvm_cpuid_entry2,
     kvm_cpuid2,
     kvm_debugregs,
     kvm_lapic_state,
@@ -711,8 +712,92 @@ impl VirtualProcessor {
     /// Upon successful completion, this method returns empty. Otherwise, it
     /// returns an error.
     ///
-    pub fn load_state(&mut self, _state: &VirtualProcessorState) -> Result<()> {
+    pub fn load_state(&mut self, state: &VirtualProcessorState) -> Result<()> {
+        // Ordering requirements between `kvm_set` calls:
+        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L556
         trace!("load_state()");
+
+        // Restore system registers first (some MSRs depend on sregs).
+        if let Err(e) = self.fd.set_sregs(&state.sregs) {
+            let reason: String = format!("failed setting sregs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore CPUID.
+        let cpuid: CpuId = deserialize_cpuid(&state.cpuid)?;
+        if let Err(e) = self.fd.set_cpuid2(&cpuid) {
+            let reason: String = format!("failed setting cpuid (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore MSRs (after sregs).
+        if let Err(e) = self.msrs.load_state(&self.fd, &state.msrs_state) {
+            let reason: String = format!("failed setting msrs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore general purpose registers.
+        if let Err(e) = self.fd.set_regs(&state.regs) {
+            let reason: String = format!("failed setting regs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore LAPIC.
+        if let Err(e) = self.fd.set_lapic(&state.lapic) {
+            let reason: String = format!("failed setting lapic (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore TSC frequency.
+        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
+            let reason: String = format!("failed setting tsc_khz (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore debug registers.
+        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
+            let reason: String = format!("failed setting debugregs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore extended control registers.
+        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
+            let reason: String = format!("failed setting xcrs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore FPU/XSAVE state.
+        if let Err(e) = self.fpu.load_state(&self.fd, &state.fpu_ext) {
+            let reason: String = format!("failed setting fpu state (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore vCPU events.
+        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
+            let reason: String = format!("failed setting vcpu_events (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Restore MP state last (setting it to runnable starts execution).
+        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
+            let reason: String = format!("failed setting mp_state (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Mark vCPU as online.
+        self.online = true;
+
         Ok(())
     }
 }
@@ -754,10 +839,214 @@ fn serialize_plain<T: Sized>(t: &T) -> Vec<u8> {
 /// A vector of bytes with the same contents as the original wrapper.
 ///
 fn serialize_fam_struct<T: Default + FamStruct>(wrapper: &FamStructWrapper<T>) -> Vec<u8> {
-    let total_size: usize = mem::size_of_val(wrapper);
-    // SAFETY: We're casting an object to a `&[u8]` of its own length, so the sizes match.
-    let raw_bytes: &[u8] = unsafe {
-        slice::from_raw_parts((wrapper as *const FamStructWrapper<T>).cast::<u8>(), total_size)
-    };
+    let fam_ref: &T = wrapper.as_fam_struct_ref();
+    let total_size: usize = mem::size_of::<T>() + mem::size_of_val(fam_ref.as_slice());
+    // SAFETY: FamStructWrapper guarantees that the header and entries are contiguous in memory.
+    // The total_size accounts for the header plus all FAM entries.
+    let raw_bytes: &[u8] =
+        unsafe { slice::from_raw_parts((fam_ref as *const T).cast::<u8>(), total_size) };
     raw_bytes.to_vec()
+}
+
+///
+/// # Description
+///
+/// Deserializes a CPUID table from a byte vector produced by [`serialize_fam_struct`].
+///
+/// # Parameters
+///
+/// - `bytes`: Byte vector containing the serialized `kvm_cpuid2` header followed by entries.
+///
+/// # Returns
+///
+/// A reconstructed [`CpuId`] on success, or an error if the data is malformed.
+///
+fn deserialize_cpuid(bytes: &[u8]) -> Result<CpuId> {
+    let header_size: usize = mem::size_of::<kvm_cpuid2>();
+    let entry_size: usize = mem::size_of::<kvm_cpuid_entry2>();
+
+    if bytes.len() < header_size {
+        let reason: &str = "cpuid data too short for header";
+        error!("deserialize_cpuid(): {reason}");
+        anyhow::bail!(reason)
+    }
+
+    // Read nent from the raw kvm_cpuid2 header (first 4 bytes, native endian).
+    let nent: usize = u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+
+    let expected_size: usize = header_size + nent * entry_size;
+    if bytes.len() < expected_size {
+        let reason: String = format!(
+            "cpuid data size mismatch: expected at least {expected_size}, got {}",
+            bytes.len()
+        );
+        error!("deserialize_cpuid(): {reason}");
+        anyhow::bail!(reason)
+    }
+
+    let mut cpuid: CpuId = match CpuId::new(nent) {
+        Ok(v) => v,
+        Err(e) => {
+            let reason: String = format!("failed creating CpuId (error={e:?})");
+            error!("deserialize_cpuid(): {reason}");
+            anyhow::bail!(reason)
+        },
+    };
+
+    // Deserialize entries using unaligned reads into aligned CpuId storage.
+    let entries_bytes: &[u8] = &bytes[header_size..header_size + nent * entry_size];
+
+    for (i, chunk) in entries_bytes.chunks_exact(entry_size).enumerate() {
+        // SAFETY:
+        // - `chunk` has length exactly `entry_size` (by `chunks_exact`).
+        // - We interpret the chunk as a `kvm_cpuid_entry2` via an unaligned read,
+        //   which is allowed even if the underlying pointer is not properly aligned.
+        // - The resulting value is then stored into `cpuid.as_mut_slice()[i]`,
+        //   which is properly aligned for `kvm_cpuid_entry2`.
+        let src: *const kvm_cpuid_entry2 = chunk.as_ptr().cast();
+        let entry: kvm_cpuid_entry2 = unsafe { core::ptr::read_unaligned(src) };
+        cpuid.as_mut_slice()[i] = entry;
+    }
+
+    Ok(cpuid)
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use ::anyhow::Result as AnyResult;
+
+    /// Creates a minimal KVM VM with a fully initialized `VirtualProcessor` for testing.
+    /// Returns the `Kvm` and `VmFd` handles alongside the `VirtualProcessor` so that the KVM
+    /// file descriptors remain open for the lifetime of the test.
+    fn create_test_vcpu() -> AnyResult<(Kvm, VmFd, VirtualProcessor)> {
+        let mut kvm: Kvm = Kvm::new().expect("failed to open /dev/kvm");
+        let mut vm: VmFd = kvm.create_vm().expect("failed to create VM");
+        // Create an in-kernel IRQ chip — required for LAPIC save/restore.
+        vm.create_irq_chip().expect("failed to create IRQ chip");
+        let vcpu: VirtualProcessor =
+            VirtualProcessor::new(&mut kvm, &mut vm, 0).expect("failed to create VirtualProcessor");
+        Ok((kvm, vm, vcpu))
+    }
+
+    /// Verifies that `save_state` produces a non-empty `VirtualProcessorState` with populated
+    /// register fields and serializable CPUID/MSR/FPU byte vectors.
+    #[test]
+    fn save_state_produces_valid_snapshot() -> AnyResult<()> {
+        let (kvm, _vm, vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+
+        let state: VirtualProcessorState = vcpu.save_state(&kvm).expect("save_state failed");
+
+        // CPUID bytes must contain at least the kvm_cpuid2 header.
+        assert!(
+            state.cpuid.len() >= mem::size_of::<kvm_cpuid2>(),
+            "CPUID snapshot too short (len={})",
+            state.cpuid.len()
+        );
+
+        // TSC frequency must be non-zero on any modern host.
+        assert!(state.tsc_khz > 0, "TSC frequency should be non-zero");
+
+        // The state must be serializable (snapshot pipeline uses serde_cbor).
+        let encoded: Vec<u8> =
+            ::serde_cbor::to_vec(&state).expect("VirtualProcessorState should be serializable");
+        assert!(!encoded.is_empty(), "serialized VirtualProcessorState should not be empty");
+
+        Ok(())
+    }
+
+    /// Verifies that a save → load → save round trip produces identical vCPU state.
+    #[test]
+    fn save_load_round_trip() -> AnyResult<()> {
+        let (kvm, _vm, mut vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+
+        // Save the initial state.
+        let state_before: VirtualProcessorState =
+            vcpu.save_state(&kvm).expect("first save_state failed");
+
+        // Load it back.
+        vcpu.load_state(&state_before).expect("load_state failed");
+        assert!(vcpu.is_online(), "vCPU should be online after load_state");
+
+        // Save again and compare the two snapshots field-by-field.
+        let state_after: VirtualProcessorState =
+            vcpu.save_state(&kvm).expect("second save_state failed");
+
+        // Serialize both snapshots and compare bytes — this covers all fields including
+        // the opaque CPUID, FPU, and MSR byte vectors.
+        let bytes_before: Vec<u8> =
+            ::serde_cbor::to_vec(&state_before).expect("serialization of state_before failed");
+        let bytes_after: Vec<u8> =
+            ::serde_cbor::to_vec(&state_after).expect("serialization of state_after failed");
+        assert_eq!(
+            bytes_before, bytes_after,
+            "vCPU state should be identical after a save-load-save round trip"
+        );
+
+        Ok(())
+    }
+
+    /// Verifies that `deserialize_cpuid` rejects a byte vector that is too short for the header.
+    #[test]
+    fn deserialize_cpuid_rejects_truncated_header() {
+        let short_data: Vec<u8> = vec![0u8; 4];
+        let result: Result<CpuId> = deserialize_cpuid(&short_data);
+        assert!(result.is_err(), "deserialize_cpuid should reject truncated header");
+    }
+
+    /// Verifies that `deserialize_cpuid` rejects a header whose `nent` field implies more entries
+    /// than the byte vector contains.
+    #[test]
+    fn deserialize_cpuid_rejects_truncated_entries() {
+        // Create a header with nent = 10 but provide no entry bytes.
+        let header_size: usize = mem::size_of::<kvm_cpuid2>();
+        let mut data: Vec<u8> = vec![0u8; header_size];
+        // Write nent = 10 at offset 0 (native endian).
+        let nent_bytes: [u8; 4] = 10u32.to_ne_bytes();
+        data[..4].copy_from_slice(&nent_bytes);
+
+        let result: Result<CpuId> = deserialize_cpuid(&data);
+        assert!(result.is_err(), "deserialize_cpuid should reject data with insufficient entries");
+    }
+
+    /// Verifies that the CPUID serialize → deserialize round trip preserves all entries.
+    #[test]
+    fn cpuid_serialize_deserialize_round_trip() -> AnyResult<()> {
+        let (_kvm, _vm, vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+
+        let original: FamStructWrapper<kvm_cpuid2> = vcpu
+            .fd
+            .get_cpuid2(KVM_MAX_CPUID_ENTRIES)
+            .expect("get_cpuid2 failed");
+
+        let serialized: Vec<u8> = serialize_fam_struct(&original);
+        let restored: CpuId = deserialize_cpuid(&serialized).expect("deserialize_cpuid failed");
+
+        assert_eq!(
+            original.as_slice().len(),
+            restored.as_slice().len(),
+            "CPUID entry count mismatch"
+        );
+
+        for (i, (orig, rest)) in original
+            .as_slice()
+            .iter()
+            .zip(restored.as_slice().iter())
+            .enumerate()
+        {
+            assert_eq!(orig.function, rest.function, "CPUID entry {i}: function mismatch");
+            assert_eq!(orig.index, rest.index, "CPUID entry {i}: index mismatch");
+            assert_eq!(orig.eax, rest.eax, "CPUID entry {i}: eax mismatch");
+            assert_eq!(orig.ebx, rest.ebx, "CPUID entry {i}: ebx mismatch");
+            assert_eq!(orig.ecx, rest.ecx, "CPUID entry {i}: ecx mismatch");
+            assert_eq!(orig.edx, rest.edx, "CPUID entry {i}: edx mismatch");
+        }
+
+        Ok(())
+    }
 }

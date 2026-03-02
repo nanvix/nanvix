@@ -87,6 +87,7 @@ pub async fn main() -> Result<ExitCode> {
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
     let standalone: bool = args.standalone();
+    let snapshot_path: Option<String> = args.take_snapshot_path();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -115,6 +116,7 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             memory_size,
             stderr,
+            snapshot_path,
         )
         .await
     } else {
@@ -146,6 +148,8 @@ pub async fn main() -> Result<ExitCode> {
 /// - `ramfs_filename`: Optional path to a RAM filesystem image.
 /// - `memory_size`: Amount of guest physical memory in bytes.
 /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
+/// - `snapshot_path`: Optional path to a snapshot from which to restore VM state instead of
+///   cold-booting.
 ///
 /// # Returns
 ///
@@ -163,6 +167,7 @@ async fn run_standalone(
     ramfs_filename: Option<String>,
     memory_size: usize,
     stderr: Option<String>,
+    snapshot_path: Option<String>,
 ) -> Result<ExitCode> {
     info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
 
@@ -191,6 +196,7 @@ async fn run_standalone(
         io_control_tx,
         kernel_filename,
         counters,
+        snapshot_path,
     });
 
     // Drain the VM's stdout channel. In standalone mode there is no system VM to forward messages
@@ -392,6 +398,7 @@ async fn run_managed(
         io_control_tx,
         kernel_filename,
         counters,
+        snapshot_path: None,
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

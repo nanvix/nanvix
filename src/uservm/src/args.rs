@@ -66,6 +66,8 @@ pub struct Args {
     gateway_socket_type: String,
     /// Standalone mode: run without system VM, control-plane, or gateway connections.
     standalone: bool,
+    /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
+    snapshot_path: Option<String>,
 }
 
 //==================================================================================================
@@ -107,6 +109,8 @@ impl Args {
     pub const OPT_LOGDIR: &'static str = "-log-dir";
     /// Command-line option for standalone mode.
     pub const OPT_STANDALONE: &'static str = "-standalone";
+    /// Command-line option for snapshot restore path.
+    pub const OPT_SNAPSHOT: &'static str = "-snapshot";
 
     /// Program name.
     const PROGRAM_NAME: &'static str = env!("CARGO_PKG_NAME");
@@ -141,6 +145,7 @@ impl Args {
         let mut control_plane_socket_type: String = String::new();
         let mut gateway_socket_type: String = String::new();
         let mut standalone: bool = false;
+        let mut snapshot_path: Option<String> = None;
 
         // Parse command-line arguments.
         let mut i: usize = 1;
@@ -269,6 +274,11 @@ impl Args {
                 // Set standalone mode.
                 Self::OPT_STANDALONE => {
                     standalone = true;
+                },
+                // Set snapshot path.
+                Self::OPT_SNAPSHOT if i + 1 < args.len() => {
+                    snapshot_path = Some(args[i + 1].clone());
+                    i += 1;
                 },
                 // Set log to file flag.
                 Self::OPT_LOGFILE => {
@@ -414,6 +424,7 @@ impl Args {
             control_plane_socket_type,
             gateway_socket_type,
             standalone,
+            snapshot_path,
         })
     }
 
@@ -426,7 +437,7 @@ impl Args {
         eprintln!(
             "Usage: {} [{} <id>] {} <kernel> [{} <size>] [{} <file>] [{} <file>] [{}] [{} \
              <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
-             <args>] [{} <file>]",
+             <args>] [{} <file>] [{} <path>]",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -441,6 +452,7 @@ impl Args {
             Self::OPT_LOGDIR,
             Self::OPT_INITRD_ARGS,
             Self::OPT_RAMFS,
+            Self::OPT_SNAPSHOT,
         );
     }
 
@@ -661,6 +673,20 @@ impl Args {
     ///
     pub fn standalone(&self) -> bool {
         self.standalone
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the snapshot path that was passed as a command-line argument.
+    /// After this call, the internal snapshot path is set to `None`.
+    ///
+    /// # Returns
+    ///
+    /// The snapshot path, or `None` if not provided.
+    ///
+    pub fn take_snapshot_path(&mut self) -> Option<String> {
+        self.snapshot_path.take()
     }
 }
 

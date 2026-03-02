@@ -40,6 +40,9 @@ pub struct MicroVmArgs {
     #[cfg(feature = "hyperlight")]
     pub bulk_output: Box<BulkStdoutFn>,
     pub stderr: Box<StderrFn>,
+    /// When true, skip kernel/initrd/ramfs loading and vCPU reset because the VM state will be
+    /// restored from a snapshot.
+    pub restoring_from_snapshot: bool,
 }
 
 impl std::fmt::Debug for MicroVmArgs {
