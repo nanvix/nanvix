@@ -68,39 +68,7 @@ pub fn kcall_handler() -> ExitStatus {
 
     let status: ExitStatus = loop {
         // Check if inter-kernel communication messages are available.
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "stdio")] {
-                let mut message_received: bool = false;
-                for _ in 0..IKC_POLL_BATCH_SIZE {
-                    // Check if the number of buffered messages in the kernel is not too high. We don't
-                    // want to keep pushing messages to the kernel and then run out of memory.
-                    let number_buffered_messages: usize = pm!().number_buffered_messages();
-                    if number_buffered_messages < config::kernel::MAX_IKC_MESSAGES {
-                        // The number of messages that are buffered in the kernel is not too high,
-                        // So attempt to read an inter-kernel communication message from the
-                        // kernel's standard input.
-                        match crate::stdio::read() {
-                            // No message is available.
-                            Ok(None) => break,
-                            // A message is available.
-                            Ok(Some(message)) => {
-                                if let Err(e) = EventManager::post_message(pm!(), message.destination, message) {
-                                    warn!("failed to post message (error={:?})", e);
-                                }
-                                message_received = true;
-                            }
-                            // Failed to read message.
-                            Err(e) => {
-                                warn!("failed to read message (error={:?})", e);
-                            }
-                        }
-                    }
-                }
-            } else {
-                // No inter-kernel communication messages are available.
-                let message_received: bool = false;
-            }
-        }
+        let message_received: bool = poll_ikc_messages();
 
         // Attempt to harvest zombie processes.
         let mut harvested_process: bool = false;
@@ -143,4 +111,53 @@ pub fn kcall_handler() -> ExitStatus {
     }
 
     status
+}
+
+///
+/// # Description
+///
+/// Polls inter-kernel communication messages from the kernel's standard input and dispatches them
+/// to the appropriate destination process.
+///
+/// # Returns
+///
+/// `true` if at least one message was received, `false` otherwise.
+///
+pub fn poll_ikc_messages() -> bool {
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "stdio")] {
+            let mut message_received: bool = false;
+            for _ in 0..IKC_POLL_BATCH_SIZE {
+                // Check if the number of buffered messages in the kernel is too high. We don't want
+                // to keep pushing messages to the kernel and then run out of memory.
+                let number_buffered_messages: usize = pm!().number_buffered_messages();
+                if number_buffered_messages >= config::kernel::MAX_IKC_MESSAGES {
+                    break;
+                }
+
+                // The number of messages that are buffered in the kernel is not too high,
+                // So attempt to read an inter-kernel communication message from the
+                // kernel's standard input.
+                match crate::stdio::read() {
+                    // No more messages are available.
+                    Ok(None) => break,
+                    // A message is available.
+                    Ok(Some(message)) => {
+                        if let Err(e) = EventManager::post_message(pm!(), message.destination, message) {
+                            warn!("failed to post message (error={:?})", e);
+                        }
+                        message_received = true;
+                    }
+                    // Failed to read message.
+                    Err(e) => {
+                        warn!("failed to read message (error={:?})", e);
+                    }
+                }
+            }
+            message_received
+        } else {
+            // No inter-kernel communication messages are available.
+            false
+        }
+    }
 }
