@@ -53,6 +53,9 @@ impl ThreadIdentifier {
     /// Identifier of the kernel thread.
     pub const KERNEL: ThreadIdentifier = ThreadIdentifier(Self::KERNEL_RAW);
 
+    /// Error message for conversion failures.
+    const PARSE_ERROR_MESSAGE: &'static str = "invalid thread identifier";
+
     /// Identifier of the init daemon thread.
     pub const INITD: ThreadIdentifier = ThreadIdentifier(1);
 
@@ -87,9 +90,9 @@ impl TryFrom<ThreadIdentifier> for usize {
     type Error = Error;
 
     fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
-        tid.0
-            .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        tid.0.try_into().map_err(|_| {
+            Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+        })
     }
 }
 
@@ -97,9 +100,9 @@ impl TryFrom<ThreadIdentifier> for u32 {
     type Error = Error;
 
     fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
-        tid.0
-            .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        tid.0.try_into().map_err(|_| {
+            Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+        })
     }
 }
 
@@ -107,9 +110,9 @@ impl TryFrom<ThreadIdentifier> for u64 {
     type Error = Error;
 
     fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
-        tid.0
-            .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+        tid.0.try_into().map_err(|_| {
+            Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+        })
     }
 }
 
@@ -119,7 +122,9 @@ impl TryFrom<isize> for ThreadIdentifier {
     fn try_from(raw_tid: isize) -> Result<Self, Self::Error> {
         raw_tid
             .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+            })
             .map(ThreadIdentifier)
     }
 }
@@ -136,7 +141,9 @@ impl TryFrom<i64> for ThreadIdentifier {
     fn try_from(raw_tid: i64) -> Result<Self, Self::Error> {
         raw_tid
             .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+            })
             .map(ThreadIdentifier)
     }
 }
@@ -147,7 +154,9 @@ impl TryFrom<usize> for ThreadIdentifier {
     fn try_from(raw_tid: usize) -> Result<Self, Self::Error> {
         raw_tid
             .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+            })
             .map(ThreadIdentifier)
     }
 }
@@ -158,7 +167,9 @@ impl TryFrom<u32> for ThreadIdentifier {
     fn try_from(raw_tid: u32) -> Result<Self, Self::Error> {
         raw_tid
             .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+            })
             .map(ThreadIdentifier)
     }
 }
@@ -169,7 +180,9 @@ impl TryFrom<u64> for ThreadIdentifier {
     fn try_from(raw_tid: u64) -> Result<Self, Self::Error> {
         raw_tid
             .try_into()
-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+            .map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, ThreadIdentifier::PARSE_ERROR_MESSAGE)
+            })
             .map(ThreadIdentifier)
     }
 }
