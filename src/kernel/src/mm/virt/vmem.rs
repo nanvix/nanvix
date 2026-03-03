@@ -1177,6 +1177,15 @@ impl Vmem {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
+        self.kctrl_impl(vaddr, access, false)
+    }
+
+    fn kctrl_impl(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+        access: AccessPermission,
+        dry_run: bool,
+    ) -> Result<(), Error> {
         trace!("{vaddr:?}");
 
         // Check if the provided address lies outside the kernel space.
@@ -1213,13 +1222,26 @@ impl Vmem {
 
         let page_address: PageAddress = PageAddress::new(vaddr);
 
-        // Change access permissions on the page.
-        page_table
-            .borrow_mut()
-            .1
-            .ctrl(false, page_address, access)?;
+        if dry_run {
+            page_table.borrow().1.lookup(page_address)?;
+        } else {
+            page_table
+                .borrow_mut()
+                .1
+                .ctrl(false, page_address, access)?;
+        }
 
         Ok(())
+    }
+
+    /// Validates that [`kctrl`](Self::kctrl) would succeed for the given address without
+    /// modifying any page table entries.
+    pub fn kctrl_dry_run(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+        access: AccessPermission,
+    ) -> Result<(), Error> {
+        self.kctrl_impl(vaddr, access, true)
     }
 }
 
