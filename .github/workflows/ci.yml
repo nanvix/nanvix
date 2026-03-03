@@ -138,7 +138,7 @@ jobs:
   # machine-type + deployment-type) and runs once per unique pair, like lint.
   verify:
     name: "Verify (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck, checks, lint]
+    needs: [precheck, checks]
     timeout-minutes: 60
     strategy:
       fail-fast: false
