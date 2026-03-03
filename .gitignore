@@ -46,6 +46,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Verus download cache
+.verus-cache/
+
 # IDEs
 *.swo
 *.swp
