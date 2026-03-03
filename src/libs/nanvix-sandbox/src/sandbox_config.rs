@@ -12,8 +12,10 @@
 //==================================================================================================
 
 use crate::tcp_port::TcpPort;
+use ::chrono::Local;
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
+use ::std::path::PathBuf;
 use ::syscomm::SocketType;
 use ::user_vm_api::UserVmIdentifier;
 
@@ -99,6 +101,29 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
+    /// Generates a default console file path for the sandbox when no explicit path is provided.
+    /// The path is constructed from the log directory and includes the user VM identifier along
+    /// with a timestamp to ensure uniqueness.
+    ///
+    /// # Arguments
+    ///
+    /// - `uservm_id`: user VM unique identifier.
+    /// - `log_dir`: log directory for the sandbox.
+    ///
+    /// # Returns
+    ///
+    /// The path to the console file as a string.
+    ///
+    fn default_console_file(uservm_id: UserVmIdentifier, log_dir: &str) -> String {
+        let console_file: PathBuf = PathBuf::from(log_dir)
+            .join(format!("guest_{uservm_id}_{}.log", Local::now().format("%Y_%m_%d_%H_%M_%S_%f")));
+
+        console_file.to_string_lossy().into_owned()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a new sandbox configuration with the specified parameters.
     ///
     /// # Parameters
@@ -149,7 +174,10 @@ impl<T> SandboxConfig<T> {
             uservm_id,
             gateway_socket_info,
             system_vm_socket_info,
-            console_file,
+            console_file: Some(
+                console_file
+                    .unwrap_or_else(|| Self::default_console_file(uservm_id, log_directory)),
+            ),
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
             #[cfg(not(feature = "single-process"))]
