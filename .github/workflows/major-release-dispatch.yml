@@ -14,13 +14,19 @@ permissions:
 env:
   TARGET_REPOSITORIES: |
     bzip2
+    cymem
+    kiwi
     libexpat
     libffi
+    murmurhash
+    numpy
     openblas
     openssl
+    preshed
     quickjs
     rusty_v8
     sqlite
+    srsly
     zlib
 
 jobs:
