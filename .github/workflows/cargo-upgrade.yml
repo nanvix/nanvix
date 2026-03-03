@@ -35,7 +35,7 @@ jobs:
 
       - name: "Run cargo upgrade"
         run: |
-          cargo upgrade --workspace --incompatible allow \
+          cargo upgrade --incompatible allow \
             --exclude fatfs \
             --exclude hyperlight-common \
             --exclude hyperlight-host \
