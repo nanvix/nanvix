@@ -1063,7 +1063,17 @@ pub fn init() -> Result<(), Error> {
 
     if let Some(intman) = hal.intman() {
         for intnum in InterruptNumber::VALUES {
+            // Timer has a dedicated handler registered in pm::init().
             if intnum == InterruptNumber::Timer {
+                continue;
+            }
+            // IKC has a dedicated handler registered in pm::init() (microvm only).
+            // Unmask the interrupt here so the guest can receive IRQ 9 notifications.
+            #[cfg(feature = "microvm")]
+            if intnum == InterruptNumber::Ikc {
+                if let Err(e) = intman.unmask(intnum) {
+                    warn!("failed to unmask IKC interrupt: {:?}", e);
+                }
                 continue;
             }
             match intman.register_handler(intnum, interrupt_handler) {
