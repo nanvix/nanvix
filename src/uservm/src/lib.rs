@@ -172,6 +172,8 @@ pub struct UserVmArgs {
     pub io_control_tx: Sender<IoControlResponse>,
     /// Shared counters for tracking message flow across threads.
     pub counters: MessageCounters,
+    /// Optional snapshot path: when set, restore VM state from this snapshot before running.
+    pub snapshot_path: Option<String>,
 }
 
 //==================================================================================================
@@ -274,7 +276,13 @@ impl UserVm {
             initrd_filename: args.initrd_filename.clone(),
             initrd_args: args.initrd_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
+            restoring_from_snapshot: args.snapshot_path.is_some(),
         })?;
+
+        // If a snapshot path is provided, restore VM state from the snapshot.
+        if let Some(snapshot_path) = args.snapshot_path {
+            microvm.load_snapshot(snapshot_path).await?;
+        }
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
