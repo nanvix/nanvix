@@ -137,7 +137,11 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::arch::cpu::halt();
+    // NOTE: We use `pause` instead of `halt` because Hyperlight has no interrupt injection
+    // mechanism to wake the guest from HLT. The `pause` instruction allows the kernel's main
+    // loop to continue spinning and polling for IKC credits written to shared memory by the host.
+    // See issue #1305 for context.
+    ::arch::cpu::pause();
 }
 
 ///
