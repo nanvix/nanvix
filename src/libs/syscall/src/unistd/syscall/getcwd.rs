@@ -50,6 +50,18 @@ pub fn getcwd() -> Result<String, Error> {
         }
     }
 
+    // In standalone mode, return "/" as the default cwd (no linuxd).
+    #[cfg(feature = "standalone")]
+    return Ok(String::from("/"));
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    getcwd_linuxd()
+}
+
+/// Forwards a `getcwd` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn getcwd_linuxd() -> Result<String, Error> {
     // Send request.
     getcwd_request()?;
 
@@ -58,6 +70,7 @@ pub fn getcwd() -> Result<String, Error> {
 }
 
 /// Handles the request of the `getcwd()` system call.
+#[cfg(not(feature = "standalone"))]
 fn getcwd_request() -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
@@ -68,6 +81,7 @@ fn getcwd_request() -> Result<(), Error> {
 }
 
 /// Handles the response of the `getcwd()` system call.
+#[cfg(not(feature = "standalone"))]
 fn getcwd_response() -> Result<String, Error> {
     // Compute the maximum number of parts in the response.
     let capacity: usize =

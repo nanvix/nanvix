@@ -48,6 +48,7 @@ use ::sysapi::ffi::c_int;
 ///
 /// The `socketpair()` function returns empty on success. On error, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn socketpair(
     domain: AddressFamily,
     typ: SocketType,
@@ -55,6 +56,16 @@ pub fn socketpair(
     socket_fds: &mut [c_int],
 ) -> Result<(), Error> {
     ::syslog::trace!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
+
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (domain, typ, protocol, socket_fds);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "socketpair not available in standalone mode",
+        ));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Check if array of file descriptors has expected length.

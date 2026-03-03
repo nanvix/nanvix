@@ -39,6 +39,7 @@ use sysapi::sys_types::mode_t;
 ///
 /// Upon successful completion, `fchmod()` returns empty. Otherwise, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
@@ -48,6 +49,13 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, mode);
+        return Ok(());
     }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;

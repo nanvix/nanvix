@@ -53,6 +53,7 @@ use super::util::page_chunk_size;
 /// Upon successful completion, the number of bytes written by linuxd is returned. Otherwise, an
 /// error is returned.
 ///
+#[cfg(not(feature = "standalone"))]
 fn write_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
@@ -144,6 +145,37 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         }
     }
 
+    // In standalone mode, route stdout/stderr to the kernel debug kcall
+    // and reject all other file descriptors.
+    #[cfg(feature = "standalone")]
+    return write_standalone(fd, buffer);
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    write_linuxd(fd, buffer)
+}
+
+/// Standalone-mode write: routes stdout/stderr through the kernel debug kcall in chunks of at most
+/// [`::config::kernel::DEBUG_BUFFER_SIZE`] bytes.
+#[cfg(feature = "standalone")]
+fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
+    if fd == STDOUT_FILENO || fd == STDERR_FILENO {
+        let mut offset: usize = 0;
+        while offset < buffer.len() {
+            let end: usize =
+                core::cmp::min(offset + ::config::kernel::DEBUG_BUFFER_SIZE, buffer.len());
+            ::sys::kcall::debug::debug(buffer[offset..end].as_ptr(), end - offset)?;
+            offset = end;
+        }
+        return Ok(buffer.len() as c_size_t);
+    }
+    Err(Error::new(ErrorCode::OperationNotSupported, "write not supported in standalone mode"))
+}
+
+/// Forwards a write request to linuxd via IPC, splitting the buffer into
+/// page-aligned chunks.
+#[cfg(not(feature = "standalone"))]
+fn write_linuxd(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_written: c_size_t = 0;

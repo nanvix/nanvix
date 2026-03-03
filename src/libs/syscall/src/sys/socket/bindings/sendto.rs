@@ -71,6 +71,7 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
+#[allow(unreachable_code)]
 pub unsafe extern "C" fn sendto(
     sockfd: c_int,
     buf: *const c_void,
@@ -79,6 +80,13 @@ pub unsafe extern "C" fn sendto(
     sockaddr: *const sockaddr,
     addrlen: socklen_t,
 ) -> c_ssize_t {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
+        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
+        return -1;
+    }
+
     // TODO: https://github.com/nanvix/nanvix/issues/589
     ::syslog::debug!("sendto(): not implemented");
     unsafe {

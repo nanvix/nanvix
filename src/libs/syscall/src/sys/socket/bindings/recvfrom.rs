@@ -70,6 +70,7 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
+#[allow(unreachable_code)]
 pub unsafe extern "C" fn recvfrom(
     sockfd: c_int,
     buf: *mut c_void,
@@ -78,6 +79,13 @@ pub unsafe extern "C" fn recvfrom(
     sockaddr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> c_ssize_t {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
+        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
+        return -1;
+    }
+
     // TODO: https://github.com/nanvix/nanvix/issues/590
     ::syslog::debug!("recvfrom(): not implemented");
     unsafe {

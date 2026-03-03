@@ -46,8 +46,30 @@ use ::sysapi::sys_types::mode_t;
 /// Upon successful completion, the `mkdirat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
+#[allow(unreachable_code)]
 pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
+
+    // Route to the VFS if the path belongs to an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs mkdir failed")
+            });
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "mkdirat not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

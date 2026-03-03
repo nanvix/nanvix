@@ -46,6 +46,21 @@ pub fn fchdir(fd: c_int) -> Result<(), Error> {
         }
     }
 
+    // In standalone mode, succeed as a no-op for non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = fd;
+        return Ok(());
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fchdir_linuxd(fd)
+}
+
+/// Forwards a `fchdir` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fchdir_linuxd(fd: c_int) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it

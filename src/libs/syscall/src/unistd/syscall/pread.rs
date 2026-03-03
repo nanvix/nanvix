@@ -63,6 +63,28 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         }
     }
 
+    // In standalone mode, reject non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, buffer, offset);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "pread not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    pread_linuxd(fd, buffer, offset)
+}
+
+/// Forwards a `pread` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn pread_linuxd(
+    fd: RawFileDescriptor,
+    buffer: &mut [u8],
+    offset: off_t,
+) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;

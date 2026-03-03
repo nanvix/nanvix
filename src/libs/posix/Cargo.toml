@@ -36,6 +36,7 @@ default = ["syscall", "allocator", "staticlib"]
 allocator = ["dep:sysalloc"]
 syscall = ["syslog", "syscall/dlfcn", "syscall/sbrk"]
 memfs = ["syscall/memfs"]
+standalone = ["memfs", "syscall/standalone"]
 std = []
 staticlib = ["nvx/staticlib"]
 

@@ -55,6 +55,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 |                  | `error`, `panic`         |           |
 | `PROFILER`       | `yes`, `no`              | `no`      |
 | `SINGLE_PROCESS` | `yes`, `no`              | `no`      |
+| `STANDALONE`     | `yes`, `no`              | `no`      |
 | `L2_VM`          | `yes`, `no`              | `no`      |
 
 Example with custom parameters:

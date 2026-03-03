@@ -25,7 +25,7 @@ $(foreach target,$(ALL_GUEST_RUST_LIBS),$(eval $(call GUEST_RLIB_RULES,$(target)
 # #[cfg(test)] modules.
 define GUEST_RLIB_LINT_TEST_RULES
 rust-lint-guest-rlib-tests-$(1):
-	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std -p $(1) --fix --allow-dirty
+	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std -p $(1) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-rlib-tests-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) --tests --features=std -p $(1) -- -D warnings

@@ -46,6 +46,7 @@ use ::sysapi::{
 /// Upon successful completion, the `fchmodat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
+#[allow(unreachable_code)]
 pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
     // FAT32 does not support permissions — silently succeed for VFS paths.
     #[cfg(feature = "memfs")]
@@ -53,6 +54,13 @@ pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(
         if ::nvx::vfs::fd::is_vfs_path(path) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (dirfd, path, mode, flag);
+        return Ok(());
     }
 
     // Send request.

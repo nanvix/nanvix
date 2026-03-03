@@ -54,6 +54,21 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
         }
     }
 
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, owner, group);
+        return Ok(());
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fchown_linuxd(fd, owner, group)
+}
+
+/// Forwards a `fchown` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it
