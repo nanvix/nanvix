@@ -16,6 +16,7 @@ verify = true
 crate-type = ["lib"]
 
 [dependencies]
+error = { workspace = true, features = ["verus"] }
 raw-array = { workspace = true }
 sys = { workspace = true }
 vstd = { workspace = true }
