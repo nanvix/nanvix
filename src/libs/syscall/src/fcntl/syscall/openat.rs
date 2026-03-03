@@ -32,10 +32,32 @@ use ::sysapi::{
 // Standalone Functions
 //==================================================================================================
 
+#[allow(unreachable_code)]
 pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!(
         "openat(): dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?}, mode={mode:?}"
     );
+
+    // Route to the VFS if the path belongs to an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs open failed")
+            });
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "openat not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

@@ -46,6 +46,24 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
         }
     }
 
+    // In standalone mode, reject non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, offset, whence);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "lseek not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    lseek_linuxd(fd, offset, whence)
+}
+
+/// Forwards a `lseek` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn lseek_linuxd(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

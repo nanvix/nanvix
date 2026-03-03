@@ -29,6 +29,23 @@ use ::sys::{
 pub fn pipe() -> Result<[i32; 2], Error> {
     ::syslog::trace!("pipe()");
 
+    // In standalone mode, pipe is not available (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "pipe not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    pipe_linuxd()
+}
+
+/// Forwards a `pipe` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn pipe_linuxd() -> Result<[i32; 2], Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

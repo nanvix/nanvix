@@ -55,12 +55,23 @@ use ::syslog::{
 /// On successful completion, a list with the directory entries, with at least `count` elements, is
 /// returned. On failure, an error code is returned instead.
 ///
+#[allow(unreachable_code)]
 pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     trace!("posix_getdents(): fd={}, count={:?}", fd, count);
 
     // Capacity of message assembler.
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+
+    // In standalone mode, getdents is not available (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, count);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "getdents not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

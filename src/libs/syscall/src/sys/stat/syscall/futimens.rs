@@ -39,6 +39,7 @@ use ::sysapi::time::timespec;
 ///
 /// Upon successful completion, `futimens()` returns empty. Otherwise, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
@@ -48,6 +49,13 @@ pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Erro
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, times);
+        return Ok(());
     }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;

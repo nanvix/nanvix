@@ -27,6 +27,7 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
+#[allow(unreachable_code)]
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
@@ -39,6 +40,24 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
                 ::syslog::error!("fcntl(): VFS fcntl failed (fd={fd}, cmd={cmd}, error={e})");
                 Error::new(code, "vfs fcntl failed")
             });
+        }
+    }
+
+    // In standalone mode, handle common fcntl commands on non-VFS fds without IPC.
+    #[cfg(feature = "standalone")]
+    {
+        use ::sysapi::fcntl::file_control_request;
+        match cmd {
+            file_control_request::F_GETFD
+            | file_control_request::F_SETFD
+            | file_control_request::F_GETFL
+            | file_control_request::F_SETFL => return Ok(0),
+            _ => {
+                return Err(Error::new(
+                    ErrorCode::OperationNotSupported,
+                    "fcntl cmd not supported in standalone mode",
+                ));
+            },
         }
     }
 

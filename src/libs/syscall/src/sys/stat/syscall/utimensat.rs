@@ -46,6 +46,7 @@ use ::sysapi::time::timespec;
 /// Upon successful completion, the `utimensat()` system call returns empty. Otherwise, it returns
 /// an error.
 ///
+#[allow(unreachable_code)]
 pub fn utimensat(
     dirfd: i32,
     pathname: &str,
@@ -66,6 +67,13 @@ pub fn utimensat(
         if ::nvx::vfs::fd::is_vfs_path(pathname) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (dirfd, pathname, times, flags);
+        return Ok(());
     }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;

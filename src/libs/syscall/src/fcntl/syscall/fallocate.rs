@@ -40,6 +40,7 @@ use sysapi::sys_types::off_t;
 ///
 /// Upon success, `posix_fallocate()` empty. Otherwise, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
@@ -49,6 +50,13 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, offset, len);
+        return Ok(());
     }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;

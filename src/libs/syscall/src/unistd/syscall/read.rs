@@ -50,6 +50,7 @@ use super::util::page_chunk_size;
 /// Upon successful completion, the number of bytes read by linuxd is returned. Otherwise, an
 /// error is returned.
 ///
+#[cfg(not(feature = "standalone"))]
 fn read_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
@@ -174,6 +175,27 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         }
     }
 
+    // In standalone mode, non-VFS reads are not supported.
+    #[cfg(feature = "standalone")]
+    {
+        if fd == STDIN_FILENO {
+            return Ok(0); // EOF
+        }
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "read not supported in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    read_linuxd(fd, buffer)
+}
+
+/// Forwards a `read` request to linuxd via IPC, splitting the buffer into
+/// page-aligned chunks.
+#[cfg(not(feature = "standalone"))]
+fn read_linuxd(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;

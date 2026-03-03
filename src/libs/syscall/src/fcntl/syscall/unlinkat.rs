@@ -43,8 +43,32 @@ use ::sysapi::ffi::c_int;
 /// Upon successful completion, the `unlinkat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
+#[allow(unreachable_code)]
 pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
     ::syslog::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
+
+    // Route to the VFS if the path belongs to an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(pathname) {
+            return ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!(
+                    "unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})"
+                );
+                Error::new(code, "vfs unlinkat failed")
+            });
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "unlinkat not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

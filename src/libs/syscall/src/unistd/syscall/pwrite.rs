@@ -63,6 +63,24 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         }
     }
 
+    // In standalone mode, reject non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, buffer, offset);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "pwrite not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    pwrite_linuxd(fd, buffer, offset)
+}
+
+/// Forwards a `pwrite` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 

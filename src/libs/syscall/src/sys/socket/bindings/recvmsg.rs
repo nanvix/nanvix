@@ -63,7 +63,15 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
+#[allow(unreachable_code)]
 pub unsafe extern "C" fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> c_ssize_t {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, msg, flags);
+        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
+        return -1;
+    }
+
     // TODO: https://github.com/nanvix/nanvix/issues/600
     ::syslog::debug!("recvmsg(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
