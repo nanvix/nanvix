@@ -274,6 +274,7 @@ impl UserVm {
                         io_control_rx,
                         io_control_tx,
                         counters,
+                        snapshot_path: None,
                     });
 
                 // Wait for VMM thread to finish.

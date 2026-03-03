@@ -54,6 +54,7 @@ Benchmarks:
   echo-breakdown         Analyze the latency contributions of each step in the data path.
   echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
   round-trip-latency     Measure latency (warm-start) as we increase the payload size.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
   warm-start             Measure round-trip latency from client's perspective.
   warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.
   warm-start-vmm         Measure raw round-trip latency inside the user VM.

@@ -642,3 +642,27 @@ pub fn set_thread_data_area(user_tda: *mut u8) -> Result<(), Error> {
         Ok(())
     }
 }
+
+//==================================================================================================
+// Snapshot
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Creates a snapshot of the virtual machine. The snapshot captures all guest memory and
+/// processor state into files managed by the VMM.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+pub fn snapshot() -> Result<(), Error> {
+    let result: i64 = kcall0!(KcallNumber::Snapshot.into());
+
+    if unlikely(result != 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to snapshot()"))
+    } else {
+        Ok(())
+    }
+}
