@@ -11,12 +11,14 @@
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "single-process")]
+use crate::config::DEFAULT_CONSOLE_FILENAME;
 use crate::config::{
     self,
-    DEFAULT_CONSOLE_FILENAME,
     DEFAULT_TMP_DIRECTORY,
 };
 use ::anyhow::Result;
+#[cfg(feature = "single-process")]
 use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
@@ -140,6 +142,9 @@ impl Args {
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut toolchain_binary_directory: String =
             config::DEFAULT_TOOLCHAIN_BIN_DIRECTORY.to_string();
+        #[cfg(not(feature = "single-process"))]
+        let mut console_file: Option<String> = None;
+        #[cfg(feature = "single-process")]
         let mut console_file: Option<String> = Some(format!(
             "{}/{}_{}.log",
             DEFAULT_LOG_DIRECTORY,

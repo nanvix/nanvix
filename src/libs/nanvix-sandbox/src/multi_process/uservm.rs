@@ -130,8 +130,6 @@ impl UserVm {
             args.gateway_socket_info().1.to_str().to_string(),
         ];
 
-        debug!("spawning uservm (program={:?} args={:?})", args.program(), user_vm_args,);
-
         if let Some(program_args) = args.program_args() {
             user_vm_args.push(::uservm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
@@ -156,6 +154,7 @@ impl UserVm {
             user_vm_args.splice(0..0, taskset);
         }
 
+        debug!("spawning uservm (program={:?} args={:?})", args.program(), user_vm_args,);
         let mut cmd: Command = {
             // In an L2-deployment, spawn the user VM inside a network namespace.
             #[cfg(not(feature = "single-process"))]
