@@ -127,7 +127,7 @@ exec $SHELL
 ```bash
 # Ensure you are in the project's root directory.
 ./z setup --toolchain-dir $HOME/toolchain    # Build the cross compiler toolchain and place it in $HOME/toolchain.
-ln -s $HOME/toolchain toolchain              # Create symbolic link for toolchain for convenience.
+ln -T -s $HOME/toolchain toolchain           # Create symbolic link for toolchain for convenience.
 ```
 
 #### Step 3: Build QEMU (Optional)
