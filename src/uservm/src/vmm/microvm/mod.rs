@@ -62,6 +62,14 @@ use ::std::{
     ffi::OsStr,
     fs::File,
     io::Write,
+    os::{
+        fd::OwnedFd,
+        unix::io::{
+            AsRawFd,
+            FromRawFd,
+            RawFd,
+        },
+    },
     path::{
         Path,
         PathBuf,
@@ -90,6 +98,102 @@ use ::tokio::{
 
 pub use kvm::vmem::VirtualMemory;
 pub use ramfs::RamFs;
+
+//==================================================================================================
+// IKC IRQ Notifier
+//==================================================================================================
+
+/// IRQ number used for IKC (inter-kernel communication) notifications.
+const IKC_IRQ: u32 = 9;
+
+///
+/// # Description
+///
+/// Lightweight, lock-free notifier that injects an edge-triggered IKC interrupt (IRQ 9) into
+/// the guest via a duplicated VM file descriptor.
+///
+/// The duplicated fd allows the memory thread to inject IRQs without contending on the
+/// `tokio::Mutex` that protects the main `VmFd` used by the vCPU thread.
+///
+/// # Safety
+///
+/// `KVM_IRQ_LINE` is thread-safe — the KVM subsystem serialises concurrent ioctl calls
+/// internally, so no user-space locking is required.
+///
+#[derive(Clone)]
+pub struct IkcNotifier {
+    /// Duplicated VM file descriptor for lock-free IRQ injection.
+    vm_fd: Arc<OwnedFd>,
+    /// Coalescing flag: when `true`, an IRQ has already been injected and the guest has not yet
+    /// acknowledged it by consuming a credit, so further injections are redundant.
+    pending: Arc<AtomicBool>,
+}
+
+impl IkcNotifier {
+    /// Creates a new notifier by duplicating the given VM file descriptor.
+    fn new(vm_fd: &VmFd, pending: Arc<AtomicBool>) -> Result<Self> {
+        let raw_fd: RawFd = vm_fd.as_raw_fd();
+        // SAFETY: `raw_fd` is a valid, open KVM VM file descriptor.
+        // Use `F_DUPFD_CLOEXEC` so the duplicated fd is automatically close-on-exec,
+        // preventing leaks across `exec()` if the process ever spawns children.
+        let dup_fd: RawFd = unsafe { libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) };
+        if dup_fd < 0 {
+            anyhow::bail!("failed to dup VM fd: {}", ::std::io::Error::last_os_error());
+        }
+        // SAFETY: `dup_fd` is a freshly duplicated, valid fd we now own.
+        let owned: OwnedFd = unsafe { OwnedFd::from_raw_fd(dup_fd) };
+        Ok(Self {
+            vm_fd: Arc::new(owned),
+            pending,
+        })
+    }
+
+    /// Injects an edge-triggered IKC IRQ (assert then de-assert) into the guest.
+    ///
+    /// The call is coalesced: if a previous notification is still pending (the guest has not yet
+    /// consumed a credit), the ioctl is skipped to avoid redundant host-kernel entries.
+    pub fn notify(&self) -> Result<()> {
+        // `swap(true)` returns the previous value.  If it was already `true` a notification is
+        // outstanding and we can skip the expensive ioctl pair.
+        if self.pending.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+
+        let fd: RawFd = self.vm_fd.as_raw_fd();
+
+        // Use `kvm_bindings::kvm_irq_level` and the `KVM_IRQ_LINE` ioctl number from
+        // `vmm_sys_util` to avoid hardcoded magic constants and manual struct definitions.
+        vmm_sys_util::ioctl_iow_nr!(KVM_IRQ_LINE, KVMIO, 0x61, kvm_bindings::kvm_irq_level);
+        const KVMIO: u32 = 0xAE;
+
+        let mut irq_level: kvm_bindings::kvm_irq_level = kvm_bindings::kvm_irq_level::default();
+        irq_level.__bindgen_anon_1.irq = IKC_IRQ;
+        irq_level.level = 1;
+
+        // Assert IRQ.
+        // SAFETY: fd is a valid KVM VM fd, irq_level is correctly initialised.
+        let ret: i32 = unsafe { libc::ioctl(fd, KVM_IRQ_LINE(), &irq_level) };
+        if ret != 0 {
+            anyhow::bail!("KVM_IRQ_LINE assert failed: {}", ::std::io::Error::last_os_error());
+        }
+
+        // De-assert IRQ (edge trigger).
+        irq_level.level = 0;
+        // SAFETY: same as above.
+        let ret: i32 = unsafe { libc::ioctl(fd, KVM_IRQ_LINE(), &irq_level) };
+        if ret != 0 {
+            anyhow::bail!("KVM_IRQ_LINE de-assert failed: {}", ::std::io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
+
+    /// Clears the coalescing flag so that the next [`notify`](Self::notify) call will inject an
+    /// IRQ. Call this from the vCPU thread after the guest has consumed at least one credit.
+    pub fn acknowledge(&self) {
+        self.pending.store(false, Ordering::Release);
+    }
+}
 
 //==================================================================================================
 // Constants
@@ -137,6 +241,8 @@ pub struct Vmm {
     vcpu: Arc<Mutex<VirtualProcessor>>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorMicroVmHandle>>,
+    /// Lock-free IKC interrupt notifier (duplicated VM fd).
+    ikc_notifier: IkcNotifier,
 }
 
 ///
@@ -294,6 +400,9 @@ impl Vmm {
         let emulator: Emulator =
             Emulator::new(guest.clone(), vmem.clone(), args.input, args.output, args.stderr)?;
 
+        // Create the IKC notifier *before* moving the VmFd into InteriorMicroVmHandle.
+        let ikc_notifier: IkcNotifier = IkcNotifier::new(&vm, args.ikc_pending)?;
+
         Ok(Self {
             guest,
             vmem,
@@ -309,6 +418,7 @@ impl Vmm {
                 kernel_filename: args.kernel_filename,
                 skip_next_snapshot: false,
             })),
+            ikc_notifier,
         })
     }
 
@@ -446,6 +556,18 @@ impl Vmm {
     ///
     pub fn guest(&self) -> Arc<Mutex<Guest>> {
         self.guest.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a cloneable, lock-free IKC interrupt notifier.
+    ///
+    /// The notifier uses a duplicated VM file descriptor so it can inject IRQs without
+    /// contending on the main `Mutex<InteriorMicroVmHandle>` used by the vCPU thread.
+    ///
+    pub fn ikc_notifier(&self) -> IkcNotifier {
+        self.ikc_notifier.clone()
     }
 
     ///

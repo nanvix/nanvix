@@ -43,6 +43,9 @@ pub struct MicroVmArgs {
     /// When true, skip kernel/initrd/ramfs loading and vCPU reset because the VM state will be
     /// restored from a snapshot.
     pub restoring_from_snapshot: bool,
+    /// Shared coalescing flag for IKC IRQ notification (microvm only).
+    #[cfg(feature = "microvm")]
+    pub ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl std::fmt::Debug for MicroVmArgs {

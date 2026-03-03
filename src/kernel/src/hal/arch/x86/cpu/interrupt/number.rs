@@ -16,6 +16,9 @@ pub enum InterruptNumber {
     Floppy = 6,
     Lpt1 = 7,
     Cmos = 8,
+    #[cfg(feature = "microvm")]
+    Ikc = 9,
+    #[cfg(not(feature = "microvm"))]
     Free1 = 9,
     Free2 = 10,
     Free3 = 11,
@@ -26,6 +29,12 @@ pub enum InterruptNumber {
 }
 
 impl InterruptNumber {
+    /// IRQ 9 variant, which is `Ikc` on microvm and `Free1` otherwise.
+    #[cfg(feature = "microvm")]
+    const IRQ9: InterruptNumber = InterruptNumber::Ikc;
+    #[cfg(not(feature = "microvm"))]
+    const IRQ9: InterruptNumber = InterruptNumber::Free1;
+
     pub const VALUES: [InterruptNumber; 15] = [
         InterruptNumber::Timer,
         InterruptNumber::Keyboard,
@@ -35,7 +44,7 @@ impl InterruptNumber {
         InterruptNumber::Floppy,
         InterruptNumber::Lpt1,
         InterruptNumber::Cmos,
-        InterruptNumber::Free1,
+        InterruptNumber::IRQ9,
         InterruptNumber::Free2,
         InterruptNumber::Free3,
         InterruptNumber::Mouse,
