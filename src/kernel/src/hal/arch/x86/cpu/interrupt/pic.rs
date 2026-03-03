@@ -236,13 +236,14 @@ impl Pic {
     /// - `irq`: Interrupt request.
     ///
     pub fn ack(&mut self, irq: u32) {
-        // Check for invalid interrupt request. IRQ 2 is reserved for the cascade.
-        if irq == 2 || irq >= pic::PIC_NUM_IRQS as u32 {
+        // Check for invalid interrupt request. IRQ 2 is reserved for the cascade
+        // and IRQs beyond the dual-PIC range (0-15) are out of bounds.
+        if irq == 2 || irq >= 2 * pic::PIC_NUM_IRQS as u32 {
             error!("invalid irq {}", irq);
             return;
         }
 
-        // Check if EOI is managed by slave PIC.
+        // Check if EOI is managed by slave PIC (IRQs 8-15).
         if irq >= pic::PIC_NUM_IRQS as u32 {
             // Send EOI to slave PIC.
             self.ctrl_slave.write8(pic::ocw2::Eoi::NonSpecific as u8);
