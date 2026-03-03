@@ -10,7 +10,16 @@
 # already present at that version in the target directory, and downloads/installs
 # it when missing or outdated. Works for both local and Docker-based toolchains.
 #
-# Usage: ./scripts/setup/verus.sh <install-dir>
+# Usage: ./scripts/setup/verus.sh [--download-only] <install-dir>
+#
+# Options:
+#   --download-only  Download the Verus archive to the local cache and exit
+#                    without installing. Useful for CI pre-warming.
+#
+# Environment Variables:
+#   GITHUB_TOKEN        GitHub token for authenticated downloads (optional).
+#   GH_TOKEN            Alternative to GITHUB_TOKEN (GitHub CLI convention).
+#   VERUS_ZIP_CACHE_DIR Override the default cache directory (.verus-cache).
 #
 
 # Fast fail on errors, unset variables, and pipe failures.
@@ -42,9 +51,97 @@ VERUS_RELEASE_URL="https://github.com/verus-lang/verus/releases/download/release
 # Subdirectory name inside the release zip.
 VERUS_ZIP_SUBDIR="verus-x86-linux"
 
+# Directory for caching downloaded Verus zip archives. Keyed by version so that
+# only the first download hits the network; subsequent runs (and CI cache
+# restores) reuse the local copy. Override via VERUS_ZIP_CACHE_DIR env var.
+VERUS_ZIP_CACHE_DIR="${VERUS_ZIP_CACHE_DIR:-${REPO_ROOT_DIR}/.verus-cache}"
+
+# curl resilience settings for transient network / server errors.
+CURL_RETRY_COUNT=5          # Number of retries on transient errors.
+CURL_RETRY_DELAY=10         # Fixed delay (seconds) between retries (overrides curl's default backoff).
+CURL_CONNECT_TIMEOUT=30     # Max seconds to wait for a TCP connection.
+CURL_MAX_TIME=300           # Overall request deadline (5 minutes).
+
 #===================================================================================================
 # Functions
 #===================================================================================================
+
+#
+# DESCRIPTION
+#   Prints curl authorization arguments to stdout (one per line) when a
+#   GitHub token is available. Checks GITHUB_TOKEN first, then falls
+#   back to GH_TOKEN (GitHub CLI convention). The caller captures the
+#   output via mapfile to build an array, which avoids Bash 4.3+ nameref
+#   requirements and keeps the script portable.
+#
+# USAGE
+#   local auth_args=()
+#   mapfile -t auth_args < <(get_curl_auth_args)
+#   curl "${auth_args[@]}" ...
+#
+get_curl_auth_args() {
+    local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    if [[ -n "${token}" ]]; then
+        printf '%s\n' "-H" "Authorization: Bearer ${token}"
+    fi
+}
+
+#
+# DESCRIPTION
+#   Downloads the Verus release archive to a temporary directory, using
+#   the local zip cache when available. On a fresh download the archive
+#   is also persisted to the cache for future runs.
+#
+# ARGUMENTS
+#   $1 - Destination file path for the downloaded zip.
+#   $2 - The Verus version to download.
+#
+download_verus_archive() {
+    local dest_path="$1"
+    local version="$2"
+
+    local zip_name="verus-${version}-x86-linux.zip"
+    local download_url="${VERUS_RELEASE_URL}/${version}/${zip_name}"
+
+    # Try the local zip cache first to avoid a network round-trip.
+    # Discard cached files that are empty or obviously corrupt (size zero),
+    # and validate non-empty cached zips before using them.
+    if [[ -n "${VERUS_ZIP_CACHE_DIR}" ]]; then
+        local cached_zip="${VERUS_ZIP_CACHE_DIR}/${zip_name}"
+        if [[ -f "${cached_zip}" && -s "${cached_zip}" ]]; then
+            # Validate the cached archive; if invalid, delete and fall back to downloading.
+            if unzip -tq "${cached_zip}" >/dev/null 2>&1; then
+                print_info "Using cached Verus archive from ${cached_zip}"
+                cp "${cached_zip}" "${dest_path}"
+                return 0
+            else
+                print_warning "Cached Verus archive at ${cached_zip} is corrupted; deleting and re-downloading."
+                rm -f "${cached_zip}"
+            fi
+        fi
+    fi
+
+    print_info "Downloading Verus ${version}..."
+    local auth_args=()
+    mapfile -t auth_args < <(get_curl_auth_args)
+    if ! curl -fsSL \
+            --retry "${CURL_RETRY_COUNT}" \
+            --retry-delay "${CURL_RETRY_DELAY}" \
+            --retry-all-errors \
+            --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
+            --max-time "${CURL_MAX_TIME}" \
+            "${auth_args[@]}" \
+            -o "${dest_path}" "${download_url}"; then
+        print_error "Failed to download Verus from ${download_url}"
+        exit 1
+    fi
+
+    # Persist the downloaded archive for future runs.
+    if [[ -n "${VERUS_ZIP_CACHE_DIR}" ]]; then
+        mkdir -p "${VERUS_ZIP_CACHE_DIR}"
+        cp "${dest_path}" "${VERUS_ZIP_CACHE_DIR}/${zip_name}"
+    fi
+}
 
 #
 # DESCRIPTION
@@ -101,7 +198,6 @@ install_verus() {
     local version="$2"
 
     local zip_name="verus-${version}-x86-linux.zip"
-    local download_url="${VERUS_RELEASE_URL}/${version}/${zip_name}"
 
     # Validate that the install directory looks reasonable.
     if [[ "${install_dir}" != *verus* ]]; then
@@ -116,11 +212,7 @@ install_verus() {
     # Ensure the temporary directory is always cleaned up.
     trap 'rm -rf "${tmp_dir}"' EXIT
 
-    print_info "Downloading Verus ${version}..."
-    if ! curl -fsSL -o "${tmp_dir}/${zip_name}" "${download_url}"; then
-        print_error "Failed to download Verus from ${download_url}"
-        exit 1
-    fi
+    download_verus_archive "${tmp_dir}/${zip_name}" "${version}"
 
     print_info "Extracting Verus to ${install_dir}..."
     local extract_ok=true
@@ -203,10 +295,33 @@ print(data.get('verus', {}).get('toolchain', ''))
 #===================================================================================================
 
 main() {
+    local download_only=false
+    if [[ "${1:-}" == "--download-only" ]]; then
+        download_only=true
+        shift
+    fi
+
     local install_dir="${1:-${HOME}/verus}"
 
     local expected_version
     expected_version=$(get_expected_version)
+
+    # --download-only: populate the cache and exit without installing.
+    if ${download_only}; then
+        if ! command -v curl &>/dev/null; then
+            print_error "curl is required but not installed."
+            exit 1
+        fi
+        local zip_name="verus-${expected_version}-x86-linux.zip"
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "${tmp_dir}"' EXIT
+        download_verus_archive "${tmp_dir}/${zip_name}" "${expected_version}"
+        rm -rf "${tmp_dir}"
+        trap - EXIT
+        print_success "Verus ${expected_version} archive cached in ${VERUS_ZIP_CACHE_DIR}."
+        return 0
+    fi
 
     local installed_version
     installed_version=$(get_installed_version "${install_dir}")
