@@ -60,16 +60,22 @@ runs:
         // failed after creating a draft but before publishing it.
         // getReleaseByTag() only finds published releases, so draft orphans
         // are invisible to the deleteReleaseByTag() cleanup above.
+        // Also cleans up "untagged-*" draft releases created when the GitHub
+        // API fails to associate a tag during createRelease (e.g., due to a
+        // tag deletion/creation race condition).
         async function deleteStaleDraftReleases() {
           const releases = await github.paginate(
             github.rest.repos.listReleases,
             { owner, repo, per_page: 100 }
           );
           const stale = releases.filter(r =>
-            r.draft && r.tag_name === tag
+            r.draft && (
+              r.tag_name === tag ||
+              r.tag_name.startsWith('untagged-')
+            )
           );
           for (const rel of stale) {
-            core.info(`Deleting stale draft release ${rel.id} ("${rel.name}").`);
+            core.info(`Deleting stale draft release ${rel.id} (tag="${rel.tag_name}", name="${rel.name}").`);
             await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
           }
           if (stale.length === 0) {
@@ -109,6 +115,71 @@ runs:
         const tag = 'latest';
         const version = process.env.RELEASE_VERSION;
         const commitSha = context.sha;
+
+        // Create the tag ref explicitly before creating the release.
+        // This avoids a race condition where createRelease() may fail to
+        // atomically create the tag if it was recently deleted, resulting
+        // in an untagged draft release.
+        core.info(`Creating tag refs/tags/${tag} at ${commitSha}...`);
+        try {
+          await github.rest.git.createRef({
+            owner,
+            repo,
+            ref: `refs/tags/${tag}`,
+            sha: commitSha,
+          });
+          core.info(`Created tag refs/tags/${tag}.`);
+        } catch (error) {
+          if (error.status === 422) {
+            // Tag already exists (possibly re-created by a concurrent run);
+            // update it to point to the correct commit.  Retry with backoff
+            // because eventual consistency after deleteRef() can cause
+            // updateRef() to return 404 transiently.
+            core.warning(`Tag refs/tags/${tag} already exists; updating to ${commitSha}.`);
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                await github.rest.git.updateRef({
+                  owner,
+                  repo,
+                  ref: `tags/${tag}`,
+                  sha: commitSha,
+                  force: true,
+                });
+                // Successfully updated the tag; exit the retry loop.
+                break;
+              } catch (updateError) {
+                if (updateError.status === 404) {
+                  // This can happen due to eventual consistency after a deleteRef().
+                  if (attempt < maxAttempts) {
+                    const delayMs = 1000 * attempt;
+                    core.warning(
+                      `updateRef returned 404 for refs/tags/${tag}; ` +
+                      `retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})...`
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                    continue;
+                  }
+                  core.warning(
+                    `updateRef returned 404 for refs/tags/${tag} after ${maxAttempts} attempts; ` +
+                    `falling back to createRef.`
+                  );
+                  await github.rest.git.createRef({
+                    owner,
+                    repo,
+                    ref: `refs/tags/${tag}`,
+                    sha: commitSha,
+                  });
+                  break;
+                }
+                // For non-404 errors, rethrow so they're handled by the outer catch.
+                throw updateError;
+              }
+            }
+          } else {
+            throw error;
+          }
+        }
 
         // Create a published release, explicitly targeting the workflow commit
         // to prevent benchmark-persist (which may have advanced the default
@@ -175,10 +246,41 @@ runs:
         });
 
         if (verify.draft) {
-          core.setFailed(`Release ${release.id} is unexpectedly a draft after creation.`);
-          return;
+          // Verify the release is associated with the intended tag before
+          // attempting to publish.  If it has an unexpected tag (e.g.,
+          // "untagged-*"), publishing it would create an incorrectly tagged
+          // release.  Delete the bad release and fail so the next run can
+          // recreate it cleanly.
+          if (verify.tag_name !== tag) {
+            core.warning(
+              `Release ${release.id} has unexpected tag "${verify.tag_name}" ` +
+              `(expected "${tag}"); deleting and failing.`
+            );
+            await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+            core.setFailed(
+              `Deleted release ${release.id} with wrong tag "${verify.tag_name}". ` +
+              `Next run will recreate it.`
+            );
+            return;
+          }
+
+          // Attempt to recover by explicitly publishing the release.
+          core.warning(`Release ${release.id} is unexpectedly a draft; attempting to publish...`);
+          const { data: patched } = await github.rest.repos.updateRelease({
+            owner,
+            repo,
+            release_id: release.id,
+            draft: false,
+            make_latest: "true",
+          });
+          if (patched.draft) {
+            core.setFailed(`Release ${release.id} is still a draft after recovery attempt.`);
+            return;
+          }
+          core.info(`Successfully recovered release ${release.id} from draft to published.`);
+        } else {
+          core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
         }
-        core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
 
   - name: "Trigger Nanvix Release Dispatch"
     shell: bash
