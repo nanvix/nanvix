@@ -1850,11 +1850,18 @@ impl ProcessManager {
             error!("{reason} (base={base:#x}, size={:#?})", region.size());
             Error::new(ErrorCode::ValueOverflow, reason)
         })?;
+        let perm: AccessPermission = region.perm();
+
+        // Validate that every page can be mapped before modifying any state.
         for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-            // FIXME (#1482): Use infallible logic for address conversion.
             let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-            // FIXME (#1481): If we fail, we need to revert operation.
-            vmem.kctrl(vaddr, region.perm())?;
+            vmem.kctrl(vaddr, perm, true)?;
+        }
+
+        // All validations passed — apply the permission changes for real.
+        for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            vmem.kctrl(vaddr, perm, false)?;
         }
 
         state.add_mmio(region);
