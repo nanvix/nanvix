@@ -554,7 +554,7 @@ help:
 	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
 	@echo "  TARGET          x86"
 	@echo "  RELEASE         yes, no"
-	@echo "  LOG_LEVEL       trace, debug, info, warn, error"
+	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
 	@echo "  L2_VM           yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
