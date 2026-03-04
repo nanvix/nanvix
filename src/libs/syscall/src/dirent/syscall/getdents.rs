@@ -63,6 +63,18 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
 
+    // Route VFS directory fds to the VFS backend.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
+                let code: ErrorCode = e.into();
+                error!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
+                Error::new(code, "vfs getdents failed")
+            });
+        }
+    }
+
     // In standalone mode, getdents is not available (no linuxd).
     #[cfg(feature = "standalone")]
     {
