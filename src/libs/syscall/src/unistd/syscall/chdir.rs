@@ -5,20 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    unistd::message::ChangeDirectoryRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        unistd::message::ChangeDirectoryRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ::alloc::vec::Vec,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================

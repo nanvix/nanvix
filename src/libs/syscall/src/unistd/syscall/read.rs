@@ -5,29 +5,31 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    unistd::message::{
-        ReadRequest,
-        ReadResponse,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
-use sysapi::{
+use ::sysapi::{
     sys_types::c_size_t,
     unistd::STDIN_FILENO,
 };
-
-use super::util::page_chunk_size;
+#[cfg(not(feature = "standalone"))]
+use {
+    super::util::page_chunk_size,
+    crate::{
+        unistd::message::{
+            ReadRequest,
+            ReadResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
