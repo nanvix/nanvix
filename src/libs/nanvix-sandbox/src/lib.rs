@@ -78,7 +78,6 @@
 //!     Some("/path/to/toolchain".to_string()),  // toolchain_binary_directory
 //!     Some("/tmp".to_string()),  // tmp_directory
 //!     Some(false),  // l2
-//!     Some("/path/to/l2/snapshot".to_string()), // l2_snapshot_path
 //! );
 //!
 //! // Create and bind control plane socket.
@@ -135,6 +134,8 @@ mod initialized;
 mod linuxd_args;
 mod running;
 mod sandbox_config;
+#[cfg(not(feature = "single-process"))]
+mod snapshot_dir_handle;
 mod tag;
 mod uninitialized;
 mod uservm_args;
@@ -168,6 +169,8 @@ pub mod tcp_port;
     }
 }
 
+#[cfg(not(feature = "single-process"))]
+pub use self::snapshot_dir_handle::SnapshotDirHandle;
 pub use self::{
     initialized::InitializedSandbox,
     linuxd_args::LinuxDaemonArgs,

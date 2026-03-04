@@ -16,6 +16,8 @@ use crate::netns::{
     NetnsHandle,
     NetnsInfo,
 };
+#[cfg(not(feature = "single-process"))]
+use crate::SnapshotDirHandle;
 use crate::{
     linuxd::LinuxDaemon,
     InitializedSandbox,
@@ -66,6 +68,9 @@ pub struct UninitializedSandbox<T> {
     /// Optional handle to a network namespace. Only used in L2 deployments.
     #[cfg(not(feature = "single-process"))]
     netns_handle: Option<NetnsHandle>,
+    /// Optional handle to the per-instance snapshot directory. Only used in L2 deployments.
+    #[cfg(not(feature = "single-process"))]
+    snapshot_dir_handle: Option<SnapshotDirHandle>,
     /// Optional control plane listener socket, address, and socket type.
     control_plane_bind_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Optional sandbox configuration parameters.
@@ -111,6 +116,8 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             linuxd: None,
             #[cfg(not(feature = "single-process"))]
             netns_handle: None,
+            #[cfg(not(feature = "single-process"))]
+            snapshot_dir_handle: None,
             control_plane_bind_socket_and_info: Some(control_plane_bind_socket_and_info),
             config: None,
             #[cfg(not(feature = "single-process"))]
@@ -170,6 +177,28 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     #[cfg(not(feature = "single-process"))]
     pub fn with_netns_handle(mut self, netns_handle: Option<NetnsHandle>) -> Self {
         self.netns_handle = netns_handle;
+        self
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds a snapshot directory handle to the target uninitialized sandbox.
+    ///
+    /// # Parameters
+    ///
+    /// - `snapshot_dir_handle`: Optional handle to the per-instance snapshot directory.
+    ///
+    /// # Returns
+    ///
+    /// The modified uninitialized sandbox with the snapshot directory handle attached.
+    ///
+    #[cfg(not(feature = "single-process"))]
+    pub fn with_snapshot_dir_handle(
+        mut self,
+        snapshot_dir_handle: Option<SnapshotDirHandle>,
+    ) -> Self {
+        self.snapshot_dir_handle = snapshot_dir_handle;
         self
     }
 
@@ -275,17 +304,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         Some(l2) => l2,
                     };
 
-                    // Get L2 snapshot path.
-                    let l2_snapshot_path: &str = match config.l2_snapshot_path() {
-                        None => {
-                            let reason: &str =
-                                "L2 snapshot path not provided and linuxd not initialized";
-                            error!("initialize(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        Some(l2_snapshot_path) => l2_snapshot_path,
-                    };
-
                     LinuxDaemonArgs::new(
                         config.tenant_id(),
                         // We pass linuxd the control plane socket's connect address, which may
@@ -302,7 +320,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         config.log_directory().to_string(),
                         tmp_directory,
                         l2,
-                        l2_snapshot_path.to_string(),
                         #[cfg(feature = "single-process")]
                         config.syscall_table(),
                     )
@@ -318,6 +335,9 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     // provisioned upstream, if it is not but we are in L2 mode, spawn will fail.
                     #[cfg(not(feature = "single-process"))]
                     self.netns_handle.clone(),
+                    // Pass ownership of the snapshot dir handle to the linuxd instance.
+                    #[cfg(not(feature = "single-process"))]
+                    self.snapshot_dir_handle.take(),
                 )
                 .await
                 {

@@ -12,6 +12,7 @@
 //==================================================================================================
 
 use crate::tcp_port::TcpPort;
+use ::build_utils::find_workspace_root;
 use ::chrono::Local;
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
@@ -86,9 +87,6 @@ pub struct SandboxConfig<T> {
     /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
     l2: Option<bool>,
 
-    /// Optional path to the snapshot used to deploy an L2 VM.
-    l2_snapshot_path: Option<String>,
-
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(feature = "single-process"))]
@@ -145,7 +143,6 @@ impl<T> SandboxConfig<T> {
     /// - `toolchain_binary_directory`: Optional path to the toolchain binary directory.
     /// - `tmp_directory`: Optional path to the temporary directory.
     /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
-    /// - `l2_snapshot_path`: Optional path to the L2 VM's snapshot.
     ///
     /// # Returns
     ///
@@ -171,7 +168,6 @@ impl<T> SandboxConfig<T> {
         toolchain_binary_directory: Option<String>,
         tmp_directory: Option<String>,
         l2: Option<bool>,
-        l2_snapshot_path: Option<String>,
     ) -> Self {
         Self {
             tenant_id: tenant_id.to_string(),
@@ -196,7 +192,6 @@ impl<T> SandboxConfig<T> {
             toolchain_binary_directory,
             tmp_directory,
             l2,
-            l2_snapshot_path,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         }
@@ -416,14 +411,27 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the optional path pointing to the L2 snapshot directory.
+    /// Generates the linuxd log file in an L2 deployment. This log file is specified during
+    /// restore of the L2 snapshot.
+    ///
+    /// Each sandbox generates a different log file (with a different timestamp), but the actual
+    /// file name will be determined by the first sanbdox for the given tenant.
     ///
     /// # Returns
     ///
-    /// An optional path to the L2 snapshot directory.
+    /// The path to linuxd log file.
     ///
-    pub fn l2_snapshot_path(&self) -> Option<&str> {
-        self.l2_snapshot_path.as_deref()
+    pub fn l2_linuxd_log_file(&self) -> String {
+        let mut console_file: PathBuf = PathBuf::from(self.log_directory.clone()).join(format!(
+            "linuxd-l2_{}_{}.log",
+            self.tenant_id,
+            Local::now().format("%Y_%m_%d_%H_%M_%S_%f")
+        ));
+        if !console_file.is_absolute() {
+            console_file = find_workspace_root().join(console_file);
+        }
+
+        console_file.to_string_lossy().into_owned()
     }
 
     ///

@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+build-utils = { workspace = true }
 cfg-if = { workspace = true }
 chrono = { workspace = true }
 config = { workspace = true }
@@ -21,6 +22,7 @@ linuxd = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
+serde_json = { workspace = true }
 syscomm = { workspace = true }
 sys = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
