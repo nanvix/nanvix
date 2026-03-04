@@ -47,6 +47,7 @@ default = ["microvm"]
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
 timestamp-messages = ["profiler/timestamp-messages"]
+x86_64 = []
 
 [lints]
 workspace = true

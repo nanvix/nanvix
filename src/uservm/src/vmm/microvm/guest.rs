@@ -82,6 +82,12 @@ impl Guest {
         let (ptr, size) = (vmem.get_raw_ptr(), vmem.get_size());
 
         let elf: FileMapping = FileMapping::mmap(kernel_filename)?;
+
+        #[cfg(feature = "x86_64")]
+        let (entry, first_address, size): (usize, usize, usize) =
+            unsafe { elf::load_elf64(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
+
+        #[cfg(not(feature = "x86_64"))]
         let (entry, first_address, size): (usize, usize, usize) =
             unsafe { elf::load(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
 
@@ -365,6 +371,13 @@ impl Guest {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
+        #[cfg(feature = "x86_64")]
+        {
+            let memory_size: usize = vmem.get_size();
+            vcpu.reset_long_mode(self.entry as u64, rax, rbx, vmem, memory_size)
+        }
+
+        #[cfg(not(feature = "x86_64"))]
         vcpu.reset(self.entry as u64, rax, rbx)
     }
 

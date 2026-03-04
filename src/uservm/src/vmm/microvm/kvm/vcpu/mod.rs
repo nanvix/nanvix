@@ -32,6 +32,8 @@ use crate::vmm::kvm::{
         },
     },
 };
+#[cfg(feature = "x86_64")]
+use crate::vmm::kvm::vmem::VirtualMemory;
 use ::anyhow::Result;
 use ::arch::{
     cpu::cpuid::{
@@ -94,6 +96,38 @@ const MSR_KVM_SYSTEM_TIME_NEW: u32 = 0x4b564d01;
 /// IA32_TSC MSR — holds the current value of the Time Stamp Counter.
 /// Writing this MSR sets the guest's TSC to the specified value.
 const MSR_IA32_TSC: u32 = 0x10;
+
+/// IA32_EFER MSR — Extended Feature Enable Register.
+#[cfg(feature = "x86_64")]
+const MSR_IA32_EFER: u32 = 0xC0000080;
+
+/// EFER.LME — Long Mode Enable.
+#[cfg(feature = "x86_64")]
+const EFER_LME: u64 = 1 << 8;
+
+/// EFER.LMA — Long Mode Active.
+#[cfg(feature = "x86_64")]
+const EFER_LMA: u64 = 1 << 10;
+
+/// EFER.SCE — System Call Extensions.
+#[cfg(feature = "x86_64")]
+const EFER_SCE: u64 = 1 << 0;
+
+/// Guest physical address where the GDT is placed.
+#[cfg(feature = "x86_64")]
+const GDT_GPA: u64 = 0x2000;
+
+/// Guest physical address where the PML4 page table is placed.
+#[cfg(feature = "x86_64")]
+const PML4_GPA: u64 = 0x3000;
+
+/// Guest physical address where the PDPT page table is placed.
+#[cfg(feature = "x86_64")]
+const PDPT_GPA: u64 = 0x4000;
+
+/// Guest physical address where the PD page table is placed.
+#[cfg(feature = "x86_64")]
+const PD_GPA: u64 = 0x5000;
 
 //==================================================================================================
 // Structures
@@ -229,6 +263,285 @@ impl VirtualProcessor {
         self.online = true;
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resets the virtual processor into x86_64 long mode.
+    ///
+    /// This sets up identity-mapped page tables (using 2MB huge pages), a minimal GDT,
+    /// and configures segment registers, control registers, and the EFER MSR for 64-bit
+    /// long mode execution.
+    ///
+    /// # Parameters
+    ///
+    /// - `rip`: Entry point address.
+    /// - `rax`: Value to set the `rax` register.
+    /// - `rbx`: Value to set the `rbx` register.
+    /// - `vmem`: Guest virtual memory (for writing page tables and GDT).
+    /// - `memory_size`: Total guest physical memory size in bytes.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    #[cfg(feature = "x86_64")]
+    pub fn reset_long_mode(
+        &mut self,
+        rip: u64,
+        rax: u64,
+        rbx: u64,
+        vmem: &mut VirtualMemory,
+        memory_size: usize,
+    ) -> Result<()> {
+        trace!(
+            "reset_long_mode(): rip={rip:#010x}, rax={rax:#010x}, rbx={rbx:#010x}, \
+             memory_size={memory_size:#010x}"
+        );
+
+        // Write GDT into guest memory.
+        Self::write_gdt(vmem)?;
+
+        // Write identity-mapped page tables into guest memory.
+        Self::write_page_tables(vmem, memory_size)?;
+
+        // Set up EFER MSR for long mode.
+        self.setup_efer()?;
+
+        // Configure system registers for long mode.
+        let mut vcpu_sregs: kvm_sregs = self.fd.get_sregs()?;
+
+        // 64-bit code segment (selector 0x08).
+        vcpu_sregs.cs.base = 0;
+        vcpu_sregs.cs.limit = 0xFFFF_FFFF;
+        vcpu_sregs.cs.selector = 0x08;
+        vcpu_sregs.cs.type_ = 0x0B; // Execute/Read, accessed.
+        vcpu_sregs.cs.present = 1;
+        vcpu_sregs.cs.dpl = 0;
+        vcpu_sregs.cs.db = 0; // Must be 0 for 64-bit code segment.
+        vcpu_sregs.cs.s = 1; // Code/data segment.
+        vcpu_sregs.cs.l = 1; // Long mode flag.
+        vcpu_sregs.cs.g = 1; // Page granularity.
+
+        // 64-bit data segments (selector 0x10).
+        let data_seg = kvm_bindings::kvm_segment {
+            base: 0,
+            limit: 0xFFFF_FFFF,
+            selector: 0x10,
+            type_: 0x03, // Read/Write, accessed.
+            present: 1,
+            dpl: 0,
+            db: 1,
+            s: 1,
+            l: 0,
+            g: 1,
+            avl: 0,
+            unusable: 0,
+            padding: 0,
+        };
+        vcpu_sregs.ds = data_seg;
+        vcpu_sregs.es = data_seg;
+        vcpu_sregs.ss = data_seg;
+        vcpu_sregs.fs = data_seg;
+        vcpu_sregs.gs = data_seg;
+
+        // CR0: PE=1, PG=1, ET=1, NE=1, WP=1, MP=1.
+        vcpu_sregs.cr0 = (1 << 0)  // PE — Protection Enable
+            | (1 << 1)             // MP — Monitor Coprocessor
+            | (1 << 4)             // ET — Extension Type
+            | (1 << 5)             // NE — Numeric Error
+            | (1 << 16)            // WP — Write Protect
+            | (1 << 31);           // PG — Paging
+
+        // CR3: Physical address of PML4.
+        vcpu_sregs.cr3 = PML4_GPA;
+
+        // CR4: PAE=1, OSFXSR=1, OSXMMEXCPT=1.
+        vcpu_sregs.cr4 = (1 << 5)  // PAE — Physical Address Extension (required for long mode)
+            | (1 << 9)             // OSFXSR — FXSAVE/FXRSTOR support
+            | (1 << 10);           // OSXMMEXCPT — Unmasked SIMD FP Exceptions support
+
+        // GDT register: point to GDT in guest memory (3 entries × 8 bytes = 24 bytes).
+        vcpu_sregs.gdt.base = GDT_GPA;
+        vcpu_sregs.gdt.limit = 3 * 8 - 1;
+
+        // IDT: empty for now (the kernel will set up its own).
+        vcpu_sregs.idt.base = 0;
+        vcpu_sregs.idt.limit = 0;
+
+        self.fd.set_sregs(&vcpu_sregs)?;
+
+        // Set general purpose registers.
+        let mut vcpu_regs: kvm_regs = self.fd.get_regs()?;
+        vcpu_regs.rip = rip;
+        vcpu_regs.rax = rax;
+        vcpu_regs.rbx = rbx;
+        vcpu_regs.rsp = 0; // Kernel will set up its own stack.
+        vcpu_regs.rflags = RFLAGS_INTERRUPT_ENABLE;
+        self.fd.set_regs(&vcpu_regs)?;
+
+        // Processor is now online.
+        self.online = true;
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes a minimal GDT for 64-bit long mode into guest memory.
+    ///
+    /// Layout:
+    /// - Entry 0 (0x00): Null descriptor
+    /// - Entry 1 (0x08): 64-bit code segment
+    /// - Entry 2 (0x10): 64-bit data segment
+    ///
+    #[cfg(feature = "x86_64")]
+    fn write_gdt(vmem: &mut VirtualMemory) -> Result<()> {
+        trace!("write_gdt(): gdt_gpa={GDT_GPA:#010x}");
+
+        let mut gdt: [u64; 3] = [0u64; 3];
+
+        // Entry 0: Null descriptor.
+        gdt[0] = 0;
+
+        // Entry 1 (selector 0x08): 64-bit code segment.
+        // Access byte: 0x9A (P=1, DPL=0, S=1, Type=0xA — Execute/Read)
+        // Flags: 0xA (L=1 for 64-bit, G=1 for page granularity)
+        // Limit 0xFFFFF with G=1 → 4GB.
+        gdt[1] = Self::encode_gdt_entry(0, 0xFFFFF, 0x9A, 0xA);
+
+        // Entry 2 (selector 0x10): 64-bit data segment.
+        // Access byte: 0x92 (P=1, DPL=0, S=1, Type=0x2 — Read/Write)
+        // Flags: 0xC (D/B=1 for 32-bit operand size, G=1 for page granularity)
+        gdt[2] = Self::encode_gdt_entry(0, 0xFFFFF, 0x92, 0xC);
+
+        let gdt_bytes: &[u8] = unsafe {
+            slice::from_raw_parts(gdt.as_ptr().cast::<u8>(), gdt.len() * mem::size_of::<u64>())
+        };
+
+        vmem.write_bytes(GDT_GPA, gdt_bytes)
+    }
+
+    /// Encodes a single 8-byte GDT entry from base, limit, access byte, and flags nibble.
+    #[cfg(feature = "x86_64")]
+    fn encode_gdt_entry(base: u32, limit: u32, access: u8, flags: u8) -> u64 {
+        let mut entry: u64 = 0;
+
+        // Limit bits 0-15.
+        entry |= (limit & 0xFFFF) as u64;
+        // Base bits 0-15.
+        entry |= ((base & 0xFFFF) as u64) << 16;
+        // Base bits 16-23.
+        entry |= (((base >> 16) & 0xFF) as u64) << 32;
+        // Access byte.
+        entry |= (access as u64) << 40;
+        // Limit bits 16-19.
+        entry |= (((limit >> 16) & 0x0F) as u64) << 48;
+        // Flags nibble (bits 52-55).
+        entry |= ((flags & 0x0F) as u64) << 52;
+        // Base bits 24-31.
+        entry |= (((base >> 24) & 0xFF) as u64) << 56;
+
+        entry
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes identity-mapped page tables for x86_64 long mode into guest memory.
+    ///
+    /// Uses 2MB huge pages for simplicity. Creates PML4 → PDPT → PD hierarchy.
+    ///
+    #[cfg(feature = "x86_64")]
+    fn write_page_tables(vmem: &mut VirtualMemory, memory_size: usize) -> Result<()> {
+        trace!("write_page_tables(): memory_size={memory_size:#010x}");
+
+        const PAGE_TABLE_SIZE: usize = 4096;
+        const HUGE_PAGE_SIZE: usize = 2 * 1024 * 1024; // 2MB
+
+        // Zero out the page table pages first.
+        let zeros: [u8; PAGE_TABLE_SIZE] = [0u8; PAGE_TABLE_SIZE];
+        vmem.write_bytes(PML4_GPA, &zeros)?;
+        vmem.write_bytes(PDPT_GPA, &zeros)?;
+        vmem.write_bytes(PD_GPA, &zeros)?;
+
+        // PML4[0] → PDPT (present, writable).
+        let pml4_entry: u64 = PDPT_GPA | 0x03; // Present + Writable
+        vmem.write_bytes(PML4_GPA, &pml4_entry.to_le_bytes())?;
+
+        // PDPT[0] → PD (present, writable).
+        let pdpt_entry: u64 = PD_GPA | 0x03; // Present + Writable
+        vmem.write_bytes(PDPT_GPA, &pdpt_entry.to_le_bytes())?;
+
+        // PD entries: identity-map using 2MB huge pages.
+        let num_huge_pages: usize = (memory_size + HUGE_PAGE_SIZE - 1) / HUGE_PAGE_SIZE;
+        // Cap at 512 entries (1GB maximum with a single PD).
+        let num_entries: usize = if num_huge_pages > 512 { 512 } else { num_huge_pages };
+
+        for i in 0..num_entries {
+            let phys_addr: u64 = (i * HUGE_PAGE_SIZE) as u64;
+            // Present + Writable + PS (Page Size, indicates 2MB page).
+            let pd_entry: u64 = phys_addr | 0x83;
+            let offset: u64 = PD_GPA + (i as u64) * 8;
+            vmem.write_bytes(offset, &pd_entry.to_le_bytes())?;
+        }
+
+        trace!(
+            "write_page_tables(): mapped {} x 2MB huge pages ({} bytes total)",
+            num_entries,
+            num_entries * HUGE_PAGE_SIZE
+        );
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets up the EFER MSR for x86_64 long mode.
+    ///
+    #[cfg(feature = "x86_64")]
+    fn setup_efer(&mut self) -> Result<()> {
+        trace!("setup_efer()");
+
+        let efer_value: u64 = EFER_LME | EFER_LMA | EFER_SCE;
+
+        let msr_entries: Vec<kvm_msr_entry> = vec![kvm_msr_entry {
+            index: MSR_IA32_EFER,
+            data: efer_value,
+            ..Default::default()
+        }];
+
+        let msrs: ::kvm_bindings::Msrs = match ::kvm_bindings::Msrs::from_entries(&msr_entries) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason: String = format!("failed to create MSRs for EFER (error={e:?})");
+                error!("setup_efer(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        match self.fd.set_msrs(&msrs) {
+            Ok(written) if written == msr_entries.len() => {
+                trace!("setup_efer(): EFER MSR set (value={efer_value:#018x})");
+                Ok(())
+            },
+            Ok(written) => {
+                let reason: String = format!(
+                    "failed to set all EFER MSRs: written {written} of {} entries",
+                    msr_entries.len()
+                );
+                error!("setup_efer(): {reason}");
+                anyhow::bail!(reason)
+            },
+            Err(e) => {
+                let reason: String = format!("failed to set EFER MSR (error={e:?})");
+                error!("setup_efer(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
     }
 
     ///
