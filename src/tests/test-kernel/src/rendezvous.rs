@@ -7,6 +7,7 @@
 
 use ::alloc::alloc::Layout;
 use ::core::sync::atomic::{
+    AtomicBool,
     AtomicU32,
     Ordering,
 };
@@ -1294,6 +1295,59 @@ fn test_concurrent_pull(transfer_size: usize) -> Result<(), Error> {
 ///
 static mut PARTNER_TIDS: [u32; CONCURRENT_THREAD_COUNT] = [0; CONCURRENT_THREAD_COUNT];
 
+/// Readiness flag: set by the main thread after all `PARTNER_TIDS` entries have been written.
+/// Child threads spin-yield on this flag before reading their partner TID.
+static PARTNER_TIDS_READY: AtomicBool = AtomicBool::new(false);
+
+/// Abort flag: set by [`PartnerTidsReadyGuard`] on drop when initialization was incomplete (early
+/// return via `?`). Child threads check this after being unblocked and exit immediately if set,
+/// preventing reads of stale/invalid partner TIDs.
+static PARTNER_TIDS_ABORT: AtomicBool = AtomicBool::new(false);
+
+///
+/// # Description
+///
+/// RAII guard that manages the [`PARTNER_TIDS`] handoff between the main thread and child threads.
+/// On creation it zeroes all entries and clears both flags. On drop it signals abort and sets
+/// [`PARTNER_TIDS_READY`] so children never spin forever if the spawn loop returns early via `?`.
+///
+struct PartnerTidsReadyGuard;
+
+impl PartnerTidsReadyGuard {
+    ///
+    /// # Description
+    ///
+    /// Clears the readiness and abort flags, zeroes all [`PARTNER_TIDS`] entries to prevent stale
+    /// reads, and returns a guard that will unblock children on drop.
+    ///
+    fn new() -> Self {
+        PARTNER_TIDS_READY.store(false, ORDER);
+        PARTNER_TIDS_ABORT.store(false, ORDER);
+        // SAFETY: no child thread reads PARTNER_TIDS while PARTNER_TIDS_READY is false.
+        unsafe {
+            let ptr: *mut u32 = core::ptr::addr_of_mut!(PARTNER_TIDS) as *mut u32;
+            for i in 0..CONCURRENT_THREAD_COUNT {
+                core::ptr::write(ptr.add(i), 0);
+            }
+        }
+        Self
+    }
+}
+
+impl Drop for PartnerTidsReadyGuard {
+    ///
+    /// # Description
+    ///
+    /// Signals abort and sets [`PARTNER_TIDS_READY`] to `true`, unblocking any child threads that
+    /// are spin-yielding. Children will see [`PARTNER_TIDS_ABORT`] as `true` and exit immediately
+    /// instead of reading potentially stale partner TIDs.
+    ///
+    fn drop(&mut self) {
+        PARTNER_TIDS_ABORT.store(true, ORDER);
+        PARTNER_TIDS_READY.store(true, ORDER);
+    }
+}
+
 ///
 /// # Description
 ///
@@ -1311,8 +1365,20 @@ extern "C" fn independent_pair_thread(arg: usize) -> usize {
     let fill_byte: u8 = (pair_idx & 0xFF) as u8;
     let size: usize = TRANSFER_SIZE.load(ORDER) as usize;
 
+    // Spin-yield until the main thread signals that all partner TIDs are written.
+    while !PARTNER_TIDS_READY.load(ORDER) {
+        if sched::sched_yield().is_err() {
+            return 1;
+        }
+    }
+
+    // If initialization was incomplete (early return in spawn loop), exit immediately.
+    if PARTNER_TIDS_ABORT.load(ORDER) {
+        return 1;
+    }
+
     // Get partner TID.
-    // SAFETY: single-core system; partner TIDs are written before threads start running.
+    // SAFETY: PARTNER_TIDS_READY ensures all entries are written before we read.
     let partner_tid_raw: u32 = unsafe { PARTNER_TIDS[arg ^ 1] };
     let partner_tid: ThreadIdentifier = match ThreadIdentifier::try_from(partner_tid_raw) {
         Ok(t) => t,
@@ -1383,6 +1449,9 @@ fn test_independent_pairs() -> Result<(), Error> {
     SELF_PID.store(pid_raw, ORDER);
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);
 
+    // Guard clears flag on creation; sets it on drop so children never spin forever.
+    let _ready_guard: PartnerTidsReadyGuard = PartnerTidsReadyGuard::new();
+
     // Allocate stacks and spawn threads.
     let mut stacks: [(*mut u8, Layout); CONCURRENT_THREAD_COUNT] =
         [(core::ptr::null_mut(), unsafe { Layout::from_size_align_unchecked(1, 1) });
@@ -1409,9 +1478,15 @@ fn test_independent_pairs() -> Result<(), Error> {
 
         // Store TID so partner can find it.
         let tid_raw: u32 = u32::try_from(tid)?;
-        // SAFETY: single-core system; threads yield before reading partner TIDs.
+        // SAFETY: threads spin-yield on PARTNER_TIDS_READY before reading.
         unsafe { PARTNER_TIDS[i] = tid_raw };
     }
+
+    // Signal threads that all partner TIDs are now valid. Clear the abort flag first so children
+    // proceed normally, then set readiness. The guard also unblocks children on drop as a safety
+    // net for early returns from the spawn loop above (with abort set).
+    PARTNER_TIDS_ABORT.store(false, ORDER);
+    PARTNER_TIDS_READY.store(true, ORDER);
 
     // Join all threads.
     for i in 0..NUM_THREADS {
@@ -2016,8 +2091,20 @@ extern "C" fn stress_pair_thread(arg: usize) -> usize {
     let size: usize = TRANSFER_SIZE.load(ORDER) as usize;
     let rounds: u32 = ITERATION_COUNT.load(ORDER);
 
+    // Spin-yield until the main thread signals that all partner TIDs are written.
+    while !PARTNER_TIDS_READY.load(ORDER) {
+        if sched::sched_yield().is_err() {
+            return 1;
+        }
+    }
+
+    // If initialization was incomplete (early return in spawn loop), exit immediately.
+    if PARTNER_TIDS_ABORT.load(ORDER) {
+        return 1;
+    }
+
     // Get partner TID.
-    // SAFETY: single-core system; partner TIDs are written before threads start running.
+    // SAFETY: PARTNER_TIDS_READY ensures all entries are written before we read.
     let partner_tid_raw: u32 = unsafe { PARTNER_TIDS[arg ^ 1] };
     let partner_tid: ThreadIdentifier = match ThreadIdentifier::try_from(partner_tid_raw) {
         Ok(t) => t,
@@ -2114,6 +2201,9 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);
     ITERATION_COUNT.store(STRESS_PAIR_ROUNDS, ORDER);
 
+    // Guard clears flag on creation; sets it on drop so children never spin forever.
+    let _ready_guard: PartnerTidsReadyGuard = PartnerTidsReadyGuard::new();
+
     // Allocate stacks and spawn threads.
     let mut stacks: [(*mut u8, Layout); CONCURRENT_THREAD_COUNT] =
         [(core::ptr::null_mut(), unsafe { Layout::from_size_align_unchecked(1, 1) });
@@ -2139,9 +2229,15 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
 
         // Store TID so partner can find it.
         let tid_raw: u32 = u32::try_from(tid)?;
-        // SAFETY: single-core system; threads yield before reading partner TIDs.
+        // SAFETY: threads spin-yield on PARTNER_TIDS_READY before reading.
         unsafe { PARTNER_TIDS[i] = tid_raw };
     }
+
+    // Signal threads that all partner TIDs are now valid. Clear the abort flag first so children
+    // proceed normally, then set readiness. The guard also unblocks children on drop as a safety
+    // net for early returns from the spawn loop above (with abort set).
+    PARTNER_TIDS_ABORT.store(false, ORDER);
+    PARTNER_TIDS_READY.store(true, ORDER);
 
     // Join all threads.
     for i in 0..NUM_THREADS {
