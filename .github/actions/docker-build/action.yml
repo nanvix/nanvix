@@ -60,12 +60,14 @@ runs:
       SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
       SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
     run: |
-      ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
-        "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
-        "LOG_LEVEL=${LOG_LEVEL}" \
-        VERBOSE=yes \
-        BUILD_OPT=yes \
-        "TIMEOUT=${BUILD_TIMEOUT}" \
-        ${RELEASE_FLAG} \
-        ${MAKE_FLAGS}
+      ./scripts/docker-retry.sh \
+        "targets=${BUILD_TARGETS} machine=${MACHINE_TYPE}" \
+        ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
+          "MACHINE=${MACHINE_TYPE}" \
+          TARGET=x86 \
+          "LOG_LEVEL=${LOG_LEVEL}" \
+          VERBOSE=yes \
+          BUILD_OPT=yes \
+          "TIMEOUT=${BUILD_TIMEOUT}" \
+          ${RELEASE_FLAG} \
+          ${MAKE_FLAGS}
