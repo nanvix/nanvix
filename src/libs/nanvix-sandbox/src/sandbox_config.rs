@@ -114,6 +114,7 @@ impl<T> SandboxConfig<T> {
     ///
     /// The path to the console file as a string.
     ///
+    #[allow(dead_code)]
     fn default_console_file(uservm_id: UserVmIdentifier, log_dir: &str) -> String {
         let console_file: PathBuf = PathBuf::from(log_dir)
             .join(format!("guest_{uservm_id}_{}.log", Local::now().format("%Y_%m_%d_%H_%M_%S_%f")));
@@ -174,10 +175,7 @@ impl<T> SandboxConfig<T> {
             uservm_id,
             gateway_socket_info,
             system_vm_socket_info,
-            console_file: Some(
-                console_file
-                    .unwrap_or_else(|| Self::default_console_file(uservm_id, log_directory)),
-            ),
+            console_file,
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
             #[cfg(not(feature = "single-process"))]

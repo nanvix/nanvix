@@ -11,15 +11,11 @@
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-use crate::config::DEFAULT_CONSOLE_FILENAME;
 use crate::config::{
     self,
     DEFAULT_TMP_DIRECTORY,
 };
 use ::anyhow::Result;
-#[cfg(feature = "single-process")]
-use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
     log::DEFAULT_LOG_DIRECTORY,
@@ -145,12 +141,7 @@ impl Args {
         #[cfg(not(feature = "single-process"))]
         let mut console_file: Option<String> = None;
         #[cfg(feature = "single-process")]
-        let mut console_file: Option<String> = Some(format!(
-            "{}/{}_{}.log",
-            DEFAULT_LOG_DIRECTORY,
-            DEFAULT_CONSOLE_FILENAME,
-            Local::now().format("%Y_%m_%d_%H_%M")
-        ));
+        let mut console_file: Option<String> = None;
         let mut ramfs_filename: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
         let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
