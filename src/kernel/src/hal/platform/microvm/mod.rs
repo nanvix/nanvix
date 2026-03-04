@@ -480,8 +480,8 @@ pub fn init(
     memory_regions.push_back(pvclock_region);
 
     log_control_registers();
-    register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
 
+    register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
         #[cfg(feature = "pit")]

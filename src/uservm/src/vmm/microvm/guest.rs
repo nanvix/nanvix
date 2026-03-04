@@ -43,6 +43,8 @@ pub struct Guest {
     credits: u32,
     /// Entry point of the guest.
     entry: usize,
+    /// Whether the guest is 64-bit (ELFCLASS64).
+    is_64bit: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,6 +57,9 @@ pub struct GuestState {
     credits: u32,
     // Entry point of the guest.
     entry: usize,
+    // Whether the guest is 64-bit.
+    #[serde(default)]
+    is_64bit: bool,
 }
 
 //==================================================================================================
@@ -82,6 +87,13 @@ impl Guest {
         let (ptr, size) = (vmem.get_raw_ptr(), vmem.get_size());
 
         let elf: FileMapping = FileMapping::mmap(kernel_filename)?;
+
+        // Detect ELF class from the EI_CLASS byte (offset 4 in e_ident).
+        let elf_bytes: &[u8] = unsafe { std::slice::from_raw_parts(elf.ptr(), elf.size()) };
+        if elf_bytes.len() >= 5 {
+            self.is_64bit = elf_bytes[4] == 2; // ELFCLASS64.
+        }
+
         let (entry, first_address, size): (usize, usize, usize) =
             unsafe { elf::load(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
 
@@ -365,7 +377,7 @@ impl Guest {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
-        vcpu.reset(self.entry as u64, rax, rbx)
+        vcpu.reset(self.entry as u64, rax, rbx, self.is_64bit, vmem)
     }
 
     ///
@@ -443,6 +455,7 @@ impl Guest {
             initrd: self.initrd,
             credits: self.credits,
             entry: self.entry,
+            is_64bit: self.is_64bit,
         })
     }
 
@@ -452,6 +465,7 @@ impl Guest {
         self.initrd = state.initrd;
         self.credits = state.credits;
         self.entry = state.entry;
+        self.is_64bit = state.is_64bit;
         Ok(())
     }
 }

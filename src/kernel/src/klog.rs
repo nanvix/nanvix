@@ -142,3 +142,27 @@ pub unsafe fn puts(s: &str) {
         }
     }
 }
+
+/// Outputs a `usize` value as a hexadecimal string via the kernel log device.
+///
+/// # Safety
+///
+/// - It assumes that the standard output device was properly initialized.
+/// - It does not prevent concurrent access to the standard output device.
+///
+#[allow(dead_code)]
+pub unsafe fn put_hex(val: usize) {
+    let mut buf: [u8; 18] = [0; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    for i in 0..16 {
+        let nibble: u8 = ((val >> (60 - i * 4)) & 0xF) as u8;
+        buf[2 + i] = if nibble < 10 {
+            b'0' + nibble
+        } else {
+            b'a' + nibble - 10
+        };
+    }
+    let s: &str = core::str::from_utf8_unchecked(&buf);
+    puts(s);
+}

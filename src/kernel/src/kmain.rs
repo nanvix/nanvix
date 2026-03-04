@@ -48,7 +48,7 @@ use crate::{
     kimage::KernelImage,
     kmod::KernelModule,
     mm::{
-        elf::Elf32Fhdr,
+        elf,
         kheap,
         VirtMemoryManager,
         Vmem,
@@ -221,14 +221,20 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
     let mut count: usize = 0;
     // Spawn all servers.
     for kmod in kmods.iter() {
-        let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
+        let elf_class: elf::ElfClass = match elf::detect_elf_class(kmod.start().into_raw_value()) {
+            Ok(ec) => ec,
+            Err(err) => {
+                warn!("failed to detect ELF class: {:?}", err);
+                continue;
+            },
+        };
         let pid: ProcessIdentifier = {
             // Split command line into arguments an environment variables using ";" as the delimiter.
             let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
             let args: &&str = cmdline.first().unwrap_or(&"");
             let env: &&str = cmdline.get(1).unwrap_or(&"");
 
-            match pm.create_process(mm, elf, args, env) {
+            match pm.create_process(mm, elf_class, args, env) {
                 Ok(pid) => {
                     count += 1;
                     pid
@@ -270,14 +276,16 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     );
     let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
         KernelArgs = match kargs.parse() {
-            Ok(bootinfo) => (
+            Ok(bootinfo) => {
+                (
                 bootinfo.madt,
                 bootinfo.mem_lower,
                 bootinfo.memory_regions,
                 bootinfo.mmio_regions,
                 bootinfo.ioaddresses,
                 bootinfo.kernel_modules,
-            ),
+                )
+            },
             Err(err) => {
                 panic!("failed to parse kernel arguments: {:?}", err);
             },
@@ -299,6 +307,22 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     }
     memory_regions.push_back(kimage.bss());
     memory_regions.push_back(kimage.kpool());
+
+    // On x86_64, reserve VMM boot structures (GDT, PML4, PDPT, PD0, PD1) so the frame allocator
+    // does not hand out these pages. The VMM places these structures at 0x5000-0x9FFF and they
+    // must remain intact for the identity-mapped page tables.
+    #[cfg(target_arch = "x86_64")]
+    {
+        if let Ok(region) = MemoryRegion::new(
+            "vmm-boot-structures",
+            VirtualAddress::from_raw_value(0x2000),
+            0x8000, // Reserve 0x2000-0x9FFF (includes GDT, PML4, PDPT, PD0, PD1).
+            MemoryRegionType::Reserved,
+            AccessPermission::RDONLY,
+        ) {
+            memory_regions.push_back(region);
+        }
+    }
 
     // Add kernel modules to list of memory regions.
     for module in kernel_modules.iter() {

@@ -370,6 +370,15 @@ impl Vmem {
         // Map the page to the target virtual address space.
         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
 
+        // On x86_64, also update the hardware page tables (VMM-provided 4-level tables).
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            crate::hal::arch::x86::mem::mmu::hwpt::map_user(
+                vaddr.into_raw_value(),
+                uframe.address(),
+            );
+        }
+
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
         //=============================================================
@@ -1101,6 +1110,12 @@ impl Vmem {
 
             // Unmap the page from the target virtual address space.
             page_table.unmap(page_address)?;
+
+            // On x86_64, also clear the hardware page table entry.
+            #[cfg(target_arch = "x86_64")]
+            unsafe {
+                crate::hal::arch::x86::mem::mmu::hwpt::unmap(vaddr.into_raw_value());
+            }
 
             (pgtable_vaddr, page_table.nmapped() == 0)
         };

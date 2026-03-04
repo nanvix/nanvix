@@ -253,17 +253,26 @@ fn main() {
 
     let cc: String = "gcc".to_string();
 
+    let target_arch: String =
+        env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "x86".to_string());
+
     let mut cflags: Vec<String> = vec![
         "-nostdlib".to_string(),
         "-ffreestanding".to_string(),
-        "-march=pentiumpro".to_string(),
-        "-Wa,-march=pentiumpro".to_string(),
         "-Wstack-usage=4096".to_string(),
         "-Wall".to_string(),
-        "-m32".to_string(),
         "-Wextra".to_string(),
         "-Werror".to_string(),
     ];
+
+    if target_arch == "x86_64" {
+        cflags.push("-m64".to_string());
+        cflags.push("-march=x86-64".to_string());
+    } else {
+        cflags.push("-m32".to_string());
+        cflags.push("-march=pentiumpro".to_string());
+        cflags.push("-Wa,-march=pentiumpro".to_string());
+    }
 
     // Add defines from config for assembly constants.
     cflags.push(format!("-DKSTACK_SIZE={}", kstack_size));
@@ -296,7 +305,11 @@ fn main() {
     // Collect Assembly Source Files
     //==============================================================================================
 
-    let sources_dir: Vec<&str> = vec!["src/hal/arch/x86"];
+    let sources_dir: Vec<&str> = if target_arch == "x86_64" {
+        vec!["src/hal/arch/x86_64"]
+    } else {
+        vec!["src/hal/arch/x86"]
+    };
 
     // Collect *.S files in the sources directory
     let mut asm_sources = Vec::<String>::new();
@@ -368,7 +381,13 @@ fn main() {
     // page of heap_padding exists.
     //
     // For non-Hyperlight targets, no reserved space is needed.
-    let linker_template_path: PathBuf = workspace_dir.join("build/kernel/linker/x86/kernel.ld.in");
+    let linker_subdir = if target_arch == "x86_64" {
+        "x86_64"
+    } else {
+        "x86"
+    };
+    let linker_template_path: PathBuf =
+        workspace_dir.join(format!("build/kernel/linker/{}/kernel.ld.in", linker_subdir));
     let linker_output_path: String = format!("{}/kernel.ld", out_dir);
 
     let machine_reserved: String = if cfg!(feature = "hyperlight") {

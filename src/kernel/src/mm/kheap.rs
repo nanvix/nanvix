@@ -188,7 +188,7 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
-            4096 => Ok(SlabSize::Slab4096),
+            513..=4096 => Ok(SlabSize::Slab4096),
             _ => Err(AllocError),
         }
     }

@@ -10,6 +10,11 @@
 #[path = "arch/x86.rs"]
 pub mod arch;
 
+/// Architecture-specific symbols.
+#[cfg(target_arch = "x86_64")]
+#[path = "arch/x86_64.rs"]
+pub mod arch;
+
 /// Debug facilities.
 pub mod debug;
 
