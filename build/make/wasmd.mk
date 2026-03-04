@@ -1,13 +1,18 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+WASMD_FEATURES := $(LOG_LEVEL)
+WASMD_FEATURES := $(strip $(WASMD_FEATURES))
+WASMD_CARGO_FEATURES := $(if $(WASMD_FEATURES),--features "$(WASMD_FEATURES)")
+
 all-wasmd: all-wasm-binaries all-guest-binaries
 	@echo "WASM_BINARY=$(WASM_BINARY)"
 ifneq ($(WASM_BINARY),)
 	$(eval export NANVIX_WASM_BINARY := $(realpath $(WASM_BINARY)))
 	$(eval export NANVIX_WASM_BINARY_BASENAME := $(shell basename $(NANVIX_WASM_BINARY)))
 	$(eval export NANVIX_WASM_BINARY_ARGS := =$(WASM_BINARY_ARGS))
-	$(eval export WASMD_CARGO_FEATURES := --features wasm_binary)
+	$(eval export WASMD_FEATURES := $(strip $(WASMD_FEATURES) wasm_binary))
+	$(eval export WASMD_CARGO_FEATURES := --features "$(WASMD_FEATURES)")
 endif
 	@echo "NANVIX_WASM_BINARY=$(NANVIX_WASM_BINARY)"
 	@echo "NANVIX_WASM_BINARY_BASENAME=$(NANVIX_WASM_BINARY_BASENAME)"
