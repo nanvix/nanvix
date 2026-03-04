@@ -5,30 +5,29 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-        MessagePartitioner,
+use ::alloc::string::String;
+use ::sys::error::Error;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::{
+            LinuxDaemonLongMessage,
+            LinuxDaemonMessagePart,
+            MessagePartitioner,
+        },
+        unistd::message::{
+            GetCurrentWorkingDirectoryRequest,
+            GetCurrentWorkingDirectoryResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    unistd::message::{
-        GetCurrentWorkingDirectoryRequest,
-        GetCurrentWorkingDirectoryResponse,
+    ::alloc::vec::Vec,
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::{
-    string::String,
-    vec::Vec,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
