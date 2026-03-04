@@ -52,6 +52,21 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
         }
     }
 
+    // In standalone mode, succeed as a no-op for non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = fd;
+        return Ok(());
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fdatasync_linuxd(fd)
+}
+
+/// Forwards a `fdatasync` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fdatasync_linuxd(fd: RawFileDescriptor) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

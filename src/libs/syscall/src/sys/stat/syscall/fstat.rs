@@ -32,6 +32,7 @@ use sysapi::sys_stat;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
+#[allow(unreachable_code)]
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     // Route to the VFS if this is a VFS file descriptor.
     #[cfg(feature = "memfs")]
@@ -43,6 +44,16 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
                 Error::new(code, "vfs fstat failed")
             });
         }
+    }
+
+    // In standalone mode, reject non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, buf);
+        return Err(Error::new(
+            ::sys::error::ErrorCode::OperationNotSupported,
+            "fstat not available in standalone mode",
+        ));
     }
 
     // Send request.

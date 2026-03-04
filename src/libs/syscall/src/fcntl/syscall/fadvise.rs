@@ -42,6 +42,7 @@ use sysapi::sys_types::off_t;
 ///
 /// Upon success, `posix_fadvise()` empty. Otherwise, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn posix_fadvise(
     fd: RawFileDescriptor,
     offset: off_t,
@@ -62,6 +63,13 @@ pub fn posix_fadvise(
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+    }
+
+    // In standalone mode, succeed as a no-op (advisory only, no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, offset, len, advice);
+        return Ok(());
     }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;

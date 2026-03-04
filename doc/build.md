@@ -79,6 +79,15 @@ To build Nanvix using your local toolchain and default build parameters, run:
 make all
 ```
 
+You can also build in **standalone mode**, which excludes `linuxd` and routes all I/O through the
+local memfs VFS layer and kernel debug serial port:
+
+```bash
+make all STANDALONE=yes
+```
+
+Standalone mode implies `SINGLE_PROCESS=yes` automatically.
+
 ## Formal Verification with Verus
 
 Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected

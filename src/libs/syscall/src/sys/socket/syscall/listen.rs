@@ -24,7 +24,17 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
+#[allow(unreachable_code)]
 pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, backlog);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "listen not available in standalone mode",
+        ));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

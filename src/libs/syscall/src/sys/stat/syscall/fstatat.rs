@@ -40,7 +40,30 @@ use ::sysapi::sys_stat;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
+#[allow(unreachable_code)]
 pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> Result<(), Error> {
+    // Route to the VFS if the path belongs to an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(path) {
+            return ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
+                ::sys::error::Error::new(code, "vfs stat failed")
+            });
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (dirfd, path, buf, flag);
+        return Err(::sys::error::Error::new(
+            ::sys::error::ErrorCode::OperationNotSupported,
+            "fstatat not available in standalone mode",
+        ));
+    }
+
     // Send request.
     fstatat_request(dirfd, path, flag)?;
 

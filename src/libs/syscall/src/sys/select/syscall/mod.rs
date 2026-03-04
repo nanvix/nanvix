@@ -50,6 +50,7 @@ use ::sysapi::sys_select::{
 /// three returned descriptor sets that are ready for I/O. On failure, an error code is
 /// returned instead.
 ///
+#[allow(unreachable_code)]
 pub fn select(
     nfds: usize,
     readfds: Option<&mut fd_set>,
@@ -70,6 +71,15 @@ pub fn select(
         return Err(Error::new(
             ErrorCode::InvalidArgument,
             "number of file descriptors exceeds maximum supported",
+        ));
+    }
+
+    // In standalone mode, select is not available (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "select not available in standalone mode",
         ));
     }
 

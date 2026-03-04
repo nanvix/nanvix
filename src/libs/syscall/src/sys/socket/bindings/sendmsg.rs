@@ -62,7 +62,15 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
+#[allow(unreachable_code)]
 pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, msg, flags);
+        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
+        return -1;
+    }
+
     // TODO: https://github.com/nanvix/nanvix/issues/599.
     ::syslog::debug!("sendmsg(): not implemented");
     unsafe {

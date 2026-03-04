@@ -44,8 +44,21 @@ use sysapi::{
 /// Upon successful completion, `times()` returns the elapsed time since an arbitrary point in the
 /// past. Otherwise, an error code is returned.
 ///
+#[allow(unreachable_code)]
 pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
     ::syslog::trace!("times(): {:?}", buffer);
+
+    // In standalone mode, return zeroed times with elapsed=0 (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        if let Some(buf) = buffer {
+            buf.tms_utime = 0;
+            buf.tms_stime = 0;
+            buf.tms_cutime = 0;
+            buf.tms_cstime = 0;
+        }
+        return Ok(0);
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

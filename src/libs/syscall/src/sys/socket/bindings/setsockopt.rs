@@ -60,6 +60,7 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
+#[allow(unreachable_code)]
 pub unsafe extern "C" fn setsockopt(
     sockfd: c_int,
     level: c_int,
@@ -67,6 +68,13 @@ pub unsafe extern "C" fn setsockopt(
     optval: *const c_void,
     optlen: socklen_t,
 ) -> c_int {
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, level, optname, optval, optlen);
+        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
+        return -1;
+    }
+
     // TODO: https://github.com/nanvix/nanvix/issues/471
     ::syslog::debug!("setsockopt(): not implemented");
     unsafe {

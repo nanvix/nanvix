@@ -40,6 +40,18 @@ use sysapi::sys_types::gid_t;
 pub fn getegid() -> Result<gid_t, Error> {
     ::syslog::trace!("getegid()");
 
+    // In standalone mode, return 0 (root).
+    #[cfg(feature = "standalone")]
+    return Ok(usize::from(::sys::pm::GroupIdentifier::ROOT) as gid_t);
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    getegid_linuxd()
+}
+
+/// Forwards a `getegid` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn getegid_linuxd() -> Result<gid_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it

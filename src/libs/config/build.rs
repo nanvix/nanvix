@@ -178,6 +178,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     );
     constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));
 
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "debug_buffer_size"),
+        "debug_buffer_size",
+    );
+    constants.push_str(&format!("pub const DEBUG_BUFFER_SIZE: usize = {val};\n"));
+
     constants.push_str("}\n");
 
     //==============================================================================================
