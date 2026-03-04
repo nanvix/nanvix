@@ -55,9 +55,8 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     // SAFETY: the process manager is initialized and access is synchronized.
     let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
 
-    // Buffer size in bytes.
-    // NOTE: This value was chosen to be smaller than a page, but big enough for along messages.
-    const BUFFER_SIZE: usize = 256;
+    // Maximum size of a debug message buffer (from kernel configuration).
+    const BUFFER_SIZE: usize = config::kernel::DEBUG_BUFFER_SIZE;
     let user_buffer: usize = arg0 as usize;
     let size: usize = arg1 as usize;
 

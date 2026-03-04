@@ -102,3 +102,13 @@ mutex_open_max = 32
 # Notes:
 # - This number was arbitrarily chosen.
 cond_open_max = 32
+
+#==================================================================================================
+# Debug
+#==================================================================================================
+
+# Maximum size (in bytes) of a single debug message buffer.
+# Notes:
+# - This value must be smaller than a page.
+# - The kernel debug handler rejects messages larger than this limit.
+debug_buffer_size = 256
