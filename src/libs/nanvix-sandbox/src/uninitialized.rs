@@ -287,6 +287,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     };
 
                     LinuxDaemonArgs::new(
+                        config.tenant_id(),
                         // We pass linuxd the control plane socket's connect address, which may
                         // depend on the network namespace.
                         (

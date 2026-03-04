@@ -543,6 +543,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 }
 
                 let config: SandboxConfig<T> = SandboxConfig::new(
+                    tag.tenant_id(),
                     tag.sandbox_id(),
                     (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
                     (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),

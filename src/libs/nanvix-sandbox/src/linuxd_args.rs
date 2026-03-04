@@ -30,6 +30,8 @@ use ::syscomm::SocketType;
 ///   single-process mode. Use `()` if no custom state is required.
 ///
 pub struct LinuxDaemonArgs<T> {
+    /// Unique tenant identifier.
+    tenant_id: String,
     /// Information on control plane connect socket (address, socket type).
     control_plane_connect_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type).
@@ -70,6 +72,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// # Parameters
     ///
+    /// - `tenant_id`: Unique identifier of the tenant associated with a linuxd instance.
     /// - `control_plane_connect_socket_info`: Information on control plane socket (address, socket type).
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `hwloc`: Optional hardware locality configuration for CPU affinity and topology information.
@@ -87,6 +90,7 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        tenant_id: &str,
         control_plane_connect_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
@@ -101,6 +105,7 @@ impl<T> LinuxDaemonArgs<T> {
         >,
     ) -> Self {
         Self {
+            tenant_id: tenant_id.to_string(),
             control_plane_connect_socket_info,
             system_vm_socket_info,
             hwloc,
@@ -116,6 +121,19 @@ impl<T> LinuxDaemonArgs<T> {
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns information on the tenant identifier.
+    ///
+    /// # Returns
+    ///
+    /// A unique tenant identifier.
+    ///
+    pub fn tenant_id(&self) -> &str {
+        &self.tenant_id
     }
 
     ///
