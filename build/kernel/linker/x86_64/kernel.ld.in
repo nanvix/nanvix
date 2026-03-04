@@ -1,0 +1,114 @@
+/*
+ * Copyright(c) 2011-2024 The Maintainers of Nanvix.
+ * Licensed under the MIT License.
+ */
+
+OUTPUT_FORMAT("elf64-x86-64")
+ENTRY(_do_start)
+
+/*
+ * Page Size (4 KB)
+ */
+PAGE_SIZE = 0x1000;
+
+/*
+ * Boot Address
+ */
+BOOT_ADDR = 0x00100000;
+
+/*
+ * Trampoline Address
+ */
+TRAMPOLINE_ADDR = 0x00008000;
+
+/*
+ * Kernel Pool Base Address
+ *
+ * This value is set by build.rs from kpool_base in build/kernel_config.toml,
+ * ensuring consistency with config::memory_layout::KPOOL_BASE_RAW.
+ */
+KPOOL_BASE = @KPOOL_BASE@;
+
+/*
+ * Machine Reserved Space
+ *
+ * Space reserved after __KERNEL_END for machine-specific structures.
+ * This value is set by build.rs based on the target machine.
+ */
+MACHINE_RESERVED = @MACHINE_RESERVED@;
+
+SECTIONS
+{
+	/* Pad with zeroes. */
+	.zero : {
+		. = . + TRAMPOLINE_ADDR;
+	} = 0
+
+    /* Trampoline section. */
+    .trampoline :
+    {
+    	KEEP(*(.trampoline))
+    }
+
+	. = BOOT_ADDR;
+
+	__KERNEL_START = .;
+	__TEXT_START = .;
+
+	/* Bootstrap section. */
+	.bootstrap :
+	{
+		__BOOTSTRAP_START = .;
+		KEEP(*(.bootstrap))
+		__BOOTSTRAP_END = .;
+	}
+
+	/* Text section. */
+	.text : ALIGN(PAGE_SIZE)
+	{
+		*(.text*)
+	}
+
+	__TEXT_END = .;
+
+	/* Initialized data section. */
+	.data : ALIGN(PAGE_SIZE)
+	{
+		__DATA_START = .;
+		*(.data*)
+		__DATA_END = .;
+	}
+
+	/* Read-only data section. */
+	.rodata : ALIGN(PAGE_SIZE)
+	{
+		__RODATA_START = .;
+		*(.rodata*)
+		__RODATA_END = .;
+	}
+
+	/* Uninitialized data section. */
+	.bss : ALIGN(PAGE_SIZE)
+	{
+		__BSS_START = .;
+		*(.bss*)
+		__BSS_END = .;
+	}
+
+	. = ALIGN(PAGE_SIZE);
+
+	__KERNEL_END = .;
+
+	/*
+	 * Ensure the kernel image plus machine-reserved space fits before KPOOL_BASE.
+	 */
+	ASSERT(__KERNEL_END + MACHINE_RESERVED < KPOOL_BASE,
+		"Kernel too large: __KERNEL_END + MACHINE_RESERVED must be < KPOOL_BASE")
+
+	/* Discarded. */
+	/DISCARD/ :
+	{
+		*(.comment)
+		*(.note)
+	}
+}

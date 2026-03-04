@@ -1,19 +1,11 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-#![no_std]
-#![allow(clippy::all)]
-
-#[cfg(not(feature = "x86_64"))]
-mod x86;
-#[cfg(feature = "x86_64")]
-mod x86_64;
-
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-#[cfg(not(feature = "x86_64"))]
-pub use x86::*;
-#[cfg(feature = "x86_64")]
-pub use x86_64::*;
+pub mod cpu;
+pub mod dbg;
+pub mod io;
+pub mod mem;

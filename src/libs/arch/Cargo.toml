@@ -81,6 +81,9 @@ qemu-baremetal = ["pc"]
 qemu-baremetal-smp = ["qemu-baremetal", "smp"]
 qemu-isapc = ["pc"]
 
+# Architecture Selection
+x86_64 = []
+
 # Architecture Features
 acpi = []
 cpuid = []

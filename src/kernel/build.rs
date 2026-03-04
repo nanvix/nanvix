@@ -234,14 +234,17 @@ fn main() {
         kstack_guard_pattern,
     );
 
+    // Detect architecture from Cargo features.
+    let is_x86_64: bool = cfg!(feature = "x86_64");
+
     // kredzone_size must be a multiple of the word size so that usize-indexed loads/stores
     // in kredzone.rs never silently truncate the usable slot count.
-    const WORD_SIZE: usize = core::mem::size_of::<u32>();
+    let word_size: usize = if is_x86_64 { 8 } else { 4 };
     assert!(
-        kredzone_size.is_multiple_of(WORD_SIZE),
+        kredzone_size.is_multiple_of(word_size),
         "kredzone_size ({}) must be a multiple of the word size ({})",
         kredzone_size,
-        WORD_SIZE,
+        word_size,
     );
 
     // Tell Cargo to rerun build script if config changes
@@ -256,14 +259,24 @@ fn main() {
     let mut cflags: Vec<String> = vec![
         "-nostdlib".to_string(),
         "-ffreestanding".to_string(),
-        "-march=pentiumpro".to_string(),
-        "-Wa,-march=pentiumpro".to_string(),
         "-Wstack-usage=4096".to_string(),
         "-Wall".to_string(),
-        "-m32".to_string(),
         "-Wextra".to_string(),
         "-Werror".to_string(),
     ];
+
+    // Architecture-specific compiler flags.
+    if is_x86_64 {
+        cflags.push("-m64".to_string());
+        cflags.push("-march=x86-64".to_string());
+        cflags.push("-Wa,-march=generic64".to_string());
+        cflags.push("-mcmodel=small".to_string());
+        cflags.push("-mno-red-zone".to_string());
+    } else {
+        cflags.push("-m32".to_string());
+        cflags.push("-march=pentiumpro".to_string());
+        cflags.push("-Wa,-march=pentiumpro".to_string());
+    }
 
     // Add defines from config for assembly constants.
     cflags.push(format!("-DKSTACK_SIZE={}", kstack_size));
@@ -296,7 +309,8 @@ fn main() {
     // Collect Assembly Source Files
     //==============================================================================================
 
-    let sources_dir: Vec<&str> = vec!["src/hal/arch/x86"];
+    let arch_dir: &str = if is_x86_64 { "src/hal/arch/x86_64" } else { "src/hal/arch/x86" };
+    let sources_dir: Vec<&str> = vec![arch_dir];
 
     // Collect *.S files in the sources directory
     let mut asm_sources = Vec::<String>::new();
@@ -368,7 +382,8 @@ fn main() {
     // page of heap_padding exists.
     //
     // For non-Hyperlight targets, no reserved space is needed.
-    let linker_template_path: PathBuf = workspace_dir.join("build/kernel/linker/x86/kernel.ld.in");
+    let linker_dir: &str = if is_x86_64 { "build/kernel/linker/x86_64" } else { "build/kernel/linker/x86" };
+    let linker_template_path: PathBuf = workspace_dir.join(format!("{}/kernel.ld.in", linker_dir));
     let linker_output_path: String = format!("{}/kernel.ld", out_dir);
 
     let machine_reserved: String = if cfg!(feature = "hyperlight") {
