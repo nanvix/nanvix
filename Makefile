@@ -38,6 +38,14 @@ export SINGLE_PROCESS ?= no
 # Enable in-memory FAT32 filesystem?
 export MEMFS ?= no
 
+# Enable standalone mode (no linuxd, routes I/O to debug/memfs)?
+export STANDALONE ?= no
+
+# Standalone mode implies single-process deployment (no separate linuxd binary).
+ifeq ($(STANDALONE),yes)
+override SINGLE_PROCESS := yes
+endif
+
 # Log Level
 export LOG_LEVEL ?= warn
 

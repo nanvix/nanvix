@@ -510,8 +510,114 @@ pub fn vfs_fcntl(fd: c_int, cmd: c_int) -> Result<c_int, Fat32Error> {
     match cmd {
         file_control_request::F_GETFL => Ok(0), // No meaningful flags for FAT32.
         file_control_request::F_SETFL => Ok(0), // Accept but ignore (no O_NONBLOCK etc.).
-        _ => Err(Fat32Error::NotSupported),      // Other commands not supported.
+        _ => Err(Fat32Error::NotSupported),     // Other commands not supported.
     }
+}
+
+/// Renames a file or directory relative to directory file descriptors through the VFS.
+///
+/// Both paths must resolve to the same VFS mount. The `olddirfd` and `newdirfd` parameters must
+/// be `AT_FDCWD`; the VFS resolves all paths from the CWD and does not support dirfd-relative
+/// resolution.
+///
+/// # Parameters
+///
+/// - `olddirfd`: Directory file descriptor for the old path (must be `AT_FDCWD`).
+/// - `oldpath`: Current path of the file or directory.
+/// - `newdirfd`: Directory file descriptor for the new path (must be `AT_FDCWD`).
+/// - `newpath`: New path for the file or directory.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if either dirfd is not `AT_FDCWD`.
+/// Returns a [`Fat32Error`] if the paths are on different mounts, the old path does not exist,
+/// or the new path already exists.
+pub fn vfs_renameat(
+    olddirfd: c_int,
+    oldpath: &str,
+    newdirfd: c_int,
+    newpath: &str,
+) -> Result<(), Fat32Error> {
+    use ::sysapi::fcntl::atflags::AT_FDCWD;
+    if olddirfd != AT_FDCWD || newdirfd != AT_FDCWD {
+        return Err(Fat32Error::InvalidArgument);
+    }
+    crate::rename(oldpath, newpath)
+}
+
+/// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
+///
+/// When `AT_REMOVEDIR` is set in `flags`, the operation behaves like `rmdir()` and removes an
+/// empty directory. Otherwise, it behaves like `unlink()` and removes a regular file.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor (must be `AT_FDCWD`).
+/// - `path`: Path of the file or directory to remove.
+/// - `flags`: If `AT_REMOVEDIR` (0x8) is set, remove a directory; otherwise remove a file.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` is not `AT_FDCWD`.
+/// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
+/// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
+pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
+    use ::sysapi::fcntl::atflags::{
+        AT_FDCWD,
+        AT_REMOVEDIR,
+    };
+    if dirfd != AT_FDCWD {
+        return Err(Fat32Error::InvalidArgument);
+    }
+    if flags & AT_REMOVEDIR != 0 {
+        crate::rmdir(path)
+    } else {
+        crate::unlink(path)
+    }
+}
+
+/// Attempts to create a hard link through the VFS.
+///
+/// FAT32 does not support hard links. This function always returns
+/// [`Fat32Error::NotSupported`].
+///
+/// # Parameters
+///
+/// - `_olddirfd`: Directory file descriptor for the old path (ignored).
+/// - `_oldpath`: Path to the existing file.
+/// - `_newdirfd`: Directory file descriptor for the new path (ignored).
+/// - `_newpath`: Path for the new link.
+/// - `_flags`: Link flags (ignored).
+///
+/// # Errors
+///
+/// Always returns [`Fat32Error::NotSupported`].
+pub fn vfs_linkat(
+    _olddirfd: c_int,
+    _oldpath: &str,
+    _newdirfd: c_int,
+    _newpath: &str,
+    _flags: c_int,
+) -> Result<(), Fat32Error> {
+    Err(Fat32Error::NotSupported)
+}
+
+/// Attempts to create a symbolic link through the VFS.
+///
+/// FAT32 does not support symbolic links. This function always returns
+/// [`Fat32Error::NotSupported`].
+///
+/// # Parameters
+///
+/// - `_target`: Path that the symbolic link should point to.
+/// - `_dirfd`: Directory file descriptor for the link path (ignored).
+/// - `_linkpath`: Path for the new symbolic link.
+///
+/// # Errors
+///
+/// Always returns [`Fat32Error::NotSupported`].
+pub fn vfs_symlinkat(_target: &str, _dirfd: c_int, _linkpath: &str) -> Result<(), Fat32Error> {
+    Err(Fat32Error::NotSupported)
 }
 
 //==================================================================================================

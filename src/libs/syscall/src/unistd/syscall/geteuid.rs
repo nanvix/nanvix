@@ -21,7 +21,7 @@ use ::sys::{
     ipc::Message,
     pm::ThreadIdentifier,
 };
-use sysapi::sys_types::uid_t;
+use ::sysapi::sys_types::uid_t;
 
 //==================================================================================================
 // Standalone Functions
@@ -40,6 +40,18 @@ use sysapi::sys_types::uid_t;
 pub fn geteuid() -> Result<uid_t, Error> {
     ::syslog::trace!("geteuid()");
 
+    // In standalone mode, return 0 (root).
+    #[cfg(feature = "standalone")]
+    return Ok(usize::from(::sys::pm::UserIdentifier::ROOT) as uid_t);
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    geteuid_linuxd()
+}
+
+/// Forwards a `geteuid` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn geteuid_linuxd() -> Result<uid_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it

@@ -56,6 +56,24 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
         }
     }
 
+    // In standalone mode, reject non-VFS fds (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (fd, length);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "ftruncate not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    ftruncate_linuxd(fd, length)
+}
+
+/// Forwards a `ftruncate` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn ftruncate_linuxd(fd: c_int, length: off_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

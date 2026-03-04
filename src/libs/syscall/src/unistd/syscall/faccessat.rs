@@ -63,6 +63,23 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         }
     }
 
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "faccessat not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    faccessat_linuxd(dirfd, path, mode, flag)
+}
+
+/// Forwards a `faccessat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileAccessAtRequest = FileAccessAtRequest::new(dirfd, path, mode, flag)?;

@@ -46,8 +46,19 @@ use ::sysapi::ffi::c_int;
 ///
 /// The `connect()` function returns empty on success. On error, it returns an error.
 ///
+#[allow(unreachable_code)]
 pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     ::syslog::trace!("connect(): fd={:?}, sockaddr={:?}", sockfd, sockaddr);
+
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (sockfd, sockaddr);
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "connect not available in standalone mode",
+        ));
+    }
+
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let (sockaddr, socklen): (sockaddr, socklen_t) = From::<&SocketAddr>::from(sockaddr);

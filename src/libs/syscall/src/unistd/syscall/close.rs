@@ -39,6 +39,32 @@ pub fn close(fd: i32) -> Result<(), Error> {
         }
     }
 
+    // In standalone mode, treat stdio fds as a no-op and reject other non-VFS fds.
+    #[cfg(feature = "standalone")]
+    {
+        use ::sysapi::unistd::{
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
+        };
+        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+            return Ok(());
+        }
+        let _ = fd;
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "close not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    close_linuxd(fd)
+}
+
+/// Forwards a `close` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn close_linuxd(fd: i32) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

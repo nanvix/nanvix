@@ -73,6 +73,27 @@ pub fn fchownat(
         }
     }
 
+    // In standalone mode, succeed as a no-op (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        let _ = (dirfd, path, owner, group, flag);
+        return Ok(());
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fchownat_linuxd(dirfd, path, owner, group, flag)
+}
+
+/// Forwards a `fchownat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fchownat_linuxd(
+    dirfd: c_int,
+    path: &str,
+    owner: uid_t,
+    group: gid_t,
+    flag: c_int,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;

@@ -6,6 +6,11 @@ GUEST_STATICLIB_FEATURES := staticlib $(LOG_LEVEL)
 ifeq ($(MEMFS),yes)
 GUEST_STATICLIB_FEATURES += memfs
 endif
+# Enable standalone mode: routes stdout/stderr to debug kcall,
+# file I/O to memfs, and disables IPC-based syscalls (no linuxd).
+ifeq ($(STANDALONE),yes)
+GUEST_STATICLIB_FEATURES += standalone
+endif
 GUEST_STATICLIB_FEATURES := $(strip $(GUEST_STATICLIB_FEATURES))
 GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$(GUEST_STATICLIB_FEATURES)")
 

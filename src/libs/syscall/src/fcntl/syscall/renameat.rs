@@ -43,6 +43,7 @@ use ::sys::{
 /// Upon successful completion, the `renameat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
+#[allow(unreachable_code)]
 pub fn renameat(
     olddirfd: RawFileDescriptor,
     oldpath: &str,
@@ -56,6 +57,31 @@ pub fn renameat(
         newdirfd,
         newpath
     );
+
+    // Route to the VFS if the old path belongs to an in-memory filesystem mount.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(oldpath) {
+            return ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(
+                |e| {
+                    let code: ::sys::error::ErrorCode = e.into();
+                    ::syslog::error!(
+                        "renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})"
+                    );
+                    Error::new(code, "vfs renameat failed")
+                },
+            );
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "renameat not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

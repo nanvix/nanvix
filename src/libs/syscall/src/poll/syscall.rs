@@ -132,11 +132,21 @@ impl PollFd {
 /// It is safe to call this function if the following conditions are met:
 /// - `fds` points to a valid array of pollfd structures of length `nfds`.
 ///
+#[allow(unreachable_code)]
 pub fn poll(
     fds: &[PollFd],
     timeout: PollTimeout,
 ) -> Result<Vec<(RawFileDescriptor, PollEvents)>, Error> {
     ::syslog::trace!("poll(): fds={fds:?}, timeout={timeout:?}");
+
+    // In standalone mode, poll is not available (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "poll not available in standalone mode",
+        ));
+    }
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

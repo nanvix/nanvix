@@ -55,7 +55,11 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int {
-    let fds: &mut [pollfd] = core::slice::from_raw_parts_mut(fds, nfds as usize);
+    let fds: &mut [pollfd] = if nfds == 0 {
+        &mut []
+    } else {
+        core::slice::from_raw_parts_mut(fds, nfds as usize)
+    };
     let poll_fds: Vec<PollFd> = fds
         .iter()
         .map(|fd| {

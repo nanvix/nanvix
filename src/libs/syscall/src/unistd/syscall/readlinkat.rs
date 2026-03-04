@@ -55,6 +55,23 @@ use ::sysapi::sys_types::c_ssize_t;
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
+    // In standalone mode, readlinkat is not available (no symlinks).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "readlinkat not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    readlinkat_linuxd(dirfd, path, buf)
+}
+
+/// Forwards a `readlinkat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn readlinkat_linuxd(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;

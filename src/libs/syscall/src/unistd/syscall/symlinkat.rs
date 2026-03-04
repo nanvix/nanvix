@@ -51,6 +51,37 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
         linkpath
     );
 
+    // FAT32 does not support symbolic links.
+    #[cfg(feature = "memfs")]
+    {
+        if ::nvx::vfs::fd::is_vfs_path(linkpath) {
+            return ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!(
+                    "symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})"
+                );
+                Error::new(code, "vfs symlinkat failed")
+            });
+        }
+    }
+
+    // In standalone mode, reject non-VFS paths (no linuxd).
+    #[cfg(feature = "standalone")]
+    {
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "symlinkat not available in standalone mode",
+        ));
+    }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    symlinkat_linuxd(target, dirfd, linkpath)
+}
+
+/// Forwards a `symlinkat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: SymbolicLinkAtRequest =
