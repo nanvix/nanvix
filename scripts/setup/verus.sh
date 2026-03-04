@@ -88,6 +88,49 @@ get_curl_auth_args() {
 
 #
 # DESCRIPTION
+#   Validates that a file is a well-formed zip archive.
+#   Tries unzip first (fast, C-based), then falls back to python3's
+#   zipfile module. Returns 0 on success, 1 on failure.
+#
+# ARGUMENTS
+#   $1 - Path to the zip file to validate.
+#
+validate_zip_archive() {
+    local zip_path="$1"
+
+    if command -v unzip &>/dev/null; then
+        local rc=0
+        unzip -tq "${zip_path}" >/dev/null 2>&1 || rc=$?
+        if [[ ${rc} -eq 0 ]]; then
+            return 0
+        fi
+        print_warning "unzip validation failed for ${zip_path} (exit code ${rc})."
+        return 1
+    fi
+
+    if command -v python3 &>/dev/null; then
+        if python3 -c "
+import zipfile, sys
+try:
+    with zipfile.ZipFile(sys.argv[1]) as z:
+        bad = z.testzip()
+        sys.exit(1 if bad else 0)
+except Exception:
+    sys.exit(1)
+" "${zip_path}" 2>/dev/null; then
+            return 0
+        fi
+        print_warning "python3 zipfile validation failed for ${zip_path}."
+        return 1
+    fi
+
+    # Neither unzip nor python3 available — skip validation.
+    print_warning "Cannot validate zip archive (neither unzip nor python3 found); assuming valid."
+    return 0
+}
+
+#
+# DESCRIPTION
 #   Downloads the Verus release archive to a temporary directory, using
 #   the local zip cache when available. On a fresh download the archive
 #   is also persisted to the cache for future runs.
@@ -110,7 +153,7 @@ download_verus_archive() {
         local cached_zip="${VERUS_ZIP_CACHE_DIR}/${zip_name}"
         if [[ -f "${cached_zip}" && -s "${cached_zip}" ]]; then
             # Validate the cached archive; if invalid, delete and fall back to downloading.
-            if unzip -tq "${cached_zip}" >/dev/null 2>&1; then
+            if validate_zip_archive "${cached_zip}"; then
                 print_info "Using cached Verus archive from ${cached_zip}"
                 cp "${cached_zip}" "${dest_path}"
                 return 0
@@ -317,6 +360,20 @@ main() {
         tmp_dir=$(mktemp -d)
         trap 'rm -rf "${tmp_dir}"' EXIT
         download_verus_archive "${tmp_dir}/${zip_name}" "${expected_version}"
+
+        # Validate the cached archive to catch silent download failures.
+        local cached_zip="${VERUS_ZIP_CACHE_DIR}/verus-${expected_version}-x86-linux.zip"
+        if [[ -f "${cached_zip}" && -s "${cached_zip}" ]]; then
+            if ! validate_zip_archive "${cached_zip}"; then
+                print_error "Downloaded Verus archive failed validation: ${cached_zip}"
+                rm -f "${cached_zip}"
+                exit 1
+            fi
+        else
+            print_error "Verus archive not found in cache after download: ${cached_zip}"
+            exit 1
+        fi
+
         rm -rf "${tmp_dir}"
         trap - EXIT
         print_success "Verus ${expected_version} archive cached in ${VERUS_ZIP_CACHE_DIR}."
