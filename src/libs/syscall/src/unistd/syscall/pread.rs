@@ -63,13 +63,13 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         }
     }
 
-    // In standalone mode, reject non-VFS fds (no linuxd).
+    // In standalone mode, non-VFS fds are invalid.
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, buffer, offset);
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "pread not available in standalone mode",
+            ErrorCode::BadFile,
+            "pread: invalid fd in standalone mode",
         ));
     }
 

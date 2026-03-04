@@ -41,8 +41,11 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     // Route to the VFS if the path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+        let resolved: Option<::alloc::string::String> =
+            ::nvx::vfs::fd::vfs_resolve_path(dirfd, pathname);
+        let target: &str = resolved.as_deref().unwrap_or(pathname);
+        if ::nvx::vfs::fd::is_vfs_path(target) {
+            return ::nvx::vfs::fd::vfs_open(target, flags).map_err(|e| {
                 let code: ErrorCode = e.into();
                 ::syslog::error!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
                 Error::new(code, "vfs open failed")
@@ -50,12 +53,12 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
         }
     }
 
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, non-VFS paths simply do not exist.
     #[cfg(feature = "standalone")]
     {
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "openat not available in standalone mode",
+            ErrorCode::NoSuchEntry,
+            "openat: path not found in standalone mode",
         ));
     }
 

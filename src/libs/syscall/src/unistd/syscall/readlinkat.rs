@@ -55,12 +55,27 @@ use ::sysapi::sys_types::c_ssize_t;
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
-    // In standalone mode, readlinkat is not available (no symlinks).
+    // Route to the VFS: FAT32 has no symlinks, so if the path exists it is
+    // not a symlink (EINVAL). If it does not exist, return ENOENT.
+    #[cfg(feature = "memfs")]
+    {
+        let resolved: Option<::alloc::string::String> =
+            ::nvx::vfs::fd::vfs_resolve_path(dirfd, path);
+        let target: &str = resolved.as_deref().unwrap_or(path);
+        if ::nvx::vfs::fd::is_vfs_path(target) {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "readlinkat: not a symbolic link",
+            ));
+        }
+    }
+
+    // In standalone mode, no symlinks exist.
     #[cfg(feature = "standalone")]
     {
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "readlinkat not available in standalone mode",
+            ErrorCode::NoSuchEntry,
+            "readlinkat: no symlinks in standalone mode",
         ));
     }
 

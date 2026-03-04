@@ -54,8 +54,11 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
     // Route to the VFS if the path matches an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
+        let resolved: Option<::alloc::string::String> =
+            ::nvx::vfs::fd::vfs_resolve_path(dirfd, path);
+        let target: &str = resolved.as_deref().unwrap_or(path);
+        if ::nvx::vfs::fd::is_vfs_path(target) {
+            return ::nvx::vfs::fd::vfs_access(target).map_err(|e| {
                 let code: ErrorCode = e.into();
                 ::syslog::error!("faccessat(): VFS access failed (path={path:?}, error={e})");
                 Error::new(code, "vfs access failed")
@@ -63,12 +66,12 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         }
     }
 
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, non-VFS paths simply do not exist.
     #[cfg(feature = "standalone")]
     {
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "faccessat not available in standalone mode",
+            ErrorCode::NoSuchEntry,
+            "faccessat: path not found in standalone mode",
         ));
     }
 

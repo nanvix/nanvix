@@ -47,12 +47,13 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
     }
 
     // In standalone mode, reject non-VFS fds (no linuxd).
+    // In standalone mode, non-VFS lseek returns BadFile.
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, offset, whence);
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "lseek not available in standalone mode",
+            ErrorCode::BadFile,
+            "lseek: invalid fd in standalone mode",
         ));
     }
 

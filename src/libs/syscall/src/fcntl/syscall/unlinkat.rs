@@ -50,8 +50,16 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
     // Route to the VFS if the path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
+        let resolved: Option<::alloc::string::String> =
+            ::nvx::vfs::fd::vfs_resolve_path(dirfd, pathname);
+        let target: &str = resolved.as_deref().unwrap_or(pathname);
+        if ::nvx::vfs::fd::is_vfs_path(target) {
+            return ::nvx::vfs::fd::vfs_unlinkat(
+                ::sysapi::fcntl::atflags::AT_FDCWD,
+                target,
+                flags,
+            )
+            .map_err(|e| {
                 let code: ::sys::error::ErrorCode = e.into();
                 ::syslog::error!(
                     "unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})"
@@ -61,12 +69,12 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
         }
     }
 
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, non-VFS paths simply do not exist.
     #[cfg(feature = "standalone")]
     {
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "unlinkat not available in standalone mode",
+            ErrorCode::NoSuchEntry,
+            "unlinkat: path not found in standalone mode",
         ));
     }
 

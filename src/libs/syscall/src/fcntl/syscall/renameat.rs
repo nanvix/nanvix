@@ -61,25 +61,29 @@ pub fn renameat(
     // Route to the VFS if the old path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(oldpath) {
-            return ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(
-                |e| {
-                    let code: ::sys::error::ErrorCode = e.into();
-                    ::syslog::error!(
-                        "renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})"
-                    );
-                    Error::new(code, "vfs renameat failed")
-                },
-            );
+        let old_resolved: Option<::alloc::string::String> =
+            ::nvx::vfs::fd::vfs_resolve_path(olddirfd, oldpath);
+        let old_target: &str = old_resolved.as_deref().unwrap_or(oldpath);
+        if ::nvx::vfs::fd::is_vfs_path(old_target) {
+            let new_resolved: Option<::alloc::string::String> =
+                ::nvx::vfs::fd::vfs_resolve_path(newdirfd, newpath);
+            let new_target: &str = new_resolved.as_deref().unwrap_or(newpath);
+            return ::nvx::vfs::fd::vfs_rename(old_target, new_target).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!(
+                    "renameat(): VFS rename failed (oldpath={oldpath:?}, error={e})"
+                );
+                Error::new(code, "vfs rename failed")
+            });
         }
     }
 
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, non-VFS paths simply do not exist.
     #[cfg(feature = "standalone")]
     {
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "renameat not available in standalone mode",
+            ErrorCode::NoSuchEntry,
+            "renameat: path not found in standalone mode",
         ));
     }
 

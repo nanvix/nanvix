@@ -182,8 +182,8 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
             return Ok(0); // EOF
         }
         return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "read not supported in standalone mode",
+            ErrorCode::BadFile,
+            "read: invalid fd in standalone mode",
         ));
     }
 
