@@ -518,3 +518,28 @@ impl TryFrom<i64> for ErrorCode {
             .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid error code"))
     }
 }
+
+//==================================================================================================
+// External Function Specifications (Verus)
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+#[verifier::external_type_specification]
+pub struct ExError(crate::Error);
+
+#[verifier::external_type_specification]
+pub struct ExErrorCode(crate::ErrorCode);
+
+/// External specification for Error::new.
+pub assume_specification[ Error::new ](code: ErrorCode, reason: &'static str) -> (result: Error)
+    ensures
+        result.code == code,
+        result.reason == reason,
+;
+
+} // verus!
