@@ -21,10 +21,17 @@
 //==================================================================================================
 
 use crate::fat32_backend;
+use ::alloc::{
+    string::String,
+    vec::Vec,
+};
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
 use ::sysapi::{
-    fcntl::file_control_request,
+    fcntl::{
+        file_control_request,
+        file_creation_flags,
+    },
     ffi::c_int,
     sys_stat::{
         file_mode,
@@ -55,6 +62,12 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
+
+/// Fixed timestamp (2024-01-01T00:00:00 UTC) used for stat results.
+///
+/// FAT32 does not store POSIX timestamps, so a fixed epoch is returned
+/// to keep consumers (e.g. Python's zipfile module) happy.
+const STAT_FIXED_TIMESTAMP: i64 = 1704067200;
 
 //==================================================================================================
 // Metadata
@@ -159,6 +172,39 @@ impl DirectReadHandle {
 // VFS File Handle
 //==================================================================================================
 
+/// An open directory handle for reading directory entries.
+pub struct DirHandle {
+    /// Absolute path of the directory.
+    path: String,
+    /// Unconsumed directory entries.
+    entries: Vec<crate::DirEntry>,
+    /// Whether the directory listing has been loaded.
+    loaded: bool,
+}
+
+impl DirHandle {
+    /// Creates a new directory handle.
+    pub fn new(path: String) -> Self {
+        Self {
+            path,
+            entries: Vec::new(),
+            loaded: false,
+        }
+    }
+
+    /// Reads the next batch of directory entries.
+    pub fn read_entries(&mut self, count: usize) -> Result<Vec<crate::DirEntry>, Fat32Error> {
+        // Load the directory listing on the first call.
+        if !self.loaded {
+            self.entries = crate::read_dir(&self.path)?;
+            self.loaded = true;
+        }
+        let to_take: usize = self.entries.len().min(count);
+        let result: Vec<crate::DirEntry> = self.entries.drain(..to_take).collect();
+        Ok(result)
+    }
+}
+
 /// An open file handle managed by the VFS.
 ///
 /// Each variant corresponds to a concrete filesystem backend or an
@@ -169,6 +215,8 @@ pub enum VfsFileHandle {
     Fat32(crate::File),
     /// Zero-copy direct memory read (contiguous file optimization).
     DirectRead(DirectReadHandle),
+    /// An open directory for readdir iteration.
+    Directory(DirHandle),
 }
 
 impl VfsFileHandle {
@@ -177,6 +225,7 @@ impl VfsFileHandle {
         match self {
             VfsFileHandle::Fat32(file) => file.read(buf),
             VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
         }
     }
 
@@ -185,6 +234,7 @@ impl VfsFileHandle {
         match self {
             VfsFileHandle::Fat32(file) => file.write(buf),
             VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
         }
     }
 
@@ -196,6 +246,7 @@ impl VfsFileHandle {
                 Ok(pos as off_t)
             },
             VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
         }
     }
 
@@ -204,7 +255,13 @@ impl VfsFileHandle {
         match self {
             VfsFileHandle::Fat32(file) => file.size(),
             VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
+            VfsFileHandle::Directory(_) => Ok(0),
         }
+    }
+
+    /// Returns whether this handle is a directory.
+    pub fn is_dir(&self) -> bool {
+        matches!(self, VfsFileHandle::Directory(_))
     }
 }
 
@@ -295,12 +352,67 @@ pub fn is_vfs_fd(fd: c_int) -> bool {
     fd >= VFS_FD_BASE && fd < VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int
 }
 
+/// Resolves a `dirfd` + `path` pair into an absolute VFS path.
+///
+/// If `path` is absolute, it is returned as-is (dirfd is ignored per POSIX).
+/// If `dirfd` is `AT_FDCWD`, the path is resolved against the VFS current
+/// working directory. If `dirfd` is a VFS directory fd, the path is resolved
+/// relative to that directory's path.
+///
+/// Returns `None` if `dirfd` is not a VFS fd and not `AT_FDCWD`, indicating
+/// that VFS cannot handle this request.
+pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
+    use ::sysapi::fcntl::atflags::AT_FDCWD;
+
+    // Absolute paths are always resolved directly (dirfd ignored per POSIX).
+    if path.starts_with('/') {
+        return Some(String::from(path));
+    }
+
+    // Relative path with AT_FDCWD: resolve against VFS cwd.
+    if dirfd == AT_FDCWD {
+        let cwd: String = crate::cwd().ok()?;
+        return if cwd.ends_with('/') {
+            Some(alloc::format!("{}{}", cwd, path))
+        } else {
+            Some(alloc::format!("{}/{}", cwd, path))
+        };
+    }
+
+    // Relative path with a VFS directory fd: resolve against that directory.
+    if !is_vfs_fd(dirfd) {
+        return None;
+    }
+
+    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(dirfd).ok()?;
+    let entry: &VfsEntry = slot.as_ref()?;
+    let dir_path: &str = match &entry.handle {
+        VfsFileHandle::Directory(dh) => &dh.path,
+        _ => return None, // fd is not a directory
+    };
+
+    if dir_path.ends_with('/') {
+        Some(alloc::format!("{}{}", dir_path, path))
+    } else {
+        Some(alloc::format!("{}/{}", dir_path, path))
+    }
+}
+
 //==================================================================================================
 // POSIX-Compatible Operations
 //==================================================================================================
 
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
+    // If O_DIRECTORY is set, verify the path is a directory before opening.
+    if flags & file_creation_flags::O_DIRECTORY != 0 {
+        let info: VfsStat = fat32_backend::stat(path)?;
+        if !info.is_dir() {
+            return Err(Fat32Error::NotADirectory);
+        }
+        let handle: VfsFileHandle = VfsFileHandle::Directory(DirHandle::new(path.into()));
+        return FD_TABLE.alloc(handle);
+    }
     let handle: VfsFileHandle = fat32_backend::open(path, flags)?;
     FD_TABLE.alloc(handle)
 }
@@ -332,6 +444,7 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    let is_dir: bool = entry.handle.is_dir();
     let size: u64 = entry.handle.size()?;
 
     // Zero-initialize the stat buffer.
@@ -340,9 +453,25 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     }
 
     buf.st_size = size as off_t;
-    buf.st_mode = file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IRGRP | file_mode::S_IROTH;
+    buf.st_mode = if is_dir {
+        file_type::S_IFDIR
+            | file_mode::S_IRWXU
+            | file_mode::S_IRGRP
+            | file_mode::S_IXGRP
+            | file_mode::S_IROTH
+            | file_mode::S_IXOTH
+    } else {
+        file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IRGRP | file_mode::S_IROTH
+    };
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = size.div_ceil(STAT_SECTOR_SIZE) as off_t;
+    let ts: ::sysapi::time::timespec = ::sysapi::time::timespec {
+        tv_sec: STAT_FIXED_TIMESTAMP,
+        tv_nsec: 0,
+    };
+    buf.st_atim = ts;
+    buf.st_mtim = ts;
+    buf.st_ctim = ts;
 
     Ok(())
 }
@@ -374,6 +503,13 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     };
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = info.size().div_ceil(STAT_SECTOR_SIZE) as off_t;
+    let ts: ::sysapi::time::timespec = ::sysapi::time::timespec {
+        tv_sec: STAT_FIXED_TIMESTAMP,
+        tv_nsec: 0,
+    };
+    buf.st_atim = ts;
+    buf.st_mtim = ts;
+    buf.st_ctim = ts;
 
     Ok(())
 }
@@ -438,6 +574,7 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             result
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+        VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
     }
 }
 
@@ -450,6 +587,7 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
         VfsFileHandle::DirectRead(_) => Ok(()), // Nothing to sync for read-only.
+        VfsFileHandle::Directory(_) => Ok(()),  // Nothing to sync for directories.
     }
 }
 
@@ -508,10 +646,60 @@ pub fn vfs_fcntl(fd: c_int, cmd: c_int) -> Result<c_int, Fat32Error> {
     let _entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
 
     match cmd {
+        file_control_request::F_GETFD => Ok(0), // No FD flags (no close-on-exec for VFS).
+        file_control_request::F_SETFD => Ok(0), // Accept but ignore (no close-on-exec).
         file_control_request::F_GETFL => Ok(0), // No meaningful flags for FAT32.
         file_control_request::F_SETFL => Ok(0), // Accept but ignore (no O_NONBLOCK etc.).
         _ => Err(Fat32Error::NotSupported),     // Other commands not supported.
     }
+}
+
+/// Reads directory entries from a VFS directory file descriptor.
+///
+/// Returns entries as `posix_dent` structs suitable for the `getdents` syscall.
+pub fn vfs_getdents(
+    fd: c_int,
+    count: usize,
+) -> Result<Vec<::sysapi::dirent::posix_dent>, Fat32Error> {
+    use ::sysapi::{
+        dirent::{
+            dirent_file_type,
+            posix_dent,
+        },
+        limits::NAME_MAX,
+    };
+
+    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
+    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+
+    let dir_handle: &mut DirHandle = match &mut entry.handle {
+        VfsFileHandle::Directory(dh) => dh,
+        _ => return Err(Fat32Error::InvalidArgument),
+    };
+
+    let entries: Vec<crate::DirEntry> = dir_handle.read_entries(count)?;
+
+    // FAT32 has no real inodes; use synthetic 1-based indices.
+    let mut result: Vec<posix_dent> = Vec::new();
+    for (i, de) in entries.iter().enumerate() {
+        let mut dent: posix_dent = posix_dent {
+            d_ino: (i + 1) as u64,
+            d_reclen: core::mem::size_of::<posix_dent>() as u16,
+            d_type: if de.is_dir() {
+                dirent_file_type::DT_DIR
+            } else {
+                dirent_file_type::DT_REG
+            },
+            ..posix_dent::default()
+        };
+        let name_bytes: &[u8] = de.name().as_bytes();
+        let copy_len: usize = name_bytes.len().min(NAME_MAX);
+        dent.d_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+        dent.d_name[copy_len] = 0;
+        result.push(dent);
+    }
+
+    Ok(result)
 }
 
 /// Renames a file or directory relative to directory file descriptors through the VFS.

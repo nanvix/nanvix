@@ -18,6 +18,7 @@ vfs = { workspace = true }
 libc_string = { workspace = true }
 nvx = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
 syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
