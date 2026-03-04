@@ -169,6 +169,28 @@ jobs:
     - name: "Setup"
       uses: ./.github/actions/docker-setup
 
+    # Cache the Verus release archive so that verify jobs do not need to
+    # re-download it on every run. The cache is keyed on the pinned Verus
+    # version; a version bump automatically causes a single fresh download.
+    - name: "Resolve Verus Version"
+      id: verus-version
+      shell: bash
+      run: echo "version=$(tr -d '[:space:]' < build/verus-version)" >> "$GITHUB_OUTPUT"
+
+    - name: "Cache Verus Archive"
+      id: verus-cache
+      uses: actions/cache@v4
+      with:
+        path: .verus-cache
+        key: verus-${{ steps.verus-version.outputs.version }}
+
+    - name: "Pre-download Verus Archive"
+      if: steps.verus-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./scripts/setup/verus.sh --download-only
+
     - name: "Verify"
       uses: ./.github/actions/docker-check
       with:
