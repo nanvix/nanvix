@@ -483,6 +483,8 @@ impl LinuxDaemon {
         } else {
             vec![
                 args.linuxd_binary_path().to_string(),
+                args::Args::OPT_TENANT_ID.to_string(),
+                args.tenant_id().to_string(),
                 args::Args::OPT_LOGFILE.to_string(),
                 args::Args::OPT_LOGDIR.to_string(),
                 args.log_directory().to_string(),
