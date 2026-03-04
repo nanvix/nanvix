@@ -43,6 +43,11 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
 
 //==================================================================================================
 // Raw Array Storage
@@ -191,22 +196,50 @@ impl<T> RawArrayStorage<T> {
     }
 }
 
+// External type specifications for Verus verification.
+#[cfg(verus_keep_ghost)]
+verus! {
+
+// External type specification for RawArrayStorage.
+#[verifier::reject_recursive_types(T)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
+
+} // verus!
+
 //==================================================================================================
 // Raw Array
 //==================================================================================================
+
+verus! {
 
 ///
 /// # Description
 ///
 /// A type that represent a fixed-size array.
 ///
+#[verifier::reject_recursive_types(T)]
+#[verifier::external_derive]
 #[derive(Debug)]
 pub struct RawArray<T> {
     /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,
 }
 
+impl<T> View for RawArray<T> {
+    type V = Seq<T>;
+
+    /// Abstract view of the array as a sequence (uninterpreted).
+    uninterp spec fn view(&self) -> Seq<T>;
+}
+
 impl<T> RawArray<T> {
+    /// Invariant: length is positive and bounded.
+    pub closed spec fn inv(&self) -> bool {
+        self@.len() > 0 && self@.len() < i32::MAX as nat
+    }
+
     ///
     /// # Description
     ///
@@ -221,7 +254,23 @@ impl<T> RawArray<T> {
     /// On success, the new managed array is returned, with all bits set to zero.
     /// On failure, an error is returned instead.
     ///
-    pub fn new(len: usize) -> Result<RawArray<T>, Error> {
+    #[verifier::external_body]
+    pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
+        requires
+            len > 0,
+            len < i32::MAX as usize,
+            len * vstd::layout::size_of::<T>() + vstd::layout::align_of::<T>() - 1
+                <= isize::MAX as usize,
+        ensures
+            match result {
+                Ok(me) => {
+                    &&& me.inv()
+                    &&& me@.len() == len
+                    &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] me@[i])
+                },
+                Err(e) => e.code == ErrorCode::OutOfMemory,
+            },
+    {
         Ok(RawArray {
             storage: RawArrayStorage::new_managed(len)?,
         })
@@ -250,21 +299,61 @@ impl<T> RawArray<T> {
     /// - `ptr` must be properly aligned.
     /// - `ptr` must point to len consecutive properly initialized values of type `T``.
     ///
-    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> Result<RawArray<T>, Error> {
+    #[verifier::external_body]
+    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> (result: Result<RawArray<T>, Error>)
+        requires
+            len > 0,
+            len < i32::MAX as usize,
+            ptr.addr() != 0,
+            ptr.addr() + len * vstd::layout::size_of::<T>() + vstd::layout::align_of::<T>() - 1
+                <= usize::MAX as int,
+        ensures
+            match result {
+                Ok(me) => {
+                    &&& me.inv()
+                    &&& me@.len() == len
+                    &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] me@[i])
+                },
+                Err(e) => e.code == ErrorCode::InvalidArgument,
+            },
+    {
         Ok(RawArray {
             storage: RawArrayStorage::new_unmanaged(ptr, len)?,
         })
+    }
+
+    /// Sets the element at index to value.
+    /// Verus does not support mutable indexing (arr[i] = val), so this method
+    /// provides a verified mutator with requires/ensures contracts.
+    #[inline]
+    #[verifier::external_body]
+    pub fn set(&mut self, index: usize, value: T)
+        requires
+            old(self).inv(),
+            0 <= index < old(self)@.len(),
+        ensures
+            self.inv(),
+            self@ == old(self)@.update(index as int, value),
+    {
+        self.storage.get_mut()[index] = value;
     }
 }
 
 impl<T> Deref for RawArray<T> {
     type Target = [T];
 
-    fn deref(&self) -> &Self::Target {
+    #[verifier::external_body]
+    fn deref(&self) -> (result: &Self::Target)
+        ensures
+            result@ == self@,
+    {
         self.storage.get()
     }
 }
 
+} // verus!
+
+// Verus does not support &mut return types, so DerefMut is outside verus!{}.
 impl<T> DerefMut for RawArray<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()

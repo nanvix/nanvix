@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::collections::Slab;
+use ::slab::Tracked;
 use ::alloc::alloc::{
     AllocError,
     GlobalAlloc,
@@ -114,68 +115,76 @@ impl Kheap {
                 heap_start_addr,
                 slab_size,
                 SlabSize::Slab8 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_16_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(slab_size),
                 slab_size,
                 SlabSize::Slab16 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_32_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(2 * slab_size),
                 slab_size,
                 SlabSize::Slab32 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_64_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(3 * slab_size),
                 slab_size,
                 SlabSize::Slab64 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_128_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(4 * slab_size),
                 slab_size,
                 SlabSize::Slab128 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_256_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(5 * slab_size),
                 slab_size,
                 SlabSize::Slab256 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_512_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(6 * slab_size),
                 slab_size,
                 SlabSize::Slab512 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
             slab_4096_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(7 * slab_size),
                 slab_size,
                 SlabSize::Slab4096 as usize,
-            )?,
+                Tracked::assume_new(),
+            )?.0,
         })
     }
 
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
         match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_| AllocError),
-            SlabSize::Slab4096 => self.slab_4096_bytes.allocate().map_err(|_| AllocError),
+            SlabSize::Slab8 => self.slab_8_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
+            SlabSize::Slab4096 => self.slab_4096_bytes.allocate(Tracked::assume_new()).map(|p| p.0).map_err(|_| AllocError),
         }
     }
 
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
         match Kheap::layout_to_allocator(&layout)? {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_| AllocError),
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr).map_err(|_| AllocError),
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
+            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr, Tracked::assume_new(), Tracked::assume_new()).map_err(|_| AllocError),
         }
     }
 

@@ -322,7 +322,7 @@ export SETCAP_CMD := setcap
 export VERUS_DIR ?= $(TOOLCHAIN_DIR)/verus
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap
+VERUS_CRATES := bitmap slab
 
 # Verus verification command.
 # Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
