@@ -13,21 +13,22 @@ mod vmem;
 // Imports
 //==================================================================================================
 
-use crate::hal::{
-    arch::x86::mem::mmu::page_table::PageTable,
-    mem::{
-        AccessPermission,
-        Address,
-        FrameAddress,
-        MemoryRegionType,
-        PageAddress,
-        PageAligned,
-        PageTableAddress,
-        PageTableAligned,
-        PhysicalAddress,
-        TruncatedMemoryRegion,
-        VirtualAddress,
-    },
+#[cfg(not(feature = "x86_64"))]
+use crate::hal::arch::x86::mem::mmu::page_table::PageTable;
+#[cfg(feature = "x86_64")]
+use crate::hal::arch::x86_64::mem::mmu::page_table::PageTable;
+use crate::hal::mem::{
+    AccessPermission,
+    Address,
+    FrameAddress,
+    MemoryRegionType,
+    PageAddress,
+    PageAligned,
+    PageTableAddress,
+    PageTableAligned,
+    PhysicalAddress,
+    TruncatedMemoryRegion,
+    VirtualAddress,
 };
 use ::alloc::{
     boxed::Box,
@@ -62,22 +63,31 @@ pub use vmem::Vmem;
 // Structures and Enums
 //==================================================================================================
 
+/// Type alias for page table entry storage type.
+/// On x86 (32-bit), entries are u32. On x86_64, entries are u64.
+#[cfg(not(feature = "x86_64"))]
+pub type PageEntryWord = u32;
+#[cfg(feature = "x86_64")]
+pub type PageEntryWord = u64;
+
+/// Number of entries per page table.
+pub const ENTRIES_PER_PAGE: usize = mem::PAGE_SIZE / core::mem::size_of::<PageEntryWord>();
+
 pub enum PageTableStorage {
-    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
+    Heap(Box<[PageEntryWord; mem::PAGE_SIZE / core::mem::size_of::<PageEntryWord>()]>),
     KernelPage(KernelPage),
 }
 
 impl Deref for PageTableStorage {
-    type Target = [u32];
+    type Target = [PageEntryWord];
 
     fn deref(&self) -> &Self::Target {
         match self {
             Self::Heap(entries) => entries.deref(),
             Self::KernelPage(page) => {
-                let base: *const u32 = page.base().into_raw_value() as *const u32;
-                unsafe {
-                    core::slice::from_raw_parts(base, mem::PAGE_SIZE / core::mem::size_of::<u32>())
-                }
+                let base: *const PageEntryWord =
+                    page.base().into_raw_value() as *const PageEntryWord;
+                unsafe { core::slice::from_raw_parts(base, ENTRIES_PER_PAGE) }
             },
         }
     }
@@ -88,13 +98,9 @@ impl DerefMut for PageTableStorage {
         match self {
             Self::Heap(entries) => entries.deref_mut(),
             Self::KernelPage(page) => {
-                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
-                unsafe {
-                    core::slice::from_raw_parts_mut(
-                        base,
-                        mem::PAGE_SIZE / core::mem::size_of::<u32>(),
-                    )
-                }
+                let base: *mut PageEntryWord =
+                    page.base().into_raw_value() as *mut PageEntryWord;
+                unsafe { core::slice::from_raw_parts_mut(base, ENTRIES_PER_PAGE) }
             },
         }
     }
@@ -158,7 +164,7 @@ pub fn init(
                         Ordering::Greater => {
                             root_pagetables.push_back(last);
                             let pgtable_storage: PageTableStorage = PageTableStorage::Heap(
-                                Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]),
+                                Box::new([0; ENTRIES_PER_PAGE]),
                             );
                             let page_table: PageTable<PageTableStorage> =
                                 PageTable::<PageTableStorage>::new(pgtable_storage);
@@ -178,7 +184,7 @@ pub fn init(
                 } else {
                     trace!("creating new page table for {:#010x}", raw_vaddr);
                     let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                        [0; ENTRIES_PER_PAGE],
                     ));
                     let page_table: PageTable<PageTableStorage> =
                         PageTable::<PageTableStorage>::new(pgtable_storage);

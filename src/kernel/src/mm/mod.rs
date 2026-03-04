@@ -31,6 +31,7 @@ pub use virt::{
     VirtMemoryManager,
     Vmem,
 };
+use virt::ENTRIES_PER_PAGE;
 pub mod kstack;
 pub mod ustack;
 
@@ -41,19 +42,20 @@ pub mod kredzone;
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "x86_64"))]
+use crate::hal::arch::x86::mem::mmu::page_table::PageTable;
+#[cfg(feature = "x86_64")]
+use crate::hal::arch::x86_64::mem::mmu::page_table::PageTable;
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            Address,
-            MemoryRegion,
-            MemoryRegionType,
-            PageAligned,
-            PageTableAddress,
-            PhysicalAddress,
-            TruncatedMemoryRegion,
-            VirtualAddress,
-        },
+    hal::mem::{
+        Address,
+        MemoryRegion,
+        MemoryRegionType,
+        PageAligned,
+        PageTableAddress,
+        PhysicalAddress,
+        TruncatedMemoryRegion,
+        VirtualAddress,
     },
     kimage::KernelImage,
     mm::phys::PhysMemoryManager,
@@ -267,7 +269,7 @@ pub fn init(
 
                 let page_table_allocator = || {
                     let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                        [0; ENTRIES_PER_PAGE],
                     ));
                     let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
                     Ok(page_table)

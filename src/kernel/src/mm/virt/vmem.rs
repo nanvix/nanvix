@@ -7,27 +7,35 @@
 //==================================================================================================
 // Imports
 //==================================================================================================
+#[cfg(not(feature = "x86_64"))]
+use crate::hal::arch::x86::mem::mmu::{
+    self,
+    page_directory::{
+        PageDirectory,
+        PageDirectoryStorage,
+    },
+    page_table::PageTable,
+};
+#[cfg(feature = "x86_64")]
+use crate::hal::arch::x86_64::mem::mmu::{
+    self,
+    page_directory::{
+        PageDirectory,
+        PageDirectoryStorage,
+    },
+    page_table::PageTable,
+};
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::{
-            self,
-            page_directory::{
-                PageDirectory,
-                PageDirectoryStorage,
-            },
-            page_table::PageTable,
-        },
-        mem::{
-            AccessPermission,
-            Address,
-            FrameAddress,
-            PageAddress,
-            PageAligned,
-            PageTableAddress,
-            PageTableAligned,
-            PhysicalAddress,
-            VirtualAddress,
-        },
+    hal::mem::{
+        AccessPermission,
+        Address,
+        FrameAddress,
+        PageAddress,
+        PageAligned,
+        PageTableAddress,
+        PageTableAligned,
+        PhysicalAddress,
+        VirtualAddress,
     },
     mm::{
         phys::UserFrame,
