@@ -46,13 +46,42 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
         }
     }
 
-    // In standalone mode, reject non-VFS fds (no linuxd).
+    // In standalone mode, synthesize stat for stdio fds and reject others.
     #[cfg(feature = "standalone")]
     {
-        let _ = (fd, buf);
+        use ::sysapi::{
+            sys_stat::{
+                file_mode,
+                file_type,
+            },
+            unistd::{
+                STDERR_FILENO,
+                STDIN_FILENO,
+                STDOUT_FILENO,
+            },
+        };
+        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+            // SAFETY: zeroes all bytes of `buf` before field assignment.
+            unsafe {
+                ::core::ptr::write_bytes(buf, 0, 1);
+            }
+            buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
+            // Block size matches the page-sized granularity of push/pull kernel calls when
+            // crossing the VM boundary.
+            buf.st_blksize = ::arch::mem::PAGE_SIZE as i64;
+            // Timestamp set to Unix epoch (1970-01-01T00:00:00 UTC).
+            let ts = ::sysapi::time::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
+            buf.st_atim = ts;
+            buf.st_mtim = ts;
+            buf.st_ctim = ts;
+            return Ok(());
+        }
         return Err(Error::new(
-            ::sys::error::ErrorCode::OperationNotSupported,
-            "fstat not available in standalone mode",
+            ::sys::error::ErrorCode::BadFile,
+            "fstat: invalid fd in standalone mode",
         ));
     }
 
