@@ -8,16 +8,16 @@ on:
 
   pull_request:
     types:
-      - 'opened'
-      - 'synchronize'
-      - 'reopened'
-      - 'ready_for_review'
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "ready_for_review"
     branches:
-      - 'dev'
+      - "dev"
 
   push:
     branches:
-      - 'dev'
+      - "dev"
 
 # Cancel previous running actions for the same PR
 concurrency:
@@ -78,12 +78,12 @@ jobs:
     - name: "Check Code Format"
       uses: ./.github/actions/docker-check
       with:
-        target: 'format-check'
+        target: "format-check"
 
     - name: "Spellcheck"
       uses: ./.github/actions/docker-check
       with:
-        target: 'spellcheck'
+        target: "spellcheck"
 
   # ==========================================================================================
   # Stage 1 (parallel): Config-Dependent Source Checks (GitHub-Hosted Runners)
@@ -133,11 +133,11 @@ jobs:
     - name: "Lint"
       uses: ./.github/actions/docker-check
       with:
-        target: 'lint-check'
-        release: 'debug'
-        log-level: 'trace'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
+        target: "lint-check"
+        release: "debug"
+        log-level: "trace"
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
 
   # Verus formal verification is config-dependent (kernel cargo flags vary per
   # machine-type + deployment-type) and runs once per unique pair, like lint.
@@ -199,11 +199,11 @@ jobs:
     - name: "Verify"
       uses: ./.github/actions/docker-check
       with:
-        target: 'verify'
-        release: 'debug'
-        log-level: 'trace'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
+        target: "verify"
+        release: "debug"
+        log-level: "trace"
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
 
   # Each matrix entry builds on a GitHub-hosted runner. Integration tests run
   # in a separate ci-test job (typically on self-hosted runners) that depends
@@ -252,13 +252,13 @@ jobs:
     - name: "Build & Unit Test"
       uses: ./.github/actions/docker-build
       with:
-        release: '${{ matrix.build-type }}'
+        release: "${{ matrix.build-type }}"
         # Use 'error' log level for release builds to match release archive settings,
         # enabling reuse of build artifacts and avoiding a redundant rebuild.
         log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
-        sccache-gha-enabled: 'true'
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
+        sccache-gha-enabled: "true"
 
     - name: "Upload Build Artifacts"
       uses: actions/upload-artifact@v7
@@ -278,7 +278,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -333,16 +333,16 @@ jobs:
     - name: "Prepare Test Artifacts"
       uses: ./.github/actions/prepare-test-artifacts
       with:
-        build-type: '${{ matrix.build-type }}'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
+        build-type: "${{ matrix.build-type }}"
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
 
     - name: "Integration Test"
       uses: ./.github/actions/integration-test
       with:
-        build-type: '${{ matrix.build-type }}'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
+        build-type: "${{ matrix.build-type }}"
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
 
     - name: "Post-Cleanup Dangling Resources"
       if: always()
@@ -355,7 +355,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -414,28 +414,28 @@ jobs:
     - name: "Lint"
       uses: ./.github/actions/lint
       with:
-        release: '${{ matrix.build-type }}'
-        log-level: 'trace'
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: 'l2'
+        release: "${{ matrix.build-type }}"
+        log-level: "trace"
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "l2"
 
     - name: "Build"
       uses: ./.github/actions/build
       with:
-        release: '${{ matrix.build-type }}'
+        release: "${{ matrix.build-type }}"
         # Use 'error' log level for release builds to match release archive settings,
         # enabling reuse of build artifacts and avoiding a redundant rebuild.
         log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: 'l2'
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "l2"
 
     - name: "Test"
       uses: ./.github/actions/test
       with:
-        release: '${{ matrix.build-type }}'
+        release: "${{ matrix.build-type }}"
         log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: 'l2'
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "l2"
 
     - name: "Collect L2 diagnostics"
       if: failure()
@@ -452,7 +452,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -474,22 +474,22 @@ jobs:
             # FIXME(1171): the current L2 deployment involves a very slow network
             # namespace creation, particularly at high-churn, so we must temporarily
             # reduce the number of iterations of the benchmarks.
-            standard-benchmarks: 'boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency warm-start warm-start-l2 warm-start-vmm'
-            standard-iterations: '100'
-            echo-benchmarks: 'echo-breakdown echo-breakdown-l2'
-            echo-iterations: '1000'
+            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency warm-start warm-start-l2 warm-start-vmm"
+            standard-iterations: "100"
+            echo-benchmarks: "echo-breakdown echo-breakdown-l2"
+            echo-iterations: "1000"
           - machine-type: hyperlight
             # NOTE: L2 benchmarks (cold-start-l2, concurrent-l2, warm-start-l2) are
             # excluded until validated on CI runners. warm-start-vmm is excluded
             # because the low-level VMM benchmark crashes (SIGKILL) on the Hyperlight
             # VMM.
-            standard-benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start'
-            standard-iterations: '100'
+            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start"
+            standard-iterations: "100"
             # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight
             # data path has fewer timestamp instrumentation points than expected
             # (2 vs 10).
-            echo-benchmarks: ''
-            echo-iterations: ''
+            echo-benchmarks: ""
+            echo-iterations: ""
     runs-on:
       group: Benchmark
     permissions:
@@ -527,29 +527,29 @@ jobs:
     - name: "Build (Standard)"
       uses: ./.github/actions/benchmark-build
       with:
-        machine-type: '${{ matrix.machine-type }}'
+        machine-type: "${{ matrix.machine-type }}"
 
     - name: "Run Micro-Benchmarks (Standard)"
       uses: ./.github/actions/benchmark-run
       with:
-        benchmarks: '${{ matrix.standard-benchmarks }}'
-        machine-type: '${{ matrix.machine-type }}'
-        iterations: '${{ matrix.standard-iterations }}'
+        benchmarks: "${{ matrix.standard-benchmarks }}"
+        machine-type: "${{ matrix.machine-type }}"
+        iterations: "${{ matrix.standard-iterations }}"
 
     - name: "Build (Echo-Breakdown)"
       if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/benchmark-build
       with:
-        machine-type: '${{ matrix.machine-type }}'
-        timestamp-msg: 'yes'
+        machine-type: "${{ matrix.machine-type }}"
+        timestamp-msg: "yes"
 
     - name: "Run Echo-Breakdown Benchmarks"
       if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/benchmark-run
       with:
-        benchmarks: '${{ matrix.echo-benchmarks }}'
-        machine-type: '${{ matrix.machine-type }}'
-        iterations: '${{ matrix.echo-iterations }}'
+        benchmarks: "${{ matrix.echo-benchmarks }}"
+        machine-type: "${{ matrix.machine-type }}"
+        iterations: "${{ matrix.echo-iterations }}"
 
     - name: "Upload Benchmark Results"
       if: always() && !cancelled()
@@ -575,7 +575,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -618,28 +618,28 @@ jobs:
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
       with:
-        benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
-        machine-types: 'microvm,hyperlight'
-        archs: 'X64'
-        dev-dir: 'data/baremetal'
-        runner-label: 'self-hosted'
+        benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+        machine-types: "microvm,hyperlight"
+        archs: "X64"
+        dev-dir: "data/baremetal"
+        runner-label: "self-hosted"
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: "Persist results on dev"
       if: github.ref_name == 'dev'
       uses: ./.github/actions/benchmark-persist
       with:
-        benchmarks: 'boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm'
-        machine-types: 'microvm,hyperlight'
-        archs: 'X64'
-        target-dir: 'data/baremetal'
+        benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+        machine-types: "microvm,hyperlight"
+        archs: "X64"
+        target-dir: "data/baremetal"
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -661,22 +661,22 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: 'boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm'
-            standard-iterations: '100'
-            echo-benchmarks: 'echo-breakdown'
-            echo-iterations: '1000'
+            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm"
+            standard-iterations: "100"
+            echo-benchmarks: "echo-breakdown"
+            echo-iterations: "1000"
           - machine-type: hyperlight
             # NOTE: concurrent is excluded because spawning 100 Hyperlight VMs
             # exceeds the ~7 GB RAM available on GitHub-hosted runners.
             # warm-start-vmm is excluded because the low-level VMM benchmark
             # crashes (SIGKILL) on the Hyperlight VMM.
-            standard-benchmarks: 'boot-time cold-start cold-start-uvm round-trip-latency warm-start'
-            standard-iterations: '100'
+            standard-benchmarks: "boot-time cold-start cold-start-uvm round-trip-latency warm-start"
+            standard-iterations: "100"
             # NOTE: echo-breakdown is excluded for Hyperlight because the
             # Hyperlight data path has fewer timestamp instrumentation points
             # than expected (2 vs 10).
-            echo-benchmarks: ''
-            echo-iterations: ''
+            echo-benchmarks: ""
+            echo-iterations: ""
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -706,31 +706,31 @@ jobs:
     - name: "Build (Standard)"
       uses: ./.github/actions/docker-benchmark-build
       with:
-        machine-type: '${{ matrix.machine-type }}'
-        sccache-gha-enabled: 'true'
+        machine-type: "${{ matrix.machine-type }}"
+        sccache-gha-enabled: "true"
 
     - name: "Run Micro-Benchmarks (Standard)"
       uses: ./.github/actions/docker-benchmark-run
       with:
-        benchmarks: '${{ matrix.standard-benchmarks }}'
-        machine-type: '${{ matrix.machine-type }}'
-        iterations: '${{ matrix.standard-iterations }}'
+        benchmarks: "${{ matrix.standard-benchmarks }}"
+        machine-type: "${{ matrix.machine-type }}"
+        iterations: "${{ matrix.standard-iterations }}"
 
     - name: "Build (Echo-Breakdown)"
       if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/docker-benchmark-build
       with:
-        machine-type: '${{ matrix.machine-type }}'
-        timestamp-msg: 'yes'
-        sccache-gha-enabled: 'true'
+        machine-type: "${{ matrix.machine-type }}"
+        timestamp-msg: "yes"
+        sccache-gha-enabled: "true"
 
     - name: "Run Echo-Breakdown Benchmarks"
       if: matrix.echo-benchmarks != ''
       uses: ./.github/actions/docker-benchmark-run
       with:
-        benchmarks: '${{ matrix.echo-benchmarks }}'
-        machine-type: '${{ matrix.machine-type }}'
-        iterations: '${{ matrix.echo-iterations }}'
+        benchmarks: "${{ matrix.echo-benchmarks }}"
+        machine-type: "${{ matrix.machine-type }}"
+        iterations: "${{ matrix.echo-iterations }}"
 
     - name: "Upload Benchmark Results"
       if: always() && !cancelled()
@@ -746,7 +746,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -786,28 +786,28 @@ jobs:
     - name: "Report Benchmark Results"
       uses: ./.github/actions/benchmark-report
       with:
-        benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
-        machine-types: 'microvm,hyperlight'
-        archs: 'X64'
-        dev-dir: 'data/github'
-        runner-label: 'github-hosted'
+        benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+        machine-types: "microvm,hyperlight"
+        archs: "X64"
+        dev-dir: "data/github"
+        runner-label: "github-hosted"
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: "Persist results on dev"
       if: github.ref_name == 'dev'
       uses: ./.github/actions/benchmark-persist
       with:
-        benchmarks: 'boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm'
-        machine-types: 'microvm,hyperlight'
-        archs: 'X64'
-        target-dir: 'data/github'
+        benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+        machine-types: "microvm,hyperlight"
+        archs: "X64"
+        target-dir: "data/github"
 
     - name: "Upload logs in case of finalize failures"
       if: failure()
       uses: actions/upload-artifact@v7
       with:
         name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
-        overwrite: 'true'
+        overwrite: "true"
         path: |
           logs/
           **/*.log
@@ -855,8 +855,8 @@ jobs:
       id: release-archive
       uses: ./.github/actions/release-package
       with:
-        machine-type: '${{ matrix.machine-type }}'
-        deployment-type: '${{ matrix.deployment-type }}'
+        machine-type: "${{ matrix.machine-type }}"
+        deployment-type: "${{ matrix.deployment-type }}"
 
     - name: "Upload Release Artifact"
       uses: actions/upload-artifact@v7
