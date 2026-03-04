@@ -15,7 +15,6 @@ use crate::{
     config::{
         get_clh_api_socket_path,
         get_clh_bin_dir,
-        get_clh_snapshot_path,
         CONTROL_PLANE_ACCEPT_TIMEOUT,
         SHUTDOWN_TIMEOUT,
     },
@@ -25,6 +24,7 @@ use crate::{
     },
     netns_exec::command_in_netns,
     LinuxDaemonArgs,
+    SnapshotDirHandle,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -159,7 +159,6 @@ struct LinuxDaemonInner {
     control_plane_stream: SocketStream,
 }
 
-///
 /// # Description
 ///
 /// Handle to a running Linux Daemon instance spawned as a separate process.
@@ -169,6 +168,8 @@ pub struct LinuxDaemon {
     inner: Mutex<Option<LinuxDaemonInner>>,
     /// RAII handle to the network namespace linuxd runs in (L2-mode only).
     netns_handle: Option<NetnsHandle>,
+    /// RAII handle to the per-instance snapshot directory used in L2 mode.
+    snapshot_dir_handle: Option<SnapshotDirHandle>,
 }
 
 //==================================================================================================
@@ -319,7 +320,7 @@ impl LinuxDaemon {
             clh_api_socket_path.to_string(),
             args::Args::OPT_CH_REMOTE_RESUME.to_string(),
         ];
-        trace!("ch-remote args: {ch_remote_args:?}");
+        debug!("resume_l2_vm(): executing ch-remote with args: {}", ch_remote_args.join(" "));
         let status: ExitStatus =
             command_in_netns(netns_info, &ch_remote_args[0], &ch_remote_args[1..])
                 .stdout(Stdio::inherit())
@@ -449,9 +450,10 @@ impl LinuxDaemon {
         args: &LinuxDaemonArgs<T>,
         control_plane_listener: &mut SocketListener,
         netns_handle: Option<NetnsHandle>,
+        snapshot_dir_handle: Option<SnapshotDirHandle>,
     ) -> Result<Self> {
         debug!(
-            "spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
+            "spawn(): spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
             args.control_plane_connect_socket_info(),
             args.system_vm_socket_info(),
             args.l2()
@@ -459,6 +461,12 @@ impl LinuxDaemon {
 
         let clh_api_socket_path: String = get_clh_api_socket_path(args.tmp_directory());
         let mut linuxd_args: Vec<String> = if args.l2() {
+            let snapshot_dir_handle: &SnapshotDirHandle =
+                snapshot_dir_handle.as_ref().ok_or_else(|| {
+                    let reason: &str = "snapshot directory handle not provided for L2 deployment";
+                    error!("spawn(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?;
             match ::std::fs::remove_file(&clh_api_socket_path) {
                 Ok(()) => {},
                 Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
@@ -478,7 +486,10 @@ impl LinuxDaemon {
                 args::Args::OPT_CLH_SECCOMP.to_string(),
                 "false".to_string(),
                 args::Args::OPT_CLH_RESTORE.to_string(),
-                format!("source_url=file://{}", get_clh_snapshot_path(args.l2_snapshot_path())?),
+                format!(
+                    "source_url=file://{}",
+                    snapshot_dir_handle.path().to_string_lossy(),
+                ),
             ]
         } else {
             vec![
@@ -501,7 +512,6 @@ impl LinuxDaemon {
                 args.system_vm_socket_info().1.to_str().to_string(),
             ]
         };
-        trace!("linuxd args: {:?}", linuxd_args);
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),
@@ -510,6 +520,7 @@ impl LinuxDaemon {
             ];
             linuxd_args.splice(0..0, taskset);
         }
+        debug!("spawn(): spawning linuxd with args: {}", linuxd_args.join(" "));
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
         let child: Child = if let Some(netns_handle) = &netns_handle {
@@ -615,6 +626,7 @@ impl LinuxDaemon {
                 control_plane_stream,
             })),
             netns_handle,
+            snapshot_dir_handle,
         })
     }
 
@@ -690,5 +702,18 @@ impl LinuxDaemon {
     ///
     pub fn netns_handle(&self) -> Option<NetnsHandle> {
         self.netns_handle.clone()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path to the per-instance snapshot directory, if any.
+    ///
+    /// # Returns
+    ///
+    /// The per-instance snapshot directory path in L2 mode, or `None` otherwise.
+    ///
+    pub fn snapshot_dir_path(&self) -> Option<&Path> {
+        self.snapshot_dir_handle.as_ref().map(SnapshotDirHandle::path)
     }
 }
