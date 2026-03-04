@@ -24,7 +24,7 @@ use ::sys::error::{
 //==================================================================================================
 
 pub const NUM_OF_SLABS: usize = 8;
-const SLAB_COUNT: usize = 32;
+const SLAB_COUNT: usize = 128;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
@@ -188,7 +188,7 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
-            4096 => Ok(SlabSize::Slab4096),
+            513..=4096 => Ok(SlabSize::Slab4096),
             _ => Err(AllocError),
         }
     }
