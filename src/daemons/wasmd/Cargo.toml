@@ -31,6 +31,12 @@ cfg-if = { workspace = true }
 [features]
 default = []
 wasm_binary = []
+trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
+debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
+info = ["nvx/info", "syscall/info", "syslog/info"]
+warn = ["nvx/warn", "syscall/warn", "syslog/warn"]
+error = ["nvx/error", "syscall/error", "syslog/error"]
+panic = ["nvx/panic", "syscall/panic", "syslog/panic"]
 
 [lints]
 workspace = true
