@@ -28,7 +28,6 @@ env:
   SCCACHE: "/usr/local/bin/sccache"
 
 jobs:
-
   # ==========================================================================================
   # Pre-check
   # ==========================================================================================
@@ -67,23 +66,23 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
+      - name: "Setup"
+        uses: ./.github/actions/docker-setup
 
-    # The docker-check action's default parameters (machine-type, deployment-type,
-    # etc.) are passed through to make but are ignored by config-independent
-    # targets like format-check and spellcheck.
-    - name: "Check Code Format"
-      uses: ./.github/actions/docker-check
-      with:
-        target: "format-check"
+      # The docker-check action's default parameters (machine-type, deployment-type,
+      # etc.) are passed through to make but are ignored by config-independent
+      # targets like format-check and spellcheck.
+      - name: "Check Code Format"
+        uses: ./.github/actions/docker-check
+        with:
+          target: "format-check"
 
-    - name: "Spellcheck"
-      uses: ./.github/actions/docker-check
-      with:
-        target: "spellcheck"
+      - name: "Spellcheck"
+        uses: ./.github/actions/docker-check
+        with:
+          target: "spellcheck"
 
   # ==========================================================================================
   # Stage 1 (parallel): Config-Dependent Source Checks (GitHub-Hosted Runners)
@@ -125,19 +124,19 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
+      - name: "Setup"
+        uses: ./.github/actions/docker-setup
 
-    - name: "Lint"
-      uses: ./.github/actions/docker-check
-      with:
-        target: "lint-check"
-        release: "debug"
-        log-level: "trace"
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
+      - name: "Lint"
+        uses: ./.github/actions/docker-check
+        with:
+          target: "lint-check"
+          release: "debug"
+          log-level: "trace"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
 
   # Verus formal verification is config-dependent (kernel cargo flags vary per
   # machine-type + deployment-type) and runs once per unique pair, like lint.
@@ -169,41 +168,41 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
+      - name: "Setup"
+        uses: ./.github/actions/docker-setup
 
-    # Cache the Verus release archive so that verify jobs do not need to
-    # re-download it on every run. The cache is keyed on the pinned Verus
-    # version; a version bump automatically causes a single fresh download.
-    - name: "Resolve Verus Version"
-      id: verus-version
-      shell: bash
-      run: echo "version=$(tr -d '[:space:]' < build/verus-version)" >> "$GITHUB_OUTPUT"
+      # Cache the Verus release archive so that verify jobs do not need to
+      # re-download it on every run. The cache is keyed on the pinned Verus
+      # version; a version bump automatically causes a single fresh download.
+      - name: "Resolve Verus Version"
+        id: verus-version
+        shell: bash
+        run: echo "version=$(tr -d '[:space:]' < build/verus-version)" >> "$GITHUB_OUTPUT"
 
-    - name: "Cache Verus Archive"
-      id: verus-cache
-      uses: actions/cache@v4
-      with:
-        path: .verus-cache
-        key: verus-${{ steps.verus-version.outputs.version }}
+      - name: "Cache Verus Archive"
+        id: verus-cache
+        uses: actions/cache@v4
+        with:
+          path: .verus-cache
+          key: verus-${{ steps.verus-version.outputs.version }}
 
-    - name: "Pre-download Verus Archive"
-      if: steps.verus-cache.outputs.cache-hit != 'true'
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./scripts/setup/verus.sh --download-only
+      - name: "Pre-download Verus Archive"
+        if: steps.verus-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/setup/verus.sh --download-only
 
-    - name: "Verify"
-      uses: ./.github/actions/docker-check
-      with:
-        target: "verify"
-        release: "debug"
-        log-level: "trace"
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
+      - name: "Verify"
+        uses: ./.github/actions/docker-check
+        with:
+          target: "verify"
+          release: "debug"
+          log-level: "trace"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
 
   # Each matrix entry builds on a GitHub-hosted runner. Integration tests run
   # in a separate ci-test job (typically on self-hosted runners) that depends
@@ -239,51 +238,51 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
+      - name: "Setup"
+        uses: ./.github/actions/docker-setup
 
-    - name: "Setup sccache"
-      uses: Mozilla-Actions/sccache-action@v0.0.9
-      with:
-        version: "v0.10.0"
+      - name: "Setup sccache"
+        uses: Mozilla-Actions/sccache-action@v0.0.9
+        with:
+          version: "v0.10.0"
 
-    - name: "Build & Unit Test"
-      uses: ./.github/actions/docker-build
-      with:
-        release: "${{ matrix.build-type }}"
-        # Use 'error' log level for release builds to match release archive settings,
-        # enabling reuse of build artifacts and avoiding a redundant rebuild.
-        log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
-        sccache-gha-enabled: "true"
+      - name: "Build & Unit Test"
+        uses: ./.github/actions/docker-build
+        with:
+          release: "${{ matrix.build-type }}"
+          # Use 'error' log level for release builds to match release archive settings,
+          # enabling reuse of build artifacts and avoiding a redundant rebuild.
+          log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
+          sccache-gha-enabled: "true"
 
-    - name: "Upload Build Artifacts"
-      uses: actions/upload-artifact@v7
-      with:
-        name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: true
-        retention-days: 1
-        path: |
-          bin/
-          images/
-          lib/
-          sysroot-${{ matrix.build-type }}/
-          nanvix-*.tar.bz2
+      - name: "Upload Build Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          overwrite: true
+          retention-days: 1
+          path: |
+            bin/
+            images/
+            lib/
+            sysroot-${{ matrix.build-type }}/
+            nanvix-*.tar.bz2
 
-    - name: "Upload logs in case of failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+      - name: "Upload logs in case of failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
 
   ci-test:
     name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
@@ -304,63 +303,63 @@ jobs:
       contents: read
 
     steps:
-    - name: "Pre-Checkout Cleanup"
-      shell: bash
-      run: |
-        # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
-        # that prevent actions/checkout from resetting the workspace. The cleanup
-        # composite action cannot run before checkout, so perform a direct cleanup
-        # of the images directory without executing any workspace scripts.
-        if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
-          echo "Removing images directory before checkout..."
-          sudo rm -rf "${GITHUB_WORKSPACE}/images"
-        fi
+      - name: "Pre-Checkout Cleanup"
+        shell: bash
+        run: |
+          # Previous runs may leave root-owned files (e.g., images/l2-sysvm-rootfs/dev)
+          # that prevent actions/checkout from resetting the workspace. The cleanup
+          # composite action cannot run before checkout, so perform a direct cleanup
+          # of the images directory without executing any workspace scripts.
+          if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
+            echo "Removing images directory before checkout..."
+            sudo rm -rf "${GITHUB_WORKSPACE}/images"
+          fi
 
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Isolate Cargo Home"
-      shell: bash
-      run: |
-        # Isolate Cargo home per job to prevent concurrent git-cache races on
-        # self-hosted runners that share the same filesystem.
-        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+      - name: "Isolate Cargo Home"
+        shell: bash
+        run: |
+          # Isolate Cargo home per job to prevent concurrent git-cache races on
+          # self-hosted runners that share the same filesystem.
+          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
-    - name: "Pre-Cleanup Dangling Resources"
-      uses: ./.github/actions/cleanup
-      with:
-        phase: pre
+      - name: "Pre-Cleanup Dangling Resources"
+        uses: ./.github/actions/cleanup
+        with:
+          phase: pre
 
-    - name: "Prepare Test Artifacts"
-      uses: ./.github/actions/prepare-test-artifacts
-      with:
-        build-type: "${{ matrix.build-type }}"
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
+      - name: "Prepare Test Artifacts"
+        uses: ./.github/actions/prepare-test-artifacts
+        with:
+          build-type: "${{ matrix.build-type }}"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
 
-    - name: "Integration Test"
-      uses: ./.github/actions/integration-test
-      with:
-        build-type: "${{ matrix.build-type }}"
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
+      - name: "Integration Test"
+        uses: ./.github/actions/integration-test
+        with:
+          build-type: "${{ matrix.build-type }}"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
 
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
+      - name: "Post-Cleanup Dangling Resources"
+        if: always()
+        uses: ./.github/actions/cleanup
+        with:
+          phase: post
 
-    - name: "Upload logs in case of failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+      - name: "Upload logs in case of failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
 
   # ==========================================================================================
   # Stage 3: L2 and Benchmark (Self-Hosted Runners)
@@ -394,70 +393,70 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Isolate Cargo Home"
-      shell: bash
-      run: |
-        # Isolate Cargo home per job to prevent concurrent git-cache races on
-        # self-hosted runners that share the same filesystem.
-        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+      - name: "Isolate Cargo Home"
+        shell: bash
+        run: |
+          # Isolate Cargo home per job to prevent concurrent git-cache races on
+          # self-hosted runners that share the same filesystem.
+          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
-    - name: "Pre-Cleanup Dangling Resources"
-      uses: ./.github/actions/cleanup
-      with:
-        phase: pre
+      - name: "Pre-Cleanup Dangling Resources"
+        uses: ./.github/actions/cleanup
+        with:
+          phase: pre
 
-    - name: "Link Toolchain Directory"
-      uses: ./.github/actions/link-toolchain
+      - name: "Link Toolchain Directory"
+        uses: ./.github/actions/link-toolchain
 
-    - name: "Lint"
-      uses: ./.github/actions/lint
-      with:
-        release: "${{ matrix.build-type }}"
-        log-level: "trace"
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "l2"
+      - name: "Lint"
+        uses: ./.github/actions/lint
+        with:
+          release: "${{ matrix.build-type }}"
+          log-level: "trace"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "l2"
 
-    - name: "Build"
-      uses: ./.github/actions/build
-      with:
-        release: "${{ matrix.build-type }}"
-        # Use 'error' log level for release builds to match release archive settings,
-        # enabling reuse of build artifacts and avoiding a redundant rebuild.
-        log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "l2"
+      - name: "Build"
+        uses: ./.github/actions/build
+        with:
+          release: "${{ matrix.build-type }}"
+          # Use 'error' log level for release builds to match release archive settings,
+          # enabling reuse of build artifacts and avoiding a redundant rebuild.
+          log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "l2"
 
-    - name: "Test"
-      uses: ./.github/actions/test
-      with:
-        release: "${{ matrix.build-type }}"
-        log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "l2"
+      - name: "Test"
+        uses: ./.github/actions/test
+        with:
+          release: "${{ matrix.build-type }}"
+          log-level: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "l2"
 
-    - name: "Collect L2 diagnostics"
-      if: failure()
-      uses: ./.github/actions/collect-l2-diagnostics
+      - name: "Collect L2 diagnostics"
+        if: failure()
+        uses: ./.github/actions/collect-l2-diagnostics
 
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
+      - name: "Post-Cleanup Dangling Resources"
+        if: always()
+        uses: ./.github/actions/cleanup
+        with:
+          phase: post
 
-    - name: "Upload logs in case of failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+      - name: "Upload logs in case of failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
 
   # Build from source and run micro-benchmarks on baremetal self-hosted runners.
   # Benchmarks require L2_VM=yes which needs .git, so they cannot use Docker builds.
@@ -507,81 +506,81 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Isolate Cargo Home"
-      shell: bash
-      run: |
-        # Isolate Cargo home per job to prevent concurrent git-cache races on
-        # self-hosted runners that share the same filesystem.
-        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+      - name: "Isolate Cargo Home"
+        shell: bash
+        run: |
+          # Isolate Cargo home per job to prevent concurrent git-cache races on
+          # self-hosted runners that share the same filesystem.
+          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
-    - name: "Pre-Cleanup Dangling Resources"
-      uses: ./.github/actions/cleanup
-      with:
-        phase: pre
+      - name: "Pre-Cleanup Dangling Resources"
+        uses: ./.github/actions/cleanup
+        with:
+          phase: pre
 
-    - name: "Link Toolchain Directory"
-      uses: ./.github/actions/link-toolchain
+      - name: "Link Toolchain Directory"
+        uses: ./.github/actions/link-toolchain
 
-    - name: "Build (Standard)"
-      uses: ./.github/actions/benchmark-build
-      with:
-        machine-type: "${{ matrix.machine-type }}"
+      - name: "Build (Standard)"
+        uses: ./.github/actions/benchmark-build
+        with:
+          machine-type: "${{ matrix.machine-type }}"
 
-    - name: "Run Micro-Benchmarks (Standard)"
-      uses: ./.github/actions/benchmark-run
-      with:
-        benchmarks: "${{ matrix.standard-benchmarks }}"
-        machine-type: "${{ matrix.machine-type }}"
-        iterations: "${{ matrix.standard-iterations }}"
+      - name: "Run Micro-Benchmarks (Standard)"
+        uses: ./.github/actions/benchmark-run
+        with:
+          benchmarks: "${{ matrix.standard-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.standard-iterations }}"
 
-    - name: "Build (Echo-Breakdown)"
-      if: matrix.echo-benchmarks != ''
-      uses: ./.github/actions/benchmark-build
-      with:
-        machine-type: "${{ matrix.machine-type }}"
-        timestamp-msg: "yes"
+      - name: "Build (Echo-Breakdown)"
+        if: matrix.echo-benchmarks != ''
+        uses: ./.github/actions/benchmark-build
+        with:
+          machine-type: "${{ matrix.machine-type }}"
+          timestamp-msg: "yes"
 
-    - name: "Run Echo-Breakdown Benchmarks"
-      if: matrix.echo-benchmarks != ''
-      uses: ./.github/actions/benchmark-run
-      with:
-        benchmarks: "${{ matrix.echo-benchmarks }}"
-        machine-type: "${{ matrix.machine-type }}"
-        iterations: "${{ matrix.echo-iterations }}"
+      - name: "Run Echo-Breakdown Benchmarks"
+        if: matrix.echo-benchmarks != ''
+        uses: ./.github/actions/benchmark-run
+        with:
+          benchmarks: "${{ matrix.echo-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.echo-iterations }}"
 
-    - name: "Upload Benchmark Results"
-      if: always() && !cancelled()
-      uses: actions/upload-artifact@v7
-      with:
-        name: benchmark-results-${{ matrix.machine-type }}
-        overwrite: true
-        retention-days: 1
-        path: nanvix_bench_*.csv
+      - name: "Upload Benchmark Results"
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results-${{ matrix.machine-type }}
+          overwrite: true
+          retention-days: 1
+          path: nanvix_bench_*.csv
 
-    - name: "Dump SCCACHE Statistics"
-      if: always()
-      uses: ./.github/actions/sccache-stats
+      - name: "Dump SCCACHE Statistics"
+        if: always()
+        uses: ./.github/actions/sccache-stats
 
-    - name: "Post-Cleanup Dangling Resources"
-      if: always()
-      uses: ./.github/actions/cleanup
-      with:
-        phase: post
+      - name: "Post-Cleanup Dangling Resources"
+        if: always()
+        uses: ./.github/actions/cleanup
+        with:
+          phase: post
 
-    - name: "Upload logs in case of benchmark failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
-          bench_*.txt
+      - name: "Upload logs in case of benchmark failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+            bench_*.txt
 
   # Aggregate benchmark results from all machine types, post a PR comment,
   # and persist the updated baselines on dev.
@@ -601,50 +600,50 @@ jobs:
       issues: write
 
     steps:
-    - uses: actions/checkout@v6
-      with:
-        # Use the deploy SSH key so that benchmark-persist can push results
-        # to the dev branch (the deploy key is a bypass actor for branch
-        # protection rules, matching the approach in create-minor-release).
-        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+      - uses: actions/checkout@v6
+        with:
+          # Use the deploy SSH key so that benchmark-persist can push results
+          # to the dev branch (the deploy key is a bypass actor for branch
+          # protection rules, matching the approach in create-minor-release).
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
-    - name: "Download Benchmark Results"
-      uses: actions/download-artifact@v8
-      with:
-        pattern: benchmark-results-*
-        path: .
-        merge-multiple: true
+      - name: "Download Benchmark Results"
+        uses: actions/download-artifact@v8
+        with:
+          pattern: benchmark-results-*
+          path: .
+          merge-multiple: true
 
-    - name: "Report Benchmark Results"
-      uses: ./.github/actions/benchmark-report
-      with:
-        benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
-        machine-types: "microvm,hyperlight"
-        archs: "X64"
-        dev-dir: "data/baremetal"
-        runner-label: "self-hosted"
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Report Benchmark Results"
+        uses: ./.github/actions/benchmark-report
+        with:
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+          machine-types: "microvm,hyperlight"
+          archs: "X64"
+          dev-dir: "data/baremetal"
+          runner-label: "self-hosted"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: "Persist results on dev"
-      if: github.ref_name == 'dev'
-      uses: ./.github/actions/benchmark-persist
-      with:
-        benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
-        machine-types: "microvm,hyperlight"
-        archs: "X64"
-        target-dir: "data/baremetal"
+      - name: "Persist results on dev"
+        if: github.ref_name == 'dev'
+        uses: ./.github/actions/benchmark-persist
+        with:
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+          machine-types: "microvm,hyperlight"
+          archs: "X64"
+          target-dir: "data/baremetal"
 
-    - name: "Upload logs in case of finalize failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+      - name: "Upload logs in case of finalize failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
 
   # Run micro-benchmarks on a GitHub-hosted runner using Docker so that
   # results are collected even without self-hosted hardware.
@@ -693,66 +692,66 @@ jobs:
       )
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Setup"
-      uses: ./.github/actions/docker-setup
+      - name: "Setup"
+        uses: ./.github/actions/docker-setup
 
-    - name: "Setup sccache"
-      uses: Mozilla-Actions/sccache-action@v0.0.9
-      with:
-        version: "v0.10.0"
+      - name: "Setup sccache"
+        uses: Mozilla-Actions/sccache-action@v0.0.9
+        with:
+          version: "v0.10.0"
 
-    - name: "Build (Standard)"
-      uses: ./.github/actions/docker-benchmark-build
-      with:
-        machine-type: "${{ matrix.machine-type }}"
-        sccache-gha-enabled: "true"
+      - name: "Build (Standard)"
+        uses: ./.github/actions/docker-benchmark-build
+        with:
+          machine-type: "${{ matrix.machine-type }}"
+          sccache-gha-enabled: "true"
 
-    - name: "Run Micro-Benchmarks (Standard)"
-      uses: ./.github/actions/docker-benchmark-run
-      with:
-        benchmarks: "${{ matrix.standard-benchmarks }}"
-        machine-type: "${{ matrix.machine-type }}"
-        iterations: "${{ matrix.standard-iterations }}"
+      - name: "Run Micro-Benchmarks (Standard)"
+        uses: ./.github/actions/docker-benchmark-run
+        with:
+          benchmarks: "${{ matrix.standard-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.standard-iterations }}"
 
-    - name: "Build (Echo-Breakdown)"
-      if: matrix.echo-benchmarks != ''
-      uses: ./.github/actions/docker-benchmark-build
-      with:
-        machine-type: "${{ matrix.machine-type }}"
-        timestamp-msg: "yes"
-        sccache-gha-enabled: "true"
+      - name: "Build (Echo-Breakdown)"
+        if: matrix.echo-benchmarks != ''
+        uses: ./.github/actions/docker-benchmark-build
+        with:
+          machine-type: "${{ matrix.machine-type }}"
+          timestamp-msg: "yes"
+          sccache-gha-enabled: "true"
 
-    - name: "Run Echo-Breakdown Benchmarks"
-      if: matrix.echo-benchmarks != ''
-      uses: ./.github/actions/docker-benchmark-run
-      with:
-        benchmarks: "${{ matrix.echo-benchmarks }}"
-        machine-type: "${{ matrix.machine-type }}"
-        iterations: "${{ matrix.echo-iterations }}"
+      - name: "Run Echo-Breakdown Benchmarks"
+        if: matrix.echo-benchmarks != ''
+        uses: ./.github/actions/docker-benchmark-run
+        with:
+          benchmarks: "${{ matrix.echo-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.echo-iterations }}"
 
-    - name: "Upload Benchmark Results"
-      if: always() && !cancelled()
-      uses: actions/upload-artifact@v7
-      with:
-        name: benchmark-ci-results-${{ matrix.machine-type }}
-        overwrite: true
-        retention-days: 1
-        path: nanvix_bench_*.csv
+      - name: "Upload Benchmark Results"
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-ci-results-${{ matrix.machine-type }}
+          overwrite: true
+          retention-days: 1
+          path: nanvix_bench_*.csv
 
-    - name: "Upload logs in case of benchmark failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
-          bench_*.txt
+      - name: "Upload logs in case of benchmark failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+            bench_*.txt
 
   # Aggregate CI benchmark results from all machine types, post a PR comment,
   # and persist the updated baselines on dev.
@@ -772,47 +771,47 @@ jobs:
       issues: write
 
     steps:
-    - uses: actions/checkout@v6
-      with:
-        ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+      - uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
 
-    - name: "Download Benchmark Results"
-      uses: actions/download-artifact@v8
-      with:
-        pattern: benchmark-ci-results-*
-        path: .
-        merge-multiple: true
+      - name: "Download Benchmark Results"
+        uses: actions/download-artifact@v8
+        with:
+          pattern: benchmark-ci-results-*
+          path: .
+          merge-multiple: true
 
-    - name: "Report Benchmark Results"
-      uses: ./.github/actions/benchmark-report
-      with:
-        benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
-        machine-types: "microvm,hyperlight"
-        archs: "X64"
-        dev-dir: "data/github"
-        runner-label: "github-hosted"
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Report Benchmark Results"
+        uses: ./.github/actions/benchmark-report
+        with:
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+          machine-types: "microvm,hyperlight"
+          archs: "X64"
+          dev-dir: "data/github"
+          runner-label: "github-hosted"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: "Persist results on dev"
-      if: github.ref_name == 'dev'
-      uses: ./.github/actions/benchmark-persist
-      with:
-        benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
-        machine-types: "microvm,hyperlight"
-        archs: "X64"
-        target-dir: "data/github"
+      - name: "Persist results on dev"
+        if: github.ref_name == 'dev'
+        uses: ./.github/actions/benchmark-persist
+        with:
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+          machine-types: "microvm,hyperlight"
+          archs: "X64"
+          target-dir: "data/github"
 
-    - name: "Upload logs in case of finalize failures"
-      if: failure()
-      uses: actions/upload-artifact@v7
-      with:
-        name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
-        overwrite: "true"
-        path: |
-          logs/
-          **/*.log
-          **/*.out
-          **/*.err
+      - name: "Upload logs in case of finalize failures"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
 
   # ==========================================================================================
   # Stage 4: Post Actions (Conditional)
@@ -843,27 +842,27 @@ jobs:
       contents: read
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Download CI Build Artifacts"
-      uses: actions/download-artifact@v8
-      with:
-        name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        path: .
+      - name: "Download CI Build Artifacts"
+        uses: actions/download-artifact@v8
+        with:
+          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          path: .
 
-    - name: "Package Release Archive"
-      id: release-archive
-      uses: ./.github/actions/release-package
-      with:
-        machine-type: "${{ matrix.machine-type }}"
-        deployment-type: "${{ matrix.deployment-type }}"
+      - name: "Package Release Archive"
+        id: release-archive
+        uses: ./.github/actions/release-package
+        with:
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
 
-    - name: "Upload Release Artifact"
-      uses: actions/upload-artifact@v7
-      with:
-        name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
-        path: ${{ steps.release-archive.outputs.archive-path }}
-        overwrite: true
+      - name: "Upload Release Artifact"
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          path: ${{ steps.release-archive.outputs.archive-path }}
+          overwrite: true
 
   # Publish the latest release to GitHub.
   publish-latest:
@@ -879,20 +878,20 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: "Isolate Cargo Home"
-      shell: bash
-      run: |
-        # Isolate Cargo home per job to prevent concurrent git-cache races on
-        # self-hosted runners that share the same filesystem.
-        echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
+      - name: "Isolate Cargo Home"
+        shell: bash
+        run: |
+          # Isolate Cargo home per job to prevent concurrent git-cache races on
+          # self-hosted runners that share the same filesystem.
+          echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
-    - name: "Publish Release"
-      uses: ./.github/actions/publish-release
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
+      - name: "Publish Release"
+        uses: ./.github/actions/publish-release
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
 
   # Create a minor release tag on merge commits to dev.
   # This job runs independently of the CI pipeline because the pipeline skips
@@ -914,11 +913,11 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: "Checkout repository"
-        uses: actions/checkout@v6
-        with:
-          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
-          fetch-depth: 0
+        - name: "Checkout repository"
+          uses: actions/checkout@v6
+          with:
+            ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+            fetch-depth: 0
 
-      - name: "Create Minor Release"
-        uses: ./.github/actions/create-minor-release
+        - name: "Create Minor Release"
+          uses: ./.github/actions/create-minor-release
