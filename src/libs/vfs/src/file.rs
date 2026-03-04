@@ -14,14 +14,14 @@
 // Imports
 //==================================================================================================
 
-use ::fat32::{
-    Fat32Error,
-    FatFile,
-};
 use crate::state;
 use ::alloc::{
     string::String,
     vec::Vec,
+};
+use ::fat32::{
+    Fat32Error,
+    FatFile,
 };
 use ::sysapi::unistd::file_seek;
 
@@ -394,8 +394,7 @@ pub fn open(path: &str) -> Result<File, Fat32Error> {
 pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
     let (mount_idx, relative_path): (usize, String) = resolve_path(path).ok()?;
     state::with_vfs(|vfs| {
-        let mount: &crate::mount::Mount =
-            vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+        let mount: &crate::mount::Mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount
             .fat()
             .file_raw_region(&relative_path)

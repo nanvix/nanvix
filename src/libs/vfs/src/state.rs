@@ -18,11 +18,6 @@
 // Imports
 //==================================================================================================
 
-use ::fat32::{
-    Fat32Error,
-    Fat,
-    RawMemoryStorage,
-};
 use crate::mount::{
     Mount,
     Vfs,
@@ -31,6 +26,11 @@ use ::alloc::{
     boxed::Box,
     string::String,
     vec::Vec,
+};
+use ::fat32::{
+    Fat,
+    Fat32Error,
+    RawMemoryStorage,
 };
 use ::spin::Mutex;
 

@@ -18,11 +18,11 @@ use crate::fd::{
 };
 use ::fat32::Fat32Error;
 use ::sysapi::{
-    ffi::c_int,
     fcntl::{
         file_access_mode,
         file_creation_flags,
     },
+    ffi::c_int,
 };
 
 //==================================================================================================
