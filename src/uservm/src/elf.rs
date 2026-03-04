@@ -73,6 +73,7 @@ const EM_68K: u16 = 4; // Motorola 68000.
 const EM_88K: u16 = 5; // Motorola 88000.
 const EM_860: u16 = 7; // Intel 80860.
 const EM_MIPS: u16 = 8; // MIPS RS3000.
+const EM_X86_64: u16 = 62; // AMD x86-64.
 
 // Object file versions.
 const EV_NONE: u32 = 0; // Invalid version.
@@ -125,6 +126,52 @@ struct Elf32Phdr {
     p_memsz: u32,  // Bytes in the memory image.
     p_flags: u32,  // Segment flags.
     p_align: u32,  // Alignment value.
+}
+
+// ELF 64 file header.
+#[repr(C)]
+struct Elf64Fhdr {
+    e_ident: [u8; EI_NIDENT], // ELF magic numbers and other info.
+    e_type: u16,              // Object file type.
+    e_machine: u16,           // Required machine architecture type.
+    e_version: u32,           // Object file version.
+    e_entry: u64,             // Virtual address of process's entry point.
+    e_phoff: u64,             // Program header table file offset.
+    e_shoff: u64,             // Section header table file offset.
+    e_flags: u32,             // Processor-specific flags.
+    e_ehsize: u16,            // ELF header's size in bytes.
+    e_phentsize: u16,         // Program header table entry size.
+    e_phnum: u16,             // Entries in the program header table.
+    e_shentsize: u16,         // Section header table size.
+    e_shnum: u16,             // Entries in the section header table.
+    e_shstrndx: u16,          // Index for the section name string table.
+}
+
+impl Elf64Fhdr {
+    fn is_valid(&self) -> bool {
+        if self.e_ident[0] != ELFMAG0
+            || self.e_ident[1] != ELFMAG1 as u8
+            || self.e_ident[2] != ELFMAG2 as u8
+            || self.e_ident[3] != ELFMAG3 as u8
+        {
+            error!("header is null or invalid magic");
+            return false;
+        }
+        true
+    }
+}
+
+// ELF 64 program header.
+#[repr(C)]
+struct Elf64Phdr {
+    p_type: u32,   // Segment type.
+    p_flags: u32,  // Segment flags (different position than ELF32).
+    p_offset: u64, // Offset of the first byte.
+    p_vaddr: u64,  // Virtual address of the first byte.
+    p_paddr: u64,  // Physical address of the first byte.
+    p_filesz: u64, // Bytes in the file image.
+    p_memsz: u64,  // Bytes in the memory image.
+    p_align: u64,  // Alignment value.
 }
 
 // Rust equivalent of the C functions.
@@ -185,76 +232,54 @@ impl MemoryFootprint {
     }
 }
 
-///
-/// # Description
-///
-/// Computes the memory footprint of an ELF file.
-///
-/// This function parses the ELF header and program headers to determine the lowest and highest
-/// virtual addresses that will be occupied when the ELF is loaded into memory. This is useful for
-/// calculating memory layout requirements before actually loading the ELF.
-///
-/// # Parameters
-///
-/// - `source`: ELF file bytes in memory.
-///
-/// # Returns
-///
-/// Upon successful completion, this function returns the memory footprint of the loadable
-/// segments. Otherwise, it returns an error.
-///
-pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
-    trace!("memory_footprint(): source_len={}", source.len());
+/// Trait for extracting segment info from ELF program headers.
+trait ElfPhdrInfo: Sized {
+    fn seg_type(&self) -> u32;
+    fn seg_vaddr(&self) -> usize;
+    fn seg_memsz(&self) -> usize;
+    fn seg_offset(&self) -> usize;
+    fn seg_filesz(&self) -> usize;
+    fn seg_flags(&self) -> u32;
+}
 
+impl ElfPhdrInfo for Elf32Phdr {
+    fn seg_type(&self) -> u32 { self.p_type }
+    fn seg_vaddr(&self) -> usize { self.p_vaddr as usize }
+    fn seg_memsz(&self) -> usize { self.p_memsz as usize }
+    fn seg_offset(&self) -> usize { self.p_offset as usize }
+    fn seg_filesz(&self) -> usize { self.p_filesz as usize }
+    fn seg_flags(&self) -> u32 { self.p_flags }
+}
+
+impl ElfPhdrInfo for Elf64Phdr {
+    fn seg_type(&self) -> u32 { self.p_type }
+    fn seg_vaddr(&self) -> usize { self.p_vaddr as usize }
+    fn seg_memsz(&self) -> usize { self.p_memsz as usize }
+    fn seg_offset(&self) -> usize { self.p_offset as usize }
+    fn seg_filesz(&self) -> usize { self.p_filesz as usize }
+    fn seg_flags(&self) -> u32 { self.p_flags }
+}
+
+/// Computes the memory footprint from program headers (shared by ELF32 and ELF64).
+fn compute_footprint_from_phdrs<P: ElfPhdrInfo>(
+    source: &[u8],
+    phoff: usize,
+    phentsize: usize,
+    phnum: usize,
+) -> Result<MemoryFootprint> {
     let source_len: usize = source.len();
-    let fh_size: usize = mem::size_of::<Elf32Fhdr>();
-
-    // Check if buffer is too small to contain ELF header.
-    if source_len < fh_size {
-        let reason: &str = "buffer too small for ELF header";
-        error!("memory_footprint(): {reason} (len={source_len})");
-        return Err(anyhow::anyhow!(reason));
-    }
-
-    // Safety: the buffer size check above guarantees that `source` contains at least
-    // `size_of::<Elf32Fhdr>()` bytes, so the read is within bounds.
-    let ehdr: Elf32Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf32Fhdr>()) };
-
-    // Check if ELF magic number is valid.
-    if !ehdr.is_valid() {
-        let reason: &str = "header is null or invalid magic";
-        return Err(anyhow::anyhow!(reason));
-    }
-
-    // Check ELF class.
-    if ehdr.e_ident[4] != ELFCLASS32 {
-        let reason: &str = "invalid elf class";
-        error!("memory_footprint(): {reason} (e_ident={:?})", ehdr.e_ident);
-        return Err(anyhow::anyhow!(reason));
-    }
-
-    let phoff: usize = ehdr.e_phoff as usize;
-    let phentsize: usize = ehdr.e_phentsize as usize;
-    let phnum: usize = ehdr.e_phnum as usize;
-
-    // Check if program header has an invalid size.
-    if phentsize != mem::size_of::<Elf32Phdr>() {
-        let reason: &str = "invalid program header entry size";
-        error!("memory_footprint(): {reason} (e_phentsize={})", ehdr.e_phentsize);
-        return Err(anyhow::anyhow!(reason));
-    }
 
     // Calculate program header table size.
     let ph_table_size: usize = phentsize.checked_mul(phnum).ok_or_else(|| {
         let reason: &str = "program header table size overflow";
-        error!("memory_footprint(): {reason} (e_phnum={})", ehdr.e_phnum);
+        error!("memory_footprint(): {reason} (phnum={phnum})");
         anyhow::anyhow!(reason)
     })?;
 
     // Calculate end of program header table.
     let ph_table_end: usize = phoff.checked_add(ph_table_size).ok_or_else(|| {
         let reason: &str = "program header table offset overflow";
-        error!("memory_footprint(): {reason} (e_phoff={})", ehdr.e_phoff);
+        error!("memory_footprint(): {reason} (phoff={phoff})");
         anyhow::anyhow!(reason)
     })?;
 
@@ -289,14 +314,13 @@ pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
 
         // Safety: the bounds check above ensures `entry_offset + phentsize <= source_len`,
         // so the pointer arithmetic and subsequent read are within the buffer.
-        let phdr_ptr: *const Elf32Phdr =
-            unsafe { source.as_ptr().add(entry_offset) }.cast::<Elf32Phdr>();
-        let phdr: Elf32Phdr = unsafe { ptr::read_unaligned(phdr_ptr) };
+        let phdr_ptr: *const P = unsafe { source.as_ptr().add(entry_offset) }.cast::<P>();
+        let phdr: P = unsafe { ptr::read_unaligned(phdr_ptr) };
 
         // Loadable segment.
-        if phdr.p_type == PT_LOAD {
-            let vaddr: usize = phdr.p_vaddr as usize;
-            let memsz: usize = phdr.p_memsz as usize;
+        if phdr.seg_type() == PT_LOAD {
+            let vaddr: usize = phdr.seg_vaddr();
+            let memsz: usize = phdr.seg_memsz();
             let segment_end: usize = vaddr.checked_add(memsz).ok_or_else(|| {
                 let reason: &str = "segment end address overflow";
                 error!("memory_footprint(): {reason} (vaddr={vaddr:#010x}, memsz={memsz})");
@@ -318,7 +342,7 @@ pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
     // Check if no loadable segments were found.
     if !found_loadable {
         let reason: &str = "no loadable segments found";
-        error!("memory_footprint(): {reason} (e_phnum={})", ehdr.e_phnum);
+        error!("memory_footprint(): {reason}");
         return Err(anyhow::anyhow!(reason));
     }
 
@@ -337,6 +361,117 @@ pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
         start: start_address,
         end: end_address,
     })
+}
+
+///
+/// # Description
+///
+/// Computes the memory footprint of an ELF file.
+///
+/// This function parses the ELF header and program headers to determine the lowest and highest
+/// virtual addresses that will be occupied when the ELF is loaded into memory. This is useful for
+/// calculating memory layout requirements before actually loading the ELF.
+///
+/// # Parameters
+///
+/// - `source`: ELF file bytes in memory.
+///
+/// # Returns
+///
+/// Upon successful completion, this function returns the memory footprint of the loadable
+/// segments. Otherwise, it returns an error.
+///
+pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
+    trace!("memory_footprint(): source_len={}", source.len());
+
+    let source_len: usize = source.len();
+
+    // We need at least EI_NIDENT bytes to read the ELF class.
+    if source_len < EI_NIDENT {
+        let reason: &str = "buffer too small for ELF identification";
+        error!("memory_footprint(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    match source[4] {
+        ELFCLASS32 => memory_footprint_elf32(source),
+        ELFCLASS64 => memory_footprint_elf64(source),
+        _ => {
+            let reason: &str = "unsupported elf class";
+            error!("memory_footprint(): {reason} (e_ident[4]={})", source[4]);
+            Err(anyhow::anyhow!(reason))
+        },
+    }
+}
+
+fn memory_footprint_elf32(source: &[u8]) -> Result<MemoryFootprint> {
+    let source_len: usize = source.len();
+    let fh_size: usize = mem::size_of::<Elf32Fhdr>();
+
+    // Check if buffer is too small to contain ELF header.
+    if source_len < fh_size {
+        let reason: &str = "buffer too small for ELF header";
+        error!("memory_footprint(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Safety: the buffer size check above guarantees that `source` contains at least
+    // `size_of::<Elf32Fhdr>()` bytes, so the read is within bounds.
+    let ehdr: Elf32Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf32Fhdr>()) };
+
+    // Check if ELF magic number is valid.
+    if !ehdr.is_valid() {
+        let reason: &str = "header is null or invalid magic";
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = ehdr.e_phoff as usize;
+    let phentsize: usize = ehdr.e_phentsize as usize;
+    let phnum: usize = ehdr.e_phnum as usize;
+
+    // Check if program header has an invalid size.
+    if phentsize != mem::size_of::<Elf32Phdr>() {
+        let reason: &str = "invalid program header entry size";
+        error!("memory_footprint(): {reason} (e_phentsize={})", ehdr.e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    compute_footprint_from_phdrs::<Elf32Phdr>(source, phoff, phentsize, phnum)
+}
+
+fn memory_footprint_elf64(source: &[u8]) -> Result<MemoryFootprint> {
+    let source_len: usize = source.len();
+    let fh_size: usize = mem::size_of::<Elf64Fhdr>();
+
+    // Check if buffer is too small to contain ELF64 header.
+    if source_len < fh_size {
+        let reason: &str = "buffer too small for ELF64 header";
+        error!("memory_footprint(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Safety: the buffer size check above guarantees that `source` contains at least
+    // `size_of::<Elf64Fhdr>()` bytes, so the read is within bounds.
+    let ehdr: Elf64Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf64Fhdr>()) };
+
+    // Check if ELF magic number is valid.
+    if !ehdr.is_valid() {
+        let reason: &str = "header is null or invalid magic";
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = ehdr.e_phoff as usize;
+    let phentsize: usize = ehdr.e_phentsize as usize;
+    let phnum: usize = ehdr.e_phnum as usize;
+
+    // Check if program header has an invalid size.
+    if phentsize != mem::size_of::<Elf64Phdr>() {
+        let reason: &str = "invalid program header entry size";
+        error!("memory_footprint(): {reason} (e_phentsize={})", ehdr.e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    compute_footprint_from_phdrs::<Elf64Phdr>(source, phoff, phentsize, phnum)
 }
 
 ///
@@ -375,6 +510,37 @@ pub unsafe fn load(
         destination, source
     );
 
+    // Read e_ident to detect ELF class.
+    let e_ident: &[u8; EI_NIDENT] = &*(source as *const [u8; EI_NIDENT]);
+
+    // Check if ELF magic number is valid.
+    if e_ident[0] != ELFMAG0
+        || e_ident[1] != ELFMAG1 as u8
+        || e_ident[2] != ELFMAG2 as u8
+        || e_ident[3] != ELFMAG3 as u8
+    {
+        let reason: String = "header is null or invalid magic".to_string();
+        error!("load(): {reason} (e_ident={:?})", e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    match e_ident[4] {
+        ELFCLASS32 => load_elf32(destination, source, max_offset),
+        ELFCLASS64 => load_elf64(destination, source, max_offset),
+        _ => {
+            let reason: String = "unsupported elf class".to_string();
+            error!("load(): {reason} (e_ident[4]={})", e_ident[4]);
+            Err(anyhow::anyhow!(reason))
+        },
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn load_elf32(
+    destination: *mut std::ffi::c_void,
+    source: *const u8,
+    max_offset: usize,
+) -> Result<(usize, usize, usize)> {
     let mut first_address: usize = usize::MAX;
     let mut last_address: usize = 0;
 
@@ -383,24 +549,6 @@ pub unsafe fn load(
 
     let entry: usize = (*ehdr).e_entry as usize;
     trace!("entry point: {entry:#010x}");
-
-    // Check if ELF magic number is valid.
-    if (*ehdr).e_ident[0] != ELFMAG0
-        || (*ehdr).e_ident[1] != ELFMAG1 as u8
-        || (*ehdr).e_ident[2] != ELFMAG2 as u8
-        || (*ehdr).e_ident[3] != ELFMAG3 as u8
-    {
-        let reason: String = "header is null or invalid magic".to_string();
-        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
-        return Err(anyhow::anyhow!(reason));
-    }
-
-    // Check ELF class.
-    if (*ehdr).e_ident[4] != ELFCLASS32 {
-        let reason: String = "invalid elf class".to_string();
-        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
-        return Err(anyhow::anyhow!(reason));
-    }
 
     // Check data encoding.
     if (*ehdr).e_ident[5] != ELFDATA2LSB {
@@ -506,6 +654,477 @@ pub unsafe fn load(
     if !loaded_segment {
         let reason: String = "no loadable segments found".to_string();
         error!("load(): {reason} (e_phnum={})", (*ehdr).e_phnum);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let size: usize = last_address - first_address;
+
+    Ok((entry, first_address, size))
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn load_elf64(
+    destination: *mut std::ffi::c_void,
+    source: *const u8,
+    max_offset: usize,
+) -> Result<(usize, usize, usize)> {
+    let mut first_address: usize = usize::MAX;
+    let mut last_address: usize = 0;
+
+    // Get entry point.
+    let ehdr: *const Elf64Fhdr = source.cast::<Elf64Fhdr>();
+
+    let entry: usize = (*ehdr).e_entry as usize;
+    trace!("entry point: {entry:#010x}");
+
+    // Check data encoding.
+    if (*ehdr).e_ident[5] != ELFDATA2LSB {
+        let reason: String = "invalid data encoding".to_string();
+        error!("load(): {reason} (e_ident={:?})", (*ehdr).e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Check version.
+    if (*ehdr).e_version != EV_CURRENT {
+        let reason: String = "invalid version".to_string();
+        error!("load(): {reason} (e_version={})", (*ehdr).e_version);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Check ELF type.
+    if (*ehdr).e_type != ET_EXEC {
+        let reason: String = "invalid elf type".to_string();
+        error!("load(): {reason} (e_type={})", (*ehdr).e_type);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Check ELF machine architecture.
+    if (*ehdr).e_machine != EM_X86_64 {
+        let reason: String = "invalid machine architecture".to_string();
+        error!("load(): {reason} (e_machine={})", (*ehdr).e_machine);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Get program header table.
+    let phdr: *const Elf64Phdr = (source as usize + (*ehdr).e_phoff as usize) as *const Elf64Phdr;
+
+    // Check if program header has an invalid size.
+    if (*ehdr).e_phentsize as usize != mem::size_of::<Elf64Phdr>() {
+        let reason: String = "invalid program header entry size".to_string();
+        error!("load(): {reason} (e_phentsize={})", (*ehdr).e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Load program segments.
+    let mut loaded_segment: bool = false;
+    for i in 0..(*ehdr).e_phnum {
+        let phdr = &*phdr.add(i as usize);
+
+        // Loadable segment.
+        if phdr.p_type == PT_LOAD {
+            let offset: usize = phdr.p_offset as usize;
+            let vaddr: usize = phdr.p_vaddr as usize;
+            let filesz: usize = phdr.p_filesz as usize;
+            let memsz: usize = phdr.p_memsz as usize;
+
+            // Check if file size exceeds memory size.
+            if filesz > memsz {
+                let reason: String = "segment file size exceeds memory size".to_string();
+                error!("load(): {reason} (filesz={filesz:#010x}, memsz={memsz:#010x})",);
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            // Check if segment fits in memory.
+            if vaddr + memsz > max_offset {
+                let reason: String = "segment does not fit in memory".to_string();
+                error!(
+                    "load(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, \
+                     max_offset={max_offset:#010x})",
+                );
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            debug!(
+                "loading(): loading segment: offset={offset:#010x} vaddr={vaddr:#010x} \
+                 filesz={filesz:#010x} memsz={memsz:#010x}",
+            );
+
+            // Copy segment to memory.
+            let src: *const u8 = ehdr.cast::<u8>();
+            let src: *const u8 = src.add(offset);
+            let dst: *mut u8 = destination.cast::<u8>();
+            let dst: *mut u8 = dst.add(vaddr);
+            std::ptr::copy_nonoverlapping(src, dst, filesz);
+
+            // Zero out the BSS section.
+            if memsz > filesz {
+                let bss_size: usize = memsz - filesz;
+                let bss_dst: *mut u8 = dst.add(filesz);
+                std::ptr::write_bytes(bss_dst, 0, bss_size);
+            }
+
+            // Update first address.
+            if !loaded_segment || vaddr < first_address {
+                first_address = vaddr;
+            }
+
+            // Update last address.
+            if vaddr + memsz > last_address {
+                last_address = vaddr + memsz;
+            }
+
+            loaded_segment = true;
+        }
+    }
+
+    // Check if no loadable segments were found.
+    if !loaded_segment {
+        let reason: String = "no loadable segments found".to_string();
+        error!("load(): {reason} (e_phnum={})", (*ehdr).e_phnum);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let size: usize = last_address - first_address;
+
+    Ok((entry, first_address, size))
+}
+
+//==================================================================================================
+// ELF64 Support (x86_64 long mode)
+//==================================================================================================
+
+/// ELF 64-bit file header.
+#[cfg(feature = "x86_64")]
+#[repr(C)]
+pub struct Elf64Fhdr {
+    e_ident: [u8; EI_NIDENT], // ELF magic numbers and other info.
+    e_type: u16,              // Object file type.
+    e_machine: u16,           // Required machine architecture type.
+    e_version: u32,           // Object file version.
+    e_entry: u64,             // Virtual address of process's entry point.
+    e_phoff: u64,             // Program header table file offset.
+    e_shoff: u64,             // Section header table file offset.
+    e_flags: u32,             // Processor-specific flags.
+    e_ehsize: u16,            // ELF header's size in bytes.
+    e_phentsize: u16,         // Program header table entry size.
+    e_phnum: u16,             // Entries in the program header table.
+    e_shentsize: u16,         // Section header table size.
+    e_shnum: u16,             // Entries in the section header table.
+    e_shstrndx: u16,          // Index for the section name string table.
+}
+
+/// ELF 64-bit program header.
+#[cfg(feature = "x86_64")]
+#[repr(C)]
+struct Elf64Phdr {
+    p_type: u32,   // Segment type.
+    p_flags: u32,  // Segment flags.
+    p_offset: u64, // Offset of the first byte.
+    p_vaddr: u64,  // Virtual address of the first byte.
+    p_paddr: u64,  // Physical address of the first byte.
+    p_filesz: u64, // Bytes in the file image.
+    p_memsz: u64,  // Bytes in the memory image.
+    p_align: u64,  // Alignment value.
+}
+
+#[cfg(feature = "x86_64")]
+impl Elf64Fhdr {
+    fn is_valid(&self) -> bool {
+        if self.e_ident[0] != ELFMAG0
+            || self.e_ident[1] != ELFMAG1 as u8
+            || self.e_ident[2] != ELFMAG2 as u8
+            || self.e_ident[3] != ELFMAG3 as u8
+        {
+            error!("header is null or invalid magic");
+            return false;
+        }
+        true
+    }
+}
+
+///
+/// # Description
+///
+/// Computes the memory footprint of a 64-bit ELF file.
+///
+/// # Parameters
+///
+/// - `source`: ELF file bytes in memory.
+///
+/// # Returns
+///
+/// Upon successful completion, this function returns the memory footprint of the loadable
+/// segments. Otherwise, it returns an error.
+///
+#[cfg(feature = "x86_64")]
+pub fn memory_footprint64(source: &[u8]) -> Result<MemoryFootprint> {
+    trace!("memory_footprint64(): source_len={}", source.len());
+
+    let source_len: usize = source.len();
+    let fh_size: usize = mem::size_of::<Elf64Fhdr>();
+
+    if source_len < fh_size {
+        let reason: &str = "buffer too small for ELF64 header";
+        error!("memory_footprint64(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let ehdr: Elf64Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf64Fhdr>()) };
+
+    if !ehdr.is_valid() {
+        let reason: &str = "header is null or invalid magic";
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if ehdr.e_ident[4] != ELFCLASS64 {
+        let reason: &str = "invalid elf class (expected ELF64)";
+        error!("memory_footprint64(): {reason} (e_ident={:?})", ehdr.e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = ehdr.e_phoff as usize;
+    let phentsize: usize = ehdr.e_phentsize as usize;
+    let phnum: usize = ehdr.e_phnum as usize;
+
+    if phentsize != mem::size_of::<Elf64Phdr>() {
+        let reason: &str = "invalid program header entry size";
+        error!("memory_footprint64(): {reason} (e_phentsize={})", ehdr.e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let ph_table_size: usize = phentsize.checked_mul(phnum).ok_or_else(|| {
+        let reason: &str = "program header table size overflow";
+        error!("memory_footprint64(): {reason} (e_phnum={})", ehdr.e_phnum);
+        anyhow::anyhow!(reason)
+    })?;
+
+    let ph_table_end: usize = phoff.checked_add(ph_table_size).ok_or_else(|| {
+        let reason: &str = "program header table offset overflow";
+        error!("memory_footprint64(): {reason} (e_phoff={})", ehdr.e_phoff);
+        anyhow::anyhow!(reason)
+    })?;
+
+    if ph_table_end > source_len {
+        let reason: &str = "program header table exceeds buffer";
+        error!(
+            "memory_footprint64(): {reason} (phoff={}, size={}, len={})",
+            phoff, ph_table_size, source_len
+        );
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let mut end_address: usize = 0;
+    let mut start_address: usize = usize::MAX;
+    let mut found_loadable: bool = false;
+
+    for i in 0..phnum {
+        let entry_offset: usize = phoff + (i * phentsize);
+        let entry_end: usize = entry_offset + phentsize;
+
+        if entry_end > source_len {
+            let reason: &str = "program header entry exceeds buffer";
+            error!(
+                "memory_footprint64(): {reason} (offset={}, phentsize={}, len={})",
+                entry_offset, phentsize, source_len
+            );
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        let phdr_ptr: *const Elf64Phdr =
+            unsafe { source.as_ptr().add(entry_offset) }.cast::<Elf64Phdr>();
+        let phdr: Elf64Phdr = unsafe { ptr::read_unaligned(phdr_ptr) };
+
+        if phdr.p_type == PT_LOAD {
+            let vaddr: usize = phdr.p_vaddr as usize;
+            let memsz: usize = phdr.p_memsz as usize;
+            let segment_end: usize = vaddr.checked_add(memsz).ok_or_else(|| {
+                let reason: &str = "segment end address overflow";
+                error!("memory_footprint64(): {reason} (vaddr={vaddr:#010x}, memsz={memsz})");
+                anyhow::anyhow!(reason)
+            })?;
+
+            if vaddr < start_address {
+                start_address = vaddr;
+            }
+            if segment_end > end_address {
+                end_address = segment_end;
+            }
+            found_loadable = true;
+        }
+    }
+
+    if !found_loadable {
+        let reason: &str = "no loadable segments found";
+        error!("memory_footprint64(): {reason} (e_phnum={})", ehdr.e_phnum);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if end_address < start_address {
+        let reason: &str = "invalid segment layout: start after end";
+        error!(
+            "memory_footprint64(): {reason} (start={start_address:#010x}, end={end_address:#010x})"
+        );
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    debug!("memory_footprint64(): start={start_address:#010x}, end={end_address:#010x}");
+
+    Ok(MemoryFootprint {
+        start: start_address,
+        end: end_address,
+    })
+}
+
+///
+/// # Description
+///
+/// Loads a 64-bit ELF file into memory.
+///
+/// # Parameters
+///
+/// - `destination`: Destination address in memory.
+/// - `source`: Source address in memory.
+/// - `max_offset`: Maximum offset in memory.
+///
+/// # Returns
+///
+/// Upon successful completion, this function returns a tuple containing the entry point, the first
+/// address, and the size of the program that was loaded into memory. Otherwise, it returns an error.
+///
+/// # Safety
+///
+/// This function is unsafe because it manipulates raw pointers and is up to the caller to ensure
+/// that the following conditions are met:
+///
+/// - The `destination` address is valid.
+/// - The `source` address is valid.
+/// - The `max_offset` is valid.
+///
+#[cfg(feature = "x86_64")]
+#[allow(unsafe_op_in_unsafe_fn)]
+pub unsafe fn load64(
+    destination: *mut std::ffi::c_void,
+    source: *const u8,
+    max_offset: usize,
+) -> Result<(usize, usize, usize)> {
+    trace!(
+        "load64(): destination={:?} source={:?} max_offset={max_offset:#010x}",
+        destination, source
+    );
+
+    let mut first_address: usize = usize::MAX;
+    let mut last_address: usize = 0;
+
+    let ehdr: *const Elf64Fhdr = source.cast::<Elf64Fhdr>();
+
+    let entry: usize = (*ehdr).e_entry as usize;
+    trace!("entry point: {entry:#010x}");
+
+    if (*ehdr).e_ident[0] != ELFMAG0
+        || (*ehdr).e_ident[1] != ELFMAG1 as u8
+        || (*ehdr).e_ident[2] != ELFMAG2 as u8
+        || (*ehdr).e_ident[3] != ELFMAG3 as u8
+    {
+        let reason: String = "header is null or invalid magic".to_string();
+        error!("load64(): {reason} (e_ident={:?})", (*ehdr).e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if (*ehdr).e_ident[4] != ELFCLASS64 {
+        let reason: String = "invalid elf class (expected ELF64)".to_string();
+        error!("load64(): {reason} (e_ident={:?})", (*ehdr).e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if (*ehdr).e_ident[5] != ELFDATA2LSB {
+        let reason: String = "invalid data encoding".to_string();
+        error!("load64(): {reason} (e_ident={:?})", (*ehdr).e_ident);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if (*ehdr).e_version != EV_CURRENT {
+        let reason: String = "invalid version".to_string();
+        error!("load64(): {reason} (e_version={})", (*ehdr).e_version);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if (*ehdr).e_type != ET_EXEC {
+        let reason: String = "invalid elf type".to_string();
+        error!("load64(): {reason} (e_type={})", (*ehdr).e_type);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if (*ehdr).e_machine != EM_X86_64 {
+        let reason: String = "invalid machine architecture (expected x86_64)".to_string();
+        error!("load64(): {reason} (e_machine={})", (*ehdr).e_machine);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phdr: *const Elf64Phdr = (source as usize + (*ehdr).e_phoff as usize) as *const Elf64Phdr;
+
+    if (*ehdr).e_phentsize as usize != mem::size_of::<Elf64Phdr>() {
+        let reason: String = "invalid program header entry size".to_string();
+        error!("load64(): {reason} (e_phentsize={})", (*ehdr).e_phentsize);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let mut loaded_segment: bool = false;
+    for i in 0..(*ehdr).e_phnum {
+        let phdr = &*phdr.add(i as usize);
+
+        if phdr.p_type == PT_LOAD {
+            let offset: usize = phdr.p_offset as usize;
+            let vaddr: usize = phdr.p_vaddr as usize;
+            let filesz: usize = phdr.p_filesz as usize;
+            let memsz: usize = phdr.p_memsz as usize;
+
+            if filesz > memsz {
+                let reason: String = "segment file size exceeds memory size".to_string();
+                error!("load64(): {reason} (filesz={filesz:#010x}, memsz={memsz:#010x})",);
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            if vaddr + memsz > max_offset {
+                let reason: String = "segment does not fit in memory".to_string();
+                error!(
+                    "load64(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, \
+                     max_offset={max_offset:#010x})",
+                );
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            debug!(
+                "load64(): loading segment: offset={offset:#010x} vaddr={vaddr:#010x} \
+                 filesz={filesz:#010x} memsz={memsz:#010x}",
+            );
+
+            let src: *const u8 = ehdr.cast::<u8>();
+            let src: *const u8 = src.add(offset);
+            let dst: *mut u8 = destination.cast::<u8>();
+            let dst: *mut u8 = dst.add(vaddr);
+            std::ptr::copy_nonoverlapping(src, dst, filesz);
+
+            if memsz > filesz {
+                let bss_size: usize = memsz - filesz;
+                let bss_dst: *mut u8 = dst.add(filesz);
+                std::ptr::write_bytes(bss_dst, 0, bss_size);
+            }
+
+            if !loaded_segment || vaddr < first_address {
+                first_address = vaddr;
+            }
+
+            if vaddr + memsz > last_address {
+                last_address = vaddr + memsz;
+            }
+
+            loaded_segment = true;
+        }
+    }
+
+    if !loaded_segment {
+        let reason: String = "no loadable segments found".to_string();
+        error!("load64(): {reason} (e_phnum={})", (*ehdr).e_phnum);
         return Err(anyhow::anyhow!(reason));
     }
 

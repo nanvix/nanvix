@@ -26,7 +26,6 @@ use crate::{
         },
     },
     mm::{
-        elf::Elf32Fhdr,
         kstack::KernelStack,
         ustack::UserStack,
         VirtMemoryManager,
@@ -426,7 +425,7 @@ impl ProcessManager {
     pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
+        elf_addr: usize,
         args: &str,
         env: &str,
     ) -> Result<ProcessIdentifier, Error> {
@@ -473,7 +472,7 @@ impl ProcessManager {
 
         // Load the ELF file into the new address space.
         let (entry, args_vaddr): (VirtualAddress, PageAligned<VirtualAddress>) =
-            mm.load_elf(&mut vmem, elf)?;
+            mm.load_elf(&mut vmem, elf_addr)?;
 
         // Allocate a user-space page, write command line arguments to it, and check for errors.
         // Note we subtract a pointer size from PAGE_SIZE to account for the null terminator.

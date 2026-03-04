@@ -89,6 +89,7 @@ const EM_68K: u16 = 4; // Motorola 68000.
 const EM_88K: u16 = 5; // Motorola 88000.
 const EM_860: u16 = 7; // Intel 80860.
 const EM_MIPS: u16 = 8; // MIPS RS3000.
+const EM_X86_64: u16 = 62; // AMD x86-64.
 
 // Object file versions.
 const EV_NONE: u32 = 0; // Invalid version.
@@ -141,6 +142,56 @@ struct Elf32Phdr {
     p_memsz: u32,  // Bytes in the memory image.
     p_flags: u32,  // Segment flags.
     p_align: u32,  // Alignment value.
+}
+
+// ELF 64 file header.
+#[repr(C)]
+struct Elf64Fhdr {
+    e_ident: [u8; EI_NIDENT], // ELF magic numbers and other info.
+    e_type: u16,              // Object file type.
+    e_machine: u16,           // Required machine architecture type.
+    e_version: u32,           // Object file version.
+    e_entry: u64,             // Virtual address of process's entry point.
+    e_phoff: u64,             // Program header table file offset.
+    e_shoff: u64,             // Section header table file offset.
+    e_flags: u32,             // Processor-specific flags.
+    e_ehsize: u16,            // ELF header's size in bytes.
+    e_phentsize: u16,         // Program header table entry size.
+    e_phnum: u16,             // Entries in the program header table.
+    e_shentsize: u16,         // Section header table size.
+    e_shnum: u16,             // Entries in the section header table.
+    e_shstrndx: u16,          // Index for the section name string table.
+}
+
+impl Elf64Fhdr {
+    fn from_address(addr: usize) -> &'static Self {
+        unsafe { &*(addr as *const Self) }
+    }
+
+    fn is_valid(&self) -> bool {
+        if self.e_ident[0] != ELFMAG0
+            || self.e_ident[1] != ELFMAG1 as u8
+            || self.e_ident[2] != ELFMAG2 as u8
+            || self.e_ident[3] != ELFMAG3 as u8
+        {
+            error!("header is NULL or invalid magic");
+            return false;
+        }
+        true
+    }
+}
+
+// ELF 64 program header.
+#[repr(C)]
+struct Elf64Phdr {
+    p_type: u32,   // Segment type.
+    p_flags: u32,  // Segment flags (different position than ELF32).
+    p_offset: u64, // Offset of the first byte.
+    p_vaddr: u64,  // Virtual address of the first byte.
+    p_paddr: u64,  // Physical address of the first byte.
+    p_filesz: u64, // Bytes in the file image.
+    p_memsz: u64,  // Bytes in the memory image.
+    p_align: u64,  // Alignment value.
 }
 
 // Rust equivalent of the C functions.
@@ -317,4 +368,204 @@ pub fn elf32_load(
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
     do_elf32_load(mm, vmem, elf, true)?;
     do_elf32_load(mm, vmem, elf, false)
+}
+
+///
+/// # Description
+///
+/// Loads an ELF64 binary into a target virtual memory space.
+///
+/// # Parameters
+///
+/// - `mm`: Virtual memory manager.
+/// - `vmem`: Target virtual memory space.
+/// - `elf`: ELF64 file header.
+///
+/// # Returns
+///
+/// Upon successful completion, the entry point of the ELF64 binary and the address past the
+/// last loaded segment are returned. If an error occurs, an error code is returned and the
+/// virtual memory space may be left in an inconsistent state.
+///
+fn do_elf64_load(
+    mm: &mut VirtMemoryManager,
+    vmem: &mut Vmem,
+    elf: &Elf64Fhdr,
+    dry_run: bool,
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    trace!("dry_run={}", dry_run);
+
+    let mut last_address: usize = 0;
+
+    if !elf.is_valid() {
+        return Err(Error::new(ErrorCode::BadFile, "invalid elf file"));
+    }
+
+    let entry: VirtualAddress = VirtualAddress::new(elf.e_entry as usize);
+
+    // Check if entry point does not match what we expect.
+    if entry < config::memory_layout::USER_BASE {
+        let reason: &str = "invalid binary entry point";
+        error!("do_elf64_load: {} (entry={:?})", reason, entry);
+        return Err(Error::new(ErrorCode::BadFile, "invalid entry point"));
+    }
+
+    let phdr_base = unsafe {
+        (elf as *const Elf64Fhdr as *const u8).offset(elf.e_phoff as isize) as *const Elf64Phdr
+    };
+    let phdrs = unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
+
+    // Load segments.
+    for phdr in phdrs {
+        if phdr.p_type != PT_LOAD {
+            continue;
+        }
+
+        // Check if the segment is not valid.
+        if phdr.p_filesz > phdr.p_memsz {
+            return Err(Error::new(ErrorCode::BadFile, "corrupted elf file"));
+        }
+
+        let align: Alignment = (phdr.p_align as u32)
+            .try_into()
+            .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
+        let virt_addr_base: usize = ::sys::mm::align_down(phdr.p_vaddr as usize, align);
+
+        // Compute access permissions.
+        let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
+            AccessPermission::EXEC
+        } else if (phdr.p_flags & PF_W) != 0 {
+            AccessPermission::RDWR
+        } else {
+            AccessPermission::RDONLY
+        };
+
+        // Allocate segment.
+        let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
+        let virt_addr_range_end: usize = virt_addr_base.checked_add(size).ok_or_else(|| {
+            let reason: &str = "virtual address overflow in elf segment";
+            error!("do_elf64_load(): {reason} (virt_addr_base={virt_addr_base:#x}, size={size})");
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
+        let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_range_end, PAGE_ALIGNMENT)
+            .ok_or_else(|| {
+                let reason: &str = "align_up overflow";
+                error!("do_elf64_load(): {reason} (virt_addr_range_end={virt_addr_range_end:#x})");
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
+
+        let phys_addr_base: usize = unsafe {
+            (elf as *const Elf64Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
+        };
+
+        let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
+
+        // Load segment page by page.
+        debug!(
+            "do_elf64_load(): loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, \
+             phys_addr_base={:#x}, phys_addr_end={:#x}, access={:?})",
+            virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
+        );
+
+        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
+            let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+
+            // Check if address lies in user space.
+            if vaddr < config::memory_layout::USER_BASE {
+                let reason: &str = "invalid load address";
+                error!("do_elf64_load: {}", reason);
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
+
+            // Check if we should perform the allocation.
+            if !dry_run {
+                // Allocate page.
+                mm.alloc_upage(vmem, vaddr, access, true)?;
+            }
+
+            // Update last address.
+            if vaddr.into_raw_value() + mem::PAGE_SIZE > last_address {
+                last_address = vaddr.into_raw_value() + mem::PAGE_SIZE;
+            }
+
+            let phys_addr: usize = phys_addr_base + (vaddr.into_raw_value() - virt_addr_base);
+
+            // Load segment only if it is within bounds.
+            if phys_addr < phys_addr_end {
+                let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
+
+                // Load segment only if it has a non-zero size.
+                if size > 0 {
+                    vmem.copy_to_user_unaligned_unchecked(
+                        vaddr.into_inner(),
+                        VirtualAddress::from_raw_value(phys_addr),
+                        size,
+                        dry_run,
+                    )?;
+                }
+            }
+        }
+    }
+
+    let aligned_last: VirtualAddress = VirtualAddress::new(last_address)
+        .align_up(PAGE_ALIGNMENT)
+        .ok_or_else(|| {
+        let reason: &str = "align_up overflow";
+        error!("do_elf64_load(): {reason} (last_address={last_address:#x})");
+        Error::new(ErrorCode::BadFile, reason)
+    })?;
+
+    Ok((entry, PageAligned::from_address(aligned_last)?))
+}
+
+fn elf64_load(
+    mm: &mut VirtMemoryManager,
+    vmem: &mut Vmem,
+    elf: &Elf64Fhdr,
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    do_elf64_load(mm, vmem, elf, true)?;
+    do_elf64_load(mm, vmem, elf, false)
+}
+
+///
+/// # Description
+///
+/// Loads an ELF binary into a target virtual memory space. Detects the ELF class (32-bit or
+/// 64-bit) at runtime from the `e_ident` bytes and dispatches to the appropriate loader.
+///
+/// # Parameters
+///
+/// - `mm`: Virtual memory manager.
+/// - `vmem`: Target virtual memory space.
+/// - `addr`: Address of the ELF binary in memory.
+///
+/// # Returns
+///
+/// Upon successful completion, the entry point of the ELF binary and the address past the
+/// last loaded segment are returned.
+///
+pub fn load_elf(
+    mm: &mut VirtMemoryManager,
+    vmem: &mut Vmem,
+    addr: usize,
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    // Read the e_ident bytes to detect ELF class.
+    let e_ident: &[u8; EI_NIDENT] = unsafe { &*(addr as *const [u8; EI_NIDENT]) };
+
+    match e_ident[4] {
+        ELFCLASS32 => {
+            let elf: &Elf32Fhdr = Elf32Fhdr::from_address(addr);
+            elf32_load(mm, vmem, elf)
+        },
+        ELFCLASS64 => {
+            let elf: &Elf64Fhdr = Elf64Fhdr::from_address(addr);
+            elf64_load(mm, vmem, elf)
+        },
+        _ => {
+            error!("load_elf: unsupported ELF class (e_ident[4]={})", e_ident[4]);
+            Err(Error::new(ErrorCode::BadFile, "unsupported elf class"))
+        },
+    }
 }

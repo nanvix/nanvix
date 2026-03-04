@@ -5,22 +5,20 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "x86_64"))]
+use crate::hal::arch::x86::mem::mmu::page_table::PageTable;
+#[cfg(feature = "x86_64")]
+use crate::hal::arch::x86_64::mem::mmu::page_table::PageTable;
 use crate::{
-    hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
-        mem::{
-            AccessPermission,
-            Address,
-            PageAligned,
-            PageTableAddress,
-            VirtualAddress,
-        },
+    hal::mem::{
+        AccessPermission,
+        Address,
+        PageAligned,
+        PageTableAddress,
+        VirtualAddress,
     },
     mm::{
-        elf::{
-            self,
-            Elf32Fhdr,
-        },
+        elf,
         phys::{
             KernelFrame,
             PhysMemoryManager,
@@ -404,8 +402,8 @@ impl VirtMemoryManager {
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
-        elf: &Elf32Fhdr,
+        addr: usize,
     ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-        elf::elf32_load(self, vmem, elf)
+        elf::load_elf(self, vmem, addr)
     }
 }
