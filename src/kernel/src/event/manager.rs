@@ -582,9 +582,8 @@ impl EventManagerInner {
         let pid: ProcessIdentifier = match self.exception_ownership[idx] {
             Some(owner) => owner,
             None => {
-                let reason: &str = "no owner for exception";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::NoSuchProcess, reason));
+                // No exception owner registered — return error to kill the process.
+                return Err(Error::new(ErrorCode::NoSuchProcess, "no owner for exception"));
             },
         };
 
@@ -970,6 +969,27 @@ fn do_exception_handler(
         pm.handle_fpu_exception().map_err(SleepError::Generic)?;
 
         return Ok(());
+    }
+
+    // Handle page faults in standalone mode by mapping the faulting page.
+    if info.num() == ::arch::cpu::excp::Exception::PageFault as u32 {
+        let fault_addr: usize = info.addr() as usize;
+        let page_addr: usize = fault_addr & !0xFFF;
+
+        // Try to map the faulting page if it's in user space.
+        if let Ok(vaddr) = crate::hal::mem::PageAligned::from_address(
+            ::sys::mm::VirtualAddress::new(page_addr),
+        ) {
+            let result = unsafe {
+                let mm: &mut crate::mm::VirtMemoryManager = crate::mm::VirtMemoryManager::get_mut();
+                let pm: &mut ProcessManager = ProcessManager::get_mut();
+                pm.mmap(mm, pid, vaddr, ::sys::mm::AccessPermission::RDWR)
+            };
+            if result.is_ok() {
+                return Ok(());
+            }
+        }
+        // Fall through to kill the process if the page cannot be mapped.
     }
 
     // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
