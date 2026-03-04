@@ -65,10 +65,13 @@ kredzone_size = 128
 #==================================================================================================
 
 # Timer frequency (in Hz).
-timer_freq = 10000
+# Lower values reduce KVM VM-exit overhead from timer interrupts.
+# 1000 Hz provides 1ms resolution with ~10x fewer VM exits than 10 kHz.
+timer_freq = 1000
 
 # Scheduler frequency (in ticks).
-scheduler_freq = 1000
+# At 1000 Hz timer, 50 ticks = 50ms preemption quantum.
+scheduler_freq = 50
 
 #==================================================================================================
 # Inter-Kernel / Inter-Process Communication
