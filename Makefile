@@ -44,6 +44,7 @@ export STANDALONE ?= no
 # Standalone mode implies single-process deployment (no separate linuxd binary).
 ifeq ($(STANDALONE),yes)
 override SINGLE_PROCESS := yes
+override MEMFS := yes
 endif
 
 # Log Level
