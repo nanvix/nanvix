@@ -93,11 +93,12 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`USER_END`], which can be used in constant-value expressions.
     ///
-    /// On x86_64, user space is limited to the first 128MB to fit within
-    /// the minimum guest memory size.
+    /// On x86_64, user space extends to 256MB. With 4KB identity-mapped pages,
+    /// the page table pages (at GPA 0x6000+) occupy 512KB — well below the
+    /// kernel load address at 0x100000.
     ///
     #[cfg(target_arch = "x86_64")]
-    pub const USER_END_RAW: usize = 0x0800_0000;
+    pub const USER_END_RAW: usize = 0x1000_0000;
     #[cfg(not(target_arch = "x86_64"))]
     pub const USER_END_RAW: usize = 0xf0000000;
 
