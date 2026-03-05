@@ -44,11 +44,13 @@ runs:
       RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
       MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
     run: |
-      ./z build --with-minimal-docker -- "${CHECK_TARGET}" \
-        "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
-        "LOG_LEVEL=${LOG_LEVEL}" \
-        VERBOSE=yes \
-        BUILD_OPT=no \
-        ${RELEASE_FLAG} \
-        ${MAKE_FLAGS}
+      ./scripts/docker-retry.sh \
+        "target=${CHECK_TARGET} machine=${MACHINE_TYPE}" \
+        ./z build --with-minimal-docker -- "${CHECK_TARGET}" \
+          "MACHINE=${MACHINE_TYPE}" \
+          TARGET=x86 \
+          "LOG_LEVEL=${LOG_LEVEL}" \
+          VERBOSE=yes \
+          BUILD_OPT=no \
+          ${RELEASE_FLAG} \
+          ${MAKE_FLAGS}

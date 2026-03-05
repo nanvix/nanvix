@@ -33,10 +33,13 @@ runs:
       SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-bench-{0}-{1}', inputs.machine-type, inputs.timestamp-msg == 'yes' && 'echo-breakdown' || 'standard') || '' }}
       SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-bench-{0}-{1}', inputs.machine-type, inputs.timestamp-msg == 'yes' && 'echo-breakdown' || 'standard') || '' }}
     run: |
-      ./z build --with-minimal-docker -- all \
-        "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
-        LOG_LEVEL=panic \
-        VERBOSE=yes \
-        RELEASE=yes \
-        ${TIMESTAMP_MSG_FLAG}
+      build_variant="$([[ "${TIMESTAMP_MSG_FLAG}" == *TIMESTAMP_MSG=yes* ]] && echo 'Echo-Breakdown' || echo 'Standard')"
+      ./scripts/docker-retry.sh \
+        "benchmark=${build_variant} machine=${MACHINE_TYPE}" \
+        ./z build --with-minimal-docker -- all \
+          "MACHINE=${MACHINE_TYPE}" \
+          TARGET=x86 \
+          LOG_LEVEL=panic \
+          VERBOSE=yes \
+          RELEASE=yes \
+          ${TIMESTAMP_MSG_FLAG}
