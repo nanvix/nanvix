@@ -197,8 +197,8 @@ jobs:
         set -Eeuo pipefail
 
         case "${{ matrix.deployment-type }}" in
-          single-process) TEST_CONFIG="test/test-single_process.toml" ;;
-          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
+          single-process) TEST_CONFIG="test/test-single_process-x86_64.toml" ;;
+          multi-process)  TEST_CONFIG="test/test-multi_process-x86_64.toml" ;;
           *)
             echo "::error::Unknown deployment type: ${{ matrix.deployment-type }}"
             exit 1
