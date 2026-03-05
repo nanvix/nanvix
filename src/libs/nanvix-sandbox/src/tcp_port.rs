@@ -17,6 +17,7 @@ use ::log::{
     warn,
 };
 use ::std::{
+    collections::VecDeque,
     fmt,
     sync::{
         Arc,
@@ -96,7 +97,7 @@ impl Drop for TcpPort {
 ///
 #[derive(Clone)]
 struct TcpPortAllocatorInner {
-    ports: Arc<Mutex<Vec<RawTcpPortNum>>>,
+    ports: Arc<Mutex<VecDeque<RawTcpPortNum>>>,
 }
 
 impl TcpPortAllocatorInner {
@@ -111,7 +112,7 @@ impl TcpPortAllocatorInner {
     ///
     fn allocate(&mut self) -> Option<RawTcpPortNum> {
         match self.ports.lock() {
-            Ok(mut guard) => guard.pop(),
+            Ok(mut guard) => guard.pop_front(),
             Err(error) => {
                 error!("allocate(): failed to acquire lock on port pool: {error}");
                 None
@@ -130,7 +131,7 @@ impl TcpPortAllocatorInner {
     ///
     fn release(&self, port: RawTcpPortNum) {
         match self.ports.lock() {
-            Ok(mut guard) => guard.push(port),
+            Ok(mut guard) => guard.push_back(port),
             Err(error) => {
                 warn!("release(): failed to acquire lock on port pool: {error}");
             },
@@ -164,9 +165,10 @@ impl TcpPortAllocator {
     /// A new TCP port allocator.
     ///
     pub fn new(begin: RawTcpPortNum, end: RawTcpPortNum) -> Self {
-        let mut ports: Vec<RawTcpPortNum> = Vec::with_capacity((end - begin + 1) as usize);
+        let mut ports: VecDeque<RawTcpPortNum> =
+            VecDeque::with_capacity((end - begin + 1) as usize);
         for port in begin..=end {
-            ports.push(port);
+            ports.push_back(port);
         }
 
         Self {
