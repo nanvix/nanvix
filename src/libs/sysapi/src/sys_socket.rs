@@ -21,7 +21,6 @@ use ::core::{
     mem::size_of,
 };
 
-#[cfg(target_pointer_width = "32")]
 use crate::sys_types::{
     msghdr,
     size_t,
@@ -212,9 +211,7 @@ unsafe extern "C" {
         optlen: *mut socklen_t,
     ) -> c_int;
     pub fn listen(sockfd: c_int, backlog: c_int) -> c_int;
-    #[cfg(target_pointer_width = "32")]
     pub fn recv(sockfd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t;
-    #[cfg(target_pointer_width = "32")]
     pub fn recvfrom(
         sockfd: c_int,
         buf: *mut c_void,
@@ -223,11 +220,8 @@ unsafe extern "C" {
         sockaddr: *mut sockaddr,
         socklen: *mut socklen_t,
     ) -> ssize_t;
-    #[cfg(target_pointer_width = "32")]
     pub fn recvmsg(sockfd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t;
-    #[cfg(target_pointer_width = "32")]
     pub fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t;
-    #[cfg(target_pointer_width = "32")]
     pub fn sendto(
         sockfd: c_int,
         buf: *const c_void,
@@ -236,7 +230,6 @@ unsafe extern "C" {
         sockaddr: *const sockaddr,
         addrlen: socklen_t,
     ) -> ssize_t;
-    #[cfg(target_pointer_width = "32")]
     pub fn setsockopt(
         sockfd: c_int,
         level: c_int,

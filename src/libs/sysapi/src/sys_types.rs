@@ -34,7 +34,6 @@ use ::config::memory_layout::{
 };
 use ::core::mem::size_of;
 
-#[cfg(target_pointer_width = "32")]
 use crate::sys_uio::iovec;
 
 //==================================================================================================
@@ -350,6 +349,26 @@ impl msghdr {
         + Self::SIZE_OF_MSG_CONTROL
         + Self::SIZE_OF_MSG_CONTROLLEN
         + Self::SIZE_OF_MSG_FLAGS;
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[cfg(target_pointer_width = "64")]
+pub struct msghdr {
+    /// Optional address.
+    pub msg_name: *mut c_void,
+    // Size of the address.
+    pub msg_namelen: socklen_t,
+    // Scatter/gather array of message blocks
+    pub msg_iov: *mut iovec,
+    /// Number of member in `msg_iov`.
+    pub msg_iovlen: usize,
+    /// Ancillary data.
+    pub msg_control: *mut c_void,
+    /// Ancillary data buffer length.
+    pub msg_controllen: usize,
+    /// Flags.
+    pub msg_flags: c_int,
 }
 
 /// Header for ancililary data data objects in msg_control buffer in `msghdr`.

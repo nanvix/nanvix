@@ -31,6 +31,8 @@ pub struct VirtualAddress(usize);
 
 #[cfg(target_pointer_width = "32")]
 ::static_assert::assert_eq_size!(VirtualAddress, ::core::mem::size_of::<u32>());
+#[cfg(target_pointer_width = "64")]
+::static_assert::assert_eq_size!(VirtualAddress, ::core::mem::size_of::<u64>());
 
 //==================================================================================================
 // Implementations
