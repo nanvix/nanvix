@@ -13,7 +13,15 @@ pub mod cr0;
 pub mod cr4;
 pub mod eflags;
 pub mod excp;
+#[cfg(target_arch = "x86")]
 pub mod idt;
+#[cfg(target_arch = "x86_64")]
+#[path = "idt_x86_64.rs"]
+pub mod idt;
+#[cfg(target_arch = "x86")]
+pub mod idtr;
+#[cfg(target_arch = "x86_64")]
+#[path = "idtr_x86_64.rs"]
 pub mod idtr;
 #[cfg(feature = "ioapic")]
 pub mod ioapic;
@@ -27,6 +35,10 @@ pub mod pic;
 #[cfg(feature = "pit")]
 pub mod pit;
 pub mod ring;
+#[cfg(target_arch = "x86")]
+pub mod tss;
+#[cfg(target_arch = "x86_64")]
+#[path = "tss_x86_64.rs"]
 pub mod tss;
 #[cfg(feature = "xapic")]
 pub mod xapic;

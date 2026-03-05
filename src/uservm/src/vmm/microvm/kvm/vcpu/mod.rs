@@ -8,6 +8,7 @@
 mod exit;
 mod fpu;
 mod msr;
+mod reset64;
 
 //==================================================================================================
 // Exports
@@ -51,7 +52,6 @@ use ::kvm_bindings::{
     kvm_mp_state,
     kvm_msr_entry,
     kvm_regs,
-    kvm_segment,
     kvm_sregs,
     kvm_vcpu_events,
     kvm_xcrs,
@@ -251,166 +251,6 @@ impl VirtualProcessor {
         Ok(())
     }
 
-    /// Resets the virtual processor for a 64-bit guest (long mode).
-    fn reset_64bit(
-        &mut self,
-        rip: u64,
-        rax: u64,
-        rbx: u64,
-        vmem: &mut VirtualMemory,
-    ) -> Result<()> {
-        // Place boot structures at the top of guest memory, below the control registers area.
-        // Layout (from the end of usable memory):
-        //   PML4 at BOOT_PML4_ADDR (one page)
-        //   PDPT at BOOT_PDPT_ADDR (one page)
-        //   PD   at BOOT_PD_ADDR   (one page)
-        //   GDT  at BOOT_GDT_ADDR  (within one page)
-        // Place boot structures below the kernel load address (0x100000).
-        // Avoid 0x0000-0x1FFF (used by pvclock at 0x1000 and interrupt vectors).
-        const BOOT_GDT_ADDR: u64 = 0x5000;
-        const BOOT_PML4_ADDR: u64 = 0x6000;
-        const BOOT_PDPT_ADDR: u64 = 0x7000;
-        const BOOT_PD0_ADDR: u64 = 0x8000; // PD for first 1 GiB.
-        const BOOT_PD1_ADDR: u64 = 0x9000; // PD for second 1 GiB.
-
-        // Build GDT in guest memory.
-        // Entry 0: null descriptor.
-        // Entry 1: 64-bit code segment (selector 0x08).
-        // Entry 2: 64-bit data segment (selector 0x10).
-        // Entry 3: 64-bit user code segment (selector 0x1B, DPL=3).
-        // Entry 4: 64-bit user data segment (selector 0x23, DPL=3).
-        let gdt: [u64; 5] = [
-            0x0000_0000_0000_0000, // null
-            0x00AF_9A00_0000_FFFF, // code: L=1, D=0, P=1, DPL=0, S=1, type=0xA
-            0x00CF_9200_0000_FFFF, // data: P=1, DPL=0, S=1, type=0x2
-            0x00AF_FA00_0000_FFFF, // user code: L=1, D=0, P=1, DPL=3, S=1, type=0xA
-            0x00CF_F200_0000_FFFF, // user data: P=1, DPL=3, S=1, type=0x2
-        ];
-        let gdt_bytes: &[u8] =
-            unsafe { std::slice::from_raw_parts(gdt.as_ptr().cast::<u8>(), gdt.len() * 8) };
-        vmem.write_bytes(BOOT_GDT_ADDR, gdt_bytes)?;
-
-        // Build page tables: identity-map first 2 GiB using 2 MiB pages.
-        // PML4[0] → PDPT (user-accessible so user-mode can traverse to PD1).
-        let pml4_entry: u64 = BOOT_PDPT_ADDR | 0x07; // present + writable + user.
-        vmem.write_bytes(BOOT_PML4_ADDR, &pml4_entry.to_le_bytes())?;
-
-        // PDPT[0] → PD0 (first 1 GiB, supervisor-only for kernel).
-        // PDPT[1] → PD1 (second 1 GiB, user-accessible for user-space).
-        let pdpt_entry0: u64 = BOOT_PD0_ADDR | 0x03; // present + writable.
-        vmem.write_bytes(BOOT_PDPT_ADDR, &pdpt_entry0.to_le_bytes())?;
-        let pdpt_entry1: u64 = BOOT_PD1_ADDR | 0x07; // present + writable + user.
-        vmem.write_bytes(BOOT_PDPT_ADDR + 8, &pdpt_entry1.to_le_bytes())?;
-
-        // PD0: 512 entries mapping [0, 1 GiB), each 2 MiB (PS bit set = 0x83).
-        // Flags: present(0x1) + writable(0x2) + PS(0x80). Supervisor-only.
-        for i in 0u64..512 {
-            let pd_entry: u64 = (i * 0x20_0000) | 0x83;
-            vmem.write_bytes(BOOT_PD0_ADDR + i * 8, &pd_entry.to_le_bytes())?;
-        }
-
-        // PD1: 512 entries mapping [1 GiB, 2 GiB), each 2 MiB.
-        // Flags: present(0x1) + writable(0x2) + user(0x4) + PS(0x80). User-accessible.
-        for i in 0u64..512 {
-            let pd_entry: u64 = (0x4000_0000 + i * 0x20_0000) | 0x87;
-            vmem.write_bytes(BOOT_PD1_ADDR + i * 8, &pd_entry.to_le_bytes())?;
-        }
-
-        // Configure system registers for long mode.
-        let mut sregs: kvm_sregs = self.fd.get_sregs()?;
-
-        // Enable PAE in CR4.
-        sregs.cr4 = 1 << 5; // CR4.PAE
-
-        // Set CR3 to PML4 base.
-        sregs.cr3 = BOOT_PML4_ADDR;
-
-        // Enable long mode in EFER MSR.
-        sregs.efer = (1 << 8) | (1 << 10); // EFER.LME | EFER.LMA
-
-        // Set CR0: PE (bit 0) + NE (bit 5) + PG (bit 31). Clear CD and NW.
-        sregs.cr0 = (1 << 0) | (1 << 5) | (1 << 31); // CR0.PE | CR0.NE | CR0.PG
-
-        // Set up code segment for 64-bit mode.
-        sregs.cs = kvm_segment {
-            base: 0,
-            limit: 0xFFFF_FFFF,
-            selector: 0x08,
-            type_: 0x0A, // Execute/Read code segment.
-            present: 1,
-            dpl: 0,
-            db: 0, // D=0 for 64-bit.
-            s: 1,  // Code/data segment.
-            l: 1,  // Long mode.
-            g: 1,  // Granularity 4K.
-            avl: 0,
-            unusable: 0,
-            padding: 0,
-        };
-
-        // Set up data segments.
-        let data_seg: kvm_segment = kvm_segment {
-            base: 0,
-            limit: 0xFFFF_FFFF,
-            selector: 0x10,
-            type_: 0x02, // Read/Write data segment.
-            present: 1,
-            dpl: 0,
-            db: 1,
-            s: 1,
-            l: 0,
-            g: 1,
-            avl: 0,
-            unusable: 0,
-            padding: 0,
-        };
-        sregs.ds = data_seg;
-        sregs.es = data_seg;
-        sregs.fs = data_seg;
-        sregs.gs = data_seg;
-        sregs.ss = data_seg;
-
-        // Set up GDT register.
-        sregs.gdt.base = BOOT_GDT_ADDR;
-        sregs.gdt.limit = (u16::try_from(gdt.len())
-            .map_err(|_| anyhow::anyhow!("GDT length overflows u16"))?
-            * 8)
-            - 1;
-
-        if let Err(e) = self.fd.set_sregs(&sregs) {
-            error!("reset_64bit(): failed to set sregs: {e:?}");
-            return Err(anyhow::anyhow!("failed to set sregs: {e:?}"));
-        }
-
-        // Dump key sregs for debugging.
-        let verify_sregs: kvm_sregs = self.fd.get_sregs()?;
-        trace!(
-            "reset_64bit(): sregs after set: cr0={:#x}, cr3={:#x}, cr4={:#x}, efer={:#x}, \
-             cs.selector={:#x}, cs.l={}, cs.db={}, gdt.base={:#x}, gdt.limit={:#x}",
-            verify_sregs.cr0,
-            verify_sregs.cr3,
-            verify_sregs.cr4,
-            verify_sregs.efer,
-            verify_sregs.cs.selector,
-            verify_sregs.cs.l,
-            verify_sregs.cs.db,
-            verify_sregs.gdt.base,
-            verify_sregs.gdt.limit
-        );
-
-        // Set up general purpose registers.
-        let mut regs: kvm_regs = self.fd.get_regs()?;
-        regs.rip = rip;
-        regs.rax = rax;
-        regs.rbx = rbx;
-        regs.rflags = RFLAGS_INTERRUPT_ENABLE;
-        // Set up stack pointer at the top of boot area (will be overwritten by kernel).
-        regs.rsp = 0;
-        self.fd.set_regs(&regs)?;
-
-        Ok(())
-    }
-
     ///
     /// # Description
     ///
@@ -535,134 +375,94 @@ impl VirtualProcessor {
     pub fn run(&mut self) -> VirtualProcessorExitContext {
         // Run the virtual processor and parse exit reason.
         match self.fd.run() {
-            Ok(vcpu_exit) => {
-                trace!("run(): vcpu_exit={:?}", vcpu_exit);
-                match vcpu_exit {
-                    // Read from an I/O port.
-                    VcpuExit::IoIn(port, data) => {
-                        VirtualProcessorExitContext::Pmio(PmioAccess::PmioIn(port, data.to_vec()))
-                    },
-                    // Write to an I/O port.
-                    VcpuExit::IoOut(port, data) => {
-                        let mut value: u32 = 0;
-                        for (i, b) in data.iter().enumerate() {
-                            value |= (*b as u32) << (i * 8);
-                        }
-                        let width = match ::core::convert::TryFrom::try_from(data.len()) {
-                            Ok(width) => width,
-                            Err(invalid) => {
-                                warn!("run(): unsupported pmio write width (width={invalid})");
-                                return VirtualProcessorExitContext::Unknown;
-                            },
-                        };
-                        VirtualProcessorExitContext::Pmio(PmioAccess::PmioOut(port, value, width))
-                    },
-                    // Read from an MMIO region.
-                    VcpuExit::MmioRead(addr, data) => {
-                        // TODO: handle MMIO read.
-                        warn!("run(): mmio read (addr={addr:#010x}, data.len={})", data.len());
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Write to a MMIO region.
-                    VcpuExit::MmioWrite(addr, data) => {
-                        // TODO: handle MMIO write.
-                        warn!("run(): mmio write (addr={addr:#010x}, data.len={})", data.len());
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Exception occurred.
-                    VcpuExit::Exception => {
-                        // TODO: handle exception.
-                        warn!("run(): exception");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Hypervisor call invoked.
-                    VcpuExit::Hypercall(_) => {
-                        // TODO: handle hypercall.
-                        warn!("run(): hypercall");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Debugging event occurred.
-                    VcpuExit::Debug(_) => {
-                        // TODO: handle debug.
-                        warn!("run(): debug");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Halt the virtual processor.
-                    VcpuExit::Hlt => {
-                        if let Ok(regs) = self.fd.get_regs() {
-                            trace!("run(): Hlt at rip={:#x}, rsp={:#x}", regs.rip, regs.rsp);
-                        }
-                        VirtualProcessorExitContext::Halt
-                    },
-                    // Shutdown the virtual processor.
-                    VcpuExit::Shutdown => {
-                        if let Ok(regs) = self.fd.get_regs() {
-                            let sregs_info: String = if let Ok(s) = self.fd.get_sregs() {
-                                format!(", cr2={:#x}, cr3={:#x}", s.cr2, s.cr3)
-                            } else {
-                                String::new()
-                            };
-                            warn!(
-                                "run(): shutdown (triple fault) at rip={:#x}, rsp={:#x}, \
-                                 rflags={:#x}{sregs_info}",
-                                regs.rip, regs.rsp, regs.rflags
-                            );
-                        } else {
-                            warn!("run(): shutdown");
-                        }
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Fail to run the virtual processor.
-                    VcpuExit::FailEntry(reason, cpud) => {
-                        // TODO: handle fail entry.
-                        warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Non-maskable interrupt occurred.
-                    VcpuExit::Nmi => {
-                        // TODO: handle NMI.
-                        warn!("run(): nmi");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Internal error occurred.
-                    VcpuExit::InternalError => {
-                        // Dump registers for debugging.
-                        if let Ok(regs) = self.fd.get_regs() {
-                            warn!(
-                                "run(): internal error: rip={:#x}, rax={:#x}, rsp={:#x}, \
-                                 rflags={:#x}, rbx={:#x}",
-                                regs.rip, regs.rax, regs.rsp, regs.rflags, regs.rbx
-                            );
-                        } else {
-                            warn!("run(): internal error (could not read regs)");
-                        }
-                        if let Ok(sregs) = self.fd.get_sregs() {
-                            warn!(
-                                "run(): sregs: cr0={:#x}, cr3={:#x}, cr4={:#x}, efer={:#x}, \
-                                 cs.sel={:#x}, cs.l={}",
-                                sregs.cr0,
-                                sregs.cr3,
-                                sregs.cr4,
-                                sregs.efer,
-                                sregs.cs.selector,
-                                sregs.cs.l
-                            );
-                        }
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Unsupported exit reason.
-                    VcpuExit::Unsupported(reason) => {
-                        // TODO: handle unsupported exit reason.
-                        warn!("run(): unsupported exit reason ({reason:?})");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                    // Unknown exit reason.
-                    // NOTE: we do not parse all exit reasons, so it is worthy checking what happened.
-                    _ => {
-                        warn!("run(): unknown exit reason");
-                        VirtualProcessorExitContext::Unknown
-                    },
-                }
+            Ok(vcpu_exit) => match vcpu_exit {
+                // Read from an I/O port.
+                VcpuExit::IoIn(port, data) => {
+                    VirtualProcessorExitContext::Pmio(PmioAccess::PmioIn(port, data.to_vec()))
+                },
+                // Write to an I/O port.
+                VcpuExit::IoOut(port, data) => {
+                    let mut value: u32 = 0;
+                    for (i, b) in data.iter().enumerate() {
+                        value |= (*b as u32) << (i * 8);
+                    }
+                    let width = match ::core::convert::TryFrom::try_from(data.len()) {
+                        Ok(width) => width,
+                        Err(invalid) => {
+                            warn!("run(): unsupported pmio write width (width={invalid})");
+                            return VirtualProcessorExitContext::Unknown;
+                        },
+                    };
+                    VirtualProcessorExitContext::Pmio(PmioAccess::PmioOut(port, value, width))
+                },
+                // Read from an MMIO region.
+                VcpuExit::MmioRead(addr, data) => {
+                    // TODO: handle MMIO read.
+                    warn!("run(): mmio read (addr={addr:#010x}, data.len={})", data.len());
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Write to a MMIO region.
+                VcpuExit::MmioWrite(addr, data) => {
+                    // TODO: handle MMIO write.
+                    warn!("run(): mmio write (addr={addr:#010x}, data.len={})", data.len());
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Exception occurred.
+                VcpuExit::Exception => {
+                    // TODO: handle exception.
+                    warn!("run(): exception");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Hypervisor call invoked.
+                VcpuExit::Hypercall(_) => {
+                    // TODO: handle hypercall.
+                    warn!("run(): hypercall");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Debugging event occurred.
+                VcpuExit::Debug(_) => {
+                    // TODO: handle debug.
+                    warn!("run(): debug");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Halt the virtual processor.
+                VcpuExit::Hlt => VirtualProcessorExitContext::Halt,
+                // Shutdown the virtual processor.
+                VcpuExit::Shutdown => {
+                    // TODO: handle shutdown.
+                    warn!("run(): shutdown");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Fail to run the virtual processor.
+                VcpuExit::FailEntry(reason, cpud) => {
+                    // TODO: handle fail entry.
+                    warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Non-maskable interrupt occurred.
+                VcpuExit::Nmi => {
+                    // TODO: handle NMI.
+                    warn!("run(): nmi");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Internal error occurred.
+                VcpuExit::InternalError => {
+                    // TODO: handle internal error.
+                    warn!("run(): internal error");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Unsupported exit reason.
+                VcpuExit::Unsupported(reason) => {
+                    // TODO: handle unsupported exit reason.
+                    warn!("run(): unsupported exit reason ({reason:?})");
+                    VirtualProcessorExitContext::Unknown
+                },
+                // Unknown exit reason.
+                // NOTE: we do not parse all exit reasons, so it is worthy checking what happened.
+                _ => {
+                    warn!("run(): unknown exit reason");
+                    VirtualProcessorExitContext::Unknown
+                },
             },
             // vCPU thread was interrupted by a signal from the host.
             Err(e) if e.errno() == libc::EINTR => {

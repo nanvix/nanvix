@@ -12,6 +12,10 @@ mod constants;
 //==================================================================================================
 
 pub mod gdt;
+#[cfg(target_arch = "x86")]
+pub mod gdtr;
+#[cfg(target_arch = "x86_64")]
+#[path = "gdtr_x86_64.rs"]
 pub mod gdtr;
 pub mod paging;
 

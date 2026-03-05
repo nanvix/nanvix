@@ -6,6 +6,7 @@ covering the design decisions, architecture, memory layout, and boot flow.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Code Organization](#code-organization)
 - [Build Infrastructure](#build-infrastructure)
 - [Boot Flow](#boot-flow)
 - [VMM Guest Setup](#vmm-guest-setup)
@@ -40,6 +41,62 @@ pub mod x86;
 All existing `arch::x86::` references continue to work without modification. This avoids
 a large-scale rename and keeps 32-bit and 64-bit code paths coexisting cleanly.
 
+## Code Organization
+
+The port minimizes modifications to existing x86 source files. New x86_64-specific code
+lives in dedicated files, selected at compile time via `#[cfg(target_arch)]` and `#[path]`
+attributes. This keeps the original x86 files unchanged and isolates all 64-bit additions.
+
+### Isolation Pattern
+
+Wherever an x86 type or function has a different x86_64 implementation, the pattern is:
+
+```rust
+// Original module compiles only on x86.
+#[cfg(target_arch = "x86")]
+pub mod idt;
+// New file compiles only on x86_64.
+#[cfg(target_arch = "x86_64")]
+#[path = "idt_x86_64.rs"]
+pub mod idt;
+```
+
+Both expose the same public API (e.g., `idt::Idte`), so downstream code works on both
+architectures without `cfg` annotations.
+
+### File Layout
+
+New files introduced by the port (excluding the `hal/arch/x86_64/` kernel module, which
+is entirely new):
+
+| New File | Paired With | Contents |
+|----------|-------------|----------|
+| `src/libs/arch/src/x86/cpu/idt_x86_64.rs` | `idt.rs` | 16-byte IDT entry (`Idte`) for 64-bit gates |
+| `src/libs/arch/src/x86/cpu/idtr_x86_64.rs` | `idtr.rs` | 10-byte IDTR with `u64` base, `lidt (%rax)` |
+| `src/libs/arch/src/x86/cpu/tss_x86_64.rs` | `tss.rs` | 104-byte TSS with RSP0–RSP2, IST1–IST7 |
+| `src/libs/arch/src/x86/mem/gdtr_x86_64.rs` | `gdtr.rs` | 10-byte GDTR with `u64` base, `lgdt (%rax)` |
+| `src/libs/nvx/src/crt0_x86_64.rs` | inline asm in `lib.rs` | x86_64 `_do_start` process entry point |
+| `src/libs/sys/src/sys/kcall/pm_x86_64.rs` | `pm.rs` | x86_64 `__start_thread` assembly stub |
+| `src/uservm/src/elf64.rs` | `elf.rs` | `Elf64Fhdr`, `Elf64Phdr`, `memory_footprint_64()`, `load_64()` |
+| `src/uservm/src/vmm/microvm/kvm/vcpu/reset64.rs` | `vcpu/mod.rs` | `reset_64bit()` for long-mode guest init |
+| `src/kernel/src/mm/elf64.rs` | `mm/elf.rs` | `Elf64Fhdr`, `Elf64Phdr`, `do_elf64_load()`, `elf64_load()` |
+| `src/kernel/src/hal/arch/x86_64/` (directory) | `hal/arch/x86/` | Full 64-bit kernel arch: GDT, IDT, TSS, MMU, context, hooks |
+
+### Minimal Changes to Existing Files
+
+The original x86 files (`idt.rs`, `idtr.rs`, `tss.rs`, `gdtr.rs`) are **unchanged**. Other
+existing files have small, isolated additions:
+
+- **Module routers** (`cpu/mod.rs`, `mem/mod.rs`): `#[cfg]` + `#[path]` lines to select
+  the correct module variant per architecture.
+- **ELF loaders** (`elf.rs` in kernel and uservm): `#[path] mod elf64` declaration, an
+  `ElfClass` enum, and a thin dispatcher that checks `e_ident[EI_CLASS]` and delegates to
+  the 32-bit or 64-bit loader.
+- **Process manager** (`pm/process/manager/mod.rs`): `ElfClass` parameter in
+  `create_process()` to route 32-bit vs 64-bit ELF loading.
+- **vCPU module** (`vcpu/mod.rs`): `mod reset64` declaration and a `reset()` dispatcher
+  that calls either `reset_32bit()` or `reset_64bit()` based on the target architecture.
+
 ## Build Infrastructure
 
 ### Target Specifications
@@ -58,10 +115,10 @@ and disabled SIMD features to avoid FPU state management in the kernel.
 
 ```bash
 # Build the 64-bit kernel.
-make TARGET=x86_64 MACHINE=microvm all-kernel
+./z build -- all-kernel TARGET=x86_64 MACHINE=microvm
 
 # Build a 64-bit user binary.
-make TARGET=x86_64 MACHINE=microvm all-guest-binaries-hello-rust-nostd
+./z build -- all-guest-binaries-hello-rust-nostd TARGET=x86_64 MACHINE=microvm
 
 # Run it.
 ./bin/nanvixd.elf -- ./bin/hello-rust-nostd.elf
@@ -70,7 +127,7 @@ make TARGET=x86_64 MACHINE=microvm all-guest-binaries-hello-rust-nostd
 The 32-bit build remains the default and is unaffected:
 
 ```bash
-make TARGET=x86 MACHINE=microvm all-kernel
+./z build -- all-kernel TARGET=x86 MACHINE=microvm
 ```
 
 ### Linker Scripts
@@ -109,8 +166,10 @@ hello-rust-nostd (guest, Ring 3)
 
 ## VMM Guest Setup
 
-The VMM's `reset_64bit()` function configures the guest to start directly in 64-bit long
-mode, bypassing real mode and protected mode entirely.
+The VMM's `reset_64bit()` function (in `vcpu/reset64.rs`) configures the guest to start
+directly in 64-bit long mode, bypassing real mode and protected mode entirely. The main
+`vcpu/mod.rs` contains only a `reset()` dispatcher that calls either `reset_32bit()` or
+`reset_64bit()` based on the target architecture.
 
 ### Boot Structures
 
@@ -335,10 +394,17 @@ The scheduler picks up the new thread, restores its context, and `ret`s to
 
 ## ELF64 Loading
 
-The kernel detects whether an ELF binary is 32-bit or 64-bit by inspecting `e_ident[EI_CLASS]`:
+ELF64 loading code lives in dedicated `elf64.rs` files, keeping the original `elf.rs`
+loaders largely unchanged. Both the kernel and uservm have this split:
 
-- **ELFCLASS32** (1): Dispatched to the existing `do_elf32_load()`.
-- **ELFCLASS64** (2): Dispatched to the new `do_elf64_load()`.
+- **`elf.rs`**: Original 32-bit loader, plus a thin dispatcher that inspects
+  `e_ident[EI_CLASS]` and delegates to either the 32-bit or 64-bit path.
+- **`elf64.rs`**: `Elf64Fhdr`, `Elf64Phdr` structures and the 64-bit load functions.
+  Loaded via `#[path = "elf64.rs"] mod elf64` (since `elf.rs` is a flat file, not a
+  directory module).
+
+The kernel's `elf.rs` also defines an `ElfClass` enum and a `detect_elf_class()` function
+used by `kmain.rs` to determine the binary class before calling `create_process()`.
 
 The ELF64 loader performs a two-pass approach:
 
@@ -356,23 +422,30 @@ For each `PT_LOAD` segment, the loader:
 
 ### Architecture Library (`arch`)
 
-- **IDT**: Added `Idte` (16-byte 64-bit interrupt gate descriptor) with `offset_high` for
-  the upper 32 bits of the handler address.
-- **IDTR**: Added 64-bit `Idtr` with `u64` base address.
-- **TSS**: Added 64-bit `Tss` structure (104 bytes) with RSP0-RSP2, IST1-IST7, and I/O
-  map base.
-- **GDTR**: Added 64-bit `Gdtr` with `u64` base address.
+64-bit type variants live in dedicated files selected by `#[cfg(target_arch)]` in the
+module routers (`cpu/mod.rs`, `mem/mod.rs`). The original 32-bit files are unmodified:
+
+- **`idt_x86_64.rs`**: 16-byte `Idte` (64-bit interrupt gate descriptor) with `offset_high`
+  for the upper 32 bits of the handler address. Includes its own copies of `GateType` and
+  `Flags` since the entire module is conditionally compiled.
+- **`idtr_x86_64.rs`**: 10-byte `Idtr` with `u64` base address and `lidt (%rax)` assembly.
+- **`tss_x86_64.rs`**: 104-byte `Tss` with RSP0–RSP2, IST1–IST7, and I/O map base.
+- **`gdtr_x86_64.rs`**: 10-byte `Gdtr` with `u64` base address and `lgdt (%rax)` assembly.
 
 ### System Library (`sys`)
 
-- Added `src/sys/kcall/arch/x86_64.rs` with kernel call stubs using `int 0x80` and the
-  x86_64 register convention (RAX=number, RDI/RSI/RDX/R10/R8=arguments).
-- Added 64-bit variants of `ExitStatus`, process management calls, and type definitions.
+- **`src/sys/kcall/arch/x86_64.rs`** (new file): Kernel call stubs using `int 0x80` and
+  the x86_64 register convention (RAX=number, RDI/RSI/RDX/R10/R8=arguments).
+- **`src/sys/kcall/pm_x86_64.rs`** (new file): `__start_thread` assembly stub for x86_64
+  thread entry, loaded via `#[path]` when targeting x86_64.
+- Added 64-bit variants of `ExitStatus`, process management calls, and type definitions
+  in existing files with `#[cfg(target_arch = "x86_64")]` guards.
 
 ### NVX Runtime Library (`nvx`)
 
-- Added x86_64 `_do_start` entry point that receives arguments in RDI (argp) and RSI
-  (envp) per the SysV ABI, aligns the stack to 16 bytes, and calls `_start()`.
+- **`src/crt0_x86_64.rs`** (new file): x86_64 `_do_start` entry point that receives
+  arguments in RDI (argp) and RSI (envp) per the SysV ABI, aligns the stack to 16 bytes,
+  and calls `_start()`. Loaded as `mod crt0_x86_64` in `lib.rs`.
 
 ### Slab Allocator Fix
 
