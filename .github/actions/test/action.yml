@@ -21,6 +21,10 @@ inputs:
     description: "Deployment type"
     required: true
     default: "single-process"
+  target-arch:
+    description: "Target architecture (x86 or x86_64)"
+    required: false
+    default: "x86"
 
 runs:
   using: "composite"
@@ -38,7 +42,7 @@ runs:
         -- \
         run-unit-tests \
         "MACHINE=${{ inputs.machine-type }}" \
-        TARGET=x86 \
+        TARGET=${{ inputs.target-arch }} \
         "LOG_LEVEL=${{ inputs.log-level }}" \
         VERBOSE=yes \
         ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
@@ -53,7 +57,7 @@ runs:
         -- \
         run-nanvix-tests \
         "MACHINE=${{ inputs.machine-type }}" \
-        TARGET=x86 \
+        TARGET=${{ inputs.target-arch }} \
         "LOG_LEVEL=${{ inputs.log-level }}" \
         VERBOSE=yes \
         ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
@@ -76,7 +80,7 @@ runs:
       # Build the ISO from the locally built artifacts.
       make image \
         "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
+        TARGET=${{ inputs.target-arch }} \
         "LOG_LEVEL=${LOG_LEVEL}" \
         ${RELEASE_FLAG} \
         ${MAKE_FLAGS}

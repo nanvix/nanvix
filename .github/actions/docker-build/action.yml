@@ -21,6 +21,10 @@ inputs:
     description: "Deployment type"
     required: true
     default: "single-process"
+  target-arch:
+    description: "Target architecture (x86 or x86_64)"
+    required: false
+    default: "x86"
   timeout:
     description: "Build timeout in seconds passed through to make"
     required: false
@@ -57,12 +61,12 @@ runs:
       # SCCACHE_GHA_CACHE_FROM sets the cache key for reading cached results;
       # without it sccache writes to the cache but never reads, causing 0% hit rate.
       SCCACHE_GHA_ENABLED: ${{ inputs.sccache-gha-enabled == 'true' && 'true' || '' }}
-      SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
-      SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}', inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
+      SCCACHE_GHA_CACHE_TO: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}-{3}', inputs.target-arch, inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
+      SCCACHE_GHA_CACHE_FROM: ${{ inputs.sccache-gha-enabled == 'true' && format('sccache-{0}-{1}-{2}-{3}', inputs.target-arch, inputs.machine-type, inputs.deployment-type, inputs.release) || '' }}
     run: |
       ./z build --with-minimal-docker -- ${BUILD_TARGETS} \
         "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
+        TARGET=${{ inputs.target-arch }} \
         "LOG_LEVEL=${LOG_LEVEL}" \
         VERBOSE=yes \
         BUILD_OPT=yes \
