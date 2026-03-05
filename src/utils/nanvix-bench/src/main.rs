@@ -142,6 +142,20 @@ const CLEANUP_SLEEP_DURATION: u64 = 10;
 ///
 /// # Description
 ///
+/// Timeout (in seconds) for HTTP requests to nanvixd (start, kill, etc.).
+///
+const NANVIXD_HTTP_TIMEOUT_SECS: u64 = 60;
+
+///
+/// # Description
+///
+/// Timeout (in seconds) to wait for nanvixd to exit after SIGINT before sending SIGKILL.
+///
+const NANVIXD_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
+
+///
+/// # Description
+///
 /// Sleep duration (in ms) to wait for the system to clean up after a benchmark run when deploying
 /// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
 ///
@@ -376,16 +390,37 @@ impl Benchmark {
                 error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
             }
 
-            match nanvixd.wait() {
-                Ok(exit_status) => {
-                    if !exit_status.success() {
-                        error!(
-                            "nanvixd returned with non-zero exit status: {:?}",
-                            exit_status.code()
-                        );
-                    }
-                },
-                Err(e) => error!("error waiting for nanvixd: {e:?}"),
+            // Wait for nanvixd to exit with a bounded timeout to prevent indefinite hangs.
+            let deadline = Instant::now() + Duration::from_secs(NANVIXD_SHUTDOWN_TIMEOUT_SECS);
+            loop {
+                match nanvixd.try_wait() {
+                    Ok(Some(exit_status)) => {
+                        if !exit_status.success() {
+                            error!(
+                                "nanvixd returned with non-zero exit status: {:?}",
+                                exit_status.code()
+                            );
+                        }
+                        break;
+                    },
+                    Ok(None) => {
+                        if Instant::now() >= deadline {
+                            warn!(
+                                "nanvixd did not exit within {}s after SIGINT, sending SIGKILL",
+                                NANVIXD_SHUTDOWN_TIMEOUT_SECS
+                            );
+                            let _ =
+                                unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGKILL) };
+                            let _ = nanvixd.wait();
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    },
+                    Err(e) => {
+                        error!("error waiting for nanvixd: {e:?}");
+                        break;
+                    },
+                }
             }
 
             self.nanvixd = None;
@@ -1504,7 +1539,9 @@ async fn main() -> Result<()> {
         flavour: args.benchmark(),
         workspace_root: build_utils::find_workspace_root(),
         nanvixd: None,
-        nanvixd_client: reqwest::Client::new(),
+        nanvixd_client: reqwest::Client::builder()
+            .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
+            .build()?,
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
         nanvixd_tmp_dir: args.tmp_dir(),
         user_vm_id: None,
