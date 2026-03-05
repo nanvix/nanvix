@@ -807,13 +807,21 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 run-unit-tests: test-host-rlibs
 endif
 
-# Determine the test configuration file based on deployment mode.
+# Determine the test configuration file based on deployment mode and architecture.
 ifeq ($(SINGLE_PROCESS),yes)
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-single_process-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-single_process.toml
+endif
 else ifeq ($(L2_VM),yes)
 NANVIX_TEST_CONFIG := test/test-l2.toml
 else
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-multi_process-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
+endif
 endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf
