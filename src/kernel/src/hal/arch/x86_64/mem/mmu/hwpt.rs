@@ -146,7 +146,7 @@ unsafe fn split_2m_entry(pd_paddr: u64, pd_index: usize) -> u64 {
 
     let pt_page: u64 = alloc_pt_page();
     for i in 0..ENTRIES_PER_TABLE {
-        let pte: u64 = base_2m + (i as u64 * 4096) | flags_4k;
+        let pte: u64 = (base_2m + (i as u64 * 4096)) | flags_4k;
         write_entry(pt_page, i, pte);
     }
 
