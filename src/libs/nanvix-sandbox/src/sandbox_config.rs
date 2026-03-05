@@ -38,6 +38,8 @@ use ::user_vm_api::UserVmIdentifier;
 ///   single-process mode. Use `()` if no custom state is required.
 ///
 pub struct SandboxConfig<T> {
+    /// Unique identifier for the tenant.
+    tenant_id: String,
     /// Unique identifier for the User VM.
     uservm_id: UserVmIdentifier,
     /// Information on gateway socket (address, socket type, optional L2 TCP port).
@@ -151,6 +153,7 @@ impl<T> SandboxConfig<T> {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        tenant_id: &str,
         uservm_id: UserVmIdentifier,
         gateway_socket_info: (String, SocketType, Option<TcpPort>),
         system_vm_socket_info: (String, SocketType),
@@ -171,6 +174,7 @@ impl<T> SandboxConfig<T> {
         l2_snapshot_path: Option<String>,
     ) -> Self {
         Self {
+            tenant_id: tenant_id.to_string(),
             uservm_id,
             gateway_socket_info,
             system_vm_socket_info,
@@ -196,6 +200,19 @@ impl<T> SandboxConfig<T> {
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the unique tenant identifier for the sandbox.
+    ///
+    /// # Returns
+    ///
+    /// The tenant identifier.
+    ///
+    pub fn tenant_id(&self) -> &str {
+        &self.tenant_id
     }
 
     ///

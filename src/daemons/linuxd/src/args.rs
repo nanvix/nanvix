@@ -19,6 +19,8 @@ use ::syslog::DEFAULT_LOG_DIRECTORY;
 /// This structure packs the command-line arguments that were passed to the program.
 ///
 pub struct Args {
+    /// Unique identifier of the tenant associated with this linuxd instance.
+    tenant_id: Option<String>,
     /// Socket address linuxd listens to for messages from the control plane.
     control_plane_sockaddr: String,
     /// Control plane socket address type.
@@ -42,6 +44,8 @@ pub struct Args {
 impl Args {
     /// Command-line option for printing the help message.
     pub const OPT_HELP: &'static str = "-help";
+    /// Command-line option for setting the tenant identifier.
+    pub const OPT_TENANT_ID: &'static str = "-tenant-id";
     /// Command-line option for setting the control-plane socket address.
     pub const OPT_CONTROL_PLANE_SOCKADDR: &'static str = "-control-plane-addr";
     /// Command-line option for setting the socket address type of the bind socket.
@@ -87,6 +91,7 @@ impl Args {
     /// program. Upon failure, the function returns an error.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
+        let mut tenant_id: Option<String> = None;
         let mut control_plane_sockaddr: String = String::new();
         let mut control_plane_sockaddr_type: Option<String> = None;
         let mut user_vm_bind_sockaddr: String = String::new();
@@ -101,6 +106,16 @@ impl Args {
                 Self::OPT_HELP => {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("help message"));
+                },
+                Self::OPT_TENANT_ID => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err(anyhow::anyhow!(
+                            "missing value for {} option",
+                            Self::OPT_TENANT_ID
+                        ));
+                    }
+                    tenant_id = Some(args[i].clone());
                 },
                 Self::OPT_CONTROL_PLANE_SOCKADDR => {
                     i += 1;
@@ -197,6 +212,7 @@ impl Args {
         }
 
         Ok(Self {
+            tenant_id,
             control_plane_sockaddr,
             control_plane_sockaddr_type,
             user_vm_bind_sockaddr,
@@ -218,9 +234,10 @@ impl Args {
     ///
     pub fn usage(program_name: &str) {
         println!(
-            "Usage: {} {} <control-plane-sockaddr> {} <control-plane-socktype> {} \
-             <user-vm-sockaddr> {} <user-vm-socktype> {} {} <log-file-dir> {}",
+            "Usage: {} [{} <tenant-id>] {} <control-plane-sockaddr> {} <control-plane-socktype> \
+             {} <user-vm-sockaddr> {} <user-vm-socktype> [{} [{} <log-file-dir>]] {}",
             program_name,
+            Self::OPT_TENANT_ID,
             Self::OPT_CONTROL_PLANE_SOCKADDR,
             Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             Self::OPT_USER_VM_BIND_SOCKADDR,
@@ -229,6 +246,19 @@ impl Args {
             Self::OPT_LOGDIR,
             Self::OPT_L2
         );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the tenant identifier associated to this linuxd instance.
+    ///
+    /// # Returns
+    ///
+    /// The optional tenant identifier.
+    ///
+    pub fn tenant_id(&self) -> Option<&str> {
+        self.tenant_id.as_deref()
     }
 
     ///
