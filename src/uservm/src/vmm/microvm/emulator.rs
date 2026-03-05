@@ -140,10 +140,18 @@ impl Emulator {
         match exit_context {
             // Read from an I/O port.
             PmioAccess::PmioIn(port, _data) => {
-                // Read from an I/O port that is not supported.
-                let reason: String = format!("read from unsupported port i/o (port={:#06x})", port);
-                error!("handle_pmio_access(): {reason}");
-                anyhow::bail!(reason);
+                match *port {
+                    // PIC reads (interrupt mask, status) — return 0 (no pending interrupts).
+                    0x20 | 0x21 | 0xa0 | 0xa1 => {},
+                    // PIT reads (counter latch) — return 0.
+                    0x40 | 0x41 | 0x42 | 0x43 => {},
+                    _ => {
+                        let reason: String =
+                            format!("read from unsupported port i/o (port={:#06x})", port);
+                        error!("handle_pmio_access(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                }
             },
             // Write to an I/O port.
             PmioAccess::PmioOut(port, data, width) => match *port {
@@ -201,6 +209,10 @@ impl Emulator {
                         cmd => anyhow::bail!("unknown virtual machine command (cmd={cmd:#06x})"),
                     }
                 },
+                // PIC (8259) port writes — passed through to KVM's in-kernel IRQ chip.
+                0x20 | 0x21 | 0xa0 | 0xa1 => {},
+                // PIT (8254) port writes — passed through to KVM's in-kernel PIT2.
+                0x40 | 0x41 | 0x42 | 0x43 | 0x61 => {},
                 // Write to an I/O port that is not supported.
                 _ => {
                     let reason: String =

@@ -446,13 +446,14 @@ pub fn init(
 ) -> Result<Platform, Error> {
     // Ensure the CPU exposes the TSC feature (CPUID.01H:EDX[4]).
     // The pvclock subsystem and RDTSC-based timekeeping depend on this.
-    #[cfg(not(feature = "x86_64"))]
     if !::arch::cpu::cpuid::has_tsc() {
         let reason: &str = "CPU does not support TSC (RDTSC)";
         error!("{}", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
+    // On x86_64 microvm, KVM's in-kernel IRQ chip and PIT2 handle
+    // PIC/PIT ports directly — no guest-side port registration needed.
     #[cfg(not(feature = "x86_64"))]
     register_pic_ioports(ioports)?;
 
