@@ -29,6 +29,29 @@ impl PageAddress {
         let addr: usize = self.into_raw_value();
         (addr >> mem::PAGE_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
     }
+
+    /// Extracts the page directory (PD) index from the address (bits 21-29 on x86_64).
+    #[cfg(feature = "x86_64")]
+    pub fn get_pde_index(&self) -> usize {
+        let addr: usize = self.into_raw_value();
+        (addr >> mem::PGTAB_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
+    }
+
+    /// Extracts the PDPT index from the address (bits 30-38 on x86_64).
+    #[cfg(feature = "x86_64")]
+    #[allow(dead_code)]
+    pub fn get_pdpt_index(&self) -> usize {
+        let addr: usize = self.into_raw_value();
+        (addr >> mem::PGDIR_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
+    }
+
+    /// Extracts the PML4 index from the address (bits 39-47 on x86_64).
+    #[cfg(feature = "x86_64")]
+    #[allow(dead_code)]
+    pub fn get_pml4_index(&self) -> usize {
+        let addr: usize = self.into_raw_value();
+        (addr >> mem::PDPT_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
+    }
 }
 
 impl PartialEq for PageAddress {
@@ -57,6 +80,22 @@ impl PageTableAddress {
     pub fn get_pde_index(&self) -> usize {
         let addr: usize = self.into_raw_value();
         (addr >> mem::PGTAB_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
+    }
+
+    /// Extracts the PDPT index from the address (bits 30-38 on x86_64).
+    #[cfg(feature = "x86_64")]
+    #[allow(dead_code)]
+    pub fn get_pdpt_index(&self) -> usize {
+        let addr: usize = self.into_raw_value();
+        (addr >> mem::PGDIR_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
+    }
+
+    /// Extracts the PML4 index from the address (bits 39-47 on x86_64).
+    #[cfg(feature = "x86_64")]
+    #[allow(dead_code)]
+    pub fn get_pml4_index(&self) -> usize {
+        let addr: usize = self.into_raw_value();
+        (addr >> mem::PDPT_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
     }
 }
 

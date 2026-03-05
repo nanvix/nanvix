@@ -60,8 +60,7 @@ pub struct Arch {
 /// Clears the CR0.TS flag to enable FPU/SSE instructions.
 ///
 pub unsafe fn clear_task_switched() {
-    // TODO: Implement for x86_64.
-    // In long mode, CR0.TS works the same way.
+    core::arch::asm!("clts", options(nostack, preserves_flags));
 }
 
 ///
@@ -70,7 +69,10 @@ pub unsafe fn clear_task_switched() {
 /// Sets the CR0.TS flag to disable FPU/SSE instructions.
 ///
 pub unsafe fn set_task_switched() {
-    // TODO: Implement for x86_64.
+    let mut cr0: u64;
+    core::arch::asm!("mov {}, cr0", out(reg) cr0, options(nostack, preserves_flags));
+    cr0 |= 1 << 3; // Set TS (task switched) bit.
+    core::arch::asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags));
 }
 
 pub fn init(

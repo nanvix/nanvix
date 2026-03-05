@@ -5,6 +5,14 @@
 // Imports
 //==================================================================================================
 
+use ::arch::cpu::mxcrs::{
+    DenormalOperationMask,
+    DivideByZeroMask,
+    MxcsrRegister,
+    OverflowMask,
+    PrecisionMask,
+    UnderflowMask,
+};
 use ::core::arch::asm;
 
 //==================================================================================================
@@ -102,8 +110,35 @@ impl FpuState {
 /// It is unsafe to call this function because it executes privileged instructions.
 ///
 pub unsafe fn init() {
-    // TODO: Implement full FPU/SSE initialization for x86_64.
-    // In long mode, SSE is required and should already be enabled by the boot code.
-    // For now, just save the initial FPU state.
+    // Disable x87 emulation (clear CR0.EM, bit 2) and enable coprocessor monitoring (set CR0.MP,
+    // bit 1).
+    let mut cr0: u64;
+    asm!("mov {}, cr0", out(reg) cr0, options(nostack, preserves_flags));
+    cr0 &= !(1 << 2); // Clear EM (emulation).
+    cr0 |= 1 << 1; // Set MP (monitor coprocessor).
+    asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags));
+
+    // Enable support for FXSAVE/FXRSTOR (CR4.OSFXSR, bit 9) and SIMD exceptions
+    // (CR4.OSXMMEXCPT, bit 10).
+    let mut cr4: u64;
+    asm!("mov {}, cr4", out(reg) cr4, options(nostack, preserves_flags));
+    cr4 |= 1 << 9; // Set OSFXSR.
+    cr4 |= 1 << 10; // Set OSXMMEXCPT.
+    asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags));
+
+    // Initialize the x87 FPU.
+    asm!("fninit", options(nostack));
+
+    // Mask all exceptions in the MXCSR register.
+    let mut mxcsr: MxcsrRegister = MxcsrRegister::read();
+    mxcsr.precision_mask = PrecisionMask::Masked;
+    mxcsr.underflow_mask = UnderflowMask::Masked;
+    mxcsr.overflow_mask = OverflowMask::Masked;
+    mxcsr.divide_by_zero_mask = DivideByZeroMask::Masked;
+    mxcsr.denormal_operation_mask = DenormalOperationMask::Masked;
+    mxcsr.write();
+
+    // Save the initial FPU state.
+    // SAFETY: access to INITIAL_FPU_STATE is synchronized.
     asm!("fxsave [{}]", in(reg) &mut INITIAL_FPU_STATE.data);
 }

@@ -11,6 +11,8 @@ pub mod idtr;
 pub mod mxcrs;
 #[cfg(feature = "pic")]
 pub mod pic;
+#[cfg(feature = "pit")]
+pub mod pit;
 pub mod ring;
 pub mod tss;
 

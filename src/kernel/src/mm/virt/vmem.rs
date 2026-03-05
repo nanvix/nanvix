@@ -479,6 +479,7 @@ impl Vmem {
     }
 
     /// Looks up a page table in the list of page tables.
+    #[allow(dead_code)]
     fn lookup_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
@@ -512,6 +513,7 @@ impl Vmem {
         }
     }
 
+    #[allow(dead_code)]
     fn lookup_kernel_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
