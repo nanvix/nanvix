@@ -18,6 +18,7 @@ on:
   push:
     branches:
       - 'dev'
+      - 'feature-kernel-x64'
 
 # Cancel previous running actions for the same PR
 concurrency:
