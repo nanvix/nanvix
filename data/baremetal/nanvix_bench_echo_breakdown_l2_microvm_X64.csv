@@ -869,7 +869,6 @@ b12afdecb29cbda299e31f2568803de255633835,10,Total,36931,37072,37087
 538add3070bbfa81a49030b077b549a21782f435,9,nanvix-bench::read_exact(),9060,10170,10300
 538add3070bbfa81a49030b077b549a21782f435,10,Total,36929,37064,37085
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,0,nanvix-bench::write_all(),,,
-<<<<<<< Updated upstream
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,1,linuxd::worker_thread::handle_read_request(),21076,21419,21494
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,2,uservm::io_thread::system_vm::read(),38115,38225,38260
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,3,uservm::memory_thread::data_rx::recv(),11,12,15
@@ -880,18 +879,6 @@ a601aaf47f6cbc5dd255c446b541eceb2d590dc6,7,uservm::io_thread::system_vm::write()
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,8,linuxd::worker_thread::handle_write_request(),45783,46783,46921
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,9,nanvix-bench::read_exact(),62919,63274,63327
 a601aaf47f6cbc5dd255c446b541eceb2d590dc6,10,Total,36927,37061,37076
-=======
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,1,linuxd::worker_thread::handle_read_request(),1337,2458,2609
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,2,uservm::io_thread::system_vm::read(),57391,58520,59387
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,3,uservm::memory_thread::data_rx::recv(),10,12,15
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,4,uservm::lib::vm_input::vmexit(),20,23,38
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,5,uservm::lib::vm_input::vm_write_bytes(),0,1,1
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,6,uservm::lib::vm_output::send(),57,66,71
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,7,uservm::io_thread::system_vm::write(),6,10,14
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,8,linuxd::worker_thread::handle_write_request(),26507,27532,27656
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,9,nanvix-bench::read_exact(),17131,18270,18420
-a601aaf47f6cbc5dd255c446b541eceb2d590dc6,10,Total,36929,37067,37082
->>>>>>> Stashed changes
 36375e2e1b3ad0a7078a1434a15e884af614089a,0,nanvix-bench::write_all(),,,
 36375e2e1b3ad0a7078a1434a15e884af614089a,1,linuxd::worker_thread::handle_read_request(),17375,17715,17817
 36375e2e1b3ad0a7078a1434a15e884af614089a,2,uservm::io_thread::system_vm::read(),41193,42180,42290
