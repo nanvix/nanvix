@@ -36,24 +36,14 @@ jobs:
     uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
     secrets: inherit
 
-  # ==========================================================================================
-  # Stage 1: Source Checks (GitHub-Hosted Runners)
-  # ==========================================================================================
-
-  # Run config-independent source checks once (format, spellcheck) instead of
-  # repeating them in every matrix entry. Downstream jobs (ci-build, ci-l2)
-  # wait for these to pass.
-  checks:
-    name: "Source Checks"
+  # Single gate that consolidates all pre-conditions for CI jobs:
+  # branch must be up-to-date, PR must not be a draft, and push must
+  # not be a merge commit. Downstream jobs inherit the gate via
+  # `needs` and skip automatically when the gate is skipped.
+  gate:
+    name: "CI Gate"
     needs: precheck
-    timeout-minutes: 60
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-
-    # Only run the CI for:
-    # - Non-merge pushes to 'dev'.
-    # - Non-draft PRs.
     if: |
       github.repository == 'nanvix/nanvix' &&
       needs.precheck.outputs.up_to_date == 'true' && (
@@ -64,6 +54,23 @@ jobs:
         github.event_name != 'pull_request' ||
         !github.event.pull_request.draft
       )
+    steps:
+      - run: echo "CI gate passed — branch is up-to-date and PR is ready for review."
+
+  # ==========================================================================================
+  # Stage 1: Source Checks (GitHub-Hosted Runners)
+  # ==========================================================================================
+
+  # Run config-independent source checks once (format, spellcheck) instead of
+  # repeating them in every matrix entry. Downstream jobs (ci-build, ci-l2)
+  # wait for these to pass.
+  checks:
+    name: "Source Checks"
+    needs: gate
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v6
@@ -98,7 +105,7 @@ jobs:
   # build matrix entry (10 jobs).
   lint:
     name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck]
+    needs: [gate]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -111,17 +118,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
@@ -142,7 +138,7 @@ jobs:
   # machine-type + deployment-type) and runs once per unique pair, like lint.
   verify:
     name: "Verify (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck]
+    needs: [gate]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -155,17 +151,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
@@ -221,7 +206,7 @@ jobs:
   # completes.
   ci-build:
     name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
-    needs: [precheck, checks, lint, verify]
+    needs: [checks, lint, verify]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -235,17 +220,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
@@ -379,7 +353,7 @@ jobs:
   # from source on self-hosted runners with a local toolchain.
   ci-l2:
     name: "L2 (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
-    needs: [precheck, checks]
+    needs: [checks]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -390,17 +364,6 @@ jobs:
       group: Test
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
@@ -473,7 +436,7 @@ jobs:
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [gate]
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -503,17 +466,6 @@ jobs:
       group: Benchmark
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
@@ -663,7 +615,7 @@ jobs:
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark-ci:
     name: "Benchmark CI (${{ matrix.machine-type }})"
-    needs: [precheck]
+    needs: [gate]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -689,17 +641,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
-      )
 
     steps:
       - uses: actions/checkout@v6
