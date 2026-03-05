@@ -12,6 +12,7 @@ import itertools
 import os
 import pathlib
 import re
+import signal
 import subprocess
 from typing import Optional
 
@@ -52,6 +53,11 @@ WARM_START_VMM_BENCH = "warm-start-vmm"
 
 # How many user VMs do we spawn in parallel in the CONCURRENT* benchmarks.
 NUM_CONCURRENT_VMS = 100
+
+# Per-benchmark timeout in seconds. The concurrent benchmark spawns 100 VMs
+# and can take up to ~25 minutes on resource-constrained GitHub runners.
+# A 45-minute timeout provides headroom while preventing indefinite hangs.
+BENCHMARK_TIMEOUT_SECS = 45 * 60
 
 # Benchmarks that report simple p50/p95/p99 percentile values.
 PERCENTILE_BENCHMARKS = [
@@ -682,6 +688,51 @@ def ci_summary(args):
         fh.write(bench_summary)
 
 
+def _kill_process_group(pid: int) -> None:
+    """Send SIGKILL to the process group led by *pid*.
+
+    Because we launch benchmarks with ``start_new_session=True``, the child
+    becomes its own process-group leader (PGID == PID).  Killing the group
+    ensures that all grandchildren are reaped, not just the direct child.
+    """
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:
+        pass  # Process group may already be gone.
+
+
+def _run_with_timeout(
+    cmd: str,
+    *,
+    timeout: int,
+    capture_output: bool = False,
+    check: bool = False,
+) -> subprocess.CompletedProcess:
+    """Run *cmd* in a new session, killing the entire process group on timeout."""
+    kwargs = {
+        "shell": True,
+        "start_new_session": True,
+    }
+    if capture_output:
+        kwargs["stdout"] = subprocess.PIPE
+        kwargs["stderr"] = subprocess.PIPE
+
+    proc = subprocess.Popen(cmd, **kwargs)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_group(proc.pid)
+        stdout, stderr = proc.communicate()
+        raise subprocess.TimeoutExpired(
+            proc.args, timeout, output=stdout, stderr=stderr
+        )
+
+    result = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+    if check and proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, proc.args, stdout, stderr)
+    return result
+
+
 def run_benchmark(args):
     """
     Run a single benchmark using nanvix-bench
@@ -765,7 +816,27 @@ def run_benchmark(args):
 
         # Run benchmark and capture raw stdout/stderr.
         print("[BENCHMARK] Starting benchmark execution...")
-        result = subprocess.run(nanvix_bench_cmd, shell=True, capture_output=True)
+        try:
+            result = _run_with_timeout(
+                nanvix_bench_cmd,
+                timeout=BENCHMARK_TIMEOUT_SECS,
+                capture_output=True,
+            )
+        except subprocess.TimeoutExpired as e:
+            print(
+                f"[BENCHMARK] ERROR: benchmark '{args.benchmark}' timed out "
+                f"after {BENCHMARK_TIMEOUT_SECS}s"
+            )
+            if e.stdout:
+                print("[BENCHMARK] Partial STDOUT:")
+                print(e.stdout.decode("utf-8", errors="replace"))
+            if e.stderr:
+                print("[BENCHMARK] Partial STDERR:")
+                print(e.stderr.decode("utf-8", errors="replace"))
+            raise RuntimeError(
+                f"Benchmark '{args.benchmark}' timed out after "
+                f"{BENCHMARK_TIMEOUT_SECS}s"
+            )
         print(f"[BENCHMARK] Benchmark completed with exit code: {result.returncode}")
         if result.returncode != 0:
             print(
@@ -812,7 +883,21 @@ def run_benchmark(args):
         print("[BENCHMARK] Results written successfully.")
     else:
         print("[BENCHMARK] Running benchmark without capturing output...")
-        subprocess.run(nanvix_bench_cmd, shell=True, check=True)
+        try:
+            _run_with_timeout(
+                nanvix_bench_cmd,
+                timeout=BENCHMARK_TIMEOUT_SECS,
+                check=True,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                f"[BENCHMARK] ERROR: benchmark '{args.benchmark}' timed out "
+                f"after {BENCHMARK_TIMEOUT_SECS}s"
+            )
+            raise RuntimeError(
+                f"Benchmark '{args.benchmark}' timed out after "
+                f"{BENCHMARK_TIMEOUT_SECS}s"
+            )
 
     # After L2 benchmarks, wait for TCP connections in TIME_WAIT to clear.
     # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
