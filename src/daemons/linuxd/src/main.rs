@@ -48,6 +48,26 @@ use ::syscomm::{
 const DEFAULT_LOG_LEVEL: &str = "error";
 
 //==================================================================================================
+// Private Functions
+//==================================================================================================
+
+/// Sanitizes a tenant identifier so it is safe to use as a file-name component.
+///
+/// Only ASCII letters, digits, '.', '_' and '-' are preserved. All other characters
+/// are replaced with '_'.
+fn sanitize_tenant_id(raw: &str) -> String {
+    raw.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
 
@@ -55,7 +75,14 @@ const DEFAULT_LOG_LEVEL: &str = "error";
 pub async fn main() -> Result<()> {
     // Parse and retrieve command-line arguments.
     let args: Args = args::Args::parse(env::args().collect())?;
-    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir(), None);
+    let tenant_id: Option<String> = args.tenant_id().and_then(|id| {
+        if id.is_empty() {
+            None
+        } else {
+            Some(sanitize_tenant_id(id))
+        }
+    });
+    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir(), tenant_id);
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: &str = args.control_plane_sockaddr();
