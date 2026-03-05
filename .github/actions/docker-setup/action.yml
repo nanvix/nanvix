@@ -45,3 +45,31 @@ runs:
       echo "[INFO] Saving Docker image to cache for future runs..."
       docker save ${{ steps.image-tag.outputs.image }} | zstd -T0 -3 > /tmp/docker-image.tar.zst
       echo "[INFO] Docker image saved to cache."
+
+  # Pre-pull the BuildKit Dockerfile frontend image so that subsequent
+  # 'docker build' invocations (which use the '# syntax=' line from
+  # scripts/setup/Dockerfile.build) resolve the frontend locally instead
+  # of fetching it from Docker Hub. This avoids transient Docker Hub
+  # outages (e.g., 504 Gateway Timeout) from failing the build.
+  - name: "Pre-pull BuildKit Frontend"
+    shell: bash
+    run: |
+      # Derive the BuildKit frontend image reference from the Dockerfile syntax line.
+      frontend_ref="$(sed -n 's/^# syntax=//p' scripts/setup/Dockerfile.build | head -n1)"
+      if [[ -z "$frontend_ref" ]]; then
+        frontend_ref="docker/dockerfile:1.4"
+      fi
+
+      max_retries=3
+      for attempt in $(seq 1 "$max_retries"); do
+        if docker pull "$frontend_ref"; then
+          echo "[INFO] BuildKit frontend image '$frontend_ref' pulled successfully."
+          break
+        fi
+        if [[ "$attempt" -eq "$max_retries" ]]; then
+          echo "::warning::Failed to pre-pull BuildKit frontend '$frontend_ref' after $max_retries attempts; builds will attempt to pull it on demand."
+          break
+        fi
+        echo "::warning::BuildKit frontend pull attempt $attempt/$max_retries for '$frontend_ref' failed. Retrying in $((attempt * 15))s..."
+        sleep $((attempt * 15))
+      done
