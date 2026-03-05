@@ -22,6 +22,8 @@ covering the design decisions, architecture, memory layout, and boot flow.
 - [ELF64 Loading](#elf64-loading)
 - [Library Changes](#library-changes)
 - [Integration Testing](#integration-testing)
+- [Clippy and Lint Fixes](#clippy-and-lint-fixes)
+- [CI/CD Pipeline](#cicd-pipeline)
 - [Known Limitations](#known-limitations)
 
 ## Overview
@@ -524,6 +526,116 @@ zero-extended `u32::MAX` value `0x00000000FFFFFFFF` received from user space. Th
 rejected the timeout as invalid. The fix changes the sentinel checks to use
 `u32::MAX as usize`, which works on both architectures.
 
+## Clippy and Lint Fixes
+
+Several Clippy lints that pass on x86 trigger errors on x86_64 due to differences in pointer
+width, type sizes, and stack frame budgets. The kernel enforces strict lint policies via
+`#![deny(clippy::all)]` and `#![forbid(clippy::large_stack_frames)]`.
+
+### Operator Precedence (`hwpt.rs`)
+
+In `split_2m_entry()`, the expression `base_2m + (i as u64 * 4096) | flags_4k` was flagged by
+`clippy::precedence` because bitwise OR binds more tightly than intended. The fix adds explicit
+parentheses: `(base_2m + (i as u64 * 4096)) | flags_4k`.
+
+### Large Stack Frames (`event/manager.rs`)
+
+The `EventManagerInner` struct used `usize::BITS as usize` to size the interrupt and exception
+ownership/pending arrays. On x86, `usize::BITS = 32` which happens to match the hardware event
+count, so the arrays are 32 elements. On x86_64, `usize::BITS = 64`, doubling array sizes and
+pushing `init()` to 36,695 bytes of stack — exceeding the kernel's 32,768-byte threshold
+enforced by `#![forbid(clippy::large_stack_frames)]`.
+
+The fix replaces `usize::BITS as usize` with the correct constants:
+
+| Array                    | Old Size          | New Size                       |
+|--------------------------|-------------------|--------------------------------|
+| `interrupt_ownership`    | `usize::BITS` (64)| `InterruptEvent::NUMBER_EVENTS` (32) |
+| `pending_interrupts`     | `usize::BITS` (64)| `InterruptEvent::NUMBER_EVENTS` (32) |
+| `exception_ownership`    | `usize::BITS` (64)| `ExceptionEvent::NUMBER_EVENTS` (32) |
+| `pending_exceptions`     | `usize::BITS` (64)| `ExceptionEvent::NUMBER_EVENTS` (32) |
+| `scheduling_ownership`   | unchanged         | `SchedulingEvent::NUMBER_EVENTS` (3) |
+| `pending_scheduling`     | unchanged         | `SchedulingEvent::NUMBER_EVENTS` (3) |
+
+All loop bounds that iterated `0..usize::BITS` over these arrays were updated to use the
+corresponding `NUMBER_EVENTS` constant. This prevents out-of-bounds access on x86_64 and
+reduces stack usage on both architectures.
+
+### Cast Truncation (`libc_stdlib`)
+
+The `malloc_usable_size()` function casts `usize` to `c_size_t`, which is `u32` in Nanvix
+(defined as `c_uint` in `sysapi`). On x86, this cast is a no-op (both are 32-bit). On x86_64,
+it is a truncating cast. The crate forbids `clippy::cast_possible_truncation` on 64-bit targets,
+so `#[allow(...)]` annotations conflict with the crate-level `#[forbid(...)]`.
+
+The fix replaces the direct cast on 64-bit targets with a safe conversion:
+
+```rust
+match c_size_t::try_from(size) {
+    Ok(v) => v,
+    Err(_) => c_size_t::MAX,
+}
+```
+
+## CI/CD Pipeline
+
+A dedicated GitHub Actions workflow (`.github/workflows/ci-x86_64.yml`) provides continuous
+integration for x86_64 builds. It runs on GitHub-hosted `ubuntu-24.04` runners with KVM
+enabled for integration tests.
+
+### Workflow Structure
+
+The workflow has three stages:
+
+1. **Lint** — Runs Clippy and format checks via Docker. Matrix: `{single-process,
+   multi-process}`.
+2. **Build** — Compiles all Nanvix components via Docker. Matrix: `{debug, release} ×
+   {single-process, multi-process}`. Build artifacts are uploaded for the test stage.
+3. **Test** — Downloads build artifacts and runs unit tests (via `make run-unit-tests`) and
+   integration tests (via `nanvix-test.elf`) on KVM-enabled runners. Matrix matches the build
+   stage.
+
+### Triggers
+
+The workflow triggers on:
+- Pushes to `dev` and `feature-kernel-x64` branches.
+- Pull requests targeting `dev`.
+- Manual dispatch (`workflow_dispatch`).
+
+### Action Parameterization
+
+The existing CI actions (`docker-check`, `docker-build`, `build`, `lint`, `test`) were extended
+with a `target-arch` input (default: `x86`). When `target-arch=x86_64`, the actions pass
+`TARGET=x86_64` to the build system, and the Docker build action includes the architecture in
+the sccache cache key to avoid cross-architecture cache collisions.
+
+### C/C++ Guest Binary Exclusion
+
+The x86_64 C cross-compiler (`x86_64-nanvix-gcc`) does not exist yet. The build system skips
+C/C++ guest binary compilation when `TARGET=x86_64` via a conditional guard in
+`build/make/generic-guest-binaries.mk`:
+
+```makefile
+ifneq ($(TARGET),x86_64)
+	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks all
+	$(MAKE_QUIET) -C $(SOURCES_DIR)/user all
+	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests all
+endif
+```
+
+### Test Configurations
+
+Separate test configuration files exclude C/C++ test binaries:
+
+| Deployment      | x86 Config                      | x86_64 Config                            |
+|-----------------|---------------------------------|------------------------------------------|
+| single-process  | `test/test-single_process.toml` | `test/test-single_process-x86_64.toml`   |
+| multi-process   | `test/test-multi_process.toml`  | `test/test-multi_process-x86_64.toml`    |
+
+The x86_64 configs include only Rust-based tests: `test-kernel`, `vfs-test`, `echo-rust-nostd`,
+`linux-app`, `file-rust`, `thread-rust`, `stress-rust`, and `arch-rust`. The Makefile selects
+the correct config file based on `TARGET` and `SINGLE_PROCESS` variables.
+
 ## Known Limitations
 
 - **Single address space**: The kernel does not load its own page tables into CR3. All
@@ -539,3 +651,6 @@ rejected the timeout as invalid. The fix changes the sentinel checks to use
 - **`__context_switch` does not reload CR3**: Since all processes share the same address
   space, the context switch skips the CR3 load. This must be revisited when per-process
   page tables are implemented.
+- **No C/C++ cross-compiler**: The `x86_64-nanvix-gcc` toolchain does not exist yet.
+  C and C++ guest binaries cannot be compiled for x86_64. Only Rust guest programs are
+  supported.
