@@ -17,7 +17,7 @@ verify = true
 crate-type = ["lib"]
 
 [dependencies]
-core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 sysapi = { workspace = true }
 vstd = { workspace = true, optional = true }
