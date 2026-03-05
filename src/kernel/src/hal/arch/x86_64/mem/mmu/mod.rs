@@ -45,6 +45,7 @@ pub unsafe fn load_pml4(cr3: usize) {
 ///
 /// This is an alias for [`load_pml4`] kept for backward compatibility.
 #[inline(always)]
+#[allow(dead_code)]
 pub unsafe fn load_page_directory(cr3: usize) {
     load_pml4(cr3);
 }

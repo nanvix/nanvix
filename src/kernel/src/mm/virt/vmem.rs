@@ -17,6 +17,7 @@ use crate::hal::arch::x86::mem::mmu::{
     page_table::PageTable,
 };
 #[cfg(feature = "x86_64")]
+#[allow(unused_imports)]
 use crate::hal::arch::x86_64::mem::mmu::{
     self,
     page_directory::{
@@ -226,8 +227,13 @@ impl Vmem {
     }
 
     pub fn load(&self) -> Result<(), Error> {
-        let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        // On x86_64, the UserVM manages the page tables loaded into CR3.
+        // The kernel's page directory is used only for bookkeeping.
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
+            unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        }
         Ok(())
     }
 
@@ -563,23 +569,35 @@ impl Vmem {
     /// returned instead.
     ///
     fn find_user_frame(&self, vaddr: PageAligned<VirtualAddress>) -> Result<FrameAddress, Error> {
-        let page_addr: PageAddress = PageAddress::new(vaddr);
-        let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
-            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
-        )?);
-
-        // Look for the corresponding page table.
-        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
-            // Found.
-            if lookup_pgtable_addr == &pgtab_addr {
-                // Look for the corresponding page.
-                return page_table.lookup(page_addr);
-            }
+        // On x86_64 with identity mapping, virtual address equals physical address.
+        #[cfg(target_arch = "x86_64")]
+        {
+            return Ok(FrameAddress::new(PageAligned::from_address(
+                PhysicalAddress::from_raw_value(vaddr.into_raw_value())?,
+            )?));
         }
 
-        let reason: &str = "page not found";
-        error!("{reason} (vaddr={vaddr:?})");
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let page_addr: PageAddress = PageAddress::new(vaddr);
+            let pgtab_addr: PageTableAddress =
+                PageTableAddress::new(PageTableAligned::from_raw_value(
+                    ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+                )?);
+
+            // Look for the corresponding page table.
+            for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+                // Found.
+                if lookup_pgtable_addr == &pgtab_addr {
+                    // Look for the corresponding page.
+                    return page_table.lookup(page_addr);
+                }
+            }
+
+            let reason: &str = "page not found";
+            error!("{reason} (vaddr={vaddr:?})");
+            Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        }
     }
 
     ///
@@ -680,11 +698,6 @@ impl Vmem {
                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
 
-                // On x86_64, identity mapping means virtual = physical.
-                #[cfg(target_arch = "x86_64")]
-                let src_phys_addr: usize = src.into_raw_value();
-
-                #[cfg(not(target_arch = "x86_64"))]
                 let src_phys_addr: usize = {
                     let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
                     src_frame.into_raw_value() + offset
@@ -835,12 +848,7 @@ impl Vmem {
 
             // Only perform the following operations if not in dry-run mode.
             if !dry_run {
-                // On x86_64, we use identity mapping (2MB huge pages), so the physical
-                // address equals the virtual address. No page directory lookup needed.
-                #[cfg(target_arch = "x86_64")]
-                let dst_phys_addr_raw: usize = dst.into_raw_value();
-
-                #[cfg(not(target_arch = "x86_64"))]
+                // On x86_64, find_user_frame returns the identity-mapped physical address.
                 let dst_phys_addr_raw: usize = {
                     let dst_frame: FrameAddress = match self.find_user_frame(vaddr) {
                         Ok(frame) => frame,
@@ -1051,11 +1059,6 @@ impl Vmem {
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
-        // On x86_64, identity mapping means virtual = physical.
-        #[cfg(target_arch = "x86_64")]
-        let base: *mut u8 = dst.into_raw_value() as *mut u8;
-
-        #[cfg(not(target_arch = "x86_64"))]
         let base: *mut u8 = {
             let uframe: FrameAddress = self.find_user_frame(dst)?;
             let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();

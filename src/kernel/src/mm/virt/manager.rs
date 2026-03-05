@@ -182,9 +182,6 @@ impl VirtMemoryManager {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
         // Load root address space.
-        // On x86_64, the VMM's identity mapping is sufficient for boot;
-        // full 4-level page table management (PML4/PDPT/PD/PT) is not yet implemented.
-        #[cfg(not(feature = "x86_64"))]
         root.load()?;
 
         Ok((
@@ -215,11 +212,11 @@ impl VirtMemoryManager {
         access: AccessPermission,
         clear: bool,
     ) -> Result<(), Error> {
-        // On x86_64, identity mapping via 2MB huge pages means virtual = physical.
-        // No need to allocate a separate frame or map in the page directory.
+        // On x86_64, identity mapping (virtual == physical) is managed by the UserVM.
+        // No frame allocation or page table manipulation is needed.
         #[cfg(target_arch = "x86_64")]
         {
-            let _ = access; // suppress unused warning
+            let _ = access;
             if clear {
                 vmem.memset(vaddr, 0)?;
             }
@@ -297,13 +294,12 @@ impl VirtMemoryManager {
     ) -> Result<(), Error> {
         trace!("vaddr={:?}, nframes={}", vaddr, nframes);
 
-        // On x86_64, identity mapping means virtual = physical. No frame alloc/mapping needed.
+        // On x86_64, identity mapping (virtual == physical) is managed by the UserVM.
+        // No frame allocation or page table manipulation is needed.
         #[cfg(target_arch = "x86_64")]
         {
             let _ = (vmem, access);
             for _ in 0..nframes {
-                // Memory is already accessible via identity-mapped 2MB huge pages.
-                // Just advance the virtual address.
                 vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
             }
             return Ok(());
