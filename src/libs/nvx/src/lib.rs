@@ -76,7 +76,7 @@ pub static ARGC: AtomicI32 = AtomicI32::new(0);
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(not(feature = "staticlib"))]
+#[cfg(all(not(feature = "staticlib"), target_arch = "x86"))]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -115,6 +115,30 @@ core::arch::global_asm!(
         call _start
     # Safety net: _start() calls exit() and never returns.
     # If it somehow does, spin forever rather than falling through.
+    1:  jmp 1b
+    "#
+);
+
+#[cfg(all(not(feature = "staticlib"), target_arch = "x86_64"))]
+core::arch::global_asm!(
+    r#"
+    .extern _start
+
+    .globl _do_start
+
+    .section .crt0, "ax"
+
+    _do_start:
+        #
+        # Entry point for newly created processes (64-bit).
+        #
+        # The kernel sets up a trap frame so that IRETQ "returns" here.
+        # System V AMD64 ABI: argp in RDI, envp in RSI.
+        #
+        and rsp, -16
+        mov rbp, rsp
+        call _start
+    # Safety net: spin forever.
     1:  jmp 1b
     "#
 );

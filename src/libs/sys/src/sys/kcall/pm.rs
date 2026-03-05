@@ -166,6 +166,7 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 // Create Thread
 //==================================================================================================
 
+#[cfg(target_arch = "x86")]
 ::core::arch::global_asm!(
     r#"
     .global _do_start_thread
@@ -229,6 +230,43 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 
     # Safety net: _do_exit_thread() calls exit_thread() and never returns.
     # If it somehow does, spin forever rather than falling through.
+    1: jmp 1b
+    "#
+);
+
+#[cfg(target_arch = "x86_64")]
+::core::arch::global_asm!(
+    r#"
+    .global _do_start_thread
+    .extern _do_exit_thread
+    .type _do_start_thread, @function
+
+    _do_start_thread:
+        #
+        # Entry point for newly created threads (64-bit).
+        #
+        # The kernel sets up a trap frame so that IRETQ "returns" to this function.
+        # System V AMD64 ABI: func in RDI, arg in RSI.
+        #
+
+        # Save func and arg into callee-saved registers.
+        mov r12, rdi        # R12 = func
+        mov r13, rsi        # R13 = arg
+
+        # Set up frame pointer and force 16-byte alignment.
+        and rsp, -16
+        mov rbp, rsp
+
+        # Call func(arg). System V AMD64 ABI: first arg in RDI.
+        mov rdi, r13
+        call r12
+
+        # Call _do_exit_thread(status). Return value in RAX -> first arg in RDI.
+        and rsp, -16
+        mov rdi, rax
+        call _do_exit_thread
+
+    # Safety net: spin forever.
     1: jmp 1b
     "#
 );
