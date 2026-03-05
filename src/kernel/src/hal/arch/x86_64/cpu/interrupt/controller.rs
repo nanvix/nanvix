@@ -7,13 +7,13 @@
 
 use crate::hal::arch::x86_64::cpu::interrupt::{
     map::InterruptMap,
+    pic::{
+        Pic,
+        UninitPic,
+    },
     InterruptNumber,
 };
-#[allow(unused_imports)]
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::sys::error::Error;
 
 //==================================================================================================
 // Interrupt Vector
@@ -37,23 +37,26 @@ static mut INTERRUPT_VECTOR: [Option<InterruptHandler>; INTERRUPT_VECTOR_LENGTH]
 // Interrupt Controller
 //==================================================================================================
 
-// TODO: Add PIC/xAPIC/IOAPIC support when the x86_64 arch library provides those modules.
 pub struct InterruptController {
+    #[allow(dead_code)]
     intmap: InterruptMap,
+    pic: Pic,
 }
 
 impl InterruptController {
-    pub fn new(intmap: InterruptMap) -> Result<Self, Error> {
-        Ok(Self { intmap })
+    pub fn new(pic: UninitPic, intmap: InterruptMap) -> Result<Self, Error> {
+        let mut pic = pic;
+        let pic: Pic = pic.init()?;
+        Ok(Self { intmap, pic })
     }
 
-    pub fn ack(&mut self, _intnum: InterruptNumber) -> Result<(), Error> {
-        // TODO: Implement interrupt acknowledgement via xAPIC/PIC.
+    pub fn ack(&mut self, intnum: InterruptNumber) -> Result<(), Error> {
+        self.pic.ack(intnum as u32);
         Ok(())
     }
 
-    pub fn unmask(&mut self, _intnum: InterruptNumber) -> Result<(), Error> {
-        // TODO: Implement interrupt unmasking via IOAPIC/PIC.
+    pub fn unmask(&mut self, intnum: InterruptNumber) -> Result<(), Error> {
+        self.pic.unmask(intnum as u16);
         Ok(())
     }
 
@@ -62,13 +65,13 @@ impl InterruptController {
         intnum: InterruptNumber,
         handler: Option<InterruptHandler>,
     ) -> Result<(), Error> {
-        let intnum: u8 = self.intmap[intnum];
+        let intnum: u8 = intnum as u8;
         unsafe { INTERRUPT_VECTOR[intnum as usize] = handler };
         Ok(())
     }
 
     pub fn get_handler(&self, intnum: InterruptNumber) -> Result<Option<InterruptHandler>, Error> {
-        let intnum: u8 = self.intmap[intnum];
+        let intnum: u8 = intnum as u8;
         unsafe { Ok(INTERRUPT_VECTOR[intnum as usize]) }
     }
 }

@@ -9,6 +9,8 @@ pub mod cpuid;
 pub mod idt;
 pub mod idtr;
 pub mod mxcrs;
+#[cfg(feature = "pic")]
+pub mod pic;
 pub mod ring;
 pub mod tss;
 

@@ -8,20 +8,27 @@
 mod controller;
 mod map;
 mod number;
+mod pic;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::hal::{
-    arch::x86_64::mem::gdt::SegmentSelector,
+    arch::x86_64::{
+        cpu::idt,
+        mem::gdt::SegmentSelector,
+    },
     io::{
         IoMemoryAllocator,
         IoPortAllocator,
     },
     platform::madt::MadtInfo,
 };
-use self::map::InterruptMap;
+use self::{
+    map::InterruptMap,
+    pic::UninitPic,
+};
 use ::sys::error::Error;
 
 //==================================================================================================
@@ -121,14 +128,13 @@ pub unsafe fn forge_user_stack(
 
 /// Initializes the interrupt controller.
 pub fn init(
-    _ioports: &mut IoPortAllocator,
+    ioports: &mut IoPortAllocator,
     _ioaddresses: &mut IoMemoryAllocator,
     _madt: &Option<MadtInfo>,
 ) -> Result<InterruptController, Error> {
     info!("initializing interrupt controller...");
 
-    // TODO: Initialize PIC/xAPIC/IOAPIC when x86_64 arch library provides those modules.
-    // For now, create a minimal interrupt controller with identity mapping.
+    let pic: UninitPic = UninitPic::new(ioports, idt::INT_OFF)?;
     let intmap: InterruptMap = InterruptMap::new();
-    InterruptController::new(intmap)
+    InterruptController::new(pic, intmap)
 }
