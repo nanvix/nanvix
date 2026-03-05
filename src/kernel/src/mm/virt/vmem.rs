@@ -1234,6 +1234,21 @@ impl Vmem {
             .1
             .ctrl(false, page_address, access)?;
 
+        // On x86_64, also update the hardware page tables. The software bookkeeping tables are
+        // not used by the CPU; the VMM-provided 4-level page tables are. For kernel-space MMIO
+        // regions (identity-mapped: VA == PA), we must split the 2 MiB supervisor-only PD entry
+        // into 4 KiB entries and set the User bit so Ring 3 can access the page.
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            let raw_vaddr: usize = vaddr.into_raw_value();
+            crate::hal::arch::x86::mem::mmu::hwpt::map(
+                raw_vaddr,
+                raw_vaddr,
+                true,
+                access.is_writable(),
+            );
+        }
+
         Ok(())
     }
 }

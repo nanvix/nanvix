@@ -105,21 +105,30 @@ unsafe fn write_entry(table_paddr: u64, index: usize, value: u64) {
     core::ptr::write_volatile(ptr, value);
 }
 
-/// Ensures an intermediate page table entry (PML4/PDPT/PD) exists. If not present,
-/// allocates a new zeroed page and installs it.
+/// Ensures an intermediate page table entry (PML4/PDPT/PD) exists and has the required flags.
+/// If the entry is not present, allocates a new zeroed page and installs it.
+/// If the entry exists but lacks the User bit and `user` is true, the User bit is added.
 ///
 /// # Safety
 ///
 /// `table_paddr` and `index` must refer to a valid page table.
-unsafe fn ensure_table(table_paddr: u64, index: usize) -> u64 {
+unsafe fn ensure_table(table_paddr: u64, index: usize, user: bool) -> u64 {
     let entry: u64 = read_entry(table_paddr, index);
     if entry & PTE_PRESENT != 0 {
-        // Entry exists — return the address of the next-level table.
+        // Entry exists. If user access is required but the entry lacks PTE_USER, upgrade it.
+        // The U/S bit must be set at every level of the page table hierarchy for user-mode
+        // access to succeed.
+        if user && (entry & PTE_USER == 0) {
+            write_entry(table_paddr, index, entry | PTE_USER);
+        }
         entry & ADDR_MASK_4K
     } else {
         // Allocate and install a new table.
         let new_table: u64 = alloc_pt_page();
-        let flags: u64 = PTE_PRESENT | PTE_WRITABLE | PTE_USER;
+        let mut flags: u64 = PTE_PRESENT | PTE_WRITABLE;
+        if user {
+            flags |= PTE_USER;
+        }
         write_entry(table_paddr, index, new_table | flags);
         new_table
     }
@@ -195,19 +204,31 @@ pub unsafe fn map(vaddr: usize, paddr: usize, user: bool, writable: bool) {
     let pml4: u64 = PML4_PADDR as u64;
 
     // Walk/create PML4 → PDPT.
-    let pdpt: u64 = ensure_table(pml4, pml4_idx);
+    let pdpt: u64 = ensure_table(pml4, pml4_idx, user);
 
     // Walk/create PDPT → PD.
-    let pd: u64 = ensure_table(pdpt, pdpt_idx);
+    let pd: u64 = ensure_table(pdpt, pdpt_idx, user);
 
     // Check if PD entry is a 2 MiB page (needs splitting).
     let pd_entry: u64 = read_entry(pd, pd_idx);
     let pt: u64 = if pd_entry & PTE_PRESENT != 0 && pd_entry & PDE_PS != 0 {
-        split_2m_entry(pd, pd_idx)
+        let pt_addr: u64 = split_2m_entry(pd, pd_idx);
+        // After splitting, upgrade the PD entry's User bit if user access is required.
+        if user {
+            let new_pd_entry: u64 = read_entry(pd, pd_idx);
+            if new_pd_entry & PTE_USER == 0 {
+                write_entry(pd, pd_idx, new_pd_entry | PTE_USER);
+            }
+        }
+        pt_addr
     } else if pd_entry & PTE_PRESENT != 0 {
+        // Existing PT — upgrade User bit on the PD entry if needed.
+        if user && (pd_entry & PTE_USER == 0) {
+            write_entry(pd, pd_idx, pd_entry | PTE_USER);
+        }
         pd_entry & ADDR_MASK_4K
     } else {
-        ensure_table(pd, pd_idx)
+        ensure_table(pd, pd_idx, user)
     };
 
     // Build the PT entry.
