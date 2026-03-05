@@ -272,6 +272,7 @@
 .global __leave_kernel
 .global __leave_kernel_to_user_mode
 .global __phys_memcpy
+.global __phys_memcpy32
 .global __phys_memset
 
 /*----------------------------------------------------------------------------*
@@ -470,6 +471,7 @@ __leave_kernel:
  * In 64-bit mode with identity mapping, we can copy directly.
  */
 __phys_memcpy:
+__phys_memcpy32:
     mov %rdx, %rcx
     test %rcx, %rcx
     jz 1f

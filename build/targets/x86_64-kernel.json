@@ -15,7 +15,7 @@
 		"ld": [
 			"-nostdlib",
 			"--entry=_do_start",
-			"-melf_x86_64_nanvix"
+			"-melf_x86_64"
 		]
 	},
 	"executables": true,
