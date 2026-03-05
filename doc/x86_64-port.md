@@ -21,6 +21,7 @@ covering the design decisions, architecture, memory layout, and boot flow.
 - [Memory Layout](#memory-layout)
 - [ELF64 Loading](#elf64-loading)
 - [Library Changes](#library-changes)
+- [Integration Testing](#integration-testing)
 - [Known Limitations](#known-limitations)
 
 ## Overview
@@ -307,6 +308,14 @@ When a user page is mapped via `vmem.map()`:
    - Installs the 4 KiB PTE with the correct physical address and flags.
    - Flushes the TLB entry with `invlpg`.
 
+When kernel page permissions are changed via `vmem.kctrl()` (e.g., making an MMIO region
+user-accessible), the software bookkeeping tables are updated as on x86, but on x86_64 the
+hardware page tables must also be updated. `kctrl()` calls `hwpt::map()` for identity-mapped
+kernel regions, which splits the enclosing 2 MiB supervisor-only PD entry into 4 KiB entries
+and sets the User bit on the target page. The `ensure_table()` helper propagates the User bit
+upward through all intermediate page table levels (PML4, PDPT, PD), since x86_64 requires the
+U/S bit to be set at every level for user-mode access to succeed.
+
 The hardware page table manager uses a static pool of 64 page-table pages allocated from
 BSS. Each page is 4 KiB (512 × 8-byte entries). This pool is sufficient for the current
 workload but may need expansion for applications with large address spaces.
@@ -347,6 +356,18 @@ The scheduler picks up the new thread, restores its context, and `ret`s to
 2. Clears all volatile registers to prevent kernel state leakage.
 3. Executes `iretq`, which pops RIP, CS, RFLAGS, RSP, and SS from the stack,
    transitioning the CPU to Ring 3 at the user entry point.
+
+### Thread Creation
+
+When `create_thread()` is called, the same `forge_user_stack` mechanism is used with
+`user_fn = _do_start_thread` and `arg0 = thread_func`, `arg1 = thread_arg`. The
+`__leave_kernel_to_user_mode` stub pops these into **RDI** (thread_func) and **RSI**
+(thread_arg), then `iretq`s to `_do_start_thread`.
+
+The `_do_start_thread` assembly stub (in `pm_x86_64.rs`) must therefore read the function
+pointer from RDI and the argument from RSI — **not** RDX/RCX — because
+`__leave_kernel_to_user_mode` zeroes all volatile registers except RDI and RSI before
+`iretq`.
 
 ## Memory Layout
 
@@ -436,8 +457,9 @@ module routers (`cpu/mod.rs`, `mem/mod.rs`). The original 32-bit files are unmod
 
 - **`src/sys/kcall/arch/x86_64.rs`** (new file): Kernel call stubs using `int 0x80` and
   the x86_64 register convention (RAX=number, RDI/RSI/RDX/R10/R8=arguments).
-- **`src/sys/kcall/pm_x86_64.rs`** (new file): `__start_thread` assembly stub for x86_64
-  thread entry, loaded via `#[path]` when targeting x86_64.
+- **`src/sys/kcall/pm_x86_64.rs`** (new file): `_do_start_thread` assembly stub for x86_64
+  thread entry, loaded via `#[path]` when targeting x86_64. Receives the thread function
+  pointer in RDI and the thread argument in RSI (from `__leave_kernel_to_user_mode`).
 - Added 64-bit variants of `ExitStatus`, process management calls, and type definitions
   in existing files with `#[cfg(target_arch = "x86_64")]` guards.
 
@@ -454,6 +476,53 @@ The kernel heap allocator's size-to-slab mapping was changed from `4096 => Slab4
 because they fell through to `Err(AllocError)`. This is particularly critical on x86_64
 where pointer sizes are 8 bytes — a `Vec<UserFrame>` with 128 entries requires 1024 bytes,
 which could not be served by any slab class.
+
+## Integration Testing
+
+All seven Rust integration tests pass on both x86 and x86_64: `test-kernel`, `arch-rust`,
+`thread-rust`, `stress-rust`, `file-rust`, `linux-app`, and `vfs-test`. Four issues were
+identified and fixed during the porting process.
+
+### TLS Inline Assembly (`test-kernel`)
+
+The TLS stress tests in `test-kernel` use inline assembly to read the Thread Data Area (TDA)
+via a segment register. On x86, the TDA is accessed through `%gs` (configured via a GDT
+descriptor). On x86_64, the TDA is accessed through `%fs` (configured via the FS_BASE MSR,
+written by `WRMSR` during context switch). The `read_gs_offset_0()` and `read_gs_at()`
+helpers now use `#[cfg(target_arch)]` guards to emit the correct segment prefix.
+
+### MMIO RAMFS Page Fault
+
+The kernel's `kctrl()` function in `vmem.rs` changes page permissions for MMIO regions (e.g.,
+the RAMFS image mapped by the VMM near the top of guest physical memory). On x86, the software
+page tables are the hardware page tables, so `kctrl()` works directly. On x86_64, the software
+bookkeeping tables are separate from the VMM-provided 4-level hardware page tables, so
+`kctrl()` alone left the hardware page tables unchanged. User-mode access to the RAMFS page
+faulted with error code 5 (user-mode read of a supervisor-only page).
+
+The fix adds a `hwpt::map()` call in `kctrl()` for x86_64, which splits the enclosing 2 MiB
+supervisor-only PD entry into 4 KiB entries and propagates the User bit through all
+intermediate page table levels (PML4, PDPT, PD). See the [Paging](#paging) section for
+details.
+
+### Worker Thread RIP=0 Crash
+
+The `_do_start_thread` assembly stub (in `pm_x86_64.rs`) originally read the thread function
+pointer from RDX and the thread argument from RCX. However, `__leave_kernel_to_user_mode`
+passes arguments via RDI and RSI (and zeroes all other volatile registers). This caused the
+worker thread to call through a null function pointer (RDX=0), crashing at RIP=0. The fix
+changes the stub to read from RDI and RSI. See the [Thread Creation](#thread-creation)
+section.
+
+### Mutex/Condvar Timeout Sentinel
+
+The user-space `lock_mutex()` and `wait_cond()` wrappers use `(u32::MAX, u32::MAX)` as a
+sentinel to indicate "no timeout" (infinite wait). The kernel handlers compared these values
+against `usize::MAX`. On x86, `u32::MAX == usize::MAX` (both are `0xFFFFFFFF`), so the check
+worked. On x86_64, `usize::MAX` is `0xFFFFFFFFFFFFFFFF`, which does not match the
+zero-extended `u32::MAX` value `0x00000000FFFFFFFF` received from user space. The kernel
+rejected the timeout as invalid. The fix changes the sentinel checks to use
+`u32::MAX as usize`, which works on both architectures.
 
 ## Known Limitations
 
