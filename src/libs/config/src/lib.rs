@@ -66,6 +66,12 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_END`], which can be used in constant-value expressions.
     ///
+    /// On x86_64, the kernel end is set to 32MB so that user space fits within the first 1GB
+    /// (single page directory). On x86, it remains at 1GB.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    pub const KERNEL_END_RAW: usize = 0x0200_0000;
+    #[cfg(not(target_arch = "x86_64"))]
     pub const KERNEL_END_RAW: usize = 0x4000_0000;
 
     ///
@@ -87,6 +93,12 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`USER_END`], which can be used in constant-value expressions.
     ///
+    /// On x86_64, user space is limited to the first 128MB to fit within
+    /// the minimum guest memory size.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    pub const USER_END_RAW: usize = 0x0800_0000;
+    #[cfg(not(target_arch = "x86_64"))]
     pub const USER_END_RAW: usize = 0xf0000000;
 
     ///
@@ -138,6 +150,9 @@ pub mod memory_layout {
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
+    #[cfg(target_arch = "x86_64")]
+    pub const USER_MMAP_BASE_RAW: usize = 0x0400_0000;
+    #[cfg(not(target_arch = "x86_64"))]
     pub const USER_MMAP_BASE_RAW: usize = 0x6000_0000;
 
     ///
@@ -149,6 +164,9 @@ pub mod memory_layout {
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
+    #[cfg(target_arch = "x86_64")]
+    pub const USER_MMAP_END_RAW: usize = 0x0780_0000;
+    #[cfg(not(target_arch = "x86_64"))]
     pub const USER_MMAP_END_RAW: usize = 0xd000_0000;
 
     ///

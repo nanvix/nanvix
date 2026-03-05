@@ -32,10 +32,12 @@ impl PhysMemoryManager {
         PhysMemoryManager { kpool, upool }
     }
 
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
         self.upool.alloc()
     }
 
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn alloc_many_user_frames(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
         self.upool.alloc_many(nframes)
     }

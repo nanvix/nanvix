@@ -25,6 +25,7 @@ use crate::hal::arch::x86_64::mem::mmu::{
     },
     page_table::PageTable,
 };
+#[allow(unused_imports)]
 use crate::{
     hal::mem::{
         AccessPermission,
@@ -319,6 +320,7 @@ impl Vmem {
     }
 
     /// Maps a page to the target virtual address space.
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn map<T: Fn() -> Result<PageTable<PageTableStorage>, Error>>(
         &mut self,
         uframe: UserFrame,
@@ -676,18 +678,26 @@ impl Vmem {
                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
 
-                let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
+                // On x86_64, identity mapping means virtual = physical.
+                #[cfg(target_arch = "x86_64")]
+                let src_phys_addr: usize = src.into_raw_value();
+
+                #[cfg(not(target_arch = "x86_64"))]
+                let src_phys_addr: usize = {
+                    let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
+                    src_frame.into_raw_value() + offset
+                };
 
                 if !dry_run {
                     // Copy memory from user space to kernel space.
                     // SAFETY: The following conditions are guaranteed:
                     // - `dst.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
-                    // - `src_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
+                    // - `src_phys_addr` is a valid user-space address for `copy_size` bytes.
                     // - Both regions are non-overlapping and accessible for the operation.
                     unsafe {
                         __phys_memcpy(
                             dst.into_raw_value() as *mut u8,
-                            (src_frame.into_raw_value() + offset) as *const u8,
+                            src_phys_addr as *const u8,
                             copy_size,
                         )
                     };
@@ -823,18 +833,26 @@ impl Vmem {
 
             // Only perform the following operations if not in dry-run mode.
             if !dry_run {
-                let dst_frame: FrameAddress = match self.find_user_frame(vaddr) {
-                    Ok(frame) => frame,
-                    Err(error) => {
-                        let reason: &str = "failed to find user frame";
-                        panic!(
-                            "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
-                             dst={dst:?}, src={src:?}, size={size:?})"
-                        );
-                    },
+                // On x86_64, we use identity mapping (2MB huge pages), so the physical
+                // address equals the virtual address. No page directory lookup needed.
+                #[cfg(target_arch = "x86_64")]
+                let dst_phys_addr_raw: usize = dst.into_raw_value();
+
+                #[cfg(not(target_arch = "x86_64"))]
+                let dst_phys_addr_raw: usize = {
+                    let dst_frame: FrameAddress = match self.find_user_frame(vaddr) {
+                        Ok(frame) => frame,
+                        Err(error) => {
+                            let reason: &str = "failed to find user frame";
+                            panic!(
+                                "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
+                                 dst={dst:?}, src={src:?}, size={size:?})"
+                            );
+                        },
+                    };
+                    dst_frame.into_raw_value() + offset
                 };
 
-                let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
                 // Check if [dst_phys_addr_raw, dst_phys_addr_raw + copy_size) does not lie within physical memory.
                 if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
                     let reason: &str =
@@ -851,7 +869,7 @@ impl Vmem {
                 // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
                 // - Both regions lie in physical memory.
                 unsafe {
-                    let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                    let dst: *mut u8 = dst_phys_addr_raw as *mut u8;
                     let src: *const u8 = src.into_raw_value() as *const u8;
                     let phys_memcpy_fn: unsafe extern "C" fn(*mut u8, *const u8, usize) =
                         if copy_size.is_multiple_of(::core::mem::size_of::<u32>()) {
@@ -1031,10 +1049,16 @@ impl Vmem {
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
-        // Get corresponding user page.
-        let uframe: FrameAddress = self.find_user_frame(dst)?;
-        let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+        // On x86_64, identity mapping means virtual = physical.
+        #[cfg(target_arch = "x86_64")]
         let base: *mut u8 = dst.into_raw_value() as *mut u8;
+
+        #[cfg(not(target_arch = "x86_64"))]
+        let base: *mut u8 = {
+            let uframe: FrameAddress = self.find_user_frame(dst)?;
+            let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+            dst.into_raw_value() as *mut u8
+        };
 
         // Safety: `base` points to a valid memory location and `mem::PAGE_SIZE` bytes are
         // writable.

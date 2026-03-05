@@ -311,6 +311,10 @@ impl VirtualProcessor {
 
         // Configure system registers for long mode.
         let mut vcpu_sregs: kvm_sregs = self.fd.get_sregs()?;
+        trace!(
+            "reset_long_mode(): get_sregs returned efer={:#x}, cr0={:#x}, cr4={:#x}, cr3={:#x}",
+            vcpu_sregs.efer, vcpu_sregs.cr0, vcpu_sregs.cr4, vcpu_sregs.cr3
+        );
 
         // 64-bit code segment (selector 0x08).
         vcpu_sregs.cs.base = 0;
@@ -362,6 +366,11 @@ impl VirtualProcessor {
             | (1 << 9)             // OSFXSR — FXSAVE/FXRSTOR support
             | (1 << 10);           // OSXMMEXCPT — Unmasked SIMD FP Exceptions support
 
+        // EFER: LME + LMA + SCE.
+        // KVM strips LMA from set_msrs when CR0.PG=0, so we must set it here
+        // alongside CR0.PG=1 for atomic consistency.
+        vcpu_sregs.efer = EFER_LME | EFER_LMA | EFER_SCE;
+
         // GDT register: point to GDT in guest memory (3 entries × 8 bytes = 24 bytes).
         vcpu_sregs.gdt.base = GDT_GPA;
         vcpu_sregs.gdt.limit = 3 * 8 - 1;
@@ -370,7 +379,16 @@ impl VirtualProcessor {
         vcpu_sregs.idt.base = 0;
         vcpu_sregs.idt.limit = 0;
 
-        self.fd.set_sregs(&vcpu_sregs)?;
+        trace!(
+            "reset_long_mode(): about to set_sregs: efer={:#x}, cr0={:#x}, cr4={:#x}, cr3={:#x}, cs.l={}, cs.db={}",
+            vcpu_sregs.efer, vcpu_sregs.cr0, vcpu_sregs.cr4, vcpu_sregs.cr3,
+            vcpu_sregs.cs.l, vcpu_sregs.cs.db
+        );
+        if let Err(e) = self.fd.set_sregs(&vcpu_sregs) {
+            error!("reset_long_mode(): set_sregs FAILED: {e:?}");
+            return Err(e.into());
+        }
+        trace!("reset_long_mode(): set_sregs succeeded");
 
         // Set general purpose registers.
         let mut vcpu_regs: kvm_regs = self.fd.get_regs()?;
@@ -379,7 +397,11 @@ impl VirtualProcessor {
         vcpu_regs.rbx = rbx;
         vcpu_regs.rsp = 0; // Kernel will set up its own stack.
         vcpu_regs.rflags = RFLAGS_INTERRUPT_ENABLE;
-        self.fd.set_regs(&vcpu_regs)?;
+        if let Err(e) = self.fd.set_regs(&vcpu_regs) {
+            error!("reset_long_mode(): set_regs FAILED: {e:?}");
+            return Err(e.into());
+        }
+        trace!("reset_long_mode(): set_regs succeeded");
 
         // Processor is now online.
         self.online = true;
@@ -467,12 +489,12 @@ impl VirtualProcessor {
         vmem.write_bytes(PDPT_GPA, &zeros)?;
         vmem.write_bytes(PD_GPA, &zeros)?;
 
-        // PML4[0] → PDPT (present, writable).
-        let pml4_entry: u64 = PDPT_GPA | 0x03; // Present + Writable
+        // PML4[0] → PDPT (present, writable, user-accessible).
+        let pml4_entry: u64 = PDPT_GPA | 0x07; // Present + Writable + User
         vmem.write_bytes(PML4_GPA, &pml4_entry.to_le_bytes())?;
 
-        // PDPT[0] → PD (present, writable).
-        let pdpt_entry: u64 = PD_GPA | 0x03; // Present + Writable
+        // PDPT[0] → PD (present, writable, user-accessible).
+        let pdpt_entry: u64 = PD_GPA | 0x07; // Present + Writable + User
         vmem.write_bytes(PDPT_GPA, &pdpt_entry.to_le_bytes())?;
 
         // PD entries: identity-map using 2MB huge pages.
@@ -482,8 +504,9 @@ impl VirtualProcessor {
 
         for i in 0..num_entries {
             let phys_addr: u64 = (i * HUGE_PAGE_SIZE) as u64;
-            // Present + Writable + PS (Page Size, indicates 2MB page).
-            let pd_entry: u64 = phys_addr | 0x83;
+            // Present + Writable + User + PS (Page Size, indicates 2MB page).
+            // User bit allows ring-3 access (needed for user-space processes).
+            let pd_entry: u64 = phys_addr | 0x87;
             let offset: u64 = PD_GPA + (i as u64) * 8;
             vmem.write_bytes(offset, &pd_entry.to_le_bytes())?;
         }
@@ -659,11 +682,6 @@ impl VirtualProcessor {
     /// # Description
     ///
     /// Runs the virtual processor until it exits.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns the context in which the virtual processor
-    /// exited. Otherwise, it returns an error.
     ///
     pub fn run(&mut self) -> VirtualProcessorExitContext {
         // Run the virtual processor and parse exit reason.

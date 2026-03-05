@@ -285,21 +285,15 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             },
         };
 
-        info!(
-            "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
-            initrd_base,
-            (initrd_size * mem::PAGE_SIZE),
-            cmdline_len,
-            cmdline
-        );
-
         // Add kernel module to the list of kernel modules.
         let module: KernelModule = KernelModule::new(
             PhysicalAddress::from_raw_value(initrd_base)?,
             initrd_size * mem::PAGE_SIZE,
             cmdline.to_string(),
         );
+
         kernel_modules.push_back(module);
+
     }
 
     Ok(BootInfo::new(

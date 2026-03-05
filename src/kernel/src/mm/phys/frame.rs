@@ -85,6 +85,7 @@ impl FrameAllocator {
     /// Upon success, the index of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(frame_number) => frame_number,

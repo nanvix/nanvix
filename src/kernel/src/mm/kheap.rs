@@ -24,6 +24,10 @@ use ::sys::error::{
 //==================================================================================================
 
 pub const NUM_OF_SLABS: usize = 8;
+// x86_64 needs more 4096-byte slab blocks for 4-level page tables.
+#[cfg(target_arch = "x86_64")]
+const SLAB_COUNT: usize = 128;
+#[cfg(not(target_arch = "x86_64"))]
 const SLAB_COUNT: usize = 32;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
@@ -154,7 +158,8 @@ impl Kheap {
     }
 
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
-        match Kheap::layout_to_allocator(&layout)? {
+        let slab = Kheap::layout_to_allocator(&layout)?;
+        match slab {
             SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_| AllocError),
             SlabSize::Slab16 => self.slab_16_bytes.allocate().map_err(|_| AllocError),
             SlabSize::Slab32 => self.slab_32_bytes.allocate().map_err(|_| AllocError),
@@ -188,7 +193,7 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
-            4096 => Ok(SlabSize::Slab4096),
+            513..=4096 => Ok(SlabSize::Slab4096),
             _ => Err(AllocError),
         }
     }
@@ -201,7 +206,6 @@ unsafe impl GlobalAlloc for ArenaAllocator {
             match heap.allocate(layout) {
                 Ok(ptr) => ptr,
                 Err(_) => {
-                    error!("allocation failed (layout={:?})", layout);
                     core::ptr::null_mut()
                 },
             }

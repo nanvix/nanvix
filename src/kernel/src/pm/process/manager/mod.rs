@@ -197,6 +197,7 @@ impl ProcessManager {
     ///
     fn forge_user_context(
         mm: &mut VirtMemoryManager,
+        #[cfg_attr(target_arch = "x86_64", allow(unused_variables))]
         vmem: &mut Vmem,
         args: &ThreadCreateArgs,
         enable_interrupts: bool,
@@ -218,7 +219,12 @@ impl ProcessManager {
         // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
-        let cr3 = vmem.pgdir().physical_address()?.into_raw_value();
+        let cr3 = {
+            #[cfg(target_arch = "x86_64")]
+            { 0u64 } // Skip CR3 switch — all processes share the boot PML4 on x86_64
+            #[cfg(not(target_arch = "x86_64"))]
+            { vmem.pgdir().physical_address()?.into_raw_value() as u64 }
+        };
         let esp = unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack.top().into_raw_value() as *mut u8,

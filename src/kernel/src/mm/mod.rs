@@ -230,7 +230,6 @@ pub fn init(
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<Vmem, Error> {
-    info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
     type PhysMemRegions = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;

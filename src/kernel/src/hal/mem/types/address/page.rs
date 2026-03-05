@@ -27,7 +27,7 @@ impl PageAddress {
 
     pub fn get_pte_index(&self) -> usize {
         let addr: usize = self.into_raw_value();
-        (addr & (mem::PGTAB_MASK ^ mem::PAGE_MASK)) >> mem::PAGE_SHIFT
+        (addr >> mem::PAGE_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
     }
 }
 
@@ -56,7 +56,7 @@ impl PageTableAddress {
 
     pub fn get_pde_index(&self) -> usize {
         let addr: usize = self.into_raw_value();
-        (addr & mem::PGTAB_MASK) >> mem::PGTAB_SHIFT
+        (addr >> mem::PGTAB_SHIFT) & (mem::PAGE_TABLE_ENTRIES - 1)
     }
 }
 

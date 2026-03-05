@@ -247,6 +247,8 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
+    // Use direct I/O port writes for early debug since klog may not work yet.
+
     info!("initializing the kernel...");
 
     // Initialize the kernel heap.
@@ -258,7 +260,15 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     test();
 
     // Parse kernel arguments.
-    info!("parsing kernel arguments...");
+    info!("parsing kernel arguments: {:?}", kargs);
+
+    // Test allocation before parse to verify allocator works.
+    {
+        let test_vec: alloc::vec::Vec<u8> = alloc::vec![0u8; 16];
+        drop(test_vec);
+        let test_vec2: alloc::vec::Vec<u8> = alloc::vec![0u8; 4096];
+        drop(test_vec2);
+    }
     type KernelArgs = (
         Option<MadtInfo>,
         Option<usize>,
@@ -269,20 +279,22 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     );
     let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
         KernelArgs = match kargs.parse() {
-            Ok(bootinfo) => (
-                bootinfo.madt,
-                bootinfo.mem_lower,
-                bootinfo.memory_regions,
-                bootinfo.mmio_regions,
-                bootinfo.ioaddresses,
-                bootinfo.kernel_modules,
-            ),
+            Ok(bootinfo) => {
+                (
+                    bootinfo.madt,
+                    bootinfo.mem_lower,
+                    bootinfo.memory_regions,
+                    bootinfo.mmio_regions,
+                    bootinfo.ioaddresses,
+                    bootinfo.kernel_modules,
+                )
+            },
             Err(err) => {
-                panic!("failed to parse kernel arguments: {:?}", err);
+                panic!("failed to parse kernel arguments: {:?} (kargs={:?})", err, kargs);
             },
         };
 
-    info!("parsing kernel image...");
+    // info!("parsing kernel image...");
     let kimage: KernelImage = match KernelImage::new() {
         Ok(kimage) => kimage,
         Err(err) => {
@@ -291,6 +303,47 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     };
 
     // Add kernel image to list of memory regions.
+
+    // Reserve memory gaps that aren't covered by kernel image sections.
+    // On x86_64, the kernel starts at 0x100000 (1MB), leaving gaps:
+    // - 0x0-0x1FFF: covered by MMIO regions (microvm ctrl + pvclock)
+    // - 0x2000-0xFFFFF: needs explicit reservation
+    // - gaps between text/data/rodata/bss/kpool also need reservation
+    #[cfg(feature = "x86_64")]
+    {
+        use ::sys::mm::align_up;
+        let gap_regions: [(usize, usize); 2] = [
+            // Gap from MMIO end to kernel text start
+            (0x2000, 0x100000 - 0x2000),
+            // Gap from BSS end (page-aligned up) to KPOOL start
+            {
+                let bss_end_raw = kimage.bss().start().into_raw_value() + kimage.bss().size();
+                let bss_end_aligned = align_up(bss_end_raw, ::arch::mem::PAGE_ALIGNMENT)
+                    .unwrap_or(bss_end_raw);
+                let kpool_start = config::memory_layout::KPOOL_BASE_RAW;
+                if bss_end_aligned < kpool_start {
+                    (bss_end_aligned, kpool_start - bss_end_aligned)
+                } else {
+                    (0, 0)
+                }
+            },
+            // NOTE: No gap from KPOOL_END to KERNEL_END — initrd module is placed there
+        ];
+        for (start, size) in gap_regions {
+            if size > 0 {
+                if let Ok(region) = MemoryRegion::new(
+                    "reserved gap",
+                    VirtualAddress::from_raw_value(start),
+                    size,
+                    MemoryRegionType::Reserved,
+                    AccessPermission::RDWR,
+                ) {
+                    memory_regions.push_back(region);
+                }
+            }
+        }
+    }
+
     memory_regions.push_back(kimage.text());
     memory_regions.push_back(kimage.rodata());
     if let Some(data) = kimage.data() {
@@ -412,7 +465,6 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    // Print number of cores online.
     let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
 

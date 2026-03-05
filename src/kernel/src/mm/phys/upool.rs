@@ -59,6 +59,7 @@ impl UpoolInner {
     /// On success, the physical address of the allocated frame is returned. On failure, an error is
     /// returned.
     ///
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
         self.frame_allocator.alloc()
     }
@@ -76,6 +77,7 @@ impl UpoolInner {
     ///
     /// Upon success, a vector of physical addresses is returned. Upon failure, an error is returned
     /// instead.
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     fn alloc_many(&mut self, size: usize) -> Result<Vec<FrameAddress>, Error> {
         let mut pages: Vec<FrameAddress> = Vec::new();
 
@@ -198,12 +200,14 @@ impl Upool {
     /// read-only permissions and all bytes set to zero. On failure, an error is
     /// returned instead.
     ///
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = self.inner.borrow_mut().alloc()?;
         let uframe: UserFrame = UserFrame::new(addr);
         Ok(uframe)
     }
 
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
         trace!("nframes={nframes:?}");
 

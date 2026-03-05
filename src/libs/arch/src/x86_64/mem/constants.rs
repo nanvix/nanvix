@@ -145,6 +145,6 @@ pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 ///
 /// # Description
 ///
-/// Alignment for a page table (each table is 4 KB = 512 entries * 8 bytes).
+/// Alignment for a page table's virtual address coverage (512 × 4 KB = 2 MB).
 ///
-pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align4096;
+pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align2097152;

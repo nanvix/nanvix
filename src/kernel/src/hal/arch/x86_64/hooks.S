@@ -439,8 +439,12 @@ __context_switch:
     popfq
 
     /* Restore address space. */
+    /* Skip CR3 reload if target cr3 is 0 (shared address space). */
     mov CONTEXT_CR3(%rsi), %rax
+    test %rax, %rax
+    jz 1f
     mov %rax, %cr3
+1:
 
     /* Update RSP0 in TSS for privilege transitions. */
     mov CONTEXT_RSP0(%rsi), %rax
@@ -453,7 +457,9 @@ __context_switch:
  *----------------------------------------------------------------------------*/
 
 __leave_kernel_to_user_mode:
-    /* TODO: Implement user mode transition for 64-bit. */
+    /* Pop user arguments into registers before IRETQ. */
+    pop %rdi     /* arg0 */
+    pop %rsi     /* arg1 */
 
 __leave_kernel:
     iretq

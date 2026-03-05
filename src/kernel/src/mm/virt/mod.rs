@@ -75,6 +75,7 @@ pub const ENTRIES_PER_PAGE: usize = mem::PAGE_SIZE / core::mem::size_of::<PageEn
 
 pub enum PageTableStorage {
     Heap(Box<[PageEntryWord; mem::PAGE_SIZE / core::mem::size_of::<PageEntryWord>()]>),
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     KernelPage(KernelPage),
 }
 

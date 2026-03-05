@@ -124,8 +124,8 @@ impl Drop for ExceptionController {
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_exception(
-    excp: *const ExceptionInformation,
     ctx: *const ContextInformation,
+    excp: *const ExceptionInformation,
 ) {
     let excp: &ExceptionInformation = &*excp;
     let ctx: &ContextInformation = &*ctx;

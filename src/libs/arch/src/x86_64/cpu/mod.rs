@@ -5,8 +5,10 @@
 // Exports
 //==================================================================================================
 
+pub mod cpuid;
 pub mod idt;
 pub mod idtr;
+pub mod mxcrs;
 pub mod ring;
 pub mod tss;
 

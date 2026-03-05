@@ -53,6 +53,15 @@
 _do_start:
 .globl _do_start2
 _do_start2:
+    /*
+     * The VMM passes boot information in RAX and RBX:
+     *   RAX = boot magic (0x0c00ffee)
+     *   RBX = encoded initrd base/size
+     * Save them BEFORE touching AX for segment setup.
+     */
+    mov %rax, %r12
+    mov %rbx, %r13
+
     /* Set up data segment registers. */
     mov $0x10, %ax
     mov %ax, %ds
@@ -60,13 +69,6 @@ _do_start2:
     mov %ax, %fs
     mov %ax, %gs
     mov %ax, %ss
-
-    /*
-     * RDI and RSI may carry boot information from the VMM.
-     * Save them before clearing BSS (which uses RDI).
-     */
-    mov %rdi, %r12
-    mov %rsi, %r13
 
     /*
      * Fill BSS section with zeros.
@@ -91,39 +93,25 @@ _do_start2:
     or  %rdx, %rax
     rep stosq
 
-    /* Restore boot information. */
-    mov %r12, %rdi
-    mov %r13, %rsi
-
     /* Set up stack. */
     lea kstack(%rip), %rsp
     mov %rsp, %rbp
 
     /*
-     * Clear all general purpose registers for a deterministic startup.
-     * Preserve RDI, RSI (boot info) on the stack.
+     * Build KernelArguments on the stack.
+     * Layout (16 bytes, matching the Rust struct):
+     *   [RSP+0]  mboot_info: usize  (8 bytes, from RBX)
+     *   [RSP+8]  mboot_magic: u32   (4 bytes, from EAX) + 4 bytes padding
+     *
+     * Note: KernelArguments is { mboot_magic: u32, mboot_info: usize }.
+     * With Rust's default repr, u32 is at offset 0 and usize at offset 8
+     * (due to alignment). We push mboot_info first (higher address), then
+     * magic (lower address) so the struct is laid out correctly.
      */
-    push %rdi
-    push %rsi
-    xor %eax, %eax
-    xor %ebx, %ebx
-    xor %ecx, %ecx
-    xor %edx, %edx
-    xor %r8d, %r8d
-    xor %r9d, %r9d
-    xor %r10d, %r10d
-    xor %r11d, %r11d
-    xor %r12d, %r12d
-    xor %r13d, %r13d
-    xor %r14d, %r14d
-    xor %r15d, %r15d
+    push %r13         /* mboot_info (usize) at RSP+8 */
+    push %r12         /* mboot_magic (u32, zero-extended) at RSP+0 */
 
-    /* Restore boot info into RDI (first argument to kmain). */
-    pop %rsi
-    pop %rdi
-
-    /* Call kernel main function.
-     * RDI = boot info pointer (System V AMD64 ABI first argument). */
+    /* RDI = pointer to KernelArguments on the stack (System V AMD64 ABI). */
     mov %rsp, %rdi
     call kmain
 
