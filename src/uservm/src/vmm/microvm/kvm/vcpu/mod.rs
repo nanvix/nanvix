@@ -481,9 +481,19 @@ impl VirtualProcessor {
         trace!("write_page_tables(): memory_size={memory_size:#010x}");
 
         const PAGE_TABLE_SIZE: usize = 4096;
-        const HUGE_PAGE_SIZE: usize = 2 * 1024 * 1024; // 2MB
+        const PAGE_SIZE: usize = 4096;
+        const ENTRIES_PER_TABLE: usize = 512;
+        const PT_COVERAGE: usize = ENTRIES_PER_TABLE * PAGE_SIZE; // 2MB per PT
 
-        // Zero out the page table pages first.
+        // Calculate how many page tables we need.
+        let num_pts: usize = (memory_size + PT_COVERAGE - 1) / PT_COVERAGE;
+        let num_pts: usize = if num_pts > ENTRIES_PER_TABLE { ENTRIES_PER_TABLE } else { num_pts };
+
+        // Page table pages start after PML4, PDPT, PD (at 0x3000, 0x4000, 0x5000).
+        // PTs go at 0x6000, 0x7000, etc.
+        let pt_base_gpa: u64 = PD_GPA + PAGE_TABLE_SIZE as u64;
+
+        // Zero out PML4, PDPT, PD.
         let zeros: [u8; PAGE_TABLE_SIZE] = [0u8; PAGE_TABLE_SIZE];
         vmem.write_bytes(PML4_GPA, &zeros)?;
         vmem.write_bytes(PDPT_GPA, &zeros)?;
@@ -497,24 +507,36 @@ impl VirtualProcessor {
         let pdpt_entry: u64 = PD_GPA | 0x07; // Present + Writable + User
         vmem.write_bytes(PDPT_GPA, &pdpt_entry.to_le_bytes())?;
 
-        // PD entries: identity-map using 2MB huge pages.
-        let num_huge_pages: usize = (memory_size + HUGE_PAGE_SIZE - 1) / HUGE_PAGE_SIZE;
-        // Cap at 512 entries (1GB maximum with a single PD).
-        let num_entries: usize = if num_huge_pages > 512 { 512 } else { num_huge_pages };
+        // For each 2MB range, create a PD entry → PT, then fill PT with 4KB entries.
+        for pd_idx in 0..num_pts {
+            let pt_gpa: u64 = pt_base_gpa + (pd_idx as u64) * PAGE_TABLE_SIZE as u64;
 
-        for i in 0..num_entries {
-            let phys_addr: u64 = (i * HUGE_PAGE_SIZE) as u64;
-            // Present + Writable + User + PS (Page Size, indicates 2MB page).
-            // User bit allows ring-3 access (needed for user-space processes).
-            let pd_entry: u64 = phys_addr | 0x87;
-            let offset: u64 = PD_GPA + (i as u64) * 8;
-            vmem.write_bytes(offset, &pd_entry.to_le_bytes())?;
+            // Zero out this PT.
+            vmem.write_bytes(pt_gpa, &zeros)?;
+
+            // PD[pd_idx] → PT (present, writable, user-accessible, NO PS bit).
+            let pd_entry: u64 = pt_gpa | 0x07;
+            let pd_offset: u64 = PD_GPA + (pd_idx as u64) * 8;
+            vmem.write_bytes(pd_offset, &pd_entry.to_le_bytes())?;
+
+            // Fill PT entries: identity-map 4KB pages.
+            let base_phys: u64 = (pd_idx * PT_COVERAGE) as u64;
+            for pt_idx in 0..ENTRIES_PER_TABLE {
+                let phys_addr: u64 = base_phys + (pt_idx * PAGE_SIZE) as u64;
+                if phys_addr as usize >= memory_size {
+                    break;
+                }
+                // Present + Writable + User.
+                let pt_entry: u64 = phys_addr | 0x07;
+                let pt_offset: u64 = pt_gpa + (pt_idx as u64) * 8;
+                vmem.write_bytes(pt_offset, &pt_entry.to_le_bytes())?;
+            }
         }
 
         trace!(
-            "write_page_tables(): mapped {} x 2MB huge pages ({} bytes total)",
-            num_entries,
-            num_entries * HUGE_PAGE_SIZE
+            "write_page_tables(): identity-mapped {} bytes using 4KB pages ({} PTs)",
+            memory_size,
+            num_pts
         );
 
         Ok(())
