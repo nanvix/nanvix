@@ -5,21 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    unistd::message::{
-        PipeRequest,
-        PipeResponse,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        unistd::message::{
+            PipeRequest,
+            PipeResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================

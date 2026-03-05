@@ -5,23 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    unistd::message::{
-        GetIdsRequest,
-        GetIdsResponse,
+use ::sys::error::Error;
+use ::sysapi::sys_types::gid_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        unistd::message::{
+            GetIdsRequest,
+            GetIdsResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
 };
-use sysapi::sys_types::gid_t;
 
 //==================================================================================================
 // Standalone Functions

@@ -5,32 +5,35 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-        MessagePartitioner,
-    },
-    unistd::message::{
-        ReadLinkAtRequest,
-        ReadLinkAtResponse,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::sys_types::c_ssize_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::{
+            LinuxDaemonLongMessage,
+            LinuxDaemonMessagePart,
+            MessagePartitioner,
+        },
+        unistd::message::{
+            ReadLinkAtRequest,
+            ReadLinkAtResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::{
+        string::ToString,
+        vec::Vec,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions

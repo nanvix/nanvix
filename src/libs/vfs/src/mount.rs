@@ -17,13 +17,13 @@
 // Imports
 //==================================================================================================
 
-use ::fat32::{
-    Fat32Error,
-    Fat,
-};
 use ::alloc::{
     string::String,
     vec::Vec,
+};
+use ::fat32::{
+    Fat,
+    Fat32Error,
 };
 
 //==================================================================================================
@@ -514,8 +514,7 @@ mod tests {
             unsafe { ::fat32::RawMemoryStorage::new(ptr, size).expect("valid storage") };
         ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
             .expect("format should succeed");
-        let fat: ::fat32::Fat =
-            unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
+        let fat: ::fat32::Fat = unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
 
         let result = Mount::new(String::from("relative"), fat);
         match result {

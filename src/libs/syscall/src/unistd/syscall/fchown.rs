@@ -5,23 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    unistd::message::FileChownRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use crate::safe::RawFileDescriptor;
+use ::sys::error::Error;
 use ::sysapi::sys_types::{
     gid_t,
     uid_t,
+};
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        unistd::message::FileChownRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
