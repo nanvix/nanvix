@@ -116,7 +116,10 @@ use ::std::{
 use ::tokio::{
     sync::mpsc,
     task::JoinHandle,
-    time::sleep,
+    time::{
+        sleep,
+        timeout,
+    },
 };
 
 //==================================================================================================
@@ -160,6 +163,28 @@ const NANVIXD_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
 /// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
 ///
 const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
+
+///
+/// # Description
+///
+/// Timeout (in seconds) for the gateway connection retry loop. Matches the nanvixd-side gateway
+/// probe timeout (`GATEWAY_CONNECT_TIMEOUT`).
+///
+const GATEWAY_CONNECT_TIMEOUT_SECS: u64 = 60;
+
+///
+/// # Description
+///
+/// Timeout (in seconds) for echo I/O operations (write + read) on the gateway stream.
+///
+const ECHO_IO_TIMEOUT_SECS: u64 = 60;
+
+///
+/// # Description
+///
+/// Sleep duration (in milliseconds) between gateway connection retry attempts.
+///
+const GATEWAY_CONNECT_RETRY_SLEEP_MS: u64 = 1;
 
 ///
 /// # Description
@@ -343,12 +368,35 @@ impl Benchmark {
         } else {
             SocketType::Unix
         };
-        let gateway_stream: SocketStream = loop {
-            let unbound_socket: UnboundSocket = UnboundSocket::new(gateway_socktype);
-            match unbound_socket.connect(&response.gateway_sockaddr).await {
-                Ok(stream) => break stream,
-                Err(_) => continue,
-            };
+        let gateway_stream: SocketStream = {
+            let deadline: Duration = Duration::from_secs(GATEWAY_CONNECT_TIMEOUT_SECS);
+            match timeout(deadline, async {
+                loop {
+                    let unbound_socket: UnboundSocket = UnboundSocket::new(gateway_socktype);
+                    match unbound_socket.connect(&response.gateway_sockaddr).await {
+                        Ok(stream) => break stream,
+                        Err(_) => {
+                            sleep(Duration::from_millis(GATEWAY_CONNECT_RETRY_SLEEP_MS)).await;
+                            continue;
+                        },
+                    };
+                }
+            })
+            .await
+            {
+                Ok(stream) => stream,
+                Err(_) => {
+                    error!(
+                        "gateway connection to {} timed out after {}s",
+                        response.gateway_sockaddr, GATEWAY_CONNECT_TIMEOUT_SECS
+                    );
+                    anyhow::bail!(
+                        "gateway connection to {} timed out after {}s",
+                        response.gateway_sockaddr,
+                        GATEWAY_CONNECT_TIMEOUT_SECS
+                    );
+                },
+            }
         };
         debug!("connected to gateway socket stream");
 
@@ -449,8 +497,21 @@ impl Benchmark {
         let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) = self
             .start(new_msg, new_msg_headers, linuxd_deployment)
             .await?;
-        gateway_stream.write_all(&payload).await?;
-        gateway_stream.read_exact(&mut response_payload).await?;
+        let echo_io_timeout: Duration = Duration::from_secs(ECHO_IO_TIMEOUT_SECS);
+        timeout(echo_io_timeout, gateway_stream.write_all(&payload))
+            .await
+            .map_err(|_| {
+                error!("echo write timed out after {}s", ECHO_IO_TIMEOUT_SECS);
+                anyhow::anyhow!("echo write timed out after {}s", ECHO_IO_TIMEOUT_SECS)
+            })?
+            .map_err(|e| anyhow::anyhow!("echo write failed: {e}"))?;
+        timeout(echo_io_timeout, gateway_stream.read_exact(&mut response_payload))
+            .await
+            .map_err(|_| {
+                error!("echo read timed out after {}s", ECHO_IO_TIMEOUT_SECS);
+                anyhow::anyhow!("echo read timed out after {}s", ECHO_IO_TIMEOUT_SECS)
+            })?
+            .map_err(|e| anyhow::anyhow!("echo read failed: {e}"))?;
         let elapsed_micros: u128 = start.elapsed().as_micros();
 
         // Only record latency if requested to.
