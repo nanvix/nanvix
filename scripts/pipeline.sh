@@ -254,13 +254,13 @@ run_step() {
 
     # Run the step and capture return code.
     if [[ -z "${machine}" ]]; then
-        if "${Z_SCRIPT}" build -- LOG_LEVEL=trace "${release_flag}" ${make_target} > "${tmpfile}" 2>&1; then
+        if "${Z_SCRIPT}" build -- LOG_LEVEL=trace "${release_flag}" "${make_target}" > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?
         fi
     else
-        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${deployment_flags} ${make_target} > "${tmpfile}" 2>&1; then
+        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" "${deployment_flags}" "${make_target}" > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?

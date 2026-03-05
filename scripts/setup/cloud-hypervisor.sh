@@ -37,14 +37,14 @@ CLOUD_HYPERVISOR_LINUX_TAG="ch-6.12.8"
 #===================================================================================================
 
 build_clh() {
-    mkdir -p ${SRC_DIR}
+    mkdir -p "${SRC_DIR}"
     if [ ! -d "${CLOUD_HYPERVISOR_HOME}" ];
     then
-        git clone ${CLOUD_HYPERVISOR_REPOSITORY} ${CLOUD_HYPERVISOR_HOME}
-        pushd ${CLOUD_HYPERVISOR_HOME} >> /dev/null
+        git clone ${CLOUD_HYPERVISOR_REPOSITORY} "${CLOUD_HYPERVISOR_HOME}"
+        pushd "${CLOUD_HYPERVISOR_HOME}" >> /dev/null
         git checkout ${CLOUD_HYPERVISOR_COMMIT}
     else
-        pushd ${CLOUD_HYPERVISOR_HOME} >> /dev/null
+        pushd "${CLOUD_HYPERVISOR_HOME}" >> /dev/null
         git fetch origin
         git reset --hard ${CLOUD_HYPERVISOR_COMMIT}
     fi
@@ -52,7 +52,7 @@ build_clh() {
     cargo build --release
 
     # Copy built binaries.
-    mkdir -p ${BIN_DIR}
+    mkdir -p "${BIN_DIR}"
     cp ./target/release/cloud-hypervisor "${BIN_DIR}/cloud-hypervisor"
     cp ./target/release/ch-remote "${BIN_DIR}/ch-remote"
 
@@ -70,16 +70,16 @@ build_clh() {
 }
 
 build_clh_linux() {
-    mkdir -p ${SRC_DIR}
+    mkdir -p "${SRC_DIR}"
     if [ ! -d "${CLOUD_HYPERVISOR_LINUX_HOME}" ]; then
         git clone \
             --depth 1 \
             ${CLOUD_HYPERVISOR_LINUX_REPOSITORY} \
             -b ${CLOUD_HYPERVISOR_LINUX_TAG} \
-            ${CLOUD_HYPERVISOR_LINUX_HOME}
-        pushd ${CLOUD_HYPERVISOR_LINUX_HOME} >> /dev/null
+            "${CLOUD_HYPERVISOR_LINUX_HOME}"
+        pushd "${CLOUD_HYPERVISOR_LINUX_HOME}" >> /dev/null
     else
-        pushd ${CLOUD_HYPERVISOR_LINUX_HOME} >> /dev/null
+        pushd "${CLOUD_HYPERVISOR_LINUX_HOME}" >> /dev/null
         git reset --hard ${CLOUD_HYPERVISOR_LINUX_TAG}
     fi
 
@@ -88,7 +88,7 @@ build_clh_linux() {
     KCFLAGS="-Wa,-mx86-used-note=no" make bzImage -j "$(nproc)"
 
     # Copy built image.
-    mkdir -p ${SHARE_DIR}
+    mkdir -p "${SHARE_DIR}"
     cp "${CLOUD_HYPERVISOR_LINUX_HOME}/arch/x86/boot/bzImage" "${L2_SYSTEM_VM_KERNEL}"
 
     popd >> /dev/null
