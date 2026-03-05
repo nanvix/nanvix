@@ -42,9 +42,12 @@ endef
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
 all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
+# C/C++ guest binaries require a C cross-compiler, which is not yet available for x86_64.
+ifneq ($(TARGET),x86_64)
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks all
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/user all
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests all
+endif
 
 check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
 
@@ -53,9 +56,11 @@ format-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-guest-binar
 format-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-check-guest-binaries-$(target))
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
+ifneq ($(TARGET),x86_64)
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks clean
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/user clean
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests clean
+endif
 
 rust-lint-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-guest-binaries-$(target))
 
