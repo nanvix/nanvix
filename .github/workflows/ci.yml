@@ -483,7 +483,7 @@ jobs:
             # FIXME(1171): the current L2 deployment involves a very slow network
             # namespace creation, particularly at high-churn, so we must temporarily
             # reduce the number of iterations of the benchmarks.
-            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency warm-start warm-start-l2 warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-l2 cold-start-uvm concurrent concurrent-l2 round-trip-latency snapshot-restore warm-start warm-start-l2 warm-start-vmm"
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown echo-breakdown-l2"
             echo-iterations: "1000"
@@ -627,7 +627,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -638,7 +638,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,warm-start,warm-start-l2,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -670,7 +670,7 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent round-trip-latency snapshot-restore warm-start warm-start-vmm"
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
@@ -795,7 +795,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,snapshot-restore,warm-start,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           dev-dir: "data/github"
@@ -806,7 +806,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,round-trip-latency,snapshot-restore,warm-start,warm-start-vmm"
           machine-types: "microvm,hyperlight"
           archs: "X64"
           target-dir: "data/github"
