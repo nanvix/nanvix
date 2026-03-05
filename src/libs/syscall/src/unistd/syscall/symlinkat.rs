@@ -5,23 +5,26 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    unistd::message::SymbolicLinkAtRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        unistd::message::SymbolicLinkAtRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ::alloc::{
+        string::ToString,
+        vec::Vec,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================

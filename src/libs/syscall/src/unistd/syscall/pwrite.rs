@@ -5,27 +5,30 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    unistd::message::{
-        PartialWriteRequest,
-        PartialWriteResponse,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::core::cmp;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::sys_types::{
     c_size_t,
     off_t,
+};
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        unistd::message::{
+            PartialWriteRequest,
+            PartialWriteResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::core::cmp,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================

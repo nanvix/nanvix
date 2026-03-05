@@ -5,16 +5,19 @@
 // Imports
 //==================================================================================================
 
-use crate::unistd::message::FileChdirRequest;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::ffi::c_int;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::unistd::message::FileChdirRequest,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
