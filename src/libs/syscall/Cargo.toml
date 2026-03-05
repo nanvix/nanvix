@@ -34,8 +34,8 @@ syslog = { workspace = true, default-features = true, optional = true }
 sysalloc = { workspace = true, optional = true }
 sysapi = { workspace = true }
 type-safe = { workspace = true }
-alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
-core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
+core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 
 [features]
