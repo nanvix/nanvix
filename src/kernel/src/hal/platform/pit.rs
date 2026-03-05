@@ -114,6 +114,7 @@ impl Pit {
 ///
 /// The frequency of the timer in Hz.
 ///
+#[allow(dead_code)]
 pub fn get_timer_frequency() -> u32 {
     TIMER_FREQUENCY.load(Ordering::SeqCst)
 }

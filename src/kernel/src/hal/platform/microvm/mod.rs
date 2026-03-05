@@ -40,7 +40,6 @@ use ::alloc::{
     collections::LinkedList,
     string::ToString,
 };
-#[cfg(not(feature = "x86_64"))]
 use ::arch::cpu::pic;
 use ::arch::mem;
 use ::sys::error::{
@@ -53,7 +52,7 @@ use crate::hal::arch::x86::{self, Arch};
 #[cfg(feature = "x86_64")]
 use crate::hal::arch::x86_64::{self as x86, Arch};
 
-#[cfg(all(feature = "pit", not(feature = "x86_64")))]
+#[cfg(feature = "pit")]
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
@@ -62,7 +61,7 @@ use crate::hal::platform::pit::Pit;
 
 pub struct Platform {
     pub arch: Arch,
-    #[cfg(all(feature = "pit", not(feature = "x86_64")))]
+    #[cfg(feature = "pit")]
     pub _pit: Pit,
 }
 
@@ -416,7 +415,6 @@ unsafe fn read_control_register(offset: usize) -> u32 {
     core::ptr::read_volatile(addr)
 }
 
-#[cfg(not(feature = "x86_64"))]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
@@ -426,7 +424,7 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(all(feature = "pit", not(feature = "x86_64")))]
+#[cfg(feature = "pit")]
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
 
@@ -452,9 +450,6 @@ pub fn init(
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
-    // On x86_64 microvm, KVM's in-kernel IRQ chip and PIT2 handle
-    // PIC/PIT ports directly — no guest-side port registration needed.
-    #[cfg(not(feature = "x86_64"))]
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.
@@ -482,7 +477,7 @@ pub fn init(
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
-        #[cfg(all(feature = "pit", not(feature = "x86_64")))]
+        #[cfg(feature = "pit")]
         _pit: register_pit(ioports)?,
     })
 }

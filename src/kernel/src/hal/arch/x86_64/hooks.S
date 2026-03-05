@@ -131,6 +131,16 @@
 
 .macro context_restore
 
+    /* Restore segment registers first (uses RAX as scratch). */
+    mov CONTEXT_DS(%rsp), %rax
+    mov %ax, %ds
+    mov CONTEXT_ES(%rsp), %rax
+    mov %ax, %es
+    mov CONTEXT_FS(%rsp), %rax
+    mov %ax, %fs
+    mov CONTEXT_GS(%rsp), %rax
+    mov %ax, %gs
+
     /* Restore general purpose registers. */
     mov CONTEXT_RAX(%rsp), %rax
     mov CONTEXT_RBX(%rsp), %rbx
@@ -147,18 +157,6 @@
     mov CONTEXT_R13(%rsp), %r13
     mov CONTEXT_R14(%rsp), %r14
     mov CONTEXT_R15(%rsp), %r15
-
-    /* Restore segment registers. */
-    push CONTEXT_DS(%rsp)
-    pop %rax
-    mov %ax, %ds
-    mov %ax, %es
-    push CONTEXT_FS(%rsp)
-    pop %rax
-    mov %ax, %fs
-    push CONTEXT_GS(%rsp)
-    pop %rax
-    mov %ax, %gs
 
     add $CONTEXT_SW_SIZE, %rsp
 

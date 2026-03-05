@@ -19,7 +19,7 @@ mod microvm;
 pub mod region_names;
 pub mod region_tags;
 
-#[cfg(all(feature = "pit", not(feature = "x86_64")))]
+#[cfg(feature = "pit")]
 pub mod pit;
 
 //==================================================================================================
