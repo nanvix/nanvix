@@ -6,7 +6,8 @@
 	"target-pointer-width": 64,
 	"target-c-int-width": 32,
 	"max-atomic-width": 64,
-	"features": "-mmx,-avx,-sse,-sse2",
+	"features": "-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float",
+	"rustc-abi": "x86-softfloat",
 	"os": "none",
 	"arch": "x86_64",
 	"linker-flavor": "ld",
@@ -15,7 +16,7 @@
 		"ld": [
 			"-nostdlib",
 			"--entry=_do_start",
-			"-melf_x86_64_nanvix"
+			"-melf_x86_64"
 		]
 	},
 	"executables": true,

@@ -50,7 +50,11 @@ fn main() {
     // Link Archive
     //==============================================================================================
 
-    println!("cargo::rustc-link-arg=-Tbuild/user/linker/x86/user.ld");
+    let arch_dir = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+        Ok("x86_64") => "x86_64",
+        _ => "x86",
+    };
+    println!("cargo::rustc-link-arg=-Tbuild/user/linker/{arch_dir}/user.ld");
 
     //==============================================================================================
 
