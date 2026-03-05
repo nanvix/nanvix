@@ -380,8 +380,7 @@ fn memfs_init() {
     // Attempt to allocate and mount the RAMFS MMIO region.
     let mounted: bool = (|| -> bool {
         if ::sys::kcall::mm::mmio_alloc(RAMFS_MMIO_TAG).is_err() {
-            // No RAMFS region available — this is not an error, the guest
-            // was simply not launched with `-ramfs`.
+            // No RAMFS region available — the guest was simply not launched with `-ramfs`.
             return false;
         }
 
@@ -394,28 +393,7 @@ fn memfs_init() {
             },
         };
         let total_size: usize = info.size();
-        let base_raw: usize = info.base().into_raw_value();
-        let base_ptr: *mut u8 = base_raw as *mut u8;
-
-        // The kernel exposes the RAMFS MMIO region as read-only. The VFS
-        // backend requires writable memory, so upgrade each page to RDWR.
-        let pid: ::sys::pm::ProcessIdentifier = match ::sys::kcall::pm::getpid() {
-            Ok(p) => p,
-            Err(_) => {
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                return false;
-            },
-        };
-
-        for offset in (0..total_size).step_by(::sysalloc::PAGE_SIZE) {
-            let vaddr: ::sys::mm::VirtualAddress =
-                ::sys::mm::VirtualAddress::from_raw_value(base_raw + offset);
-            if ::sys::kcall::mm::mprotect(pid, vaddr, ::sys::mm::AccessPermission::RDWR).is_err() {
-                ::syslog::warn!("memfs_init(): failed to set MMIO page writable");
-                let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
-                return false;
-            }
-        }
+        let base_ptr: *mut u8 = info.base().into_raw_value() as *mut u8;
 
         // Mount the FAT image directly from the now-writable MMIO region.
         if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, base_ptr, total_size) }.is_err() {

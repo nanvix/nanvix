@@ -125,7 +125,7 @@ pub fn run() -> Result<(), Error> {
 ///
 fn validate_info(info: &MmioRegionInfo) -> Result<(), Error> {
     let permissions: AccessPermission = info.permissions()?;
-    if permissions != AccessPermission::RDONLY {
+    if permissions != AccessPermission::RDWR {
         return Err(Error::new(ErrorCode::InvalidArgument, "ramfs permissions mismatch"));
     }
 
