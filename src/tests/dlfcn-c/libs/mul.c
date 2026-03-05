@@ -3,7 +3,7 @@
  * Licensed under the MIT License.
  */
 
-// R_386_GLOB_DAT
+// R_386_GLOB_DAT / R_X86_64_GLOB_DAT
 const char *VERSION = "0.0.1";
 
 int add(int a, int b)
@@ -11,10 +11,26 @@ int add(int a, int b)
     return (a + b);
 }
 
-// R_386_32
+// R_386_32 / R_X86_64_32
 int fast_mul(int a, int b)
 {
     int result = 0;
+#ifdef __x86_64__
+    __asm__ __volatile__("movl %1, %%ecx;"
+                         "movl $0, %0;"
+                         "test %%ecx, %%ecx;"
+                         "jz 1f;"
+                         "0:;"
+                         "movl %2, %%edi;"
+                         "movl %0, %%esi;"
+                         "call add;"
+                         "movl %%eax, %0;"
+                         "loop 0b;"
+                         "1:;"
+                         : "=r"(result)
+                         : "r"(b), "r"(a)
+                         : "ecx", "eax", "edi", "esi", "cc");
+#else
     __asm__ __volatile__("movl %1, %%ecx;"
                          "movl $0, %0;"
                          "test %%ecx, %%ecx;"
@@ -30,6 +46,7 @@ int fast_mul(int a, int b)
                          : "=r"(result)
                          : "r"(b), "r"(a)
                          : "ecx", "eax", "cc");
+#endif
     return result;
 }
 
@@ -38,7 +55,7 @@ int slow_mul(int a, int b)
     int result = 0;
 
     for (int i = 0; i < b; i++) {
-        // R_386_JUMP_SLOT
+        // R_386_JUMP_SLOT / R_X86_64_JUMP_SLOT
         result = add(result, a);
     }
 

@@ -481,9 +481,11 @@ which could not be served by any slab class.
 
 ## Integration Testing
 
-All seven Rust integration tests pass on both x86 and x86_64: `test-kernel`, `arch-rust`,
-`thread-rust`, `stress-rust`, `file-rust`, `linux-app`, and `vfs-test`. Four issues were
-identified and fixed during the porting process.
+All integration tests pass on both x86 and x86_64. The x86 test suite includes 40 tests
+(Rust and C/C++). The x86_64 test suite includes 38 tests — `dlfcn-c` is excluded because
+the Nanvix ELF dynamic loader only handles `R_386_*` relocations (see
+[Known Limitations](#known-limitations)). Six issues were identified and fixed during the
+porting process.
 
 ### TLS Inline Assembly (`test-kernel`)
 
@@ -525,6 +527,71 @@ worked. On x86_64, `usize::MAX` is `0xFFFFFFFFFFFFFFFF`, which does not match th
 zero-extended `u32::MAX` value `0x00000000FFFFFFFF` received from user space. The kernel
 rejected the timeout as invalid. The fix changes the sentinel checks to use
 `u32::MAX as usize`, which works on both architectures.
+
+### FFI Type Definitions (`sysapi`)
+
+The `sysapi` crate's `ffi.rs` module originally defined all C type aliases in a single
+`mod bits32` with `c_long = i32` and `c_ulong = u32`. This matches the x86 ILP32 data model
+but is incorrect for x86_64 LP64 where C `long` is 8 bytes. The fix splits the type
+definitions into a conditional module:
+
+```rust
+#[cfg(target_pointer_width = "32")]
+mod bits { pub type c_long = i32; pub type c_ulong = u32; }
+
+#[cfg(target_pointer_width = "64")]
+mod bits { pub type c_long = i64; pub type c_ulong = u64; }
+```
+
+This propagates to `timespec` (where `tv_nsec` is `c_long`) and `stat` (where `st_blksize`
+and `st_blkcnt` are `c_long`), causing these structs to have different native sizes on x86
+(84 and 12 bytes) versus x86_64 (104 and 16 bytes).
+
+### Struct Layout (`repr(C)` vs `repr(C, packed)`)
+
+Several structs (`stat`, `dirent`, `posix_dent`, `pthread_attr_t`, `pthread_condattr_t`)
+used `#[repr(C, packed)]`. On x86, packed layout matches natural C alignment because
+8-byte types (like `c_long` on x86_64) have 4-byte alignment. On x86_64, `repr(C, packed)`
+suppresses the required 8-byte alignment for `c_long` fields, producing layouts that don't
+match the C compiler's output. The fix changes these structs to `#[repr(C)]`, which
+produces correct layouts on both architectures.
+
+### IPC Wire Format
+
+The host daemon (linuxd) always runs as a native x86_64 process. The guest can be x86 or
+x86_64. IPC messages serialize structs to bytes and transmit them between guest and host.
+With `c_long = i64` on the host and `c_long = i32` on the x86 guest, the wire format must
+be architecture-independent. The solution uses a fixed 8-byte (i64) representation for all
+`c_long`-based fields in the wire format:
+
+| Struct      | Field(s)         | Native x86 | Native x86_64 | Wire Format |
+|-------------|------------------|------------|---------------|-------------|
+| `timespec`  | `tv_nsec`        | 4 bytes    | 8 bytes       | 8 bytes     |
+| `stat`      | `st_blksize`     | 4 bytes    | 8 bytes       | 8 bytes     |
+| `stat`      | `st_blkcnt`      | 4 bytes    | 8 bytes       | 8 bytes     |
+| `stat`      | `st_atim/mtim/ctim` | 12 bytes each | 16 bytes each | 16 bytes each |
+
+The `timespec::to_bytes()` and `timespec::try_from_bytes()` methods always write/read
+`tv_nsec` as `i64`, casting to/from the native `c_long` type. Similarly, `stat::to_bytes()`
+and `stat::try_from_bytes()` serialize `st_blksize` and `st_blkcnt` as `i64`.
+
+The `futimens` message was converted from `mem::transmute`-based serialization (which
+assumed identical struct layouts on both sides) to explicit byte serialization using
+`timespec::to_bytes()`/`try_from_bytes()`. Other `transmute`-based messages (`fstat`,
+`fchmod`, `mkdirat`, etc.) only contain fixed-size fields (`i32`, `u32`) and are unaffected.
+
+### C Test Portability
+
+The C integration tests were updated for LP64 compatibility:
+
+- **`c-bindings`**: Static assertions for type sizes now account for x86_64 sizes (e.g.,
+  `sizeof(size_t) == 8`, `sizeof(long) == 8`).
+- **`file-c`**: Added padding defines (`STAT_MODE_PADDING`, `POSIX_DENT_TAIL_PADDING`) for
+  struct field offsets that differ due to alignment. Fixed `off_t`/`size_t` sign comparison.
+- **`thread-c`**: Added padding defines for `pthread_attr_t` and `pthread_condattr_t`.
+  Fixed `int` → `void*` cast via `(uintptr_t)`.
+- **`memory-c`**: Changed `aligned_alloc` alignment from `4u` to `sizeof(void *)`.
+- **`dlfcn-c`**: Added x86_64 inline assembly variant for the shared library.
 
 ## Clippy and Lint Fixes
 
@@ -609,32 +676,49 @@ with a `target-arch` input (default: `x86`). When `target-arch=x86_64`, the acti
 `TARGET=x86_64` to the build system, and the Docker build action includes the architecture in
 the sccache cache key to avoid cross-architecture cache collisions.
 
-### C/C++ Guest Binary Exclusion
+### C/C++ Cross-Compiler Toolchain
 
-The x86_64 C cross-compiler (`x86_64-nanvix-gcc`) does not exist yet. The build system skips
-C/C++ guest binary compilation when `TARGET=x86_64` via a conditional guard in
-`build/make/generic-guest-binaries.mk`:
+The `x86_64-nanvix` cross-compiler toolchain is built from the Nanvix forks of binutils,
+GCC, and newlib. The build order is: binutils → GCC stage 0 (C only, no libc) → newlib →
+GCC stage 1 (C, C++, Fortran with libstdc++). Key configuration flags:
 
-```makefile
-ifneq ($(TARGET),x86_64)
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks all
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/user all
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests all
-endif
+```bash
+# Binutils
+../src/binutils/configure --target=x86_64-nanvix --prefix=$PREFIX --disable-nls
+
+# GCC stage 0
+../src/gcc/configure --target=x86_64-nanvix --prefix=$PREFIX --without-headers \
+    --with-newlib --disable-multilib --enable-languages=c --disable-nls
+
+# Newlib
+../src/newlib/configure --target=x86_64-nanvix --prefix=$PREFIX
+
+# GCC stage 1
+../src/gcc/configure --target=x86_64-nanvix --prefix=$PREFIX --with-newlib \
+    --disable-multilib --enable-languages=c,c++,fortran --disable-nls
 ```
+
+The newlib `crt0.S` was extended with an `#ifdef __x86_64__` block that aligns the stack
+to 16 bytes (`andq $-16, %rsp`) and follows the SysV ABI register convention (`argp` in
+`%rdi`, `envp` in `%rsi`). Custom `crti.S` and `crtn.S` files were added to provide
+proper `.init`/`.fini` section prologues and epilogues — GCC generates empty `crti.o` and
+`crtn.o` for `--with-newlib` targets, which causes SSE `movaps` instructions to fault on
+misaligned stacks in C++ programs. The build system gate that previously excluded C/C++
+compilation for `TARGET=x86_64` (`ifneq ($(TARGET),x86_64)` in
+`build/make/generic-guest-binaries.mk`) was removed.
 
 ### Test Configurations
 
-Separate test configuration files exclude C/C++ test binaries:
+Separate test configuration files account for x86_64-specific exclusions:
 
 | Deployment      | x86 Config                      | x86_64 Config                            |
 |-----------------|---------------------------------|------------------------------------------|
 | single-process  | `test/test-single_process.toml` | `test/test-single_process-x86_64.toml`   |
 | multi-process   | `test/test-multi_process.toml`  | `test/test-multi_process-x86_64.toml`    |
 
-The x86_64 configs include only Rust-based tests: `test-kernel`, `vfs-test`, `echo-rust-nostd`,
-`linux-app`, `file-rust`, `thread-rust`, `stress-rust`, and `arch-rust`. The Makefile selects
-the correct config file based on `TARGET` and `SINGLE_PROCESS` variables.
+The x86_64 configs include all Rust and C/C++ tests except `dlfcn-c` (which requires
+`R_X86_64_*` ELF relocations not yet supported by the Nanvix dynamic loader). The Makefile
+selects the correct config file based on `TARGET` and `SINGLE_PROCESS` variables.
 
 ## Known Limitations
 
@@ -651,6 +735,12 @@ the correct config file based on `TARGET` and `SINGLE_PROCESS` variables.
 - **`__context_switch` does not reload CR3**: Since all processes share the same address
   space, the context switch skips the CR3 load. This must be revisited when per-process
   page tables are implemented.
-- **No C/C++ cross-compiler**: The `x86_64-nanvix-gcc` toolchain does not exist yet.
-  C and C++ guest binaries cannot be compiled for x86_64. Only Rust guest programs are
-  supported.
+- **No dynamic linking on x86_64**: The Nanvix ELF dynamic loader only handles `R_386_*`
+  relocation types. The `dlfcn-c` test is excluded from x86_64 test configurations until
+  `R_X86_64_*` relocations are implemented.
+- **`faccessat()` under root**: The `faccessat()` and `access()` tests are disabled on
+  both x86 and x86_64 because linuxd runs as root (via `sudo` for KVM access) and root
+  bypasses DAC permission checks, causing `W_OK` checks on read-only files to succeed.
+- **`c_size_t` is 32-bit on x86_64**: The `c_size_t` and `c_ssize_t` types in `sysapi`
+  remain defined as `u32`/`i32` even on x86_64 to preserve IPC wire format compatibility
+  for `read`/`write`/`getdents` messages. This is a known compromise.

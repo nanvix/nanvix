@@ -70,8 +70,16 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(pthread_key_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_attr_t` type.
+    // NOTE: On x86_64, void* and size_t require 8-byte alignment, so there is
+    // 4 bytes of padding between is_initialized (int) and stackaddr (void*).
+#if __SIZEOF_POINTER__ == 8
+#define PTHREAD_ATTR_PADDING 4
+#else
+#define PTHREAD_ATTR_PADDING 0
+#endif
     STATIC_ASSERT_SIZE(pthread_attr_t,
                        sizeof(int) +                    // is_initialized
+                           PTHREAD_ATTR_PADDING +       // alignment padding
                            sizeof(void *) +             // stackaddr
                            sizeof(size_t) +             // stacksize
                            sizeof(int) +                // contentionscope
@@ -87,9 +95,17 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(pthread_cond_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_condattr_t` type.
+    // NOTE: On x86_64, clock_t is 8 bytes with 8-byte alignment, requiring
+    // 4 bytes of padding after is_initialized (int).
+#if __SIZEOF_POINTER__ == 8
+#define PTHREAD_CONDATTR_PADDING 4
+#else
+#define PTHREAD_CONDATTR_PADDING 0
+#endif
     STATIC_ASSERT_SIZE(pthread_condattr_t,
-                       sizeof(int) +       // is_initialized
-                           sizeof(clock_t) // clock
+                       sizeof(int) +                  // is_initialized
+                           PTHREAD_CONDATTR_PADDING + // alignment padding
+                           sizeof(clock_t)            // clock
     );
 
     // Sanity check size of `pthread_mutex_t` type.

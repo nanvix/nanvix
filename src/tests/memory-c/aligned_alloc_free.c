@@ -34,7 +34,7 @@ void test_aligned_alloc_free(void)
     };
 
     const struct test_case cases[] = {
-        {.alignment = 4u, .size = 4u}, // Assuming 32-bit (sizeof(void*) == 4).
+        {.alignment = sizeof(void *), .size = sizeof(void *)},
         {.alignment = 8u, .size = 16u},
         {.alignment = 16u, .size = 32u},
         {.alignment = 32u, .size = 64u},

@@ -45,7 +45,7 @@ void test_ftruncate(void)
     // Get file size and assert result.
     struct stat st = {0};
     assert(fstat(fd, &st) == 0);
-    assert(st.st_size == SIZE);
+    assert(st.st_size == (off_t)SIZE);
 
     // Close and remove the test file.
     assert(close(fd) == 0);

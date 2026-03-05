@@ -25,36 +25,59 @@ use sysapi::time::timespec;
 // UpdateFileAccessTimeRequest
 //==================================================================================================
 
+/// Wire layout: fd (4 bytes) + times[0] (WIRE_SIZE) + times[1] (WIRE_SIZE) + padding.
 #[derive(Debug)]
-#[repr(C, packed)]
 pub struct UpdateFileAccessTimeRequest {
     pub fd: i32,
     pub times: [timespec; 2],
-    _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(UpdateFileAccessTimeRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
 
 impl UpdateFileAccessTimeRequest {
-    pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - 2 * mem::size_of::<timespec>();
+    /// Wire size of the data portion (fd + 2 wire-format timespecs).
+    #[allow(dead_code)]
+    const WIRE_DATA_SIZE: usize = mem::size_of::<i32>() + 2 * timespec::WIRE_SIZE;
+    const OFFSET_FD: usize = 0;
+    const OFFSET_TIMES_0: usize = mem::size_of::<i32>();
+    const OFFSET_TIMES_1: usize = Self::OFFSET_TIMES_0 + timespec::WIRE_SIZE;
 
     pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
-        unsafe { mem::transmute(bytes) }
+        let fd = i32::from_ne_bytes(
+            bytes[Self::OFFSET_FD..Self::OFFSET_FD + mem::size_of::<i32>()]
+                .try_into()
+                .unwrap(),
+        );
+        let t0 = timespec::try_from_bytes(
+            &bytes[Self::OFFSET_TIMES_0..Self::OFFSET_TIMES_0 + timespec::WIRE_SIZE],
+        )
+        .unwrap();
+        let t1 = timespec::try_from_bytes(
+            &bytes[Self::OFFSET_TIMES_1..Self::OFFSET_TIMES_1 + timespec::WIRE_SIZE],
+        )
+        .unwrap();
+        Self {
+            fd,
+            times: [t0, t1],
+        }
     }
 
     fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
-        unsafe { mem::transmute(self) }
+        let mut bytes = [0u8; LinuxDaemonMessage::PAYLOAD_SIZE];
+        bytes[Self::OFFSET_FD..Self::OFFSET_FD + mem::size_of::<i32>()]
+            .copy_from_slice(&self.fd.to_ne_bytes());
+        let t0 = self.times[0].to_bytes();
+        bytes[Self::OFFSET_TIMES_0..Self::OFFSET_TIMES_0 + timespec::WIRE_SIZE]
+            .copy_from_slice(&t0);
+        let t1 = self.times[1].to_bytes();
+        bytes[Self::OFFSET_TIMES_1..Self::OFFSET_TIMES_1 + timespec::WIRE_SIZE]
+            .copy_from_slice(&t1);
+        bytes
     }
 
     pub fn build(tid: ThreadIdentifier, fd: i32, times: &[timespec; 2]) -> Message {
-        let message: UpdateFileAccessTimeRequest = UpdateFileAccessTimeRequest {
-            fd,
-            times: *times,
-            _padding: [0; Self::PADDING_SIZE],
-        };
+        let request = UpdateFileAccessTimeRequest { fd, times: *times };
         let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
             LinuxDaemonMessageHeader::UpdateFileAccessTimeRequest,
-            message.into_bytes(),
+            request.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),

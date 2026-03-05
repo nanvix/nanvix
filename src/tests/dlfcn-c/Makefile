@@ -22,7 +22,11 @@ export OBJECTS = $(SOURCES:.c=.$(TARGET).$(MACHINE).o)
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
 
 # Specify the required relocation types
+ifeq ($(TARGET),x86_64)
+REQUIRED_TYPES = R_X86_64_RELATIVE R_X86_64_GLOB_DAT R_X86_64_64 R_X86_64_JUMP_SLO
+else
 REQUIRED_TYPES = R_386_RELATIVE R_386_PC32 R_386_GLOB_DAT R_386_32 R_386_JUMP_SLOT
+endif
 
 #===============================================================================
 # Build Rules

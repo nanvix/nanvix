@@ -24,7 +24,7 @@ gateway_connect_initial_backoff_ms = 10
 gateway_connect_max_backoff_ms = 500
 gateway_connect_timeout_ms = 15000
 
-
+[[tests]]
 executor = "empty"
 name = "empty/1"
 iterations = 1
@@ -56,13 +56,52 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
+program = "./bin/echo-c.elf"
+input = "hello world!"
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-cpp.elf"
+input = '["hello world!"]'
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
 program = "./bin/echo-rust-nostd.elf"
 input = '["hello world!"]'
 expected_output = "hello world!"
 
 [[tests]]
 executor = "http"
+program = "./bin/hello-c.elf"
+input = "[]"
+expected_output = "Hello, world from C!"
+
+[[tests]]
+executor = "http"
+program = "./bin/hello-cpp.elf"
+input = "[]"
+expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "http"
 program = "./bin/linux-app.elf"
+input = "[]"
+expected_output = "ok"
+
+# NOTE: dlfcn-c is excluded on x86_64 because the Nanvix ELF loader
+# only supports R_386_* relocations. x86_64 support (R_X86_64_*) requires
+# changes to src/libs/elf and src/libs/syscall/src/dlfcn.
+# [[tests]]
+# executor = "http"
+# program = "./bin/dlfcn-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/file-c.elf"
 input = "[]"
 expected_output = "ok"
 
@@ -86,9 +125,50 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/thread-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/network-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/misc-c.elf"
+program_args = ";NANVIX_TEST=1"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/memory-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/arch-rust.elf"
 input = "[]"
 expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/wasmd.elf"
+input = '["hello world!"]'
+expected_output = "Hello, world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/wasmd.elf"
+input = "[]"
+expected_output = "Hello, world!"
+
+#===================================================================================================
+# Terminal Executor Tests (Interactive Mode)
+#===================================================================================================
 
 [[tests]]
 executor = "terminal"
@@ -108,13 +188,46 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
+program = "./bin/echo-c.elf"
+input = "hello world"
+expected_output = "hello world"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-cpp.elf"
+input = "hello world"
+expected_output = "hello world"
+
+[[tests]]
+executor = "terminal"
 program = "./bin/echo-rust-nostd.elf"
 input = "hello world"
 expected_output = "hello world"
 
 [[tests]]
 executor = "terminal"
+program = "./bin/hello-c.elf"
+expected_output = "Hello, world from C!"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/hello-cpp.elf"
+expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "terminal"
 program = "./bin/linux-app.elf"
+expected_output = "ok"
+
+# NOTE: dlfcn-c excluded on x86_64 (see note above).
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/dlfcn-c.elf"
+# expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/file-c.elf"
 expected_output = "ok"
 
 [[tests]]
@@ -134,6 +247,26 @@ expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/thread-c.elf"
 expected_output = "ok"
 
+[[tests]]
+executor = "terminal"
+program = "./bin/network-c.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/misc-c.elf"
+program_args = ";NANVIX_TEST=1"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/memory-c.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/arch-rust.elf"
+expected_output = "ok"

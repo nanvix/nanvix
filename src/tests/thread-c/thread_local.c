@@ -65,7 +65,7 @@ static void *worker_thread(void *arg)
     assert(thread_local_var == EXPECTED_WORKER_THREAD_THREAD_LOCAL_VARIABLE_VALUE);
 
     // Return the value that was set for verification.
-    return ((void *)thread_local_var);
+    return ((void *)(uintptr_t)thread_local_var);
 }
 
 // Main thread for thread-local storage test.
@@ -90,7 +90,7 @@ static void main_thread(void)
     void *retval = NULL;
     ret = pthread_join(worker_tid, &retval);
     assert(ret == 0);
-    assert(retval == (void *)EXPECTED_WORKER_THREAD_THREAD_LOCAL_VARIABLE_VALUE);
+    assert(retval == (void *)(uintptr_t)EXPECTED_WORKER_THREAD_THREAD_LOCAL_VARIABLE_VALUE);
 
     // Verify that the main thread's thread-local variable is still unchanged.
     assert(thread_local_var == EXPECTED_MAIN_THREAD_THREAD_LOCAL_VARIABLE_VALUE);

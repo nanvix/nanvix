@@ -66,7 +66,11 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(char, 1);
     STATIC_ASSERT_SIZE(short, 2);
     STATIC_ASSERT_SIZE(int, 4);
+#if __SIZEOF_LONG__ == 8
+    STATIC_ASSERT_SIZE(long, 8);
+#else
     STATIC_ASSERT_SIZE(long, 4);
+#endif
     STATIC_ASSERT_SIZE(long long, 8);
     STATIC_ASSERT_SIZE(float, 4);
     STATIC_ASSERT_SIZE(double, 8);
@@ -75,7 +79,11 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(unsigned char, 1);
     STATIC_ASSERT_SIZE(unsigned short, 2);
     STATIC_ASSERT_SIZE(unsigned int, 4);
+#if __SIZEOF_LONG__ == 8
+    STATIC_ASSERT_SIZE(unsigned long, 8);
+#else
     STATIC_ASSERT_SIZE(unsigned long, 4);
+#endif
     STATIC_ASSERT_SIZE(unsigned long long, 8);
 
     // Assert size of types in <stdint.h>.
@@ -101,8 +109,8 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(off_t, sizeof(long long));
     STATIC_ASSERT_SIZE(pid_t, sizeof(int));
     STATIC_ASSERT_SIZE(reclen_t, sizeof(unsigned short));
-    STATIC_ASSERT_SIZE(size_t, sizeof(unsigned int));
-    STATIC_ASSERT_SIZE(ssize_t, sizeof(int));
+    STATIC_ASSERT_SIZE(size_t, sizeof(void *));
+    STATIC_ASSERT_SIZE(ssize_t, sizeof(void *));
     STATIC_ASSERT_SIZE(time_t, sizeof(long long));
     STATIC_ASSERT_SIZE(uid_t, sizeof(unsigned int));
 

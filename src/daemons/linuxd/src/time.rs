@@ -33,6 +33,9 @@ impl From<LibcTimeSpec> for libc::timespec {
     }
 }
 
+// The try_into()/into() calls for tv_nsec are needed when c_long differs from libc::c_long,
+// but are identity conversions when both are i64 (native x86_64 host).
+#[allow(clippy::useless_conversion)]
 impl TryFrom<LibcTimeSpec> for timespec {
     type Error = Error;
 
@@ -47,6 +50,7 @@ impl TryFrom<LibcTimeSpec> for timespec {
     }
 }
 
+#[allow(clippy::useless_conversion)]
 impl From<timespec> for LibcTimeSpec {
     fn from(tp: timespec) -> Self {
         LibcTimeSpec(libc::timespec {

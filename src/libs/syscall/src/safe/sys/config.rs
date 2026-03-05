@@ -527,7 +527,10 @@ impl From<i16> for SysConfigValue {
 
 impl From<i32> for SysConfigValue {
     fn from(value: i32) -> Self {
-        Self { value }
+        Self {
+            #[allow(clippy::useless_conversion)]
+            value: value.into(),
+        }
     }
 }
 
