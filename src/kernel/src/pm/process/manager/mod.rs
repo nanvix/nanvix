@@ -218,8 +218,8 @@ impl ProcessManager {
         // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
-        let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;
-        let esp: u32 = unsafe {
+        let cr3 = vmem.pgdir().physical_address()?.into_raw_value();
+        let esp = unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack.top().into_raw_value() as *mut u8,
                 args.user_stack_base.into_raw_value() + args.user_stack_size,
@@ -229,11 +229,11 @@ impl ProcessManager {
                 kernel_func.into_raw_value(),
                 enable_interrupts,
             )
-        } as u32;
-        let esp0: u32 = kernel_stack.top().into_raw_value() as u32;
+        };
+        let esp0 = kernel_stack.top().into_raw_value();
 
-        trace!("cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp, esp0);
-        let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);
+        trace!("cr3={:#x}, esp={:#x}, ebp={:#x}", cr3, esp as usize, esp0);
+        let context: ContextInformation = ContextInformation::new(cr3 as _, esp as _, esp0 as _);
 
         Ok((kernel_stack, context))
     }
@@ -1095,7 +1095,7 @@ impl ProcessManager {
     ///
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
         use crate::{
-            hal::arch::x86::cpu::FpuState,
+            hal::arch::FpuState,
             pm::{
                 process::manager::r#unsafe::{
                     CURRENT_TID,

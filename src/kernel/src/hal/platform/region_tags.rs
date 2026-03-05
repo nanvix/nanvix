@@ -12,9 +12,11 @@ use crate::hal::io::MmioTag;
 //==================================================================================================
 
 /// Tag used to identify the I/O APIC MMIO region.
+#[allow(dead_code)]
 pub const IOAPIC_MMIO_TAG: MmioTag = MmioTag::new(*b"IOAPIC  ");
 
 /// Tag used to identify the Local APIC MMIO region.
+#[allow(dead_code)]
 pub const LAPIC_MMIO_TAG: MmioTag = MmioTag::new(*b"LAPIC   ");
 
 /// Tag used to identify the MicroVM RAMFS MMIO region.

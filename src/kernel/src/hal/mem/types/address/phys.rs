@@ -91,7 +91,7 @@ impl PhysicalAddress {
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
     pub fn from_number(frame: FrameNumber) -> Self {
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+        let addr: usize = frame.into_raw_value() as usize * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
@@ -99,7 +99,7 @@ impl PhysicalAddress {
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         // Safety: the following unwrap is safe because a physical address has a valid frame number.
-        FrameNumber::from_raw_value(frame_number).unwrap()
+        FrameNumber::from_raw_value(frame_number as _).unwrap()
     }
 
     ///

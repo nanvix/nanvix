@@ -19,7 +19,7 @@ mod microvm;
 pub mod region_names;
 pub mod region_tags;
 
-#[cfg(feature = "pit")]
+#[cfg(all(feature = "pit", not(feature = "x86_64")))]
 pub mod pit;
 
 //==================================================================================================
@@ -39,9 +39,40 @@ pub use microvm::*;
 #[cfg(feature = "hyperlight")]
 pub use hyperlight::*;
 
+#[cfg(not(feature = "x86_64"))]
 pub mod acpi;
 pub mod bootinfo;
+#[cfg(not(feature = "x86_64"))]
 pub mod madt;
+
+// On x86_64, provide stub types for MadtInfo so that code that references it can still compile.
+#[cfg(feature = "x86_64")]
+pub mod madt {
+    use ::alloc::collections::LinkedList;
+
+    pub struct MadtInfo {
+        pub entries: LinkedList<MadtEntry>,
+    }
+
+    pub enum MadtEntry {}
+
+    impl MadtInfo {
+        pub fn cores_count(&self) -> usize {
+            1
+        }
+
+        pub const fn has_8259_pic(&self) -> bool {
+            false
+        }
+    }
+
+    impl Iterator for MadtInfo {
+        type Item = MadtEntry;
+        fn next(&mut self) -> Option<Self::Item> {
+            self.entries.pop_front()
+        }
+    }
+}
 
 //==================================================================================================
 // Interrupts

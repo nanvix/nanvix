@@ -7,7 +7,7 @@
 
 use crate::{
     hal::arch::{
-        x86::cpu::FpuState,
+        FpuState,
         ContextInformation,
     },
     mm::{

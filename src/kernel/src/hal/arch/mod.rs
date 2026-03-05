@@ -30,6 +30,10 @@ use smp_feature_imports::*;
 #[cfg(not(feature = "x86_64"))]
 pub use x86::{
     clear_task_switched,
+    cpu::{
+        ExceptionController,
+        FpuState,
+    },
     forge_user_stack,
     set_task_switched,
     ContextInformation,
@@ -42,6 +46,10 @@ pub use x86::{
 #[cfg(feature = "x86_64")]
 pub use x86_64::{
     clear_task_switched,
+    cpu::{
+        ExceptionController,
+        FpuState,
+    },
     forge_user_stack,
     set_task_switched,
     ContextInformation,

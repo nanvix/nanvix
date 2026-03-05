@@ -64,6 +64,7 @@ const GDT_SLOT_COUNT: usize = 7;
 
 /// Segment selector.
 #[repr(u16)]
+#[allow(dead_code)]
 pub enum SegmentSelector {
     Null = (GdtEntries::Null as u16) << 3,
     KernelCode = (GdtEntries::KernelCode as u16) << 3,

@@ -16,7 +16,7 @@ pub mod platform;
 //==================================================================================================
 
 use crate::hal::{
-    arch::x86::cpu::ExceptionController,
+    arch::ExceptionController,
     cpu::InterruptManager,
     io::{
         IoMemoryAllocator,
@@ -49,7 +49,10 @@ use ::sys::error::{
 #[cfg(feature = "smp")]
 #[path = ""]
 mod feature_smp_imports {
+    #[cfg(not(feature = "x86_64"))]
     pub use crate::hal::arch::x86::Arch;
+    #[cfg(feature = "x86_64")]
+    pub use crate::hal::arch::x86_64::Arch;
 }
 #[cfg(feature = "smp")]
 use feature_smp_imports::*;

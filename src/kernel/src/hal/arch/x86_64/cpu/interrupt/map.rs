@@ -46,6 +46,7 @@ impl InterruptMap {
     ///
     /// Remaps an interrupt number.
     ///
+    #[allow(dead_code)]
     pub fn remap(&mut self, logical: u8, physical: u8) {
         self.0[logical as usize] = physical;
     }

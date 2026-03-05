@@ -50,7 +50,7 @@ pub fn get_thread_data_area(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Kc
     match pm.get_thread_data_area(pid, tid) {
         Ok(user_tda_opt) => {
             let user_tda_value: i64 = match user_tda_opt {
-                Some(user_tda) => u32::from(user_tda).into(),
+                Some(user_tda) => usize::from(user_tda) as i64,
                 None => 0,
             };
             trace!("user_tda={user_tda_value:#x}");

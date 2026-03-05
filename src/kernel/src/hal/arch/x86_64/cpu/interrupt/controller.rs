@@ -9,6 +9,7 @@ use crate::hal::arch::x86_64::cpu::interrupt::{
     map::InterruptMap,
     InterruptNumber,
 };
+#[allow(unused_imports)]
 use ::sys::error::{
     Error,
     ErrorCode,

@@ -962,7 +962,8 @@ fn do_exception_handler(
     }
 
     // Handle FPU Exceptions.
-    if info.num() == ::arch::cpu::excp::Exception::CoprocessorNotAvailable as u32 {
+    // Exception number 7 is the x87 Coprocessor Not Available exception.
+    if info.num() == 7 {
         // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
 

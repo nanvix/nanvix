@@ -75,6 +75,7 @@ use ::sys::error::Error;
 // Ensure that the kernel pool size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
 // Ensure that the kernel pool size fits in a single page table.
+#[cfg(not(feature = "x86_64"))]
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));

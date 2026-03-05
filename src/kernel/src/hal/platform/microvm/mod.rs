@@ -13,10 +13,6 @@ pub mod pvclock;
 
 use crate::{
     hal::{
-        arch::x86::{
-            self,
-            Arch,
-        },
         io::{
             IoMemoryAllocator,
             IoPortAllocator,
@@ -44,16 +40,20 @@ use ::alloc::{
     collections::LinkedList,
     string::ToString,
 };
-use ::arch::{
-    cpu::pic,
-    mem,
-};
+#[cfg(not(feature = "x86_64"))]
+use ::arch::cpu::pic;
+use ::arch::mem;
 use ::sys::error::{
     Error,
     ErrorCode,
 };
 
-#[cfg(feature = "pit")]
+#[cfg(not(feature = "x86_64"))]
+use crate::hal::arch::x86::{self, Arch};
+#[cfg(feature = "x86_64")]
+use crate::hal::arch::x86_64::{self as x86, Arch};
+
+#[cfg(all(feature = "pit", not(feature = "x86_64")))]
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
@@ -62,7 +62,7 @@ use crate::hal::platform::pit::Pit;
 
 pub struct Platform {
     pub arch: Arch,
-    #[cfg(feature = "pit")]
+    #[cfg(all(feature = "pit", not(feature = "x86_64")))]
     pub _pit: Pit,
 }
 
@@ -422,6 +422,7 @@ unsafe fn read_control_register(offset: usize) -> u32 {
     core::ptr::read_volatile(addr)
 }
 
+#[cfg(not(feature = "x86_64"))]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
@@ -431,7 +432,7 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(feature = "pit")]
+#[cfg(all(feature = "pit", not(feature = "x86_64")))]
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
 
@@ -451,12 +452,14 @@ pub fn init(
 ) -> Result<Platform, Error> {
     // Ensure the CPU exposes the TSC feature (CPUID.01H:EDX[4]).
     // The pvclock subsystem and RDTSC-based timekeeping depend on this.
+    #[cfg(not(feature = "x86_64"))]
     if !::arch::cpu::cpuid::has_tsc() {
         let reason: &str = "CPU does not support TSC (RDTSC)";
         error!("{}", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
+    #[cfg(not(feature = "x86_64"))]
     register_pic_ioports(ioports)?;
 
     // Register MicroVM control registers.
@@ -484,7 +487,7 @@ pub fn init(
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
-        #[cfg(feature = "pit")]
+        #[cfg(all(feature = "pit", not(feature = "x86_64")))]
         _pit: register_pit(ioports)?,
     })
 }

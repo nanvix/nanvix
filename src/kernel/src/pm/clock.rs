@@ -165,9 +165,9 @@ pub fn now() -> SystemTime {
     }
 
     // Fallback: PIT-based tick counting.
-    #[cfg(feature = "pit")]
+    #[cfg(all(feature = "pit", not(feature = "x86_64")))]
     let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
-    #[cfg(not(feature = "pit"))]
+    #[cfg(any(not(feature = "pit"), feature = "x86_64"))]
     let timer_freq: u32 = 1;
 
     let (major_ticks, minor_ticks): (u32, u32) = TIMER_TICKS.get();

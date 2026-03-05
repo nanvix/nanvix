@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::{
-    hal::arch::x86::mem::gdt::Gdt,
     kcall::KcallResult,
     mm::Vmem,
     pm::ProcessManager,
@@ -86,14 +85,18 @@ pub fn set_thread_data_area(
             //
             // SAFETY: We are in the kcall dispatcher, running in privileged
             // mode with interrupts disabled. Modifying the GDT is safe here.
-            if let Some(tda_addr) = user_tda {
-                unsafe {
-                    Gdt::set_thread_data_area(tda_addr.into());
-                }
-            } else {
-                // Clear %gs/%fs so they do not reference a stale TDA.
-                unsafe {
-                    Gdt::clear_thread_data_area_segments();
+            #[cfg(not(feature = "x86_64"))]
+            {
+                use crate::hal::arch::x86::mem::gdt::Gdt;
+                if let Some(tda_addr) = user_tda {
+                    unsafe {
+                        Gdt::set_thread_data_area(tda_addr.into());
+                    }
+                } else {
+                    // Clear %gs/%fs so they do not reference a stale TDA.
+                    unsafe {
+                        Gdt::clear_thread_data_area_segments();
+                    }
                 }
             }
 

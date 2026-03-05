@@ -93,7 +93,7 @@ impl FrameAllocator {
                 return Err(error);
             },
         };
-        let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+        let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number as _) {
             Some(frame_number) => frame_number,
             None => {
                 let reason: &str = "frame number is out of bounds";
@@ -126,7 +126,7 @@ impl FrameAllocator {
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
     pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
+        let frame_number: usize = frame.into_frame_number().into_raw_value() as usize;
         match self.bitmap.clear(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -150,7 +150,7 @@ impl FrameAllocator {
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
     pub fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        let frame_number: usize = phys_addr.into_frame_number().into_raw_value() as usize;
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -178,7 +178,7 @@ impl FrameAllocator {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+        let start_frame_number: usize = region.start().into_frame_number().into_raw_value() as usize;
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
         // Check if all frames in the range are free.
