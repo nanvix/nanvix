@@ -240,6 +240,10 @@ impl Benchmark {
             ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
             self.nanvixd_tmp_dir.clone(),
         ];
+        if let Some(netns_pool_size) = self.nanvixd_netns_pool_size {
+            nanvixd_args.push(::nanvixd::args::Args::OPT_NETNS_POOL_SIZE.to_string());
+            nanvixd_args.push(netns_pool_size.to_string());
+        }
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
             nanvixd_args.push(hwloc_file.clone());
@@ -1604,6 +1608,7 @@ async fn main() -> Result<()> {
             .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
             .build()?,
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
+        nanvixd_netns_pool_size: args.netns_pool_size(),
         nanvixd_tmp_dir: args.tmp_dir(),
         user_vm_id: None,
     };
