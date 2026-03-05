@@ -56,6 +56,7 @@ members = [
         "src/tests/thread-rust",
         "src/tests/stress-rust",
         "src/tests/test-kernel",
+        "src/tests/test-mmio-fault",
         "src/tests/linux-app",
         "src/tests/testd",
         "src/uservm",

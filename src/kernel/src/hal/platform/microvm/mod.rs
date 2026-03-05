@@ -360,7 +360,7 @@ fn register_ramfs_mmio_region(
             PageAligned::from_raw_value(ramfs_base)?,
             ramfs_size,
             MemoryRegionType::Mmio,
-            AccessPermission::RDONLY,
+            AccessPermission::RDWR,
         )?;
 
         ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
