@@ -29,11 +29,15 @@ uservm = { workspace = true }
 user-vm-api = { workspace = true }
 
 [features]
-default = ["microvm"]
+default = ["microvm", "multi-process"]
 single-process = [
     "linuxd",
     "nanvix-sandbox-cache/single-process",
 ]
+multi-process = [
+    "nanvix-sandbox-cache/multi-process",
+]
+standalone = ["nanvix-sandbox-cache/standalone"]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",
