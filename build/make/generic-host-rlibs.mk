@@ -9,8 +9,17 @@ MACHINE_FEATURES :=
 MACHINE_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 MACHINE_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))
-MACHINE_CARGO_FEATURES := $(if $(MACHINE_FEATURES),--features "$(MACHINE_FEATURES)",)
-HOST_RLIBS_CARGO_FEATURES = $(if $(filter $(1),$(USERVM_DEPENDENT_RLIBS)),$(MACHINE_CARGO_FEATURES),)
+
+# Deployment-mode feature flags for host rlibs that depend on uservm.
+DEPLOYMENT_FEATURES :=
+DEPLOYMENT_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
+DEPLOYMENT_FEATURES += $(if $(filter standalone single-process,$(DEPLOYMENT_MODE)),single-process,)
+DEPLOYMENT_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
+DEPLOYMENT_FEATURES := $(strip $(DEPLOYMENT_FEATURES))
+
+ALL_HOST_RLIB_FEATURES = $(strip $(MACHINE_FEATURES) $(DEPLOYMENT_FEATURES))
+ALL_HOST_RLIB_CARGO_FEATURES = $(if $(ALL_HOST_RLIB_FEATURES),--features "$(ALL_HOST_RLIB_FEATURES)",)
+HOST_RLIBS_CARGO_FEATURES = $(if $(filter $(1),$(USERVM_DEPENDENT_RLIBS)),$(ALL_HOST_RLIB_CARGO_FEATURES),)
 
 define HOST_RLIB_RULES
 check-host-rlib-$(1):

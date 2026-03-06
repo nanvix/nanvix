@@ -26,8 +26,10 @@ shell-words = { workspace = true }
 globset = { workspace = true }
 
 [features]
-default = ["microvm"]
+default = ["microvm", "multi-process"]
 single-process = ["nanvix/single-process"]
+multi-process = ["nanvix/multi-process"]
+standalone = ["nanvix/standalone"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 
