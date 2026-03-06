@@ -5,8 +5,9 @@
 // Imports
 //==================================================================================================
 
+use crate::safe::RawFileDescriptor;
+#[cfg(not(feature = "standalone"))]
 use crate::{
-    safe::RawFileDescriptor,
     unistd::message::{
         WriteRequest,
         WriteResponse,
@@ -14,11 +15,12 @@ use crate::{
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
+#[cfg(not(feature = "standalone"))]
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
     ipc::Message,
     pm::ThreadIdentifier,
 };
@@ -30,6 +32,7 @@ use ::sysapi::{
     },
 };
 
+#[cfg(not(feature = "standalone"))]
 use super::util::page_chunk_size;
 
 //==================================================================================================
@@ -145,31 +148,39 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         }
     }
 
-    // In standalone mode, route stdout/stderr to the kernel debug kcall
-    // and reject all other file descriptors.
+    // Route stdout/stderr directly through the kernel debug kcall. This
+    // avoids the IPC round-trip to linuxd and works in both standalone and
+    // managed modes.
+    if fd == STDOUT_FILENO || fd == STDERR_FILENO {
+        return write_debug(buffer);
+    }
+
+    // In standalone mode, reject all other file descriptors (no linuxd).
     #[cfg(feature = "standalone")]
-    return write_standalone(fd, buffer);
+    {
+        let _ = fd;
+        return Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "write not supported in standalone mode",
+        ));
+    }
 
     // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]
     write_linuxd(fd, buffer)
 }
 
-/// Standalone-mode write: routes stdout/stderr through the kernel debug kcall in chunks of at most
-/// [`::config::kernel::DEBUG_BUFFER_SIZE`] bytes.
-#[cfg(feature = "standalone")]
-fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
-    if fd == STDOUT_FILENO || fd == STDERR_FILENO {
-        let mut offset: usize = 0;
-        while offset < buffer.len() {
-            let end: usize =
-                core::cmp::min(offset + ::config::kernel::DEBUG_BUFFER_SIZE, buffer.len());
-            ::sys::kcall::debug::debug(buffer[offset..end].as_ptr(), end - offset)?;
-            offset = end;
-        }
-        return Ok(buffer.len() as c_size_t);
+/// Writes data to stdout/stderr through the kernel debug kcall in chunks of
+/// at most [`::config::kernel::DEBUG_BUFFER_SIZE`] bytes.
+fn write_debug(buffer: &[u8]) -> Result<c_size_t, Error> {
+    let mut offset: usize = 0;
+    while offset < buffer.len() {
+        let end: usize =
+            core::cmp::min(offset + ::config::kernel::DEBUG_BUFFER_SIZE, buffer.len());
+        ::sys::kcall::debug::debug(buffer[offset..end].as_ptr(), end - offset)?;
+        offset = end;
     }
-    Err(Error::new(ErrorCode::OperationNotSupported, "write not supported in standalone mode"))
+    Ok(buffer.len() as c_size_t)
 }
 
 /// Forwards a write request to linuxd via IPC, splitting the buffer into

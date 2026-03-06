@@ -1088,6 +1088,7 @@ impl Vmem {
     /// Upon success, the user frame that was unmapped is returned. Upon failure, an error code is
     /// returned instead.
     ///
+    #[allow(dead_code)]
     pub fn unmap(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<UserFrame, Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {

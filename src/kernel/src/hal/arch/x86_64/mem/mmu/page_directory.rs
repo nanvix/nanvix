@@ -151,6 +151,7 @@ impl PageDirectory {
     ///
     /// Unmaps a page table from the page directory.
     ///
+    #[allow(dead_code)]
     pub fn unmap(&mut self, pgtable_address: PageTableAddress) -> Result<FrameAddress, Error> {
         let pde: PageDirectoryEntry = match self.read_pde(pgtable_address) {
             Some(pde) => pde,

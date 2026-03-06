@@ -22,7 +22,6 @@ use crate::{
         phys::{
             KernelFrame,
             PhysMemoryManager,
-            UserFrame,
         },
         virt::{
             kpage::KernelPage,
@@ -31,6 +30,8 @@ use crate::{
         },
     },
 };
+#[cfg(not(target_arch = "x86_64"))]
+use crate::mm::phys::UserFrame;
 use ::alloc::{
     collections::LinkedList,
     rc::Rc,
@@ -281,8 +282,20 @@ impl VirtMemoryManager {
         vmem: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        let uframe: UserFrame = vmem.unmap(vaddr)?;
-        self.physman.borrow_mut().free_user_frame(uframe)
+        // On x86_64, identity mapping is managed by the UserVM and alloc_upage()
+        // does not populate the kernel's bookkeeping page directory, so there is
+        // nothing to unmap here.
+        #[cfg(target_arch = "x86_64")]
+        {
+            let _ = (vmem, vaddr);
+            return Ok(());
+        }
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let uframe: UserFrame = vmem.unmap(vaddr)?;
+            self.physman.borrow_mut().free_user_frame(uframe)
+        }
     }
 
     pub fn alloc_upages(
