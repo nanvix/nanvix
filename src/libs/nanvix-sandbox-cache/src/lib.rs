@@ -46,6 +46,8 @@ use ::nanvix_sandbox::netns::{
     NetnsPoolConfig,
     NetnsPoolInitStrategy,
 };
+#[cfg(not(feature = "single-process"))]
+use ::nanvix_sandbox::SnapshotDirHandle;
 use ::nanvix_sandbox::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
@@ -542,6 +544,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     anyhow::bail!(reason);
                 }
 
+                #[cfg(not(feature = "single-process"))]
+                let l2_sysvm_snapshot_dir: PathBuf =
+                    sandbox_tmp_dir.join(format!("l2-sysvm-snapshot-{}", tag.sandbox_id()));
+
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.tenant_id(),
                     tag.sandbox_id(),
@@ -568,9 +574,35 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     Some(self.config.toolchain_binary_directory().to_string()),
                     Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(self.config.l2()),
-                    Some(self.config.l2_snapshot_path().to_string()),
                 );
 
+                #[cfg(not(feature = "single-process"))]
+                let uninitialized_sandbox: UninitializedSandbox<T> = if self.config.l2() {
+                    let snapshot_dir_handle: SnapshotDirHandle = SnapshotDirHandle::new(
+                        &l2_sysvm_snapshot_dir,
+                        self.config.l2_snapshot_path(),
+                        config.l2_linuxd_log_file(),
+                    )
+                    .map_err(|error| {
+                        let reason: String = format!(
+                            "failed to create snapshot directory handle (tenant_id={}, \
+                             program={}, app_name={}, error={error:?})",
+                            tag.tenant_id(),
+                            tag.program(),
+                            tag.app_name()
+                        );
+                        error!("get(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+
+                    uninitialized_sandbox
+                        .with_config(config)
+                        .with_snapshot_dir_handle(Some(snapshot_dir_handle))
+                } else {
+                    uninitialized_sandbox.with_config(config)
+                };
+
+                #[cfg(feature = "single-process")]
                 let uninitialized_sandbox: UninitializedSandbox<T> =
                     uninitialized_sandbox.with_config(config);
 
