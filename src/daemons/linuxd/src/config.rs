@@ -43,6 +43,13 @@ pub const READER_TASK_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 pub const GATEWAY_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 
+///
+/// # Description
+///
+/// Timeout for joining a worker thread when closing a user VM connection.
+///
+pub const WORKER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
