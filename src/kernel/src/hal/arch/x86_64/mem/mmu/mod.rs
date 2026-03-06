@@ -32,6 +32,7 @@ pub mod page_table;
 /// PML4 root stays the same. This function is intentionally a no-op.
 ///
 #[inline(never)]
+#[allow(dead_code)]
 pub unsafe fn load_page_directory(_cr3: usize) {
-    // Intentionally a no-op: the PML4 root set by the VMM is modified in-place by hwpt.
+    // Intentionally a no-op: CR3 is managed per-process via hwpt::alloc_process_pml4().
 }

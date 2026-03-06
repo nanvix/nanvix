@@ -425,12 +425,13 @@ __context_switch:
     popfq
 
     /* Restore address space. */
-    /* NOTE: on x86_64, we keep the VMM-provided identity-mapped page tables.
-       The kernel's page directory uses 32-bit entries which are incompatible
-       with 4-level paging. Skip CR3 reload until native x86_64 paging is
-       implemented. */
-    /* movq CONTEXT_CR3(%rsi), %rax */
-    /* movq %rax, %cr3 */
+    /* Only reload CR3 if the target context has a non-zero CR3. A zero CR3
+       indicates the initial boot context before per-process page tables exist. */
+    movq CONTEXT_CR3(%rsi), %rax
+    testq %rax, %rax
+    jz .Lskip_cr3
+    movq %rax, %cr3
+.Lskip_cr3:
 
     /* Update RSP0 on TSS. */
     movq CONTEXT_RSP0(%rsi), %rax
