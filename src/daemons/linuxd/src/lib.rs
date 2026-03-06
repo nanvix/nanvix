@@ -16,6 +16,7 @@ use crate::{
         restore_gate_sockaddr_builder,
         CONTROL_PLANE_CONNECT_TIMEOUT,
         READER_TASK_JOIN_TIMEOUT,
+        WORKER_THREAD_JOIN_TIMEOUT,
     },
     message::RequestAssembler,
     syscalls::SyscallTable,
@@ -408,7 +409,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         // Send a shutdown message to all worker threads associated
         // with this user VM.
         if let Some(mut worker_threads) = worker_threads {
-            for worker_thread in worker_threads.drain(..) {
+            for mut worker_thread in worker_threads.drain(..) {
                 trace!("sending interrupt to worker thread (thread_id={:?})", worker_thread.id);
 
                 // Each worker thread may be in one of three states:
@@ -437,14 +438,46 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                         worker_thread.id
                     );
                 }
-                if let Err(e) = worker_thread.handle.await {
-                    error!(
-                        "error joining worker thread (thread_id={:?}, error={e:?})",
-                        worker_thread.id
-                    );
+                match timeout(WORKER_THREAD_JOIN_TIMEOUT, &mut worker_thread.handle).await {
+                    Ok(Ok(())) => {
+                        trace!(
+                            "close_connection(): successfully joined worker thread \
+                             (thread_id={:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            "error joining worker thread (thread_id={:?}, error={e:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Err(_elapsed) => {
+                        warn!(
+                            "close_connection(): timeout waiting for worker thread, aborting it \
+                             (thread_id={:?})",
+                            worker_thread.id
+                        );
+                        worker_thread.handle.abort();
+                    },
                 }
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Spawns asynchronous cleanup for a user VM connection so the main event loop is not blocked
+    /// by teardown of reader/worker tasks.
+    ///
+    fn spawn_connection_cleanup(
+        user_vm_handle: Option<UserVmHandle>,
+        worker_threads: Option<VecDeque<WorkerThreadHandle>>,
+    ) {
+        tokio::spawn(async move {
+            Self::close_connection(user_vm_handle, worker_threads).await;
+        });
     }
 
     fn log_and_error(code: ErrorCode, msg: &'static str) -> Error {
@@ -591,10 +624,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                         error!("run(): {reason} (uvm_id={uvm_id}, error={e:?})");
 
                                         // Shutdown faulty user VM.
-                                        Self::close_connection(
+                                        Self::spawn_connection_cleanup(
                                             user_vm_connections.remove(&uvm_id),
                                             worker_threads.lock().await.remove(&uvm_id),
-                                        ).await;
+                                        );
 
                                         continue 'main_loop;
                                     }
@@ -649,10 +682,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                             debug!("run(): harvesting connection to user VM (uvm_id={uvm_id}, reason={kind_str})");
 
                             // Shutdown finished user VM.
-                            Self::close_connection(
+                            Self::spawn_connection_cleanup(
                                 user_vm_connections.remove(&uvm_id),
                                 worker_threads.lock().await.remove(&uvm_id),
-                            ).await;
+                            );
                         },
                     }
                 },
