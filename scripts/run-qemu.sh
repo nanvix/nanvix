@@ -200,6 +200,7 @@ function run_qemu
 	# Debug mode: attach GDB server and wait.
 	if [[ "${mode}" = "--debug" ]]; then
 		cmd="${cmd} -gdb tcp::${GDB_PORT} -S"
+		# shellcheck disable=SC2086 # cmd is a composed command string; allow word splitting into separate args
 		${cmd}
 		return
 	fi
@@ -216,6 +217,7 @@ function run_qemu
 		cmd="timeout -s SIGINT --preserve-status --foreground ${timeout} ${cmd}"
 	fi
 
+	# shellcheck disable=SC2086 # cmd is a composed command string; allow word splitting into separate args
 	${cmd} 2> stderr.log
 }
 
@@ -245,6 +247,7 @@ function run_qemu_wait_for_string
 
 	# Run QEMU in the background with stdout teed to a log file.
 	# Use setsid to create a new process group for clean termination.
+	# shellcheck disable=SC2086 # cmd is a composed command string; allow word splitting into separate args
 	setsid ${cmd} > >(tee "${log_file}") 2>&1 &
 	local qemu_pid=$!
 
