@@ -144,13 +144,7 @@ mod uservm_args;
 // Public Modules
 //==================================================================================================
 
-::cfg_if::cfg_if! {
-    if #[cfg(feature = "single-process")] {
-        pub mod single_process;
-    } else {
-        pub mod multi_process;
-    }
-}
+pub mod sandbox;
 
 pub mod netns;
 pub mod tcp_port;
@@ -161,11 +155,11 @@ pub mod tcp_port;
 
 ::cfg_if::cfg_if! {
     if #[cfg(feature = "single-process")] {
-        pub use self::single_process::*;
+        pub use self::sandbox::single_process::*;
         pub use ::linuxd::syscalls::SyscallAction;
         pub use ::linuxd::syscalls::SyscallTable;
     } else {
-        pub use self::multi_process::*;
+        pub use self::sandbox::multi_process::*;
     }
 }
 
