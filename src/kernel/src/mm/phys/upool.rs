@@ -101,7 +101,6 @@ impl UpoolInner {
     ///
     /// On success, `Ok(())` is returned. On failure, an error is returned.
     ///
-    #[allow(dead_code)]
     fn free(&mut self, page_addr: FrameAddress) -> Result<(), Error> {
         self.frame_allocator.free(page_addr)
     }
@@ -238,7 +237,6 @@ impl Upool {
     ///
     /// On success, empty is returned. On failure, an error is returned instead.
     ///
-    #[allow(dead_code)]
     pub fn free(&mut self, uframe: UserFrame) -> Result<(), Error> {
         self.inner.borrow_mut().free(uframe.address())
     }

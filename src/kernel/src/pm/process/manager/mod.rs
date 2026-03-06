@@ -221,7 +221,7 @@ impl ProcessManager {
 
         let cr3 = {
             #[cfg(target_arch = "x86_64")]
-            { 0u64 } // Skip CR3 switch — all processes share the boot PML4 on x86_64
+            { vmem.pml4().physical_address()?.into_raw_value() as u64 }
             #[cfg(not(target_arch = "x86_64"))]
             { vmem.pgdir().physical_address()?.into_raw_value() as u64 }
         };

@@ -65,7 +65,6 @@ impl<T: DerefMut<Target = [u64]>> PageTable<T> {
     }
 
     /// Returns the number of pages mapped in the page table.
-    #[allow(dead_code)]
     pub fn nmapped(&self) -> usize {
         self.nmapped
     }
@@ -143,7 +142,6 @@ impl<T: DerefMut<Target = [u64]>> PageTable<T> {
     ///
     /// Unmaps a page address from the target page table.
     ///
-    #[allow(dead_code)]
     pub fn unmap(&mut self, page_address: PageAddress) -> Result<FrameAddress, Error> {
         let pte: PageTableEntry = match self.read_pte(page_address) {
             Some(pte) => pte,
@@ -188,7 +186,6 @@ impl<T: DerefMut<Target = [u64]>> PageTable<T> {
     ///
     /// Looks up a page address in the target page table.
     ///
-    #[allow(dead_code)]
     pub fn lookup(&self, page_address: PageAddress) -> Result<FrameAddress, Error> {
         let pte: PageTableEntry = match self.read_pte(page_address) {
             Some(pte) => pte,

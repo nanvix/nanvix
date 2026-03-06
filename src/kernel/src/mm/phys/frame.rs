@@ -126,7 +126,6 @@ impl FrameAllocator {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[allow(dead_code)]
     pub fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value() as usize;
         match self.bitmap.clear(frame_number) {

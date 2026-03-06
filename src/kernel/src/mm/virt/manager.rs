@@ -22,6 +22,7 @@ use crate::{
         phys::{
             KernelFrame,
             PhysMemoryManager,
+            UserFrame,
         },
         virt::{
             kpage::KernelPage,
@@ -30,8 +31,6 @@ use crate::{
         },
     },
 };
-#[cfg(not(target_arch = "x86_64"))]
-use crate::mm::phys::UserFrame;
 use ::alloc::{
     collections::LinkedList,
     rc::Rc,
@@ -213,54 +212,40 @@ impl VirtMemoryManager {
         access: AccessPermission,
         clear: bool,
     ) -> Result<(), Error> {
-        // On x86_64, identity mapping (virtual == physical) is managed by the UserVM.
-        // No frame allocation or page table manipulation is needed.
-        #[cfg(target_arch = "x86_64")]
-        {
-            let _ = access;
-            if clear {
-                vmem.memset(vaddr, 0)?;
-            }
-            return Ok(());
-        }
+        let uframe: UserFrame = match self.physman.try_borrow_mut() {
+            Ok(mut physman) => physman.alloc_user_frame()?,
+            Err(_) => {
+                let reason: &str = "failed to borrow physical memory manager";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            },
+        };
 
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            let uframe: UserFrame = match self.physman.try_borrow_mut() {
-                Ok(mut physman) => physman.alloc_user_frame()?,
+        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
+        let page_table_allocator = move || {
+            let kframe: KernelFrame = match physman.try_borrow_mut() {
+                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
                 Err(_) => {
                     let reason: &str = "failed to borrow physical memory manager";
                     error!("{reason}");
                     return Err(Error::new(ErrorCode::ResourceBusy, reason));
                 },
             };
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+            Ok(page_table)
+        };
 
-            let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
-            let page_table_allocator = move || {
-                let kframe: KernelFrame = match physman.try_borrow_mut() {
-                    Ok(mut physman) => physman.alloc_kernel_frame(true)?,
-                    Err(_) => {
-                        let reason: &str = "failed to borrow physical memory manager";
-                        error!("{reason}");
-                        return Err(Error::new(ErrorCode::ResourceBusy, reason));
-                    },
-                };
-                let kpage: KernelPage = KernelPage::new(kframe);
-                let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-                let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                Ok(page_table)
-            };
+        vmem.map(uframe, vaddr, access, &page_table_allocator)?;
 
-            vmem.map(uframe, vaddr, access, &page_table_allocator)?;
-
-            // Check if the page should be cleared.
-            if clear {
-                // Safety: `vaddr` points to a valid memory location.
-                vmem.memset(vaddr, 0)?;
-            }
-
-            Ok(())
+        // Check if the page should be cleared.
+        if clear {
+            // Safety: `vaddr` points to a valid memory location.
+            vmem.memset(vaddr, 0)?;
         }
+
+        Ok(())
     }
 
     ///
@@ -282,20 +267,8 @@ impl VirtMemoryManager {
         vmem: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        // On x86_64, identity mapping is managed by the UserVM and alloc_upage()
-        // does not populate the kernel's bookkeeping page directory, so there is
-        // nothing to unmap here.
-        #[cfg(target_arch = "x86_64")]
-        {
-            let _ = (vmem, vaddr);
-            return Ok(());
-        }
-
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            let uframe: UserFrame = vmem.unmap(vaddr)?;
-            self.physman.borrow_mut().free_user_frame(uframe)
-        }
+        let uframe: UserFrame = vmem.unmap(vaddr)?;
+        self.physman.borrow_mut().free_user_frame(uframe)
     }
 
     pub fn alloc_upages(
@@ -307,54 +280,40 @@ impl VirtMemoryManager {
     ) -> Result<(), Error> {
         trace!("vaddr={:?}, nframes={}", vaddr, nframes);
 
-        // On x86_64, identity mapping (virtual == physical) is managed by the UserVM.
-        // No frame allocation or page table manipulation is needed.
-        #[cfg(target_arch = "x86_64")]
-        {
-            let _ = (vmem, access);
-            for _ in 0..nframes {
-                vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
-            }
-            return Ok(());
-        }
+        let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
 
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            let physman: Rc<RefCell<PhysMemoryManager>> = self.physman.clone();
-
-            let page_table_allocator = move || {
-                let kframe: KernelFrame = match physman.try_borrow_mut() {
-                    Ok(mut physman) => physman.alloc_kernel_frame(true)?,
-                    Err(_) => {
-                        let reason: &str = "failed to borrow physical memory manager";
-                        error!("{reason}");
-                        return Err(Error::new(ErrorCode::ResourceBusy, reason));
-                    },
-                };
-                let kpage: KernelPage = KernelPage::new(kframe);
-                let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-                let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                Ok(page_table)
-            };
-
-            let uframes: Vec<UserFrame> = match self.physman.try_borrow_mut() {
-                Ok(mut physman) => physman.alloc_many_user_frames(nframes)?,
+        let page_table_allocator = move || {
+            let kframe: KernelFrame = match physman.try_borrow_mut() {
+                Ok(mut physman) => physman.alloc_kernel_frame(true)?,
                 Err(_) => {
                     let reason: &str = "failed to borrow physical memory manager";
                     error!("{reason}");
                     return Err(Error::new(ErrorCode::ResourceBusy, reason));
                 },
             };
+            let kpage: KernelPage = KernelPage::new(kframe);
+            let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+            let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+            Ok(page_table)
+        };
 
-            // FIXME: check if range is not busy.
+        let uframes: Vec<UserFrame> = match self.physman.try_borrow_mut() {
+            Ok(mut physman) => physman.alloc_many_user_frames(nframes)?,
+            Err(_) => {
+                let reason: &str = "failed to borrow physical memory manager";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            },
+        };
 
-            for uframe in uframes {
-                vmem.map(uframe, vaddr, access, &page_table_allocator)?;
-                vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
-            }
+        // FIXME: check if range is not busy.
 
-            Ok(())
+        for uframe in uframes {
+            vmem.map(uframe, vaddr, access, &page_table_allocator)?;
+            vaddr = PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE)?;
         }
+
+        Ok(())
     }
 
     ///
