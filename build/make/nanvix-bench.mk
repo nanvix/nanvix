@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 NANVIX_BENCH_FEATURES :=
-NANVIX_BENCH_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
+NANVIX_BENCH_FEATURES += $(if $(filter standalone single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIX_BENCH_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)

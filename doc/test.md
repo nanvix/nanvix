@@ -46,8 +46,8 @@ The system integration tests can be run directly using:
 The appropriate test configuration is automatically selected based on the
 deployment mode:
 
-- **Single-process mode** (`SINGLE_PROCESS=yes`): Uses `test/test-single_process.toml`
-- **L2 VM mode** (`L2_VM=yes`): Uses `test/test-l2.toml`
+- **Single-process mode** (`DEPLOYMENT_MODE=single-process`): Uses `test/test-single_process.toml`
+- **L2 VM mode** (`DEPLOYMENT_MODE=l2`): Uses `test/test-l2.toml`
 - **Multi-process mode** (default): Uses `test/test-multi_process.toml`
 
 ### Test Modes
@@ -63,7 +63,7 @@ The `nanvix-test.elf` utility supports two execution modes:
 
 - Programs are invoked directly by nanvixd with a terminal interface.
 - Only supports native executables (ELF binaries).
-- Not available for L2 VM deployments (`L2_VM=yes`); L2 configurations always use the HTTP executor.
+- Not available for L2 VM deployments (`DEPLOYMENT_MODE=l2`); L2 configurations always use the HTTP executor.
 
 ## Running All Tests
 
