@@ -338,4 +338,58 @@ impl BitmapView {
     }
 }
 
+//==================================================================================================
+// View Implementation for Bitmap
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+impl View for Bitmap {
+    type V = BitmapView;
+
+    closed spec fn view(&self) -> BitmapView {
+        BitmapView {
+            num_bits: self.number_of_bits as int,
+            set_bits: Set::new(
+                |i: int| 0 <= i < self.number_of_bits as int && Self::bit_at(self.bits@, i),
+            ),
+        }
+    }
+}
+
+//==================================================================================================
+// Bitmap Specification Functions
+//==================================================================================================
+
+impl Bitmap {
+    /// Helper spec function: get the bit value at a specific index from raw bytes.
+    spec fn bit_at(bytes: Seq<u8>, bit_index: int) -> bool {
+        let word: int = bit_index / (u8::BITS as int);
+        let bit: int = bit_index % (u8::BITS as int);
+        if 0 <= bit_index && word < bytes.len() {
+            (bytes[word] & (1u8 << bit)) != 0
+        } else {
+            false
+        }
+    }
+
+    pub open spec fn inv(&self) -> bool {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+
+    /// Invariant: the bitmap's state is well-formed.
+    pub closed spec fn internal_inv(&self) -> bool {
+        &&& self.bits.inv()
+        &&& self@.num_bits > 0
+        &&& self@.num_bits == self.bits@.len() * (u8::BITS as int)
+        &&& self@.num_bits < u32::MAX as int
+        &&& self@.wf()  // set_bits only contains valid indices
+        &&& self@.set_bits.finite()  // set_bits is finite (required for len())
+        &&& self@.usage() <= self@.num_bits
+        &&& self.number_of_bits as int == self@.num_bits
+        &&& self.usage as int == self@.usage()
+        &&& self.next_free as int <= self@.num_bits
+    }
+}
+
 } // verus!
