@@ -116,8 +116,10 @@ jobs:
       fail-fast: false
       matrix:
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [standalone, single-process, multi-process]
         exclude:
+          - machine-type: qemu-pc
+            deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
     runs-on: ubuntu-24.04
@@ -163,8 +165,10 @@ jobs:
       fail-fast: false
       matrix:
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [standalone, single-process, multi-process]
         exclude:
+          - machine-type: qemu-pc
+            deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
     runs-on: ubuntu-24.04
@@ -222,9 +226,9 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
 
-    # Save the Verus archive to the cache only when it was not already
-    # cached. The first matrix leg to reach this step wins the cache
-    # reservation; the rest skip gracefully.
+      # Save the Verus archive to the cache only when it was not already
+      # cached. The first matrix leg to reach this step wins the cache
+      # reservation; the rest skip gracefully.
       - name: "Save Verus Archive Cache"
         if: steps.verus-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
@@ -246,8 +250,10 @@ jobs:
       matrix:
         build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [standalone, single-process, multi-process]
         exclude:
+          - machine-type: qemu-pc
+            deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
     runs-on: ubuntu-24.04
@@ -493,7 +499,7 @@ jobs:
             **/*.err
 
   # Build from source and run micro-benchmarks on baremetal self-hosted runners.
-  # Benchmarks require L2_VM=yes which needs .git, so they cannot use Docker builds.
+  # Benchmarks require DEPLOYMENT_MODE=l2 which needs .git, so they cannot use Docker builds.
   # Each machine type runs in parallel; a finalize job aggregates results.
   benchmark:
     name: "Benchmark (${{ matrix.machine-type }})"
@@ -876,8 +882,10 @@ jobs:
       fail-fast: false
       matrix:
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [standalone, single-process, multi-process]
         exclude:
+          - machine-type: qemu-pc
+            deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
     runs-on: ubuntu-24.04
@@ -956,11 +964,11 @@ jobs:
     timeout-minutes: 10
 
     steps:
-        - name: "Checkout repository"
-          uses: actions/checkout@v6
-          with:
-            ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
-            fetch-depth: 0
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+          fetch-depth: 0
 
-        - name: "Create Minor Release"
-          uses: ./.github/actions/create-minor-release
+      - name: "Create Minor Release"
+        uses: ./.github/actions/create-minor-release
