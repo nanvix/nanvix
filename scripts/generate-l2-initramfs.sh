@@ -40,9 +40,9 @@ done
 
 # Do a clean build if requested.
 if ${CLEAN}; then
-    if [ -d ${INITRAMFS_DIR} ]; then
+    if [ -d "${INITRAMFS_DIR}" ]; then
         print_warning "removing initramfs from ${INITRAMFS_DIR}"
-        rm -rf ${INITRAMFS_DIR}
+        rm -rf "${INITRAMFS_DIR}"
     fi
 fi
 
@@ -74,7 +74,7 @@ UBUNTU_MIRROR="$(
 export DEBIAN_FRONTEND=noninteractive
 
 build_initramfs() {
-    mkdir -p ${IMAGES_DIR}
+    mkdir -p "${IMAGES_DIR}"
 
     if [ ! -d "$INITRAMFS_DIR" ]; then
         print_info "Creating minimal ubuntu (${UBUNTU_VERSION}, mirror: ${UBUNTU_MIRROR}) initramfs..."
