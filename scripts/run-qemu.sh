@@ -245,6 +245,7 @@ function run_qemu_wait_for_string
 
 	# Run QEMU in the background with stdout teed to a log file.
 	# Use setsid to create a new process group for clean termination.
+	# shellcheck disable=SC2086
 	setsid ${cmd} > >(tee "${log_file}") 2>&1 &
 	local qemu_pid=$!
 

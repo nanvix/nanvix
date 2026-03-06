@@ -1,0 +1,9 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Minimum severity level to report.
+severity=warning
+
+# SC1091: do not follow sourced files (paths use dyanamic
+# variables like ${NANVIX_HOME})
+disable=SC1091
