@@ -260,7 +260,8 @@ run_step() {
             return_code=$?
         fi
     else
-        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" "${deployment_flags}" "${make_target}" > "${tmpfile}" 2>&1; then
+        # shellcheck disable=SC2086 # deployment_flags is a list of VAR=VAL words; allow word splitting into separate args
+        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${deployment_flags} "${make_target}" > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?

@@ -69,9 +69,9 @@ boot_clh_vm() {
     rm -f -- "${CLH_CONSOLE}"
     # FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix release that
     # includes an updated cloud-hypervisor.
-    ${CLOUD_HYPERVISOR_PATH} \
+    "${CLOUD_HYPERVISOR_PATH}" \
         --seccomp false \
-        --api-socket ${CLH_API_SOCKET} \
+        --api-socket "${CLH_API_SOCKET}" \
         --kernel "${L2_SYSVM_KERNEL}" \
         --initramfs "${L2_SYSVM_INITRAMFS}" \
         --console "file=${CLH_CONSOLE}" \
@@ -89,9 +89,9 @@ boot_clh_vm() {
 snapshot_clh_vm() {
     rm -rf "${SNAPSHOT_PATH}"
     mkdir -p "${SNAPSHOT_PATH}"
-    ${CLOUD_HYPERVISOR_REMOTE_PATH} --api-socket=${CLH_API_SOCKET} pause
+    "${CLOUD_HYPERVISOR_REMOTE_PATH}" --api-socket="${CLH_API_SOCKET}" pause
     sleep 1
-    ${CLOUD_HYPERVISOR_REMOTE_PATH} --api-socket=${CLH_API_SOCKET} snapshot file://"${SNAPSHOT_PATH}"
+    "${CLOUD_HYPERVISOR_REMOTE_PATH}" --api-socket="${CLH_API_SOCKET}" snapshot file://"${SNAPSHOT_PATH}"
 }
 
 # Create a named pipe (FIFO) for capturing the VM's stdout, and know when it has finished booting.
@@ -106,7 +106,7 @@ vm_pid=$(boot_clh_vm)
 # has already been properly killed.
 trap 'kill -s SIGKILL ${vm_pid} || true' EXIT
 
-( tail -F ${CLH_CONSOLE} > "$fifo" 2> /dev/null ) &
+( tail -F "${CLH_CONSOLE}" > "$fifo" 2> /dev/null ) &
 
 print_info "Waiting for CLH VM to boot..."
 while IFS= read -r line; do
@@ -123,10 +123,10 @@ print_success "Snapshot done!"
 
 # Clean-up.
 rm "$fifo"
-rm -f ${CLH_CONSOLE}
+rm -f "${CLH_CONSOLE}"
 
 print_info "Killing CLH VM..."
 kill -s SIGTERM "${vm_pid}"
-rm -f ${CLH_API_SOCKET}
+rm -f "${CLH_API_SOCKET}"
 
 print_success "Snapshot is available at: ${SNAPSHOT_PATH}"
