@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::config::GATEWAY_ACCEPT_TIMEOUT;
 use ::anyhow::Result;
 use ::log::{
     error,
@@ -25,6 +26,7 @@ use ::tokio::{
         MutexGuard,
     },
     task::JoinHandle,
+    time::timeout,
 };
 
 //==================================================================================================
@@ -121,32 +123,52 @@ impl UserVmHandle {
 
         // Accept throw-away connection from Nanvixd.
         {
-            let _: SocketStream = match gateway_listener.accept().await {
-                Ok(stream) => stream,
-                Err(e) => {
+            let _: SocketStream =
+                match timeout(GATEWAY_ACCEPT_TIMEOUT, gateway_listener.accept()).await {
+                    Ok(Ok(stream)) => stream,
+                    Ok(Err(e)) => {
+                        let reason: String = format!(
+                            "failed to accept throw-away connection from nanvixd \
+                             (gateway_addr={}, error={e:?})",
+                            self.gateway_sockaddr
+                        );
+                        error!("get_gateway_vm_stream(): {reason}");
+                        return Err(anyhow::anyhow!(reason));
+                    },
+                    Err(_) => {
+                        let reason: String = format!(
+                            "timed out waiting for throw-away connection from nanvixd \
+                             (gateway_addr={}, timeout={GATEWAY_ACCEPT_TIMEOUT:?})",
+                            self.gateway_sockaddr
+                        );
+                        error!("get_gateway_vm_stream(): {reason}");
+                        return Err(anyhow::anyhow!(reason));
+                    },
+                };
+        }
+
+        // Now accept connection from gateway.
+        let stream: SocketStream =
+            match timeout(GATEWAY_ACCEPT_TIMEOUT, gateway_listener.accept()).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
                     let reason: String = format!(
-                        "failed to accept throw-away connection from nanvixd (gateway_addr={}, \
-                         error={e:?})",
+                        "failed to accept connection from gateway (gateway_addr={}, error={e:?})",
+                        self.gateway_sockaddr
+                    );
+                    error!("get_gateway_vm_stream(): {reason}");
+                    return Err(anyhow::anyhow!(reason));
+                },
+                Err(_) => {
+                    let reason: String = format!(
+                        "timed out waiting for gateway connection (gateway_addr={}, \
+                         timeout={GATEWAY_ACCEPT_TIMEOUT:?})",
                         self.gateway_sockaddr
                     );
                     error!("get_gateway_vm_stream(): {reason}");
                     return Err(anyhow::anyhow!(reason));
                 },
             };
-        }
-
-        // Now accept connection from gateway.
-        let stream: SocketStream = match gateway_listener.accept().await {
-            Ok(stream) => stream,
-            Err(e) => {
-                let reason: String = format!(
-                    "failed to accept connection from gateway (gateway_addr={}, error={e:?})",
-                    self.gateway_sockaddr
-                );
-                error!("get_gateway_vm_stream(): {reason}");
-                return Err(anyhow::anyhow!(reason));
-            },
-        };
 
         trace!("Connected to gateway");
 
