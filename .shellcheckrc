@@ -4,6 +4,6 @@
 # Minimum severity level to report.
 severity=warning
 
-# SC1091: do not follow sourced files (paths use dyanamic
+# SC1091: do not follow sourced files (paths use dynamic
 # variables like ${NANVIX_HOME})
 disable=SC1091
