@@ -45,8 +45,8 @@ use ::tokio::{
 ///
 /// # Description
 ///
-/// Sanitizes the host before launching Nanvix Daemon runs by deleting stale sockets, stale network
-/// namespaces, and waiting for TCP TIME_WAIT sockets (when L2 mode is enabled).
+/// Sanitizes the host before launching Nanvix Daemon runs by deleting stale sockets and, when L2
+/// mode is enabled, removing stale network namespaces and waiting for TCP TIME_WAIT sockets.
 ///
 /// # Parameters
 ///
@@ -66,9 +66,8 @@ pub(crate) async fn prepare_runner_environment(
 ) {
     cleanup_stale_unix_sockets(tmp_directory).await;
     cleanup_stale_files(tmp_directory).await;
-    cleanup_stale_netns().await;
-
     if l2_enabled {
+        cleanup_stale_netns().await;
         wait_for_tcp_cleanup(
             port_num,
             tcp_cleanup_max_wait_seconds,
@@ -215,8 +214,8 @@ pub(crate) async fn prepare_l2_artifacts(
 /// # Description
 ///
 /// Cleans stale artifacts left after a Nanvix Daemon run, mirroring the teardown logic from the
-/// reference shell runner. Always removes Nanvix network namespaces and optionally waits for TCP
-/// TIME_WAIT sockets to clear when L2 is enabled.
+/// reference shell runner. When L2 is enabled, removes Nanvix network namespaces and waits for
+/// TCP TIME_WAIT sockets to clear.
 ///
 /// # Parameters
 ///
@@ -235,10 +234,9 @@ pub(crate) async fn cleanup_after_run(
     tcp_cleanup_poll_interval_seconds: u64,
 ) {
     cleanup_stale_unix_sockets(tmp_directory).await;
-    cleanup_stale_netns().await;
     cleanup_stale_files(tmp_directory).await;
-
     if l2_enabled {
+        cleanup_stale_netns().await;
         match http_port {
             Some(port) => {
                 wait_for_tcp_cleanup(
