@@ -46,11 +46,12 @@ excluded in `is_excluded()`).
 
 ### Build Parameter Mapping
 
-| Deployment Type | `SINGLE_PROCESS` | `L2_VM` |
-|-----------------|------------------|---------|
-| single-process  | `yes`            | `no`    |
-| multi-process   | `no`             | `no`    |
-| l2              | `no`             | `yes`   |
+| Deployment Type | `DEPLOYMENT_MODE` |
+|-----------------|-------------------|
+| standalone      | `standalone`      |
+| single-process  | `single-process`  |
+| multi-process   | `multi-process`   |
+| l2              | `l2`              |
 
 ## Individual Quality Checks
 

@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 NANVIX_TEST_FEATURES :=
-NANVIX_TEST_FEATURES += $(if $(filter yes,$(SINGLE_PROCESS)),single-process,)
+NANVIX_TEST_FEATURES += $(if $(filter standalone single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIX_TEST_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_TEST_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_TEST_FEATURES := $(strip $(NANVIX_TEST_FEATURES))

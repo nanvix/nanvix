@@ -43,20 +43,20 @@ Nanvix. This covers all build-system operations exposed through the `z` utility.
 
 Set these as environment variables or pass them after `--` in the `z` command:
 
-| Parameter        | Values                   | Default   |
-|------------------|--------------------------|-----------|
-| `MACHINE`        | `microvm`, `hyperlight`, | `microvm` |
-|                  | `qemu-pc`, `qemu-isapc`, |           |
-|                  | `qemu-baremetal`         |           |
-| `TARGET`         | `x86`                    | `x86`     |
-| `RELEASE`        | `yes`, `no`              | `no`      |
-| `LOG_LEVEL`      | `trace`, `debug`,        | `warn`    |
-|                  | `info`, `warn`,          |           |
-|                  | `error`, `panic`         |           |
-| `PROFILER`       | `yes`, `no`              | `no`      |
-| `SINGLE_PROCESS` | `yes`, `no`              | `no`      |
-| `STANDALONE`     | `yes`, `no`              | `no`      |
-| `L2_VM`          | `yes`, `no`              | `no`      |
+| Parameter        | Values                   | Default         |
+|------------------|--------------------------|-----------------|
+| `MACHINE`        | `microvm`, `hyperlight`, | `microvm`       |
+|                  | `qemu-pc`, `qemu-isapc`, |                 |
+|                  | `qemu-baremetal`         |                 |
+| `TARGET`         | `x86`                    | `x86`           |
+| `RELEASE`        | `yes`, `no`              | `no`            |
+| `LOG_LEVEL`      | `trace`, `debug`,        | `warn`          |
+|                  | `info`, `warn`,          |                 |
+|                  | `error`, `panic`         |                 |
+| `PROFILER`       | `yes`, `no`              | `no`            |
+| `DEPLOYMENT_MODE`| `standalone`,            | `multi-process` |
+|                  | `single-process`,        |                 |
+|                  | `multi-process`, `l2`    |                 |
 
 Example with custom parameters:
 

@@ -87,7 +87,7 @@ get_release_flag() {
 #   $1 - Deployment type.
 #
 # Returns
-#   String with SINGLE_PROCESS and L2_VM values.
+#   String with DEPLOYMENT_MODE value.
 #
 # Usage Example
 #   flags=$(get_deployment_flags "single-process")
@@ -96,14 +96,8 @@ get_deployment_flags() {
     local deployment_type="${1}"
 
     case "${deployment_type}" in
-        single-process)
-            echo "SINGLE_PROCESS=yes L2_VM=no"
-            ;;
-        multi-process)
-            echo "SINGLE_PROCESS=no L2_VM=no"
-            ;;
-        l2)
-            echo "SINGLE_PROCESS=no L2_VM=yes"
+        standalone|single-process|multi-process|l2)
+            echo "DEPLOYMENT_MODE=${deployment_type}"
             ;;
         *)
             print_error "(pipeline) Invalid deployment type: ${deployment_type}"
