@@ -34,6 +34,20 @@ use ::sys::{
     mm::Address,
     pm::Capability,
 };
+use ::sysapi::{
+    dirent::{
+        dirent_file_type,
+        posix_dent,
+    },
+    fcntl::{
+        file_control_request,
+        file_creation_flags,
+    },
+    sys_stat::{
+        file_type,
+        stat,
+    },
+};
 
 //==================================================================================================
 // Constants
@@ -41,6 +55,9 @@ use ::sys::{
 
 /// Encoded 8-byte "RAMFS   " tag exposed by the MicroVM RAMFS MMIO region.
 const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
+
+/// Fixed timestamp epoch (2024-01-01T00:00:00 UTC) used by the VFS stat layer.
+const VFS_FIXED_TIMESTAMP: i64 = 1704067200;
 
 //==================================================================================================
 // Helpers
@@ -66,6 +83,12 @@ pub fn main() -> Result<(), Error> {
     test_chdir_cwd()?;
     test_pread_pwrite()?;
     test_ftruncate_fsync()?;
+    test_open_directory()?;
+    test_getdents()?;
+    test_fstat_directory_and_timestamps()?;
+    test_stat_timestamps()?;
+    test_fcntl_fd_flags()?;
+    test_resolve_path()?;
     test_ramfs_mount()?;
 
     Ok(())
@@ -442,6 +465,381 @@ fn test_ftruncate_fsync() -> Result<(), Error> {
     vfs::unmount("/trunc").map_err(|e| fat_err(e, "unmount /trunc"))?;
 
     ::syslog::info!("vfs-test: test_ftruncate_fsync passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Open Directory with O_DIRECTORY
+//==================================================================================================
+
+/// Tests that `vfs_open()` with `O_DIRECTORY` creates a directory handle.
+fn test_open_directory() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_open_directory begin");
+
+    vfs::create_mount("/odir", 128 * 1024).map_err(|e| fat_err(e, "create_mount /odir failed"))?;
+
+    // Create a subdirectory.
+    vfs::mkdir("/odir/sub").map_err(|e| fat_err(e, "mkdir /odir/sub failed"))?;
+
+    // Open the subdirectory with O_DIRECTORY.
+    let fd: i32 = vfs::fd::vfs_open("/odir/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "vfs_open O_DIRECTORY failed"))?;
+
+    // The returned fd should be a VFS fd.
+    if !vfs::fd::is_vfs_fd(fd) {
+        return Err(Error::new(ErrorCode::InvalidArgument, "fd should be a VFS fd"));
+    }
+
+    // Reading from a directory handle should fail.
+    let mut buf: [u8; 4] = [0u8; 4];
+    if vfs::fd::vfs_read(fd, &mut buf).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "read on dir fd should fail"));
+    }
+
+    // Writing to a directory handle should fail.
+    if vfs::fd::vfs_write(fd, &[1, 2]).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "write on dir fd should fail"));
+    }
+
+    // Opening a regular file with O_DIRECTORY should fail.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/odir/regular.txt")
+            .map_err(|e| fat_err(e, "create regular.txt"))?;
+        file.write(b"data")
+            .map_err(|e| fat_err(e, "write regular.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush regular.txt"))?;
+    }
+    if vfs::fd::vfs_open("/odir/regular.txt", file_creation_flags::O_DIRECTORY).is_ok() {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "O_DIRECTORY on regular file should fail",
+        ));
+    }
+
+    // Close the directory fd.
+    vfs::fd::vfs_close(fd).map_err(|e| fat_err(e, "vfs_close dir fd failed"))?;
+
+    // Clean up.
+    vfs::unlink("/odir/regular.txt").map_err(|e| fat_err(e, "unlink regular.txt"))?;
+    vfs::rmdir("/odir/sub").map_err(|e| fat_err(e, "rmdir /odir/sub failed"))?;
+    vfs::unmount("/odir").map_err(|e| fat_err(e, "unmount /odir failed"))?;
+
+    ::syslog::info!("vfs-test: test_open_directory passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Getdents
+//==================================================================================================
+
+/// Tests that `vfs_getdents()` returns directory entries as `posix_dent` structs.
+fn test_getdents() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_getdents begin");
+
+    vfs::create_mount("/gd", 128 * 1024).map_err(|e| fat_err(e, "create_mount /gd failed"))?;
+
+    // Create a file and a subdirectory.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/gd/file.txt")
+            .map_err(|e| fat_err(e, "create file.txt"))?;
+        file.write(b"data")
+            .map_err(|e| fat_err(e, "write file.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush file.txt"))?;
+    }
+    vfs::mkdir("/gd/dir1").map_err(|e| fat_err(e, "mkdir /gd/dir1 failed"))?;
+
+    // Open the mount root with O_DIRECTORY.
+    let fd: i32 = vfs::fd::vfs_open("/gd", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "vfs_open /gd O_DIRECTORY"))?;
+
+    // Read all entries.
+    let dents: alloc::vec::Vec<posix_dent> =
+        vfs::fd::vfs_getdents(fd, 64).map_err(|e| fat_err(e, "vfs_getdents failed"))?;
+
+    // Expect 2 entries: file.txt and dir1.
+    if dents.len() != 2 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "expected 2 dents"));
+    }
+
+    // Collect names and verify types.
+    let mut found_file: bool = false;
+    let mut found_dir: bool = false;
+    for dent in &dents {
+        let name_end: usize = dent
+            .d_name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(dent.d_name.len());
+        let name: &[u8] = &dent.d_name[..name_end];
+        if name.eq_ignore_ascii_case(b"file.txt") {
+            if dent.d_type != dirent_file_type::DT_REG {
+                return Err(Error::new(ErrorCode::InvalidArgument, "file.txt should be DT_REG"));
+            }
+            found_file = true;
+        } else if name.eq_ignore_ascii_case(b"dir1") {
+            if dent.d_type != dirent_file_type::DT_DIR {
+                return Err(Error::new(ErrorCode::InvalidArgument, "dir1 should be DT_DIR"));
+            }
+            found_dir = true;
+        }
+    }
+    if !found_file || !found_dir {
+        return Err(Error::new(ErrorCode::InvalidArgument, "missing expected dent entries"));
+    }
+
+    // A second getdents call should return 0 entries (cursor exhausted).
+    let dents2: alloc::vec::Vec<posix_dent> =
+        vfs::fd::vfs_getdents(fd, 64).map_err(|e| fat_err(e, "vfs_getdents second call"))?;
+    if !dents2.is_empty() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "second getdents should be empty"));
+    }
+
+    // Calling getdents on a non-directory fd should fail.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/gd/file.txt", 0).map_err(|e| fat_err(e, "vfs_open file.txt"))?;
+    if vfs::fd::vfs_getdents(file_fd, 64).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "getdents on file fd should fail"));
+    }
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file_fd"))?;
+
+    // Clean up.
+    vfs::fd::vfs_close(fd).map_err(|e| fat_err(e, "close dir fd"))?;
+    vfs::unlink("/gd/file.txt").map_err(|e| fat_err(e, "unlink file.txt"))?;
+    vfs::rmdir("/gd/dir1").map_err(|e| fat_err(e, "rmdir /gd/dir1"))?;
+    vfs::unmount("/gd").map_err(|e| fat_err(e, "unmount /gd"))?;
+
+    ::syslog::info!("vfs-test: test_getdents passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fstat Directory Mode and Timestamps
+//==================================================================================================
+
+/// Tests that `vfs_fstat()` returns `S_IFDIR` for directory handles and sets
+/// the fixed 2024-01-01 timestamps.
+fn test_fstat_directory_and_timestamps() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fstat_directory_and_timestamps begin");
+
+    vfs::create_mount("/fsd", 128 * 1024).map_err(|e| fat_err(e, "create_mount /fsd failed"))?;
+
+    // Create a file for comparison.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/fsd/test.txt")
+            .map_err(|e| fat_err(e, "create test.txt"))?;
+        file.write(b"hello")
+            .map_err(|e| fat_err(e, "write test.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush test.txt"))?;
+    }
+
+    // Open a file fd and fstat it: should be S_IFREG with timestamps.
+    let file_fd: i32 =
+        vfs::fd::vfs_open("/fsd/test.txt", 0).map_err(|e| fat_err(e, "open file fd"))?;
+    let mut st: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_fstat(file_fd, &mut st).map_err(|e| fat_err(e, "fstat file fd"))?;
+
+    if st.st_mode & file_type::S_IFMT != file_type::S_IFREG {
+        return Err(Error::new(ErrorCode::InvalidArgument, "file should be S_IFREG"));
+    }
+    // Verify fixed timestamp.
+    if st.st_atim.tv_sec != VFS_FIXED_TIMESTAMP
+        || st.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP
+        || st.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP
+    {
+        return Err(Error::new(ErrorCode::InvalidArgument, "file timestamps should be 2024-01-01"));
+    }
+    vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file fd"))?;
+
+    // Open a directory fd and fstat it: should be S_IFDIR with timestamps.
+    let dir_fd: i32 = vfs::fd::vfs_open("/fsd", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open dir fd"))?;
+    let mut dst: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_fstat(dir_fd, &mut dst).map_err(|e| fat_err(e, "fstat dir fd"))?;
+
+    if dst.st_mode & file_type::S_IFMT != file_type::S_IFDIR {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dir should be S_IFDIR"));
+    }
+    if dst.st_size != 0 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dir size should be 0"));
+    }
+    if dst.st_atim.tv_sec != VFS_FIXED_TIMESTAMP
+        || dst.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP
+        || dst.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP
+    {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dir timestamps should be 2024-01-01"));
+    }
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+
+    // Clean up.
+    vfs::unlink("/fsd/test.txt").map_err(|e| fat_err(e, "unlink test.txt"))?;
+    vfs::unmount("/fsd").map_err(|e| fat_err(e, "unmount /fsd"))?;
+
+    ::syslog::info!("vfs-test: test_fstat_directory_and_timestamps passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Stat Timestamps
+//==================================================================================================
+
+/// Tests that `vfs_stat()` sets the fixed 2024-01-01 timestamps.
+fn test_stat_timestamps() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_stat_timestamps begin");
+
+    vfs::create_mount("/sts", 128 * 1024).map_err(|e| fat_err(e, "create_mount /sts failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/sts/ts.txt")
+            .map_err(|e| fat_err(e, "create ts.txt"))?;
+        file.write(b"timestamps")
+            .map_err(|e| fat_err(e, "write ts.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush ts.txt"))?;
+    }
+
+    // Stat the file via path.
+    let mut st: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_stat("/sts/ts.txt", &mut st).map_err(|e| fat_err(e, "vfs_stat ts.txt"))?;
+
+    if st.st_atim.tv_sec != VFS_FIXED_TIMESTAMP {
+        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_atim should be 2024-01-01"));
+    }
+    if st.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP {
+        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_mtim should be 2024-01-01"));
+    }
+    if st.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP {
+        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_ctim should be 2024-01-01"));
+    }
+
+    // Clean up.
+    vfs::unlink("/sts/ts.txt").map_err(|e| fat_err(e, "unlink ts.txt"))?;
+    vfs::unmount("/sts").map_err(|e| fat_err(e, "unmount /sts"))?;
+
+    ::syslog::info!("vfs-test: test_stat_timestamps passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fcntl F_GETFD/F_SETFD
+//==================================================================================================
+
+/// Tests that `vfs_fcntl()` supports `F_GETFD` and `F_SETFD` commands.
+fn test_fcntl_fd_flags() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fcntl_fd_flags begin");
+
+    vfs::create_mount("/fcn", 128 * 1024).map_err(|e| fat_err(e, "create_mount /fcn failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/fcn/fc.txt")
+            .map_err(|e| fat_err(e, "create fc.txt"))?;
+        file.write(b"fcntl test")
+            .map_err(|e| fat_err(e, "write fc.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush fc.txt"))?;
+    }
+
+    let fd: i32 = vfs::fd::vfs_open("/fcn/fc.txt", 0).map_err(|e| fat_err(e, "open fc.txt fd"))?;
+
+    // F_GETFD should succeed and return 0.
+    let flags: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD)
+        .map_err(|e| fat_err(e, "fcntl F_GETFD"))?;
+    if flags != 0 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "F_GETFD should return 0"));
+    }
+
+    // F_SETFD should succeed and return 0.
+    let result: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD)
+        .map_err(|e| fat_err(e, "fcntl F_SETFD"))?;
+    if result != 0 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "F_SETFD should return 0"));
+    }
+
+    // F_GETFL and F_SETFL should still work.
+    let fl: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFL)
+        .map_err(|e| fat_err(e, "fcntl F_GETFL"))?;
+    if fl != 0 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "F_GETFL should return 0"));
+    }
+
+    // An unsupported command (e.g. F_DUPFD) should fail.
+    if vfs::fd::vfs_fcntl(fd, file_control_request::F_DUPFD).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "F_DUPFD should fail on VFS"));
+    }
+
+    vfs::fd::vfs_close(fd).map_err(|e| fat_err(e, "close fc.txt fd"))?;
+
+    // Clean up.
+    vfs::unlink("/fcn/fc.txt").map_err(|e| fat_err(e, "unlink fc.txt"))?;
+    vfs::unmount("/fcn").map_err(|e| fat_err(e, "unmount /fcn"))?;
+
+    ::syslog::info!("vfs-test: test_fcntl_fd_flags passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Resolve Path with dirfd
+//==================================================================================================
+
+/// Tests `vfs_resolve_path()` for absolute paths, AT_FDCWD, and VFS directory fds.
+fn test_resolve_path() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_resolve_path begin");
+
+    vfs::create_mount("/rp", 128 * 1024).map_err(|e| fat_err(e, "create_mount /rp failed"))?;
+    vfs::mkdir("/rp/sub").map_err(|e| fat_err(e, "mkdir /rp/sub failed"))?;
+
+    // Absolute path: dirfd should be ignored.
+    let resolved: alloc::string::String = vfs::fd::vfs_resolve_path(0, "/rp/sub/file.txt")
+        .ok_or(Error::new(ErrorCode::InvalidArgument, "absolute resolve failed"))?;
+    if resolved != "/rp/sub/file.txt" {
+        return Err(Error::new(ErrorCode::InvalidArgument, "absolute path mismatch"));
+    }
+
+    // AT_FDCWD: resolve relative to VFS cwd.
+    vfs::chdir("/rp").map_err(|e| fat_err(e, "chdir /rp failed"))?;
+    let resolved_cwd: alloc::string::String =
+        vfs::fd::vfs_resolve_path(::sysapi::fcntl::atflags::AT_FDCWD, "sub")
+            .ok_or(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
+    if resolved_cwd != "/rp/sub" {
+        return Err(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD path mismatch"));
+    }
+
+    // VFS directory fd: resolve relative to directory path.
+    let dir_fd: i32 = vfs::fd::vfs_open("/rp/sub", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "vfs_open /rp/sub O_DIRECTORY"))?;
+    let resolved_dir: alloc::string::String = vfs::fd::vfs_resolve_path(dir_fd, "nested.txt")
+        .ok_or(Error::new(ErrorCode::InvalidArgument, "dirfd resolve failed"))?;
+    if resolved_dir != "/rp/sub/nested.txt" {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dirfd path mismatch"));
+    }
+
+    // Non-VFS fd should return None.
+    if vfs::fd::vfs_resolve_path(3, "file.txt").is_some() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "non-VFS fd should return None"));
+    }
+
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+
+    // Clean up.
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir / failed"))?;
+    vfs::rmdir("/rp/sub").map_err(|e| fat_err(e, "rmdir /rp/sub"))?;
+    vfs::unmount("/rp").map_err(|e| fat_err(e, "unmount /rp"))?;
+
+    ::syslog::info!("vfs-test: test_resolve_path passed");
     Ok(())
 }
 
