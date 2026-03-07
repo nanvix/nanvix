@@ -22,8 +22,8 @@ export CPYTHON_BRANCH=7158004b255e8b848562b7f537a9e3c44188997e
 # Get Sources
 #===================================================================================================
 
-mkdir -p ${CONTRIB_DIR}
-git clone ${CPYTHON_REPOSITORY} ${CPYTHON_HOME}
+mkdir -p "${CONTRIB_DIR}"
+git clone "${CPYTHON_REPOSITORY}" "${CPYTHON_HOME}"
 cd "${CPYTHON_HOME}" || exit
 git checkout "${CPYTHON_BRANCH}"
 git clean -fdx
@@ -39,8 +39,8 @@ CFLAGS="-m32" \
     --host=x86_64-pc-linux-gnux32 \
     --disable-shared \
     --disable-test-modules \
-    --prefix=${PREFIX} \
-    --exec-prefix=${PREFIX} \
+    --prefix="${PREFIX}" \
+    --exec-prefix="${PREFIX}" \
     --with-ensurepip=no \
     --with-pkg-config=no \
     --disable-ipv6 \
