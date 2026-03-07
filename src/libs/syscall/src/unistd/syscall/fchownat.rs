@@ -78,7 +78,7 @@ pub fn fchownat(
     #[cfg(feature = "standalone")]
     {
         let _ = (dirfd, path, owner, group, flag);
-        return Ok(());
+        Ok(())
     }
 
     // Forward to linuxd via IPC.
