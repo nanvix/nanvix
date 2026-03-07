@@ -63,10 +63,10 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, length);
-        return Err(Error::new(
+        Err(Error::new(
             ErrorCode::OperationNotSupported,
             "ftruncate not available in standalone mode",
-        ));
+        ))
     }
 
     // Forward to linuxd via IPC.

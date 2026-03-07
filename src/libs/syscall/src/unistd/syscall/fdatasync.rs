@@ -59,7 +59,7 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     #[cfg(feature = "standalone")]
     {
         let _ = fd;
-        return Ok(());
+        Ok(())
     }
 
     // Forward to linuxd via IPC.

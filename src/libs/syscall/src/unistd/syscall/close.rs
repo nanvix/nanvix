@@ -54,10 +54,7 @@ pub fn close(fd: i32) -> Result<(), Error> {
             return Ok(());
         }
         let _ = fd;
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "close not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "close not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

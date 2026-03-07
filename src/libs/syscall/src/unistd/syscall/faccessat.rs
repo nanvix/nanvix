@@ -69,10 +69,10 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
     // In standalone mode, reject non-VFS paths (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
+        Err(Error::new(
             ErrorCode::OperationNotSupported,
             "faccessat not available in standalone mode",
-        ));
+        ))
     }
 
     // Forward to linuxd via IPC.

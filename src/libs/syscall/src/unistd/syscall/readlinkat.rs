@@ -61,10 +61,10 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
     // In standalone mode, readlinkat is not available (no symlinks).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
+        Err(Error::new(
             ErrorCode::OperationNotSupported,
             "readlinkat not available in standalone mode",
-        ));
+        ))
     }
 
     // Forward to linuxd via IPC.
