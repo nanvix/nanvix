@@ -78,7 +78,7 @@ impl Msrs {
             Ok(v) => v,
             Err(e) => {
                 let reason: String = format!("failed getting msr_index_list (error={e:?})");
-                error!("get_state(): {reason}");
+                error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
         };
@@ -96,7 +96,7 @@ impl Msrs {
             Ok(v) => v,
             Err(e) => {
                 let reason: String = format!("failed creating msrs (error={e:?})");
-                error!("get_state(): {reason}");
+                error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
         };
@@ -109,13 +109,13 @@ impl Msrs {
                         nmsrs_read,
                         msr_entries.len(),
                     );
-                    error!("get_state(): {reason}");
+                    error!("save_state(): {reason}");
                     anyhow::bail!(reason)
                 }
             },
             Err(e) => {
-                let reason: String = format!("failed mutating msrs (error={e:?})");
-                error!("get_state(): {reason}");
+                let reason: String = format!("failed getting msrs (error={e:?})");
+                error!("save_state(): {reason}");
                 anyhow::bail!(reason)
             },
         };
