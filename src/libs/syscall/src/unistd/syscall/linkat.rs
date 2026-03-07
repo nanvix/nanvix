@@ -84,10 +84,7 @@ pub fn linkat(
     // In standalone mode, reject non-VFS paths (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "linkat not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "linkat not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

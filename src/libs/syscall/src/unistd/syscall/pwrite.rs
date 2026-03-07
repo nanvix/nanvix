@@ -70,10 +70,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, buffer, offset);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "pwrite not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "pwrite not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.
