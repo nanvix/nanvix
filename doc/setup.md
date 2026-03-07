@@ -4,7 +4,6 @@ This guide will help you set up your development environment to build and run Na
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
 - [Setting Up Your System](#setting-up-your-system)
   - [1. Check Your System and Permissions](#1-check-your-system-and-permissions)
   - [2. Clone This Repository](#2-clone-this-repository)
@@ -17,7 +16,7 @@ This guide will help you set up your development environment to build and run Na
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 - [Updating Your Development Tools](#updating-your-development-tools)
-  - [Verus (Formal Verification)](#verus-formal-verification)
+  - [Verus (Formal Verification: ./z build … -- verify / make verify)](#verus-formal-verification)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
