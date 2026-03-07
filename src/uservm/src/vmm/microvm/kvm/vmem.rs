@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::vmm::microvm::ramfs::RamFs;
+use crate::{
+    pal::AnonymousMapping,
+    vmm::microvm::ramfs::RamFs,
+};
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
@@ -20,12 +23,11 @@ use ::std::{
         Write,
     },
     mem,
-    os::unix::io::AsRawFd,
-    path::Path,
-    ptr::{
-        self,
+    os::unix::io::{
+        AsRawFd,
+        RawFd,
     },
-    slice,
+    path::Path,
 };
 use kvm_ioctls::{
     Kvm,
@@ -42,10 +44,8 @@ use kvm_ioctls::{
 /// A structure that represents the memory of a virtual machine.
 ///
 pub struct VirtualMemory {
-    /// Virtual memory.
-    ptr: *mut u8,
-    /// Size of the virtual memory.
-    size: usize,
+    /// Anonymous memory mapping backing guest physical memory.
+    mapping: AnonymousMapping,
     /// Optional RAMFS descriptor that keeps metadata and the backing file alive.
     ramfs: Option<RamFs>,
 }
@@ -60,9 +60,6 @@ struct SnapshotHeader {
     /// Memory size (8 bytes): usize
     memory_size: usize,
 }
-
-unsafe impl Send for VirtualMemory {}
-unsafe impl Sync for VirtualMemory {}
 
 //==================================================================================================
 // Constants
@@ -109,29 +106,11 @@ impl VirtualMemory {
         }
 
         // Allocate memory.
-        let ptr: *mut u8 = unsafe {
-            libc::mmap(
-                ptr::null_mut(),
-                size,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | libc::MAP_NORESERVE,
-                -1,
-                0,
-            )
-            .cast::<u8>()
-        };
-
-        // Check if we failed to allocate memory for the virtual machine.
-        if ptr.is_null() {
-            let reason: String = "failed to allocate memory for the virtual machine".to_string();
-            error!("new(): {reason} (memory_size={size:?})");
-            return Err(anyhow::anyhow!(reason));
-        }
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, true)?;
 
         // Create virtual memory. If we fail, destructor will free memory.
         let vmem: Self = Self {
-            ptr,
-            size,
+            mapping,
             ramfs: None,
         };
 
@@ -141,7 +120,7 @@ impl VirtualMemory {
             flags: 0,
             guest_phys_addr: 0,
             memory_size: size as u64,
-            userspace_addr: ptr as u64,
+            userspace_addr: vmem.mapping.ptr() as u64,
         };
 
         unsafe { vm_fd.set_user_memory_region(mem_region)? };
@@ -150,11 +129,37 @@ impl VirtualMemory {
     }
 
     pub fn get_raw_ptr(&self) -> *mut u8 {
-        self.ptr
+        self.mapping.ptr()
     }
 
     pub fn get_size(&self) -> usize {
-        self.size
+        self.mapping.size()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces a sub-region of guest memory with a file-backed mapping.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Byte offset into guest memory (must be page-aligned).
+    /// - `len`: Size of the region to remap.
+    /// - `fd`: File descriptor of the backing file.
+    /// - `file_offset`: Byte offset into the file.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn remap_file_at(
+        &self,
+        start: usize,
+        len: usize,
+        fd: RawFd,
+        file_offset: ::libc::off_t,
+    ) -> Result<()> {
+        self.mapping.remap_file_at(start, len, fd, file_offset)
     }
 
     ///
@@ -200,14 +205,18 @@ impl VirtualMemory {
         };
 
         // Check if region lies within the virtual memory.
-        if addr + data.len() > self.size {
+        if addr + data.len() > self.mapping.size() {
             let reason: String = format!("invalid memory access (addr={addr:#010x})");
             error!("write_bytes(): {reason}");
             return Err(anyhow::anyhow!(reason));
         }
 
         unsafe {
-            ptr::copy_nonoverlapping(data.as_ptr(), self.ptr.add(addr), data.len());
+            ::std::ptr::copy_nonoverlapping(
+                data.as_ptr(),
+                self.mapping.ptr().add(addr),
+                data.len(),
+            );
         }
 
         Ok(())
@@ -239,14 +248,18 @@ impl VirtualMemory {
         };
 
         // Check if region lies within the virtual memory.
-        if addr as usize + data.len() > self.size {
+        if addr as usize + data.len() > self.mapping.size() {
             let reason: String = format!("invalid memory access (addr={addr:#010x})");
             error!("read_bytes(): {reason}");
             return Err(anyhow::anyhow!(reason));
         }
 
         unsafe {
-            ptr::copy_nonoverlapping(self.ptr.add(addr), data.as_mut_ptr(), data.len());
+            ::std::ptr::copy_nonoverlapping(
+                self.mapping.ptr().add(addr),
+                data.as_mut_ptr(),
+                data.len(),
+            );
         }
 
         Ok(())
@@ -279,7 +292,15 @@ impl VirtualMemory {
             },
         };
 
-        let header = SnapshotHeader::new(self.size);
+        // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
+        if !(self.mapping.ptr() as usize).is_multiple_of(PAGE_SIZE) {
+            let reason: &str = "memory pointer is not aligned to page size";
+            error!("save_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+        let memory_slice: &[u8] = self.mapping.as_slice();
+
+        let header = SnapshotHeader::new(self.mapping.size());
 
         if let Err(e) = file.write_all(header.as_bytes()) {
             let reason: String =
@@ -299,15 +320,6 @@ impl VirtualMemory {
             anyhow::bail!(reason)
         }
 
-        // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
-        if !(self.ptr as usize).is_multiple_of(PAGE_SIZE) {
-            let reason: &str = "memory pointer is not aligned to page size";
-            error!("save_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-        // SAFETY: The pointer points to the virtual memory, which is `self.size` bytes long. We've
-        // just checked alignment.
-        let memory_slice: &[u8] = unsafe { slice::from_raw_parts(self.ptr, self.size) };
         // Write the actual memory contents.
         if let Err(e) = file.write_all(memory_slice) {
             let reason: String = format!("failed to write memory contents (error={e:?})");
@@ -363,9 +375,12 @@ impl VirtualMemory {
         let header: SnapshotHeader = SnapshotHeader::from_bytes(&header_bytes);
 
         // Validate that the memory size matches.
-        if header.memory_size != self.size {
-            let reason: String =
-                format!("memory size mismatch: expected {}, got {}", self.size, header.memory_size);
+        if header.memory_size != self.mapping.size() {
+            let reason: String = format!(
+                "memory size mismatch: expected {}, got {}",
+                self.mapping.size(),
+                header.memory_size
+            );
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
@@ -382,7 +397,7 @@ impl VirtualMemory {
                     anyhow::bail!(reason)
                 },
             };
-            let required: u64 = (SNAPSHOT_DATA_OFFSET + self.size) as u64;
+            let required: u64 = (SNAPSHOT_DATA_OFFSET + self.mapping.size()) as u64;
             if file_len < required {
                 let reason: String = format!(
                     "snapshot file too small: expected at least {required} bytes, got {file_len}"
@@ -407,43 +422,11 @@ impl VirtualMemory {
                 anyhow::bail!(reason)
             },
         };
-        let mmap_ptr: *mut u8 = unsafe {
-            libc::mmap(
-                self.ptr.cast::<libc::c_void>(),
-                self.size,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_PRIVATE | libc::MAP_FIXED,
-                file.as_raw_fd(),
-                file_offset,
-            )
-            .cast::<u8>()
-        };
-
-        if mmap_ptr == libc::MAP_FAILED.cast::<u8>() {
-            let reason: String = format!(
-                "failed to mmap snapshot file with MAP_FIXED (error={})",
-                ::std::io::Error::last_os_error()
-            );
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-        // MAP_FIXED guarantees the returned address equals the requested address.
-        debug_assert_eq!(mmap_ptr, self.ptr, "MAP_FIXED should return the exact requested address");
+        self.mapping.remap_file(file.as_raw_fd(), file_offset)?;
         // TODO: validate header checksum matches the checksum computed off of the memory slice https://github.com/nanvix/nanvix/issues/1014
 
         trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
         Ok(())
-    }
-}
-
-impl Drop for VirtualMemory {
-    fn drop(&mut self) {
-        unsafe {
-            let ret: libc::c_int = libc::munmap(self.ptr.cast::<libc::c_void>(), self.size);
-            if ret != 0 {
-                error!("munmap() failed (ret={ret})");
-            }
-        }
     }
 }
 
