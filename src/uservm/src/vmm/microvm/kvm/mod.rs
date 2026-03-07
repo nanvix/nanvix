@@ -30,6 +30,7 @@ use crate::vmm::{
     },
 };
 use ::anyhow::Result;
+use ::kvm_ioctls::Kvm;
 use ::log::trace;
 use ::serde::{
     Deserialize,
@@ -92,17 +93,21 @@ impl KvmSnapshot {
     ///
     /// # Description
     ///
-    /// Validates the internal consistency of the KVM snapshot.
+    /// Validates the internal consistency of the KVM snapshot and checks compatibility
+    /// with the current host's KVM capabilities.
+    ///
+    /// # Parameters
+    ///
+    /// - `kvm`: Handle to the KVM hypervisor for querying host capabilities.
     ///
     /// # Returns
     ///
     /// Upon successful completion, this method returns empty. Otherwise, it
     /// returns an error.
     ///
-    pub fn validate(&self) -> Result<()> {
-        // TODO (#1227): Add some validation in case the file is malformed, corrupted,
-        // or the KVM features are incompatible.
+    pub fn validate(&self, kvm: &Kvm) -> Result<()> {
         trace!("validate()");
+        self.vcpu_state.validate(kvm)?;
         Ok(())
     }
 

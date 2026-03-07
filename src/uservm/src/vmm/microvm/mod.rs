@@ -830,22 +830,23 @@ impl Vmm {
 
         let kvm_snapshot: KvmSnapshot =
             match ::serde_cbor::from_reader::<KvmSnapshot, &mut File>(&mut file) {
-                Ok(snapshot) => {
-                    if let Err(e) = snapshot.validate() {
-                        let reason: String =
-                            format!("decoded kvm snapshot is invalid (error={e:?})");
-                        error!("load_snapshot(): {reason}");
-                        anyhow::bail!(reason)
-                    } else {
-                        snapshot
-                    }
-                },
+                Ok(snapshot) => snapshot,
                 Err(e) => {
                     let reason: String = format!("failed decoding kvm snapshot file (error={e:?})");
                     error!("load_snapshot(): {reason}");
                     anyhow::bail!(reason)
                 },
             };
+
+        // Validate snapshot against host KVM capabilities before restoring.
+        {
+            let locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
+            if let Err(e) = kvm_snapshot.validate(&locked_inner.kvm) {
+                let reason: String = format!("decoded kvm snapshot is invalid (error={e:?})");
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            }
+        }
 
         // Load the snapshot.
         if let Err(e) = self
