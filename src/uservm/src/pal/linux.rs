@@ -23,12 +23,28 @@ use ::log::{
 use ::std::{
     ffi::CString,
     mem,
+    os::unix::io::RawFd,
     ptr,
+    slice,
 };
 
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+/// An anonymous memory mapping.
+#[derive(Debug)]
+pub struct AnonymousMapping {
+    /// Pointer to the memory location where the region is mapped.
+    ptr: *mut ::libc::c_void,
+    /// Size of the mapping (in bytes).
+    size: usize,
+}
+
+// SAFETY: The mapping is an isolated region of memory not shared with other threads.
+unsafe impl Send for AnonymousMapping {}
+// SAFETY: The &self accessors return borrowed slices tied to &self's lifetime.
+unsafe impl Sync for AnonymousMapping {}
 
 /// A memory-mapped file.
 #[derive(Debug)]
@@ -44,6 +60,265 @@ pub struct FileMapping {
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl AnonymousMapping {
+    ///
+    /// # Description
+    ///
+    /// Creates a new anonymous memory mapping.
+    ///
+    /// # Parameters
+    ///
+    /// * `size` - Size of the mapping (in bytes). Must be greater than zero.
+    /// * `noreserve` - If `true`, do not reserve swap space for the mapping (`MAP_NORESERVE`).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns an object representing the anonymous mapping. On failure, returns an
+    /// error.
+    ///
+    pub fn new(size: usize, noreserve: bool) -> Result<Self> {
+        trace!("AnonymousMapping::new(): size={size}, noreserve={noreserve}");
+
+        if size == 0 {
+            let reason: &str = "cannot create zero-sized anonymous mapping";
+            error!("AnonymousMapping::new(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        let mut flags: c_int = ::libc::MAP_ANONYMOUS | ::libc::MAP_PRIVATE;
+        if noreserve {
+            flags |= ::libc::MAP_NORESERVE;
+        }
+
+        let ptr: *mut ::libc::c_void = unsafe {
+            ::libc::mmap(
+                ptr::null_mut(),
+                size,
+                ::libc::PROT_READ | ::libc::PROT_WRITE,
+                flags,
+                -1,
+                0,
+            )
+        };
+
+        if ptr == ::libc::MAP_FAILED {
+            let reason: String = format!(
+                "failed to create anonymous mapping (error={})",
+                ::std::io::Error::last_os_error()
+            );
+            error!("AnonymousMapping::new(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        Ok(Self { ptr, size })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable pointer to the mapped memory region.
+    ///
+    /// # Returns
+    ///
+    /// A mutable pointer to the mapped memory region.
+    ///
+    pub fn ptr(&self) -> *mut u8 {
+        self.ptr.cast::<u8>()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the size of the mapping (in bytes).
+    ///
+    /// # Returns
+    ///
+    /// The size of the mapping (in bytes).
+    ///
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mapping contents as an immutable byte slice.
+    ///
+    /// # Returns
+    ///
+    /// An immutable byte slice covering the entire mapping.
+    ///
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: The mapping is valid for `self.size` bytes for the lifetime of `self`.
+        unsafe { slice::from_raw_parts(self.ptr.cast::<u8>(), self.size) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mapping contents as a mutable byte slice.
+    ///
+    /// # Returns
+    ///
+    /// A mutable byte slice covering the entire mapping.
+    ///
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        // SAFETY: The mapping is valid for `self.size` bytes for the lifetime of `self`.
+        unsafe { slice::from_raw_parts_mut(self.ptr.cast::<u8>(), self.size) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the entire mapping with a file-backed read-write mapping using `MAP_FIXED`.
+    /// Only the backing store changes; the pointer and size remain the same.
+    ///
+    /// # Parameters
+    ///
+    /// * `fd` - File descriptor of the backing file.
+    /// * `file_offset` - Byte offset into the file where the mapping begins (must be
+    ///   page-aligned).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn remap_file(&self, fd: RawFd, file_offset: ::libc::off_t) -> Result<()> {
+        self.remap_file_at(0, self.size, fd, file_offset)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces a sub-region of the mapping with a file-backed read-write mapping using
+    /// `MAP_FIXED`. The region `[start, start + len)` must lie within the mapping bounds.
+    ///
+    /// # Parameters
+    ///
+    /// * `start` - Byte offset from the start of the mapping (must be page-aligned).
+    /// * `len` - Size of the region to remap (in bytes).
+    /// * `fd` - File descriptor of the backing file.
+    /// * `file_offset` - Byte offset into the file where the mapping begins (must be
+    ///   page-aligned).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn remap_file_at(
+        &self,
+        start: usize,
+        len: usize,
+        fd: RawFd,
+        file_offset: ::libc::off_t,
+    ) -> Result<()> {
+        trace!(
+            "AnonymousMapping::remap_file_at(): start={start:#x}, len={len:#x}, fd={fd}, \
+             file_offset={file_offset}"
+        );
+
+        if len == 0 {
+            let reason: &str = "cannot remap zero-sized region";
+            error!("AnonymousMapping::remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        if start.checked_add(len).is_none_or(|end| end > self.size) {
+            let reason: String = format!(
+                "remap region [{start:#x}, {:#x}) exceeds mapping bounds (size={:#x})",
+                start.saturating_add(len),
+                self.size
+            );
+            error!("AnonymousMapping::remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // SAFETY: `start` has been bounds-checked, so `self.ptr + start` stays within the mapping.
+        let addr: *mut u8 = unsafe { self.ptr.cast::<u8>().add(start) };
+        let result: *mut u8 = unsafe {
+            ::libc::mmap(
+                addr.cast::<::libc::c_void>(),
+                len,
+                ::libc::PROT_READ | ::libc::PROT_WRITE,
+                ::libc::MAP_PRIVATE | ::libc::MAP_FIXED,
+                fd,
+                file_offset,
+            )
+            .cast::<u8>()
+        };
+
+        if result == ::libc::MAP_FAILED.cast::<u8>() {
+            let reason: String = format!(
+                "failed to remap region as file-backed at {:?} (error={})",
+                addr,
+                ::std::io::Error::last_os_error()
+            );
+            error!("AnonymousMapping::remap_file_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        debug_assert_eq!(result, addr, "MAP_FIXED should return the exact requested address");
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the entire mapping with a fresh anonymous read-write mapping using `MAP_FIXED`.
+    /// This is useful for restoring a neutral memory region after a failed file-backed remap.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn remap_anonymous(&self) -> Result<()> {
+        trace!("AnonymousMapping::remap_anonymous(): size={:#x}", self.size);
+
+        let result: *mut u8 = unsafe {
+            ::libc::mmap(
+                self.ptr,
+                self.size,
+                ::libc::PROT_READ | ::libc::PROT_WRITE,
+                ::libc::MAP_PRIVATE | ::libc::MAP_ANONYMOUS | ::libc::MAP_FIXED,
+                -1,
+                0,
+            )
+            .cast::<u8>()
+        };
+
+        if result == ::libc::MAP_FAILED.cast::<u8>() {
+            let reason: String = format!(
+                "failed to restore anonymous mapping at {:?} (error={})",
+                self.ptr,
+                ::std::io::Error::last_os_error()
+            );
+            error!("AnonymousMapping::remap_anonymous(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        debug_assert_eq!(
+            result,
+            self.ptr.cast::<u8>(),
+            "MAP_FIXED should return the exact requested address"
+        );
+
+        Ok(())
+    }
+}
+
+impl Drop for AnonymousMapping {
+    fn drop(&mut self) {
+        trace!("drop(): {self:?}");
+        unsafe {
+            if ::libc::munmap(self.ptr, self.size) < 0 {
+                let errno: c_int = *::libc::__errno_location();
+                warn!("drop(): failed to unmap anonymous region (errno={errno}, self={self:?})");
+            }
+        }
+    }
+}
 
 impl FileMapping {
     ///
@@ -243,5 +518,140 @@ mod tests {
         fs::remove_file(&path)?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_anonymous_mapping_allocates_and_drops() -> Result<()> {
+        let size: usize = 4096;
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, false)?;
+
+        assert!(!mapping.ptr().is_null(), "mapping pointer is null");
+        assert_eq!(mapping.size(), size, "mapping size mismatch");
+
+        // Verify the region is writable and readable.
+        let data: &mut [u8] = unsafe { slice::from_raw_parts_mut(mapping.ptr(), size) };
+        data[0] = 0xAB;
+        data[size - 1] = 0xCD;
+        assert_eq!(data[0], 0xAB, "first byte mismatch");
+        assert_eq!(data[size - 1], 0xCD, "last byte mismatch");
+
+        drop(mapping);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_anonymous_mapping_noreserve() -> Result<()> {
+        let size: usize = 4096;
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, true)?;
+
+        assert!(!mapping.ptr().is_null(), "mapping pointer is null");
+        assert_eq!(mapping.size(), size, "mapping size mismatch");
+
+        drop(mapping);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_anonymous_mapping_zero_size_fails() {
+        let result: Result<AnonymousMapping> = AnonymousMapping::new(0, false);
+        assert!(result.is_err(), "zero-sized anonymous mapping should fail");
+    }
+
+    #[test]
+    fn test_anonymous_mapping_as_slice() -> Result<()> {
+        let size: usize = 4096;
+        let mut mapping: AnonymousMapping = AnonymousMapping::new(size, false)?;
+
+        // Write via mutable slice.
+        let mutable_slice: &mut [u8] = mapping.as_mut_slice();
+        mutable_slice[0] = 0x42;
+        mutable_slice[size - 1] = 0x99;
+
+        // Read via immutable slice.
+        let immutable_slice: &[u8] = mapping.as_slice();
+        assert_eq!(immutable_slice[0], 0x42, "first byte mismatch via as_slice");
+        assert_eq!(immutable_slice[size - 1], 0x99, "last byte mismatch via as_slice");
+        assert_eq!(immutable_slice.len(), size, "slice length mismatch");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_remap_file_and_remap_anonymous() -> Result<()> {
+        let path: PathBuf = unique_temp_path("nanvix-remap-file")?;
+        let content: &[u8] = b"remap file test data!!!!";
+        fs::write(&path, content)?;
+
+        let size: usize = 4096;
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, false)?;
+
+        // Remap the mapping to be file-backed.
+        let file: fs::File = fs::File::open(&path)?;
+        let fd: RawFd = ::std::os::unix::io::AsRawFd::as_raw_fd(&file);
+        mapping.remap_file(fd, 0)?;
+
+        // Verify the file contents are visible.
+        let mapped: &[u8] = &mapping.as_slice()[..content.len()];
+        assert_eq!(mapped, content, "file-backed remap should expose file contents");
+
+        // Restore to anonymous.
+        mapping.remap_anonymous()?;
+
+        // After restoring, memory should be zeroed.
+        let zeroed: &[u8] = mapping.as_slice();
+        assert!(zeroed.iter().all(|&b| b == 0), "anonymous remap should zero memory");
+
+        drop(mapping);
+        drop(file);
+        fs::remove_file(&path)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_remap_file_at_sub_region() -> Result<()> {
+        let path: PathBuf = unique_temp_path("nanvix-remap-at")?;
+        let content: Vec<u8> = vec![0xAB; 4096];
+        fs::write(&path, &content)?;
+
+        let size: usize = 2 * 4096;
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, false)?;
+
+        // Remap only the second page.
+        let file: fs::File = fs::File::open(&path)?;
+        let fd: RawFd = ::std::os::unix::io::AsRawFd::as_raw_fd(&file);
+        mapping.remap_file_at(4096, 4096, fd, 0)?;
+
+        // First page should still be zeroed (anonymous).
+        let first_page: &[u8] = &mapping.as_slice()[..4096];
+        assert!(first_page.iter().all(|&b| b == 0), "first page should remain anonymous");
+
+        // Second page should have file contents.
+        let second_page: &[u8] = &mapping.as_slice()[4096..8192];
+        assert_eq!(second_page, &content[..], "second page should have file contents");
+
+        drop(mapping);
+        drop(file);
+        fs::remove_file(&path)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_remap_file_at_rejects_out_of_bounds() {
+        let mapping: AnonymousMapping =
+            AnonymousMapping::new(4096, false).expect("failed to create mapping");
+        let result: Result<()> = mapping.remap_file_at(0, 8192, -1, 0);
+        assert!(result.is_err(), "remap_file_at should reject out-of-bounds region");
+    }
+
+    #[test]
+    fn test_remap_file_at_rejects_zero_len() {
+        let mapping: AnonymousMapping =
+            AnonymousMapping::new(4096, false).expect("failed to create mapping");
+        let result: Result<()> = mapping.remap_file_at(0, 0, -1, 0);
+        assert!(result.is_err(), "remap_file_at should reject zero-length region");
     }
 }
