@@ -73,6 +73,7 @@ readonly RUST_HOME="${CONTRIB_DIR}/rust"
 #   $2 - Tool install path.
 #   $3 - Build stage (e.g., stage0, stage1).
 #   $4 - Sysroot path (optional).
+#   $5 - Target architecture (optional, e.g., "i686" or "x86_64").
 #
 # Return Value
 #
@@ -81,13 +82,14 @@ readonly RUST_HOME="${CONTRIB_DIR}/rust"
 #
 # Usage Example
 #
-#   build_tool "/path/to/tool/source" "/path/to/install" "stage0" "/path/to/sysroot"
+#   build_tool "/path/to/tool/source" "/path/to/install" "stage0" "/path/to/sysroot" "i686"
 #
 build_tool() {
     local tool_path=$1
     local install_path=$2
     local stage=$3
     local sysroot_path=$4
+    local target_arch=${5:-}
 
     # Check if tool path is empty.
     if [[ -z "${tool_path}" ]]; then
@@ -106,24 +108,23 @@ build_tool() {
         return 1
     }
 
-    # Check whether to pass sysroot path or not.
-    if [[ -z "${sysroot_path}" ]]; then
-        ./z configure --install-location="${install_path}" --stage="${stage}" || {
-            print_error "Failed to configure tool in '${tool_path}'."
-            popd || {
-                print_error "Failed to change directory back from '${tool_path}'."
-            }
-            return 1
-        }
-    else
-        ./z configure --install-location="${install_path}" --sysroot-location="${sysroot_path}" --stage="${stage}" || {
-            print_error "Failed to configure tool in '${tool_path}'."
-            popd || {
-                print_error "Failed to change directory back from '${tool_path}'."
-            }
-            return 1
-        }
+    # Build the configure command arguments.
+    local configure_args="--install-location=${install_path} --stage=${stage}"
+    if [[ -n "${sysroot_path}" ]]; then
+        configure_args="--install-location=${install_path} --sysroot-location=${sysroot_path} --stage=${stage}"
     fi
+    if [[ -n "${target_arch}" ]]; then
+        configure_args="${configure_args} --target=${target_arch}-nanvix"
+    fi
+
+    # shellcheck disable=SC2086
+    ./z configure ${configure_args} || {
+        print_error "Failed to configure tool in '${tool_path}'."
+        popd || {
+            print_error "Failed to change directory back from '${tool_path}'."
+        }
+        return 1
+    }
 
     ./z build || {
         print_error "Failed to build tool in '${tool_path}'."
@@ -183,33 +184,57 @@ clone_repo "${RUST_REPOSITORY}" "${CONTRIB_DIR}" "${RUST_COMMIT}" || {
     exit 1
 }
 
-# Build Binutils and cleanup.
-build_tool "${BINUTILS_HOME}" "${PREFIX}" "0" "${PREFIX}" || {
-    print_error "Failed to build Binutils."
+# Build Binutils for i686.
+build_tool "${BINUTILS_HOME}" "${PREFIX}" "0" "${PREFIX}" "i686" || {
+    print_error "Failed to build Binutils (i686)."
+    exit 1
+}
+
+# Build Binutils for x86_64 (reuse same source tree).
+build_tool "${BINUTILS_HOME}" "${PREFIX}" "0" "${PREFIX}" "x86_64" || {
+    print_error "Failed to build Binutils (x86_64)."
     exit 1
 }
 rm -rf "${BINUTILS_HOME}" || {
     print_warning "Failed to remove Binutils source directory '${BINUTILS_HOME}'."
 }
 
-# Build GCC stage0. We keep artifacts for stage1.
-build_tool "${GCC_HOME}" "${PREFIX}" "0" "${PREFIX}" || {
-    print_error "Failed to build GCC stage0."
+# Build GCC stage0 for i686. We keep artifacts for stage1.
+build_tool "${GCC_HOME}" "${PREFIX}" "0" "${PREFIX}" "i686" || {
+    print_error "Failed to build GCC stage0 (i686)."
     exit 1
 }
 
-# Build NewLib and cleanup.
-build_tool "${NEWLIB_HOME}" "${PREFIX}" "0" "${PREFIX}" || {
-    print_error "Failed to build Newlib."
+# Build GCC stage0 for x86_64.
+build_tool "${GCC_HOME}" "${PREFIX}" "0" "${PREFIX}" "x86_64" || {
+    print_error "Failed to build GCC stage0 (x86_64)."
+    exit 1
+}
+
+# Build NewLib for i686.
+build_tool "${NEWLIB_HOME}" "${PREFIX}" "0" "${PREFIX}" "i686" || {
+    print_error "Failed to build Newlib (i686)."
+    exit 1
+}
+
+# Build NewLib for x86_64 (reuse same source tree).
+build_tool "${NEWLIB_HOME}" "${PREFIX}" "0" "${PREFIX}" "x86_64" || {
+    print_error "Failed to build Newlib (x86_64)."
     exit 1
 }
 rm -rf "${NEWLIB_HOME}" || {
     print_warning "Failed to remove Newlib source directory '${NEWLIB_HOME}'."
 }
 
-# Build GCC stage1 and cleanup.
-build_tool "${GCC_HOME}" "${PREFIX}" "1" "${PREFIX}" || {
-    print_error "Failed to build GCC stage1."
+# Build GCC stage1 for i686.
+build_tool "${GCC_HOME}" "${PREFIX}" "1" "${PREFIX}" "i686" || {
+    print_error "Failed to build GCC stage1 (i686)."
+    exit 1
+}
+
+# Build GCC stage1 for x86_64.
+build_tool "${GCC_HOME}" "${PREFIX}" "1" "${PREFIX}" "x86_64" || {
+    print_error "Failed to build GCC stage1 (x86_64)."
     exit 1
 }
 rm -rf "${GCC_HOME}" || {
