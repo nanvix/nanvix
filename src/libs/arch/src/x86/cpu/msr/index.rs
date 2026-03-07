@@ -178,8 +178,8 @@ pub enum MsrIndex {
 //==================================================================================================
 
 impl MsrIndex {
-    /// Number of x2APIC MSR registers.
-    pub const APIC_MSR_COUNT: u32 = 0x0400;
+    /// Number of x2APIC MSR registers (covers the `0x800..=0x8FF` window).
+    pub const APIC_MSR_COUNT: u32 = 0x100;
 
     /// Returns the underlying `u32` register index.
     pub const fn as_u32(self) -> u32 {
