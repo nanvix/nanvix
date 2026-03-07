@@ -1171,11 +1171,36 @@ impl Vmem {
         Ok(())
     }
 
-    // Changes access permissions on a kernel page.
+    ///
+    /// # Description
+    ///
+    /// Changes access permissions on a kernel page. When `dry_run` is `true`, validates that the
+    /// operation would succeed without modifying any page table entries.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the target kernel page.
+    /// - `access`: New access permissions for the page.
+    /// - `dry_run`: If `true`, only validates the operation without applying changes.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function returns empty. Upon failure, this function returns
+    /// an error that indicates the reason for the failure.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    /// - [`ErrorCode::BadAddress`]: The provided address does not lie in kernel space.
+    /// - [`ErrorCode::TryAgain`]: Failed to read the page directory entry.
+    /// - [`ErrorCode::NoSuchEntry`]: The corresponding page table is not present.
+    /// - [`ErrorCode::NoSuchEntry`]: The page table entry was not found (dry run only).
+    ///
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
+        dry_run: bool,
     ) -> Result<(), Error> {
         trace!("{vaddr:?}");
 
@@ -1213,11 +1238,14 @@ impl Vmem {
 
         let page_address: PageAddress = PageAddress::new(vaddr);
 
-        // Change access permissions on the page.
-        page_table
-            .borrow_mut()
-            .1
-            .ctrl(false, page_address, access)?;
+        if dry_run {
+            page_table.borrow().1.lookup(page_address)?;
+        } else {
+            page_table
+                .borrow_mut()
+                .1
+                .ctrl(false, page_address, access)?;
+        }
 
         Ok(())
     }
