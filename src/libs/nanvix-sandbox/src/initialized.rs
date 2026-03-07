@@ -24,25 +24,17 @@ use crate::{
     UserVmArgs,
 };
 use ::anyhow::Result;
-use ::log::{
-    debug,
-    error,
-    trace,
-};
+use ::log::error;
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
     SocketType,
-    UnboundSocket,
 };
-use ::tokio::{
-    sync::{
-        Mutex,
-        MutexGuard,
-    },
-    time::Instant,
+use ::tokio::sync::{
+    Mutex,
+    MutexGuard,
 };
 
 //==================================================================================================
@@ -127,7 +119,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             self.sandbox_config.into_gateway_socket_info();
 
         // Spawn User VM.
-        let mut uservm: UserVm = {
+        let uservm: UserVm = {
             let mut locked_control_plane_bind_socket_and_info: MutexGuard<
                 '_,
                 (SocketListener, String, SocketType),
@@ -170,13 +162,10 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             }
         };
 
-        // Attempt to connect to the gateway socket.
-        wait_for_gateway_connection(
-            &mut uservm,
-            UnboundSocket::new(gateway_socket_type),
-            &gateway_sockaddr,
-        )
-        .await?;
+        // Wait for linuxd to signal that the gateway listener is bound and ready for this User VM.
+        self.linuxd
+            .wait_for_gateway_ready(u32::from(uservm_id), GATEWAY_CONNECT_TIMEOUT)
+            .await?;
 
         Ok(RunningSandbox {
             tag,
@@ -215,71 +204,4 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     ) -> Arc<Mutex<(SocketListener, String, SocketType)>> {
         self.control_plane_bind_socket_and_info.clone()
     }
-}
-
-///
-/// # Description
-///
-/// Waits for the gateway socket to become available by repeatedly attempting to connect to it.
-///
-/// This function implements a timeout-based retry mechanism to ensure the gateway socket is
-/// listening and ready to accept connections before returning success.
-///
-/// # Parameters
-///
-/// - `uservm`: Reference to the User VM instance.
-/// - `unbound_gateway_socket`: The unbound socket to use for connection attempts.
-/// - `gateway_sockaddr`: The address of the gateway socket to connect to.
-///
-/// # Returns
-///
-/// On success, returns an empty tuple indicating the gateway is available. On failure or
-/// timeout, returns an error describing the connection failure.
-///
-async fn wait_for_gateway_connection(
-    uservm: &mut UserVm,
-    unbound_gateway_socket: UnboundSocket,
-    gateway_sockaddr: &str,
-) -> Result<()> {
-    trace!(
-        "wait_for_gateway_connection(): waiting for gateway socket to become available \
-         (address={gateway_sockaddr})"
-    );
-    let now: Instant = Instant::now();
-    loop {
-        // Check if user VM finished before attempting to connect to gateway.
-        if !uservm.is_running() {
-            let reason: String = format!(
-                "user VM terminated before gateway socket became available \
-                 (address={gateway_sockaddr})"
-            );
-            error!("wait_for_gateway_connection(): {reason}");
-            return Err(anyhow::anyhow!("{reason}"));
-        }
-
-        match unbound_gateway_socket
-            .clone()
-            .connect(gateway_sockaddr)
-            .await
-        {
-            Ok(_stream) => {
-                // Connection successful.
-                break;
-            },
-            Err(_e) => {
-                // Connection failed. Sleep a bit and retry.
-                if now.elapsed().as_secs() > GATEWAY_CONNECT_TIMEOUT.as_secs() {
-                    let reason: String =
-                        format!("failed to connect to gateway socket (address={gateway_sockaddr})");
-                    error!("wait_for_gateway_connection(): {reason}");
-                    return Err(anyhow::anyhow!("{reason}"));
-                }
-                tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-            },
-        }
-    }
-
-    debug!("gateway socket file appeared after {:?} (path={:?})", now.elapsed(), &gateway_sockaddr);
-
-    Ok(())
 }

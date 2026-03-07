@@ -278,6 +278,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         &self,
         mut user_vm_stream: SocketStream,
         user_vm_event_tx: Sender<UserVmEvent>,
+        control_plane_writer: Arc<Mutex<SocketStreamWriter>>,
     ) -> Result<(UserVmIdentifier, UserVmHandle), Error> {
         trace!("accepted connection from user VM (addr={user_vm_stream:?})",);
 
@@ -335,9 +336,11 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         // Gateway listener for this user VM.
         let user_vm_handle: UserVmHandle = UserVmHandle::new(
             user_vm_writer,
+            u32::from(user_vm_id),
             &gateway_sockaddr,
             new_msg.gateway_socket_type(),
             user_vm_reader_handle,
+            control_plane_writer,
         );
 
         {
@@ -517,16 +520,25 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         self.trap_if_pending_snapshot().await.map_err(|_| {
             Self::log_and_error(ErrorCode::IoErr, "error conditionally trapping on snapshot gate")
         })?;
-        let mut control_plane_stream: SocketStream = self.accept_control_plane_connection().await?;
+        let control_plane_stream: SocketStream = self.accept_control_plane_connection().await?;
 
-        let mut control_plane_buffer: [u8; ::std::mem::size_of::<NanvixdControlMessage>()] =
-            [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+        // Split the control-plane stream so that the reader stays in the main loop and the writer
+        // can be shared with gateway priming tasks to send GatewayReady notifications.
+        let (mut control_plane_reader, control_plane_writer): (
+            SocketStreamReader,
+            SocketStreamWriter,
+        ) = control_plane_stream.split();
+        let control_plane_writer: Arc<Mutex<SocketStreamWriter>> =
+            Arc::new(Mutex::new(control_plane_writer));
+
+        let mut control_plane_buffer: [u8; NanvixdControlMessage::WIRE_SIZE] =
+            [0u8; NanvixdControlMessage::WIRE_SIZE];
         let mut control_plane_buffer_filled: usize = 0;
 
         'main_loop: loop {
             tokio::select! {
 
-                result = control_plane_stream.read(&mut control_plane_buffer[control_plane_buffer_filled..]) => {
+                result = control_plane_reader.read(&mut control_plane_buffer[control_plane_buffer_filled..]) => {
                     match result {
                         Ok(0) => {
                             // Control-plane disconnected.
@@ -580,7 +592,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     match result {
                         Ok(user_vm_stream) => {
                             let (user_vm_id, user_vm_handle): (UserVmIdentifier, UserVmHandle) =
-                                self.accept_connections(user_vm_stream, user_vm_event_tx.clone()).await?;
+                                self.accept_connections(user_vm_stream, user_vm_event_tx.clone(), control_plane_writer.clone()).await?;
                             user_vm_connections.insert(user_vm_id, user_vm_handle.clone());
                         },
                         Err(e) => {

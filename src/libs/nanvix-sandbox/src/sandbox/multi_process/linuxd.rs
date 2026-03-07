@@ -35,12 +35,18 @@ use ::linuxd::{
     args,
     config::restore_gate_sockaddr_builder,
 };
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use ::std::{
+    collections::HashMap,
     error::Error as StdError,
     fmt,
     fs,
     io::ErrorKind,
-    mem,
     os::unix::fs::FileTypeExt,
     path::{
         Path,
@@ -57,12 +63,6 @@ use ::syscomm::{
     SocketType,
     UnboundSocket,
     WriteAll,
-};
-use ::log::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 use ::tokio::{
     fs as tokio_fs,
@@ -157,6 +157,9 @@ struct LinuxDaemonInner {
     child: Child,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
+    /// Set of gateway IDs for which a `GatewayReady` notification has already been received but not
+    /// yet claimed by the corresponding caller.
+    pending_gateway_ready: HashMap<u32, usize>,
 }
 
 /// # Description
@@ -486,10 +489,7 @@ impl LinuxDaemon {
                 args::Args::OPT_CLH_SECCOMP.to_string(),
                 "false".to_string(),
                 args::Args::OPT_CLH_RESTORE.to_string(),
-                format!(
-                    "source_url=file://{}",
-                    snapshot_dir_handle.path().to_string_lossy(),
-                ),
+                format!("source_url=file://{}", snapshot_dir_handle.path().to_string_lossy(),),
             ]
         } else {
             vec![
@@ -624,10 +624,47 @@ impl LinuxDaemon {
             inner: Mutex::new(Some(LinuxDaemonInner {
                 child,
                 control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
             })),
             netns_handle,
             snapshot_dir_handle,
         })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for a `GatewayReady` notification from linuxd on the control-plane stream. This
+    /// replaces the previous busy-poll mechanism and provides event-driven synchronization.
+    ///
+    /// # Parameters
+    ///
+    /// - `expected_gateway_id`: Identifier of the User VM whose `GatewayReady` is expected.
+    /// - `gateway_timeout`: Maximum duration to wait for the notification.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `Ok(())`. On failure or timeout, returns an error.
+    ///
+    pub async fn wait_for_gateway_ready(
+        &self,
+        expected_gateway_id: u32,
+        gateway_timeout: Duration,
+    ) -> Result<()> {
+        let mut locked_inner = self.inner.lock().await;
+        let inner: &mut LinuxDaemonInner = locked_inner.as_mut().ok_or_else(|| {
+            let reason: &str = "inner state already taken";
+            error!("wait_for_gateway_ready(): {reason}");
+            anyhow::anyhow!("{reason}")
+        })?;
+
+        crate::sandbox::gateway_ready::wait_for_gateway_ready(
+            &mut inner.control_plane_stream,
+            &mut inner.pending_gateway_ready,
+            expected_gateway_id,
+            gateway_timeout,
+        )
+        .await
     }
 
     ///
@@ -647,6 +684,7 @@ impl LinuxDaemon {
         let Some(LinuxDaemonInner {
             mut control_plane_stream,
             mut child,
+            pending_gateway_ready: _,
         }) = self.inner.lock().await.take()
         else {
             warn!("shutdown(): inner state already taken, skipping shutdown");
@@ -654,10 +692,10 @@ impl LinuxDaemon {
         };
 
         // Prepare shutdown message.
-        let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
+        let msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] = {
             let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
-            let mut msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] =
-                [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+            let mut msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] =
+                [0u8; NanvixdControlMessage::WIRE_SIZE];
             msg.to_bytes(&mut msg_bytes);
             msg_bytes
         };
@@ -714,6 +752,51 @@ impl LinuxDaemon {
     /// The per-instance snapshot directory path in L2 mode, or `None` otherwise.
     ///
     pub fn snapshot_dir_path(&self) -> Option<&Path> {
-        self.snapshot_dir_handle.as_ref().map(SnapshotDirHandle::path)
+        self.snapshot_dir_handle
+            .as_ref()
+            .map(SnapshotDirHandle::path)
+    }
+
+    /// Reproduces the old buggy behavior that discards non-matching `GatewayReady` messages
+    /// instead of buffering them. Used only by regression tests to prove the fix is necessary.
+    #[cfg(test)]
+    async fn wait_for_gateway_ready_no_buffer(
+        &self,
+        expected_gateway_id: u32,
+        gateway_timeout: Duration,
+    ) -> Result<()> {
+        let mut locked_inner = self.inner.lock().await;
+        let inner: &mut LinuxDaemonInner = locked_inner
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("inner state already taken"))?;
+
+        crate::sandbox::gateway_ready::wait_for_gateway_ready_no_buffer(
+            &mut inner.control_plane_stream,
+            expected_gateway_id,
+            gateway_timeout,
+        )
+        .await
+    }
+
+    /// Creates a `LinuxDaemon` backed by a dummy child process and the given socket stream. This
+    /// allows unit tests to exercise `wait_for_gateway_ready` without spawning a real linuxd.
+    #[cfg(test)]
+    fn new_for_test(control_plane_stream: SocketStream) -> Self {
+        // Spawn a trivial long-lived child so `LinuxDaemonInner` has a valid `Child`.
+        let child: Child = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn dummy child for test");
+        Self {
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                child,
+                control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
+            })),
+            netns_handle: None,
+            snapshot_dir_handle: None,
+        }
     }
 }
