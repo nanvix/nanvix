@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-arch = { workspace = true, features = ["cpuid"] }
+arch = { workspace = true, features = ["cpuid", "msr"] }
 serde_cbor = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
