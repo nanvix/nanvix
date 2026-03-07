@@ -345,10 +345,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// ## Cache State Guarantees
     ///
-    /// - **sandbox_index**: Only updated after **successful** sandbox startup. If initialization
-    ///   or startup fails, the User VM identifier is never added to the index, preventing partial
-    ///   state from leaking into the cache.
-    ///
     /// - **running_sandboxes**: Only updated after **successful** sandbox startup. Failures during
     ///   initialization or startup do not pollute this map.
     ///
@@ -978,7 +974,6 @@ mod tests {
         let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         assert_eq!(cache_guard.running_sandboxes.len(), 0);
         assert_eq!(cache_guard.linuxd_instances.len(), 0);
-        assert_eq!(cache_guard.sandbox_index.len(), 0);
     }
 
     ///

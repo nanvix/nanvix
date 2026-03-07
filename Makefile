@@ -29,21 +29,20 @@ export TIMESTAMP_MSG ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
-# L2 VM deployment?
-export L2_VM ?= no
+# Deployment mode: standalone, single-process, multi-process, l2
+export DEPLOYMENT_MODE ?= multi-process
 
-# Single-process deployment?
-export SINGLE_PROCESS ?= no
+# Validate DEPLOYMENT_MODE.
+VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2
+ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
+$(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
+endif
 
 # Enable in-memory FAT32 filesystem?
 export MEMFS ?= no
 
-# Enable standalone mode (no linuxd, routes I/O to debug/memfs)?
-export STANDALONE ?= no
-
-# Standalone mode implies single-process deployment (no separate linuxd binary).
-ifeq ($(STANDALONE),yes)
-override SINGLE_PROCESS := yes
+# Standalone mode implies memfs.
+ifeq ($(DEPLOYMENT_MODE),standalone)
 override MEMFS := yes
 endif
 
@@ -116,7 +115,7 @@ endif
 # Release Artifact Configuration
 #===================================================================================================
 
-RELEASE_DEPLOYMENT_MODE := $(if $(filter yes,$(SINGLE_PROCESS)),single_process,multi_process)
+RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
 RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
@@ -488,7 +487,7 @@ install: all-nanvix
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
-ifneq ($(SINGLE_PROCESS),yes)
+ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
@@ -536,14 +535,13 @@ help:
 	@echo "  run      Run system in release mode"
 	@echo ""
 	@echo "Build Parameters (override with VAR=value, see Parameter Values section below)"
-	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
+	@echo "  DEPLOYMENT_MODE  Deployment mode (default: $(DEPLOYMENT_MODE))"
 	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
 	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
 	@echo "  MAKE_NO_PRINT    Suppress directory printing in recursive make (default: $(MAKE_NO_PRINT))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
-	@echo "  SINGLE_PROCESS   Enable single-process deployment (default: $(SINGLE_PROCESS))"
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
@@ -551,12 +549,12 @@ help:
 	@echo "  VERUS_DIR        Path to Verus installation (default: $(VERUS_DIR))"
 	@echo ""
 	@echo "Parameter Values"
+	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
 	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
 	@echo "  TARGET          x86"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
-	@echo "  L2_VM           yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
 
 # Verifies all Verus-annotated crates.
@@ -790,9 +788,9 @@ run-unit-tests: test-host-rlibs
 endif
 
 # Determine the test configuration file based on deployment mode.
-ifeq ($(SINGLE_PROCESS),yes)
+ifneq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 NANVIX_TEST_CONFIG := test/test-single_process.toml
-else ifeq ($(L2_VM),yes)
+else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml
 else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
