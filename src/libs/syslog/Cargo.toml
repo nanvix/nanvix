@@ -20,7 +20,7 @@ sys = { workspace = true, features = ["kcall"], optional = true }
 syslog-macros = { workspace = true }
 
 [features]
-default = ["dep:cfg-if", "dep:sys", "error"]
+default = ["dep:cfg-if", "dep:sys"]
 # Enables the use of the Rust standard library.
 std = ["dep:log", "dep:flexi_logger"]
 # Enables this crate to be used as a dependency of the Rust standard library.
