@@ -21,7 +21,6 @@ linuxd = { workspace = true, optional = true }
 log = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox-cache = { workspace = true }
-nanvix-terminal = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
@@ -34,19 +33,16 @@ default = ["microvm"]
 single-process = [
     "linuxd",
     "nanvix-sandbox-cache/single-process",
-    "nanvix-terminal/single-process",
 ]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",
     "nanvix-sandbox-cache/hyperlight",
-    "nanvix-terminal/hyperlight",
 ]
 microvm = [
     "config/microvm",
     "uservm/microvm",
     "nanvix-sandbox-cache/microvm",
-    "nanvix-terminal/microvm",
 ]
 
 [lints]
