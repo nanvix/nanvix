@@ -42,6 +42,7 @@ COPY --from=source /opt/nanvix/libexec /opt/nanvix/libexec
 COPY --from=source /opt/nanvix/include /opt/nanvix/include
 COPY --from=source /opt/nanvix/share /opt/nanvix/share
 COPY --from=source /opt/nanvix/i686-nanvix /opt/nanvix/i686-nanvix
+COPY --from=source /opt/nanvix/x86_64-nanvix /opt/nanvix/x86_64-nanvix
 COPY --from=source /opt/nanvix/version /opt/nanvix/version
 
 # Copy custom Rust toolchain (nanvix-x86) from source.
@@ -90,6 +91,9 @@ ENV LD_LIBRARY_PATH=/opt/nanvix/lib
 RUN i686-nanvix-gcc --version && \
     i686-nanvix-g++ --version && \
     i686-nanvix-gfortran --version && \
+    x86_64-nanvix-gcc --version && \
+    x86_64-nanvix-g++ --version && \
+    x86_64-nanvix-gfortran --version && \
     rustc --version
 
 WORKDIR /workspace
