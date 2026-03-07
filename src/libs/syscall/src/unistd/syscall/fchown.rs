@@ -59,7 +59,7 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, owner, group);
-        return Ok(());
+        Ok(())
     }
 
     // Forward to linuxd via IPC.

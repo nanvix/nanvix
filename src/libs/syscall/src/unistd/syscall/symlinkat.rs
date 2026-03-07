@@ -71,10 +71,10 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
     // In standalone mode, reject non-VFS paths (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
+        Err(Error::new(
             ErrorCode::OperationNotSupported,
             "symlinkat not available in standalone mode",
-        ));
+        ))
     }
 
     // Forward to linuxd via IPC.

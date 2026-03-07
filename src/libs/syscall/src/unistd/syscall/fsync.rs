@@ -57,7 +57,7 @@ pub fn fsync(fd: c_int) -> Result<(), Error> {
     #[cfg(feature = "standalone")]
     {
         let _ = fd;
-        return Ok(());
+        Ok(())
     }
 
     // Forward to linuxd via IPC.
