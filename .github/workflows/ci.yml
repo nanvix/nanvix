@@ -15,6 +15,10 @@ on:
     branches:
       - "dev"
 
+  merge_group:
+    types:
+      - "checks_requested"
+
   push:
     branches:
       - "dev"
@@ -33,6 +37,10 @@ jobs:
   # ==========================================================================================
 
   precheck:
+    # The merge queue already ensures the branch is up-to-date, so skip this
+    # check for merge_group events to avoid false negatives from the merge
+    # commit detection in the reusable workflow.
+    if: github.event_name != 'merge_group'
     uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
     secrets: inherit
 
@@ -52,17 +60,21 @@ jobs:
       contents: read
 
     # Only run the CI for:
+    # - Merge queue validation runs.
     # - Non-merge pushes to 'dev'.
     # - Non-draft PRs.
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -113,14 +125,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -157,14 +172,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -237,14 +255,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -392,14 +413,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -505,14 +529,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
@@ -694,14 +721,17 @@ jobs:
       contents: read
 
     if: |
-      github.repository == 'nanvix/nanvix' &&
-      needs.precheck.outputs.up_to_date == 'true' && (
-        github.event_name != 'push' ||
-        github.event.head_commit == null ||
-        !startsWith(github.event.head_commit.message, 'Merge ')
-      ) && (
-        github.event_name != 'pull_request' ||
-        !github.event.pull_request.draft
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
       )
 
     steps:
