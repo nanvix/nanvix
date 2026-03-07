@@ -24,19 +24,19 @@ use ::control_plane_api::{
     NanvixdControlMessage,
 };
 use ::linuxd::LinuxDaemon as EmbeddedLinuxd;
-use ::std::mem;
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
+use ::std::collections::HashMap;
 use ::syscomm::{
     SocketListener,
     SocketStream,
     SocketType,
     UnboundSocket,
     WriteAll,
-};
-use ::log::{
-    debug,
-    error,
-    trace,
-    warn,
 };
 use ::tokio::{
     runtime::Handle,
@@ -62,6 +62,9 @@ struct LinuxDaemonInner {
     linuxd_task: JoinHandle<Result<()>>,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
+    /// Set of gateway IDs for which a `GatewayReady` notification has already been received but not
+    /// yet claimed by the corresponding caller.
+    pending_gateway_ready: HashMap<u32, usize>,
 }
 
 ///
@@ -185,8 +188,45 @@ impl LinuxDaemon {
             inner: Mutex::new(Some(LinuxDaemonInner {
                 linuxd_task,
                 control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
             })),
         })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for a `GatewayReady` notification from linuxd on the control-plane stream. This
+    /// replaces the previous busy-poll mechanism and provides event-driven synchronization.
+    ///
+    /// # Parameters
+    ///
+    /// - `expected_gateway_id`: Identifier of the User VM whose `GatewayReady` is expected.
+    /// - `gateway_timeout`: Maximum duration to wait for the notification.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `Ok(())`. On failure or timeout, returns an error.
+    ///
+    pub async fn wait_for_gateway_ready(
+        &self,
+        expected_gateway_id: u32,
+        gateway_timeout: ::tokio::time::Duration,
+    ) -> Result<()> {
+        let mut locked_inner = self.inner.lock().await;
+        let inner: &mut LinuxDaemonInner = locked_inner.as_mut().ok_or_else(|| {
+            let reason: &str = "inner state already taken";
+            error!("wait_for_gateway_ready(): {reason}");
+            anyhow::anyhow!("{reason}")
+        })?;
+
+        crate::sandbox::gateway_ready::wait_for_gateway_ready(
+            &mut inner.control_plane_stream,
+            &mut inner.pending_gateway_ready,
+            expected_gateway_id,
+            gateway_timeout,
+        )
+        .await
     }
 
     ///
@@ -206,6 +246,7 @@ impl LinuxDaemon {
         let Some(LinuxDaemonInner {
             mut control_plane_stream,
             linuxd_task,
+            pending_gateway_ready: _,
         }) = self.inner.lock().await.take()
         else {
             warn!("shutdown(): inner state already taken, skipping shutdown");
@@ -213,10 +254,10 @@ impl LinuxDaemon {
         };
 
         // Prepare shutdown message.
-        let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
+        let msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] = {
             let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
-            let mut msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] =
-                [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+            let mut msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] =
+                [0u8; NanvixdControlMessage::WIRE_SIZE];
             msg.to_bytes(&mut msg_bytes);
             msg_bytes
         };
@@ -240,6 +281,45 @@ impl LinuxDaemon {
             Err(elapsed) => {
                 warn!("shutdown(): timed-out waiting for linuxd to shutdown (elapsed={elapsed:?})");
             },
+        }
+    }
+
+    /// Reproduces the old buggy behavior that discards non-matching `GatewayReady` messages
+    /// instead of buffering them. Used only by regression tests to prove the fix is necessary.
+    #[cfg(test)]
+    async fn wait_for_gateway_ready_no_buffer(
+        &self,
+        expected_gateway_id: u32,
+        gateway_timeout: ::tokio::time::Duration,
+    ) -> Result<()> {
+        let mut locked_inner = self.inner.lock().await;
+        let inner: &mut LinuxDaemonInner = locked_inner
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("inner state already taken"))?;
+
+        crate::sandbox::gateway_ready::wait_for_gateway_ready_no_buffer(
+            &mut inner.control_plane_stream,
+            expected_gateway_id,
+            gateway_timeout,
+        )
+        .await
+    }
+
+    /// Creates a `LinuxDaemon` backed by a no-op task and the given socket stream. This allows
+    /// unit tests to exercise `wait_for_gateway_ready` without spawning a real linuxd.
+    #[cfg(test)]
+    fn new_for_test(control_plane_stream: SocketStream) -> Self {
+        // Spawn a trivial task that sleeps forever so `LinuxDaemonInner` has a valid handle.
+        let linuxd_task: JoinHandle<Result<()>> = task::spawn(async {
+            ::tokio::time::sleep(::tokio::time::Duration::from_secs(3600)).await;
+            Ok(())
+        });
+        Self {
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                linuxd_task,
+                control_plane_stream,
+                pending_gateway_ready: HashMap::new(),
+            })),
         }
     }
 }
