@@ -5,30 +5,27 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use super::util::page_chunk_size;
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::{
+        ReadRequest,
+        ReadResponse,
+    },
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::{
     sys_types::c_size_t,
     unistd::STDIN_FILENO,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    super::util::page_chunk_size,
-    crate::{
-        unistd::message::{
-            ReadRequest,
-            ReadResponse,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -38,7 +35,7 @@ use {
 ///
 /// # Description
 ///
-/// Reads a single page-aligned chunk from a file descriptor via linuxd. Sends a ReadRequest,
+/// Reads a single page-aligned chunk from a file descriptor via IKC. Sends a ReadRequest,
 /// pulls the chunk data, and receives the ReadResponse.
 ///
 /// # Parameters
@@ -49,10 +46,9 @@ use {
 ///
 /// # Returns
 ///
-/// Upon successful completion, the number of bytes read by linuxd is returned. Otherwise, an
+/// Upon successful completion, the number of bytes read is returned. Otherwise, an
 /// error is returned.
 ///
-#[cfg(not(feature = "standalone"))]
 fn read_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
@@ -177,24 +173,22 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         }
     }
 
-    // In standalone mode, non-VFS reads are not supported.
+    // In standalone mode, route stdin through IKC and reject other file descriptors.
     #[cfg(feature = "standalone")]
     {
         if fd == STDIN_FILENO {
-            return Ok(0); // EOF
+            return read_via_ikc(fd, buffer);
         }
         Err(Error::new(ErrorCode::OperationNotSupported, "read not supported in standalone mode"))
     }
 
     // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]
-    read_linuxd(fd, buffer)
+    read_via_ikc(fd, buffer)
 }
 
-/// Forwards a `read` request to linuxd via IPC, splitting the buffer into
-/// page-aligned chunks.
-#[cfg(not(feature = "standalone"))]
-fn read_linuxd(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
+/// Forwards a `read` request via IKC, splitting the buffer into page-aligned chunks.
+fn read_via_ikc(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let mut total_read: c_size_t = 0;
@@ -215,7 +209,7 @@ fn read_linuxd(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Err
         total_read += count;
         offset += count as usize;
 
-        // Short read: linuxd returned fewer bytes than the chunk size.
+        // Short read: fewer bytes returned than the chunk size.
         if (count as usize) < chunk_size {
             break;
         }
