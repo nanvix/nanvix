@@ -127,9 +127,15 @@ RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MOD
 # File format for executables.
 export EXEC_FORMAT := elf
 # Libraries
+ifeq ($(TARGET),x86_64)
+export LIBC := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libc.a
+export LIBM := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libm.a
+export LIBCXX := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libstdc++.a
+else
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
+endif
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 
 # Binaries.
@@ -164,8 +170,13 @@ export NANVIX_MACHINE := $(MACHINE)
 #===================================================================================================
 
 # Tools
+ifeq ($(TARGET),x86_64)
+export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/x86_64-nanvix-gcc
+export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/x86_64-nanvix-g++
+else
 export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
 export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
+endif
 
 # SCCACHE integration for C/C++ compilation (optional)
 # Wrap every compiler entrypoint exactly once so both host and cross builds
@@ -186,7 +197,11 @@ endif
 
 # C Compiler Options
 export NANVIX_CFLAGS := -std=c17
+ifeq ($(TARGET),x86_64)
+export NANVIX_CFLAGS += -m64 -march=x86-64
+else
 export NANVIX_CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
+endif
 export NANVIX_CFLAGS += -Wall -Wextra -Werror
 export NANVIX_CFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
 export NANVIX_CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
@@ -199,7 +214,11 @@ export NANVIX_CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # C++ Compiler Options
 export NANVIX_CXXFLAGS := -std=c++17
+ifeq ($(TARGET),x86_64)
+export NANVIX_CXXFLAGS += -m64 -march=x86-64
+else
 export NANVIX_CXXFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
+endif
 export NANVIX_CXXFLAGS += -Wall -Wextra -Werror
 export NANVIX_CXXFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
 export NANVIX_CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
@@ -551,7 +570,7 @@ help:
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
 	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
-	@echo "  TARGET          x86"
+	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
@@ -787,13 +806,21 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 run-unit-tests: test-host-rlibs
 endif
 
-# Determine the test configuration file based on deployment mode.
+# Determine the test configuration file based on deployment mode and architecture.
 ifneq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-single_process-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-single_process.toml
+endif
 else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml
 else
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-multi_process-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
+endif
 endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf

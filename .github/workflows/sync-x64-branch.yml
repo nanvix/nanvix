@@ -51,7 +51,7 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         echo "Merging origin/dev into feature-kernel-x64..."
-        if ! git merge origin/dev --no-edit; then
+        if ! git merge origin/dev --no-edit -X theirs; then
           echo "::error::Merge conflict: dev cannot be cleanly merged into feature-kernel-x64. Manual resolution required."
           git merge --abort
           exit 1
