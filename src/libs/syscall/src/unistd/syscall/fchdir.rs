@@ -40,12 +40,15 @@ use {
 pub fn fchdir(fd: c_int) -> Result<(), Error> {
     ::syslog::trace!("fchdir(): fd={:?}", fd);
 
-    // VFS file descriptors are not directory handles — fchdir is not applicable.
+    // Route to VFS if this is a VFS file descriptor.
     #[cfg(feature = "memfs")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            ::syslog::error!("fchdir(): fchdir not supported on VFS fd (fd={fd})");
-            return Err(Error::new(ErrorCode::InvalidArgument, "fchdir on VFS fd not supported"));
+            return ::nvx::vfs::fd::vfs_fchdir(fd).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("fchdir(): VFS fchdir failed (fd={fd}, error={e})");
+                Error::new(code, "vfs fchdir failed")
+            });
         }
     }
 
