@@ -1092,25 +1092,83 @@ mod tests {
         Ok(())
     }
 
+    /// MSR indices of volatile registers whose values may change between consecutive
+    /// reads even without guest execution (hardware counters, timers, energy meters).
+    /// These are excluded from the byte-for-byte round-trip comparison.
+    const VOLATILE_MSR_INDICES: &[u32] = &[
+        0x0010, // IA32_TSC
+        0x0034, // SMI_COUNT
+        0x00E7, // IA32_MPERF
+        0x00E8, // IA32_APERF
+        0x0198, // IA32_PERF_STATUS
+        0x0611, // PKG_ENERGY_STATUS
+        0x0613, // PKG_PERF_STATUS
+        0x0619, // DRAM_ENERGY_STATUS
+        0x061B, // DRAM_PERF_STATUS
+    ];
+
+    /// Zeroes out the `data` field of every MSR entry whose index is in
+    /// [`VOLATILE_MSR_INDICES`]. This allows two snapshots to be compared
+    /// byte-for-byte even when volatile MSR values have changed between reads.
+    fn zero_volatile_msr_values(state: &mut msr::MsrsState) {
+        let header_size: usize = mem::size_of::<::kvm_bindings::kvm_msrs>();
+        let entry_size: usize = mem::size_of::<kvm_msr_entry>();
+
+        if state.bytes.len() < header_size {
+            return;
+        }
+
+        let nmsrs: usize = u32::from_ne_bytes([
+            state.bytes[0],
+            state.bytes[1],
+            state.bytes[2],
+            state.bytes[3],
+        ]) as usize;
+
+        for i in 0..nmsrs {
+            let entry_offset: usize = header_size + i * entry_size;
+            if entry_offset + entry_size > state.bytes.len() {
+                break;
+            }
+            // kvm_msr_entry layout: index (u32), reserved (u32), data (u64).
+            let index: u32 = u32::from_ne_bytes([
+                state.bytes[entry_offset],
+                state.bytes[entry_offset + 1],
+                state.bytes[entry_offset + 2],
+                state.bytes[entry_offset + 3],
+            ]);
+            if VOLATILE_MSR_INDICES.contains(&index) {
+                // Zero out the data field (bytes 8..16 within the entry).
+                let data_offset: usize = entry_offset + 8;
+                state.bytes[data_offset..data_offset + 8].fill(0);
+            }
+        }
+    }
+
     /// Verifies that a save → load → save round trip produces identical vCPU state.
     #[test]
     fn save_load_round_trip() -> AnyResult<()> {
         let (kvm, _vm, mut vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
 
         // Save the initial state.
-        let state_before: VirtualProcessorState =
+        let mut state_before: VirtualProcessorState =
             vcpu.save_state(&kvm).expect("first save_state failed");
 
         // Load it back.
         vcpu.load_state(&state_before).expect("load_state failed");
         assert!(vcpu.is_online(), "vCPU should be online after load_state");
 
-        // Save again and compare the two snapshots field-by-field.
-        let state_after: VirtualProcessorState =
+        // Save again and compare the two snapshots.
+        let mut state_after: VirtualProcessorState =
             vcpu.save_state(&kvm).expect("second save_state failed");
 
+        // Zero out volatile MSR values (e.g. IA32_TSC, IA32_MPERF) before comparing,
+        // as they are updated by hardware/KVM between consecutive reads.
+        zero_volatile_msr_values(&mut state_before.msrs_state);
+        zero_volatile_msr_values(&mut state_after.msrs_state);
+
         // Serialize both snapshots and compare bytes — this covers all fields including
-        // the opaque CPUID, FPU, and MSR byte vectors.
+        // the opaque CPUID, FPU, and MSR byte vectors (with volatile MSRs neutralized).
         let bytes_before: Vec<u8> =
             ::serde_cbor::to_vec(&state_before).expect("serialization of state_before failed");
         let bytes_after: Vec<u8> =

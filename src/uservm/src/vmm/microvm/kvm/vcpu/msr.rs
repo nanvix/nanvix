@@ -241,7 +241,7 @@ pub struct Msrs;
 #[derive(Serialize, Deserialize)]
 pub struct MsrsState {
     /// Serialized MSRs.
-    bytes: Vec<u8>,
+    pub(super) bytes: Vec<u8>,
 }
 
 //==================================================================================================
