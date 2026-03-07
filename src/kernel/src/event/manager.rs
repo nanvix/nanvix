@@ -943,7 +943,7 @@ fn interrupt_handler(intnum: InterruptNumber) {
 
 fn do_exception_handler(
     info: &ExceptionInformation,
-    ctx: &ContextInformation,
+    ctx: &mut ContextInformation,
 ) -> Result<(), SleepError> {
     trace!("info={:?}", info);
 
@@ -968,6 +968,18 @@ fn do_exception_handler(
         return Ok(());
     }
 
+    // Try to deliver the exception as a POSIX signal.
+    if let Some(signum) = ::sys::signal::exception_to_signal(info.num()) {
+        // SAFETY: we are the only thread running.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
+        if pm.deliver_exception_signal(pid, signum, ctx) {
+            // Signal handler was set up; when we return, iretq will jump to the handler.
+            return Ok(());
+        }
+        // No user handler registered — fall through to default behaviour (terminate).
+    }
+
     // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
     let resume: Condvar = unsafe {
         EventManager::get()
@@ -982,7 +994,7 @@ fn do_exception_handler(
     unsafe { resume.wait(None) }
 }
 
-fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
+fn exception_handler(info: &ExceptionInformation, ctx: &mut ContextInformation) {
     if let Err(sleep_error) = do_exception_handler(info, ctx) {
         let status: ErrorCode = match sleep_error {
             SleepError::Generic(generic_error) => {

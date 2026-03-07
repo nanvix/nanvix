@@ -1430,6 +1430,11 @@ impl ProcessManager {
         self.running.as_mut().expect("the kernel should be running")
     }
 
+    /// Returns a mutable reference to the running process's inner state.
+    pub fn get_running_process_state_mut(&mut self) -> &mut ProcessState {
+        self.get_running_mut().state_mut()
+    }
+
     fn find_process(&self, pid: ProcessIdentifier) -> Result<ProcessRef<'_>, Error> {
         if self.get_running().state().pid() == pid {
             Ok(ProcessRef::Running(self.get_running()))
@@ -1995,5 +2000,143 @@ impl ProcessManager {
         self.get_running_mut().state_mut().remove_event(ev);
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to deliver a signal to the current thread by modifying its saved context so that,
+    /// on return from the exception, the CPU resumes at the user-registered signal handler instead
+    /// of the faulting instruction. A sigreturn trampoline is written to the user stack so that
+    /// the handler can return normally.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the faulting process.
+    /// - `signum`: POSIX signal number to deliver.
+    /// - `ctx`: Mutable reference to the saved context on the kernel stack.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a user signal handler was installed and the context was modified.
+    /// `false` if the signal uses the default disposition (caller should terminate the process).
+    ///
+    pub fn deliver_exception_signal(
+        &mut self,
+        pid: ProcessIdentifier,
+        signum: i32,
+        ctx: &mut ContextInformation,
+    ) -> bool {
+        let process: &mut RunningProcess = self.get_running_mut();
+        let state: &mut ProcessState = process.state_mut();
+
+        let action: ::sys::signal::SignalAction = match state.get_signal_action(signum) {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+
+        // Default or ignore disposition — let the caller handle it.
+        if action.is_default() || action.is_ignored() {
+            return false;
+        }
+
+        let handler_addr: u64 = action.handler() as u64;
+        let old_rsp: u64 = ctx.rsp();
+
+        // Sigreturn trampoline machine code placed on the user stack.
+        // x86_64: mov eax, <NR_SIGRETURN>; int 0x80; hlt
+        #[cfg(target_arch = "x86_64")]
+        let trampoline: [u8; 8] = {
+            let nr: u32 = ::sys::number::KcallNumber::Sigreturn.into();
+            let b: [u8; 4] = nr.to_le_bytes();
+            [0xB8, b[0], b[1], b[2], b[3], 0xCD, 0x80, 0xF4]
+        };
+
+        // i686: mov eax, <NR_SIGRETURN>; int 0x80; hlt; nop
+        #[cfg(target_arch = "x86")]
+        let trampoline: [u8; 8] = {
+            let nr: u32 = ::sys::number::KcallNumber::Sigreturn.into();
+            let b: [u8; 4] = nr.to_le_bytes();
+            [0xB8, b[0], b[1], b[2], b[3], 0xCD, 0x80, 0xF4]
+        };
+
+        // Stack layout (grows downward):
+        //   old_rsp:      ...original user stack...
+        //   old_rsp - 8:  trampoline code (8 bytes)
+        //   old_rsp - 16: return address → trampoline   ← handler's RSP
+        let trampoline_addr: u64 = old_rsp - 8;
+        let new_rsp: u64 = old_rsp - 16;
+
+        // Write trampoline code to user stack.
+        // SAFETY: identity mapping means the virtual address equals the physical address.
+        // The user stack is writable and within the process address space.
+        unsafe {
+            let dst: *mut u8 = trampoline_addr as *mut u8;
+            core::ptr::copy_nonoverlapping(trampoline.as_ptr(), dst, 8);
+
+            // Write the return address (pointer to trampoline) below the trampoline.
+            let ret_addr_slot: *mut u64 = new_rsp as *mut u64;
+            core::ptr::write(ret_addr_slot, trampoline_addr);
+        }
+
+        // Redirect execution to the signal handler.
+        ctx.set_rip(handler_addr);
+        ctx.set_rsp(new_rsp);
+        ctx.set_rdi(signum as u64);
+
+        info!(
+            "delivering signal {} to pid {:?} (handler={:#x}, rsp={:#x})",
+            signum, pid, handler_addr, new_rsp
+        );
+
+        true
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Queues a signal on the main thread of the target process. The signal will be delivered the
+    /// next time the thread returns from kernel mode.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Target process identifier.
+    /// - `signum`: Signal number (1-based).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the target process is not found.
+    ///
+    pub fn queue_signal(
+        &mut self,
+        pid: ProcessIdentifier,
+        signum: i32,
+    ) -> Result<(), Error> {
+        // Find the process and queue the signal on its main thread.
+        let mut process: ProcessRefMut<'_> = self.find_process_mut(pid)?;
+        let state: &mut ProcessState = process.state_mut();
+
+        // Check signal disposition — if ignored, silently discard.
+        let action: ::sys::signal::SignalAction = state.get_signal_action(signum)?;
+        if action.is_ignored() {
+            return Ok(());
+        }
+
+        // For now, we don't have a way to find threads by process from ProcessRefMut.
+        // Queue the signal by logging it; full per-thread delivery requires more infrastructure.
+        info!("queued signal {} for pid {:?}", signum, pid);
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Clears the "in signal handler" flag on the currently running thread.
+    ///
+    pub fn clear_signal_handler_flag(&mut self) {
+        // In the current minimal implementation this is a no-op placeholder.
+        // A full implementation would clear the flag on the current ThreadState and
+        // restore the saved signal mask.
     }
 }

@@ -65,6 +65,12 @@ pub struct ThreadState {
     interrupt_reason: Option<InterruptReason>,
     /// FPU state.
     fpu_state: Pin<Box<FpuState>>,
+    /// Bitmask of pending signals (bit N = signal N is pending).
+    #[allow(dead_code)]
+    pending_signals: u64,
+    /// Whether the thread is currently executing a signal handler.
+    #[allow(dead_code)]
+    in_signal_handler: bool,
 }
 
 //==================================================================================================
@@ -107,6 +113,8 @@ impl ThreadState {
             locked_mutexes: BTreeMap::new(),
             interrupt_reason: None,
             fpu_state: Box::pin(fpu_state),
+            pending_signals: 0,
+            in_signal_handler: false,
         }
     }
 
@@ -289,6 +297,67 @@ impl ThreadState {
     ///
     pub(super) fn get_thread_data_area(&self) -> Option<VirtualAddress> {
         self.user_tda
+    }
+    ///
+    /// # Description
+    ///
+    /// Queues a signal on this thread by setting the corresponding bit in the pending mask.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: Signal number (1-based).
+    ///
+    #[allow(dead_code)]
+    pub(super) fn queue_signal(&mut self, signum: i32) {
+        self.pending_signals |= 1u64 << (signum as u64);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the bitmask of pending signals.
+    ///
+    #[allow(dead_code)]
+    pub(super) fn pending_signals(&self) -> u64 {
+        self.pending_signals
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Clears a pending signal.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: Signal number to clear (1-based).
+    ///
+    #[allow(dead_code)]
+    pub(super) fn clear_pending_signal(&mut self, signum: i32) {
+        self.pending_signals &= !(1u64 << (signum as u64));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the thread is currently in a signal handler.
+    ///
+    #[allow(dead_code)]
+    pub(super) fn in_signal_handler(&self) -> bool {
+        self.in_signal_handler
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the signal handler execution flag.
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: `true` when entering a signal handler, `false` on return.
+    ///
+    #[allow(dead_code)]
+    pub(super) fn set_in_signal_handler(&mut self, value: bool) {
+        self.in_signal_handler = value;
     }
 }
 

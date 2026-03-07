@@ -69,6 +69,10 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    signal::{
+        SignalAction,
+        NSIG,
+    },
     ExitStatus,
 };
 
@@ -202,6 +206,8 @@ pub struct ProcessState {
     conditions: BTreeMap<ConditionAddress, Condvar>,
     /// Pending exit status set when `exit()` is called with threads still running.
     pending_exit_status: Option<ExitStatus>,
+    /// Per-signal dispositions (handlers, masks, flags).
+    signal_handlers: [SignalAction; NSIG],
 }
 
 impl ProcessState {
@@ -217,6 +223,7 @@ impl ProcessState {
             mutexes: BTreeMap::new(),
             conditions: BTreeMap::new(),
             pending_exit_status: None,
+            signal_handlers: [SignalAction::default(); NSIG],
         }
     }
 
@@ -528,6 +535,64 @@ impl ProcessState {
             .collect();
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the signal action registered for the given signal number.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: Signal number (1-based, must be < [`NSIG`]).
+    ///
+    /// # Returns
+    ///
+    /// The [`SignalAction`] for the signal, or an error if `signum` is out of range.
+    ///
+    pub fn get_signal_action(&self, signum: i32) -> Result<SignalAction, Error> {
+        if !::sys::signal::is_valid_signal(signum) {
+            let reason: &'static str = "invalid signal number";
+            error!("{:?} (signum={})", reason, signum);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        Ok(self.signal_handlers[signum as usize])
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Registers a signal action for the given signal number.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: Signal number (1-based, must be < [`NSIG`]).
+    /// - `action`: The new signal action to install.
+    ///
+    /// # Returns
+    ///
+    /// The previous [`SignalAction`] for the signal, or an error if `signum` is invalid or
+    /// the signal cannot be caught (e.g., `SIGKILL`).
+    ///
+    pub fn set_signal_action(
+        &mut self,
+        signum: i32,
+        action: SignalAction,
+    ) -> Result<SignalAction, Error> {
+        if !::sys::signal::is_valid_signal(signum) {
+            let reason: &'static str = "invalid signal number";
+            error!("{:?} (signum={})", reason, signum);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        // SIGKILL cannot be caught or ignored.
+        if signum == ::sys::signal::SIGKILL {
+            let reason: &'static str = "cannot catch or ignore SIGKILL";
+            error!("{:?}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        let old: SignalAction = self.signal_handlers[signum as usize];
+        self.signal_handlers[signum as usize] = action;
+        Ok(old)
     }
 
     fn get_pmio_mut(&mut self, port_number: u16) -> Result<&mut AnyIoPort, Error> {

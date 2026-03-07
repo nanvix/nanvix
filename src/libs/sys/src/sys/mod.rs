@@ -30,5 +30,8 @@ pub mod number;
 /// Process management.
 pub mod pm;
 
+/// Signal handling constants and types.
+pub mod signal;
+
 /// Time management.
 pub mod time;

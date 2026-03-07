@@ -23,7 +23,7 @@ use ::sys::error::{
 ///
 /// A type that represents an exception handler.
 ///
-pub type ExceptionHandler = fn(&ExceptionInformation, &ContextInformation);
+pub type ExceptionHandler = fn(&ExceptionInformation, &mut ContextInformation);
 
 //==================================================================================================
 // Structures
@@ -162,7 +162,10 @@ pub unsafe extern "C" fn do_exception(
     excp: *const ExceptionInformation,
 ) {
     let excp: &ExceptionInformation = &*excp;
-    let ctx: &ContextInformation = &*ctx;
+    // SAFETY: the pointer comes from hooks.S and refers to the saved register block on the kernel
+    // stack. We are the only consumer; casting to &mut is safe so that signal delivery can modify
+    // the context before returning to user space.
+    let ctx: &mut ContextInformation = &mut *(ctx as *mut ContextInformation);
 
     match HANDLER {
         Some(handler) => handler(excp, ctx),

@@ -189,6 +189,13 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         #[cfg(not(feature = "microvm"))]
         KcallNumber::Snapshot => KcallResult::Error(ErrorCode::OperationNotSupported.into()),
 
+        // Handle `sigaction()` locally.
+        KcallNumber::Sigaction => pm::do_sigaction(pid, arg0, arg1, arg2),
+        // Handle `kill()` locally.
+        KcallNumber::Kill => pm::do_kill(pid, arg0, arg1),
+        // Handle `sigreturn()` locally.
+        KcallNumber::Sigreturn => pm::do_sigreturn(pid),
+
         // Unknown kernel call.
         _ => {
             error!("invalid kernel call (number={})", number);

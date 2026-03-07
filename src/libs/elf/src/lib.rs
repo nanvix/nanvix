@@ -61,6 +61,17 @@ use ::goblin::{
             R_386_TLS_LE_32,
             R_386_TLS_TPOFF,
             R_386_TLS_TPOFF32,
+            R_X86_64_32,
+            R_X86_64_32S,
+            R_X86_64_64,
+            R_X86_64_COPY,
+            R_X86_64_GLOB_DAT,
+            R_X86_64_IRELATIVE,
+            R_X86_64_JUMP_SLOT,
+            R_X86_64_NONE,
+            R_X86_64_PC32,
+            R_X86_64_PLT32,
+            R_X86_64_RELATIVE,
         },
         section_header::SHN_UNDEF,
         sym::{
@@ -76,6 +87,10 @@ use ::goblin::{
             Rel,
         },
         sym::Sym,
+    },
+    elf64::{
+        reloc::Rela,
+        sym::Sym as Sym64,
     },
 };
 use ::num_enum::{
@@ -599,5 +614,334 @@ impl RelocationEntry {
     ///
     pub fn offset(&self) -> u32 {
         self.0.r_offset
+    }
+}
+
+//==================================================================================================
+// x86_64 Symbol Table
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A structure that represents a 64-bit symbol table in an ELF file.
+///
+pub struct SymbolTable64 {
+    /// Pointer to the symbol table.
+    ptr: *mut Symbol64,
+    /// Length of the symbol table.
+    length: usize,
+}
+
+unsafe impl Send for SymbolTable64 {}
+unsafe impl Sync for SymbolTable64 {}
+
+impl SymbolTable64 {
+    ///
+    /// # Description
+    ///
+    /// Creates a new 64-bit symbol table from a pointer and a length.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: A pointer to the symbol table.
+    /// - `len`: The length of the symbol table.
+    ///
+    /// # Returns
+    ///
+    /// A new `SymbolTable64` instance.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because does not perform any checks on whether the pointer is valid
+    /// or not.
+    ///
+    /// This function is safe to use if all the following conditions are met:
+    /// - `ptr` points to a valid symbol table of `len` symbols.
+    ///
+    pub unsafe fn from_raw_parts(ptr: *mut Symbol64, len: usize) -> Self {
+        SymbolTable64 { ptr, length: len }
+    }
+}
+
+impl Deref for SymbolTable64 {
+    type Target = [Symbol64];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::slice::from_raw_parts(self.ptr, self.length) }
+    }
+}
+
+impl DerefMut for SymbolTable64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr, self.length) }
+    }
+}
+
+//==================================================================================================
+// x86_64 Symbol
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A structure that represents a 64-bit symbol in an ELF file.
+///
+#[repr(C)]
+#[derive(Debug)]
+pub struct Symbol64(Sym64);
+
+::static_assert::assert_eq_size!(Symbol64, mem::size_of::<Sym64>());
+::static_assert::assert_eq_align!(Symbol64, mem::align_of::<Sym64>());
+
+impl Symbol64 {
+    ///
+    /// # Description
+    ///
+    /// Get the offset of the symbol's name within the associated string table.
+    ///
+    /// # Returns
+    ///
+    /// The offset of the symbol's name within the associated string table.
+    ///
+    pub fn name_offset(&self) -> usize {
+        self.0.st_name as usize
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the type of the symbol.
+    ///
+    /// # Returns
+    ///
+    /// The type of the symbol.
+    ///
+    pub fn typ(&self) -> SymbolType {
+        st_type(self.0.st_info).into()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the value of the symbol.
+    ///
+    /// # Returns
+    ///
+    /// The value of the symbol.
+    ///
+    pub fn value(&self) -> u64 {
+        self.0.st_value
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the size of the symbol.
+    ///
+    /// # Returns
+    ///
+    /// The size of the symbol.
+    ///
+    pub fn size(&self) -> u64 {
+        self.0.st_size
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests if the symbol is undefined.
+    ///
+    /// # Returns
+    ///
+    /// True if the symbol is undefined, false otherwise.
+    ///
+    pub fn is_undefined(&self) -> bool {
+        self.0.st_shndx as u32 == SHN_UNDEF
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the value of the symbol.
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The new value of the symbol.
+    ///
+    pub fn resolve(&mut self, value: u64) {
+        self.0.st_value = value;
+    }
+}
+
+//==================================================================================================
+// x86_64 Relocation Types
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An enum that represents x86_64 relocation types in an ELF file.
+///
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
+#[repr(u32)]
+pub enum RelocationType64 {
+    /// No relocation.
+    R_X86_64_NONE = R_X86_64_NONE,
+    /// Direct 64-bit.
+    R_X86_64_64 = R_X86_64_64,
+    /// PC relative 32-bit signed.
+    R_X86_64_PC32 = R_X86_64_PC32,
+    /// 32-bit PLT address.
+    R_X86_64_PLT32 = R_X86_64_PLT32,
+    /// Copy symbol at runtime.
+    R_X86_64_COPY = R_X86_64_COPY,
+    /// Create GOT entry.
+    R_X86_64_GLOB_DAT = R_X86_64_GLOB_DAT,
+    /// Create PLT entry.
+    R_X86_64_JUMP_SLOT = R_X86_64_JUMP_SLOT,
+    /// Adjust by program base.
+    R_X86_64_RELATIVE = R_X86_64_RELATIVE,
+    /// Direct 32-bit zero extended.
+    R_X86_64_32 = R_X86_64_32,
+    /// Direct 32-bit sign extended.
+    R_X86_64_32S = R_X86_64_32S,
+    /// Adjust indirectly by program base.
+    R_X86_64_IRELATIVE = R_X86_64_IRELATIVE,
+}
+
+//==================================================================================================
+// x86_64 Relocation Table
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A structure that represents a 64-bit relocation table in an ELF file.
+///
+pub struct RelocationTable64 {
+    /// Pointer to the relocation table.
+    ptr: *mut RelocationEntry64,
+    /// Length of the relocation table.
+    len: usize,
+}
+
+unsafe impl Send for RelocationTable64 {}
+unsafe impl Sync for RelocationTable64 {}
+
+impl RelocationTable64 {
+    ///
+    /// # Description
+    ///
+    /// Creates a new 64-bit relocation table from a pointer and a length.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: A pointer to the relocation table.
+    /// - `len`: The length of the relocation table.
+    ///
+    /// # Returns
+    ///
+    /// A new `RelocationTable64` instance.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because does not perform any checks on whether the pointer is valid
+    /// or not.
+    ///
+    /// This function is safe to use if all the following conditions are met:
+    /// - `ptr` points to a valid relocation table of `len` relocations.
+    ///
+    pub unsafe fn from_raw_parts(ptr: *mut RelocationEntry64, len: usize) -> Self {
+        RelocationTable64 { ptr, len }
+    }
+}
+
+impl Deref for RelocationTable64 {
+    type Target = [RelocationEntry64];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
+    }
+}
+
+impl DerefMut for RelocationTable64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+}
+
+//==================================================================================================
+// x86_64 Relocation Entry
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A structure that represents a 64-bit relocation entry (with addend) in an ELF file.
+///
+#[repr(C)]
+#[derive(Debug)]
+pub struct RelocationEntry64(Rela);
+
+::static_assert::assert_eq_size!(RelocationEntry64, mem::size_of::<Rela>());
+::static_assert::assert_eq_align!(RelocationEntry64, mem::align_of::<Rela>());
+
+impl RelocationEntry64 {
+    ///
+    /// # Description
+    ///
+    /// Get the type of the relocation entry.
+    ///
+    /// # Returns
+    ///
+    /// The type of the relocation entry.
+    ///
+    pub fn typ(&self) -> Result<RelocationType64, Error> {
+        let typ: u32 = ::goblin::elf64::reloc::r_type(self.0.r_info);
+        typ.try_into().map_err(|_error| {
+            let reason: &str = "invalid relocation type";
+            Error::new(ErrorCode::ValueOutOfRange, reason)
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the symbol index of the relocation entry.
+    ///
+    /// # Returns
+    ///
+    /// The symbol index of the relocation entry.
+    ///
+    pub fn symbol_index(&self) -> u32 {
+        ::goblin::elf64::reloc::r_sym(self.0.r_info)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the offset of the relocation entry.
+    ///
+    /// # Returns
+    ///
+    /// The offset of the relocation entry.
+    ///
+    pub fn offset(&self) -> u64 {
+        self.0.r_offset
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the addend of the relocation entry.
+    ///
+    /// # Returns
+    ///
+    /// The addend of the relocation entry.
+    ///
+    pub fn addend(&self) -> i64 {
+        self.0.r_addend
     }
 }

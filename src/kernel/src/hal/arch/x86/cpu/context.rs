@@ -65,6 +65,32 @@ impl ContextInformation {
         }
     }
 
+    /// Returns the instruction pointer.
+    #[allow(dead_code)]
+    pub fn rip(&self) -> u64 {
+        self.eip as u64
+    }
+
+    /// Returns the stack pointer.
+    pub fn rsp(&self) -> u64 {
+        self.esp as u64
+    }
+
+    /// Sets the instruction pointer (for signal delivery).
+    pub fn set_rip(&mut self, val: u64) {
+        unsafe { core::ptr::addr_of_mut!(self.eip).write_unaligned(val as u32) };
+    }
+
+    /// Sets the stack pointer (for signal delivery).
+    pub fn set_rsp(&mut self, val: u64) {
+        unsafe { core::ptr::addr_of_mut!(self.esp).write_unaligned(val as u32) };
+    }
+
+    /// Sets the first argument register (EDI on i686).
+    pub fn set_rdi(&mut self, val: u64) {
+        unsafe { core::ptr::addr_of_mut!(self.edi).write_unaligned(val as u32) };
+    }
+
     ///
     /// # Description
     ///

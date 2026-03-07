@@ -85,6 +85,12 @@ pub enum KcallNumber {
     Pull = KcallNumber::NR_PULL_SYSCALL,
     /// Creates a snapshot of the virtual machine.
     Snapshot = KcallNumber::NR_SNAPSHOT_SYSCALL,
+    /// Registers or queries a signal handler.
+    Sigaction = KcallNumber::NR_SIGACTION_SYSCALL,
+    /// Sends a signal to a process.
+    Kill = KcallNumber::NR_KILL_SYSCALL,
+    /// Returns from a signal handler, restoring the pre-signal context.
+    Sigreturn = KcallNumber::NR_SIGRETURN_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -127,6 +133,9 @@ impl KcallNumber {
     const NR_PUSH_SYSCALL: u32 = 33;
     const NR_PULL_SYSCALL: u32 = 34;
     const NR_SNAPSHOT_SYSCALL: u32 = 35;
+    const NR_SIGACTION_SYSCALL: u32 = 36;
+    const NR_KILL_SYSCALL: u32 = 37;
+    const NR_SIGRETURN_SYSCALL: u32 = 38;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -170,6 +179,9 @@ impl From<u32> for KcallNumber {
             Self::NR_PUSH_SYSCALL => KcallNumber::Push,
             Self::NR_PULL_SYSCALL => KcallNumber::Pull,
             Self::NR_SNAPSHOT_SYSCALL => KcallNumber::Snapshot,
+            Self::NR_SIGACTION_SYSCALL => KcallNumber::Sigaction,
+            Self::NR_KILL_SYSCALL => KcallNumber::Kill,
+            Self::NR_SIGRETURN_SYSCALL => KcallNumber::Sigreturn,
             _ => KcallNumber::Invalid,
         }
     }
@@ -215,6 +227,9 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Push => KcallNumber::NR_PUSH_SYSCALL,
             KcallNumber::Pull => KcallNumber::NR_PULL_SYSCALL,
             KcallNumber::Snapshot => KcallNumber::NR_SNAPSHOT_SYSCALL,
+            KcallNumber::Sigaction => KcallNumber::NR_SIGACTION_SYSCALL,
+            KcallNumber::Kill => KcallNumber::NR_KILL_SYSCALL,
+            KcallNumber::Sigreturn => KcallNumber::NR_SIGRETURN_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

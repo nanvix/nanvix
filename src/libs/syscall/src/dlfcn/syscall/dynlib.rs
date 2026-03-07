@@ -29,14 +29,23 @@ use ::alloc::{
 };
 use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::mem;
+#[cfg(target_arch = "x86")]
 use ::elf::{
     RelocationEntry,
     RelocationTable,
     RelocationType,
-    StringTable,
     Symbol,
     SymbolTable,
 };
+#[cfg(target_arch = "x86_64")]
+use ::elf::{
+    RelocationEntry64,
+    RelocationTable64,
+    RelocationType64,
+    Symbol64,
+    SymbolTable64,
+};
+use ::elf::StringTable;
 use ::goblin::elf::{
     Elf,
     SectionHeader,
@@ -108,13 +117,25 @@ pub struct DynamicLibrary {
     /// Dependencies.
     dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>>,
     /// Dynamic symbols.
+    #[cfg(target_arch = "x86")]
     dynsym: SymbolTable,
+    /// Dynamic symbols.
+    #[cfg(target_arch = "x86_64")]
+    dynsym: SymbolTable64,
     /// Dynamic symbols names.
     dynstr: StringTable,
     /// Relocation table for global functions.
+    #[cfg(target_arch = "x86")]
     dynplt: Option<RelocationTable>,
+    /// Relocation table for global functions.
+    #[cfg(target_arch = "x86_64")]
+    dynplt: Option<RelocationTable64>,
     /// Relocation table for global variables.
+    #[cfg(target_arch = "x86")]
     dynrel: Option<RelocationTable>,
+    /// Relocation table for global variables.
+    #[cfg(target_arch = "x86_64")]
+    dynrel: Option<RelocationTable64>,
 }
 
 impl DynamicLibrary {
@@ -263,7 +284,18 @@ impl DynamicLibrary {
                 }
 
                 // Collect sections.
+                #[cfg(target_arch = "x86")]
                 let dynsym: SymbolTable = match Self::get_dynsym(&section_headers, load_address) {
+                    Some(dynsym) => dynsym,
+                    None => {
+                        let reason: &str = "missing dynamic symbol table";
+                        ::syslog::error!("load(): {}", reason);
+                        return Err(Error::new(ErrorCode::BadFile, reason));
+                    },
+                };
+                #[cfg(target_arch = "x86_64")]
+                let dynsym: SymbolTable64 = match Self::get_dynsym(&section_headers, load_address)
+                {
                     Some(dynsym) => dynsym,
                     None => {
                         let reason: &str = "missing dynamic symbol table";
@@ -279,9 +311,17 @@ impl DynamicLibrary {
                         return Err(Error::new(ErrorCode::BadFile, reason));
                     },
                 };
+                #[cfg(target_arch = "x86")]
                 let dynplt: Option<RelocationTable> =
                     Self::get_dynplt(&section_headers, load_address);
+                #[cfg(target_arch = "x86")]
                 let dynrel: Option<RelocationTable> =
+                    Self::get_dynrel(&section_headers, load_address);
+                #[cfg(target_arch = "x86_64")]
+                let dynplt: Option<RelocationTable64> =
+                    Self::get_dynplt(&section_headers, load_address);
+                #[cfg(target_arch = "x86_64")]
+                let dynrel: Option<RelocationTable64> =
                     Self::get_dynrel(&section_headers, load_address);
 
                 Ok(DynamicLibrary {
@@ -367,7 +407,8 @@ impl DynamicLibrary {
         DlHandle(self.fd.as_raw_fd())
     }
 
-    /// Gets the relocation table for global variables (`.rel.dyn).
+    /// Gets the relocation table for global variables (`.rel.dyn` / `.rela.dyn`).
+    #[cfg(target_arch = "x86")]
     fn get_dynrel(
         section_headers: &BTreeMap<String, SectionHeader>,
         load_address: VirtualAddress,
@@ -386,7 +427,28 @@ impl DynamicLibrary {
         }
     }
 
+    /// Gets the relocation table for global variables (`.rela.dyn`).
+    #[cfg(target_arch = "x86_64")]
+    fn get_dynrel(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+    ) -> Option<RelocationTable64> {
+        if let Some(reladyn_header) = section_headers.get(".rela.dyn") {
+            let len: usize =
+                reladyn_header.sh_size as usize / mem::size_of::<RelocationEntry64>();
+            let ptr: *mut RelocationEntry64 = (load_address.into_raw_value()
+                + reladyn_header.sh_offset as usize)
+                as *mut RelocationEntry64;
+
+            // SAFETY: `ptr` is a valid pointer to a relocation table of `len`.
+            Some(unsafe { RelocationTable64::from_raw_parts(ptr, len) })
+        } else {
+            None
+        }
+    }
+
     /// Gets a mutable reference to the relocation table for global functions (`.rel.plt`).
+    #[cfg(target_arch = "x86")]
     fn get_dynplt(
         section_headers: &BTreeMap<String, SectionHeader>,
         load_address: VirtualAddress,
@@ -399,6 +461,26 @@ impl DynamicLibrary {
 
             // SAFETY: `ptr` is a valid pointer to a relocation table of `len`.
             Some(unsafe { RelocationTable::from_raw_parts(ptr, len) })
+        } else {
+            None
+        }
+    }
+
+    /// Gets the relocation table for global functions (`.rela.plt`).
+    #[cfg(target_arch = "x86_64")]
+    fn get_dynplt(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+    ) -> Option<RelocationTable64> {
+        if let Some(relaplt_header) = section_headers.get(".rela.plt") {
+            let len: usize =
+                relaplt_header.sh_size as usize / mem::size_of::<RelocationEntry64>();
+            let ptr: *mut RelocationEntry64 = (load_address.into_raw_value()
+                + relaplt_header.sh_offset as usize)
+                as *mut RelocationEntry64;
+
+            // SAFETY: `ptr` is a valid pointer to a relocation table of `len`.
+            Some(unsafe { RelocationTable64::from_raw_parts(ptr, len) })
         } else {
             None
         }
@@ -422,6 +504,7 @@ impl DynamicLibrary {
     }
 
     /// Gets a reference to the symbol table (`.dynsym`).
+    #[cfg(target_arch = "x86")]
     fn get_dynsym(
         section_headers: &BTreeMap<String, SectionHeader>,
         load_address: VirtualAddress,
@@ -437,8 +520,42 @@ impl DynamicLibrary {
         }
     }
 
+    /// Gets a reference to the 64-bit symbol table (`.dynsym`).
+    #[cfg(target_arch = "x86_64")]
+    fn get_dynsym(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+    ) -> Option<SymbolTable64> {
+        if let Some(dynsym_header) = section_headers.get(".dynsym") {
+            let len: usize = dynsym_header.sh_size as usize / mem::size_of::<Symbol64>();
+            let ptr: *mut Symbol64 = (load_address.into_raw_value()
+                + dynsym_header.sh_offset as usize) as *mut Symbol64;
+            // SAFETY: `ptr` is a valid pointer to a symbol table of `len`.
+            Some(unsafe { SymbolTable64::from_raw_parts(ptr, len) })
+        } else {
+            None
+        }
+    }
+
     /// Finds a symbol in the dynamic library.
+    #[cfg(target_arch = "x86")]
     fn find(&self, symbol_name: &str) -> Option<&Symbol> {
+        ::syslog::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
+
+        for sym in self.dynsym.iter() {
+            if let Ok(lookup_symbol_name) = self.dynstr.get_name(sym.name_offset()) {
+                if !lookup_symbol_name.is_empty() && lookup_symbol_name == symbol_name {
+                    return Some(sym);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Finds a symbol in the dynamic library.
+    #[cfg(target_arch = "x86_64")]
+    fn find(&self, symbol_name: &str) -> Option<&Symbol64> {
         ::syslog::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
 
         for sym in self.dynsym.iter() {
@@ -488,6 +605,7 @@ impl DynamicLibrary {
         Ok(None)
     }
 
+    #[cfg(target_arch = "x86")]
     fn get_symbol(&self, rel: &RelocationEntry) -> Result<&Symbol, Error> {
         if let Some(sym) = self.dynsym.get(rel.symbol_index() as usize) {
             Ok(sym)
@@ -498,7 +616,39 @@ impl DynamicLibrary {
         }
     }
 
+    #[cfg(target_arch = "x86_64")]
+    fn get_symbol(&self, rel: &RelocationEntry64) -> Result<&Symbol64, Error> {
+        if let Some(sym) = self.dynsym.get(rel.symbol_index() as usize) {
+            Ok(sym)
+        } else {
+            let reason: &str = "invalid symbol index";
+            ::syslog::error!("get_symbol(): {} (rel={:?})", reason, rel);
+            Err(Error::new(ErrorCode::BadFile, reason))
+        }
+    }
+
+    #[cfg(target_arch = "x86")]
     fn get_symbol_value(&self, sym: &Symbol) -> Result<usize, Error> {
+        let symbol_name: &str = self.dynstr.get_name(sym.name_offset())?;
+        let symbol_value: usize = match self.lookup(symbol_name)? {
+            Some((base, symbol_value)) => base + symbol_value,
+            None => {
+                let reason: &str = "symbol not found";
+                ::syslog::error!(
+                    "get_symbol_value(): {} (symbol_name={:?}, symbol={:?})",
+                    reason,
+                    symbol_name,
+                    sym
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            },
+        };
+
+        Ok(symbol_value)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn get_symbol_value(&self, sym: &Symbol64) -> Result<usize, Error> {
         let symbol_name: &str = self.dynstr.get_name(sym.name_offset())?;
         let symbol_value: usize = match self.lookup(symbol_name)? {
             Some((base, symbol_value)) => base + symbol_value,
@@ -575,6 +725,7 @@ impl DynamicLibrary {
         Ok(())
     }
 
+    #[cfg(target_arch = "x86")]
     fn resolve(&self, rel: &RelocationEntry) -> Result<(), Error> {
         let storage_unit: UnalignedPointer<u32> = UnalignedPointer::new(
             (self.load_address.into_raw_value() as u32 + rel.offset()) as *mut u32,
@@ -645,6 +796,96 @@ impl DynamicLibrary {
         Ok(())
     }
 
+    #[cfg(target_arch = "x86_64")]
+    fn resolve(&self, rel: &RelocationEntry64) -> Result<(), Error> {
+        let base: u64 = self.load_address.into_raw_value() as u64;
+        let addend: i64 = rel.addend();
+
+        match rel.typ()? {
+            RelocationType64::R_X86_64_NONE => {},
+
+            RelocationType64::R_X86_64_RELATIVE => {
+                // R_X86_64_RELATIVE relocation must have a zero symbol index.
+                if rel.symbol_index() != 0 {
+                    let reason: &str = "invalid R_X86_64_RELATIVE relocation";
+                    ::syslog::error!("resolve(): {} (rel={:?})", reason, rel);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+
+                let storage: *mut u64 = (base + rel.offset()) as *mut u64;
+                unsafe {
+                    Self::resolve_r_x86_64_relative(storage, base, addend);
+                }
+            },
+
+            RelocationType64::R_X86_64_64 => {
+                let sym: &Symbol64 = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage: *mut u64 = (base + rel.offset()) as *mut u64;
+                unsafe {
+                    Self::resolve_r_x86_64_64(storage, symbol_value as u64, addend);
+                }
+            },
+
+            RelocationType64::R_X86_64_PC32 | RelocationType64::R_X86_64_PLT32 => {
+                let sym: &Symbol64 = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let place: u64 = base + rel.offset();
+                let storage: *mut u32 = place as *mut u32;
+                unsafe {
+                    Self::resolve_r_x86_64_pc32(
+                        storage,
+                        symbol_value as u64,
+                        addend,
+                        place,
+                    );
+                }
+            },
+
+            RelocationType64::R_X86_64_GLOB_DAT => {
+                let sym: &Symbol64 = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage: *mut u64 = (base + rel.offset()) as *mut u64;
+                unsafe {
+                    Self::resolve_r_x86_64_glob_dat(storage, symbol_value as u64);
+                }
+            },
+
+            RelocationType64::R_X86_64_JUMP_SLOT => {
+                let sym: &Symbol64 = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage: *mut u64 = (base + rel.offset()) as *mut u64;
+                unsafe {
+                    Self::resolve_r_x86_64_jump_slot(storage, symbol_value as u64);
+                }
+            },
+
+            RelocationType64::R_X86_64_32 | RelocationType64::R_X86_64_32S => {
+                let sym: &Symbol64 = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage: *mut u32 = (base + rel.offset()) as *mut u32;
+                let mut su: UnalignedPointer<u32> = UnalignedPointer::new(storage);
+                let value: u64 = (symbol_value as u64).wrapping_add_signed(addend);
+                unsafe {
+                    su.write_unaligned(value as u32);
+                }
+            },
+
+            relocation_entry_type => {
+                let reason: &str = "unsupported relocation type";
+                ::syslog::error!(
+                    "resolve(): {} (relocation_type={:?}, rel={:?})",
+                    reason,
+                    relocation_entry_type,
+                    rel
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            },
+        }
+
+        Ok(())
+    }
+
     ///
     /// # Description
     ///
@@ -662,6 +903,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_RELATIVE relocation entry.
     ///
+    #[cfg(target_arch = "x86")]
     unsafe fn resolve_r_386_relative(mut storage_unit: UnalignedPointer<u32>, base_address: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_value: u32 = base_address.strict_add_signed(symbol_addend);
@@ -685,6 +927,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_32 relocation entry.
     ///
+    #[cfg(target_arch = "x86")]
     unsafe fn resolve_r_386_32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let final_value: u32 = symbol_value.strict_add_signed(symbol_addend);
@@ -708,6 +951,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_JMP_SLOT relocation entry.
     ///
+    #[cfg(target_arch = "x86")]
     unsafe fn resolve_r_386_jmp_slot(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         storage_unit.write_unaligned(symbol_value);
     }
@@ -729,6 +973,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_GLOB_DAT relocation entry.
     ///
+    #[cfg(target_arch = "x86")]
     unsafe fn resolve_r_386_glob_dat(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         storage_unit.write_unaligned(symbol_value);
     }
@@ -750,6 +995,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_PC32 relocation entry.
     ///
+    #[cfg(target_arch = "x86")]
     unsafe fn resolve_r_386_pc32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_offset: u32 = storage_unit.as_ptr() as u32;
@@ -762,6 +1008,133 @@ impl DynamicLibrary {
         };
 
         storage_unit.write_unaligned(final_value as u32);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_X86_64_RELATIVE relocation: `base + addend`.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage` - A pointer to the storage unit being relocated.
+    /// - `base` - The base address at which the shared object has been loaded into memory.
+    /// - `addend` - The addend from the Rela entry.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage` points to the storage unit of a valid R_X86_64_RELATIVE relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_relative(storage: *mut u64, base: u64, addend: i64) {
+        let mut su: UnalignedPointer<u64> = UnalignedPointer::new(storage);
+        let value: u64 = base.wrapping_add_signed(addend);
+        su.write_unaligned(value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_X86_64_64 relocation: `sym_value + addend`.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage` - A pointer to the storage unit being relocated.
+    /// - `sym_value` - The value of the symbol being relocated.
+    /// - `addend` - The addend from the Rela entry.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage` points to the storage unit of a valid R_X86_64_64 relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_64(storage: *mut u64, sym_value: u64, addend: i64) {
+        let mut su: UnalignedPointer<u64> = UnalignedPointer::new(storage);
+        let value: u64 = sym_value.wrapping_add_signed(addend);
+        su.write_unaligned(value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_X86_64_PC32 relocation: `(sym_value + addend - place) as u32`.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage` - A pointer to the 32-bit storage unit being relocated.
+    /// - `sym_value` - The value of the symbol being relocated.
+    /// - `addend` - The addend from the Rela entry.
+    /// - `place` - The address of the storage unit (relocation offset).
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage` points to the storage unit of a valid R_X86_64_PC32 relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_pc32(
+        storage: *mut u32,
+        sym_value: u64,
+        addend: i64,
+        place: u64,
+    ) {
+        let mut su: UnalignedPointer<u32> = UnalignedPointer::new(storage);
+        let value: i64 = sym_value.wrapping_add_signed(addend) as i64 - place as i64;
+        su.write_unaligned(value as u32);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_X86_64_GLOB_DAT relocation: `sym_value`.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage` - A pointer to the storage unit being relocated.
+    /// - `sym_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage` points to the storage unit of a valid R_X86_64_GLOB_DAT relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_glob_dat(storage: *mut u64, sym_value: u64) {
+        let mut su: UnalignedPointer<u64> = UnalignedPointer::new(storage);
+        su.write_unaligned(sym_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves a R_X86_64_JUMP_SLOT relocation: `sym_value`.
+    ///
+    /// # Parameters
+    ///
+    /// - `storage` - A pointer to the storage unit being relocated.
+    /// - `sym_value` - The value of the symbol being relocated.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers.
+    ///
+    /// This function is safe to use if and only if all the following conditions are met:
+    /// - The `storage` points to the storage unit of a valid R_X86_64_JUMP_SLOT relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_jump_slot(storage: *mut u64, sym_value: u64) {
+        let mut su: UnalignedPointer<u64> = UnalignedPointer::new(storage);
+        su.write_unaligned(sym_value);
     }
 
     /// Returns the file descriptor of the dynamic library.
