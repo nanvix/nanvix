@@ -46,6 +46,13 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 override MEMFS := yes
 endif
 
+# Validate that MEMFS is only enabled in standalone mode.
+ifeq ($(MEMFS),yes)
+ifneq ($(DEPLOYMENT_MODE),standalone)
+$(error MEMFS=yes requires DEPLOYMENT_MODE=standalone (current: $(DEPLOYMENT_MODE)))
+endif
+endif
+
 # Log Level
 export LOG_LEVEL ?= warn
 
