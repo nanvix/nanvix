@@ -16,6 +16,7 @@ This guide will help you set up your development environment to build and run Na
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 - [Updating Your Development Tools](#updating-your-development-tools)
+  - [Verus (Formal Verification: ./z build … -- verify / make verify)](#verus-formal-verification)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
@@ -107,6 +108,10 @@ source ~/.bashrc
 > ⚠️ **Note:** This process may take some time to complete.
 
 Choose one of the following methods to set up the development tools for Nanvix.
+
+> **Tip:** If you plan to actively contribute to Nanvix, building the tools locally (Option 1) is
+> recommended. It provides the fastest edit-build-test cycle and full access to debugging and
+> profiling tools.
 
 ### Option 1: Build Development Tools Locally (Preferred Method)
 
