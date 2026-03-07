@@ -33,7 +33,7 @@ function setup_qemu
     # Build and install.
     cd "qemu-$VERSION" || exit
     ./configure \
-        --prefix=$PREFIX --target-list=$TARGET --enable-sdl --enable-curses
+        --prefix="$PREFIX" --target-list="$TARGET" --enable-sdl --enable-curses
     make all
     make install
 
@@ -55,7 +55,7 @@ fi
 
 case "$TARGET" in
 	"x86")
-        setup_qemu "i386" $PREFIX
+        setup_qemu "i386" "$PREFIX"
         ;;
     *)
         echo "Unsupported target: $TARGET"
