@@ -84,6 +84,7 @@ pub use crate::{
         cwd,
         file_raw_region,
         mkdir,
+        normalize,
         open,
         read_dir,
         rename,

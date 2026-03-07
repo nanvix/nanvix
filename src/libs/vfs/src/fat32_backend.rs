@@ -13,9 +13,11 @@
 
 use crate::fd::{
     DirectReadHandle,
+    DirectoryHandle,
     VfsFileHandle,
     VfsStat,
 };
+use ::alloc::string::String;
 use ::fat32::Fat32Error;
 use ::sysapi::{
     fcntl::{
@@ -36,7 +38,7 @@ use ::sysapi::{
 ///
 /// # Parameters
 ///
-/// - `path`: Absolute path to check.
+/// - `path`: Absolute or relative path to check.
 pub fn exists(path: &str) -> bool {
     if crate::stat(path).is_ok() {
         return true;
@@ -45,7 +47,9 @@ pub fn exists(path: &str) -> bool {
         let parent: &str = if pos == 0 { "/" } else { &path[..pos] };
         return crate::stat(parent).is_ok();
     }
-    false
+    // Relative path with no directory separator — check whether the current
+    // working directory itself lives inside a VFS mount.
+    crate::stat(".").is_ok()
 }
 
 /// Gets file metadata for the given path.
@@ -81,6 +85,25 @@ pub fn stat(path: &str) -> Result<VfsStat, Fat32Error> {
 ///
 /// A [`VfsFileHandle`] on success, or a [`Fat32Error`] on error.
 pub fn open(path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32Error> {
+    // Handle O_DIRECTORY or paths that resolve to directories.
+    // POSIX allows opening directories with O_RDONLY for fchdir()/getdents().
+    if flags & file_creation_flags::O_DIRECTORY != 0 {
+        let info: VfsStat = stat(path)?;
+        if !info.is_dir() {
+            return Err(Fat32Error::NotADirectory);
+        }
+        let normalized: String = crate::normalize(path)?;
+        return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
+    }
+
+    // Auto-detect directories even without O_DIRECTORY flag.
+    if let Ok(info) = stat(path) {
+        if info.is_dir() {
+            let normalized: String = crate::normalize(path)?;
+            return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
+        }
+    }
+
     let access_mode: c_int = flags & file_access_mode::O_ACCMODE;
     let is_read_only: bool = access_mode == file_access_mode::O_RDONLY;
 
