@@ -7,6 +7,10 @@
 
 use crate::config::GATEWAY_ACCEPT_TIMEOUT;
 use ::anyhow::Result;
+use ::control_plane_api::{
+    LinuxdCommand,
+    LinuxdControlMessage,
+};
 use ::log::{
     error,
     trace,
@@ -19,6 +23,7 @@ use ::syscomm::{
     SocketStreamWriter,
     SocketType,
     UnboundSocket,
+    WriteAll,
 };
 use ::tokio::{
     sync::{
@@ -38,6 +43,8 @@ use ::tokio::{
 pub struct UserVmHandle {
     /// Writer half used by worker threads to send responses without contending with the reader.
     user_vm_writer: Arc<Mutex<SocketStreamWriter>>,
+    /// Identifier of the user VM.
+    user_vm_id: u32,
     /// Address of the gateway socket to connect to.
     gateway_sockaddr: String,
     /// Type of gateway socket to connect to.
@@ -50,24 +57,30 @@ pub struct UserVmHandle {
     gateway_listener: Arc<Mutex<Option<SocketListener>>>,
     /// Join handle to the task that reads from the user VM stream.
     user_vm_reader_handle: Arc<Mutex<Option<JoinHandle<Result<()>>>>>,
+    /// Writer half of the control-plane stream shared with nanvixd.
+    control_plane_writer: Arc<Mutex<SocketStreamWriter>>,
 }
 
 impl UserVmHandle {
     pub fn new(
         user_vm_writer: SocketStreamWriter,
+        user_vm_id: u32,
         gateway_sockaddr: &str,
         gateway_socket_type: &SocketType,
         user_vm_reader_handle: JoinHandle<Result<()>>,
+        control_plane_writer: Arc<Mutex<SocketStreamWriter>>,
     ) -> Self {
-        trace!("new(): gateway_sockaddr={}", gateway_sockaddr);
+        trace!("new(): user_vm_id={}, gateway_sockaddr={}", user_vm_id, gateway_sockaddr);
         Self {
             user_vm_writer: Arc::new(Mutex::new(user_vm_writer)),
+            user_vm_id,
             gateway_sockaddr: gateway_sockaddr.to_string(),
             gateway_socket_type: *gateway_socket_type,
             gateway_reader: Arc::new(Mutex::new(None)),
             gateway_writer: Arc::new(Mutex::new(None)),
             gateway_listener: Arc::new(Mutex::new(None)),
             user_vm_reader_handle: Arc::new(Mutex::new(Some(user_vm_reader_handle))),
+            control_plane_writer,
         }
     }
 
@@ -121,33 +134,28 @@ impl UserVmHandle {
 
         trace!("Listening for gateway connection on: {}", self.gateway_sockaddr);
 
-        // Accept throw-away connection from Nanvixd.
+        // Notify nanvixd that the gateway listener is bound and ready.
         {
-            let _: SocketStream =
-                match timeout(GATEWAY_ACCEPT_TIMEOUT, gateway_listener.accept()).await {
-                    Ok(Ok(stream)) => stream,
-                    Ok(Err(e)) => {
-                        let reason: String = format!(
-                            "failed to accept throw-away connection from nanvixd \
-                             (gateway_addr={}, error={e:?})",
-                            self.gateway_sockaddr
-                        );
-                        error!("get_gateway_vm_stream(): {reason}");
-                        return Err(anyhow::anyhow!(reason));
-                    },
-                    Err(_) => {
-                        let reason: String = format!(
-                            "timed out waiting for throw-away connection from nanvixd \
-                             (gateway_addr={}, timeout={GATEWAY_ACCEPT_TIMEOUT:?})",
-                            self.gateway_sockaddr
-                        );
-                        error!("get_gateway_vm_stream(): {reason}");
-                        return Err(anyhow::anyhow!(reason));
-                    },
-                };
+            let msg: LinuxdControlMessage =
+                LinuxdControlMessage::new(LinuxdCommand::GatewayReady, self.user_vm_id);
+            let mut msg_bytes: [u8; LinuxdControlMessage::WIRE_SIZE] =
+                [0u8; LinuxdControlMessage::WIRE_SIZE];
+            msg.to_bytes(&mut msg_bytes);
+
+            let mut writer: MutexGuard<'_, SocketStreamWriter> =
+                self.control_plane_writer.lock().await;
+            if let Err(e) = writer.write_all(&msg_bytes).await {
+                let reason: String = format!(
+                    "failed to send GatewayReady on control-plane (gateway_addr={}, error={e:?})",
+                    self.gateway_sockaddr
+                );
+                error!("get_gateway_vm_stream(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+            trace!("sent GatewayReady on control-plane (gateway_addr={})", self.gateway_sockaddr);
         }
 
-        // Now accept connection from gateway.
+        // Accept connection from gateway client.
         let stream: SocketStream =
             match timeout(GATEWAY_ACCEPT_TIMEOUT, gateway_listener.accept()).await {
                 Ok(Ok(stream)) => stream,

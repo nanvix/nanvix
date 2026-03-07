@@ -10,6 +10,8 @@
 // Modules
 //==================================================================================================
 
+mod gateway_ready;
+
 ::cfg_if::cfg_if! {
     if #[cfg(feature = "single-process")] {
         pub mod single_process;
