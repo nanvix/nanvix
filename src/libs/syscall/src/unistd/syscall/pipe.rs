@@ -35,10 +35,7 @@ pub fn pipe() -> Result<[i32; 2], Error> {
     // In standalone mode, pipe is not available (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "pipe not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "pipe not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

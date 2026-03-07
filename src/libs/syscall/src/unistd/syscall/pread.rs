@@ -70,10 +70,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, buffer, offset);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "pread not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "pread not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

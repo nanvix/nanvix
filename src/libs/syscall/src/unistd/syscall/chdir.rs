@@ -60,7 +60,7 @@ pub fn chdir(path: &str) -> Result<(), Error> {
     // In standalone mode, succeed as a no-op for non-VFS paths (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Ok(());
+        Ok(())
     }
 
     // Forward to linuxd via IPC.

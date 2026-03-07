@@ -183,10 +183,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         if fd == STDIN_FILENO {
             return Ok(0); // EOF
         }
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "read not supported in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "read not supported in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

@@ -53,10 +53,7 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
     #[cfg(feature = "standalone")]
     {
         let _ = (fd, offset, whence);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "lseek not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "lseek not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.
