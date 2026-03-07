@@ -8,7 +8,6 @@
 use crate::vmm::microvm::kvm::vmem::VirtualMemory;
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
-use ::libc::c_int;
 use ::log::{
     error,
     trace,
@@ -199,8 +198,7 @@ impl RamFs {
             anyhow::bail!(reason)
         }
 
-        let guest_ptr: *mut u8 = vmem.get_raw_ptr();
-        self.map_file_into_guest(guest_ptr, ramfs_base, ramfs_size)?;
+        self.map_file_into_guest(vmem, ramfs_base, ramfs_size)?;
 
         trace!(
             "RamFs::map_into_virtual_memory(): mapped ramfs (path={:?}, base={:#010x}, \
@@ -285,7 +283,7 @@ impl RamFs {
     ///
     /// # Parameters
     ///
-    /// - `guest_ptr`: Base pointer of the guest memory.
+    /// - `vmem`: Virtual memory that hosts the guest.
     /// - `base`: Guest-physical base address where the RAMFS should reside.
     /// - `length`: Number of bytes to map.
     ///
@@ -293,7 +291,7 @@ impl RamFs {
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    fn map_file_into_guest(&self, guest_ptr: *mut u8, base: usize, length: usize) -> Result<()> {
+    fn map_file_into_guest(&self, vmem: &VirtualMemory, base: usize, length: usize) -> Result<()> {
         trace!(
             "RamFs::map_file_into_guest(): path={:?}, base={:#010x}, length={length}",
             self.path, base
@@ -308,37 +306,17 @@ impl RamFs {
             anyhow::bail!(reason)
         }
 
-        // Mapping with MAP_FIXED replaces the anonymous pages covering [base, base + length), while
-        // leaving the remaining guest memory untouched, effectively swapping the backing store for
-        // that specific slice.
-        // SAFETY: `base` has been bounds-checked and page-aligned, so adding it to `guest_ptr`
-        // stays within the allocated KVM userspace memory region owned by `vmem`.
-        let dst: *mut ::libc::c_void = unsafe { guest_ptr.add(base).cast::<::libc::c_void>() };
-        // SAFETY: `dst` points to a mapped, page-aligned region we own, `length` fits within that
-        // region, and `self.file` remains open for the lifetime of the mapping, making the `mmap`
-        // call well-defined.
-        let mapped_ptr: *mut ::libc::c_void = unsafe {
-            ::libc::mmap(
-                dst,
-                length,
-                ::libc::PROT_READ | ::libc::PROT_WRITE,
-                ::libc::MAP_PRIVATE | ::libc::MAP_FIXED,
-                self.file.as_raw_fd(),
-                0,
-            )
-        };
-
-        if mapped_ptr.is_null() || mapped_ptr == ::libc::MAP_FAILED || mapped_ptr != dst {
-            // SAFETY: `__errno_location()` returns a valid thread-local pointer for the current
-            // thread, so dereferencing it immediately after the syscall is sound.
-            let errno: c_int = unsafe { *::libc::__errno_location() };
-            let reason: String = format!(
-                "failed to map ramfs image into guest memory (path={:?}, errno={errno})",
-                self.path
-            );
-            error!("RamFs::map_file_into_guest(): {reason}");
-            anyhow::bail!(reason)
-        }
+        // Remaps [base, base + length) of guest memory to be file-backed by the RAMFS image,
+        // replacing the anonymous pages covering that range while leaving the rest untouched.
+        vmem.remap_file_at(base, length, self.file.as_raw_fd(), 0)
+            .map_err(|e| {
+                let reason: String = format!(
+                    "failed to map ramfs image into guest memory (path={:?}, error={e})",
+                    self.path
+                );
+                error!("RamFs::map_file_into_guest(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
 
         Ok(())
     }
