@@ -1,0 +1,62 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Sync x86_64 Branch"
+
+# Periodically merge dev into feature-kernel-x64 to keep it up-to-date.
+# Runs every hour. The existing ci-x86_64.yml workflow triggers on pushes
+# to feature-kernel-x64, so the merged result is tested automatically.
+# Also supports manual dispatch for on-demand syncs.
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+# Only one sync at a time.
+concurrency:
+  group: sync-x64-branch
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: "Merge dev into feature-kernel-x64"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+    - name: "Checkout feature-kernel-x64"
+      uses: actions/checkout@v6
+      with:
+        ref: feature-kernel-x64
+        fetch-depth: 0
+
+    - name: "Check if merge is needed"
+      id: check
+      run: |
+        git fetch origin dev
+        BEHIND=$(git rev-list --count HEAD..origin/dev)
+        echo "behind=$BEHIND"
+        echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+        if [ "$BEHIND" -eq 0 ]; then
+          echo "feature-kernel-x64 is up-to-date with dev. Nothing to do."
+        else
+          echo "feature-kernel-x64 is $BEHIND commit(s) behind dev."
+        fi
+
+    - name: "Merge dev into feature-kernel-x64"
+      if: steps.check.outputs.behind != '0'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        echo "Merging origin/dev into feature-kernel-x64..."
+        if ! git merge origin/dev --no-edit; then
+          echo "::error::Merge conflict: dev cannot be cleanly merged into feature-kernel-x64. Manual resolution required."
+          git merge --abort
+          exit 1
+        fi
+
+    - name: "Push merged branch"
+      if: steps.check.outputs.behind != '0'
+      run: git push origin feature-kernel-x64
