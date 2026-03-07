@@ -61,13 +61,13 @@ is_excluded() {
 
 #
 # DESCRIPTION
-#   Converts deployment type to SINGLE_PROCESS and L2_VM flags.
+#   Converts deployment type to DEPLOYMENT_MODE flag.
 #
 # ARGUMENTS
 #   $1 - Deployment type.
 #
 # RETURNS
-#   String with SINGLE_PROCESS and L2_VM values.
+#   String with DEPLOYMENT_MODE value.
 #
 # USAGE EXAMPLE
 #   flags=$(get_deployment_flags "multi-process")
@@ -76,11 +76,8 @@ get_deployment_flags() {
     local deployment="${1}"
 
     case "${deployment}" in
-        single-process)
-            echo "SINGLE_PROCESS=yes"
-            ;;
-        multi-process)
-            echo "SINGLE_PROCESS=no"
+        standalone|single-process|multi-process|l2)
+            echo "DEPLOYMENT_MODE=${deployment}"
             ;;
         *)
             print_error "(pre-commit) Invalid deployment type: ${deployment}"

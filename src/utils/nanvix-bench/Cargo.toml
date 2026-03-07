@@ -25,9 +25,11 @@ serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = ["microvm"]
+default = ["microvm", "multi-process"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
+multi-process = ["nanvix/multi-process"]
+standalone = ["nanvix/standalone"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 

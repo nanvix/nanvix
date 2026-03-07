@@ -21,14 +21,8 @@ runs:
     shell: bash
     run: |
       case "${{ inputs.deployment-type }}" in
-        single-process)
-          echo "make-flags=SINGLE_PROCESS=yes" >> "$GITHUB_OUTPUT"
-          ;;
-        multi-process)
-          echo "make-flags=SINGLE_PROCESS=no" >> "$GITHUB_OUTPUT"
-          ;;
-        l2)
-          echo "make-flags=SINGLE_PROCESS=no L2_VM=yes" >> "$GITHUB_OUTPUT"
+        standalone|single-process|multi-process|l2)
+          echo "make-flags=DEPLOYMENT_MODE=${{ inputs.deployment-type }}" >> "$GITHUB_OUTPUT"
           ;;
         *)
           echo "invalid deployment type: ${{ inputs.deployment-type }}" >&2

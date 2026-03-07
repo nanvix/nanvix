@@ -83,10 +83,10 @@ You can also build in **standalone mode**, which excludes `linuxd` and routes al
 local memfs VFS layer and kernel debug serial port:
 
 ```bash
-make all STANDALONE=yes
+make all DEPLOYMENT_MODE=standalone
 ```
 
-Standalone mode implies `SINGLE_PROCESS=yes` automatically.
+Standalone mode implies `MEMFS=yes` automatically.
 
 ## Formal Verification with Verus
 
