@@ -46,6 +46,7 @@ members = [
         "src/libs/syslog-macros",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
+        "src/libs/multibin",
         "src/libs/sys",
         "src/libs/type-safe",
         "src/libs/user-vm-api",
@@ -63,6 +64,7 @@ members = [
         "src/user/hello-rust-nostd",
         "src/user/hello-wasm",
         "src/utils/echo-client",
+        "src/utils/mkimage",
         "src/utils/nanvix-bench",
         "src/utils/nanvix-test",
         "src/utils/nanvixd",
@@ -121,6 +123,7 @@ kvm-ioctls = "0.24.0"
 libc = "0.2.182"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.29"
+multibin = { path = "src/libs/multibin", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
