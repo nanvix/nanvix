@@ -29,6 +29,7 @@
 void test_fchdir(void)
 {
     fprintf(stderr, "testing fchdir() ... ");
+
     const char *TARGET_DIRECTORY = "src/";
 
     char initial_working_directory[PATH_MAX] = {0};
