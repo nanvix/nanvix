@@ -1,12 +1,12 @@
 ---
-name: build-and-test
-description: Guide for building, formatting, linting, spell-checking, and testing Nanvix with z. Use this when asked to build or validate the repository.
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
 ---
 
-# Build and Test Nanvix
+# Build Nanvix
 
-Use this skill when the user asks to build, compile, format, lint, spell-check, or run tests on
-Nanvix. This covers all build-system operations exposed through the `z` utility.
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operations exposed through the `z` utility.
 
 ## Prerequisites
 
@@ -103,32 +103,6 @@ Example with custom parameters:
 ./z build --with-cached-options -- spellcheck
 # Fix spelling errors.
 ./z build --with-cached-options -- spellcheck-fix
-```
-
-## Testing
-
-### Unit Tests
-
-```bash
-./z build --with-cached-options -- run-unit-tests
-```
-
-### System Integration Tests (microvm and hyperlight only)
-
-```bash
-./z build --with-cached-options -- run-nanvix-tests
-```
-
-Test configurations are auto-selected based on deployment mode:
-
-- Single-process: `test/test-single_process.toml`
-- L2 VM: `test/test-l2.toml`
-- Multi-process: `test/test-multi_process.toml`
-
-### All Tests
-
-```bash
-./z build --with-cached-options -- test
 ```
 
 ## Formal Verification
