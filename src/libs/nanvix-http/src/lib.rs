@@ -14,4 +14,9 @@ mod server;
 // Exports
 //==================================================================================================
 
+#[cfg(feature = "standalone")]
+pub use client::{
+    StandaloneConfig,
+    StandaloneState,
+};
 pub use server::HttpServer;

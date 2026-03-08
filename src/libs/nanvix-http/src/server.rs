@@ -8,11 +8,19 @@
 //! graceful shutdown on interrupt signals, and maintains the sandbox cache for all active
 //! instances.
 
+#[cfg(all(feature = "single-process", feature = "standalone"))]
+compile_error!("features `single-process` and `standalone` are mutually exclusive");
+
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::client::HttpClient;
+#[cfg(feature = "standalone")]
+use crate::{
+    StandaloneConfig,
+    StandaloneState,
+};
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
@@ -21,12 +29,18 @@ use ::log::{
     error,
     info,
 };
+#[cfg(feature = "single-process")]
+use ::nanvix_sandbox::simple_cache::SimpleSandboxCache;
+#[cfg(feature = "single-process")]
+use ::nanvix_sandbox::simple_cache::SimpleSandboxCacheConfig;
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
-    SandboxCacheStateSummary,
 };
 use ::std::sync::Arc;
+#[cfg(not(feature = "standalone"))]
+use ::tokio::sync::Mutex;
 use ::tokio::{
     net::{
         TcpListener,
@@ -37,7 +51,6 @@ use ::tokio::{
         Signal,
         SignalKind,
     },
-    sync::Mutex,
 };
 
 //==================================================================================================
@@ -63,7 +76,14 @@ pub struct HttpServer<T> {
     /// Socket address to bind the HTTP server to.
     sockaddr: String,
     /// Configuration for sandbox cache management.
+    #[cfg(feature = "single-process")]
+    config: SimpleSandboxCacheConfig<T>,
+    #[cfg(feature = "standalone")]
+    config: StandaloneConfig,
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     config: SandboxCacheConfig<T>,
+    #[cfg(feature = "standalone")]
+    _phantom: ::std::marker::PhantomData<T>,
 }
 
 //==================================================================================================
@@ -85,6 +105,52 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     ///
     /// A new HTTP server instance ready to be started.
     ///
+    #[cfg(feature = "single-process")]
+    pub fn new(sockaddr: &str, config: SimpleSandboxCacheConfig<T>) -> Self {
+        Self {
+            sockaddr: sockaddr.to_string(),
+            config,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new HTTP server with the specified standalone configuration.
+    ///
+    /// # Parameters
+    ///
+    /// - `sockaddr`: Socket address (host:port) to bind the server to.
+    /// - `config`: Standalone configuration with kernel and VM parameters.
+    ///
+    /// # Returns
+    ///
+    /// A new HTTP server instance ready to be started.
+    ///
+    #[cfg(feature = "standalone")]
+    pub fn new(sockaddr: &str, config: StandaloneConfig) -> Self {
+        Self {
+            sockaddr: sockaddr.to_string(),
+            config,
+            _phantom: ::std::marker::PhantomData,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new HTTP server with the specified configuration.
+    ///
+    /// # Parameters
+    ///
+    /// - `sockaddr`: Socket address (host:port) to bind the server to.
+    /// - `config`: Configuration parameters for sandbox cache management.
+    ///
+    /// # Returns
+    ///
+    /// A new HTTP server instance ready to be started.
+    ///
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn new(sockaddr: &str, config: SandboxCacheConfig<T>) -> Self {
         Self {
             sockaddr: sockaddr.to_string(),
@@ -110,8 +176,16 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     /// describing what went wrong during server operation.
     ///
     pub async fn run(&mut self) -> Result<()> {
-        // Initialize the sandbox cache before binding the socket, as some setups may use socket
+        // Initialize shared state before binding the socket, as some setups may use socket
         // readiness to probe nanvixd's readiness.
+        #[cfg(feature = "single-process")]
+        let sandbox_cache: Arc<Mutex<SimpleSandboxCache<T>>> =
+            SimpleSandboxCache::new(self.config.clone()).await?;
+        // In standalone mode, bypass the sandbox cache and drive User VMs directly.
+        #[cfg(feature = "standalone")]
+        let sandbox_cache: Arc<StandaloneState> =
+            Arc::new(StandaloneState::new(self.config.clone()));
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
             SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
@@ -123,22 +197,31 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     match result {
                         Ok((stream, sockaddr)) => {
                             debug!("accepted connection from {sockaddr:?}");
-                            let sandbox_cache_clone: Arc<Mutex<SandboxCache<T>>> = sandbox_cache.clone();
-                            // In single-process mode, handle connections sequentially.
-                            #[cfg(feature = "single-process")]
+                            // In single-process and standalone mode, handle connections sequentially.
+                            #[cfg(any(feature = "single-process", feature = "standalone"))]
                             {
-                                let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);
+                                let client: HttpClient<T> =
+                                    HttpClient::new(sandbox_cache.clone());
                                 let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                                if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
+                                if let Err(e) = http1::Builder::new()
+                                    .serve_connection(io, client)
+                                    .await
+                                {
                                     error!("failed to serve connection (error={e:?})");
                                 }
                             }
-                            #[cfg(not(feature = "single-process"))]
+                            // In multi-process mode, spawn a new task for each connection.
+                            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                             {
+                                let sandbox_cache_clone = sandbox_cache.clone();
                                 tokio::spawn(async move {
-                                    let client: HttpClient<T> = HttpClient::new(sandbox_cache_clone);
+                                    let client: HttpClient<T> =
+                                        HttpClient::new(sandbox_cache_clone);
                                     let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                                    if let Err(e) = http1::Builder::new().serve_connection(io, client).await  {
+                                    if let Err(e) = http1::Builder::new()
+                                        .serve_connection(io, client)
+                                        .await
+                                    {
                                         error!("failed to serve connection (error={e:?})");
                                     }
                                 });
@@ -151,18 +234,39 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                 },
                 _ = signals.recv() => {
                     info!("received exit signal, stopping...");
-                    let sandbox_cache_clone: Arc<Mutex<SandboxCache<T>>> = sandbox_cache.clone();
-                    let mut cache_guard = sandbox_cache_clone.lock().await;
-                    let summary: SandboxCacheStateSummary = cache_guard.state_summary();
-                    info!(
-                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
-                         control_plane_socket={}, l2_enabled={}",
-                        summary.running_sandboxes(),
-                        summary.linuxd_instances(),
-                        summary.has_control_plane_bind_socket(),
-                        summary.l2_enabled()
-                    );
-                    cache_guard.cleanup().await;
+                    #[cfg(feature = "single-process")]
+                    {
+                        let mut cache_guard = sandbox_cache.lock().await;
+                        let summary = cache_guard.state_summary();
+                        info!(
+                            "shutdown snapshot: has_running_sandbox={}, linuxd_instances={}, \
+                             control_plane_socket={}",
+                            summary.has_running_sandbox(),
+                            summary.linuxd_instances(),
+                            summary.has_control_plane_bind_socket(),
+                        );
+                        cache_guard.cleanup().await;
+                    }
+                    #[cfg(feature = "standalone")]
+                    {
+                        let has_vm: bool = sandbox_cache.has_running_vm().await;
+                        info!("shutdown snapshot: has_running_vm={has_vm}");
+                        sandbox_cache.cleanup().await;
+                    }
+                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+                    {
+                        let mut cache_guard = sandbox_cache.lock().await;
+                        let summary = cache_guard.state_summary();
+                        info!(
+                            "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
+                             control_plane_socket={}, l2_enabled={}",
+                            summary.running_sandboxes(),
+                            summary.linuxd_instances(),
+                            summary.has_control_plane_bind_socket(),
+                            summary.l2_enabled()
+                        );
+                        cache_guard.cleanup().await;
+                    }
                     break Ok(());
                 },
             }

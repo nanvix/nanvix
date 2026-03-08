@@ -20,7 +20,8 @@ hyper-util = { workspace = true, features = ["full"] }
 linuxd = { workspace = true, optional = true }
 log = { workspace = true }
 nanvix-registry = { workspace = true }
-nanvix-sandbox-cache = { workspace = true }
+nanvix-sandbox = { workspace = true, optional = true }
+nanvix-sandbox-cache = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 syscomm = { workspace = true }
@@ -30,23 +31,20 @@ user-vm-api = { workspace = true }
 
 [features]
 default = ["microvm", "multi-process"]
-single-process = [
-    "linuxd",
-    "nanvix-sandbox-cache/single-process",
-]
-multi-process = [
-    "nanvix-sandbox-cache/multi-process",
-]
-standalone = ["nanvix-sandbox-cache/standalone"]
+single-process = ["linuxd", "nanvix-sandbox", "nanvix-sandbox/single-process"]
+multi-process = ["nanvix-sandbox-cache", "nanvix-sandbox-cache/multi-process"]
+standalone = ["nanvix-sandbox", "nanvix-sandbox/standalone"]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",
-    "nanvix-sandbox-cache/hyperlight",
+    "nanvix-sandbox-cache?/hyperlight",
+    "nanvix-sandbox?/hyperlight",
 ]
 microvm = [
     "config/microvm",
     "uservm/microvm",
-    "nanvix-sandbox-cache/microvm",
+    "nanvix-sandbox-cache?/microvm",
+    "nanvix-sandbox?/microvm",
 ]
 
 [lints]
