@@ -14,7 +14,8 @@ Task-specific and procedural details must live in `.github/skills/*/SKILL.md`.
 Use the corresponding skill when the user request matches the topic:
 
 - `benchmarking` → benchmark setup, execution, and result interpretation.
-- `build-and-test` → build, format, lint, spell-check, and test commands.
+- `build` → build, format, lint, and spell-check commands.
+- `test` → running unit tests, integration tests, and the full test suite.
 - `ci-cd-pipeline` → CI workflow behavior, failures, and release flow.
 - `coding-standards` → detailed style, documentation, and review conventions.
 - `daemon-development` → daemon architecture, implementation, and debugging.
