@@ -42,13 +42,17 @@ use sysapi::sys_types::off_t;
 ///
 #[allow(unreachable_code)]
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
-    ::syslog::error!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+    ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
-    // No-op for VFS file descriptors (FAT32 does not support pre-allocation).
+    // Extend VFS files to the requested size.
     #[cfg(feature = "memfs")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
+            return ::nvx::vfs::fd::vfs_fallocate(fd, offset, len).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("posix_fallocate(): VFS fallocate failed (fd={fd:?}, error={e})");
+                Error::new(code, "vfs fallocate failed")
+            });
         }
     }
 

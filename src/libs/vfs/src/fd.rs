@@ -41,6 +41,7 @@ use ::sysapi::{
         c_size_t,
         off_t,
     },
+    time::timespec,
     unistd::file_seek,
 };
 
@@ -62,12 +63,6 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
-
-/// Fixed timestamp (2024-01-01T00:00:00 UTC) used for stat results.
-///
-/// FAT32 does not store POSIX timestamps, so a fixed epoch is returned
-/// to keep consumers (e.g. Python's zipfile module) happy.
-const STAT_FIXED_TIMESTAMP: i64 = 1704067200;
 
 //==================================================================================================
 // Metadata
@@ -172,39 +167,6 @@ impl DirectReadHandle {
 // VFS File Handle
 //==================================================================================================
 
-/// An open directory handle for reading directory entries.
-pub struct DirHandle {
-    /// Absolute path of the directory.
-    path: String,
-    /// Unconsumed directory entries.
-    entries: Vec<crate::DirEntry>,
-    /// Whether the directory listing has been loaded.
-    loaded: bool,
-}
-
-impl DirHandle {
-    /// Creates a new directory handle.
-    pub fn new(path: String) -> Self {
-        Self {
-            path,
-            entries: Vec::new(),
-            loaded: false,
-        }
-    }
-
-    /// Reads the next batch of directory entries.
-    pub fn read_entries(&mut self, count: usize) -> Result<Vec<crate::DirEntry>, Fat32Error> {
-        // Load the directory listing on the first call.
-        if !self.loaded {
-            self.entries = crate::read_dir(&self.path)?;
-            self.loaded = true;
-        }
-        let to_take: usize = self.entries.len().min(count);
-        let result: Vec<crate::DirEntry> = self.entries.drain(..to_take).collect();
-        Ok(result)
-    }
-}
-
 /// An open file handle managed by the VFS.
 ///
 /// Each variant corresponds to a concrete filesystem backend or an
@@ -215,8 +177,53 @@ pub enum VfsFileHandle {
     Fat32(crate::File),
     /// Zero-copy direct memory read (contiguous file optimization).
     DirectRead(DirectReadHandle),
-    /// An open directory for readdir iteration.
-    Directory(DirHandle),
+    /// Open directory handle for `readdir()`/`getdents()` operations.
+    Directory(DirectoryHandle),
+}
+
+/// Handle for an open directory.
+///
+/// Stores the resolved path and lazily-loaded directory entries.
+/// Entries are loaded on the first `getdents()` call and returned
+/// in subsequent calls via an internal cursor.
+pub struct DirectoryHandle {
+    /// Absolute path of the directory in the VFS.
+    path: String,
+    /// Cached directory entries (populated on first read).
+    entries: Option<Vec<crate::DirEntry>>,
+    /// Cursor into `entries` for sequential reads.
+    cursor: usize,
+}
+
+impl DirectoryHandle {
+    /// Creates a new directory handle for the given VFS path.
+    pub fn new(path: String) -> Self {
+        Self {
+            path,
+            entries: None,
+            cursor: 0,
+        }
+    }
+
+    /// Returns the next batch of directory entries.
+    ///
+    /// Lazily loads entries from the VFS on the first call and returns
+    /// up to `count` entries per invocation.
+    pub fn read_entries(&mut self, count: usize) -> Result<Vec<crate::DirEntry>, Fat32Error> {
+        if self.entries.is_none() {
+            self.entries = Some(crate::read_dir(&self.path)?);
+        }
+        let all: &[crate::DirEntry] = self.entries.as_ref().unwrap();
+        let remaining: &[crate::DirEntry] = if self.cursor < all.len() {
+            &all[self.cursor..]
+        } else {
+            &[]
+        };
+        let take: usize = core::cmp::min(count, remaining.len());
+        let batch: Vec<crate::DirEntry> = remaining[..take].to_vec();
+        self.cursor += take;
+        Ok(batch)
+    }
 }
 
 impl VfsFileHandle {
@@ -225,7 +232,7 @@ impl VfsFileHandle {
         match self {
             VfsFileHandle::Fat32(file) => file.read(buf),
             VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -234,7 +241,7 @@ impl VfsFileHandle {
         match self {
             VfsFileHandle::Fat32(file) => file.write(buf),
             VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -246,7 +253,7 @@ impl VfsFileHandle {
                 Ok(pos as off_t)
             },
             VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
+            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -270,9 +277,15 @@ impl VfsFileHandle {
 //==================================================================================================
 
 /// An open file slot in the VFS file descriptor table.
+///
+/// Tracks a POSIX-compliant virtual position independently of the
+/// underlying backend. This is necessary because FAT32 (via fatfs)
+/// clamps seeks past EOF, while POSIX `lseek` allows it.
 struct VfsEntry {
     /// The file handle from any backend.
     handle: VfsFileHandle,
+    /// POSIX-compliant virtual file position (may exceed file size).
+    virtual_pos: off_t,
 }
 
 // SAFETY: VfsEntry contains FAT filesystem types that use `Cell` internally
@@ -305,7 +318,10 @@ impl VfsFdTable {
         for i in 0..VFS_MAX_OPEN_FILES {
             let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = self.slots[i].lock();
             if slot.is_none() {
-                *slot = Some(VfsEntry { handle });
+                *slot = Some(VfsEntry {
+                    handle,
+                    virtual_pos: 0,
+                });
                 return Ok(VFS_FD_BASE + i as c_int);
             }
         }
@@ -410,7 +426,8 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        let handle: VfsFileHandle = VfsFileHandle::Directory(DirHandle::new(path.into()));
+        let normalized: String = crate::normalize(path)?;
+        let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
         return FD_TABLE.alloc(handle);
     }
     let handle: VfsFileHandle = fat32_backend::open(path, flags)?;
@@ -418,33 +435,129 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 }
 
 /// Reads from a VFS file descriptor.
+///
+/// Uses the virtual position tracker. If the position is at or past EOF,
+/// returns 0 (POSIX EOF semantics). Otherwise syncs the handle, reads,
+/// and advances the virtual position.
 pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+
+    let size: u64 = entry.handle.size()?;
+    if entry.virtual_pos as u64 >= size {
+        return Ok(0);
+    }
+
+    // Sync handle to virtual position, read, advance.
+    entry.handle.seek(entry.virtual_pos, file_seek::SEEK_SET)?;
     let n: usize = entry.handle.read(buf)?;
+    entry.virtual_pos += n as off_t;
     Ok(n as c_size_t)
 }
 
 /// Writes to a VFS file descriptor.
+///
+/// Uses the virtual position tracker. If the position is past EOF, extends
+/// the file with zeros first, then writes and advances the virtual position.
 pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+
+    let size: u64 = entry.handle.size()?;
+    if (entry.virtual_pos as u64) > size {
+        // Extend file with zeros up to virtual_pos.
+        entry.handle.seek(0, file_seek::SEEK_END)?;
+        let gap: usize = (entry.virtual_pos as u64 - size) as usize;
+        let zeros: [u8; 512] = [0u8; 512];
+        let mut remaining: usize = gap;
+        while remaining > 0 {
+            let chunk: usize = core::cmp::min(remaining, zeros.len());
+            let written: usize = entry.handle.write(&zeros[..chunk])?;
+            if written == 0 {
+                return Err(Fat32Error::NoSpace);
+            }
+            remaining -= written;
+        }
+    }
+
+    // Sync handle to virtual position, write, advance.
+    entry.handle.seek(entry.virtual_pos, file_seek::SEEK_SET)?;
     let n: usize = entry.handle.write(buf)?;
+    entry.virtual_pos += n as off_t;
     Ok(n as c_size_t)
 }
 
 /// Seeks a VFS file descriptor.
+///
+/// Computes the new position according to POSIX semantics (past-EOF seeks
+/// are allowed) and stores it in the entry's virtual position tracker. The
+/// underlying backend handle is only synced when the position is within the
+/// file bounds.
 pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
-    entry.handle.seek(offset, whence)
+
+    let size: i64 = entry.handle.size()? as i64;
+    let new_pos: i64 = match whence {
+        file_seek::SEEK_SET => offset,
+        file_seek::SEEK_CUR => entry.virtual_pos + offset,
+        file_seek::SEEK_END => size + offset,
+        _ => return Err(Fat32Error::InvalidArgument),
+    };
+    if new_pos < 0 {
+        return Err(Fat32Error::InvalidSeek);
+    }
+
+    entry.virtual_pos = new_pos;
+
+    // Sync the underlying handle when within file bounds.
+    if new_pos <= size {
+        let _ = entry.handle.seek(new_pos, file_seek::SEEK_SET);
+    }
+
+    Ok(new_pos)
+}
+
+/// Populates common stat fields for VFS entries.
+///
+/// FAT32 lacks Unix metadata so we use sensible defaults:
+/// - `st_nlink = 1` (single link).
+/// - Timestamps set to a fixed epoch value (FAT has no sub-second precision).
+/// - Permissions: owner read+write for files, owner rwx for directories.
+fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: bool) {
+    // Fixed epoch timestamp: 2020-01-01T00:00:00Z (1577836800).
+    const FIXED_EPOCH: i64 = 1_577_836_800;
+
+    buf.st_size = size as off_t;
+    buf.st_nlink = if is_dir { 2 } else { 1 };
+    buf.st_dev = 1; // Synthetic device ID for the VFS.
+    buf.st_ino = 1; // Synthetic inode (FAT has no inodes).
+    buf.st_mode = if is_dir {
+        file_type::S_IFDIR | file_mode::S_IRWXU
+    } else {
+        file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IWUSR
+    };
+    buf.st_blksize = STAT_BLOCK_SIZE;
+    buf.st_blocks = size.div_ceil(STAT_SECTOR_SIZE) as off_t;
+    buf.st_atim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_mtim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_ctim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
 }
 
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
-    let is_dir: bool = entry.handle.is_dir();
+    let is_dir: bool = matches!(&entry.handle, VfsFileHandle::Directory(_));
     let size: u64 = entry.handle.size()?;
 
     // Zero-initialize the stat buffer.
@@ -452,26 +565,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    buf.st_size = size as off_t;
-    buf.st_mode = if is_dir {
-        file_type::S_IFDIR
-            | file_mode::S_IRWXU
-            | file_mode::S_IRGRP
-            | file_mode::S_IXGRP
-            | file_mode::S_IROTH
-            | file_mode::S_IXOTH
-    } else {
-        file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IRGRP | file_mode::S_IROTH
-    };
-    buf.st_blksize = STAT_BLOCK_SIZE;
-    buf.st_blocks = size.div_ceil(STAT_SECTOR_SIZE) as off_t;
-    let ts: ::sysapi::time::timespec = ::sysapi::time::timespec {
-        tv_sec: STAT_FIXED_TIMESTAMP,
-        tv_nsec: 0,
-    };
-    buf.st_atim = ts;
-    buf.st_mtim = ts;
-    buf.st_ctim = ts;
+    populate_stat_fields(buf, size, is_dir);
 
     Ok(())
 }
@@ -490,26 +584,7 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    buf.st_size = info.size() as off_t;
-    buf.st_mode = if info.is_dir() {
-        file_type::S_IFDIR
-            | file_mode::S_IRWXU
-            | file_mode::S_IRGRP
-            | file_mode::S_IXGRP
-            | file_mode::S_IROTH
-            | file_mode::S_IXOTH
-    } else {
-        file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IRGRP | file_mode::S_IROTH
-    };
-    buf.st_blksize = STAT_BLOCK_SIZE;
-    buf.st_blocks = info.size().div_ceil(STAT_SECTOR_SIZE) as off_t;
-    let ts: ::sysapi::time::timespec = ::sysapi::time::timespec {
-        tv_sec: STAT_FIXED_TIMESTAMP,
-        tv_nsec: 0,
-    };
-    buf.st_atim = ts;
-    buf.st_mtim = ts;
-    buf.st_ctim = ts;
+    populate_stat_fields(buf, info.size(), info.is_dir());
 
     Ok(())
 }
@@ -541,6 +616,18 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
     crate::chdir(path)
 }
 
+/// Changes the current working directory to the directory referenced by a VFS FD.
+///
+/// Only works on directory handles. Returns an error for file handles.
+pub fn vfs_fchdir(fd: c_int) -> Result<(), Fat32Error> {
+    let slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
+    let entry: &VfsEntry = slot.as_ref().ok_or(Fat32Error::InvalidFd)?;
+    match &entry.handle {
+        VfsFileHandle::Directory(dir) => crate::chdir(&dir.path),
+        _ => Err(Fat32Error::NotADirectory),
+    }
+}
+
 /// Gets the VFS current working directory.
 pub fn vfs_getcwd() -> Result<alloc::string::String, Fat32Error> {
     crate::cwd()
@@ -562,19 +649,82 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => {
+            let current_size: u64 = file.size()?;
+            let target: u64 = length as u64;
+
             // Save the current offset so we can restore it after truncation.
             let saved: u64 = file.seek(file_seek::SEEK_CUR, 0)?;
-            let result: Result<(), Fat32Error> = (|| {
-                file.seek(file_seek::SEEK_SET, length)?;
-                file.truncate()?;
+
+            if target <= current_size {
+                // Shrink: seek to target and truncate.
+                let result: Result<(), Fat32Error> = (|| {
+                    file.seek(file_seek::SEEK_SET, length)?;
+                    file.truncate()?;
+                    Ok(())
+                })();
+                let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
+                result
+            } else {
+                // Extend: write zeros from current EOF to target size.
+                file.seek(file_seek::SEEK_END, 0)?;
+                let mut remaining: usize = (target - current_size) as usize;
+                let zeros: [u8; 512] = [0u8; 512];
+                while remaining > 0 {
+                    let chunk: usize = core::cmp::min(remaining, zeros.len());
+                    let written: usize = file.write(&zeros[..chunk])?;
+                    if written == 0 {
+                        let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
+                        return Err(Fat32Error::NoSpace);
+                    }
+                    remaining -= written;
+                }
+                let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
                 Ok(())
-            })();
-            // Restore the original offset regardless of success or failure.
-            let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
-            result
+            }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) => Err(Fat32Error::InvalidArgument),
+        VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
+    }
+}
+
+/// Ensures a VFS file is at least `offset + len` bytes.
+///
+/// If the file is smaller than the target size, it is extended by writing
+/// zero bytes. The file offset is preserved.
+pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Error> {
+    let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
+    let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+    match &mut entry.handle {
+        VfsFileHandle::Fat32(file) => {
+            let target_size: u64 = (offset + len) as u64;
+            let current_size: u64 = file.size()?;
+            if current_size >= target_size {
+                return Ok(());
+            }
+
+            // Save the current offset.
+            let saved: u64 = file.seek(file_seek::SEEK_CUR, 0)?;
+
+            // Seek to end and write zeros in a loop (fatfs writes per-cluster).
+            file.seek(file_seek::SEEK_END, 0)?;
+            let mut remaining: usize = (target_size - current_size) as usize;
+            let zeros: [u8; 512] = [0u8; 512];
+            while remaining > 0 {
+                let chunk: usize = core::cmp::min(remaining, zeros.len());
+                let written: usize = file.write(&zeros[..chunk])?;
+                if written == 0 {
+                    let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
+                    return Err(Fat32Error::NoSpace);
+                }
+                remaining -= written;
+            }
+
+            // Restore the original offset.
+            let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
+            Ok(())
+        },
+        VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+        VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
     }
 }
 
@@ -586,8 +736,7 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
-        VfsFileHandle::DirectRead(_) => Ok(()), // Nothing to sync for read-only.
-        VfsFileHandle::Directory(_) => Ok(()),  // Nothing to sync for directories.
+        VfsFileHandle::DirectRead(_) | VfsFileHandle::Directory(_) => Ok(()),
     }
 }
 
@@ -599,9 +748,17 @@ pub fn vfs_isatty(_fd: c_int) -> bool {
 }
 
 /// Reads from a VFS file descriptor at a given offset without changing position.
+///
+/// POSIX semantics: reading past EOF returns 0 bytes (not an error).
 pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
+
+    // If the offset is at or past EOF, return 0 (POSIX EOF semantics).
+    let size: u64 = entry.handle.size()?;
+    if offset as u64 >= size {
+        return Ok(0);
+    }
 
     // Save current position, seek to offset, read, then restore.
     let saved: off_t = entry.handle.seek(0, file_seek::SEEK_CUR)?;
@@ -614,15 +771,37 @@ pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, F
 }
 
 /// Writes to a VFS file descriptor at a given offset without changing position.
+///
+/// POSIX semantics: writing past EOF extends the file with zeros up to the offset.
 pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
 
-    // Save current position, seek to offset, write, then restore.
+    // Save current handle position.
     let saved: off_t = entry.handle.seek(0, file_seek::SEEK_CUR)?;
+
+    // If offset is past EOF, extend the file with zeros to fill the gap.
+    let size: u64 = entry.handle.size()?;
+    if (offset as u64) > size {
+        entry.handle.seek(0, file_seek::SEEK_END)?;
+        let gap: usize = (offset as u64 - size) as usize;
+        let zeros: [u8; 512] = [0u8; 512];
+        let mut remaining: usize = gap;
+        while remaining > 0 {
+            let chunk: usize = core::cmp::min(remaining, zeros.len());
+            let written: usize = entry.handle.write(&zeros[..chunk])?;
+            if written == 0 {
+                let _ = entry.handle.seek(saved, file_seek::SEEK_SET);
+                return Err(Fat32Error::NoSpace);
+            }
+            remaining -= written;
+        }
+    }
+
+    // Seek to offset and write.
     entry.handle.seek(offset, file_seek::SEEK_SET)?;
     let result: Result<usize, Fat32Error> = entry.handle.write(buf);
-    // Always restore position, even if write failed.
+    // Always restore handle position, even if write failed.
     let _ = entry.handle.seek(saved, file_seek::SEEK_SET);
     let n: usize = result?;
     Ok(n as c_size_t)
@@ -672,7 +851,7 @@ pub fn vfs_getdents(
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
 
-    let dir_handle: &mut DirHandle = match &mut entry.handle {
+    let dir_handle: &mut DirectoryHandle = match &mut entry.handle {
         VfsFileHandle::Directory(dh) => dh,
         _ => return Err(Fat32Error::InvalidArgument),
     };

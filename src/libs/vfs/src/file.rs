@@ -664,6 +664,24 @@ pub fn chdir(path: &str) -> Result<(), Fat32Error> {
     state::with_vfs_mut(|vfs| vfs.set_cwd(path))
 }
 
+/// Normalizes a path to an absolute path using the current working directory.
+///
+/// # Parameters
+///
+/// - `path`: The path to normalize.
+///
+/// # Returns
+///
+/// The normalized absolute path.
+///
+/// # Errors
+///
+/// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::InvalidPath`] if the path is malformed.
+pub fn normalize(path: &str) -> Result<String, Fat32Error> {
+    state::with_vfs(|vfs| vfs.normalize_path(path))
+}
+
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
