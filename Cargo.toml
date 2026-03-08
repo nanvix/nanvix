@@ -46,6 +46,7 @@ members = [
         "src/libs/syslog-macros",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
+        "src/libs/multibin",
         "src/libs/sys",
         "src/libs/type-safe",
         "src/libs/user-vm-api",
