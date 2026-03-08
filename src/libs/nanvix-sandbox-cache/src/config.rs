@@ -15,7 +15,6 @@ use ::nanvix_sandbox::{
     syscomm::SocketType,
     HwLoc,
 };
-#[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 
 //==================================================================================================
@@ -33,8 +32,7 @@ use ::std::marker::PhantomData;
 ///
 /// # Type Parameters
 ///
-/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
-///   single-process mode. Use `()` if no custom state is required.
+/// - `T`: Custom state type. Use `()` if no custom state is required.
 ///
 #[derive(Clone)]
 pub struct SandboxCacheConfig<T> {
@@ -55,14 +53,9 @@ pub struct SandboxCacheConfig<T> {
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the Linux Daemon binary.
-    #[cfg(not(feature = "single-process"))]
     linuxd_binary_path: String,
     /// Path to the User VM binary.
-    #[cfg(not(feature = "single-process"))]
     uservm_binary_path: String,
-    /// System call table.
-    #[cfg(feature = "single-process")]
-    syscall_table: Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>>,
     /// Path to the toolchain binary directory containing cloud-hypervisor and other tools.
     toolchain_binary_directory: String,
     /// Directory path for writing log files.
@@ -74,8 +67,6 @@ pub struct SandboxCacheConfig<T> {
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
-    /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
     _phantom: PhantomData<T>,
 }
 
@@ -99,9 +90,8 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     /// - `hwloc`: Optional hardware locality configuration.
     /// - `netns_pool_size`: Number of network namespaces to prefill (0 for lazy initialization).
     /// - `kernel_binary_path`: Path to kernel binary.
-    /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
-    /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
-    /// - `syscall_table`: Optional system call table (only in single-process mode).
+    /// - `linuxd_binary_path`: Path to the Linux Daemon binary.
+    /// - `uservm_binary_path`: Path to the User VM binary.
     /// - `toolchain_binary_directory`: Path to the toolchain binary directory.
     /// - `log_directory`: Path to the log directory.
     /// - `l2`: Flag to deploy linuxd inside an L2 VM.
@@ -122,11 +112,8 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
         hwloc: Option<HwLoc>,
         netns_pool_size: usize,
         kernel_binary_path: &str,
-        #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
-        #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
-        #[cfg(feature = "single-process")] syscall_table: Option<
-            ::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>,
-        >,
+        linuxd_binary_path: &str,
+        uservm_binary_path: &str,
         toolchain_binary_directory: &str,
         log_directory: &str,
         l2: bool,
@@ -142,18 +129,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
             hwloc,
             netns_pool_size,
             kernel_binary_path: kernel_binary_path.to_string(),
-            #[cfg(not(feature = "single-process"))]
             linuxd_binary_path: linuxd_binary_path.to_string(),
-            #[cfg(not(feature = "single-process"))]
             uservm_binary_path: uservm_binary_path.to_string(),
-            #[cfg(feature = "single-process")]
-            syscall_table,
             toolchain_binary_directory: toolchain_binary_directory.to_string(),
             log_directory: log_directory.to_string(),
             l2,
             l2_snapshot_path: l2_snapshot_path.to_string(),
             tmp_directory: tmp_directory.to_string(),
-            #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         }
     }
@@ -271,7 +253,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// The path to the Linux Daemon binary.
     ///
-    #[cfg(not(feature = "single-process"))]
     pub fn linuxd_binary_path(&self) -> &str {
         &self.linuxd_binary_path
     }
@@ -285,24 +266,8 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// The path to the User VM binary.
     ///
-    #[cfg(not(feature = "single-process"))]
     pub fn uservm_binary_path(&self) -> &str {
         &self.uservm_binary_path
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns a handle to the system call table.
-    ///
-    /// # Returns
-    ///
-    /// If a system call table is set, this function returns a handle to it. Otherwise, it returns
-    /// empty.
-    ///
-    #[cfg(feature = "single-process")]
-    pub fn syscall_table(&self) -> Option<::std::sync::Arc<::nanvix_sandbox::SyscallTable<T>>> {
-        self.syscall_table.clone()
     }
 
     ///
