@@ -11,6 +11,7 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use ::syscomm::SocketType;
 use ::user_vm_api::UserVmIdentifier;
 
@@ -26,10 +27,13 @@ use ::user_vm_api::UserVmIdentifier;
 #[derive(Debug)]
 pub struct UserVmArgs {
     /// Information on control plane connect socket (address, socket type) for nanvixd <-> linuxd communication.
+    #[cfg(not(feature = "standalone"))]
     control_plane_connect_socket_info: (String, SocketType),
     /// Information on gateway socket (address, socket type) for client <-> linuxd stdin/stdout communication.
+    #[cfg(not(feature = "standalone"))]
     gateway_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type) for linuxd <-> uservm communication.
+    #[cfg(not(feature = "standalone"))]
     system_vm_socket_info: (String, SocketType),
     /// Path to the guest program binary to execute inside the User VM.
     program: String,
@@ -44,7 +48,7 @@ pub struct UserVmArgs {
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the User VM binary.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     uservm_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
@@ -83,22 +87,26 @@ impl UserVmArgs {
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        control_plane_connect_socket_info: (String, SocketType),
-        gateway_socket_info: (String, SocketType),
-        system_vm_socket_info: (String, SocketType),
+        #[cfg(not(feature = "standalone"))] control_plane_connect_socket_info: (String, SocketType),
+        #[cfg(not(feature = "standalone"))] gateway_socket_info: (String, SocketType),
+        #[cfg(not(feature = "standalone"))] system_vm_socket_info: (String, SocketType),
         program: String,
         program_args: Option<String>,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
         kernel_binary_path: String,
-        #[cfg(not(feature = "single-process"))] uservm_binary_path: String,
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        uservm_binary_path: String,
         log_directory: String,
         uservm_id: UserVmIdentifier,
     ) -> Self {
         Self {
+            #[cfg(not(feature = "standalone"))]
             control_plane_connect_socket_info,
+            #[cfg(not(feature = "standalone"))]
             gateway_socket_info,
+            #[cfg(not(feature = "standalone"))]
             system_vm_socket_info,
             program,
             program_args,
@@ -106,7 +114,7 @@ impl UserVmArgs {
             console_file,
             hwloc,
             kernel_binary_path,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             uservm_binary_path,
             log_directory,
             uservm_id,
@@ -122,6 +130,7 @@ impl UserVmArgs {
     ///
     /// A reference to the control plane connect socket information tuple.
     ///
+    #[cfg(not(feature = "standalone"))]
     pub fn control_plane_connect_socket_info(&self) -> &(String, SocketType) {
         &self.control_plane_connect_socket_info
     }
@@ -135,6 +144,7 @@ impl UserVmArgs {
     ///
     /// A reference to the gateway socket information tuple.
     ///
+    #[cfg(not(feature = "standalone"))]
     pub fn gateway_socket_info(&self) -> &(String, SocketType) {
         &self.gateway_socket_info
     }
@@ -148,6 +158,7 @@ impl UserVmArgs {
     ///
     /// A reference to the system VM socket information tuple.
     ///
+    #[cfg(not(feature = "standalone"))]
     pub fn system_vm_socket_info(&self) -> &(String, SocketType) {
         &self.system_vm_socket_info
     }
@@ -239,7 +250,7 @@ impl UserVmArgs {
     ///
     /// The path to the User VM binary.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn uservm_binary_path(&self) -> &str {
         &self.uservm_binary_path
     }

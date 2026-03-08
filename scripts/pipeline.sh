@@ -30,7 +30,7 @@ source "${IMPORT_DIR}/logging.sh"
 # Configuration matrix for testing all supported machines.
 declare -a MACHINE_TYPES=("qemu-isapc" "qemu-baremetal" "qemu-pc" "microvm" "hyperlight")
 declare -a BUILD_TYPES=("debug" "release")
-declare -a DEPLOYMENT_TYPES=("single-process" "multi-process" "l2")
+declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process" "l2")
 declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
 declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "format")
 
@@ -192,6 +192,11 @@ is_excluded() {
     if [[ "${machine}" == "qemu-pc" ]] || \
        [[ "${machine}" == "qemu-isapc" ]] || \
        [[ "${machine}" == "qemu-baremetal" ]]; then
+        return 0
+    fi
+
+    # Hyperlight does not support the -ramfs flag required by standalone mode.
+    if [[ "${machine}" == "hyperlight" ]] && [[ "${deployment}" == "standalone" ]]; then
         return 0
     fi
 

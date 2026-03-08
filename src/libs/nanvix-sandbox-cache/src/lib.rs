@@ -24,9 +24,6 @@ pub use ::nanvix_sandbox::{
     SandboxTag,
 };
 
-#[cfg(feature = "single-process")]
-pub use ::nanvix_sandbox::SyscallTable;
-
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -38,20 +35,17 @@ use ::log::{
     trace,
     warn,
 };
-#[cfg(not(feature = "single-process"))]
-use ::nanvix_sandbox::netns::{
-    NetnsHandle,
-    NetnsInfo,
-    NetnsPool,
-    NetnsPoolConfig,
-    NetnsPoolInitStrategy,
-};
-#[cfg(not(feature = "single-process"))]
-use ::nanvix_sandbox::SnapshotDirHandle;
 use ::nanvix_sandbox::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
     linuxd::LinuxDaemon,
+    netns::{
+        NetnsHandle,
+        NetnsInfo,
+        NetnsPool,
+        NetnsPoolConfig,
+        NetnsPoolInitStrategy,
+    },
     syscomm::{
         SocketListener,
         SocketType,
@@ -62,14 +56,14 @@ use ::nanvix_sandbox::{
     InitializedSandbox,
     RunningSandbox,
     SandboxConfig,
+    SnapshotDirHandle,
     UninitializedSandbox,
     UserVmIdentifier,
 };
-#[cfg(not(feature = "single-process"))]
-use ::std::marker::PhantomData;
 use ::std::{
     collections::HashMap,
     fs,
+    marker::PhantomData,
     path::PathBuf,
     sync::Arc,
 };
@@ -97,8 +91,7 @@ pub const DEFAULT_EXIT_CODE: i32 = -1;
 ///
 /// # Type Parameters
 ///
-/// - `T`: Custom state type for the syscall table. This is passed to system call handlers in
-///   single-process mode. Use `()` if no custom state is required.
+/// - `T`: Custom state type. Use `()` if no custom state is required.
 ///
 pub struct SandboxCache<T> {
     /// Configuration parameters for all sandboxes.
@@ -110,11 +103,8 @@ pub struct SandboxCache<T> {
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
     control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Network namespace pool for different L2 VMs.
-    #[cfg(not(feature = "single-process"))]
     netns_pool: NetnsPool,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
-    /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
     _phantom: PhantomData<T>,
 }
 
@@ -194,7 +184,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     pub async fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
         // Only pre-allocate network namespaces when L2 is enabled; otherwise keep it lazy so
         // non-L2 deployments do not try to create netns at startup (which triggers sudo+sysctl).
-        #[cfg(not(feature = "single-process"))]
         let netns_init_strategy: NetnsPoolInitStrategy = if config.l2() {
             match config.netns_pool_size() {
                 0 => NetnsPoolInitStrategy::Lazy,
@@ -211,7 +200,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         // In L2 mode, the control plane uses TCP since linuxd runs inside a VM and communicates
         // via the host's VETH interface. We bind to 0.0.0.0:{CONTROL_PLANE_PORT}.
         // In non-L2 mode, we use a Unix socket in the tmp directory.
-        #[cfg(not(feature = "single-process"))]
         let control_plane_bind_sockaddr: String = if config.l2() {
             format!("0.0.0.0:{}", ::config::linuxd::CONTROL_PLANE_PORT)
         } else {
@@ -220,23 +208,13 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             bind_addr
         };
 
-        #[cfg(feature = "single-process")]
-        let control_plane_bind_sockaddr: String = {
-            let (bind_addr, _connect_addr): (String, String) =
-                control_plane_sockaddr_builder(config.tmp_directory())?;
-            bind_addr
-        };
-
         // Bind control plane socket.
         // In L2 mode, force TCP socket type since we communicate over the network.
-        #[cfg(not(feature = "single-process"))]
         let control_plane_bind_socket_type: SocketType = if config.l2() {
             SocketType::Tcp
         } else {
             config.control_plane_sockaddr_type()
         };
-        #[cfg(feature = "single-process")]
-        let control_plane_bind_socket_type: SocketType = config.control_plane_sockaddr_type();
         let unbound_socket: UnboundSocket = UnboundSocket::new(control_plane_bind_socket_type);
         let control_plane_bind_socket: SocketListener =
             match unbound_socket.bind(&control_plane_bind_sockaddr).await {
@@ -261,7 +239,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 control_plane_bind_sockaddr,
                 control_plane_bind_socket_type,
             )))),
-            #[cfg(not(feature = "single-process"))]
             netns_pool: NetnsPool::new(
                 NetnsPoolConfig::new(
                     ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
@@ -269,7 +246,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 )?,
                 netns_init_strategy,
             )?,
-            #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
         })))
     }
@@ -411,15 +387,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 );
 
                 // Gateway port guard for L2 deployments.
-                #[cfg(not(feature = "single-process"))]
                 let mut gateway_l2_port: Option<TcpPort> = None;
-                #[cfg(feature = "single-process")]
-                let gateway_l2_port: Option<TcpPort> = None;
 
                 // Add Linux Daemon instance to sandbox if one exists for the tenant.
                 let uninitialized_sandbox: UninitializedSandbox<T> =
                     if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
-                        #[cfg(not(feature = "single-process"))]
                         let uninitialized_sandbox: UninitializedSandbox<T> = {
                             // Clone ownership of the network namespace from linuxd (pre-existing) to
                             // the new user VM (only in L2-mode).
@@ -452,7 +424,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     } else {
                         // Allocate a network namespace for the new linuxd (and user VM) instance
                         // in L2 deployments.
-                        #[cfg(not(feature = "single-process"))]
                         if self.config.l2() {
                             let netns_handle: NetnsHandle =
                                 self.netns_pool.allocate().map_err(|e| {
@@ -488,36 +459,28 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         } else {
                             uninitialized_sandbox
                         }
-
-                        #[cfg(feature = "single-process")]
-                        uninitialized_sandbox
                     };
 
                 // Work-out socket addresses. In L2 deployments these addresses depend on the
                 // network namespace, so we assign them right after setting up the netns.
-                #[cfg(not(feature = "single-process"))]
                 let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
                 let (control_plane_bind_sockaddr, control_plane_connect_sockaddr): (
                     String,
                     String,
                 ) = (control_plane_sockaddr_builder)(
                     self.config.tmp_directory(),
-                    #[cfg(not(feature = "single-process"))]
                     netns_info.clone(),
                 )?;
                 let user_vm_sockaddr: String = (user_vm_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
-                    #[cfg(not(feature = "single-process"))]
                     self.config.l2(),
                 )?;
                 let gateway_sockaddr: String = (gateway_sockaddr_builder)(
                     self.config.tmp_directory(),
                     tag.tenant_id(),
                     tag.sandbox_id(),
-                    #[cfg(not(feature = "single-process"))]
                     netns_info.clone(),
-                    #[cfg(not(feature = "single-process"))]
                     &gateway_l2_port,
                 )?;
 
@@ -540,7 +503,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     anyhow::bail!(reason);
                 }
 
-                #[cfg(not(feature = "single-process"))]
                 let l2_sysvm_snapshot_dir: PathBuf =
                     sandbox_tmp_dir.join(format!("l2-sysvm-snapshot-{}", tag.sandbox_id()));
 
@@ -552,13 +514,9 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     self.config.console_file().map(|s| s.to_string()),
                     self.config.hwloc().clone(),
                     self.config.kernel_binary_path(),
-                    #[cfg(not(feature = "single-process"))]
                     self.config.linuxd_binary_path(),
-                    #[cfg(not(feature = "single-process"))]
                     self.config.uservm_binary_path(),
                     self.config.log_directory(),
-                    #[cfg(feature = "single-process")]
-                    self.config.syscall_table(),
                     Some((
                         control_plane_bind_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),
@@ -572,7 +530,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     Some(self.config.l2()),
                 );
 
-                #[cfg(not(feature = "single-process"))]
                 let uninitialized_sandbox: UninitializedSandbox<T> = if self.config.l2() {
                     let snapshot_dir_handle: SnapshotDirHandle = SnapshotDirHandle::new(
                         &l2_sysvm_snapshot_dir,
@@ -597,10 +554,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 } else {
                     uninitialized_sandbox.with_config(config)
                 };
-
-                #[cfg(feature = "single-process")]
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    uninitialized_sandbox.with_config(config);
 
                 let initialized_sandbox: InitializedSandbox<T> =
                     match uninitialized_sandbox.initialize().await {
@@ -817,46 +770,13 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Creates a test configuration for single-process mode.
+    /// Creates a test configuration.
     ///
     /// # Returns
     ///
     /// A tuple of the sandbox cache configuration and the temp directory handle.
     /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
-    #[cfg(feature = "single-process")]
-    fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
-        let tmp_dir: TempTestDir = TempTestDir::new();
-        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
-            SocketType::Unix,
-            SocketType::Unix,
-            SocketType::Unix,
-            None,
-            None,
-            None,
-            128,
-            &format!("{}/kernel.elf", tmp_dir.path()),
-            None,
-            &format!("{}/toolchain", tmp_dir.path()),
-            &format!("{}/logs", tmp_dir.path()),
-            false,
-            &format!("{}/snapshot", tmp_dir.path()),
-            tmp_dir.path(),
-        );
-        (config, tmp_dir)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a test configuration for multi-process mode.
-    ///
-    /// # Returns
-    ///
-    /// A tuple of the sandbox cache configuration and the temp directory handle.
-    /// The temp directory is automatically cleaned up when the handle is dropped.
-    ///
-    #[cfg(not(feature = "single-process"))]
     fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
         let tmp_dir: TempTestDir = TempTestDir::new();
         let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
@@ -904,27 +824,7 @@ mod tests {
     ) -> (SandboxCacheConfig<()>, TempTestDir) {
         let tmp_dir: TempTestDir = TempTestDir::new();
 
-        #[cfg(feature = "single-process")]
-        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
-            socket_type,
-            socket_type,
-            socket_type,
-            console_file,
-            None,
-            hwloc,
-            0,
-            &format!("{}/kernel.elf", tmp_dir.path()),
-            None,
-            &format!("{}/toolchain", tmp_dir.path()),
-            &format!("{}/logs", tmp_dir.path()),
-            l2,
-            &format!("{}/snapshot", tmp_dir.path()),
-            tmp_dir.path(),
-        );
-
-        #[cfg(not(feature = "single-process"))]
         let netns_pool_size: usize = 0;
-        #[cfg(not(feature = "single-process"))]
         let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             socket_type,
             socket_type,
@@ -961,28 +861,9 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Tests sandbox cache creation with single-process configuration.
-    ///
-    #[tokio::test]
-    #[cfg(feature = "single-process")]
-    async fn test_new_single_process_mode() {
-        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
-        assert!(result.is_ok());
-
-        let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
-        let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
-        assert_eq!(cache_guard.running_sandboxes.len(), 0);
-        assert_eq!(cache_guard.linuxd_instances.len(), 0);
-    }
-
-    ///
-    /// # Description
-    ///
     /// Tests sandbox cache creation with multi-process configuration.
     ///
     #[tokio::test]
-    #[cfg(not(feature = "single-process"))]
     async fn test_new_multi_process_mode() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
@@ -1000,7 +881,6 @@ mod tests {
     /// Tests sandbox cache creation with L2 VM configuration.
     ///
     #[tokio::test]
-    #[cfg(not(feature = "single-process"))]
     async fn test_new_l2_mode() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
@@ -1093,27 +973,6 @@ mod tests {
     /// Tests SandboxCacheConfig creation and getters.
     ///
     #[test]
-    #[cfg(feature = "single-process")]
-    fn test_config_single_process() {
-        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
-        assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
-        assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
-        assert!(config.kernel_binary_path().ends_with("/kernel.elf"));
-        assert!(config.toolchain_binary_directory().ends_with("/toolchain"));
-        assert!(config.log_directory().ends_with("/logs"));
-        assert!(!config.l2());
-        assert!(config.l2_snapshot_path().ends_with("/snapshot"));
-        assert!(config.tmp_directory().contains("nanvix-test"));
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Tests SandboxCacheConfig creation and getters for multi-process mode.
-    ///
-    #[test]
-    #[cfg(not(feature = "single-process"))]
     fn test_config_multi_process() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
@@ -1160,7 +1019,6 @@ mod tests {
     /// Tests SandboxCacheConfig with L2 enabled.
     ///
     #[test]
-    #[cfg(not(feature = "single-process"))]
     fn test_config_with_l2_enabled() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);

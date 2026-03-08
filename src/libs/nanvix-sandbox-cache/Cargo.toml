@@ -20,9 +20,7 @@ tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = ["microvm", "multi-process"]
-single-process = ["nanvix-sandbox/single-process"]
 multi-process = ["nanvix-sandbox/multi-process"]
-standalone = ["nanvix-sandbox/standalone"]
 hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
 microvm = ["config/microvm", "nanvix-sandbox/microvm"]
 

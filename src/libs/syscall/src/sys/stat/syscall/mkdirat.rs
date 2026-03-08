@@ -53,6 +53,19 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
     // Route to the VFS if the path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
+        // In standalone mode the VFS is the only filesystem, so always route
+        // there — even for paths that do not exist yet (`is_vfs_path` would
+        // return false for a not-yet-created directory).
+        #[cfg(feature = "standalone")]
+        {
+            return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs mkdir failed")
+            });
+        }
+
+        #[cfg(not(feature = "standalone"))]
         if ::nvx::vfs::fd::is_vfs_path(pathname) {
             return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
                 let code: ErrorCode = e.into();

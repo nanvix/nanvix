@@ -143,6 +143,7 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
 MKIMAGE := $(BINARIES_DIR)/mkimage.elf
+MKRAMFS := $(BINARIES_DIR)/mkramfs.elf
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
@@ -233,6 +234,12 @@ export NANVIX_CFLAGS += -g
 export NANVIX_CXXFLAGS += -O0
 export NANVIX_CFLAGS += -D__DEBUG
 export NANVIX_CXXFLAGS += -D__DEBUG
+endif
+
+# Standalone mode define for C/C++ tests.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+export NANVIX_CFLAGS += -D__NANVIX_STANDALONE__
+export NANVIX_CXXFLAGS += -D__NANVIX_STANDALONE__
 endif
 
 #===================================================================================================
@@ -357,7 +364,7 @@ ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client mkimage strace
+ALL_HOST_UTILS := echo-client mkimage mkramfs strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 else
@@ -496,6 +503,7 @@ install: all-nanvix
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
+	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
@@ -808,7 +816,9 @@ run-unit-tests: test-host-rlibs
 endif
 
 # Determine the test configuration file based on deployment mode.
-ifneq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
+ifeq ($(DEPLOYMENT_MODE),standalone)
+NANVIX_TEST_CONFIG := test/test-standalone.toml
+else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
 NANVIX_TEST_CONFIG := test/test-single_process.toml
 else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml

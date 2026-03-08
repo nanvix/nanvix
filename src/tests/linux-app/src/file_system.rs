@@ -5,14 +5,12 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::boxed::Box;
 use ::sysapi::{
     fcntl::{
         atflags::AT_FDCWD,
         file_access_mode::O_RDWR,
         file_creation_flags::{
             O_CREAT,
-            O_DIRECTORY,
             O_TRUNC,
         },
     },
@@ -29,10 +27,6 @@ use ::sysapi::{
     },
 };
 use ::syscall::{
-    dirent::{
-        self,
-        DirectoryStream,
-    },
     fcntl,
     sys,
     unistd,
@@ -298,10 +292,19 @@ pub fn test() {
         },
     }
 
+    #[cfg(not(feature = "standalone"))]
     test_pipe();
 }
 
+#[cfg(not(feature = "standalone"))]
 fn test_pipe() {
+    use ::alloc::boxed::Box;
+    use ::sysapi::fcntl::file_creation_flags::O_DIRECTORY;
+    use ::syscall::dirent::{
+        self,
+        DirectoryStream,
+    };
+
     let [read_fd, write_fd]: [i32; 2] = match unistd::pipe() {
         Ok(fds) => {
             ::syslog::info!("created pipe with fds ({}, {})", fds[0], fds[1]);
