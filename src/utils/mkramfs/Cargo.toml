@@ -1,0 +1,21 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "mkramfs"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "FAT32 RAM filesystem image builder for Nanvix"
+homepage.workspace = true
+
+[[bin]]
+name = "mkramfs"
+path = "src/main.rs"
+
+[dependencies]
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+
+[lints]
+workspace = true

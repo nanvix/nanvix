@@ -54,10 +54,10 @@ pub struct SandboxConfig<T> {
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the Linux Daemon binary.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     linuxd_binary_path: String,
     /// Path to the User VM binary.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     uservm_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
@@ -157,8 +157,10 @@ impl<T> SandboxConfig<T> {
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
         kernel_binary_path: &str,
-        #[cfg(not(feature = "single-process"))] linuxd_binary_path: &str,
-        #[cfg(not(feature = "single-process"))] uservm_binary_path: &str,
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        linuxd_binary_path: &str,
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
+        uservm_binary_path: &str,
         log_directory: &str,
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
@@ -180,9 +182,9 @@ impl<T> SandboxConfig<T> {
             ),
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             linuxd_binary_path: linuxd_binary_path.to_string(),
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             uservm_binary_path: uservm_binary_path.to_string(),
             log_directory: log_directory.to_string(),
             #[cfg(feature = "single-process")]
@@ -297,7 +299,7 @@ impl<T> SandboxConfig<T> {
     ///
     /// The path to the Linux Daemon binary.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn linuxd_binary_path(&self) -> &str {
         &self.linuxd_binary_path
     }
@@ -311,7 +313,7 @@ impl<T> SandboxConfig<T> {
     ///
     /// The path to the User VM binary.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn uservm_binary_path(&self) -> &str {
         &self.uservm_binary_path
     }

@@ -2,21 +2,17 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Modules
+// Configuration
 //==================================================================================================
 
-pub mod message;
-
-mod client;
-mod server;
+#![deny(clippy::all)]
 
 //==================================================================================================
-// Exports
+// Main
 //==================================================================================================
 
-#[cfg(feature = "standalone")]
-pub use client::{
-    StandaloneConfig,
-    StandaloneState,
-};
-pub use server::HttpServer;
+fn main() {
+    // Intentionally left empty. The standalone rootfs image is now produced
+    // by the `mkramfs` host utility, invoked from the build system
+    // (`build/make/nanvixd.mk`) instead of being generated here.
+}
