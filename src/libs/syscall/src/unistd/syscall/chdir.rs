@@ -48,6 +48,18 @@ pub fn chdir(path: &str) -> Result<(), Error> {
     // Route to the VFS if the path matches an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
+        // In standalone mode the VFS is the only filesystem, so always route
+        // there regardless of what `is_vfs_path` returns.
+        #[cfg(feature = "standalone")]
+        {
+            ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
+                Error::new(code, "vfs chdir failed")
+            })
+        }
+
+        #[cfg(not(feature = "standalone"))]
         if ::nvx::vfs::fd::is_vfs_path(path) {
             return ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
                 let code: ErrorCode = e.into();
@@ -55,12 +67,6 @@ pub fn chdir(path: &str) -> Result<(), Error> {
                 Error::new(code, "vfs chdir failed")
             });
         }
-    }
-
-    // In standalone mode, succeed as a no-op for non-VFS paths (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        Ok(())
     }
 
     // Forward to linuxd via IPC.

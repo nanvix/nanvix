@@ -70,6 +70,7 @@ runs:
 
       # Determine test config based on deployment type.
       case "${{ inputs.deployment-type }}" in
+        standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
         single-process) TEST_CONFIG="test/test-single_process.toml" ;;
         multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
         l2)             TEST_CONFIG="test/test-l2.toml" ;;

@@ -22,7 +22,7 @@ void test_chdir(void)
 {
     fprintf(stderr, "testing chdir() ... ");
 
-    const char *dirname = "/";
+    const char *dirname = "src";
     assert(strlen(dirname) <= NAME_MAX);
 
     char original_cwd[PATH_MAX];
@@ -31,7 +31,7 @@ void test_chdir(void)
     // Get the current working directory.
     assert(getcwd(original_cwd, sizeof(original_cwd)) != NULL);
 
-    // Change to the "src" directory.
+    // Change to the target directory.
     assert(chdir(dirname) == 0);
 
     // Verify the current working directory has changed.

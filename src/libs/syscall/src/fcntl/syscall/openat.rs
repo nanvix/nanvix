@@ -41,6 +41,24 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
     // Route to the VFS if the path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
+        // In standalone mode, VFS is the only filesystem. Route O_CREAT to VFS
+        // even if the file does not exist yet (is_vfs_path checks existence).
+        #[cfg(feature = "standalone")]
+        {
+            if ::nvx::vfs::fd::is_vfs_path(pathname)
+                || flags & ::sysapi::fcntl::file_creation_flags::O_CREAT != 0
+            {
+                return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+                    let code: ErrorCode = e.into();
+                    ::syslog::error!(
+                        "openat(): VFS open failed (pathname={pathname:?}, error={e})"
+                    );
+                    Error::new(code, "vfs open failed")
+                });
+            }
+        }
+
+        #[cfg(not(feature = "standalone"))]
         if ::nvx::vfs::fd::is_vfs_path(pathname) {
             return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
                 let code: ErrorCode = e.into();

@@ -330,10 +330,14 @@ jobs:
       matrix:
         build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
-        deployment-type: [single-process, multi-process]
+        deployment-type: [standalone, single-process, multi-process]
         exclude:
           - machine-type: qemu-pc
+            deployment-type: standalone
+          - machine-type: qemu-pc
             deployment-type: single-process
+          - machine-type: hyperlight
+            deployment-type: standalone
     runs-on:
       group: Test
     permissions:
