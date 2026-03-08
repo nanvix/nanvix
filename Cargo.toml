@@ -65,6 +65,7 @@ members = [
         "src/user/hello-wasm",
         "src/utils/echo-client",
         "src/utils/mkimage",
+        "src/utils/mkramfs",
         "src/utils/nanvix-bench",
         "src/utils/nanvix-test",
         "src/utils/nanvixd",

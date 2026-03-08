@@ -44,6 +44,7 @@ pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
 pub mod pal;
+pub mod standalone;
 pub mod vmm;
 
 //==================================================================================================

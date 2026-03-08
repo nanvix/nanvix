@@ -21,7 +21,6 @@ use ::log::{
     debug,
     error,
     info,
-    warn,
 };
 use ::std::{
     convert::TryInto,
@@ -62,6 +61,8 @@ use ::uservm::{
         IoControlCommand,
         IoControlResponse,
     },
+    standalone,
+    standalone::StandaloneVmHandle,
 };
 
 //==================================================================================================
@@ -171,50 +172,17 @@ async fn run_standalone(
 ) -> Result<ExitCode> {
     info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
 
-    // Create channels. In standalone mode these are wired directly without an I/O thread.
-    let (vcpu_thread_stdout_tx, mut standalone_data_rx) =
-        mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Nobody sends inbound data in standalone mode. The sender is kept alive so that the memory
-    // thread's receiver does not see an immediate channel close.
-    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator's io_control_rx does not see an immediate channel close.
-    let (_io_cmd_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator can send control responses without a closed-channel error.
-    let (io_control_tx, _io_resp_rx) = mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
-
-    let counters: MessageCounters = MessageCounters::new();
-
-    let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
-        memory_size,
+    let (handle, _io): (StandaloneVmHandle, standalone::StandaloneVmIo) = StandaloneVmHandle::spawn(
+        kernel_filename,
         initrd_filename,
         initrd_args,
         ramfs_filename,
+        memory_size,
         stderr,
-        vcpu_thread_stdout_tx,
-        memory_thread_data_rx,
-        io_control_rx,
-        io_control_tx,
-        kernel_filename,
-        counters,
         snapshot_path,
-    });
+    );
 
-    // Drain the VM's stdout channel. In standalone mode there is no system VM to forward messages
-    // to, so we simply consume and discard them to prevent the channel from blocking the VM.
-    let drain_handle: JoinHandle<()> = tokio::spawn(async move {
-        while let Some(_msg) = standalone_data_rx.recv().await {}
-        debug!("main(): standalone mode: VM stdout channel closed");
-    });
-
-    let vm_exit_status: Result<u16> = vmm_handle.await?;
-    debug!("main(): uservm completed (exit_status={vm_exit_status:?})");
-
-    // Wait for the drain task to finish.
-    if let Err(error) = drain_handle.await {
-        warn!("main(): standalone drain task failed (error={error:?})");
-    }
-
-    convert_exit_status(vm_exit_status)
+    convert_exit_status(handle.wait().await)
 }
 
 ///

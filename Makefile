@@ -143,6 +143,7 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
 MKIMAGE := $(BINARIES_DIR)/mkimage.elf
+MKRAMFS := $(BINARIES_DIR)/mkramfs.elf
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
@@ -363,7 +364,7 @@ ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client mkimage strace
+ALL_HOST_UTILS := echo-client mkimage mkramfs strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 else
@@ -502,6 +503,7 @@ install: all-nanvix
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
+	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/

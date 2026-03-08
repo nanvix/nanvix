@@ -11,8 +11,17 @@ TEST_KERNEL_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 TEST_KERNEL_FEATURES := $(strip $(TEST_KERNEL_FEATURES))
 TEST_KERNEL_CARGO_FEATURES := $(if $(TEST_KERNEL_FEATURES),--features "$(TEST_KERNEL_FEATURES)")
 
+# Guest binaries that support standalone deployment mode.
+STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust
+
+# Computes the cargo features string for a guest binary package.
+# test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
+# listed in STANDALONE_GUEST_BINARIES also get the 'standalone' cargo feature.
+_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),standalone)
+_pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
+
 # Returns package-specific cargo features, falling back to generic features.
-GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(GUEST_BINARY_CARGO_FEATURES))
+GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))"))
 
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): init all-guest-staticlibs
