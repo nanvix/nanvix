@@ -26,6 +26,7 @@ config = { workspace = true }
 control-plane-api = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
+multibin = { workspace = true, features = ["std"] }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }

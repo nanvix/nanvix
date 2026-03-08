@@ -142,6 +142,15 @@ impl Guest {
             return Err(anyhow::anyhow!(reason));
         }
 
+        // SAFETY: FileMapping guarantees that ptr() is valid for size() bytes.
+        let mapped_bytes: &[u8] =
+            unsafe { ::std::slice::from_raw_parts(initrd.ptr(), initrd.size()) };
+
+        // Detect whether this is a multibinary NVMB image or a single ELF binary.
+        let is_multibinary: bool = initrd.size() >= ::multibin::MAGIC.len()
+            && mapped_bytes[..::multibin::MAGIC.len()] == ::multibin::MAGIC;
+
+        // Copy the initrd file into guest memory (zero-copy from mmap).
         unsafe {
             let src = initrd.ptr();
             let dst = ptr.add(::config::microvm::DEFAULT_INITRD_BASE);
@@ -175,20 +184,25 @@ impl Guest {
 
         self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE, initrd_size));
 
-        // Write arguments to the virtual machine. For now, just pass the initrd filename.
-        let mut args: String = initrd_filename
-            .split('/')
-            .next_back()
-            .unwrap_or(initrd_filename)
-            .to_string();
+        if is_multibinary {
+            // Multibinary image: cmdlines are embedded in the image, no write_args needed.
+            debug!("load_initrd(): multibinary format detected, skipping write_args");
+        } else {
+            // Single ELF binary: write length-prefixed args after the initrd.
+            let mut args: String = initrd_filename
+                .split('/')
+                .next_back()
+                .unwrap_or(initrd_filename)
+                .to_string();
 
-        // Add initrd arguments if provided.
-        if let Some(ref initrd_args) = initrd_args {
-            args.push_str(&format!(" {initrd_args}"));
+            // Add initrd arguments if provided.
+            if let Some(ref initrd_args) = initrd_args {
+                args.push_str(&format!(" {initrd_args}"));
+            }
+
+            debug!("load_initrd(): writing args to virtual memory: {}", args);
+            self.write_args(vmem, &args)?;
         }
-
-        debug!("load_initrd(): writing args to virtual memory: {}", args);
-        self.write_args(vmem, &args)?;
 
         Ok(())
     }
