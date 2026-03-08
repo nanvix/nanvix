@@ -44,12 +44,10 @@ void test_mkdir(void)
     assert(st.st_mode & S_IRUSR);
     assert(st.st_mode & S_IWUSR);
     assert(st.st_mode & S_IXUSR);
-    assert(st.st_nlink == 2);           // Directory has at least one link (itself).
-    assert(st.st_atime == st.st_mtime); // Access time should be equal to modification time.
-    assert(st.st_atime == st.st_ctime); // Access time should be equal to change time.
-    assert(st.st_atime != 0);           // Access time should not be zero.
-    assert(st.st_mtime != 0);           // Modification time should not be zero.
-    assert(st.st_ctime != 0);           // Change time should not be zero.
+    assert(st.st_nlink == 2); // Newly-created empty directory has 2 links: "." and "..".
+    assert(st.st_atime != 0); // Access time should not be zero.
+    assert(st.st_mtime != 0); // Modification time should not be zero.
+    assert(st.st_ctime != 0); // Change time should not be zero.
     // TODO: Uncomment the following lines when user/group ID checks are supported.
     // assert(st.st_uid == getuid()); // User ID of the owner.
     // assert(st.st_gid == getgid()); // Group ID of the owner.

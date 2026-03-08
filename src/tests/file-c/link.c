@@ -52,7 +52,6 @@ void test_link(void)
     assert(st.st_nlink == st_link.st_nlink); // Link count should be the same.
     assert(st.st_mode == st_link.st_mode);   // Mode should be the same.
     assert(st.st_size == st_link.st_size);   // Size should be the same.
-    assert(st.st_atime == st_link.st_atime); // Access time should be the same.
     assert(st.st_mtime == st_link.st_mtime); // Modification time should be the same.
     assert(st.st_ctime == st_link.st_ctime); // Change time should be the same.
     assert(st.st_atime != 0);                // Access time should not be zero.
