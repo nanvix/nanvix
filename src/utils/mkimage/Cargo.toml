@@ -1,0 +1,21 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "mkimage"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Multibinary image builder for Nanvix"
+homepage.workspace = true
+
+[[bin]]
+name = "mkimage"
+path = "src/main.rs"
+
+[dependencies]
+multibin = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true
