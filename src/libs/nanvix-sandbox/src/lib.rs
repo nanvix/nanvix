@@ -66,9 +66,9 @@
 //!     None,  // console_file
 //!     None,  // hwloc
 //!     "/path/to/kernel.elf",  // kernel_binary_path
-//!     #[cfg(not(feature = "single-process"))]
+//!     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 //!     "/path/to/linuxd.elf",  // linuxd_binary_path
-//!     #[cfg(not(feature = "single-process"))]
+//!     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 //!     "/path/to/uservm.elf",  // uservm_binary_path
 //!     "/path/to/logs",  // log_directory
 //!     #[cfg(feature = "single-process")]
@@ -131,10 +131,11 @@
 
 mod config;
 mod initialized;
+#[cfg(not(feature = "standalone"))]
 mod linuxd_args;
 mod running;
 mod sandbox_config;
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 mod snapshot_dir_handle;
 mod tag;
 mod uninitialized;
@@ -144,17 +145,31 @@ mod uservm_args;
 // Public Modules
 //==================================================================================================
 
-pub mod sandbox;
+::cfg_if::cfg_if! {
+    if #[cfg(feature = "standalone")] {
+        pub mod standalone;
+    } else {
+        pub mod sandbox;
+    }
+}
 
 pub mod netns;
 pub mod tcp_port;
+
+::cfg_if::cfg_if! {
+    if #[cfg(feature = "single-process")] {
+        pub mod simple_cache;
+    }
+}
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
 ::cfg_if::cfg_if! {
-    if #[cfg(feature = "single-process")] {
+    if #[cfg(feature = "standalone")] {
+        pub use self::standalone::*;
+    } else if #[cfg(feature = "single-process")] {
         pub use self::sandbox::single_process::*;
         pub use ::linuxd::syscalls::SyscallAction;
         pub use ::linuxd::syscalls::SyscallTable;
@@ -163,11 +178,13 @@ pub mod tcp_port;
     }
 }
 
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 pub use self::snapshot_dir_handle::SnapshotDirHandle;
+
+#[cfg(not(feature = "standalone"))]
+pub use self::linuxd_args::LinuxDaemonArgs;
 pub use self::{
     initialized::InitializedSandbox,
-    linuxd_args::LinuxDaemonArgs,
     running::RunningSandbox,
     sandbox_config::SandboxConfig,
     tag::SandboxTag,
