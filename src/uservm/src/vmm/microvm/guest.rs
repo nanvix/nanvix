@@ -119,7 +119,7 @@ impl Guest {
 
         // Check if initrd would overlap with kernel.
         if let Some((kernel_base, kernel_size)) = self.kernel
-            && (initrd.ptr() as usize) < (kernel_base + kernel_size)
+            && (::config::microvm::DEFAULT_INITRD_BASE) < (kernel_base + kernel_size)
         {
             let reason: String = "initrd overlaps with kernel".to_string();
             error!("load_initrd(): {reason}");
