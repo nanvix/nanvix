@@ -18,6 +18,47 @@ inputs:
 runs:
   using: "composite"
   steps:
+  # For microvm/hyperlight: smoke test that boots nanvixd and checks for the
+  # kernel magic string, verifying the multibin initrd (procd, testd, memd).
+  - name: "Smoke Test (microvm/hyperlight)"
+    if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+    shell: bash
+    env:
+      RUST_LOG: debug
+    run: |
+      set -Eeuo pipefail
+
+      MAGIC_STRING="hello, world!"
+      TIMEOUT=120
+
+      # Build multibin image from pre-built artifacts.
+      ./bin/mkimage.elf -o nanvix.img \
+          "bin/procd.elf;procd" \
+          "bin/memd.elf;memd" \
+          "bin/testd.elf;testd"
+
+      if [[ "${{ inputs.build-type }}" == "release" ]]; then
+        # In release builds, CI sets LOG_LEVEL=error, which suppresses the
+        # debug-level magic string. Validate success by requiring nanvixd to
+        # exit cleanly before timeout.
+        if ! bash scripts/run-nanvixd.sh \
+              "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}"; then
+          echo "::error::Smoke test failed: nanvixd did not exit cleanly within ${TIMEOUT}s."
+          exit 1
+        fi
+      else
+        # In debug builds, assert successful boot by waiting for kernel magic
+        # string in console output.
+        if ! bash scripts/run-nanvixd.sh \
+              "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}" \
+              --wait-for-string "${MAGIC_STRING}"; then
+          echo "::error::Smoke test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
+          exit 1
+        fi
+      fi
+
+      echo "Smoke test passed."
+
   # For microvm/hyperlight: run test binary directly from downloaded artifacts.
   - name: "Integration Test (microvm/hyperlight)"
     if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
