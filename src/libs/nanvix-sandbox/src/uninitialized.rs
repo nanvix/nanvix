@@ -11,32 +11,33 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(feature = "standalone"))]
+use crate::linuxd::LinuxDaemon;
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use crate::netns::{
     NetnsHandle,
     NetnsInfo,
 };
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(feature = "standalone"))]
+use crate::LinuxDaemonArgs;
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use crate::SnapshotDirHandle;
 use crate::{
-    linuxd::LinuxDaemon,
     InitializedSandbox,
-    LinuxDaemonArgs,
     SandboxConfig,
 };
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
 use ::syscomm::{
     SocketListener,
     SocketType,
 };
-use ::tokio::sync::{
-    Mutex,
-    MutexGuard,
-};
+use ::tokio::sync::Mutex;
+#[cfg(not(feature = "standalone"))]
+use ::tokio::sync::MutexGuard;
 
 //==================================================================================================
 // Structures
@@ -64,12 +65,13 @@ pub struct UninitializedSandbox<T> {
     /// Optional RAM filesystem image exposed to the guest program.
     ramfs_filename: Option<String>,
     /// Optional handle to an existing Linux Daemon instance.
+    #[cfg(not(feature = "standalone"))]
     linuxd: Option<Arc<LinuxDaemon>>,
     /// Optional handle to a network namespace. Only used in L2 deployments.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     netns_handle: Option<NetnsHandle>,
     /// Optional handle to the per-instance snapshot directory. Only used in L2 deployments.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     snapshot_dir_handle: Option<SnapshotDirHandle>,
     /// Optional control plane listener socket, address, and socket type.
     control_plane_bind_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
@@ -77,7 +79,7 @@ pub struct UninitializedSandbox<T> {
     config: Option<SandboxConfig<T>>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     _phantom: PhantomData<T>,
 }
 
@@ -113,14 +115,15 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             guest_binary_path: guest_binary_path.to_string(),
             program_args,
             ramfs_filename,
+            #[cfg(not(feature = "standalone"))]
             linuxd: None,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             netns_handle: None,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             snapshot_dir_handle: None,
             control_plane_bind_socket_and_info: Some(control_plane_bind_socket_and_info),
             config: None,
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             _phantom: PhantomData,
         }
     }
@@ -156,6 +159,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// The modified uninitialized sandbox with the Linux Daemon attached.
     ///
+    #[cfg(not(feature = "standalone"))]
     pub fn with_linuxd(mut self, linuxd: Arc<LinuxDaemon>) -> Self {
         self.linuxd = Some(linuxd);
         self
@@ -174,7 +178,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// The modified uninitialized sandbox with the network namespace handle attached.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn with_netns_handle(mut self, netns_handle: Option<NetnsHandle>) -> Self {
         self.netns_handle = netns_handle;
         self
@@ -193,7 +197,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// The modified uninitialized sandbox with the snapshot directory handle attached.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn with_snapshot_dir_handle(
         mut self,
         snapshot_dir_handle: Option<SnapshotDirHandle>,
@@ -211,7 +215,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     ///
     /// Returns the network namespace information if available, or `None` otherwise.
     ///
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     pub fn netns_info(&self) -> Option<NetnsInfo> {
         if let Some(netns_handle) = &self.netns_handle {
             netns_handle.netns_info().ok()
@@ -261,6 +265,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             };
 
         // Get Linux Daemon.
+        #[cfg(not(feature = "standalone"))]
         let linuxd: Arc<LinuxDaemon> = match self.linuxd.take() {
             // Linux Daemon not yet initialized.
             None => {
@@ -314,7 +319,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         ),
                         config.system_vm_socket_info().clone(),
                         config.hwloc(),
-                        #[cfg(not(feature = "single-process"))]
+                        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                         config.linuxd_binary_path().to_string(),
                         toolchain_binary_directory,
                         config.log_directory().to_string(),
@@ -333,10 +338,10 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     &mut locked_control_plane_bind_socket_and_info.0,
                     // Share ownership of netns handle with linux daemon process. The netns is
                     // provisioned upstream, if it is not but we are in L2 mode, spawn will fail.
-                    #[cfg(not(feature = "single-process"))]
+                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                     self.netns_handle.clone(),
                     // Pass ownership of the snapshot dir handle to the linuxd instance.
-                    #[cfg(not(feature = "single-process"))]
+                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                     self.snapshot_dir_handle.take(),
                 )
                 .await
@@ -357,13 +362,14 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             kernel_binary_path: config.kernel_binary_path().to_string(),
             program_args: self.program_args,
             ramfs_filename: self.ramfs_filename,
+            #[cfg(not(feature = "standalone"))]
             linuxd,
             control_plane_bind_socket_and_info,
             sandbox_config: config,
             // Pass ownership of the network namespace to the initialized sandbox.
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             netns_handle: self.netns_handle.take(),
-            #[cfg(not(feature = "single-process"))]
+            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             _phantom: PhantomData,
         })
     }
