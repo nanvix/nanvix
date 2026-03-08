@@ -192,6 +192,10 @@ impl Vmm {
                     let initrd_size: usize = bytes.len();
                     debug!("initrd: {} bytes", initrd_size);
 
+                    // Detect whether this is a multibinary NVMB image or a single ELF.
+                    let is_multibinary: bool = initrd_size >= ::multibin::MAGIC.len()
+                        && bytes[..::multibin::MAGIC.len()] == ::multibin::MAGIC;
+
                     // Read kernel file to compute memory footprint.
                     let kernel_bytes: Vec<u8> =
                         std::fs::read(&args.kernel_filename).map_err(|e| {
@@ -209,9 +213,6 @@ impl Vmm {
                         })?;
                     let kernel_end: usize = kernel_footprint.end();
                     let kernel_mem_size: usize = kernel_footprint.size();
-
-                    let initrd_args_bytes: Vec<u8> =
-                        Self::build_args_bytes(initrd_filename, &args.initrd_args)?;
 
                     // Fixed hyperlight structures placed after the kernel image:
                     // PEB, host function definitions, and I/O buffers.
@@ -264,14 +265,43 @@ impl Vmm {
                             anyhow::anyhow!(reason)
                         })?;
 
+                    // Build the init_data blob based on the initrd format.
+                    let init_data_bytes: Vec<u8> = if is_multibinary {
+                        // Multibinary: pass raw NVMB image, no wrapping needed.
+                        debug!("initrd: multibinary format detected, passing raw image");
+                        bytes
+                    } else {
+                        // Single ELF: prepend size header and append args (old format).
+                        let initrd_args_bytes: Vec<u8> =
+                            Self::build_args_bytes(initrd_filename, &args.initrd_args)?;
+
+                        let mut padded: Vec<u8> = Vec::with_capacity(
+                            ::config::hyperlight::INITRD_SIZE_BYTES
+                                + initrd_size
+                                + initrd_args_bytes.len(),
+                        );
+
+                        // Write the actual size as first INITRD_SIZE_BYTES (little-endian).
+                        padded.extend_from_slice(&(initrd_size as u64).to_le_bytes());
+                        padded.extend_from_slice(&bytes);
+                        padded.extend_from_slice(&initrd_args_bytes);
+
+                        debug!(
+                            "initrd blob: {} bytes total ({} byte header + {} bytes data + {} \
+                             bytes args)",
+                            padded.len(),
+                            ::config::hyperlight::INITRD_SIZE_BYTES,
+                            initrd_size,
+                            initrd_args_bytes.len(),
+                        );
+
+                        padded
+                    };
+
                     let required_memory: usize = kernel_mem_size
-                        .checked_add(initrd_size)
+                        .checked_add(init_data_bytes.len())
                         .and_then(|value| value.checked_add(heap_and_stack))
                         .and_then(|value| value.checked_add(reserved_memory))
-                        .and_then(|value| {
-                            value.checked_add(::config::hyperlight::INITRD_SIZE_BYTES)
-                        })
-                        .and_then(|value| value.checked_add(initrd_args_bytes.len()))
                         .ok_or_else(|| {
                             let reason: &str = "required memory calculation overflow";
                             error!("new(): {reason}");
@@ -293,34 +323,14 @@ impl Vmm {
                     let padding_size: usize =
                         (memory_size - required_memory + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
-                    // Create a new vector with size header + original data + padding
-                    let mut padded_bytes: Vec<u8> = Vec::with_capacity(
-                        ::config::hyperlight::INITRD_SIZE_BYTES
-                            + initrd_size
-                            + initrd_args_bytes.len(),
-                    );
-
-                    // Write the actual size as first INITRD_SIZE_BYTES-bytes (little-endian)
-                    padded_bytes.extend_from_slice(&(initrd_size as u64).to_le_bytes());
-
-                    // Add the actual initrd data
-                    padded_bytes.extend_from_slice(&bytes);
-
-                    // Append length-prefixed initrd arguments so the guest can consume them.
-                    padded_bytes.extend_from_slice(&initrd_args_bytes);
-
                     debug!(
-                        "initrd blob: {} bytes total ({} byte header + {} bytes data + 1 byte \
-                         args length + {} bytes args payload), extra memory: {} bytes",
-                        padded_bytes.len(),
-                        ::config::hyperlight::INITRD_SIZE_BYTES,
-                        initrd_size,
-                        initrd_args_bytes.len(),
+                        "initrd init_data: {} bytes, extra memory: {} bytes",
+                        init_data_bytes.len(),
                         padding_size
                     );
 
-                    // Box the data to extend its lifetime
-                    let boxed_data: Box<[u8]> = padded_bytes.into_boxed_slice();
+                    // Box the data to extend its lifetime.
+                    let boxed_data: Box<[u8]> = init_data_bytes.into_boxed_slice();
                     let data_ref: &'static [u8] = Box::leak(boxed_data);
 
                     let extra_memory: u64 = padding_size.try_into().map_err(|_| {

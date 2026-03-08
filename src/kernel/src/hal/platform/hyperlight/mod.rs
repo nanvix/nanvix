@@ -306,33 +306,71 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         ProcessEnvironmentBlock::set_guest_function_dispatch_ptr(0xdeadbeef)?;
     };
 
-    // Read actual size and relocate only that amount
-    let (initrd_base, initrd_size, (cmdline_len, cmdline)) = unsafe {
-        let current_data_start = (*peb_ptr).init_data.ptr as usize;
-        let total_size = (*peb_ptr).init_data.size as usize;
-
-        let (initrd_base, actual_initrd_size, initrd_cmdline) =
-            parse_initrd_image(current_data_start, total_size)?;
-
-        (initrd_base, actual_initrd_size, initrd_cmdline)
-    };
-
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
-    // Register initrd as a kernel module.
+    // Read the init_data blob from the PEB.
+    let (current_data_start, total_size) = unsafe {
+        let start: usize = (*peb_ptr).init_data.ptr as usize;
+        let size: usize = (*peb_ptr).init_data.size as usize;
+        (start, size)
+    };
 
-    info!(
-        "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
-        initrd_base,
-        initrd_size,
-        cmdline_len,
-        cmdline.as_str()
-    );
+    if total_size == 0 {
+        let reason: &str = "init_data is empty";
+        error!("parse_bootinfo(): {reason}");
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
 
-    // Add kernel module to the list of kernel modules.
-    let module: KernelModule =
-        KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
-    kernel_modules.push_back(module);
+    // Detect initrd format by checking for NVMB multibinary magic.
+    let init_data: &[u8] =
+        unsafe { core::slice::from_raw_parts(current_data_start as *const u8, total_size) };
+
+    if init_data.len() >= multibin::MAGIC.len()
+        && init_data[..multibin::MAGIC.len()] == multibin::MAGIC
+    {
+        // Multibinary NVMB format: relocate whole blob, then parse entries.
+        info!("parse_bootinfo(): multibinary initrd detected");
+
+        let initrd_base: usize = if current_data_start != ::config::hyperlight::DEFAULT_INITRD_BASE
+        {
+            let src_ptr: *const u8 = current_data_start as *const u8;
+            let dst_ptr: *mut u8 = ::config::hyperlight::DEFAULT_INITRD_BASE as *mut u8;
+            unsafe { core::ptr::copy(src_ptr, dst_ptr, total_size) };
+
+            debug!(
+                "parse_bootinfo(): multibinary relocated from {current_data_start:#010x} to \
+                 {:#010x}",
+                ::config::hyperlight::DEFAULT_INITRD_BASE
+            );
+            ::config::hyperlight::DEFAULT_INITRD_BASE
+        } else {
+            current_data_start
+        };
+
+        let image_data: &[u8] =
+            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_size) };
+
+        kernel_modules.extend(crate::multibin::parse(image_data, initrd_base)?);
+    } else {
+        // Single-binary format: parse old size-header + args layout.
+        info!("parse_bootinfo(): single-binary initrd detected");
+
+        let (initrd_base, initrd_size, (_cmdline_len, cmdline)) = unsafe {
+            let (base, size, cmdline) = parse_initrd_image(current_data_start, total_size)?;
+            (base, size, cmdline)
+        };
+
+        info!(
+            "initrd_base={:#010x}, initrd_size={:#010x}, cmdline={:?}",
+            initrd_base,
+            initrd_size,
+            cmdline.as_str()
+        );
+
+        let module: KernelModule =
+            KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
+        kernel_modules.push_back(module);
+    }
 
     Ok(BootInfo::new(
         None,

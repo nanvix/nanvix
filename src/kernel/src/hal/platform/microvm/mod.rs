@@ -265,41 +265,52 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
     let nzeros: usize = ::config::microvm::DEFAULT_INITRD_BASE.trailing_zeros() as usize;
     let initrd_size: usize = info & ((1 << nzeros) - 1);
     let initrd_base: usize = info & !((1 << nzeros) - 1);
-    let initrd_cmdline_len_base: usize = initrd_base + (initrd_size * mem::PAGE_SIZE);
-    let initrd_cmdline_base: usize = initrd_cmdline_len_base + core::mem::size_of::<u8>();
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
 
     // Register initrd as a kernel module.
     if initrd_size != 0 {
-        let cmdline_len: u8 = unsafe { *(initrd_cmdline_len_base as *const u8) };
-        let cmdline_bytes: &[u8] = unsafe {
-            core::slice::from_raw_parts(initrd_cmdline_base as *const u8, cmdline_len as usize)
-        };
-        let cmdline: &str = match core::str::from_utf8(cmdline_bytes) {
-            Ok(s) => s,
-            Err(_) => {
-                let reason: &str = "invalid UTF-8 in command line";
-                error!("invalid UTF-8 in command line");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
+        let total_bytes: usize = initrd_size * mem::PAGE_SIZE;
+        let image_data: &[u8] =
+            unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_bytes) };
 
-        info!(
-            "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
-            initrd_base,
-            (initrd_size * mem::PAGE_SIZE),
-            cmdline_len,
-            cmdline
-        );
+        // Detect initrd format by checking for NVMB multibinary magic.
+        if image_data.len() >= multibin::MAGIC.len()
+            && image_data[..multibin::MAGIC.len()] == multibin::MAGIC
+        {
+            info!("parse_bootinfo(): multibinary initrd detected");
+            kernel_modules.extend(crate::multibin::parse(image_data, initrd_base)?);
+        } else {
+            // Single ELF binary with length-prefixed args after the initrd.
+            info!("parse_bootinfo(): single-binary initrd detected");
+            let initrd_cmdline_len_base: usize = initrd_base + total_bytes;
+            let initrd_cmdline_base: usize = initrd_cmdline_len_base + core::mem::size_of::<u8>();
 
-        // Add kernel module to the list of kernel modules.
-        let module: KernelModule = KernelModule::new(
-            PhysicalAddress::from_raw_value(initrd_base)?,
-            initrd_size * mem::PAGE_SIZE,
-            cmdline.to_string(),
-        );
-        kernel_modules.push_back(module);
+            let cmdline_len: u8 = unsafe { *(initrd_cmdline_len_base as *const u8) };
+            let cmdline_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(initrd_cmdline_base as *const u8, cmdline_len as usize)
+            };
+            let cmdline: &str = match core::str::from_utf8(cmdline_bytes) {
+                Ok(s) => s,
+                Err(_) => {
+                    let reason: &str = "invalid UTF-8 in command line";
+                    error!("invalid UTF-8 in command line");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
+            };
+
+            info!(
+                "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
+                initrd_base, total_bytes, cmdline_len, cmdline
+            );
+
+            let module: KernelModule = KernelModule::new(
+                PhysicalAddress::from_raw_value(initrd_base)?,
+                total_bytes,
+                cmdline.to_string(),
+            );
+            kernel_modules.push_back(module);
+        }
     }
 
     Ok(BootInfo::new(
