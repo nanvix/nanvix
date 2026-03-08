@@ -235,6 +235,12 @@ export NANVIX_CFLAGS += -D__DEBUG
 export NANVIX_CXXFLAGS += -D__DEBUG
 endif
 
+# Standalone mode define for C/C++ tests.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+export NANVIX_CFLAGS += -D__NANVIX_STANDALONE__
+export NANVIX_CXXFLAGS += -D__NANVIX_STANDALONE__
+endif
+
 #===================================================================================================
 # Rust Toolchain Configuration
 #===================================================================================================
@@ -808,7 +814,9 @@ run-unit-tests: test-host-rlibs
 endif
 
 # Determine the test configuration file based on deployment mode.
-ifneq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
+ifeq ($(DEPLOYMENT_MODE),standalone)
+NANVIX_TEST_CONFIG := test/test-standalone.toml
+else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
 NANVIX_TEST_CONFIG := test/test-single_process.toml
 else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml
