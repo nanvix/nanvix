@@ -11,8 +11,9 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
+use crate::linuxd::LinuxDaemon;
 use crate::{
-    linuxd::LinuxDaemon,
     tcp_port::TcpPort,
     uservm::UserVm,
     SandboxTag,
@@ -46,6 +47,7 @@ pub struct RunningSandbox {
     /// Handle to the running User VM instance.
     pub(super) uservm: UserVm,
     /// Shared handle to the Linux Daemon instance (kept alive for resource management).
+    #[cfg(not(feature = "standalone"))]
     pub(super) _linuxd: Arc<LinuxDaemon>, // Keep resource.
     /// Gateway socket information (address, socket type, optional L2 TCP port).
     pub(super) gateway_socket_info: (String, SocketType, Option<TcpPort>),

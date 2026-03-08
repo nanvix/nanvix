@@ -18,7 +18,7 @@ chrono = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 hwloc = { workspace = true }
-linuxd = { workspace = true }
+linuxd = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
@@ -33,9 +33,9 @@ uservm = { workspace = true }
 default = ["microvm", "multi-process"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into the sandbox.
-single-process = []
-multi-process = []
-standalone = ["single-process"]
+single-process = ["linuxd"]
+multi-process = ["linuxd"]
+standalone = []
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
 
