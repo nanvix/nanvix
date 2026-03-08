@@ -22,12 +22,19 @@
 
 use ::anyhow::Result;
 use ::log::error;
+#[cfg(feature = "standalone")]
+use ::nanvix::http::StandaloneConfig;
+#[cfg(feature = "multi-process")]
+use ::nanvix::sandbox_cache::SandboxCacheConfig;
+#[cfg(feature = "single-process")]
+use ::nanvix::sandbox_cache::SimpleSandboxCacheConfig;
+#[cfg(feature = "standalone")]
+use ::nanvix::terminal::TerminalConfig;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
-    sandbox_cache::SandboxCacheConfig,
     terminal::Terminal,
 };
 use ::nanvixd::{
@@ -62,10 +69,10 @@ const MAX_EXIT_CODE: i32 = 255;
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
 /// Binary name for Linux Daemon.
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 const LINUXD_BINARY_NAME: &str = "linuxd.elf";
 /// Binary name for User VM.
-#[cfg(not(feature = "single-process"))]
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
 const USERVM_BINARY_NAME: &str = "uservm.elf";
 
 //==================================================================================================
@@ -148,26 +155,56 @@ async fn async_main() -> Result<ExitCode> {
     print_startup_info(&args);
 
     // Determine deployment type based on feature flag.
-    #[cfg(feature = "single-process")]
+    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
     let deployment: &str = "single-process";
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "standalone")]
+    let deployment: &str = "standalone";
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let deployment: &str = "multi-process";
 
     // Determine target machine type from config.
     let machine: &str = DEFAULT_MACHINE_NAME;
 
     // Ensure all required binaries are available.
-    #[cfg(feature = "single-process")]
+    #[cfg(any(feature = "single-process", feature = "standalone"))]
     let (kernel_binary_path, _, _) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
+    #[allow(unused_variables)]
     let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
 
+    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+    let config: SimpleSandboxCacheConfig<()> = SimpleSandboxCacheConfig::new(
+        args.control_plane_socket_type(),
+        args.gateway_socket_type(),
+        args.system_vm_socket_type(),
+        args.console_file().clone(),
+        args.ramfs_filename().map(|s| s.to_string()),
+        args.hwloc().clone(),
+        &kernel_binary_path,
+        None,
+        args.toolchain_binary_directory(),
+        args.log_directory(),
+        tmp_directory.path().to_str().ok_or_else(|| {
+            let reason: &str = "temporary directory path is not valid UTF-8";
+            error!("main(): {reason}");
+            anyhow::anyhow!(reason)
+        })?,
+    );
+
+    #[cfg(feature = "standalone")]
+    let config: StandaloneConfig = StandaloneConfig::new(
+        kernel_binary_path.clone(),
+        args.ramfs_filename().map(|s| s.to_string()),
+        args.console_file().clone(),
+    );
+
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
@@ -177,12 +214,8 @@ async fn async_main() -> Result<ExitCode> {
         args.hwloc().clone(),
         args.netns_pool_size(),
         &kernel_binary_path,
-        #[cfg(not(feature = "single-process"))]
         &linuxd_binary_path,
-        #[cfg(not(feature = "single-process"))]
         &uservm_binary_path,
-        #[cfg(feature = "single-process")]
-        None,
         args.toolchain_binary_directory(),
         args.log_directory(),
         args.l2(),
@@ -211,6 +244,19 @@ async fn async_main() -> Result<ExitCode> {
             args.program_args().join(" ")
         };
 
+        // In single-process mode, the terminal connects through the simplified sandbox cache
+        // (which embeds linuxd as an async task).
+        #[cfg(all(feature = "single-process", not(feature = "standalone")))]
+        let mut terminal: Terminal<()> = Terminal::new(config);
+        // In standalone mode, the terminal drives the VM directly (no linuxd).
+        #[cfg(feature = "standalone")]
+        let mut terminal: Terminal = Terminal::new(TerminalConfig::new(
+            kernel_binary_path.clone(),
+            args.ramfs_filename().map(|s| s.to_string()),
+            args.console_file().clone(),
+        ));
+        // In multi-process mode, the terminal connects through the sandbox cache.
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let mut terminal: Terminal<()> = Terminal::new(config);
         let exit_code: i32 = terminal
             .run(None, None, &guest_binary_path, &guest_binary_args)
@@ -224,8 +270,10 @@ async fn async_main() -> Result<ExitCode> {
             exit_code as u8
         };
 
-        Ok(ExitCode::from(clamped_exit_code))
-    } else {
+        return Ok(ExitCode::from(clamped_exit_code));
+    }
+
+    {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
                 let reason: &str = "no HTTP socket address specified in HTTP mode";
@@ -268,19 +316,19 @@ async fn ensure_all_binaries_available(
 ) -> Result<(String, String, String)> {
     let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let linuxd_binary_path: String = format!("{}/{}", args.binary_directory(), LINUXD_BINARY_NAME);
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let uservm_binary_path: String = format!("{}/{}", args.binary_directory(), USERVM_BINARY_NAME);
 
     // Check if all binaries are available locally.
     let kernel_available: bool = fs::metadata(&kernel_binary_path).await.is_ok();
 
-    #[cfg(feature = "single-process")]
+    #[cfg(any(feature = "single-process", feature = "standalone"))]
     let all_available: bool = kernel_available;
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     let all_available: bool = {
         let linuxd_available: bool = fs::metadata(&linuxd_binary_path).await.is_ok();
         let uservm_available: bool = fs::metadata(&uservm_binary_path).await.is_ok();
@@ -291,16 +339,16 @@ async fn ensure_all_binaries_available(
     if all_available {
         log_info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
 
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         {
             log_info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
             log_info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
         }
 
-        #[cfg(feature = "single-process")]
+        #[cfg(any(feature = "single-process", feature = "standalone"))]
         return Ok((kernel_binary_path, String::new(), String::new()));
 
-        #[cfg(not(feature = "single-process"))]
+        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
     }
 
@@ -313,10 +361,10 @@ async fn ensure_all_binaries_available(
         .await?;
     log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
-    #[cfg(feature = "single-process")]
+    #[cfg(any(feature = "single-process", feature = "standalone"))]
     return Ok((kernel_cached_path, String::new(), String::new()));
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     {
         let linuxd_cached_path: String = registry
             .get_cached_binary(machine, deployment, LINUXD_BINARY_NAME)
@@ -350,7 +398,7 @@ fn print_startup_info(args: &Args) {
         "http"
     };
 
-    #[cfg(feature = "single-process")]
+    #[cfg(all(feature = "single-process", not(feature = "standalone")))]
     log_info!(
         "nanvixd {}, single-process deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
@@ -358,7 +406,15 @@ fn print_startup_info(args: &Args) {
         DEFAULT_MACHINE_NAME
     );
 
-    #[cfg(not(feature = "single-process"))]
+    #[cfg(feature = "standalone")]
+    log_info!(
+        "nanvixd {}, standalone deployment, {} mode, machine {}",
+        env!("CARGO_PKG_VERSION"),
+        mode,
+        DEFAULT_MACHINE_NAME
+    );
+
+    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     log_info!(
         "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),

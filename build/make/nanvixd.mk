@@ -10,9 +10,24 @@ NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
+# In standalone mode, nanvixd needs mkramfs to produce the rootfs image.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+all-nanvixd: all-host-binaries-mkramfs
+endif
+
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd $(BINARIES_DIR)/nanvixd.elf
+	# Build the standalone rootfs image from a seed directory using mkramfs.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
+	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/src
+	@cp -f $(ROOT_DIR)/README.md $(BINARIES_DIR)/standalone-rootfs-seed/
+	@if [ -f $(LIBRARIES_DIR)/libmul.so ]; then \
+		cp -f $(LIBRARIES_DIR)/libmul.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
+	fi
+	$(BINARIES_DIR)/mkramfs.elf -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
+endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments.
 ifeq ($(DEPLOYMENT_MODE),l2)
