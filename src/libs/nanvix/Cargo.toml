@@ -18,7 +18,7 @@ linuxd = { workspace = true, optional = true }
 nanvix-http = { workspace = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true }
-nanvix-sandbox-cache = { workspace = true }
+nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-terminal = { workspace = true }
 sys = { workspace = true, features = ["std"], optional = true }
 syscall = { workspace = true, features = ["std"], optional = true }
@@ -33,10 +33,10 @@ single-process = [
     "linuxd",
     "nanvix-http/single-process",
     "nanvix-sandbox/single-process",
-    "nanvix-sandbox-cache/single-process",
     "nanvix-terminal/single-process",
 ]
 multi-process = [
+    "nanvix-sandbox-cache",
     "nanvix-http/multi-process",
     "nanvix-sandbox/multi-process",
     "nanvix-sandbox-cache/multi-process",
@@ -45,24 +45,23 @@ multi-process = [
 standalone = [
     "nanvix-http/standalone",
     "nanvix-sandbox/standalone",
-    "nanvix-sandbox-cache/standalone",
     "nanvix-terminal/standalone",
 ]
 hyperlight = [
     "config/hyperlight",
     "nanvix-http/hyperlight",
     "nanvix-sandbox/hyperlight",
-    "nanvix-sandbox-cache/hyperlight",
+    "nanvix-sandbox-cache?/hyperlight",
     "nanvix-terminal/hyperlight",
-    "uservm/hyperlight",
+    "uservm?/hyperlight",
 ]
 microvm = [
     "config/microvm",
     "nanvix-http/microvm",
     "nanvix-sandbox/microvm",
-    "nanvix-sandbox-cache/microvm",
+    "nanvix-sandbox-cache?/microvm",
     "nanvix-terminal/microvm",
-    "uservm/microvm",
+    "uservm?/microvm",
 ]
 
 [lints]
