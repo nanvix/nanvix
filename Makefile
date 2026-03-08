@@ -65,7 +65,7 @@ export WASMD_SOCKADDR ?= 127.0.0.1:8585
 
 # Default System Image
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-export IMAGE ?= $(BINARIES_DIR)/noop-rust-nostd.elf
+export IMAGE ?= nanvix.img
 else
 export IMAGE ?= nanvix.iso
 endif
@@ -142,6 +142,7 @@ export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
+MKIMAGE := $(BINARIES_DIR)/mkimage.elf
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
@@ -355,8 +356,8 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client strace
+ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
+ALL_HOST_UTILS := echo-client mkimage strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 else
@@ -494,6 +495,7 @@ install: all-nanvix
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
+	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
@@ -748,13 +750,17 @@ endif
 
 # Runs system in release mode.
 run: image
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+else
 	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 endif
 
 # Runs system in debug mode.
 debug: image
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+else
 	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
@@ -764,7 +770,12 @@ endif
 
 # Builds the system image.
 image: all-nanvix
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	$(MKIMAGE) -o $(IMAGE) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
+else
 	$(MKDIR_CMD) $(IMAGE_DIR)/boot/grub
 	$(CP_CMD) $(GRUB_CFG_SCRIPT) $(IMAGE_DIR)/boot/grub/
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
@@ -772,7 +783,9 @@ ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 endif
 
 image-clean:
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	$(RM_CMD) $(IMAGE)
+else
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif
