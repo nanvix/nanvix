@@ -5,11 +5,8 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
-use {
-    ::arch::mem::PAGE_SIZE,
-    ::core::cmp,
-};
+use ::arch::mem::PAGE_SIZE;
+use ::core::cmp;
 
 //==================================================================================================
 // Standalone Functions
@@ -33,7 +30,6 @@ use {
 ///
 /// The number of bytes that fit within the current page.
 ///
-#[cfg(not(feature = "standalone"))]
 pub fn page_chunk_size(ptr: usize, remaining: usize) -> usize {
     let page_offset: usize = ptr & (PAGE_SIZE - 1);
     let available: usize = PAGE_SIZE - page_offset;
