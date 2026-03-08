@@ -1,11 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! HTTP client handler for Nanvix Daemon.
-//!
-//! This module implements the HTTP service handler that processes incoming client requests.
-//! It deserializes messages, routes them to appropriate handlers (NEW, KILL), and constructs
-//! JSON responses. The implementation uses Hyper's Service trait for async request handling.
+//! Single-process deployment mode implementation for the HTTP client.
 
 //==================================================================================================
 // Imports
@@ -14,7 +10,6 @@
 use crate::message::{
     self,
     ErrorCode,
-    ErrorResponse,
     MessageType,
     HTTP_HEADER_MESSAGE_TYPE,
 };
@@ -38,7 +33,7 @@ use ::log::{
     error,
     trace,
 };
-use ::nanvix_sandbox_cache::SandboxCache;
+use ::nanvix_sandbox::simple_cache::SimpleSandboxCache;
 use ::std::{
     future::Future,
     pin::Pin,
@@ -68,14 +63,14 @@ use ::user_vm_api::UserVmIdentifier;
 ///
 pub(crate) struct HttpClient<T> {
     /// Shared handle to the sandbox cache for managing sandboxes.
-    sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+    sandbox_cache: Arc<Mutex<SimpleSandboxCache<T>>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: Send + Sync + Default + 'static> HttpClient<T> {
+impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     ///
     /// # Description
     ///
@@ -89,88 +84,8 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ///
     /// A new HTTP client handler ready to process requests.
     ///
-    pub(crate) fn new(sandbox_cache: Arc<Mutex<SandboxCache<T>>>) -> Self {
+    pub(crate) fn new(sandbox_cache: Arc<Mutex<SimpleSandboxCache<T>>>) -> Self {
         Self { sandbox_cache }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Helper function that creates a JSON response with the provided payload.
-    ///
-    /// # Parameters
-    ///
-    /// - `status`: HTTP status code for the response.
-    /// - `payload`: Serializable payload to include in the response body.
-    ///
-    /// # Returns
-    ///
-    /// This function returns an HTTP response with a JSON body containing the serialized payload.
-    ///
-    fn json_response<R: serde::Serialize>(
-        status: StatusCode,
-        payload: &R,
-    ) -> Response<Full<Bytes>> {
-        match serde_json::to_vec(payload) {
-            Ok(body) => match Response::builder()
-                .status(status)
-                .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(body)))
-            {
-                Ok(response) => response,
-                Err(error) => {
-                    error!("failed to build response (error={error})");
-                    Self::empty_response(StatusCode::INTERNAL_SERVER_ERROR)
-                },
-            },
-            Err(error) => {
-                error!("failed to serialize response (error={error})");
-                Self::empty_response(StatusCode::INTERNAL_SERVER_ERROR)
-            },
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Helper function that returns an empty response with a given status code.
-    ///
-    /// # Parameters
-    ///
-    /// - `status`: HTTP status code for the response.
-    ///
-    /// # Returns
-    ///
-    /// This function returns an HTTP response with no body and the specified status code.
-    ///
-    fn empty_response(status: StatusCode) -> Response<Full<Bytes>> {
-        let mut response: Response<Full<Bytes>> = Response::new(Full::new(Bytes::new()));
-        *response.status_mut() = status;
-        response
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Helper that wraps an `ErrorResponse` payload.
-    ///
-    /// # Parameters
-    ///
-    /// - `status`: HTTP status code for the response.
-    /// - `code`: Short machine-readable error code.
-    /// - `message`: Human-readable error message.
-    ///
-    /// # Returns
-    ///
-    /// This function returns an HTTP response with a JSON body containing the error details.
-    ///
-    fn error_response(
-        status: StatusCode,
-        code: ErrorCode,
-        message: String,
-    ) -> Response<Full<Bytes>> {
-        let payload: ErrorResponse = ErrorResponse { code, message };
-        Self::json_response(status, &payload)
     }
 
     ///
@@ -188,11 +103,11 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     ///
     /// # Returns
     ///
-    /// On success, returns a NewResponse containing the User VM ID and gateway socket address.
+    /// On success, returns a `NewResponse` containing the User VM ID and gateway socket address.
     /// On failure, returns an error describing what went wrong.
     ///
-    async fn serve_new(
-        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+    pub(super) async fn serve_new(
+        sandbox_cache: Arc<Mutex<SimpleSandboxCache<T>>>,
         message: &message::New,
     ) -> Result<message::NewResponse> {
         trace!("serve_new(): {message:?}");
@@ -241,11 +156,12 @@ impl<T: Send + Sync + Default + 'static> HttpClient<T> {
     /// On success, returns an acknowledgement for the terminated sandbox. On failure, this function
     /// returns an object that describes the error.
     ///
-    async fn serve_kill(
-        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+    pub(super) async fn serve_kill(
+        sandbox_cache: Arc<Mutex<SimpleSandboxCache<T>>>,
         message: &message::Kill,
     ) -> Result<message::KillResponse> {
-        let mut locked_sandbox_cache = sandbox_cache.lock().await;
+        let mut locked_sandbox_cache: tokio::sync::MutexGuard<'_, SimpleSandboxCache<T>> =
+            sandbox_cache.lock().await;
         match locked_sandbox_cache.kill(message.user_vm_id).await {
             Ok(exit_code) => Ok(message::KillResponse { exit_code }),
             Err(error) => {
@@ -266,7 +182,7 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         // Clone all necessary values before moving them into the future
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = self.sandbox_cache.clone();
+        let sandbox_cache = self.sandbox_cache.clone();
         let future = async move {
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
