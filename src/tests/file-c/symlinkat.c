@@ -38,28 +38,30 @@ void test_symlinkat(void)
     // Create a symbolic link.
     assert(symlinkat(filename, AT_FDCWD, linkname) == 0);
 
-    // Get information from the original file.
+    // Verify the symbolic link itself via lstat().
+    struct stat st_link = {0};
+    assert(lstat(linkname, &st_link) == 0);
+    assert(S_ISLNK(st_link.st_mode));
+
+    // Verify the stored path via readlink().
+    char buf[PATH_MAX] = {0};
+    ssize_t len = readlink(linkname, buf, sizeof(buf) - 1);
+    assert(len > 0);
+    buf[len] = '\0';
+    assert(strcmp(buf, filename) == 0);
+
+    // Verify the symbolic link resolves to the original file.
     struct stat st = {0};
     assert(stat(filename, &st) == 0);
+    struct stat st_resolved = {0};
+    assert(stat(linkname, &st_resolved) == 0);
+    assert(st.st_ino == st_resolved.st_ino);
+    assert(st.st_dev == st_resolved.st_dev);
+    assert(st.st_atime != 0); // Access time should not be zero.
+    assert(st.st_mtime != 0); // Modification time should not be zero.
+    assert(st.st_ctime != 0); // Change time should not be zero.
 
-    // Get information from the hard link.
-    struct stat st_link = {0};
-    assert(stat(linkname, &st_link) == 0);
-
-    // Check if the symbolic link points to the same inode as the original file.
-    assert(st.st_ino == st_link.st_ino);
-    assert(st.st_dev == st_link.st_dev);
-    assert(st.st_nlink == st_link.st_nlink); // Link count should be the same.
-    assert(st.st_mode == st_link.st_mode);   // Mode should be the same.
-    assert(st.st_size == st_link.st_size);   // Size should be the same.
-    assert(st.st_atime == st_link.st_atime); // Access time should be the same.
-    assert(st.st_mtime == st_link.st_mtime); // Modification time should be the same.
-    assert(st.st_ctime == st_link.st_ctime); // Change time should be the same.
-    assert(st.st_atime != 0);                // Access time should not be zero.
-    assert(st.st_mtime != 0);                // Modification time should not be zero.
-    assert(st.st_ctime != 0);                // Change time should not be zero.
-
-    // Remove the hard link.
+    // Remove the symbolic link.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
 
     fprintf(stderr, "passed\n");
