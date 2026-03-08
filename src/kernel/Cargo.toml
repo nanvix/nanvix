@@ -25,6 +25,7 @@ slab = { workspace = true }
 sys = { workspace = true }
 hyperlight-common = { workspace = true, optional = true }
 hyperlight-guest = { workspace = true, optional = true }
+multibin = { workspace = true, optional = true }
 static_assert = { workspace = true }
 
 [build-dependencies]
@@ -44,6 +45,7 @@ hyperlight = [
     "dep:hyperlight-common",
     "dep:hyperlight-guest",
     "dep:config",
+    "dep:multibin",
     "config/hyperlight",
 ]
 microvm = [
@@ -52,6 +54,7 @@ microvm = [
     "stdio",
     "pit",
     "dep:config",
+    "dep:multibin",
     "config/microvm",
 ]
 pc = [
