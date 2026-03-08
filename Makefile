@@ -495,6 +495,7 @@ install: all-nanvix
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
+	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
