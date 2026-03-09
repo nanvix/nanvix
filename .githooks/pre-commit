@@ -25,7 +25,7 @@ source "${IMPORT_DIR}/logging.sh"
 
 # Configuration matrix matching CI (self-hosted-ci.yml).
 declare -a MACHINE_TYPES=("qemu-pc" "microvm" "hyperlight")
-declare -a DEPLOYMENT_TYPES=("single-process" "multi-process")
+declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
 
 #===================================================================================================
 # Functions
@@ -52,6 +52,9 @@ is_excluded() {
     local deployment="${2}"
 
     # Exclusion rules from self-hosted-ci.yml.
+    if [[ "${machine}" == "qemu-pc" && "${deployment}" == "standalone" ]]; then
+        return 0
+    fi
     if [[ "${machine}" == "qemu-pc" && "${deployment}" == "single-process" ]]; then
         return 0
     fi
