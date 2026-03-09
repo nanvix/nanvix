@@ -263,7 +263,6 @@ impl UserVm {
                 // Spawn VMM thread.
                 let vmm_handle: JoinHandle<Result<u16>> =
                     EmbeddedUserVm::spawn(::uservm::UserVmArgs {
-                        memory_size: ::config::kernel::MEMORY_SIZE,
                         kernel_filename,
                         initrd_filename: Some(initrd_filename.clone()),
                         initrd_args,

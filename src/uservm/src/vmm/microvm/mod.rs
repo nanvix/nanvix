@@ -318,7 +318,8 @@ impl Vmm {
         let irqchip: IrqChip = IrqChip::new(&mut kvm, &mut vm)?;
         let timer: Timer = Timer::new(&mut kvm, &mut vm)?;
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&mut kvm, &mut vm, 0)?;
-        let mut vmem: VirtualMemory = VirtualMemory::new(&mut kvm, &mut vm, args.memory_size)?;
+        let mut vmem: VirtualMemory =
+            VirtualMemory::new(&mut kvm, &mut vm, ::config::kernel::MEMORY_SIZE)?;
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             // When restoring from a snapshot, skip kernel/initrd/ramfs loading and vCPU reset.
             // The snapshot restore will overwrite memory and CPU state.

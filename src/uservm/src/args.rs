@@ -44,8 +44,6 @@ pub struct Args {
     ramfs_filename: Option<String>,
     /// Arguments to be passed to the initrd.
     initrd_args: Option<String>,
-    /// Memory size.
-    memory_size: usize,
     /// Standard error.
     vm_stderr: Option<String>,
     /// System VM address.
@@ -83,8 +81,6 @@ impl Args {
     pub const OPT_INITRD: &'static str = "-initrd";
     /// Command-line option for the kernel file.
     pub const OPT_KERNEL: &'static str = "-kernel";
-    /// Command-line option for the memory size.
-    pub const OPT_MEMORY_SIZE: &'static str = "-memory";
     /// Command-line option for the standard error.
     pub const OPT_STDERR: &'static str = "-stderr";
     /// Command-line option for system VM address.
@@ -134,7 +130,6 @@ impl Args {
         let mut initrd_filename: Option<String> = None;
         let mut ramfs_filename: Option<String> = None;
         let mut initrd_args: Option<String> = None;
-        let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
         let mut system_vm_addr: String = String::new();
         let mut control_plane_addr: String = String::new();
@@ -187,53 +182,6 @@ impl Args {
                 // Set kernel file.
                 Self::OPT_KERNEL if i + 1 < args.len() => {
                     kernel_filename = args[i + 1].clone();
-                    i += 1;
-                },
-                // Set memory size.
-                Self::OPT_MEMORY_SIZE if i + 1 < args.len() => {
-                    let mem_arg: &String = &args[i + 1];
-
-                    // Parse memory size.
-                    memory_size = match mem_arg[..mem_arg.len() - 1].parse::<usize>() {
-                        Ok(size) => size,
-                        Err(e) => {
-                            anyhow::bail!("invalid memory size (error={})", e);
-                        },
-                    };
-
-                    // Parse memory size suffix.
-                    let endptr: char = match mem_arg.chars().last() {
-                        Some(c) => c,
-                        None => {
-                            anyhow::bail!("invalid memory size '{}'", mem_arg);
-                        },
-                    };
-                    match endptr {
-                        'K' | 'k' => {
-                            memory_size = memory_size
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?;
-                        },
-                        'M' | 'm' => {
-                            memory_size = memory_size
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?;
-                        },
-                        'G' | 'g' => {
-                            memory_size = memory_size
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?
-                                .checked_mul(1024)
-                                .ok_or_else(|| anyhow::anyhow!("memory size overflow"))?;
-                        },
-                        ch => {
-                            anyhow::bail!("invalid memory size suffix '{}'", ch);
-                        },
-                    }
                     i += 1;
                 },
                 // Set error file.
@@ -313,12 +261,6 @@ impl Args {
         if kernel_filename.is_empty() {
             Self::usage();
             anyhow::bail!("kernel file is missing");
-        }
-
-        // Check if memory size is invalid.
-        if memory_size == 0 {
-            Self::usage();
-            anyhow::bail!("invalid memory size");
         }
 
         // In non-standalone mode, all socket addresses and types are required.
@@ -413,7 +355,6 @@ impl Args {
             initrd_filename,
             ramfs_filename,
             initrd_args,
-            memory_size,
             vm_stderr,
             system_vm_addr,
             control_plane_addr,
@@ -435,13 +376,12 @@ impl Args {
     ///
     pub fn usage() {
         eprintln!(
-            "Usage: {} [{} <id>] {} <kernel> [{} <size>] [{} <file>] [{} <file>] [{}] [{} \
-             <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
-             <args>] [{} <file>] [{} <path>]",
+            "Usage: {} [{} <id>] {} <kernel> [{} <file>] [{} <file>] [{}] [{} <system-vm-addr> {} \
+             <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} <args>] [{} <file>] [{} \
+             <path>]",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
-            Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,
             Self::OPT_STDERR,
             Self::OPT_STANDALONE,
@@ -522,19 +462,6 @@ impl Args {
     ///
     pub fn kernel_filename(&self) -> &str {
         &self.kernel_filename
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the memory size that was passed as a command-line argument to the program.
-    ///
-    /// # Returns
-    ///
-    /// The memory size that was passed as a command-line argument to the program.
-    ///
-    pub fn memory_size(&self) -> usize {
-        self.memory_size
     }
 
     ///
@@ -750,8 +677,6 @@ mod tests {
     fn parse_returns_expected_values() -> AnyResult<()> {
         let mut args_vec: Vec<String> = build_base_args();
         let (log_dir_str, log_dir_path) = unique_log_dir()?;
-        args_vec.push(Args::OPT_MEMORY_SIZE.to_string());
-        args_vec.push(String::from("64M"));
         args_vec.push(Args::OPT_INITRD.to_string());
         args_vec.push(String::from("initrd.img"));
         args_vec.push(Args::OPT_INITRD_ARGS.to_string());
@@ -768,7 +693,6 @@ mod tests {
 
         assert_eq!(format!("{}", parsed_args.user_vm_id()), "7");
         assert_eq!(parsed_args.kernel_filename(), "kernel.elf");
-        assert_eq!(parsed_args.memory_size(), 64 * 1024 * 1024);
         let initrd: Option<String> = parsed_args.initrd_filename();
         assert!(matches!(initrd, Some(ref value) if value == "initrd.img"));
         let ramfs: Option<String> = parsed_args.ramfs_filename();
@@ -789,23 +713,6 @@ mod tests {
         fs::remove_dir_all(log_dir_path).ok();
 
         Ok(())
-    }
-
-    #[test]
-    fn parse_detects_memory_overflow() {
-        let mut args_vec: Vec<String> = build_base_args();
-        let overflow_arg: String = format!("{}K", usize::MAX);
-        args_vec.push(Args::OPT_MEMORY_SIZE.to_string());
-        args_vec.push(overflow_arg);
-
-        let result = Args::parse(args_vec);
-        assert!(result.is_err(), "expected memory size overflow to produce an error");
-        if let Err(error) = result {
-            assert!(
-                error.to_string().contains("memory size overflow"),
-                "error should mention memory size overflow"
-            );
-        }
     }
 
     #[test]
