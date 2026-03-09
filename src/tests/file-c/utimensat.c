@@ -46,9 +46,9 @@ void test_utimensat(void)
     assert(fstat(fd, &st) == 0);
 
     // Set new timestamps.
-    times[0].tv_sec = st.st_atime + 10; // Access time.
+    times[0].tv_sec = st.st_atime + 20; // Access time.
     times[0].tv_nsec = 0;
-    times[1].tv_sec = st.st_mtime + 20; // Modification time.
+    times[1].tv_sec = st.st_mtime + 10; // Modification time.
     times[1].tv_nsec = 0;
 
     // Update the file timestamps using utimensat and check the result.

@@ -41,11 +41,11 @@ void test_utimes(void)
 
     // Set new timestamps.
     struct timeval times[2] = {{
-                                   .tv_sec = st.st_atime + 10, // Access time.
+                                   .tv_sec = st.st_atime + 20, // Access time.
                                    .tv_usec = 0,
                                },
                                {
-                                   .tv_sec = st.st_mtime + 20, // Modification time.
+                                   .tv_sec = st.st_mtime + 10, // Modification time.
                                    .tv_usec = 0,
                                }};
 
