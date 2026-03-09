@@ -8,13 +8,12 @@
 use crate::{
     safe::RawFileDescriptor,
     unistd::message::{
-        PartialReadRequest,
-        PartialReadResponse,
+        PositionedReadRequest,
+        ReadResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::cmp;
 use ::sys::{
     error::{
         Error,
@@ -27,6 +26,8 @@ use sysapi::sys_types::{
     c_size_t,
     off_t,
 };
+
+use super::util::page_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -80,90 +81,105 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
 
 /// Forwards a `pread` request to linuxd via IPC.
 #[cfg(not(feature = "standalone"))]
+fn pread_chunk(
+    tid: ThreadIdentifier,
+    fd: RawFileDescriptor,
+    chunk: &mut [u8],
+    offset: off_t,
+) -> Result<c_size_t, Error> {
+    let request: Message = PositionedReadRequest::build(tid, fd, chunk.len() as c_size_t, offset);
+    ::sys::kcall::ipc::send(&request)?;
+
+    let bytes_pulled: usize = ::sys::kcall::ipc::pull(
+        ::sys::pm::ProcessIdentifier::KERNEL,
+        ::sys::pm::ThreadIdentifier::KERNEL,
+        chunk,
+    )?;
+
+    let response: Message = ::sys::kcall::ipc::recv()?;
+
+    if response.status != 0 {
+        ::syslog::error!(
+            "pread_chunk(): failed (fd={fd}, chunk.len={}, offset={offset}, error_code={})",
+            chunk.len(),
+            { response.status }
+        );
+
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
+            Err(error) => {
+                ::syslog::error!("pread_chunk(): failed to convert error code (error={error:?})");
+                return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
+            },
+        }
+    }
+
+    let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+    match message.header {
+        LinuxDaemonMessageHeader::ReadResponse => {
+            let response: ReadResponse = ReadResponse::from_bytes(message.payload);
+            let count: i32 = response.count;
+
+            if count < 0 {
+                ::syslog::error!(
+                    "pread_chunk(): linuxd returned negative count (fd={fd}, count={count})"
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "read response count is negative",
+                ));
+            }
+
+            if (count as usize) != bytes_pulled {
+                ::syslog::error!(
+                    "pread_chunk(): byte count mismatch (resp.count={count}, bytes_pulled={bytes_pulled})"
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "read response count does not match bytes pulled",
+                ));
+            }
+
+            Ok(count as c_size_t)
+        },
+        header => {
+            ::syslog::error!(
+                "pread_chunk(): failed to parse response (fd={fd}, chunk.len={}, offset={offset}, \
+                 header={header:?})",
+                chunk.len()
+            );
+            Err(Error::new(ErrorCode::TryAgain, "pread() failed"))
+        },
+    }
+}
+
+/// Forwards a `pread` request to linuxd via IPC, splitting the buffer into
+/// page-aligned chunks.
+#[cfg(not(feature = "standalone"))]
 fn pread_linuxd(
     fd: RawFileDescriptor,
     buffer: &mut [u8],
     offset: off_t,
 ) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-
     let mut total_read: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
-            cmp::min(PartialReadResponse::BUFFER_SIZE, buffer.len() - buffer_offset);
+            page_chunk_size(buffer[buffer_offset..].as_ptr() as usize, buffer.len() - buffer_offset);
+        let chunk: &mut [u8] = &mut buffer[buffer_offset..buffer_offset + chunk_size];
+        let count: c_size_t = pread_chunk(tid, fd, chunk, offset + buffer_offset as off_t)?;
 
-        // Build request and send it.
-        let request: Message = PartialReadRequest::build(
-            tid,
-            fd,
-            chunk_size as c_size_t,
-            offset + buffer_offset as off_t,
-        );
-        ::sys::kcall::ipc::send(&request)?;
+        if count == 0 {
+            break;
+        }
 
-        // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        total_read += count;
+        buffer_offset += count as usize;
 
-        // Check whether system call succeeded or not.
-        if response.status != 0 {
-            ::syslog::error!(
-                "pread(): failed (fd={}, buffer.len={}, offset={}, error_code={})",
-                fd,
-                buffer.len(),
-                offset,
-                { response.status }
-            );
-
-            match ErrorCode::try_from(response.status) {
-                // System call failed, return error.
-                Ok(error_code) => return Err(Error::new(error_code, "pread() failed")),
-                // System call failed, return unknown error.
-                Err(error) => {
-                    ::syslog::error!("pread(): failed to convert error code (error={:?})", error);
-                    return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
-                },
-            }
-        } else {
-            // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
-            // Response was successfully parsed.
-            match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialReadResponse => {
-                    // Parse response.
-                    let response: PartialReadResponse =
-                        PartialReadResponse::from_bytes(message.payload);
-
-                    // Check if any data was read.
-                    if response.count == 0 {
-                        break;
-                    }
-
-                    // Copy response buffer to user buffer.
-                    buffer[buffer_offset..buffer_offset + chunk_size]
-                        .copy_from_slice(&response.buffer[..chunk_size]);
-                    total_read += response.count as c_size_t;
-                    buffer_offset += chunk_size;
-
-                    // Check for partial read.
-                    if (response.count as usize) < chunk_size {
-                        break;
-                    }
-                },
-                header => {
-                    ::syslog::error!(
-                        "pread(): failed to parse response (fd={}, buffer.len={}, offset={}, \
-                         header={:?})",
-                        fd,
-                        buffer.len(),
-                        offset,
-                        header
-                    );
-                    return Err(Error::new(ErrorCode::TryAgain, "pread() failed"));
-                },
-            }
+        if (count as usize) < chunk_size {
+            break;
         }
     }
 

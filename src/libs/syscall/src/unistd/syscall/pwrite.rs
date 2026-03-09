@@ -8,13 +8,12 @@
 use crate::{
     safe::RawFileDescriptor,
     unistd::message::{
-        PartialWriteRequest,
-        PartialWriteResponse,
+        PositionedWriteRequest,
+        WriteResponse,
     },
     LinuxDaemonMessage,
     LinuxDaemonMessageHeader,
 };
-use ::core::cmp;
 use ::sys::{
     error::{
         Error,
@@ -27,6 +26,8 @@ use ::sysapi::sys_types::{
     c_size_t,
     off_t,
 };
+
+use super::util::page_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -78,78 +79,75 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
     pwrite_linuxd(fd, buffer, offset)
 }
 
-/// Forwards a `pwrite` request to linuxd via IPC.
+/// Writes a single page-aligned chunk to a file descriptor via linuxd.
+#[cfg(not(feature = "standalone"))]
+fn pwrite_chunk(
+    tid: ThreadIdentifier,
+    fd: RawFileDescriptor,
+    chunk: &[u8],
+    offset: off_t,
+) -> Result<c_size_t, Error> {
+    let request: Message = PositionedWriteRequest::build(tid, fd, chunk.len() as c_size_t, offset);
+    ::sys::kcall::ipc::send(&request)?;
+
+    ::sys::kcall::ipc::push(
+        ::sys::pm::ProcessIdentifier::KERNEL,
+        ::sys::pm::ThreadIdentifier::KERNEL,
+        chunk,
+    )?;
+
+    let response: Message = ::sys::kcall::ipc::recv()?;
+
+    if response.status != 0 {
+        ::syslog::error!(
+            "pwrite_chunk(): failed (fd={fd}, chunk.len={}, error_code={})",
+            chunk.len(),
+            { response.status }
+        );
+
+        match ErrorCode::try_from(response.status) {
+            Ok(error_code) => return Err(Error::new(error_code, "pwrite() failed")),
+            Err(error) => {
+                ::syslog::error!("pwrite_chunk(): failed to convert error code (error={error:?})");
+                return Err(Error::new(ErrorCode::TryAgain, "pwrite() failed"));
+            },
+        }
+    }
+
+    let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+    match message.header {
+        LinuxDaemonMessageHeader::WriteResponse => {
+            let response: WriteResponse = WriteResponse::from_bytes(message.payload);
+            Ok(response.count as c_size_t)
+        },
+        header => {
+            ::syslog::error!(
+                "pwrite_chunk(): failed to parse response (fd={fd}, chunk.len={}, header={header:?})",
+                chunk.len()
+            );
+            Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
+        },
+    }
+}
+
+/// Forwards a `pwrite` request to linuxd via IPC, splitting the buffer into
+/// page-aligned chunks.
 #[cfg(not(feature = "standalone"))]
 fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
-            cmp::min(PartialWriteRequest::BUFFER_SIZE, buffer.len() - buffer_offset);
-        let mut chunk: [u8; PartialWriteRequest::BUFFER_SIZE] =
-            [0; PartialWriteRequest::BUFFER_SIZE];
-        chunk[..chunk_size].copy_from_slice(&buffer[buffer_offset..buffer_offset + chunk_size]);
+            page_chunk_size(buffer[buffer_offset..].as_ptr() as usize, buffer.len() - buffer_offset);
+        let chunk: &[u8] = &buffer[buffer_offset..buffer_offset + chunk_size];
+        let written: c_size_t = pwrite_chunk(tid, fd, chunk, offset + buffer_offset as off_t)?;
+        total_written += written;
+        buffer_offset += written as usize;
 
-        // Build request and send it.
-        let request: Message = PartialWriteRequest::build(
-            tid,
-            fd,
-            chunk_size as c_size_t,
-            offset + buffer_offset as off_t,
-            chunk,
-        );
-        ::sys::kcall::ipc::send(&request)?;
-
-        // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
-
-        // Check whether the system call succeeded or not.
-        if response.status != 0 {
-            ::syslog::error!(
-                "pwrite(): failed (fd={}, buffer.len={}, error_code={})",
-                fd,
-                buffer.len(),
-                { response.status }
-            );
-
-            match ErrorCode::try_from(response.status) {
-                // Error code was successfully parsed.
-                Ok(error_code) => return Err(Error::new(error_code, "pwritev() failed")),
-                // Error code was not parsed.
-                Err(error) => {
-                    ::syslog::error!("pwrite(): failed to convert error code (error={:?})", error);
-                    return Err(Error::new(ErrorCode::TryAgain, "pwritev() failed"));
-                },
-            }
-        } else {
-            // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
-            // Response was successfully parsed.
-            match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialWriteResponse => {
-                    // Parse response.
-                    let message: PartialWriteResponse =
-                        PartialWriteResponse::from_bytes(message.payload);
-
-                    // Update total written count.
-                    total_written += message.count as c_size_t;
-                    buffer_offset += message.count as usize;
-                },
-                // Response was not expected.
-                header => {
-                    ::syslog::error!(
-                        "pwrite(): failed to parse response (fd={}, buffer.len={}, header={:?})",
-                        fd,
-                        buffer.len(),
-                        header
-                    );
-                    return Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"));
-                },
-            }
+        if (written as usize) < chunk_size {
+            break;
         }
     }
 

@@ -5,11 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    hal::platform,
-    PERF_IKC_MESSAGES_RECEIVED,
-    PERF_IKC_MESSAGES_SENT,
-};
+use crate::PERF_IKC_MESSAGES_RECEIVED;
+use crate::PERF_IKC_MESSAGES_SENT;
+#[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
+use crate::hal::platform;
 use ::core::{
     mem,
     sync::atomic::Ordering,
@@ -20,16 +19,18 @@ use ::sys::{
         ErrorCode,
     },
     ipc::{
-        DataChunkHeader,
         Message,
         MessageType,
-        VmBusMessage,
     },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
 };
+#[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
+use ::sys::ipc::VmBusMessage;
+#[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
+use ::sys::ipc::DataChunkHeader;
 
 //==================================================================================================
 // Standalone Functions
@@ -39,6 +40,22 @@ use ::sys::{
 /// # Description
 ///
 /// Writes an inter-kernel communication message to the kernel's standard output.
+///
+/// # Parameters
+///
+/// - `message`: Message to write.
+///
+/// # Returns
+///
+/// Upon success, empty is returned. Upon failure, an error is returned instead.
+///
+///
+/// # Description
+///
+/// Writes an inter-kernel communication message to the kernel's standard output.
+///
+/// When running on microvm, this function submits the message as a ring buffer SQE
+/// instead of using the legacy PIO vmbus path, reducing VM exits.
 ///
 /// # Parameters
 ///
@@ -58,15 +75,28 @@ pub fn write(message: Message) -> Result<(), Error> {
 
     let bytes: [u8; mem::size_of::<Message>()] = message.to_bytes();
 
-    // Build vmbus message wrapping the message address.
-    let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(mem::size_of::<Message>() as u32, true, &bytes as *const u8 as u32);
+    cfg_if::cfg_if! {
+        if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
+            // Submit via ring buffer: encode the message as an IkcMessage SQE.
+            let msg_addr: u64 = crate::ring::write_data(&bytes)?;
+            let sqe: ::nvx_ring::SqEntry = ::nvx_ring::SqEntry::new_ikc_message(
+                msg_addr,
+                mem::size_of::<Message>() as u32,
+                0, // user_data — not used for legacy passthrough.
+            );
+            crate::ring::submit(sqe);
+        } else {
+            // Legacy path: build vmbus message wrapping the message address.
+            let vmbus_msg: VmBusMessage =
+                VmBusMessage::new(mem::size_of::<Message>() as u32, true, &bytes as *const u8 as u32);
 
-    // Write vmbus message to the kernel's standard output.
-    // SAFETY: The standard output is present, initialized and thread-safe to write.
-    unsafe {
-        // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
-        platform::vmbus_write(&vmbus_msg as *const VmBusMessage as *const u8);
+            // Write vmbus message to the kernel's standard output.
+            // SAFETY: The standard output is present, initialized and thread-safe to write.
+            unsafe {
+                // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
+                platform::vmbus_write(&vmbus_msg as *const VmBusMessage as *const u8);
+            }
+        }
     }
 
     PERF_IKC_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
@@ -93,35 +123,63 @@ pub fn read() -> Result<Option<Message>, Error> {
     let mut message: [u8; NBYTES] = [0; NBYTES];
 
     cfg_if::cfg_if! {
-        if #[cfg(feature = "microvm")] {
-            // Read credits register.
-            let credits: u32 = unsafe {
-                core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32)
+        if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
+            // Ring buffer CQ path: poll for a CQE from the host.
+            let cqe: ::nvx_ring::CqEntry = match crate::ring::try_poll_or_enable_notification() {
+                Some(cqe) => cqe,
+                None => return Ok(None),
             };
+
+            // Read the response Message from the data slot referenced by the CQE.
+            let read_len: usize = (cqe.result as usize).min(NBYTES);
+            // SAFETY: The data slot is in the ring buffer region which is identity-mapped.
+            unsafe {
+                let slot_ptr: *const u8 = crate::ring::data_slot_ptr(cqe.buffer_id);
+                core::ptr::copy_nonoverlapping(slot_ptr, message.as_mut_ptr(), read_len);
+            }
         }
         else if #[cfg(feature = "hyperlight")] {
             // Read credits register.
             let credits: u64 = unsafe {
                 crate::hal::platform::hyperlight::peb::ProcessEnvironmentBlock::get_credits()?
             };
+
+            // No message available.
+            if credits == 0 {
+                return Ok(None);
+            }
+
+            // Build vmbus message wrapping the message buffer address.
+            let vmbus_msg: VmBusMessage =
+                VmBusMessage::new(NBYTES as u32, true, &mut message as *mut u8 as u32);
+
+            // Read message from the kernel's standard input via the vmbus message.
+            // SAFETY: The standard input is present, initialized and thread-safe to read.
+            unsafe {
+                // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
+                platform::vmbus_read(&vmbus_msg as *const VmBusMessage as *mut u8);
+            };
+        }
+        else if #[cfg(feature = "microvm")] {
+            // Legacy microvm path: credit register + vmbus read.
+            let credits: u32 = unsafe {
+                core::ptr::read_volatile(::config::microvm::DEFAULT_MICROVM_CTRL_CREDITS as *const u32)
+            };
+
+            if credits == 0 {
+                return Ok(None);
+            }
+
+            let vmbus_msg: VmBusMessage =
+                VmBusMessage::new(NBYTES as u32, true, &mut message as *mut u8 as u32);
+
+            // SAFETY: The standard input is present, initialized and thread-safe to read.
+            unsafe {
+                // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
+                platform::vmbus_read(&vmbus_msg as *const VmBusMessage as *mut u8);
+            };
         }
     }
-
-    // No message available.
-    if credits == 0 {
-        return Ok(None);
-    }
-
-    // Build vmbus message wrapping the message buffer address.
-    let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(NBYTES as u32, true, &mut message as *mut u8 as u32);
-
-    // Read message from the kernel's standard input via the vmbus message.
-    // SAFETY: The standard input is present, initialized and thread-safe to read.
-    unsafe {
-        // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
-        platform::vmbus_read(&vmbus_msg as *const VmBusMessage as *mut u8);
-    };
 
     PERF_IKC_MESSAGES_RECEIVED.fetch_add(1, Ordering::Relaxed);
 
@@ -181,26 +239,46 @@ pub fn write_bulk(
     buffer_addr: u32,
     data_len: u32,
 ) -> Result<(), Error> {
-    // Build data chunk transfer header in the caller's stack.
-    let header: DataChunkHeader = DataChunkHeader::new(
-        source_pid,
-        source_tid,
-        destination_pid,
-        destination_tid,
-        buffer_addr,
-        data_len,
-    );
+    cfg_if::cfg_if! {
+        if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
+            // Submit via ring buffer: encode the bulk transfer as a BulkData SQE.
+            // Pack source/dest identifiers into the inline_data field.
+            let mut sqe: ::nvx_ring::SqEntry = ::nvx_ring::SqEntry::zeroed();
+            sqe.opcode = ::nvx_ring::SqeOpcode::BulkData as u16;
+            sqe.addr = buffer_addr as u64;
+            sqe.len = data_len;
+            // Pack the PID/TID metadata into inline_data.
+            let pid_bytes: [u8; 4] = (i32::from(source_pid)).to_le_bytes();
+            let tid_bytes: [u8; 4] = (i32::from(source_tid)).to_le_bytes();
+            let dpid_bytes: [u8; 4] = (i32::from(destination_pid)).to_le_bytes();
+            let dtid_bytes: [u8; 4] = (i32::from(destination_tid)).to_le_bytes();
+            sqe.inline_data[0..4].copy_from_slice(&pid_bytes);
+            sqe.inline_data[4..8].copy_from_slice(&tid_bytes);
+            sqe.inline_data[8..12].copy_from_slice(&dpid_bytes);
+            sqe.inline_data[12..16].copy_from_slice(&dtid_bytes);
+            crate::ring::submit(sqe);
+        } else {
+            // Legacy path: build data chunk transfer header in the caller's stack.
+            let header: DataChunkHeader = DataChunkHeader::new(
+                source_pid,
+                source_tid,
+                destination_pid,
+                destination_tid,
+                buffer_addr,
+                data_len,
+            );
 
-    // Build a vmbus message referencing the header. The vmbus message signals a data chunk transfer by
-    // setting `is_ikc` to `false` and `size` to the bulk payload length.
-    let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(data_len, false, &header as *const DataChunkHeader as u32);
+            // Build a vmbus message referencing the header.
+            let vmbus_msg: VmBusMessage =
+                VmBusMessage::new(data_len, false, &header as *const DataChunkHeader as u32);
 
-    // Write vmbus message to the kernel's standard output.
-    // SAFETY: The standard output is present, initialized and thread-safe to write.
-    unsafe {
-        // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
-        platform::vmbus_write(&vmbus_msg as *const VmBusMessage as *const u8);
+            // Write vmbus message to the kernel's standard output.
+            // SAFETY: The standard output is present, initialized and thread-safe to write.
+            unsafe {
+                // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
+                platform::vmbus_write(&vmbus_msg as *const VmBusMessage as *const u8);
+            }
+        }
     }
 
     PERF_IKC_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);

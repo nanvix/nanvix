@@ -26,6 +26,7 @@ config = { workspace = true }
 control-plane-api = { workspace = true }
 hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
+nvx-ring = { workspace = true, features = ["std"] }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }
@@ -43,9 +44,10 @@ kvm-ioctls = { workspace = true }
 libc = { workspace = true }
 
 [features]
-default = ["microvm"]
+default = ["microvm", "ring-buffer"]
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
+ring-buffer = []
 timestamp-messages = ["profiler/timestamp-messages"]
 
 [lints]

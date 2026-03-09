@@ -57,6 +57,10 @@ pub struct MemoryThread {
     control_tx: Sender<MemoryControlResponse>,
     add_credit: Box<AddCreditFn>,
     counters: MessageCounters,
+    /// Optional CQ writer for delivering responses directly to the guest ring buffer.
+    /// When `Some`, bypasses the legacy stdin PIO path.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    cq_writer: Option<crate::cq_writer::CqWriter>,
 }
 
 //==================================================================================================
@@ -85,6 +89,8 @@ impl MemoryThread {
         control_tx: Sender<MemoryControlResponse>,
         add_credit: Box<AddCreditFn>,
         counters: MessageCounters,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        cq_writer: Option<crate::cq_writer::CqWriter>,
     ) -> Self {
         Self {
             data_rx,
@@ -93,6 +99,8 @@ impl MemoryThread {
             control_tx,
             add_credit,
             counters,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            cq_writer,
         }
     }
 
@@ -117,6 +125,8 @@ impl MemoryThread {
             let _control_tx: Sender<MemoryControlResponse> = self.control_tx;
             let mut add_credit: Box<AddCreditFn> = self.add_credit;
             let counters: MessageCounters = self.counters;
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            let cq_writer: Option<crate::cq_writer::CqWriter> = self.cq_writer;
 
             let result: Result<(), Error> = loop {
                 ::tokio::select! {
@@ -153,13 +163,35 @@ impl MemoryThread {
 
                                 on_message_received_from_io_thread(&counters);
 
-                                if let Err(e) = data_tx.send(stamped_transfer).await {
-                                    error!("spawn(): failed to send transfer: {e}");
-                                    continue;
+                                // When a CQ writer is available, deliver responses directly
+                                // to the guest ring buffer CQ, bypassing the legacy stdin
+                                // PIO path and credit mechanism.
+                                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                                if let Some(ref cq) = cq_writer {
+                                    if let Err(e) = cq.write_response(&stamped_transfer).await {
+                                        error!("spawn(): CQ write failed: {e}");
+                                        continue;
+                                    }
+                                } else {
+                                    if let Err(e) = data_tx.send(stamped_transfer).await {
+                                        error!("spawn(): failed to send transfer: {e}");
+                                        continue;
+                                    }
+                                    if let Err(error) = add_credit().await {
+                                        error!("spawn(): failed to add credit: {error}");
+                                        break Err(error);
+                                    }
                                 }
-                                if let Err(error) = add_credit().await {
-                                    error!("spawn(): failed to add credit: {error}");
-                                    break Err(error);
+                                #[cfg(any(not(feature = "microvm"), not(feature = "ring-buffer")))]
+                                {
+                                    if let Err(e) = data_tx.send(stamped_transfer).await {
+                                        error!("spawn(): failed to send transfer: {e}");
+                                        continue;
+                                    }
+                                    if let Err(error) = add_credit().await {
+                                        error!("spawn(): failed to add credit: {error}");
+                                        break Err(error);
+                                    }
                                 }
                             },
                             None => {

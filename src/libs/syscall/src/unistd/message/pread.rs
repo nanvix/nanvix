@@ -26,6 +26,60 @@ use ::sysapi::sys_types::{
 };
 
 //==================================================================================================
+// PositionedReadRequest
+//==================================================================================================
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct PositionedReadRequest {
+    pub fd: i32,
+    pub count: u32,
+    pub offset: off_t,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(PositionedReadRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+
+impl PositionedReadRequest {
+    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<u32>()
+        - mem::size_of::<off_t>();
+
+    fn new(fd: i32, count: c_size_t, offset: off_t) -> Self {
+        Self {
+            fd,
+            count,
+            offset,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    pub fn build(tid: ThreadIdentifier, fd: i32, count: c_size_t, offset: off_t) -> Message {
+        let message: PositionedReadRequest = PositionedReadRequest::new(fd, count, offset);
+        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
+            LinuxDaemonMessageHeader::PositionedReadRequest,
+            message.into_bytes(),
+        );
+        let message: Message = Message::new(
+            MessageSender::from(tid),
+            MessageReceiver::from(crate::LINUXD),
+            MessageType::Ikc,
+            None,
+            message.into_bytes(),
+        );
+        message
+    }
+}
+
+//==================================================================================================
 // PartialReadRequest
 //==================================================================================================
 

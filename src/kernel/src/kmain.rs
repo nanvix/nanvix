@@ -94,6 +94,8 @@ mod kmod;
 mod kpanic;
 mod mm;
 mod pm;
+#[cfg(all(feature = "stdio", feature = "microvm", feature = "ring-buffer"))]
+mod ring;
 #[cfg(feature = "stdio")]
 mod stdio;
 mod uart;
@@ -322,6 +324,20 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         ) {
             memory_regions.push_back(region);
         }
+
+        #[cfg(feature = "ring-buffer")]
+        {
+            // Reserve the shared ring buffer region used for guest-host IPC.
+            if let Ok(region) = MemoryRegion::new(
+                "ring-buffer",
+                VirtualAddress::from_raw_value(::config::microvm::RING_BUFFER_GPA),
+                ::config::microvm::RING_BUFFER_SIZE,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDWR,
+            ) {
+                memory_regions.push_back(region);
+            }
+        }
     }
 
     // Add kernel modules to list of memory regions.
@@ -356,6 +372,13 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     if let Err(err) = pm::init(root) {
         panic!("failed to initialize process manager: {:?}", err);
+    }
+
+    // Initialize the shared ring buffer for guest-host IPC.
+    #[cfg(all(feature = "stdio", feature = "microvm", feature = "ring-buffer"))]
+    // SAFETY: The ring buffer GPA is reserved above and identity-mapped.
+    unsafe {
+        ring::init();
     }
 
     // Start application cores.

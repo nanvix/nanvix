@@ -38,12 +38,16 @@
 
 pub mod args;
 pub mod counters;
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+pub mod cq_writer;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
 pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
 pub mod pal;
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+pub mod ring_drain;
 pub mod vmm;
 
 //==================================================================================================
@@ -241,6 +245,9 @@ impl UserVm {
 
         // Move the stdout sender out of args so no extra clone keeps the
         // data_rx channel alive after the VMM thread finishes.
+        // Clone for the ring drain thread before the sender is consumed.
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        let ring_drain_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
         // Output function used for emulating I/O port writes.
         #[cfg(feature = "hyperlight")]
         let bulk_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
@@ -292,12 +299,34 @@ impl UserVm {
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
 
+        // Spawn the ring buffer drain thread. It blocks on the ioeventfd registered for
+        // the doorbell port and drains SQEs without a VM exit.
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        {
+            let drain_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd();
+            let drain_vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
+            std::thread::Builder::new()
+                .name("ring-drain".into())
+                .spawn(move || {
+                    crate::ring_drain::run(drain_evtfd, drain_vmem, ring_drain_stdout_tx);
+                })
+                .map_err(|e| anyhow::anyhow!("failed to spawn ring drain thread: {e}"))?;
+            trace!("spawn(): ring drain thread started");
+        }
+
         // Set hyperlight handles in counters for this UserVM instance.
         #[cfg(feature = "hyperlight")]
         {
             handles.set_guest_handle(guest.clone()).await;
             handles.set_vmem_handle(vmem.clone()).await;
         }
+
+        // Create the CQ writer for the memory thread (ring buffer response path).
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        let cq_writer: Option<crate::cq_writer::CqWriter> = Some(crate::cq_writer::CqWriter::new(
+            vmem.clone(),
+            microvm.ikc_notifier(),
+        ));
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
@@ -312,6 +341,8 @@ impl UserVm {
                 microvm.ikc_notifier(),
             ),
             args.counters.clone(),
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            cq_writer,
         );
         let memory_thread: JoinHandle<()> = memory_thread.spawn();
 

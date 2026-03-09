@@ -138,6 +138,8 @@ use ::syscall::{
         LinkAtRequest,
         PartialReadRequest,
         PartialWriteRequest,
+        PositionedReadRequest,
+        PositionedWriteRequest,
         PipeRequest,
         ReadLinkAtRequest,
         ReadRequest,
@@ -183,9 +185,10 @@ const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 const CANCELLATION_POLL_FREQUENCY: Duration = Duration::from_millis(100);
 
 /// Maximum time (in seconds) a worker thread will wait for the bulk data message that must follow
-/// a `ReadRequest` or `WriteRequest`. If the guest VM crashes (or the channel stalls) after
-/// sending the IKC request but before the corresponding push/pull arrives, this timeout prevents
-/// the worker thread from blocking forever.
+/// a bulk-transfer request (`ReadRequest`, `WriteRequest`, `PositionedReadRequest`, or
+/// `PositionedWriteRequest`). If the guest VM crashes (or the channel stalls) after sending the IKC
+/// request but before the corresponding push/pull arrives, this timeout prevents the worker thread
+/// from blocking forever.
 const BULK_DATA_TIMEOUT: Duration = Duration::from_secs(30);
 
 //==================================================================================================
@@ -486,7 +489,9 @@ impl WorkerThreadHandle {
                                 // backend provider.
                                 LinuxDaemonMessageHeader::CloseRequest
                                 | LinuxDaemonMessageHeader::ReadRequest
-                                | LinuxDaemonMessageHeader::WriteRequest => {
+                                | LinuxDaemonMessageHeader::WriteRequest
+                                | LinuxDaemonMessageHeader::PositionedReadRequest
+                                | LinuxDaemonMessageHeader::PositionedWriteRequest => {
                                     match Self::handle_special_messages(
                                         &syscall_table,
                                         gateway_reader.clone(),
@@ -681,6 +686,21 @@ impl WorkerThreadHandle {
                     request,
                     channel_rx,
                 )
+            },
+            LinuxDaemonMessageHeader::PositionedReadRequest => {
+                let request: PositionedReadRequest = PositionedReadRequest::from_bytes(message.payload);
+                Self::handle_positioned_read_request(
+                    syscall_table,
+                    source,
+                    request,
+                    channel_rx,
+                    uvm_stream,
+                )
+            },
+            LinuxDaemonMessageHeader::PositionedWriteRequest => {
+                let request: PositionedWriteRequest =
+                    PositionedWriteRequest::from_bytes(message.payload);
+                Self::handle_positioned_write_request(syscall_table, source, request, channel_rx)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -1303,6 +1323,195 @@ impl WorkerThreadHandle {
                         }),
                     ))
                 }
+            }
+        }
+    }
+
+    fn handle_positioned_write_request<T>(
+        syscall_table: &SyscallTable<T>,
+        source: ThreadIdentifier,
+        request: PositionedWriteRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
+    ) -> Result<Message, WorkerThreadError> {
+        trace!("handle_positioned_write_request(): source={source:?}, request={request:?}");
+
+        let mut bulk_data: Vec<u8> = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+            Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
+            Ok(VenvCommand::Shutdown) => {
+                debug!(
+                    "handle_positioned_write_request(): received shutdown while waiting for bulk data"
+                );
+                return Err(WorkerThreadError::Interrupted);
+            },
+            Ok(VenvCommand::Work(_)) => {
+                error!("handle_positioned_write_request(): expected bulk data, got IKC message");
+                return Ok(build_error(source, ErrorCode::InvalidMessage));
+            },
+            Err(e) => {
+                error!("handle_positioned_write_request(): failed to receive bulk data");
+                return Err(e);
+            },
+        };
+
+        profiler::timestamp_message!(&mut bulk_data, 0);
+
+        let fd: libc::c_int = request.fd;
+        let count: usize = request.count as usize;
+        let offset: libc::off_t = request.offset;
+        let write_buf: &[u8] = if bulk_data.len() >= count {
+            &bulk_data[..count]
+        } else {
+            &bulk_data
+        };
+
+        let ret: libc::ssize_t = unsafe {
+            unistd::do_pwrite_raw(
+                syscall_table,
+                fd,
+                write_buf.as_ptr() as *const libc::c_void,
+                count,
+                offset,
+            )
+        };
+        if ret >= 0 {
+            Ok(WriteResponse::build(source, ret as c_ssize_t))
+        } else {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            if errno == libc::EINTR {
+                error!(
+                    "handle_positioned_write_request(): worker thread interrupted while blocked on \
+                     pwrite()"
+                );
+                Err(WorkerThreadError::Interrupted)
+            } else {
+                error!(
+                    "handle_positioned_write_request(): pwrite via syscall table failed (errno={errno})"
+                );
+                Ok(build_error(
+                    source,
+                    ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                        error!(
+                            "handle_positioned_write_request(): unmapped errno={errno}, falling back \
+                             to IoErr"
+                        );
+                        ErrorCode::IoErr
+                    }),
+                ))
+            }
+        }
+    }
+
+    fn handle_positioned_read_request<T>(
+        syscall_table: &SyscallTable<T>,
+        source: ThreadIdentifier,
+        request: PositionedReadRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+    ) -> Result<Message, WorkerThreadError> {
+        trace!("handle_positioned_read_request(): source={source:?}, request={request:?}");
+
+        let pull_header: ::sys::ipc::DataChunkHeader =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                Ok(VenvCommand::BulkData(bulk)) => *bulk.header(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!(
+                        "handle_positioned_read_request(): received shutdown while waiting for bulk data"
+                    );
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_positioned_read_request(): expected BulkData, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_positioned_read_request(): failed to receive bulk data");
+                    return Err(e);
+                },
+            };
+
+        let return_addr: u32 = pull_header.data_addr();
+        let max_len: usize = pull_header.data_len() as usize;
+        let offset: libc::off_t = request.offset;
+
+        let send_bulk_response = |data: Vec<u8>, len: u32| -> Result<(), WorkerThreadError> {
+            let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
+                ::sys::ipc::DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    return_addr,
+                    len,
+                ),
+                data,
+            );
+            Handle::current()
+                .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
+                .map_err(|e| {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        debug!(
+                            "handle_positioned_read_request(): UVM stream closed (broken pipe)"
+                        );
+                        WorkerThreadError::Interrupted
+                    } else {
+                        error!(
+                            "handle_positioned_read_request(): failed to send bulk response \
+                             (error={e:?})"
+                        );
+                        WorkerThreadError::Interrupted
+                    }
+                })
+        };
+
+        let fd: libc::c_int = request.fd;
+        let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
+        let ret: libc::ssize_t = unsafe {
+            unistd::do_pread_raw(
+                syscall_table,
+                fd,
+                read_buf.as_mut_ptr() as *mut libc::c_void,
+                max_len,
+                offset,
+            )
+        };
+        if ret > 0 {
+            let n: usize = ret as usize;
+            read_buf.truncate(n);
+            send_bulk_response(read_buf, n as u32)?;
+            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+            Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+        } else if ret == 0 {
+            send_bulk_response(Vec::new(), 0)?;
+            Ok(ReadResponse::eof(source))
+        } else {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            if errno == libc::EINTR {
+                error!(
+                    "handle_positioned_read_request(): worker thread interrupted while blocked on \
+                     pread()"
+                );
+                if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                    warn!(
+                        "handle_positioned_read_request(): failed to send empty bulk response on \
+                         interrupt, kernel pull thread may block (error={bulk_err:?})"
+                    );
+                }
+                Err(WorkerThreadError::Interrupted)
+            } else {
+                error!(
+                    "handle_positioned_read_request(): pread via syscall table failed (errno={errno})"
+                );
+                send_bulk_response(Vec::new(), 0)?;
+                Ok(build_error(
+                    source,
+                    ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                        error!(
+                            "handle_positioned_read_request(): unmapped errno={errno}, falling back \
+                             to IoErr"
+                        );
+                        ErrorCode::IoErr
+                    }),
+                ))
             }
         }
     }

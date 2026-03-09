@@ -210,6 +210,8 @@ pub enum LinuxDaemonMessageHeader {
     PollResponsePart,
     SelectRequest,
     SelectResponse,
+    PositionedWriteRequest,
+    PositionedReadRequest,
 }
 // Manual TryFrom<u16> implementation for LinuxDaemonMessageHeader
 impl TryFrom<u16> for LinuxDaemonMessageHeader {
@@ -324,6 +326,8 @@ impl TryFrom<u16> for LinuxDaemonMessageHeader {
             x if x == PollResponsePart as u16 => Ok(PollResponsePart),
             x if x == SelectRequest as u16 => Ok(SelectRequest),
             x if x == SelectResponse as u16 => Ok(SelectResponse),
+            x if x == PositionedWriteRequest as u16 => Ok(PositionedWriteRequest),
+            x if x == PositionedReadRequest as u16 => Ok(PositionedReadRequest),
             _ => Err(()),
         }
     }

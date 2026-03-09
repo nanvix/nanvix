@@ -1,0 +1,87 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! # nvx-ring — Lock-Free SPSC Ring Buffer for Guest–Host IPC
+//!
+//! This crate provides the shared data structures for a single-producer, single-consumer (SPSC)
+//! ring buffer used to batch syscall requests between a guest kernel and the host VMM/linuxd.
+//!
+//! The ring lives in a shared memory region at a fixed guest physical address and is accessed by
+//! both the guest kernel (producer of SQEs, consumer of CQEs) and the host (consumer of SQEs,
+//! producer of CQEs).
+//!
+//! All types are `#[repr(C)]` with stable layout so that guest (no_std) and host (std) agree on
+//! the byte representation.
+
+#![no_std]
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+
+mod control;
+mod cqe;
+mod ring;
+mod sqe;
+
+pub use control::{
+    CqFlags,
+    RingControl,
+    SqFlags,
+};
+pub use cqe::{
+    CqEntry,
+    CqeFlags,
+};
+pub use ring::{
+    RingConsumer,
+    RingProducer,
+};
+pub use sqe::{
+    SqEntry,
+    SqeFlags,
+    SqeOpcode,
+};
+
+/// Number of entries in the submission queue (must be a power of two).
+pub const SQ_SIZE: u32 = 256;
+
+/// Number of entries in the completion queue (must be a power of two).
+pub const CQ_SIZE: u32 = 256;
+
+/// Byte offset of the control block within the shared region.
+pub const CONTROL_OFFSET: usize = 0;
+
+/// Byte offset of the submission queue within the shared region.
+pub const SQ_OFFSET: usize = 256;
+
+/// Byte offset of the completion queue within the shared region.
+pub const CQ_OFFSET: usize = SQ_OFFSET + (SQ_SIZE as usize) * core::mem::size_of::<SqEntry>();
+
+/// Byte offset of the pre-registered data buffer region.
+pub const DATA_OFFSET: usize = CQ_OFFSET + (CQ_SIZE as usize) * core::mem::size_of::<CqEntry>();
+
+/// Total size of the shared ring buffer region in bytes.
+pub const REGION_SIZE: usize = 65536; // 64 KiB.
+
+/// Size of each pre-registered data buffer slot in bytes (512 B, fits one IPC Message).
+pub const DATA_SLOT_SIZE: usize = 512;
+
+/// Number of data buffer slots available in the data region.
+pub const DATA_SLOT_COUNT: usize = (REGION_SIZE - DATA_OFFSET) / DATA_SLOT_SIZE;
+
+// -- Control block field offsets (must match RingControl repr(C) layout) --
+
+/// Byte offset of `sq_head` within the control block.
+pub const CTRL_SQ_HEAD: usize = 0;
+/// Byte offset of `sq_tail` within the control block.
+pub const CTRL_SQ_TAIL: usize = 4;
+/// Byte offset of `sq_mask` within the control block.
+pub const CTRL_SQ_MASK: usize = 8;
+/// Byte offset of `sq_flags` within the control block.
+pub const CTRL_SQ_FLAGS: usize = 12;
+/// Byte offset of `cq_head` within the control block.
+pub const CTRL_CQ_HEAD: usize = 64;
+/// Byte offset of `cq_tail` within the control block.
+pub const CTRL_CQ_TAIL: usize = 68;
+/// Byte offset of `cq_mask` within the control block.
+pub const CTRL_CQ_MASK: usize = 72;
+/// Byte offset of `cq_flags` within the control block.
+pub const CTRL_CQ_FLAGS: usize = 76;

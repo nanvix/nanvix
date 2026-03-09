@@ -534,6 +534,68 @@ pub(crate) unsafe fn do_read<T>(
 }
 
 //==================================================================================================
+// do_pwrite_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a positioned write operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` points to a valid memory region of at least `count` bytes.
+///
+pub(crate) unsafe fn do_pwrite_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    buf: *const libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match &syscall_table.pwrite {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count, offset)
+        },
+    }
+}
+
+//==================================================================================================
+// do_pread_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a positioned read operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `buf` points to a valid memory region of at least `count` bytes.
+///
+pub(crate) unsafe fn do_pread_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    buf: *mut libc::c_void,
+    count: libc::size_t,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match &syscall_table.pread {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, buf, count, offset)
+        },
+    }
+}
+
+//==================================================================================================
 // do_pwrite
 //==================================================================================================
 

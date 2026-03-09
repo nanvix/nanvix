@@ -44,7 +44,9 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::kvm_ioctls::{
+    IoEventAddress,
     Kvm,
+    NoDatamatch,
     VmFd,
 };
 use ::libc::{
@@ -95,6 +97,7 @@ use ::tokio::{
     },
     task,
 };
+use ::vmm_sys_util::eventfd::EventFd;
 
 pub use kvm::vmem::VirtualMemory;
 pub use ramfs::RamFs;
@@ -149,16 +152,7 @@ impl IkcNotifier {
     }
 
     /// Injects an edge-triggered IKC IRQ (assert then de-assert) into the guest.
-    ///
-    /// The call is coalesced: if a previous notification is still pending (the guest has not yet
-    /// consumed a credit), the ioctl is skipped to avoid redundant host-kernel entries.
-    pub fn notify(&self) -> Result<()> {
-        // `swap(true)` returns the previous value.  If it was already `true` a notification is
-        // outstanding and we can skip the expensive ioctl pair.
-        if self.pending.swap(true, Ordering::AcqRel) {
-            return Ok(());
-        }
-
+    fn inject_irq(&self) -> Result<()> {
         let fd: RawFd = self.vm_fd.as_raw_fd();
 
         // Use `kvm_bindings::kvm_irq_level` and the `KVM_IRQ_LINE` ioctl number from
@@ -186,6 +180,29 @@ impl IkcNotifier {
         }
 
         Ok(())
+    }
+
+    /// Injects an edge-triggered IKC IRQ into the guest if a previous credit-based notification is
+    /// not already pending.
+    ///
+    /// The call is coalesced: if a previous notification is still pending (the guest has not yet
+    /// consumed a credit), the ioctl is skipped to avoid redundant host-kernel entries.
+    pub fn notify(&self) -> Result<()> {
+        // `swap(true)` returns the previous value.  If it was already `true` a notification is
+        // outstanding and we can skip the expensive ioctl pair.
+        if self.pending.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+
+        self.inject_irq()
+    }
+
+    /// Injects an edge-triggered IKC IRQ without touching the legacy credit coalescing state.
+    ///
+    /// The ring-buffer path performs its own suppression based on `CQ_NOTIFY_ME` and on whether
+    /// the CQ transitioned from empty to non-empty.
+    pub fn notify_unconditional(&self) -> Result<()> {
+        self.inject_irq()
     }
 
     /// Clears the coalescing flag so that the next [`notify`](Self::notify) call will inject an
@@ -243,6 +260,10 @@ pub struct Vmm {
     inner: Arc<Mutex<InteriorMicroVmHandle>>,
     /// Lock-free IKC interrupt notifier (duplicated VM fd).
     ikc_notifier: IkcNotifier,
+    /// EventFd used as ioeventfd for the ring buffer doorbell port.
+    /// When registered, KVM signals this fd on guest PIO writes to the doorbell port
+    /// without causing a VM exit.
+    doorbell_eventfd: Arc<EventFd>,
 }
 
 ///
@@ -403,6 +424,19 @@ impl Vmm {
         // Create the IKC notifier *before* moving the VmFd into InteriorMicroVmHandle.
         let ikc_notifier: IkcNotifier = IkcNotifier::new(&vm, args.ikc_pending)?;
 
+        // Register an ioeventfd for the ring buffer doorbell port so guest PIO writes
+        // to this port are handled by KVM internally (no VM exit). A separate drain
+        // thread will block on this eventfd and process SQEs from the ring buffer.
+        let doorbell_eventfd: EventFd = EventFd::new(0).map_err(|e| {
+            anyhow::anyhow!("failed to create doorbell eventfd: {e}")
+        })?;
+        let doorbell_port: u64 = ::config::microvm::RING_DOORBELL_PORT as u64;
+        vm.register_ioevent(&doorbell_eventfd, &IoEventAddress::Pio(doorbell_port), NoDatamatch)
+            .map_err(|e| {
+                anyhow::anyhow!("failed to register ioeventfd for doorbell port {doorbell_port:#x}: {e}")
+            })?;
+        trace!("new(): registered ioeventfd for doorbell port {doorbell_port:#x}");
+
         Ok(Self {
             guest,
             vmem,
@@ -419,6 +453,7 @@ impl Vmm {
                 skip_next_snapshot: false,
             })),
             ikc_notifier,
+            doorbell_eventfd: Arc::new(doorbell_eventfd),
         })
     }
 
@@ -568,6 +603,13 @@ impl Vmm {
     ///
     pub fn ikc_notifier(&self) -> IkcNotifier {
         self.ikc_notifier.clone()
+    }
+
+    /// Returns a clone of the doorbell [`EventFd`] for spawning the ring drain thread.
+    pub fn doorbell_eventfd(&self) -> EventFd {
+        self.doorbell_eventfd
+            .try_clone()
+            .unwrap_or_else(|e| panic!("failed to clone doorbell eventfd: {e}"))
     }
 
     ///

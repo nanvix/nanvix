@@ -1,0 +1,25 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nvx-ring"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Lock-free SPSC ring buffer for guest-host IPC"
+homepage.workspace = true
+
+[dependencies]
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { workspace = true, optional = true }
+
+[features]
+std = []
+rustc-dep-of-std = [
+    "core",
+    "compiler_builtins/rustc-dep-of-std",
+]
+
+[lints]
+workspace = true

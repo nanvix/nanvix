@@ -137,11 +137,13 @@ impl IoThread {
     ///
     /// - `system_vm_stream`: Connection to the system VM.
     /// - `data_rx`: User VM receiver.
-    /// - `data_tx`: User VM sender.
+    /// - `data_tx`: User VM sender (used as fallback when `cq_writer` is `None`).
     /// - `control_tx`: Command sender.
     /// - `control_rx`: Response receiver.
     /// - `control_plane_stream`: Connection to the control-plane.
     /// - `counters`: Shared counters for tracking message flow across threads.
+    /// - `cq_writer`: Optional CQ writer for delivering inbound responses directly to the guest
+    ///   ring buffer. When `Some`, inbound responses bypass the memory thread and stdin PIO path.
     ///
     /// # Returns
     ///

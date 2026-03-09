@@ -88,10 +88,12 @@ pub use self::{
         PipeResponse,
     },
     pread::{
+        PositionedReadRequest,
         PartialReadRequest,
         PartialReadResponse,
     },
     pwrite::{
+        PositionedWriteRequest,
         PartialWriteRequest,
         PartialWriteResponse,
     },

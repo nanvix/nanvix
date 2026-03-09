@@ -237,6 +237,23 @@ pub mod microvm {
     /// Offset within the pvclock page for the boot time in nanoseconds since
     /// the Unix epoch (u64). The VMM writes this value during VM initialization.
     pub const PVCLOCK_BOOT_TIME_NS_OFFSET: usize = 0x20;
+
+    // -- Ring buffer constants --
+
+    /// Guest physical address of the shared ring buffer region (64 KiB, page-aligned).
+    /// Sits above boot structures (0x0-0xA000) and below kernel load address (0x100000).
+    pub const RING_BUFFER_GPA: usize = 0x00080000;
+
+    /// Total size of the shared ring buffer region in bytes.
+    pub const RING_BUFFER_SIZE: usize = 0x00010000; // 64 KiB.
+
+    /// I/O port used as the ring buffer doorbell (guest writes to wake host).
+    pub const RING_DOORBELL_PORT: u16 = 0xeb;
+
+    /// Number of spin iterations for adaptive polling (Tier 2) before parking.
+    /// After draining a batch of SQEs, the VMM spins this many iterations checking
+    /// for more entries before setting `SQ_NEED_WAKEUP` and returning to KVM.
+    pub const RING_POLL_SPIN_ITERS: u32 = 1024;
 }
 
 #[cfg(feature = "pc")]

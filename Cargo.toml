@@ -10,6 +10,7 @@ members = [
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/noop-wasm-rust",
         "src/benchmarks/snapshot-rust-nostd",
+        "src/benchmarks/syscall-bench-nostd",
         "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/procd",
@@ -32,6 +33,7 @@ members = [
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
         "src/libs/nvx",
+        "src/libs/nvx-ring",
         "src/libs/posix",
         "src/libs/proc",
         "src/libs/profiler",
@@ -130,6 +132,7 @@ nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.3", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
+nvx-ring = { path = "src/libs/nvx-ring", default-features = false }
 profiler = { path = "src/libs/profiler", default-features = false }
 posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }

@@ -154,6 +154,7 @@ pub unsafe fn putb(b: u8) {
 /// - It does not prevent concurrent access to the standard output device.
 ///
 #[cfg(feature = "stdio")]
+#[allow(dead_code)]
 pub unsafe fn vmbus_write(addr: *const u8) {
     use crate::PERF_VMBUS_WRITE;
     use core::hint;
@@ -181,6 +182,7 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 /// - It does not prevent concurrent access to the standard input device.
 ///
 #[cfg(feature = "stdio")]
+#[allow(dead_code)] // Unused when the ring buffer CQ path handles all reads.
 pub unsafe fn vmbus_read(addr: *mut u8) {
     use crate::PERF_VMBUS_READ;
     use core::hint;
