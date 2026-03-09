@@ -46,9 +46,10 @@ pub const GATEWAY_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// # Description
 ///
-/// Timeout for joining a worker thread when closing a user VM connection.
+/// Timeout for each step of the worker thread shutdown sequence in `close_connection()`. This
+/// bounds both the `send(Shutdown)` enqueue and the subsequent thread join.
 ///
-pub const WORKER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+pub const WORKER_THREAD_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 //==================================================================================================
 // Standalone Functions

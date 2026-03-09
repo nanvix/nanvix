@@ -16,7 +16,7 @@ use crate::{
         restore_gate_sockaddr_builder,
         CONTROL_PLANE_CONNECT_TIMEOUT,
         READER_TASK_JOIN_TIMEOUT,
-        WORKER_THREAD_JOIN_TIMEOUT,
+        WORKER_THREAD_SHUTDOWN_TIMEOUT,
     },
     message::RequestAssembler,
     syscalls::SyscallTable,
@@ -426,22 +426,48 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 // interrupt will not unblock a thread waiting on a queue, so we need both
                 // mechanisms.
                 //
+                // Send the interrupt first so that a worker stuck in a syscall gets unblocked
+                // and starts draining the channel before we attempt to enqueue the shutdown
+                // command. This prevents a deadlock where the bounded channel is full and the
+                // send suspends forever because the worker never drains it.
+                //
                 // If any of the commands fail, continue trying to drain the remaining
                 // threads.
-                if let Err(e) = worker_thread.cmd_tx.send(VenvCommand::Shutdown).await {
-                    error!(
-                        "error sending shutdown command to worker thread (thread_id={:?}, \
-                         error={e:?})",
-                        worker_thread.id
-                    );
-                }
                 if let Err(e) = worker_thread.stop() {
                     error!(
                         "error sending interrupt to worker thread (thread_id={:?}, error={e:?})",
                         worker_thread.id
                     );
                 }
-                match timeout(WORKER_THREAD_JOIN_TIMEOUT, &mut worker_thread.handle).await {
+                match timeout(
+                    WORKER_THREAD_SHUTDOWN_TIMEOUT,
+                    worker_thread.cmd_tx.send(VenvCommand::Shutdown),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {
+                        trace!(
+                            "close_connection(): sent shutdown command to worker thread \
+                             (thread_id={:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            "close_connection(): error sending shutdown command to worker thread \
+                             (thread_id={:?}, error={e:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Err(_elapsed) => {
+                        warn!(
+                            "close_connection(): timeout sending shutdown command to worker \
+                             thread (thread_id={:?})",
+                            worker_thread.id
+                        );
+                    },
+                }
+                match timeout(WORKER_THREAD_SHUTDOWN_TIMEOUT, &mut worker_thread.handle).await {
                     Ok(Ok(())) => {
                         trace!(
                             "close_connection(): successfully joined worker thread \
@@ -451,7 +477,8 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     },
                     Ok(Err(e)) => {
                         error!(
-                            "error joining worker thread (thread_id={:?}, error={e:?})",
+                            "close_connection(): error joining worker thread (thread_id={:?}, \
+                             error={e:?})",
                             worker_thread.id
                         );
                     },
