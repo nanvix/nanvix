@@ -26,6 +26,7 @@ use ::log::{
 use ::std::mem;
 use ::sys::ipc::{
     DataChunk,
+    FixedBufferTransfer,
     IkcFrame,
     Message,
 };
@@ -106,6 +107,19 @@ async fn forward_bulk_to_system_vm(
     Ok(())
 }
 
+async fn forward_fixed_buffer_to_system_vm(
+    transfer: &FixedBufferTransfer,
+    system_vm_tx: &mut SocketStreamWriter,
+) -> Result<()> {
+    let bytes: [u8; FixedBufferTransfer::SIZE] = transfer.to_bytes();
+    system_vm_tx.write_all(&bytes).await.map_err(|e| {
+        let reason: String = format!("failed writing fixed-buffer payload: {e}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })?;
+    Ok(())
+}
+
 /// Forwards a [`IkcFrame`] to the system VM socket. The frame type byte is written first based
 /// on the transfer variant, followed by the variant-specific payload.
 async fn forward_transfer_to_system_vm(
@@ -124,6 +138,7 @@ async fn forward_transfer_to_system_vm(
     match transfer {
         IkcFrame::Message(msg) => forward_message_to_system_vm(msg, system_vm_tx).await,
         IkcFrame::Bulk(bulk) => forward_bulk_to_system_vm(bulk, system_vm_tx).await,
+        IkcFrame::Fixed(fixed) => forward_fixed_buffer_to_system_vm(fixed, system_vm_tx).await,
     }
 }
 
@@ -212,6 +227,8 @@ impl IoThread {
         let mut bulk_payload_buf: Vec<u8> = Vec::new();
         let mut bulk_payload_len: usize = 0;
         let mut bulk_expected_len: usize = 0;
+        let mut fixed_buf: [u8; FixedBufferTransfer::SIZE] = [0u8; FixedBufferTransfer::SIZE];
+        let mut fixed_buf_len: usize = 0;
         /// Inbound state machine for the framing protocol.
         #[derive(PartialEq)]
         enum InboundState {
@@ -223,6 +240,8 @@ impl IoThread {
             BulkLength,
             /// Accumulating the bulk payload.
             BulkPayload,
+            /// Accumulating a fixed-buffer transfer header.
+            FixedBuffer,
         }
         let mut inbound_state: InboundState = InboundState::FrameType;
         let mut control_plane_buf: [u8; ::std::mem::size_of::<NanvixdControlMessage>()] =
@@ -252,6 +271,8 @@ impl IoThread {
                             system_vm_rx.read(&mut bulk_len_buf[bulk_len_buf_len..]).await,
                         InboundState::BulkPayload =>
                             system_vm_rx.read(&mut bulk_payload_buf[bulk_payload_len..]).await,
+                        InboundState::FixedBuffer =>
+                            system_vm_rx.read(&mut fixed_buf[fixed_buf_len..]).await,
                     }
                 } => {
                     trace!("reading transfer from system VM");
@@ -276,6 +297,11 @@ impl IoThread {
                                                 inbound_state = InboundState::BulkLength;
                                                 bulk_len_buf_len = 0;
                                                 bulk_len_buf.fill(0);
+                                            },
+                                            IkcFrame::FIXED_BUFFER_FRAME => {
+                                                inbound_state = InboundState::FixedBuffer;
+                                                fixed_buf_len = 0;
+                                                fixed_buf.fill(0);
                                             },
                                             unknown => {
                                                 let reason: String = format!(
@@ -337,6 +363,24 @@ impl IoThread {
                                         profiler::timestamp_message!(bulk.data_mut(), 0);
                                         on_message_received_from_system_vm(&counters);
                                         data_tx.send(IkcFrame::Bulk(bulk)).await?;
+                                        inbound_state = InboundState::FrameType;
+                                    }
+                                },
+                                InboundState::FixedBuffer => {
+                                    fixed_buf_len += n;
+                                    if fixed_buf_len == fixed_buf.len() {
+                                        let fixed: FixedBufferTransfer =
+                                            FixedBufferTransfer::try_from_bytes(fixed_buf).map_err(
+                                                |e| {
+                                                    let reason: String = format!(
+                                                        "failed to decode fixed-buffer transfer: {e:?}"
+                                                    );
+                                                    error!("{reason}");
+                                                    anyhow::Error::msg(reason)
+                                                },
+                                            )?;
+                                        on_message_received_from_system_vm(&counters);
+                                        data_tx.send(IkcFrame::Fixed(fixed)).await?;
                                         inbound_state = InboundState::FrameType;
                                     }
                                 },

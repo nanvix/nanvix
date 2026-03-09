@@ -624,6 +624,7 @@ impl Vmem {
     /// failure, an error is returned instead.
     ///
     #[cfg(feature = "stdio")]
+    #[cfg_attr(all(feature = "microvm", feature = "ring-buffer", target_arch = "x86_64"), allow(dead_code))]
     pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
         let page_aligned: PageAligned<VirtualAddress> =
             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;

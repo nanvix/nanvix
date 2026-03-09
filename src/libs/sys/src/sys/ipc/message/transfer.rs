@@ -9,6 +9,10 @@ use crate::ipc::{
     DataChunkHeader,
     Message,
 };
+use crate::pm::{
+    ProcessIdentifier,
+    ThreadIdentifier,
+};
 
 //==================================================================================================
 // Structures
@@ -33,6 +37,19 @@ pub struct DataChunk {
     /// Variable-length payload data.
     data: Vec<u8>,
 }
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct FixedBufferTransfer {
+    source_pid: i32,
+    source_tid: i32,
+    destination_pid: i32,
+    destination_tid: i32,
+    buffer_id: u32,
+    data_len: u32,
+}
+
+const _: () = assert!(core::mem::size_of::<FixedBufferTransfer>() == 24);
 
 //==================================================================================================
 // Implementations
@@ -145,6 +162,64 @@ impl DataChunk {
     }
 }
 
+impl FixedBufferTransfer {
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+
+    pub fn new(
+        source_pid: ProcessIdentifier,
+        source_tid: ThreadIdentifier,
+        destination_pid: ProcessIdentifier,
+        destination_tid: ThreadIdentifier,
+        buffer_id: u32,
+        data_len: u32,
+    ) -> Self {
+        Self {
+            source_pid: source_pid.into(),
+            source_tid: source_tid.into(),
+            destination_pid: destination_pid.into(),
+            destination_tid: destination_tid.into(),
+            buffer_id,
+            data_len,
+        }
+    }
+
+    pub fn source_pid(&self) -> ProcessIdentifier {
+        ProcessIdentifier::from(self.source_pid)
+    }
+
+    pub fn source_tid(&self) -> ThreadIdentifier {
+        ThreadIdentifier::from(self.source_tid)
+    }
+
+    pub fn destination_pid(&self) -> ProcessIdentifier {
+        ProcessIdentifier::from(self.destination_pid)
+    }
+
+    pub fn destination_tid(&self) -> ThreadIdentifier {
+        ThreadIdentifier::from(self.destination_tid)
+    }
+
+    pub fn buffer_id(&self) -> u32 {
+        self.buffer_id
+    }
+
+    pub fn data_len(&self) -> u32 {
+        self.data_len
+    }
+
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        // SAFETY: FixedBufferTransfer is repr(C) plain data.
+        unsafe { core::mem::transmute::<Self, [u8; Self::SIZE]>(*self) }
+    }
+
+    pub fn try_from_bytes(bytes: [u8; Self::SIZE]) -> Result<Self, crate::error::Error> {
+        Ok(
+            // SAFETY: FixedBufferTransfer is repr(C) plain data.
+            unsafe { core::mem::transmute::<[u8; Self::SIZE], Self>(bytes) },
+        )
+    }
+}
+
 //==================================================================================================
 // Transfer Enum
 //==================================================================================================
@@ -165,6 +240,8 @@ pub enum IkcFrame {
     Message(Message),
     /// A variable-length data chunk transfer.
     Bulk(DataChunk),
+    /// A fixed-buffer transfer whose payload lives in the shared ring buffer region.
+    Fixed(FixedBufferTransfer),
 }
 
 //==================================================================================================
@@ -176,6 +253,8 @@ impl IkcFrame {
     pub const MESSAGE_FRAME: u8 = 0x01;
     /// Wire byte identifying a data chunk transfer frame.
     pub const DATA_CHUNK_FRAME: u8 = 0x02;
+    /// Wire byte identifying a fixed-buffer transfer frame.
+    pub const FIXED_BUFFER_FRAME: u8 = 0x03;
 
     ///
     /// # Description
@@ -186,6 +265,7 @@ impl IkcFrame {
         match self {
             IkcFrame::Message(_) => Self::MESSAGE_FRAME,
             IkcFrame::Bulk(_) => Self::DATA_CHUNK_FRAME,
+            IkcFrame::Fixed(_) => Self::FIXED_BUFFER_FRAME,
         }
     }
 }

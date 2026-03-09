@@ -31,6 +31,7 @@ use ::sys::{
     ipc::{
         DataChunk,
         DataChunkHeader,
+        FixedBufferTransfer,
         IkcFrame,
         Message,
     },
@@ -169,6 +170,36 @@ fn drain_sq(vmem: &Arc<Mutex<VirtualMemory>>, stdout_tx: &Sender<IkcFrame>) -> R
                     ProcessIdentifier::from(parse_inline_i32(8));
                 let destination_tid: ThreadIdentifier =
                     ThreadIdentifier::from(parse_inline_i32(12));
+                if sqe.is_fixed_buf() {
+                    let buffer_id: u32 = match u32::try_from(sqe.addr) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            warn!(
+                                "ring_drain: fixed-buffer SQE id does not fit in u32 ({:#x}), skipping",
+                                sqe.addr
+                            );
+                            current_head = current_head.wrapping_add(1);
+                            drained += 1;
+                            continue;
+                        },
+                    };
+                    let transfer: FixedBufferTransfer = FixedBufferTransfer::new(
+                        source_pid,
+                        source_tid,
+                        destination_pid,
+                        destination_tid,
+                        buffer_id,
+                        sqe.len,
+                    );
+                    if stdout_tx.blocking_send(IkcFrame::Fixed(transfer)).is_err() {
+                        warn!("ring_drain: stdout channel closed");
+                        return Ok(drained);
+                    }
+                    current_head = current_head.wrapping_add(1);
+                    drained += 1;
+                    continue;
+                }
+
                 let data_addr: u32 = match u32::try_from(sqe.addr) {
                     Ok(addr) => addr,
                     Err(_) => {

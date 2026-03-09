@@ -101,50 +101,81 @@ pub fn push(
     // copy.
     #[cfg(feature = "stdio")]
     if destination_pid == ProcessIdentifier::KERNEL {
-        // Reject transfers that cross a page boundary. The vmbus data chunk transfer path translates
-        // only the first page's virtual address to a guest physical address, so the entire buffer
-        // must reside within a single physical page.
-        if transfer_len > 0 {
-            let page_offset: usize = buffer_raw & (::arch::mem::PAGE_SIZE - 1);
-            if page_offset.saturating_add(transfer_len) > ::arch::mem::PAGE_SIZE {
-                let reason: &str = "bulk push buffer crosses a page boundary";
-                error!(
-                    "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-                     buffer={buffer_raw:#x}, len={transfer_len}, page_offset={page_offset})"
+        cfg_if::cfg_if! {
+            if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
+                let buffer_id: u32 =
+                    crate::ring::get_or_alloc_thread_fixed_buffer(caller_tid).map_err(SleepError::Generic)?;
+                let fixed_buffer_vaddr: usize =
+                    crate::ring::fixed_buffer_vaddr(buffer_id).map_err(SleepError::Generic)?;
+                let dst: crate::hal::mem::VirtualAddress =
+                    crate::hal::mem::VirtualAddress::from_raw_value(fixed_buffer_vaddr);
+                let src: crate::hal::mem::VirtualAddress =
+                    crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw);
+                let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+                pm.vmcopy_from_user(caller_pid, dst, src, transfer_len)
+                    .map_err(SleepError::Generic)?;
+
+                trace!(
+                    "push(): fixed-buffer transfer via ring (caller_pid={caller_pid:?}, \
+                     caller_tid={caller_tid:?}, buffer_id={buffer_id}, len={transfer_len})"
                 );
-                return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+
+                return crate::stdio::write_fixed_bulk(
+                    caller_pid,
+                    caller_tid,
+                    destination_pid,
+                    destination_tid,
+                    buffer_id,
+                    transfer_len_raw,
+                )
+                .map_err(SleepError::Generic);
+            } else {
+                // Reject transfers that cross a page boundary. The vmbus data chunk transfer path translates
+                // only the first page's virtual address to a guest physical address, so the entire buffer
+                // must reside within a single physical page.
+                if transfer_len > 0 {
+                    let page_offset: usize = buffer_raw & (::arch::mem::PAGE_SIZE - 1);
+                    if page_offset.saturating_add(transfer_len) > ::arch::mem::PAGE_SIZE {
+                        let reason: &str = "bulk push buffer crosses a page boundary";
+                        error!(
+                            "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
+                             buffer={buffer_raw:#x}, len={transfer_len}, page_offset={page_offset})"
+                        );
+                        return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+                    }
+                }
+
+                trace!(
+                    "push(): data chunk transfer via vmbus (caller_pid={caller_pid:?}, \
+                     caller_tid={caller_tid:?}, len={transfer_len})"
+                );
+
+                // Translate user virtual address to guest physical address.
+                let pm: &ProcessManager = unsafe { ProcessManager::get() };
+                let vaddr: crate::hal::mem::VirtualAddress =
+                    crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw);
+                let paddr: usize = pm
+                    .user_vaddr_to_paddr(caller_pid, vaddr)
+                    .map_err(SleepError::Generic)?;
+                let gpa: u32 = u32::try_from(paddr).map_err(|_| {
+                    let reason: &str = "guest physical address exceeds u32";
+                    error!(
+                        "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, paddr={paddr:#x})"
+                    );
+                    SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
+                })?;
+
+                return crate::stdio::write_bulk(
+                    caller_pid,
+                    caller_tid,
+                    destination_pid,
+                    destination_tid,
+                    gpa,
+                    transfer_len_raw,
+                )
+                .map_err(SleepError::Generic);
             }
         }
-
-        trace!(
-            "push(): data chunk transfer via vmbus (caller_pid={caller_pid:?}, \
-             caller_tid={caller_tid:?}, len={transfer_len})"
-        );
-
-        // Translate user virtual address to guest physical address.
-        let pm: &ProcessManager = unsafe { ProcessManager::get() };
-        let vaddr: crate::hal::mem::VirtualAddress =
-            crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw);
-        let paddr: usize = pm
-            .user_vaddr_to_paddr(caller_pid, vaddr)
-            .map_err(SleepError::Generic)?;
-        let gpa: u32 = u32::try_from(paddr).map_err(|_| {
-            let reason: &str = "guest physical address exceeds u32";
-            error!(
-                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, paddr={paddr:#x})"
-            );
-            SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
-        })?;
-
-        return crate::stdio::write_bulk(
-            caller_pid,
-            caller_tid,
-            destination_pid,
-            destination_tid,
-            gpa,
-            transfer_len_raw,
-        )
-        .map_err(SleepError::Generic);
     }
 
     super::rendezvous::do_push(

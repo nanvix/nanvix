@@ -48,6 +48,8 @@ pub enum VenvCommand {
     Work(Message),
     /// Bulk data received from a user VM for the worker thread.
     BulkData(::sys::ipc::DataChunk),
+    /// Fixed-buffer descriptor received from a user VM for the worker thread.
+    FixedBuffer(::sys::ipc::FixedBufferTransfer),
     Shutdown,
 }
 

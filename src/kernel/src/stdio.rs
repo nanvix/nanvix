@@ -13,6 +13,11 @@ use ::core::{
     mem,
     sync::atomic::Ordering,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::nvx_ring::{
+    CqeFlags,
+    SqeFlags,
+};
 use ::sys::{
     error::{
         Error,
@@ -104,6 +109,24 @@ pub fn write(message: Message) -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+fn encode_bulk_metadata(
+    sqe: &mut ::nvx_ring::SqEntry,
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+) {
+    let pid_bytes: [u8; 4] = (i32::from(source_pid)).to_le_bytes();
+    let tid_bytes: [u8; 4] = (i32::from(source_tid)).to_le_bytes();
+    let dpid_bytes: [u8; 4] = (i32::from(destination_pid)).to_le_bytes();
+    let dtid_bytes: [u8; 4] = (i32::from(destination_tid)).to_le_bytes();
+    sqe.inline_data[0..4].copy_from_slice(&pid_bytes);
+    sqe.inline_data[4..8].copy_from_slice(&tid_bytes);
+    sqe.inline_data[8..12].copy_from_slice(&dpid_bytes);
+    sqe.inline_data[12..16].copy_from_slice(&dtid_bytes);
+}
+
 ///
 /// # Description
 ///
@@ -129,6 +152,37 @@ pub fn read() -> Result<Option<Message>, Error> {
                 Some(cqe) => cqe,
                 None => return Ok(None),
             };
+
+            if (cqe.flags & CqeFlags::BUFFER.0) != 0 {
+                let caller_tid: ThreadIdentifier = match i32::try_from(cqe.user_data) {
+                    Ok(raw_tid) => ThreadIdentifier::from(raw_tid),
+                    Err(_) => {
+                        let reason: &str = "fixed-buffer CQE carried invalid thread identifier";
+                        error!("{reason} (user_data={})", cqe.user_data);
+                        return Err(Error::new(ErrorCode::InvalidMessage, reason));
+                    },
+                };
+
+                if cqe.result < 0 {
+                    let reason: &str = "fixed-buffer CQE carried negative length";
+                    error!("{reason} (caller_tid={caller_tid:?}, result={})", cqe.result);
+                    return Err(Error::new(ErrorCode::InvalidMessage, reason));
+                }
+
+                if !crate::ipc::fixed_pull::complete(
+                    caller_tid,
+                    cqe.buffer_id,
+                    cqe.result as usize,
+                ) {
+                    warn!(
+                        "read(): fixed-buffer completion had no matching pending pull \
+                         (caller_tid={caller_tid:?}, buffer_id={})",
+                        cqe.buffer_id
+                    );
+                }
+
+                return Ok(None);
+            }
 
             // Read the response Message from the data slot referenced by the CQE.
             let read_len: usize = (cqe.result as usize).min(NBYTES);
@@ -231,6 +285,7 @@ pub fn read() -> Result<Option<Message>, Error> {
 ///
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
+#[cfg_attr(all(feature = "microvm", feature = "ring-buffer"), allow(dead_code))]
 pub fn write_bulk(
     source_pid: ProcessIdentifier,
     source_tid: ThreadIdentifier,
@@ -247,15 +302,7 @@ pub fn write_bulk(
             sqe.opcode = ::nvx_ring::SqeOpcode::BulkData as u16;
             sqe.addr = buffer_addr as u64;
             sqe.len = data_len;
-            // Pack the PID/TID metadata into inline_data.
-            let pid_bytes: [u8; 4] = (i32::from(source_pid)).to_le_bytes();
-            let tid_bytes: [u8; 4] = (i32::from(source_tid)).to_le_bytes();
-            let dpid_bytes: [u8; 4] = (i32::from(destination_pid)).to_le_bytes();
-            let dtid_bytes: [u8; 4] = (i32::from(destination_tid)).to_le_bytes();
-            sqe.inline_data[0..4].copy_from_slice(&pid_bytes);
-            sqe.inline_data[4..8].copy_from_slice(&tid_bytes);
-            sqe.inline_data[8..12].copy_from_slice(&dpid_bytes);
-            sqe.inline_data[12..16].copy_from_slice(&dtid_bytes);
+            encode_bulk_metadata(&mut sqe, source_pid, source_tid, destination_pid, destination_tid);
             crate::ring::submit(sqe);
         } else {
             // Legacy path: build data chunk transfer header in the caller's stack.
@@ -280,6 +327,37 @@ pub fn write_bulk(
             }
         }
     }
+
+    PERF_IKC_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
+
+    Ok(())
+}
+
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+pub fn write_fixed_bulk(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    buffer_id: u32,
+    data_len: u32,
+) -> Result<(), Error> {
+    if (data_len as usize) > ::nvx_ring::FIXED_BUF_SIZE {
+        let reason: &str = "fixed-buffer transfer exceeds fixed buffer size";
+        error!(
+            "{reason} (buffer_id={buffer_id}, data_len={data_len}, max={})",
+            ::nvx_ring::FIXED_BUF_SIZE
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    let mut sqe: ::nvx_ring::SqEntry = ::nvx_ring::SqEntry::zeroed();
+    sqe.opcode = ::nvx_ring::SqeOpcode::BulkData as u16;
+    sqe.flags = SqeFlags::FIXED_BUF.0;
+    sqe.addr = u64::from(buffer_id);
+    sqe.len = data_len;
+    encode_bulk_metadata(&mut sqe, source_pid, source_tid, destination_pid, destination_tid);
+    crate::ring::submit(sqe);
 
     PERF_IKC_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
 

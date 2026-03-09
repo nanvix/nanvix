@@ -6,6 +6,7 @@
 //! Guest-side integration of the shared-memory ring buffer for batched syscall submission.
 //! Replaces per-syscall PIO vmbus writes with SQE/CQE ring entries, reducing VM exits.
 
+use ::alloc::collections::BTreeMap;
 use ::core::sync::atomic::{
     fence,
     AtomicU32,
@@ -23,6 +24,9 @@ use ::nvx_ring::{
     DATA_OFFSET,
     DATA_SLOT_COUNT,
     DATA_SLOT_SIZE,
+    FIXED_BUF_COUNT,
+    FIXED_BUF_OFFSET,
+    FIXED_BUF_SIZE,
     SQ_OFFSET,
     SQ_SIZE,
 };
@@ -30,12 +34,17 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::sys::pm::ThreadIdentifier;
 
 /// Base virtual address of the ring buffer region (identity-mapped, equals GPA).
 const RING_BASE: usize = ::config::microvm::RING_BUFFER_GPA;
 
 /// Next data slot to use for guest-submitted request payloads.
 static NEXT_DATA_SLOT: AtomicU32 = AtomicU32::new(0);
+/// Per-thread fixed-buffer assignments.
+static mut THREAD_FIXED_BUFFERS: BTreeMap<ThreadIdentifier, u32> = BTreeMap::new();
+/// Allocation bitmap for fixed buffers.
+static mut FIXED_BUFFER_IN_USE: [bool; FIXED_BUF_COUNT] = [false; FIXED_BUF_COUNT];
 
 /// Returns a mutable reference to the shared ring control block.
 ///
@@ -212,6 +221,74 @@ pub fn try_poll_or_enable_notification() -> Option<CqEntry> {
 #[inline]
 pub unsafe fn data_slot_ptr(slot_id: u32) -> *const u8 {
     (RING_BASE + DATA_OFFSET + (slot_id as usize) * DATA_SLOT_SIZE) as *const u8
+}
+
+/// Returns the kernel virtual address of a fixed buffer in the shared ring region.
+pub fn fixed_buffer_vaddr(buffer_id: u32) -> Result<usize, Error> {
+    let buffer_index: usize = usize::try_from(buffer_id).map_err(|_| {
+        let reason: &str = "invalid fixed buffer id";
+        error!("{reason} (buffer_id={buffer_id})");
+        Error::new(ErrorCode::InvalidArgument, reason)
+    })?;
+    if buffer_index >= FIXED_BUF_COUNT {
+        let reason: &str = "fixed buffer id out of range";
+        error!("{reason} (buffer_id={buffer_id}, fixed_buf_count={FIXED_BUF_COUNT})");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    Ok(RING_BASE + FIXED_BUF_OFFSET + buffer_index * FIXED_BUF_SIZE)
+}
+
+/// Returns the fixed buffer assigned to `caller_tid`, allocating one on first use.
+pub fn get_or_alloc_thread_fixed_buffer(caller_tid: ThreadIdentifier) -> Result<u32, Error> {
+    // SAFETY: Nanvix runs on a single core and accesses this state with interrupts disabled while
+    // handling kernel calls and IKC completions.
+    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, u32> =
+        unsafe { &mut THREAD_FIXED_BUFFERS };
+    if let Some(&buffer_id) = thread_fixed_buffers.get(&caller_tid) {
+        return Ok(buffer_id);
+    }
+
+    // SAFETY: see note above.
+    let fixed_buffer_in_use: &mut [bool; FIXED_BUF_COUNT] = unsafe { &mut FIXED_BUFFER_IN_USE };
+    for (buffer_index, in_use) in fixed_buffer_in_use.iter_mut().enumerate() {
+        if !*in_use {
+            *in_use = true;
+            let buffer_id: u32 = u32::try_from(buffer_index).map_err(|_| {
+                Error::new(ErrorCode::InvalidArgument, "fixed buffer index exceeds u32")
+            })?;
+            thread_fixed_buffers.insert(caller_tid, buffer_id);
+            return Ok(buffer_id);
+        }
+    }
+
+    let reason: &str = "no fixed ring buffers available";
+    error!("{reason} (caller_tid={caller_tid:?})");
+    Err(Error::new(ErrorCode::ResourceBusy, reason))
+}
+
+/// Releases the fixed buffer assigned to `caller_tid`, if any.
+pub fn release_thread_fixed_buffer(caller_tid: ThreadIdentifier) {
+    // SAFETY: Nanvix runs on a single core and accesses this state with interrupts disabled while
+    // handling kernel calls and IKC completions.
+    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, u32> =
+        unsafe { &mut THREAD_FIXED_BUFFERS };
+    let Some(buffer_id) = thread_fixed_buffers.remove(&caller_tid) else {
+        return;
+    };
+
+    let buffer_index: usize = buffer_id as usize;
+    if buffer_index >= FIXED_BUF_COUNT {
+        error!(
+            "fixed buffer id out of range while releasing thread buffer (caller_tid={caller_tid:?}, \
+             buffer_id={buffer_id}, fixed_buf_count={FIXED_BUF_COUNT})"
+        );
+        return;
+    }
+
+    // SAFETY: see note above.
+    let fixed_buffer_in_use: &mut [bool; FIXED_BUF_COUNT] = unsafe { &mut FIXED_BUFFER_IN_USE };
+    fixed_buffer_in_use[buffer_index] = false;
 }
 
 /// Copies a request payload into a shared data slot and returns its GPA.

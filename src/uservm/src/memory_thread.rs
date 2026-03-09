@@ -159,6 +159,7 @@ impl MemoryThread {
                                         // Label: uservm::memory_thread::data_rx::recv()
                                         profiler::timestamp_message!(bulk.data_mut(), 0);
                                     },
+                                    IkcFrame::Fixed(_) => {},
                                 }
 
                                 on_message_received_from_io_thread(&counters);

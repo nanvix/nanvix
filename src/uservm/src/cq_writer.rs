@@ -14,6 +14,7 @@ use ::log::{
 use ::nvx_ring::{
     CqFlags,
     CqEntry,
+    CqeFlags,
     CTRL_CQ_FLAGS,
     CTRL_CQ_HEAD,
     CTRL_CQ_MASK,
@@ -79,14 +80,13 @@ impl CqWriter {
     pub async fn write_response(&self, frame: &IkcFrame) -> Result<()> {
         let ring_base: u64 = ::config::microvm::RING_BUFFER_GPA as u64;
 
-        // Allocate a data slot (round-robin).
-        let slot_count: u32 = ::nvx_ring::DATA_SLOT_COUNT as u32;
-        let slot_id: u32 = self.next_slot.fetch_add(1, Ordering::Relaxed) % slot_count;
-        let slot_gpa: u64 = ring_base + DATA_OFFSET as u64 + (slot_id as u64) * DATA_SLOT_SIZE as u64;
-
         // Write the payload into the data slot and prepare the CQE.
         let cqe: CqEntry = match frame {
             IkcFrame::Message(msg) => {
+                let slot_count: u32 = ::nvx_ring::DATA_SLOT_COUNT as u32;
+                let slot_id: u32 = self.next_slot.fetch_add(1, Ordering::Relaxed) % slot_count;
+                let slot_gpa: u64 =
+                    ring_base + DATA_OFFSET as u64 + (slot_id as u64) * DATA_SLOT_SIZE as u64;
                 let bytes: [u8; core::mem::size_of::<Message>()] = msg.clone().to_bytes();
                 let write_len: usize = bytes.len().min(DATA_SLOT_SIZE);
                 {
@@ -100,6 +100,10 @@ impl CqWriter {
                 cqe
             },
             IkcFrame::Bulk(bulk) => {
+                let slot_count: u32 = ::nvx_ring::DATA_SLOT_COUNT as u32;
+                let slot_id: u32 = self.next_slot.fetch_add(1, Ordering::Relaxed) % slot_count;
+                let slot_gpa: u64 =
+                    ring_base + DATA_OFFSET as u64 + (slot_id as u64) * DATA_SLOT_SIZE as u64;
                 let actual_len: u32 = u32::try_from(bulk.data().len())?;
                 let completion_header: DataChunkHeader = DataChunkHeader::new(
                     bulk.header().source_pid(),
@@ -131,6 +135,13 @@ impl CqWriter {
                 let mut cqe: CqEntry = CqEntry::new(0, write_len as i64);
                 cqe.buffer_id = slot_id;
                 cqe.flags = 0;
+                cqe
+            },
+            IkcFrame::Fixed(fixed) => {
+                let source_tid_raw: i32 = fixed.source_tid().into();
+                let mut cqe: CqEntry = CqEntry::new(source_tid_raw as u64, i64::from(fixed.data_len()));
+                cqe.flags = CqeFlags::BUFFER.0;
+                cqe.buffer_id = fixed.buffer_id();
                 cqe
             },
         };
@@ -175,7 +186,7 @@ impl CqWriter {
             trace!("cq_writer: CQ notification suppressed");
         }
 
-        trace!("cq_writer: posted CQE (slot={slot_id})");
+        trace!("cq_writer: posted CQE");
 
         Ok(())
     }

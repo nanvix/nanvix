@@ -53,16 +53,17 @@ the syscall transport itself.
 - `fcntl(F_GETFL)` on `STDOUT_FILENO` to force a real linuxd-backed round trip.
 - `pwrite()` payload sweeps, which stress the guest-to-host request path.
 - `pread()` payload sweeps, which stress the host-to-guest response path.
-- Legacy microvm transport (`microvm` without `ring-buffer`) versus the current ring Tier 1 path
-  (`microvm ring-buffer`) with CQ interrupt suppression enabled.
+- Legacy microvm transport (`microvm` without `ring-buffer`) versus the ring microvm transport
+  (`microvm ring-buffer`).
+- The fixed-size RTT section below still reflects the Tier 1 ring path with CQ interrupt
+  suppression, while the payload sweeps below use the fixed-buffer Phase 5e ring path.
 
 ### What It Does **Not** Measure
 
 - Tier 2 adaptive polling or Tier 3 full polling. Those paths are not implemented yet.
-- The original dedicated fixed-buffer Phase 3 design with pre-registered large shared-memory slots.
-- A single end-to-end zero-copy large transfer. Positioned I/O now uses metadata + bulk push/pull,
-  but the guest still splits transfers on page boundaries and the host still pays for drain-thread,
-  copy, and CQ-completion costs.
+- A single end-to-end zero-copy host syscall path. The fixed-buffer rerun removes the older bulk
+  payload bounce on the ring path, but the host still pays for linuxd syscall execution and CQ
+  completion handling.
 - Calibrated wall-clock nanoseconds. The benchmark converts TSC cycles to nanoseconds assuming an
   approximately 2 GHz guest TSC, so ratios between variants are more trustworthy than the absolute
   nanosecond values.
@@ -170,46 +171,48 @@ implemented in the ring path.
 
 ### Payload Sweep Results (`pwrite()`)
 
-After the Phase 3 bulk-I/O MVP, `pwrite()` no longer uses linuxd partial-write messages for the
-payload bytes. Instead, it reuses the existing bulk push path and sends only positioned-I/O
-metadata through the message channel. The table below reports 3-trial medians of the per-trial
-average latency with `/dev/zero` as the linuxd-side backend.
+The latest rerun uses the fixed-buffer Phase 5e ring path for positioned writes. Instead of
+bouncing payload bytes through the older bulk push path, the guest now submits a fixed shared-ring
+buffer descriptor and linuxd reads directly from that pre-registered buffer. The table below
+reports 3-trial medians of the per-trial average latency with `/dev/zero` as the linuxd-side
+backend.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.574 ms` | `0.562 ms` | `0.979x` |
-| 64 | `0.439 ms` | `0.501 ms` | `1.140x` |
-| 128 | `0.383 ms` | `0.536 ms` | `1.398x` |
-| 256 | `0.452 ms` | `0.506 ms` | `1.120x` |
-| 512 | `0.424 ms` | `0.445 ms` | `1.048x` |
-| 1024 | `0.431 ms` | `0.551 ms` | `1.278x` |
-| 1536 | `0.412 ms` | `0.523 ms` | `1.269x` |
-| 2048 | `0.418 ms` | `0.554 ms` | `1.325x` |
-| 4096 | `0.807 ms` | `1.049 ms` | `1.301x` |
-| 8192 | `1.297 ms` | `1.576 ms` | `1.215x` |
-| 16384 | `2.179 ms` | `2.594 ms` | `1.190x` |
-| 32768 | `3.750 ms` | `4.870 ms` | `1.299x` |
+| 32 | `0.460 ms` | `0.555 ms` | `1.207x` |
+| 64 | `0.496 ms` | `0.535 ms` | `1.078x` |
+| 128 | `0.484 ms` | `0.541 ms` | `1.119x` |
+| 256 | `0.488 ms` | `0.558 ms` | `1.143x` |
+| 512 | `0.495 ms` | `0.561 ms` | `1.135x` |
+| 1024 | `0.445 ms` | `0.540 ms` | `1.213x` |
+| 1536 | `0.452 ms` | `0.481 ms` | `1.064x` |
+| 2048 | `0.496 ms` | `0.494 ms` | `0.994x` |
+| 4096 | `0.874 ms` | `0.965 ms` | `1.104x` |
+| 8192 | `1.301 ms` | `1.376 ms` | `1.057x` |
+| 16384 | `2.272 ms` | `2.584 ms` | `1.137x` |
+| 32768 | `4.320 ms` | `4.363 ms` | `1.010x` |
 
 ### Payload Sweep Results (`pread()`)
 
-`pread()` was updated symmetrically: the request carries only positioned-I/O metadata and the
-actual payload now travels over the existing bulk pull path. This table uses the same methodology,
-but exercises the opposite data direction against `/dev/zero`.
+`pread()` now uses the same fixed-buffer scheme in the opposite direction: linuxd copies directly
+into the shared ring buffer and the guest copies back into the caller's buffer when the CQE
+arrives. This table uses the same methodology, but exercises the opposite data direction against
+`/dev/zero`.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.413 ms` | `0.460 ms` | `1.112x` |
-| 64 | `0.438 ms` | `0.466 ms` | `1.064x` |
-| 128 | `0.428 ms` | `0.489 ms` | `1.142x` |
-| 256 | `0.425 ms` | `0.470 ms` | `1.108x` |
-| 512 | `0.448 ms` | `0.499 ms` | `1.115x` |
-| 1024 | `0.439 ms` | `0.520 ms` | `1.185x` |
-| 1536 | `0.417 ms` | `0.483 ms` | `1.158x` |
-| 2048 | `0.436 ms` | `0.475 ms` | `1.090x` |
-| 4096 | `0.833 ms` | `1.072 ms` | `1.287x` |
-| 8192 | `1.305 ms` | `1.654 ms` | `1.268x` |
-| 16384 | `2.389 ms` | `2.676 ms` | `1.120x` |
-| 32768 | `4.034 ms` | `4.554 ms` | `1.129x` |
+| 32 | `0.505 ms` | `0.497 ms` | `0.985x` |
+| 64 | `0.498 ms` | `0.526 ms` | `1.057x` |
+| 128 | `0.470 ms` | `0.498 ms` | `1.060x` |
+| 256 | `0.514 ms` | `0.479 ms` | `0.932x` |
+| 512 | `0.485 ms` | `0.473 ms` | `0.976x` |
+| 1024 | `0.480 ms` | `0.525 ms` | `1.094x` |
+| 1536 | `0.476 ms` | `0.503 ms` | `1.057x` |
+| 2048 | `0.485 ms` | `0.463 ms` | `0.956x` |
+| 4096 | `0.992 ms` | `0.951 ms` | `0.959x` |
+| 8192 | `1.606 ms` | `1.479 ms` | `0.921x` |
+| 16384 | `2.604 ms` | `2.464 ms` | `0.946x` |
+| 32768 | `4.540 ms` | `4.550 ms` | `1.002x` |
 
 ### Interpretation
 
@@ -217,18 +220,17 @@ but exercises the opposite data direction against `/dev/zero`.
   from `1.366x` slower than legacy to `1.085x` slower on a fresh 5-trial rerun.
 - The `/dev/zero` backend removes host ext4/page-cache work from the payload sweep, so these
   numbers are a better measure of syscall + transport overhead than the earlier regular-file runs.
-- With storage effects removed, a `32768`-byte transfer lands in the low-millisecond range:
-  `3.750 ms` legacy vs `4.870 ms` ring for `pwrite()`, and `4.034 ms` legacy vs `4.554 ms` ring
-  for `pread()`.
-- On this rerun, the ring path is slower across the entire `/dev/zero` sweep. The large-payload
-  gap is still moderate rather than catastrophic, but it is consistent: `1.190x`-`1.301x` for
-  `pwrite()` and `1.120x`-`1.287x` for `pread()` from `16384` B down to `4096` B.
-- The very small-size `pwrite()` points are visibly noisy in the shared development environment,
-  so the larger-size trend is the more reliable indicator.
-- The current result is consistent with the implementation status: the ring control block itself is
-  lock-free and positioned I/O now uses bulk transfers, but the end-to-end ring path still pays for
-  host-side copies, drain-thread handoff, linuxd processing, and guest-side CQ handling. Tier 2
-  adaptive polling and the original dedicated fixed-buffer Phase 3 design are still pending.
+- With storage effects removed, a `32768`-byte transfer is now effectively at parity in both
+  directions: `4.320 ms` legacy vs `4.363 ms` ring for `pwrite()`, and `4.540 ms` legacy vs
+  `4.550 ms` ring for `pread()`.
+- The fixed-buffer rerun materially narrowed the earlier large-payload gap. `pread()` is now at or
+  below legacy through much of the mid/large range (`4096`-`16384` B), while `pwrite()` remains
+  modestly slower on most points but stays close to parity from `2048` B upward.
+- The smallest points still show visible noise in the shared development environment, so the
+  `4096`-byte-and-up trend is the more reliable indicator.
+- The remaining write-side gap is consistent with the current architecture: the fixed buffer
+  removed the older bulk bounce, but the system still pays for the host drain-thread handoff,
+  linuxd processing, and guest CQ completion path. Tier 2 adaptive polling is still pending.
 
 During the local rerun that produced the `/dev/zero` numbers above, the plotting step generated:
 
@@ -236,6 +238,9 @@ During the local rerun that produced the `/dev/zero` numbers above, the plotting
 - `/tmp/nanvix-bench/pread-latency-vs-size-dev-zero.png`
 - `/tmp/nanvix-bench/pwrite-ring-over-legacy-dev-zero.png`
 - `/tmp/nanvix-bench/pread-ring-over-legacy-dev-zero.png`
+
+Committed copies of the raw tables, summaries, and plots from this rerun live under
+`benchmark-results/`.
 
 When reproducing the benchmark, prefer the median trend and the ratio tables over any single trial:
 the experiments ran in a shared development environment, so larger payload points can show visible

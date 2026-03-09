@@ -342,16 +342,19 @@ physical page. Compare to 3-4 copies today.
 
 ---
 
-## Current Status and Measured Results (2026-03-08)
+## Current Status and Measured Results (2026-03-09)
 
 Detailed methodology and the full result tables live in `doc/benchmark.md`.
 
-- The current implementation is still the Tier 1 / hybrid path:
+- The fixed-size RTT data still reflects the Tier 1 / hybrid path:
   shared-memory SQ/CQ + ioeventfd doorbell + host drain thread + linuxd syscall handling.
 - CQ interrupt suppression is now implemented end-to-end.
-- Positioned `pwrite()` / `pread()` now use a Phase 3 MVP: metadata-only requests plus the existing
-  bulk push/pull path instead of chunked linuxd partial-read/partial-write messages.
-- Tier 2 adaptive polling and the original dedicated fixed-buffer Phase 3 design are still pending.
+- Positioned `pwrite()` / `pread()` now use the fixed-buffer Phase 3 design: the ring shared region
+  carries pre-registered payload buffers and the host transport forwards `IkcFrame::Fixed`
+  descriptors instead of bouncing payload bytes through the older bulk push/pull path.
+- The fixed-buffer path is now runtime-validated end-to-end, and the canonical `/dev/zero` payload
+  sweep has been rerun against fresh legacy and ring artifact trees.
+- Tier 2 adaptive polling is still pending.
 
 ### Fixed-Size RTT
 
@@ -377,20 +380,20 @@ Selected ring / legacy ratios from the current 3-trial median rerun:
 
 | Operation | 4096 B | 8192 B | 16384 B | 32768 B |
 |-----------|--------|--------|---------|---------|
-| `pwrite()` | `1.301x` | `1.215x` | `1.190x` | `1.299x` |
-| `pread()` | `1.287x` | `1.268x` | `1.120x` | `1.129x` |
+| `pwrite()` | `1.104x` | `1.057x` | `1.137x` | `1.010x` |
+| `pread()` | `0.959x` | `0.921x` | `0.946x` | `1.002x` |
 
 Interpretation:
 
 - With `/dev/zero` backing the payload path, the absolute `32768`-byte latencies are now
-  `3.750 ms` legacy vs `4.870 ms` ring for `pwrite()`, and `4.034 ms` legacy vs `4.554 ms` ring
+  `4.320 ms` legacy vs `4.363 ms` ring for `pwrite()`, and `4.540 ms` legacy vs `4.550 ms` ring
   for `pread()`.
-- Ring remains in the same ballpark as legacy, but this rerun does not show any large-payload
-  win for the ring path. Across the `4096`-`32768` byte range it is consistently slower in both
-  directions.
-- This indicates that the remaining costs are in the shared host pipeline—drain-thread forwarding,
-  host-side copies, linuxd processing, and CQ completion handling—rather than in the host storage
-  backend.
+- Compared with the earlier bulk-path rerun, fixed buffers materially improved the large-payload
+  behavior. `pread()` is now at or below legacy from `4096` B through `16384` B, and both
+  directions are effectively at parity by `32768` B.
+- `pwrite()` still carries a modest residual overhead on most points, which suggests that the
+  remaining costs are concentrated in the shared host pipeline—drain-thread forwarding, linuxd
+  processing, and CQ completion handling—rather than in the host storage backend.
 
 ## Key Design Decisions
 

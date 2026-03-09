@@ -76,6 +76,7 @@ static mut PENDING_BULK_PULLS: BTreeMap<ThreadIdentifier, PendingBulkPull> = BTr
 /// Upon successful completion (after being woken), the number of bytes transferred is returned.
 /// On failure, a sleep error is returned instead.
 ///
+#[cfg_attr(all(feature = "microvm", feature = "ring-buffer"), allow(dead_code))]
 pub fn register_and_sleep(caller_tid: ThreadIdentifier) -> Result<usize, SleepError> {
     let condvar: Condvar = Condvar::new();
     let bytes_transferred: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));

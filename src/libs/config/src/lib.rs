@@ -240,12 +240,12 @@ pub mod microvm {
 
     // -- Ring buffer constants --
 
-    /// Guest physical address of the shared ring buffer region (64 KiB, page-aligned).
-    /// Sits above boot structures (0x0-0xA000) and below kernel load address (0x100000).
-    pub const RING_BUFFER_GPA: usize = 0x00080000;
+    /// Guest physical address of the shared ring buffer region (2 MiB, page-aligned).
+    /// Sits above the initrd area and below the beginning of guest user space.
+    pub const RING_BUFFER_GPA: usize = 0x01000000;
 
     /// Total size of the shared ring buffer region in bytes.
-    pub const RING_BUFFER_SIZE: usize = 0x00010000; // 64 KiB.
+    pub const RING_BUFFER_SIZE: usize = 0x00200000; // 2 MiB.
 
     /// I/O port used as the ring buffer doorbell (guest writes to wake host).
     pub const RING_DOORBELL_PORT: u16 = 0xeb;

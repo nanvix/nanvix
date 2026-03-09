@@ -73,6 +73,8 @@ pub struct NewUserVm {
     gateway_sockaddr: String,
     /// Type of gateway socket to connect to.
     gateway_socket_type: SocketType,
+    /// Path to the shared ring-buffer backing file for this user VM.
+    ring_shared_path: String,
 }
 
 //==================================================================================================
@@ -89,10 +91,15 @@ const GATEWAY_SOCKADDR_MAX_LEN: usize =
 const USER_VM_IDENTIFIER_LEN: usize = ::std::mem::size_of::<u32>();
 const SOCKET_TYPE_LEN: usize = ::std::mem::size_of::<u8>();
 const SOCKET_TYPE_OFFSET: usize = USER_VM_IDENTIFIER_LEN;
+const RING_SHARED_PATH_MAX_LEN: usize = 256;
 
 const NEW_USER_VM_HEADER_LEN: usize = USER_VM_IDENTIFIER_LEN + SOCKET_TYPE_LEN;
 
-pub const NEW_USER_VM_MESSAGE_LEN: usize = NEW_USER_VM_HEADER_LEN + GATEWAY_SOCKADDR_MAX_LEN;
+const GATEWAY_SOCKADDR_OFFSET: usize = NEW_USER_VM_HEADER_LEN;
+const RING_SHARED_PATH_OFFSET: usize = GATEWAY_SOCKADDR_OFFSET + GATEWAY_SOCKADDR_MAX_LEN;
+
+pub const NEW_USER_VM_MESSAGE_LEN: usize =
+    NEW_USER_VM_HEADER_LEN + GATEWAY_SOCKADDR_MAX_LEN + RING_SHARED_PATH_MAX_LEN;
 
 //==================================================================================================
 // Structures
@@ -149,6 +156,7 @@ impl NewUserVm {
         user_vm_id: UserVmIdentifier,
         gateway_sockaddr: String,
         gateway_socket_type: SocketType,
+        ring_shared_path: String,
     ) -> Result<Self> {
         // Check if the socket address length is invalid.
         let sockaddr_len: usize = gateway_sockaddr.len();
@@ -174,10 +182,21 @@ impl NewUserVm {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
         }
 
+        if ring_shared_path.len() > RING_SHARED_PATH_MAX_LEN {
+            let reason: String = format!(
+                "ring shared path too long (max: {}, got: {})",
+                RING_SHARED_PATH_MAX_LEN,
+                ring_shared_path.len()
+            );
+            error!("NewUserVm::new(): {reason}");
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
+        }
+
         Ok(Self {
             user_vm_id,
             gateway_sockaddr,
             gateway_socket_type,
+            ring_shared_path,
         })
     }
 
@@ -220,6 +239,10 @@ impl NewUserVm {
         &self.gateway_socket_type
     }
 
+    pub fn ring_shared_path(&self) -> &str {
+        self.ring_shared_path.as_ref()
+    }
+
     pub fn to_bytes(&self) -> [u8; NEW_USER_VM_MESSAGE_LEN] {
         let mut encoded: [u8; NEW_USER_VM_MESSAGE_LEN] = [0u8; NEW_USER_VM_MESSAGE_LEN];
 
@@ -229,8 +252,12 @@ impl NewUserVm {
         encoded[SOCKET_TYPE_OFFSET] = self.gateway_socket_type.into();
 
         let sockaddr_bytes: &[u8] = self.gateway_sockaddr.as_bytes();
-        encoded[NEW_USER_VM_HEADER_LEN..NEW_USER_VM_HEADER_LEN + sockaddr_bytes.len()]
+        encoded[GATEWAY_SOCKADDR_OFFSET..GATEWAY_SOCKADDR_OFFSET + sockaddr_bytes.len()]
             .copy_from_slice(sockaddr_bytes);
+
+        let ring_path_bytes: &[u8] = self.ring_shared_path.as_bytes();
+        encoded[RING_SHARED_PATH_OFFSET..RING_SHARED_PATH_OFFSET + ring_path_bytes.len()]
+            .copy_from_slice(ring_path_bytes);
 
         encoded
     }
@@ -251,7 +278,7 @@ impl NewUserVm {
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
 
-        let sockaddr_start: usize = NEW_USER_VM_HEADER_LEN;
+        let sockaddr_start: usize = GATEWAY_SOCKADDR_OFFSET;
         let sockaddr_end: usize = sockaddr_start + GATEWAY_SOCKADDR_MAX_LEN;
         let raw_sockaddr: &[u8] = &encoded[sockaddr_start..sockaddr_end];
 
@@ -266,6 +293,26 @@ impl NewUserVm {
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
 
-        Self::new(UserVmIdentifier::new(user_vm_id), gateway_sockaddr, gateway_socket_type)
+        let ring_path_start: usize = RING_SHARED_PATH_OFFSET;
+        let ring_path_end: usize = ring_path_start + RING_SHARED_PATH_MAX_LEN;
+        let raw_ring_path: &[u8] = &encoded[ring_path_start..ring_path_end];
+
+        let ring_path_len: usize = raw_ring_path
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(raw_ring_path.len());
+        let ring_shared_path: String =
+            String::from_utf8(raw_ring_path[..ring_path_len].to_vec()).map_err(|_| {
+                let reason: &str = "invalid UTF-8 in ring_shared_path";
+                error!("NewUserVm::try_from_bytes(): {reason}");
+                io::Error::new(io::ErrorKind::InvalidInput, reason)
+            })?;
+
+        Self::new(
+            UserVmIdentifier::new(user_vm_id),
+            gateway_sockaddr,
+            gateway_socket_type,
+            ring_shared_path,
+        )
     }
 }

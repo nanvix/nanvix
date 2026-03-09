@@ -19,6 +19,7 @@ use crate::{
     },
     message::RequestAssembler,
     syscalls::SyscallTable,
+    shared_ring::SharedRing,
     user_vm_event::UserVmEvent,
     user_vm_handle::UserVmHandle,
     venv::{
@@ -49,6 +50,7 @@ use ::std::{
         VecDeque,
     },
     io::ErrorKind,
+    path::Path,
     str::FromStr,
     sync::Arc,
 };
@@ -59,6 +61,7 @@ use ::sys::{
     },
     ipc::{
         DataChunk,
+        FixedBufferTransfer,
         IkcFrame,
         Message,
         MessageReceiver,
@@ -106,6 +109,7 @@ mod assemble;
 mod error;
 mod linux;
 mod message;
+mod shared_ring;
 mod time;
 mod user_vm_event;
 mod user_vm_handle;
@@ -297,6 +301,21 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 
         trace!("registered new user VM connection (vm_id={user_vm_id}, addr={user_vm_stream:?})",);
 
+        let shared_ring: Option<Arc<SharedRing>> = if new_msg.ring_shared_path().is_empty() {
+            None
+        } else {
+            Some(Arc::new(SharedRing::open(Path::new(new_msg.ring_shared_path())).map_err(
+                |e| {
+                    let reason: String = format!(
+                        "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, path={}, error={e:?})",
+                        new_msg.ring_shared_path()
+                    );
+                    error!("{reason}");
+                    Error::new(ErrorCode::IoErr, "failed to open shared ring mapping")
+                },
+            )?))
+        };
+
         // Spawn a background task that reads messages from this user VM and
         // enqueues them to the main reception channel monitored in this loop.
         let (user_vm_reader, user_vm_writer): (SocketStreamReader, SocketStreamWriter) =
@@ -337,6 +356,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
             &gateway_sockaddr,
             new_msg.gateway_socket_type(),
             user_vm_reader_handle,
+            shared_ring,
         );
 
         {
@@ -637,6 +657,41 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                         );
                                     }
                                 },
+                                IkcFrame::Fixed(fixed) => {
+                                    let source_tid: ThreadIdentifier = fixed.source_tid();
+                                    trace!(
+                                        "run(): routing fixed-buffer transfer to worker thread \
+                                         (uvm_id={uvm_id}, source_tid={source_tid:?}, buffer_id={}, data_len={})",
+                                        fixed.buffer_id(),
+                                        fixed.data_len(),
+                                    );
+
+                                    let venv_dir: Arc<Mutex<VirtualEnviromentDirectory>> =
+                                        self.venv.clone();
+                                    let channel_tx: Option<Sender<VenvCommand>> = {
+                                        let guard: MutexGuard<'_, VirtualEnviromentDirectory> =
+                                            venv_dir.lock().await;
+                                        guard
+                                            .get(uvm_id, source_tid)
+                                            .map(|env| env.get_channel_tx())
+                                    };
+
+                                    if let Some(tx) = channel_tx {
+                                        if let Err(error) =
+                                            tx.send(VenvCommand::FixedBuffer(fixed)).await
+                                        {
+                                            error!(
+                                                "run(): failed to dispatch fixed-buffer transfer to \
+                                                 worker thread (uvm_id={uvm_id}, source_tid={source_tid:?}, error={error:?})"
+                                            );
+                                        }
+                                    } else {
+                                        warn!(
+                                            "run(): no worker thread found for fixed-buffer transfer \
+                                             (uvm_id={uvm_id}, source_tid={source_tid:?})"
+                                        );
+                                    }
+                                },
                             }
                         },
 
@@ -723,6 +778,21 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 
                 Ok(IkcFrame::Bulk(bulk))
             },
+            IkcFrame::FIXED_BUFFER_FRAME => {
+                let mut buf: [u8; FixedBufferTransfer::SIZE] = [0u8; FixedBufferTransfer::SIZE];
+                uvm_reader
+                    .read_exact(&mut buf)
+                    .await
+                    .map_err(|e| e.kind())?;
+
+                let transfer: FixedBufferTransfer =
+                    FixedBufferTransfer::try_from_bytes(buf).map_err(|e| {
+                        error!("recv(): failed to parse fixed-buffer transfer (error={e:?})");
+                        ErrorKind::InvalidData
+                    })?;
+
+                Ok(IkcFrame::Fixed(transfer))
+            },
             unknown => {
                 error!("recv(): unknown frame type (type={unknown:#04x})");
                 Err(ErrorKind::InvalidData)
@@ -770,6 +840,15 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                 bulk.header().source_pid(),
                                 bulk.header().destination_pid(),
                                 bulk.header().data_len(),
+                            );
+                        },
+                        IkcFrame::Fixed(fixed) => {
+                            trace!(
+                                "uservm.id={uvm_id}, fixed.source_pid={:?}, fixed.destination_pid={:?}, fixed.buffer_id={}, fixed.data_len={}",
+                                fixed.source_pid(),
+                                fixed.destination_pid(),
+                                fixed.buffer_id(),
+                                fixed.data_len(),
                             );
                         },
                     }

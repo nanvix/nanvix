@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::shared_ring::SharedRing;
 use ::anyhow::Result;
 use ::log::{
     error,
@@ -48,6 +49,8 @@ pub struct UserVmHandle {
     gateway_listener: Arc<Mutex<Option<SocketListener>>>,
     /// Join handle to the task that reads from the user VM stream.
     user_vm_reader_handle: Arc<Mutex<Option<JoinHandle<Result<()>>>>>,
+    /// Optional shared ring-buffer mapping for fixed-buffer transfers.
+    shared_ring: Option<Arc<SharedRing>>,
 }
 
 impl UserVmHandle {
@@ -56,6 +59,7 @@ impl UserVmHandle {
         gateway_sockaddr: &str,
         gateway_socket_type: &SocketType,
         user_vm_reader_handle: JoinHandle<Result<()>>,
+        shared_ring: Option<Arc<SharedRing>>,
     ) -> Self {
         trace!("new(): gateway_sockaddr={}", gateway_sockaddr);
         Self {
@@ -66,12 +70,17 @@ impl UserVmHandle {
             gateway_writer: Arc::new(Mutex::new(None)),
             gateway_listener: Arc::new(Mutex::new(None)),
             user_vm_reader_handle: Arc::new(Mutex::new(Some(user_vm_reader_handle))),
+            shared_ring,
         }
     }
 
     /// Get the writer half of the user VM stream.
     pub fn get_user_vm_writer(&self) -> Arc<Mutex<SocketStreamWriter>> {
         self.user_vm_writer.clone()
+    }
+
+    pub fn shared_ring(&self) -> Option<Arc<SharedRing>> {
+        self.shared_ring.clone()
     }
 
     /// Lazily establish (or reuse) the gateway connection and return its split reader & writer.

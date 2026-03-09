@@ -434,6 +434,93 @@ impl VirtualMemory {
         trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces a slice of guest physical memory with a shared file-backed mapping.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the backing file.
+    /// - `base`: Guest physical base address where the file should be mapped.
+    /// - `length`: Number of bytes to map.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn map_shared_file_region(&mut self, path: &Path, base: usize, length: usize) -> Result<()> {
+        trace!(
+            "map_shared_file_region(): path={:?}, base={:#010x}, length={length}",
+            path, base
+        );
+
+        if (base & (PAGE_SIZE - 1)) != 0 {
+            let reason: String = format!("mapping base is not page-aligned (base={base:#010x})");
+            error!("map_shared_file_region(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if (length & (PAGE_SIZE - 1)) != 0 {
+            let reason: String = format!("mapping length is not page-aligned (length={length})");
+            error!("map_shared_file_region(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if base.saturating_add(length) > self.size {
+            let reason: String =
+                format!("mapping exceeds guest memory (base={base:#010x}, length={length})");
+            error!("map_shared_file_region(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let file: File = File::options()
+            .read(true)
+            .write(true)
+            .open(path)
+            .map_err(|e| anyhow::anyhow!("failed to open shared mapping file {:?}: {e}", path))?;
+
+        let file_len: u64 = file
+            .metadata()
+            .map_err(|e| anyhow::anyhow!("failed to stat shared mapping file {:?}: {e}", path))?
+            .len();
+        let required: u64 = length as u64;
+        if file_len < required {
+            let reason: String = format!(
+                "shared mapping file too small: expected at least {required} bytes, got {file_len}"
+            );
+            error!("map_shared_file_region(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // SAFETY: `base` and `length` were validated above and point into the current KVM userspace
+        // mapping. MAP_FIXED atomically replaces only that guest-memory slice with a shared
+        // file-backed mapping.
+        let dst: *mut libc::c_void = unsafe { self.ptr.add(base).cast::<libc::c_void>() };
+        let mapped_ptr: *mut libc::c_void = unsafe {
+            libc::mmap(
+                dst,
+                length,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED | libc::MAP_FIXED,
+                file.as_raw_fd(),
+                0,
+            )
+        };
+
+        if mapped_ptr.is_null() || mapped_ptr == libc::MAP_FAILED || mapped_ptr != dst {
+            let reason: String = format!(
+                "failed to map shared file into guest memory (path={:?}, error={})",
+                path,
+                ::std::io::Error::last_os_error()
+            );
+            error!("map_shared_file_region(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        Ok(())
+    }
 }
 
 impl Drop for VirtualMemory {

@@ -1748,6 +1748,7 @@ impl ProcessManager {
     /// Upon success, the guest physical address is returned. Upon failure, an error is returned.
     ///
     #[cfg(feature = "stdio")]
+    #[cfg_attr(all(feature = "microvm", feature = "ring-buffer", target_arch = "x86_64"), allow(dead_code))]
     pub fn user_vaddr_to_paddr(
         &self,
         pid: ProcessIdentifier,

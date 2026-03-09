@@ -31,8 +31,10 @@ use ::log::{
     warn,
 };
 use ::std::{
+    fs::OpenOptions,
     mem,
     os::unix::process::ExitStatusExt,
+    path::PathBuf,
     process::{
         ExitCode,
         ExitStatus,
@@ -154,6 +156,9 @@ impl UserVm {
                 // Create shared counters for tracking message flow across threads.
                 let counters: MessageCounters = MessageCounters::default();
 
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                let ring_shared_path: PathBuf = prepare_shared_ring_backing(user_vm_id)?;
+
                 // Connect to the control-plane socket.
                 let unbound_socket: UnboundSocket =
                     UnboundSocket::new(SocketType::from_str(&control_plane_connect_sockaddr_type)?);
@@ -208,6 +213,10 @@ impl UserVm {
                             user_vm_id,
                             gateway_sockaddr.clone(),
                             SocketType::from_str(&gateway_sockaddr_type)?,
+                            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                            ring_shared_path.display().to_string(),
+                            #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
+                            String::new(),
                         ) {
                             Ok(message) => message,
                             Err(e) => {
@@ -275,6 +284,8 @@ impl UserVm {
                         io_control_tx,
                         counters,
                         snapshot_path: None,
+                        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                        ring_shared_path: Some(ring_shared_path.display().to_string()),
                     });
 
                 // Wait for VMM thread to finish.
@@ -285,6 +296,14 @@ impl UserVm {
                 if let Err(error) = io_result {
                     let reason: String = format!("I/O thread failed (error={error:?})");
                     error!("spawn(): {reason}");
+                }
+
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                if let Err(error) = std::fs::remove_file(&ring_shared_path) {
+                    warn!(
+                        "spawn(): failed to remove shared ring backing file (path={}, error={error:?})",
+                        ring_shared_path.display()
+                    );
                 }
 
                 let result: Result<u8> = match vm_exit_status {
@@ -422,6 +441,29 @@ impl UserVm {
             false
         }
     }
+}
+
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> {
+    let path: PathBuf = std::env::temp_dir().join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
+
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path))?;
+
+    file.set_len(::config::microvm::RING_BUFFER_SIZE as u64).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to size shared ring backing file {:?} to {} bytes: {e}",
+            path,
+            ::config::microvm::RING_BUFFER_SIZE
+        )
+    })?;
+
+    Ok(path)
 }
 
 ///

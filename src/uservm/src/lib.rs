@@ -101,6 +101,8 @@ use ::std::{
     sync::Arc,
     time::Duration,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::path::Path;
 use ::sys::ipc::{
     DataChunk,
     DataChunkHeader,
@@ -178,6 +180,9 @@ pub struct UserVmArgs {
     pub counters: MessageCounters,
     /// Optional snapshot path: when set, restore VM state from this snapshot before running.
     pub snapshot_path: Option<String>,
+    /// Optional path to the shared ring-buffer backing file used for fixed-buffer transfers.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    pub ring_shared_path: Option<String>,
 }
 
 //==================================================================================================
@@ -298,6 +303,19 @@ impl UserVm {
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
+
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        if let Some(ref ring_shared_path) = args.ring_shared_path {
+            let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
+            locked_vmem.map_shared_file_region(
+                Path::new(ring_shared_path),
+                ::config::microvm::RING_BUFFER_GPA,
+                ::config::microvm::RING_BUFFER_SIZE,
+            )?;
+            trace!(
+                "spawn(): mapped shared ring backing file into guest memory (path={ring_shared_path})"
+            );
+        }
 
         // Spawn the ring buffer drain thread. It blocks on the ioeventfd registered for
         // the doorbell port and drains SQEs without a VM exit.
@@ -629,6 +647,15 @@ pub fn build_input_fn(
                         locked_guest.consume_credit(&mut locked_vm)?;
                         ikc_pending.store(false, std::sync::atomic::Ordering::Release);
                     },
+                    IkcFrame::Fixed(fixed) => {
+                        let reason: String = format!(
+                            "fixed-buffer completion reached legacy stdin path (buffer_id={}, len={})",
+                            fixed.buffer_id(),
+                            fixed.data_len()
+                        );
+                        error!("input(): {reason}");
+                        anyhow::bail!(reason);
+                    },
                 }
             },
             // Channel has disconnected.
@@ -764,6 +791,17 @@ pub fn build_input_fn(
 
                 locked_guest.consume_credit(&mut locked_vmem)?;
                 Ok(completion_msg.to_bytes().to_vec())
+            },
+            Some(IkcFrame::Fixed(fixed)) => {
+                let reason: String = format!(
+                    "fixed-buffer completion reached hyperlight stdin path (buffer_id={}, len={})",
+                    fixed.buffer_id(),
+                    fixed.data_len()
+                );
+                error!("input(): {reason}");
+                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
+                    reason,
+                )))
             },
 
             // Channel has disconnected.

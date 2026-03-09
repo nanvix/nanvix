@@ -7,6 +7,8 @@
 
 #[cfg(feature = "stdio")]
 pub mod bulk_pull;
+#[cfg(all(feature = "stdio", feature = "ring-buffer"))]
+pub mod fixed_pull;
 mod mbx;
 mod pull;
 mod push;

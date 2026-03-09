@@ -55,17 +55,29 @@ pub const SQ_OFFSET: usize = 256;
 /// Byte offset of the completion queue within the shared region.
 pub const CQ_OFFSET: usize = SQ_OFFSET + (SQ_SIZE as usize) * core::mem::size_of::<SqEntry>();
 
-/// Byte offset of the pre-registered data buffer region.
+/// Byte offset of the message-data region.
 pub const DATA_OFFSET: usize = CQ_OFFSET + (CQ_SIZE as usize) * core::mem::size_of::<CqEntry>();
 
 /// Total size of the shared ring buffer region in bytes.
-pub const REGION_SIZE: usize = 65536; // 64 KiB.
+pub const REGION_SIZE: usize = 2 * 1024 * 1024; // 2 MiB.
 
-/// Size of each pre-registered data buffer slot in bytes (512 B, fits one IPC Message).
+/// Size of each message-data slot in bytes (fits one serialized IPC message).
 pub const DATA_SLOT_SIZE: usize = 512;
 
-/// Number of data buffer slots available in the data region.
-pub const DATA_SLOT_COUNT: usize = (REGION_SIZE - DATA_OFFSET) / DATA_SLOT_SIZE;
+/// Number of message-data slots available in the message-data region.
+pub const DATA_SLOT_COUNT: usize = CQ_SIZE as usize;
+
+/// Size in bytes reserved for message-data slots.
+pub const DATA_SLOT_REGION_SIZE: usize = DATA_SLOT_COUNT * DATA_SLOT_SIZE;
+
+/// Byte offset of the fixed-buffer region used for large payload transfers.
+pub const FIXED_BUF_OFFSET: usize = DATA_OFFSET + DATA_SLOT_REGION_SIZE;
+
+/// Size of each fixed buffer in bytes.
+pub const FIXED_BUF_SIZE: usize = 4096;
+
+/// Number of fixed buffers available in the shared region.
+pub const FIXED_BUF_COUNT: usize = (REGION_SIZE - FIXED_BUF_OFFSET) / FIXED_BUF_SIZE;
 
 // -- Control block field offsets (must match RingControl repr(C) layout) --
 

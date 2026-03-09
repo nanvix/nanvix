@@ -56,6 +56,8 @@ impl ZombieThread {
     /// This function returns a new instance of a [`ZombieThread`].
     ///
     pub(super) fn from_state(state: Box<ThreadState>, status: ExitStatus) -> Self {
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        crate::ring::release_thread_fixed_buffer(state.id());
         Self { status, state }
     }
 
