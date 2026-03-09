@@ -1,4 +1,4 @@
-# Shared-Memory Ring Buffer VMBus — Design Sketch
+# Shared-Memory Ring Buffer VMBus — Design Sketch and Current Status
 
 ## Problem
 
@@ -12,7 +12,45 @@ Near-native syscall throughput **without** dedicating host cores to polling.
 
 ---
 
-## Architecture Overview
+## Current Implemented Architecture
+
+The transport that exists in-tree today is still a hybrid. The guest kernel uses
+the ring to talk to `uservm`, and `uservm` then forwards work to `linuxd` over
+the existing I/O channel.
+
+- `uservm` creates a temp-file-backed `MAP_SHARED` ring backing file and maps it
+  into the guest GPA reserved for the ring.
+- The guest kernel writes SQEs into that ring and rings an ioeventfd-backed
+  doorbell.
+- A `uservm` ring-drain thread wakes on the eventfd, drains SQEs, and forwards
+  them as `IkcFrame::{Message,Bulk,Fixed}` to the I/O thread.
+- `linuxd` still executes syscalls on the existing worker-thread path.
+- For fixed-buffer transfers, `linuxd` maps the same shared backing file so it
+  can dereference payload bytes directly from the ring-backed fixed-buffer
+  region.
+- `uservm` writes CQEs back into guest memory and injects an interrupt only when
+  the guest has armed `CQ_NOTIFY_ME`.
+
+### Implemented Paths for Comparison
+
+- **Legacy vmbus baseline**: PMIO envelopes travel through the existing
+  `uservm`/`linuxd` channel, and payload bytes move through `push()` / `pull()`
+  with `DataChunk` buffers.
+- **Previous ring payload design**: the ring carries `SqeOpcode::BulkData`,
+  `uservm` drains it and forwards `IkcFrame::Bulk`, but payload bytes still
+  bounce through the older bulk path.
+- **Current fixed-buffer ring path**: the ring carries `SqeOpcode::BulkData`
+  with `FIXED_BUF`, `uservm` forwards `IkcFrame::Fixed`, and `linuxd` accesses
+  fixed-buffer bytes directly from the shared ring mapping.
+
+---
+
+## Original Direct-Linuxd Architecture (Design Target, for Comparison)
+
+The diagram below is the earlier end-state sketch in which `linuxd` would drain
+SQEs and post CQEs directly. The current implementation above is more hybrid:
+`uservm` still owns SQ draining and CQ writing, while `linuxd` only maps the
+shared ring for fixed-buffer payload bytes.
 
 ```
  ┌──────────────────── Guest (KVM) ────────────────────┐
@@ -76,8 +114,10 @@ Near-native syscall throughput **without** dedicating host cores to polling.
 
 ## Core Idea: Three Notification Tiers
 
-The key to avoiding dedicated cores is an **adaptive notification** strategy
-with three tiers that the system switches between automatically:
+The three tiers below describe the original notification strategy target. The
+current implementation uses the Tier 1 eventfd wakeup path plus CQ interrupt
+suppression. It does not yet implement the Tier 2 spin window, the Tier 3
+dedicated poll thread, or full guest-to-host doorbell suppression.
 
 ### Tier 1 — Eventfd Doorbell (default, zero idle CPU)
 
@@ -96,14 +136,17 @@ Guest kernel                         linuxd
     └─ guest resumes
 ```
 
-**Cost**: 1 VM exit (doorbell) + 1 interrupt inject per batch.
+**Status today**: implemented as an ioeventfd-backed wakeup plus a `uservm`
+drain thread that drains once per doorbell and then blocks again.
+**Cost today**: one doorbell/eventfd wakeup per batch, plus up to one guest
+interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
 **CPU when idle**: zero — both sides sleep on epoll/HLT.
 
-KVM ioeventfd is the crucial primitive here: the guest writes to a PIO port,
-and KVM signals an eventfd **in-kernel** without a full VM exit to userspace.
-This is how virtio-pci doorbells work.
+KVM ioeventfd is still the crucial primitive here: the guest writes to a PIO
+port and KVM signals an eventfd **in-kernel**. In the current implementation,
+that eventfd wakes the `uservm` ring-drain thread, not `linuxd` directly.
 
-### Tier 2 — Adaptive Polling (auto-enabled under load)
+### Tier 2 — Adaptive Polling (design target, not yet implemented)
 
 When linuxd sees sustained SQ traffic, it enters a short polling window:
 
@@ -119,17 +162,22 @@ linuxd after processing a batch:
     // no new work → fall back to epoll (Tier 1)
 ```
 
-**Cost**: 0 VM exits while polling window is open.
-**CPU when idle**: returns to zero after the polling window expires.
+**Status today**: not implemented. `RING_POLL_SPIN_ITERS` exists as a config
+knob, but the active drain path still blocks on the doorbell eventfd after each
+drain instead of entering this loop.
+**Target cost**: no additional doorbells while the polling window is open.
+**Target CPU when idle**: returns to zero after the polling window expires.
 This is exactly how io_uring SQPOLL works — it polls for a configurable
 idle period, then parks.
 
-### Tier 3 — Dedicated Poll Thread (opt-in, maximum throughput)
+### Tier 3 — Dedicated Poll Thread (design target, not yet implemented)
 
 For benchmarks or throughput-critical deployments, pin a host core to
 poll the SQ continuously. Same as vhost-user. Enabled by flag, never default.
 
-**Automatic tier selection:**
+**Status today**: not implemented.
+
+**Planned automatic tier selection:**
 
 ```
              Tier 1 (eventfd)
@@ -144,6 +192,8 @@ poll the SQ continuously. Same as vhost-user. Enabled by flag, never default.
                   ▼
              Tier 1 (eventfd)
 ```
+
+Current behavior remains in Tier 1.
 
 ---
 
@@ -160,7 +210,7 @@ Offset   Size     Contents
 0x00C0   64 B     Host → Guest flags (interrupt suppression, etc.)
 0x0100   32 KiB   Submission Queue entries (512 × 64-byte SQEs)
 0x8100   32 KiB   Completion Queue entries (512 × 64-byte CQEs)
-0x10100  ~1.9 MiB Pre-registered data buffers (for zero-copy)
+0x10100  ~1.9 MiB Pre-registered data buffers (for fixed-buffer payload I/O)
 ```
 
 ### Control Block
@@ -214,8 +264,10 @@ struct CQEntry {
 
 ## Doorbell Suppression (Key CPU Optimization)
 
-The expensive operations are the doorbell (VM exit) and the interrupt inject.
-Both can be suppressed when the other side is already awake:
+This section describes the original notification-suppression goal. Today the
+host-to-guest side is implemented, but the guest-to-host side is still
+incomplete. The active drain path does not yet clear/set `SQ_NEED_WAKEUP`, so
+the guest still rings the doorbell for each batch.
 
 ### Guest → Host: Suppress Doorbell
 
@@ -255,19 +307,76 @@ fn notify_guest(ctrl: &RingControl, kvm_fd: &KvmFd) {
 }
 ```
 
-**Net effect**: Under sustained load, **zero VM exits and zero interrupts**.
-When idle, both sides sleep with zero CPU.
+**Current effect**: CQ interrupts are suppressed when the guest is already
+polling. Not yet implemented: guest-to-host doorbell suppression, Tier 2
+adaptive polling, and the zero-notification steady state described by the
+original design.
 
 ---
 
-## Data Path: Zero-Copy via Pre-Registered Buffers
+## Payload Data Path (Previous and Current)
 
-### Small payloads (≤ 256 bytes): Inline in SQE
+The current tree contains two ring payload variants.
 
-For small writes (most IPC, control messages), embed data directly in the
-SQE's reserved space. No separate buffer needed.
+### Previous ring payload design (bulk compatibility path)
 
-### Large payloads: Pre-Registered Buffer Region
+When `FIXED_BUF` is not set, the ring carries only metadata and the drain thread
+reconstructs a `DataChunk`:
+
+```rust
+guest kernel:
+    post SqeOpcode::BulkData
+    sqe.flags does not include FIXED_BUF
+
+uservm ring_drain:
+    rebuild DataChunk
+    forward IkcFrame::Bulk
+
+linuxd:
+    receive owned payload bytes on the existing channel
+```
+
+This was the earlier ring payload design. It still exists as the compatibility
+path for transfers that do not use fixed buffers.
+
+### Current fixed-buffer payload design
+
+When `FIXED_BUF` is set, the ring carries a fixed-buffer id and length instead
+of bouncing the payload through the bulk path. The shared ring region is carved
+into fixed-size 4 KiB slots that are mapped by both `uservm` and `linuxd`.
+
+```rust
+// Guest kernel write/send path.
+let buf_id = data_buf_alloc();
+copy_from_user(shared_fixed_buffer(buf_id), user_buf, len); // 1 copy
+sqe.addr = buf_id as u64;
+sqe.flags |= FIXED_BUF;
+```
+
+```rust
+// linuxd host path.
+let host_ptr = shared_ring.fixed_buffer_ptr(buf_id)?;
+libc::pwrite(fd, host_ptr, len, offset); // host reads shared bytes directly
+libc::pread(fd, host_ptr, len, offset);  // host writes shared bytes directly
+```
+
+Payload-copy summary for the implemented fixed-buffer path:
+
+- `pwrite()` / send path: 1 guest copy from user memory into the shared fixed
+  buffer; no extra host bounce buffer.
+- `pread()` / receive path: the host fills the shared fixed buffer directly,
+  then the guest copies once from that buffer back into user memory during CQ
+  completion.
+- This removes the old host-side bounce buffer on the benchmarked fixed-buffer
+  path, but it is not yet a full end-to-end zero-copy receive path.
+
+### Small payloads (planned, not yet implemented): Inline in SQE
+
+For small writes (most IPC, control messages), the original design intended to
+embed data directly in the SQE's inline space. The `INLINE` flag and storage
+exist in `SqEntry`, but the active drain path does not use them yet.
+
+### Large payloads: Fixed buffer region
 
 The ~1.9 MiB data buffer region is carved into fixed-size slots (e.g.,
 4 KiB each = 475 slots). The guest kernel manages a simple bitmap allocator:
@@ -289,52 +398,64 @@ libc::write(fd, host_ptr, sqe.len);  // host write() reads directly
                                       // from guest-mapped page
 ```
 
-**Total copies: 1** (user space → shared buffer). The host reads the same
-physical page. Compare to 3-4 copies today.
+On the write/send path, the implemented fixed-buffer design reaches the 1-copy
+goal shown above. On the read/receive path there is still one guest copy back
+into the user buffer, so this is not yet a full end-to-end zero-copy design.
+
+Direct per-syscall SQE opcodes (`Write`, `Read`, `Open`, `Close`, `Stat`, ...)
+also remain future work in the active drain path; today it still handles `Nop`,
+`IkcMessage`, and `BulkData`.
 
 ---
 
-## Comparison: Current vs Proposed
+## Original Target Comparison (for Comparison Only)
 
-| Metric               | Current (PIO + socket) | Ring Buffer (Tier 1) | Ring Buffer (Tier 2) |
-|-----------------------|------------------------|----------------------|----------------------|
-| VM exits per syscall  | 3+                     | 1 (doorbell)         | 0                    |
-| Data copies           | 3-4                    | 1                    | 1                    |
-| Idle CPU              | 0                      | 0                    | 0                    |
-| Batching              | No                     | Yes (drain loop)     | Yes                  |
-| Latency (estimated)   | ~20-50 μs              | ~5-10 μs             | ~1-3 μs              |
-| Throughput            | ~50K ops/s             | ~200K ops/s          | ~1M+ ops/s           |
+The table below is the original end-state estimate that motivated the design.
+It is not a summary of current measured behavior.
+
+| Metric                    | Current (PIO + socket) | Ring Buffer (Tier 1) | Ring Buffer (Tier 2) |
+|---------------------------|------------------------|----------------------|----------------------|
+| Host wakeups / exits      | 3+                     | 1 doorbell wakeup    | 0                    |
+| Data copies               | 3-4                    | 1                    | 1                    |
+| Idle CPU                  | 0                      | 0                    | 0                    |
+| Batching                  | No                     | Yes (drain loop)     | Yes                  |
+| Latency (estimated)       | ~20-50 μs              | ~5-10 μs             | ~1-3 μs              |
+| Throughput                | ~50K ops/s             | ~200K ops/s          | ~1M+ ops/s           |
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Shared memory + eventfd doorbell (Tier 1)
+### Phase 1: Shared memory + eventfd doorbell (implemented in hybrid form)
 
 1. Reserve 2 MiB region at a fixed GPA in the guest physical memory map.
-2. In the VMM (uservm): create a KVM ioeventfd for the doorbell PIO port.
-3. In linuxd: mmap the guest memory fd at the shared region offset.
+2. In the VMM (`uservm`): create a KVM ioeventfd for the doorbell PIO port.
+3. In `uservm`: create and map a shared ring backing file into guest memory;
+   in `linuxd`: open the same backing file when fixed buffers are enabled.
 4. Implement SPSC ring in a shared `nvx-ring` crate (used by both guest
-   kernel and linuxd).
+   kernel and host-side components).
 5. Guest kernel: new `send_sqe()` / `poll_cqe()` API replacing vmbus
    `write()` / `read()`.
-6. linuxd: epoll loop that drains SQ, executes syscalls, posts CQEs.
-7. Wire up `write()` as the first syscall on the new path. Keep old vmbus
-   as fallback.
+6. `uservm`: ring-drain thread drains SQ and forwards frames; `linuxd`
+   continues to execute syscalls on the existing worker-thread path.
+7. Wire the ring into the existing host channel. Keep old vmbus/bulk paths as
+   fallback/compatibility.
 
-### Phase 2: Adaptive polling (Tier 2)
+### Phase 2: Adaptive polling (partially implemented; CQ suppression only)
 
-8. Add spin loop to linuxd drain loop with configurable idle timeout.
-9. Add doorbell suppression flags.
-10. Add interrupt suppression flags + CQ polling in guest kernel.
+8. Add spin loop to the drain loop with configurable idle timeout. Not
+   implemented.
+9. Add doorbell suppression flags. Partially implemented: the flags exist, but
+   the active drain path does not yet manage `SQ_NEED_WAKEUP`.
+10. Add interrupt suppression flags + CQ polling in guest kernel. Implemented.
 
-### Phase 3: Zero-copy data buffers
+### Phase 3: Fixed-buffer data path (implemented)
 
 11. Implement pre-registered buffer allocator in guest kernel.
-12. Map buffer region into linuxd.
-13. Add FIXED_BUF flag to SQE path.
+12. Map the same shared ring backing into `linuxd`.
+13. Add `FIXED_BUF` handling to the SQE / `IkcFrame::Fixed` path.
 
-### Phase 4: Full syscall coverage
+### Phase 4: Full syscall coverage (not yet implemented)
 
 14. Port remaining syscalls (read, open, close, stat, mmap, ...) to SQE
     opcodes.
@@ -346,15 +467,28 @@ physical page. Compare to 3-4 copies today.
 
 Detailed methodology and the full result tables live in `doc/benchmark.md`.
 
-- The fixed-size RTT data still reflects the Tier 1 / hybrid path:
-  shared-memory SQ/CQ + ioeventfd doorbell + host drain thread + linuxd syscall handling.
+- The active ring path is still hybrid: guest kernel and `uservm` share the
+  SQ/CQ region, `uservm` drains SQEs and writes CQEs, and `linuxd` executes the
+  host syscalls behind the existing channel.
+- The ring region is backed by a temp-file-backed `MAP_SHARED` file that
+  `uservm` maps into guest memory and `linuxd` opens separately for fixed-buffer
+  access.
+- The fixed-size RTT data still reflects the current Tier 1 / hybrid path:
+  shared-memory SQ/CQ + ioeventfd doorbell + one drain per wakeup + `linuxd`
+  syscall handling.
 - CQ interrupt suppression is now implemented end-to-end.
-- Positioned `pwrite()` / `pread()` now use the fixed-buffer Phase 3 design: the ring shared region
-  carries pre-registered payload buffers and the host transport forwards `IkcFrame::Fixed`
-  descriptors instead of bouncing payload bytes through the older bulk push/pull path.
-- The fixed-buffer path is now runtime-validated end-to-end, and the canonical `/dev/zero` payload
-  sweep has been rerun against fresh legacy and ring artifact trees.
-- Tier 2 adaptive polling is still pending.
+- The previous `IkcFrame::Bulk` payload design remains in-tree as the
+  compatibility path when `FIXED_BUF` is not used.
+- The benchmarked `pwrite()` / `pread()` path now uses the fixed-buffer Phase 3
+  design: the ring shared region carries pre-registered payload buffers and the
+  host transport forwards `IkcFrame::Fixed` descriptors instead of bouncing
+  payload bytes through the older bulk path.
+- The fixed-buffer path is runtime-validated end-to-end, and the canonical
+  `/dev/zero` payload sweep has been rerun against fresh legacy and ring
+  artifact trees.
+- Not yet implemented: Tier 2 adaptive polling, Tier 3 dedicated polling,
+  active guest-to-host doorbell suppression, inline SQE payloads, and direct
+  handling of the `Write`/`Read`/`Open`/`Close`/`Stat` SQE opcodes.
 
 ### Fixed-Size RTT
 
@@ -400,7 +534,8 @@ Interpretation:
 **Q: Why ioeventfd instead of MMIO trap?**
 KVM ioeventfd signals an eventfd in-kernel without exiting to the VMM
 userspace process. An MMIO trap causes a full KVM_EXIT_MMIO to the VMM,
-which then has to forward to linuxd. ioeventfd cuts out the middleman.
+which then has to forward work through the rest of the host path. ioeventfd
+lets the dedicated ring-drain path wake without that MMIO trap.
 
 **Q: Why not virtio?**
 Virtio is a great abstraction but carries significant complexity (virtqueues,
@@ -408,8 +543,9 @@ descriptor chains, feature negotiation). A custom SPSC ring is simpler,
 tailored to our IPC model, and avoids the virtio driver stack.
 
 **Q: What about multiple guests?**
-Each guest gets its own shared memory region and doorbell. linuxd's epoll
-loop handles multiple ioeventfds. The ring crate is instantiated per-guest.
+Each guest gets its own shared ring backing file and doorbell eventfd inside
+its `uservm` instance. `linuxd` still sees one existing stream per guest VM and,
+when fixed buffers are enabled, one shared-ring mapping per VM.
 
 **Q: Memory ordering?**
 SPSC rings need only Release stores (producer) and Acquire loads (consumer).
