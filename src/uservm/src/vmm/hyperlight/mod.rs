@@ -184,7 +184,7 @@ impl Vmm {
         // Required values for heap and stack sizes to be used by the kernel.
         let heap_size: usize = config::kernel::KPOOL_SIZE;
         let stack_size: usize = ::config::hyperlight::STACK_SIZE;
-        let memory_size: usize = args.memory_size;
+        let memory_size: usize = ::config::kernel::MEMORY_SIZE;
 
         let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {
             match std::fs::read(initrd_filename) {

@@ -151,8 +151,6 @@ pub const CHANNEL_CAPACITY: usize = 1024;
 
 /// Bundles all resources required to spawn a [`UserVm`] instance.
 pub struct UserVmArgs {
-    /// Amount of guest physical memory to allocate for the virtual machine, in bytes.
-    pub memory_size: usize,
     /// Absolute or relative path to the guest kernel image to boot.
     pub kernel_filename: String,
     /// Optional path to an initrd payload that should be exposed to the guest.
@@ -273,7 +271,6 @@ impl UserVm {
             #[cfg(feature = "hyperlight")]
             bulk_output: vmm_bulk_stdout_fn,
             stderr: vmm_stderr_fn,
-            memory_size: args.memory_size,
             control_rx: vcpu_thread_control_rx,
             control_tx: vcpu_thread_control_tx,
             kernel_filename: args.kernel_filename,
