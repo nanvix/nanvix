@@ -154,7 +154,6 @@ impl Terminal {
             Some(guest_binary_path.to_string()),
             initrd_args,
             self.config.ramfs_filename.clone(),
-            ::config::kernel::MEMORY_SIZE,
             self.config.console_file.clone(),
             None,
         );

@@ -266,7 +266,6 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             Some(message.program.clone()),
             initrd_args,
             state.config.ramfs_filename.clone(),
-            ::config::kernel::MEMORY_SIZE,
             state.config.console_file.clone(),
             None,
         );

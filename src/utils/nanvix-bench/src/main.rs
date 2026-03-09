@@ -42,7 +42,6 @@ use ::log::{
     warn,
 };
 use ::nanvix::{
-    config::kernel::MEMORY_SIZE,
     http::{
         message,
         message::{
@@ -591,7 +590,6 @@ impl Benchmark {
 
             let start = Instant::now();
             let user_vm_handle = UserVm::spawn(UserVmArgs {
-                memory_size: MEMORY_SIZE,
                 kernel_filename,
                 initrd_filename: Some(initrd_filename),
                 initrd_args: None,
@@ -697,7 +695,6 @@ impl Benchmark {
             let counters: MessageCounters = MessageCounters::new();
 
             let user_vm_handle = UserVm::spawn(UserVmArgs {
-                memory_size: MEMORY_SIZE,
                 kernel_filename: kernel_filename.clone(),
                 initrd_filename: Some(snapshot_program),
                 initrd_args: None,
@@ -781,7 +778,6 @@ impl Benchmark {
 
             let start = Instant::now();
             let user_vm_handle = UserVm::spawn(UserVmArgs {
-                memory_size: MEMORY_SIZE,
                 kernel_filename: kernel_filename.clone(),
                 initrd_filename: None,
                 initrd_args: None,
@@ -1222,7 +1218,6 @@ impl Benchmark {
         let counters: MessageCounters = MessageCounters::new();
 
         let user_vm_handle = UserVm::spawn(UserVmArgs {
-            memory_size: MEMORY_SIZE,
             kernel_filename,
             initrd_filename: Some(program),
             initrd_args: None,

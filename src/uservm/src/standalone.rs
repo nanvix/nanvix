@@ -127,7 +127,6 @@ impl StandaloneVmHandle {
     /// - `initrd_filename`: Optional path to the initrd payload.
     /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-    /// - `memory_size`: Amount of guest physical memory in bytes.
     /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
     /// - `snapshot_path`: Optional path to a snapshot from which to restore VM state instead of
     ///   cold-booting.
@@ -142,7 +141,6 @@ impl StandaloneVmHandle {
         initrd_filename: Option<String>,
         initrd_args: Option<String>,
         ramfs_filename: Option<String>,
-        memory_size: usize,
         stderr: Option<String>,
         snapshot_path: Option<String>,
     ) -> (Self, StandaloneVmIo) {
@@ -165,7 +163,6 @@ impl StandaloneVmHandle {
         let io_counters: MessageCounters = counters.clone();
 
         let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
-            memory_size,
             initrd_filename,
             initrd_args,
             ramfs_filename,
