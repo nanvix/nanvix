@@ -13,6 +13,7 @@
 
 use crate::{
     build_error,
+    direct_ring::DirectCqWriter,
     error::WorkerThreadError,
     linux::{
         dirent,
@@ -415,6 +416,7 @@ impl WorkerThreadHandle {
         let worker_tid: ThreadId = thread::current().id();
         let uvm_stream: Arc<Mutex<SocketStreamWriter>> = uvm_handle.get_user_vm_writer();
         let shared_ring: Option<Arc<SharedRing>> = uvm_handle.shared_ring();
+        let direct_cq_writer: Option<Arc<DirectCqWriter>> = uvm_handle.direct_cq_writer();
 
         let (gateway_reader, gateway_writer) =
             match Handle::current().block_on(uvm_handle.get_gateway_vm_stream()) {
@@ -494,7 +496,7 @@ impl WorkerThreadHandle {
                 sys::ipc::MessageType::Ikc => {
                     match LinuxDaemonMessage::try_from_bytes(message.payload) {
                         Ok(message) => {
-                            let message: Message = match message.header {
+                            let (message, force_socket): (Message, bool) = match message.header {
                                 // The system calls are interposed before being forwarded to the
                                 // backend provider.
                                 LinuxDaemonMessageHeader::CloseRequest
@@ -511,8 +513,9 @@ impl WorkerThreadHandle {
                                         &mut channel_rx,
                                         uvm_stream.clone(),
                                         shared_ring.clone(),
+                                        direct_cq_writer.clone(),
                                     ) {
-                                        Ok(message) => message,
+                                        Ok(response) => response,
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
                                             error!(
@@ -560,7 +563,7 @@ impl WorkerThreadHandle {
                                         source,
                                         message,
                                     ) {
-                                        Ok(message) => message,
+                                        Ok(message) => (message, false),
                                         Err(WorkerThreadError::Interrupted) => break,
                                         Err(WorkerThreadError::Error(e)) => {
                                             error!(
@@ -581,6 +584,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
                                     match Self::handle_long_response_messages(
                                         uvm_stream.clone(),
+                                        direct_cq_writer.clone(),
                                         &syscall_table,
                                         source,
                                         message,
@@ -617,6 +621,7 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::PollRequestPart => {
                                     match Self::handle_long_request_messages(
                                         uvm_stream.clone(),
+                                        direct_cq_writer.clone(),
                                         assembler.clone(),
                                         &syscall_table,
                                         source,
@@ -635,11 +640,14 @@ impl WorkerThreadHandle {
                                     continue;
                                 },
 
-                                _ => Self::do_error(source, ErrorCode::InvalidMessage),
+                                _ => (Self::do_error(source, ErrorCode::InvalidMessage), false),
                             };
-                            match Handle::current()
-                                .block_on(Self::send(uvm_stream.clone(), message))
-                            {
+                            match Self::send_message_response(
+                                uvm_stream.clone(),
+                                direct_cq_writer.clone(),
+                                message,
+                                force_socket,
+                            ) {
                                 Ok(()) => {},
                                 Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
                                     debug!("user vm stream closed, worker thread exiting");
@@ -672,11 +680,12 @@ impl WorkerThreadHandle {
         channel_rx: &mut Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         shared_ring: Option<Arc<SharedRing>>,
-    ) -> Result<Message, WorkerThreadError> {
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    ) -> Result<(Message, bool), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
                 let request: CloseRequest = CloseRequest::from_bytes(message.payload);
-                Self::handle_close_request(syscall_table, source, request)
+                Self::handle_close_request(syscall_table, source, request).map(|message| (message, false))
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
@@ -688,6 +697,7 @@ impl WorkerThreadHandle {
                     channel_rx,
                     uvm_stream,
                     shared_ring,
+                    direct_cq_writer,
                 )
             },
             LinuxDaemonMessageHeader::WriteRequest => {
@@ -700,6 +710,7 @@ impl WorkerThreadHandle {
                     channel_rx,
                     shared_ring,
                 )
+                .map(|message| (message, false))
             },
             LinuxDaemonMessageHeader::PositionedReadRequest => {
                 let request: PositionedReadRequest = PositionedReadRequest::from_bytes(message.payload);
@@ -710,6 +721,7 @@ impl WorkerThreadHandle {
                     channel_rx,
                     uvm_stream,
                     shared_ring,
+                    direct_cq_writer,
                 )
             },
             LinuxDaemonMessageHeader::PositionedWriteRequest => {
@@ -722,6 +734,7 @@ impl WorkerThreadHandle {
                     channel_rx,
                     shared_ring,
                 )
+                .map(|message| (message, false))
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -866,6 +879,7 @@ impl WorkerThreadHandle {
 
     fn handle_long_request_messages<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
@@ -875,6 +889,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::ChangeDirectoryRequestPart => {
                 Self::handle_long_request::<T, ChangeDirectoryRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -884,6 +899,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::FileAccessAtRequestPart => {
                 Self::handle_long_request::<T, FileAccessAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -893,6 +909,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::FileStatAtRequestPart => {
                 Self::handle_long_request::<T, FileStatAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -902,6 +919,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::SymbolicLinkAtRequestPart => {
                 Self::handle_long_request::<T, SymbolicLinkAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -911,6 +929,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::LinkAtRequestPart => {
                 Self::handle_long_request::<T, LinkAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -920,6 +939,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::ReadLinkAtRequestPart => {
                 Self::handle_long_request::<T, ReadLinkAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -929,6 +949,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::MakeDirectoryAtRequestPart => {
                 Self::handle_long_request::<T, MakeDirectoryAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -938,6 +959,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::UpdateFileAccessTimeAtRequestPart => {
                 Self::handle_long_request::<T, UpdateFileAccessTimeAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -947,6 +969,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::FileChownAtRequestPart => {
                 Self::handle_long_request::<T, FileChownAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -956,6 +979,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::FileChmodAtRequestPart => {
                 Self::handle_long_request::<T, FileChmodAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -965,6 +989,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::OpenAtRequestPart => {
                 Self::handle_long_request::<T, OpenAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -974,6 +999,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::RenameAtRequestPart => {
                 Self::handle_long_request::<T, RenameAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -983,6 +1009,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::UnlinkAtRequestPart => {
                 Self::handle_long_request::<T, UnlinkAtRequest>(
                     uvm_stream,
+                    direct_cq_writer.clone(),
                     assembler,
                     syscall_table,
                     source,
@@ -992,6 +1019,7 @@ impl WorkerThreadHandle {
             LinuxDaemonMessageHeader::PollRequestPart => {
                 Self::handle_long_request::<T, PollRequest>(
                     uvm_stream,
+                    direct_cq_writer,
                     assembler,
                     syscall_table,
                     source,
@@ -1008,19 +1036,20 @@ impl WorkerThreadHandle {
 
     fn handle_long_response_messages<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::FileStatRequest => {
-                Self::handle_fstat_request(syscall_table, uvm_stream, source, message)
+                Self::handle_fstat_request(syscall_table, uvm_stream, direct_cq_writer, source, message)
             },
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
-                Self::handle_getcwd_request(uvm_stream, syscall_table, source)
+                Self::handle_getcwd_request(uvm_stream, direct_cq_writer, syscall_table, source)
             },
             LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                Self::handle_getdents_request(syscall_table, uvm_stream, source, message)
+                Self::handle_getdents_request(syscall_table, uvm_stream, direct_cq_writer, source, message)
             },
             header => {
                 // The following statement is unreachable, because the matching logic in this
@@ -1066,6 +1095,37 @@ impl WorkerThreadHandle {
         guard.write_all(&[IkcFrame::FIXED_BUFFER_FRAME]).await?;
         guard.write_all(&transfer.to_bytes()).await?;
         Ok(())
+    }
+
+    fn send_message_response(
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+        message: Message,
+        force_socket: bool,
+    ) -> Result<(), std::io::Error> {
+        if !force_socket {
+            if let Some(direct_cq_writer) = direct_cq_writer {
+                return direct_cq_writer
+                    .write_message(&message)
+                    .map_err(|kind| std::io::Error::new(kind, "failed to write direct CQ message"));
+            }
+        }
+
+        Handle::current().block_on(Self::send(uvm_stream, message))
+    }
+
+    fn send_fixed_response(
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+        transfer: &FixedBufferTransfer,
+    ) -> Result<(), std::io::Error> {
+        if let Some(direct_cq_writer) = direct_cq_writer {
+            return direct_cq_writer
+                .write_fixed(transfer)
+                .map_err(|kind| std::io::Error::new(kind, "failed to write direct CQ fixed transfer"));
+        }
+
+        Handle::current().block_on(Self::send_fixed(uvm_stream, transfer))
     }
 
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
@@ -1242,7 +1302,8 @@ impl WorkerThreadHandle {
         channel_rx: &mut Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         shared_ring: Option<Arc<SharedRing>>,
-    ) -> Result<Message, WorkerThreadError> {
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    ) -> Result<(Message, bool), WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
 
         enum PullTarget {
@@ -1257,7 +1318,7 @@ impl WorkerThreadHandle {
                     error!(
                         "handle_read_request(): received fixed-buffer transfer without shared ring mapping"
                     );
-                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                    return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                 };
                 PullTarget::Fixed(fixed, shared_ring)
             },
@@ -1267,7 +1328,7 @@ impl WorkerThreadHandle {
             },
             Ok(VenvCommand::Work(_)) => {
                 error!("handle_read_request(): expected bulk data, got IKC message");
-                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
             },
             Err(e) => {
                 error!("handle_read_request(): failed to receive bulk data");
@@ -1275,6 +1336,7 @@ impl WorkerThreadHandle {
             },
         };
 
+        let force_socket: bool = matches!(&pull_target, PullTarget::Bulk(_));
         let max_len: usize = match &pull_target {
             PullTarget::Bulk(header) => header.data_len() as usize,
             PullTarget::Fixed(fixed, _) => fixed.data_len() as usize,
@@ -1318,19 +1380,22 @@ impl WorkerThreadHandle {
                             fixed.buffer_id(),
                             len,
                         );
-                        Handle::current()
-                            .block_on(Self::send_fixed(uvm_stream.clone(), &response))
-                            .map_err(|e| {
-                                if e.kind() == ErrorKind::BrokenPipe {
-                                    debug!("handle_read_request(): UVM stream closed (broken pipe)");
-                                    WorkerThreadError::Interrupted
-                                } else {
-                                    error!(
-                                        "handle_read_request(): failed to send fixed-buffer response (error={e:?})"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                }
-                            })
+                        Self::send_fixed_response(
+                            uvm_stream.clone(),
+                            direct_cq_writer.clone(),
+                            &response,
+                        )
+                        .map_err(|e| {
+                            if e.kind() == ErrorKind::BrokenPipe {
+                                debug!("handle_read_request(): UVM stream closed (broken pipe)");
+                                WorkerThreadError::Interrupted
+                            } else {
+                                error!(
+                                    "handle_read_request(): failed to send fixed-buffer response (error={e:?})"
+                                );
+                                WorkerThreadError::Interrupted
+                            }
+                        })
                     },
                 }
             };
@@ -1345,12 +1410,11 @@ impl WorkerThreadHandle {
                         Ok(ptr) => ptr,
                         Err(e) => {
                             error!("handle_read_request(): invalid fixed buffer (error={e:?})");
-                            return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                         },
                     };
-                    // SAFETY: `ptr` points to a validated fixed buffer and `max_len` is bounded by
-                    // the fixed-buffer transfer length.
                     let read_slice: &mut [u8] =
+                        // SAFETY: `ptr` points to a validated fixed buffer and `max_len` is bounded.
                         unsafe { ::std::slice::from_raw_parts_mut(ptr, max_len) };
                     let result: ::std::io::Result<usize> =
                         Self::run_cancellable_operation(locked_gateway_reader.read(read_slice));
@@ -1360,14 +1424,14 @@ impl WorkerThreadHandle {
                         Ok(0) => {
                             debug!("handle_read_request(): eof");
                             send_response(None, 0, &pull_target)?;
-                            Ok(ReadResponse::eof(source))
+                            Ok((ReadResponse::eof(source), force_socket))
                         },
                         Ok(n) => {
                             debug!("read {n} bytes from gateway");
                             send_response(None, n as u32, &pull_target)?;
                             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                 [0u8; ReadResponse::BUFFER_SIZE];
-                            Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                            Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                         },
                         Err(e) if e.kind() == ErrorKind::Interrupted => {
                             debug!("handle_read_request(): read interrupted");
@@ -1381,7 +1445,7 @@ impl WorkerThreadHandle {
                         Err(e) => {
                             error!("handle_read_request(): error reading data from gateway (error={e:?})");
                             send_response(None, 0, &pull_target)?;
-                            Ok(ReadResponse::eof(source))
+                            Ok((ReadResponse::eof(source), force_socket))
                         },
                     }
                 },
@@ -1395,7 +1459,7 @@ impl WorkerThreadHandle {
                         Ok(0) => {
                             debug!("handle_read_request(): eof");
                             send_response(Some(Vec::new()), 0, &pull_target)?;
-                            Ok(ReadResponse::eof(source))
+                            Ok((ReadResponse::eof(source), force_socket))
                         },
                         Ok(n) => {
                             debug!("read {n} bytes from gateway");
@@ -1404,7 +1468,7 @@ impl WorkerThreadHandle {
                             send_response(Some(read_buf), n as u32, &pull_target)?;
                             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                 [0u8; ReadResponse::BUFFER_SIZE];
-                            Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                            Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                         },
                         Err(e) if e.kind() == ErrorKind::Interrupted => {
                             debug!("handle_read_request(): read interrupted");
@@ -1419,7 +1483,7 @@ impl WorkerThreadHandle {
                         Err(e) => {
                             error!("handle_read_request(): error reading data from gateway (error={e:?})");
                             send_response(Some(Vec::new()), 0, &pull_target)?;
-                            Ok(ReadResponse::eof(source))
+                            Ok((ReadResponse::eof(source), force_socket))
                         },
                     }
                 },
@@ -1433,7 +1497,7 @@ impl WorkerThreadHandle {
                         Ok(ptr) => ptr,
                         Err(e) => {
                             error!("handle_read_request(): invalid fixed buffer (error={e:?})");
-                            return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                         },
                     };
                     let ret: libc::ssize_t = unsafe {
@@ -1449,10 +1513,10 @@ impl WorkerThreadHandle {
                         send_response(None, n as u32, &pull_target)?;
                         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                             [0u8; ReadResponse::BUFFER_SIZE];
-                        Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                        Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                     } else if ret == 0 {
                         send_response(None, 0, &pull_target)?;
-                        Ok(ReadResponse::eof(source))
+                        Ok((ReadResponse::eof(source), force_socket))
                     } else {
                         let errno: i32 = unsafe { *libc::__errno_location() };
                         if errno == libc::EINTR {
@@ -1468,14 +1532,17 @@ impl WorkerThreadHandle {
                         } else {
                             error!("handle_read_request(): read via syscall table failed (errno={errno})");
                             send_response(None, 0, &pull_target)?;
-                            Ok(build_error(
-                                source,
-                                ErrorCode::try_from(errno).unwrap_or_else(|_| {
-                                    error!(
-                                        "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
-                                    );
-                                    ErrorCode::IoErr
-                                }),
+                            Ok((
+                                build_error(
+                                    source,
+                                    ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                                        error!(
+                                            "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                        );
+                                        ErrorCode::IoErr
+                                    }),
+                                ),
+                                force_socket,
                             ))
                         }
                     }
@@ -1496,10 +1563,10 @@ impl WorkerThreadHandle {
                         send_response(Some(read_buf), n as u32, &pull_target)?;
                         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                             [0u8; ReadResponse::BUFFER_SIZE];
-                        Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                        Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                     } else if ret == 0 {
                         send_response(Some(Vec::new()), 0, &pull_target)?;
-                        Ok(ReadResponse::eof(source))
+                        Ok((ReadResponse::eof(source), force_socket))
                     } else {
                         let errno: i32 = unsafe { *libc::__errno_location() };
                         if errno == libc::EINTR {
@@ -1516,14 +1583,17 @@ impl WorkerThreadHandle {
                         } else {
                             error!("handle_read_request(): read via syscall table failed (errno={errno})");
                             send_response(Some(Vec::new()), 0, &pull_target)?;
-                            Ok(build_error(
-                                source,
-                                ErrorCode::try_from(errno).unwrap_or_else(|_| {
-                                    error!(
-                                        "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
-                                    );
-                                    ErrorCode::IoErr
-                                }),
+                            Ok((
+                                build_error(
+                                    source,
+                                    ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                                        error!(
+                                            "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                        );
+                                        ErrorCode::IoErr
+                                    }),
+                                ),
+                                force_socket,
                             ))
                         }
                     }
@@ -1646,7 +1716,8 @@ impl WorkerThreadHandle {
         channel_rx: &mut Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         shared_ring: Option<Arc<SharedRing>>,
-    ) -> Result<Message, WorkerThreadError> {
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    ) -> Result<(Message, bool), WorkerThreadError> {
         trace!("handle_positioned_read_request(): source={source:?}, request={request:?}");
 
         enum PullTarget {
@@ -1661,7 +1732,7 @@ impl WorkerThreadHandle {
                     error!(
                         "handle_positioned_read_request(): received fixed-buffer transfer without shared ring mapping"
                     );
-                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                    return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                 };
                 PullTarget::Fixed(fixed, shared_ring)
             },
@@ -1673,7 +1744,7 @@ impl WorkerThreadHandle {
             },
             Ok(VenvCommand::Work(_)) => {
                 error!("handle_positioned_read_request(): expected BulkData, got IKC message");
-                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
             },
             Err(e) => {
                 error!("handle_positioned_read_request(): failed to receive bulk data");
@@ -1681,6 +1752,7 @@ impl WorkerThreadHandle {
             },
         };
 
+        let force_socket: bool = matches!(&pull_target, PullTarget::Bulk(_));
         let max_len: usize = match &pull_target {
             PullTarget::Bulk(header) => header.data_len() as usize,
             PullTarget::Fixed(fixed, _) => fixed.data_len() as usize,
@@ -1727,21 +1799,24 @@ impl WorkerThreadHandle {
                             fixed.buffer_id(),
                             len,
                         );
-                        Handle::current()
-                            .block_on(Self::send_fixed(uvm_stream.clone(), &response))
-                            .map_err(|e| {
-                                if e.kind() == ErrorKind::BrokenPipe {
-                                    debug!(
-                                        "handle_positioned_read_request(): UVM stream closed (broken pipe)"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                } else {
-                                    error!(
-                                        "handle_positioned_read_request(): failed to send fixed-buffer response (error={e:?})"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                }
-                            })
+                        Self::send_fixed_response(
+                            uvm_stream.clone(),
+                            direct_cq_writer.clone(),
+                            &response,
+                        )
+                        .map_err(|e| {
+                            if e.kind() == ErrorKind::BrokenPipe {
+                                debug!(
+                                    "handle_positioned_read_request(): UVM stream closed (broken pipe)"
+                                );
+                                WorkerThreadError::Interrupted
+                            } else {
+                                error!(
+                                    "handle_positioned_read_request(): failed to send fixed-buffer response (error={e:?})"
+                                );
+                                WorkerThreadError::Interrupted
+                            }
+                        })
                     },
                 }
             };
@@ -1755,7 +1830,7 @@ impl WorkerThreadHandle {
                         error!(
                             "handle_positioned_read_request(): invalid fixed buffer (error={e:?})"
                         );
-                        return Ok(build_error(source, ErrorCode::InvalidMessage));
+                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                     },
                 };
                 let ret: libc::ssize_t = unsafe {
@@ -1772,10 +1847,10 @@ impl WorkerThreadHandle {
                     send_response(None, n as u32, &pull_target)?;
                     let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                         [0u8; ReadResponse::BUFFER_SIZE];
-                    Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                    Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                 } else if ret == 0 {
                     send_response(None, 0, &pull_target)?;
-                    Ok(ReadResponse::eof(source))
+                    Ok((ReadResponse::eof(source), force_socket))
                 } else {
                     let errno: i32 = unsafe { *libc::__errno_location() };
                     if errno == libc::EINTR {
@@ -1793,14 +1868,17 @@ impl WorkerThreadHandle {
                             "handle_positioned_read_request(): pread via syscall table failed (errno={errno})"
                         );
                         send_response(None, 0, &pull_target)?;
-                        Ok(build_error(
-                            source,
-                            ErrorCode::try_from(errno).unwrap_or_else(|_| {
-                                error!(
-                                    "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
-                                );
-                                ErrorCode::IoErr
-                            }),
+                        Ok((
+                            build_error(
+                                source,
+                                ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                                    error!(
+                                        "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                    );
+                                    ErrorCode::IoErr
+                                }),
+                            ),
+                            force_socket,
                         ))
                     }
                 }
@@ -1822,10 +1900,10 @@ impl WorkerThreadHandle {
                     send_response(Some(read_buf), n as u32, &pull_target)?;
                     let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                         [0u8; ReadResponse::BUFFER_SIZE];
-                    Ok(ReadResponse::build(source, n as c_ssize_t, empty_buf))
+                    Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
                 } else if ret == 0 {
                     send_response(Some(Vec::new()), 0, &pull_target)?;
-                    Ok(ReadResponse::eof(source))
+                    Ok((ReadResponse::eof(source), force_socket))
                 } else {
                     let errno: i32 = unsafe { *libc::__errno_location() };
                     if errno == libc::EINTR {
@@ -1843,14 +1921,17 @@ impl WorkerThreadHandle {
                             "handle_positioned_read_request(): pread via syscall table failed (errno={errno})"
                         );
                         send_response(Some(Vec::new()), 0, &pull_target)?;
-                        Ok(build_error(
-                            source,
-                            ErrorCode::try_from(errno).unwrap_or_else(|_| {
-                                error!(
-                                    "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
-                                );
-                                ErrorCode::IoErr
-                            }),
+                        Ok((
+                            build_error(
+                                source,
+                                ErrorCode::try_from(errno).unwrap_or_else(|_| {
+                                    error!(
+                                        "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                    );
+                                    ErrorCode::IoErr
+                                }),
+                            ),
+                            force_socket,
                         ))
                     }
                 }
@@ -1861,6 +1942,7 @@ impl WorkerThreadHandle {
     fn handle_fstat_request<T>(
         syscall_table: &SyscallTable<T>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -1869,7 +1951,12 @@ impl WorkerThreadHandle {
         trace!("handle_fstat_request(): obtained {} messages", messages.len());
         for message in messages {
             trace!("handle_fstat_request(): sending message: {message:?}");
-            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
+            if let Err(e) = Self::send_message_response(
+                uvm_stream.clone(),
+                direct_cq_writer.clone(),
+                message,
+                false,
+            ) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -1879,12 +1966,18 @@ impl WorkerThreadHandle {
 
     fn handle_getcwd_request<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
     ) -> Result<(), WorkerThreadError> {
         let messages: Vec<Message> = unistd::do_getcwd(syscall_table, source)?;
         for message in messages {
-            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
+            if let Err(e) = Self::send_message_response(
+                uvm_stream.clone(),
+                direct_cq_writer.clone(),
+                message,
+                false,
+            ) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -1895,6 +1988,7 @@ impl WorkerThreadHandle {
     fn handle_getdents_request<T>(
         syscall_table: &SyscallTable<T>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
@@ -1903,7 +1997,12 @@ impl WorkerThreadHandle {
 
         let messages: Vec<Message> = dirent::do_getdents(syscall_table, source, request)?;
         for message in messages {
-            if let Err(e) = Handle::current().block_on(Self::send(uvm_stream.clone(), message)) {
+            if let Err(e) = Self::send_message_response(
+                uvm_stream.clone(),
+                direct_cq_writer.clone(),
+                message,
+                false,
+            ) {
                 error!("failed to send message (error={e:?})");
             }
         }
@@ -1913,6 +2012,7 @@ impl WorkerThreadHandle {
 
     fn handle_long_request<S, T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
         syscall_table: &SyscallTable<S>,
         source: ThreadIdentifier,
@@ -1940,9 +2040,12 @@ impl WorkerThreadHandle {
                 match result {
                     Ok(messages) => {
                         for message in messages {
-                            if let Err(e) =
-                                Handle::current().block_on(Self::send(uvm_stream.clone(), message))
-                            {
+                            if let Err(e) = Self::send_message_response(
+                                uvm_stream.clone(),
+                                direct_cq_writer.clone(),
+                                message,
+                                false,
+                            ) {
                                 error!("failed to send message (error={e:?})");
                             }
                         }
@@ -1952,10 +2055,12 @@ impl WorkerThreadHandle {
                     Err(WorkerThreadError::Error(e)) => {
                         error!("failed to process request (error={e:?})");
                         // TODO: proper error code conversion.
-                        if let Err(e) = Handle::current().block_on(Self::send(
+                        if let Err(e) = Self::send_message_response(
                             uvm_stream.clone(),
+                            direct_cq_writer.clone(),
                             Self::do_error(source, ErrorCode::IoErr),
-                        )) {
+                            false,
+                        ) {
                             error!("failed to send error message (error={e:?})");
                         }
                         Ok(())
@@ -1967,10 +2072,12 @@ impl WorkerThreadHandle {
             Err(WorkerThreadError::Error(e)) => {
                 error!("failed to process request (error={e:?})");
                 // TODO: proper error code conversion.
-                if let Err(e) = Handle::current().block_on(Self::send(
+                if let Err(e) = Self::send_message_response(
                     uvm_stream.clone(),
+                    direct_cq_writer,
                     Self::do_error(source, ErrorCode::IoErr),
-                )) {
+                    false,
+                ) {
                     error!("failed to send error message (error={e:?})");
                 }
                 Ok(())

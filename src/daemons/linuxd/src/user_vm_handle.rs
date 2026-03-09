@@ -5,13 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::shared_ring::SharedRing;
+use crate::{
+    direct_ring::{
+        DirectCqWriter,
+        wake_sq_waiter,
+    },
+    shared_ring::SharedRing,
+};
 use ::anyhow::Result;
 use ::log::{
     error,
     trace,
 };
-use ::std::sync::Arc;
+use ::std::sync::{
+    Arc,
+    atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 use ::syscomm::{
     SocketListener,
     SocketStream,
@@ -51,6 +63,10 @@ pub struct UserVmHandle {
     user_vm_reader_handle: Arc<Mutex<Option<JoinHandle<Result<()>>>>>,
     /// Optional shared ring-buffer mapping for fixed-buffer transfers.
     shared_ring: Option<Arc<SharedRing>>,
+    /// Optional direct CQ writer for ring-backed responses.
+    direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    /// Shutdown flag for the direct ring SQ worker.
+    direct_ring_stop: Option<Arc<AtomicBool>>,
 }
 
 impl UserVmHandle {
@@ -60,6 +76,8 @@ impl UserVmHandle {
         gateway_socket_type: &SocketType,
         user_vm_reader_handle: JoinHandle<Result<()>>,
         shared_ring: Option<Arc<SharedRing>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+        direct_ring_stop: Option<Arc<AtomicBool>>,
     ) -> Self {
         trace!("new(): gateway_sockaddr={}", gateway_sockaddr);
         Self {
@@ -71,6 +89,8 @@ impl UserVmHandle {
             gateway_listener: Arc::new(Mutex::new(None)),
             user_vm_reader_handle: Arc::new(Mutex::new(Some(user_vm_reader_handle))),
             shared_ring,
+            direct_cq_writer,
+            direct_ring_stop,
         }
     }
 
@@ -81,6 +101,21 @@ impl UserVmHandle {
 
     pub fn shared_ring(&self) -> Option<Arc<SharedRing>> {
         self.shared_ring.clone()
+    }
+
+    pub fn direct_cq_writer(&self) -> Option<Arc<DirectCqWriter>> {
+        self.direct_cq_writer.clone()
+    }
+
+    pub fn stop_direct_ring_worker(&self) {
+        if let Some(stop) = &self.direct_ring_stop {
+            stop.store(true, Ordering::Release);
+        }
+        if let Some(shared_ring) = &self.shared_ring {
+            if let Err(e) = wake_sq_waiter(shared_ring) {
+                error!("stop_direct_ring_worker(): failed waking SQ worker (error={e:?})");
+            }
+        }
     }
 
     /// Lazily establish (or reuse) the gateway connection and return its split reader & writer.

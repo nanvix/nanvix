@@ -14,22 +14,31 @@ Near-native syscall throughput **without** dedicating host cores to polling.
 
 ## Current Implemented Architecture
 
-The transport that exists in-tree today is still a hybrid. The guest kernel uses
-the ring to talk to `uservm`, and `uservm` then forwards work to `linuxd` over
-the existing I/O channel.
+The transport that exists in-tree today is no longer fully hybrid, but it is
+also not yet the full original end-state. The hot path for `IkcMessage` requests
+and `FIXED_BUF` payload transfers is now direct through the shared ring:
+`linuxd` drains SQEs from the shared mapping itself and writes the corresponding
+CQEs back there. `uservm` still owns the KVM-facing edges (ioeventfd doorbell
+receipt and guest IRQ injection), and the older framed socket path remains as a
+compatibility fallback for responses that still need `IkcFrame::Bulk`.
 
 - `uservm` creates a temp-file-backed `MAP_SHARED` ring backing file and maps it
   into the guest GPA reserved for the ring.
 - The guest kernel writes SQEs into that ring and rings an ioeventfd-backed
   doorbell.
-- A `uservm` ring-drain thread wakes on the eventfd, drains SQEs, and forwards
-  them as `IkcFrame::{Message,Bulk,Fixed}` to the I/O thread.
-- `linuxd` still executes syscalls on the existing worker-thread path.
-- For fixed-buffer transfers, `linuxd` maps the same shared backing file so it
-  can dereference payload bytes directly from the ring-backed fixed-buffer
-  region.
-- `uservm` writes CQEs back into guest memory and injects an interrupt only when
-  the guest has armed `CQ_NOTIFY_ME`.
+- `uservm` translates the doorbell eventfd wakeup into a shared-memory futex
+  signal for `linuxd` instead of draining the SQ itself.
+- `linuxd` maps the same backing file, drains `SqeOpcode::IkcMessage` and
+  `SqeOpcode::BulkData` + `FIXED_BUF` requests directly from the shared ring,
+  and continues to execute syscalls on the existing worker-thread path.
+- For hot-path completions, `linuxd` writes CQEs directly into the shared ring:
+  regular `Message` responses go into CQ data slots, and fixed-buffer read
+  completions use `CqeFlags::BUFFER`.
+- `uservm` watches a second shared notification word and injects an interrupt
+  only when `linuxd` asks for it after posting a CQE while the guest has armed
+  `CQ_NOTIFY_ME`.
+- The older `uservm`/socket response path remains in place as the compatibility
+  path for transfers that still rely on owned `IkcFrame::Bulk` payloads.
 
 ### Implemented Paths for Comparison
 
@@ -40,17 +49,19 @@ the existing I/O channel.
   `uservm` drains it and forwards `IkcFrame::Bulk`, but payload bytes still
   bounce through the older bulk path.
 - **Current fixed-buffer ring path**: the ring carries `SqeOpcode::BulkData`
-  with `FIXED_BUF`, `uservm` forwards `IkcFrame::Fixed`, and `linuxd` accesses
-  fixed-buffer bytes directly from the shared ring mapping.
+  with `FIXED_BUF`, `linuxd` drains it directly from the shared mapping, and
+  the payload bytes stay in the ring-backed fixed-buffer region.
 
 ---
 
 ## Original Direct-Linuxd Architecture (Design Target, for Comparison)
 
-The diagram below is the earlier end-state sketch in which `linuxd` would drain
-SQEs and post CQEs directly. The current implementation above is more hybrid:
-`uservm` still owns SQ draining and CQ writing, while `linuxd` only maps the
-shared ring for fixed-buffer payload bytes.
+The diagram below is the earlier end-state sketch in which `linuxd` would own
+all hot-path draining/completion work directly. The current implementation above
+has now reached that shape for `IkcMessage` requests and fixed-buffer payload
+transfers, but it still keeps `uservm` responsible for KVM-facing signaling and
+still falls back to the older socket/framed path for compatibility cases that
+use owned `IkcFrame::Bulk` responses.
 
 ```
  ┌──────────────────── Guest (KVM) ────────────────────┐
@@ -136,15 +147,17 @@ Guest kernel                         linuxd
     └─ guest resumes
 ```
 
-**Status today**: implemented as an ioeventfd-backed wakeup plus a `uservm`
-drain thread that drains once per doorbell and then blocks again.
+**Status today**: implemented as an ioeventfd-backed wakeup into `uservm`, which
+then wakes a `linuxd` SQ worker through a shared-memory futex word. `linuxd`
+drains the SQ directly once woken.
 **Cost today**: one doorbell/eventfd wakeup per batch, plus up to one guest
 interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
 **CPU when idle**: zero — both sides sleep on epoll/HLT.
 
 KVM ioeventfd is still the crucial primitive here: the guest writes to a PIO
 port and KVM signals an eventfd **in-kernel**. In the current implementation,
-that eventfd wakes the `uservm` ring-drain thread, not `linuxd` directly.
+that eventfd wakes `uservm`, which then wakes `linuxd` through the shared SQ
+notification word.
 
 ### Tier 2 — Adaptive Polling (design target, not yet implemented)
 
@@ -320,8 +333,8 @@ The current tree contains two ring payload variants.
 
 ### Previous ring payload design (bulk compatibility path)
 
-When `FIXED_BUF` is not set, the ring carries only metadata and the drain thread
-reconstructs a `DataChunk`:
+When `FIXED_BUF` is not set, the ring carries only metadata and the legacy host
+path reconstructs a `DataChunk`:
 
 ```rust
 guest kernel:
@@ -436,10 +449,10 @@ It is not a summary of current measured behavior.
    kernel and host-side components).
 5. Guest kernel: new `send_sqe()` / `poll_cqe()` API replacing vmbus
    `write()` / `read()`.
-6. `uservm`: ring-drain thread drains SQ and forwards frames; `linuxd`
-   continues to execute syscalls on the existing worker-thread path.
-7. Wire the ring into the existing host channel. Keep old vmbus/bulk paths as
-   fallback/compatibility.
+6. Replace the `uservm` ring-drain thread with shared-memory signaling from
+   `uservm` to `linuxd`, and let `linuxd` drain SQEs directly.
+7. Write hot-path CQEs directly from `linuxd`, while keeping old socket/bulk
+   handling as compatibility fallback.
 
 ### Phase 2: Adaptive polling (partially implemented; CQ suppression only)
 
@@ -463,32 +476,48 @@ It is not a summary of current measured behavior.
 
 ---
 
-## Current Status and Measured Results (2026-03-09)
+## Current Status and Measured Results (2026-03-09 / 2026-03-10)
 
 Detailed methodology and the full result tables live in `doc/benchmark.md`.
 
-- The active ring path is still hybrid: guest kernel and `uservm` share the
-  SQ/CQ region, `uservm` drains SQEs and writes CQEs, and `linuxd` executes the
-  host syscalls behind the existing channel.
+- The active ring path is now split into a direct hot path plus a compatibility
+  fallback:
+  - `linuxd` directly drains `IkcMessage` SQEs and `BulkData` SQEs marked with
+    `FIXED_BUF`.
+  - `linuxd` directly writes CQEs for regular `Message` responses and
+    fixed-buffer read completions.
+  - `uservm` still owns the KVM-facing doorbell eventfd and guest IRQ
+    injection, translating both through shared notification words.
+  - owned `IkcFrame::Bulk` compatibility responses still use the older framed
+    socket path.
 - The ring region is backed by a temp-file-backed `MAP_SHARED` file that
   `uservm` maps into guest memory and `linuxd` opens separately for fixed-buffer
   access.
-- The fixed-size RTT data still reflects the current Tier 1 / hybrid path:
-  shared-memory SQ/CQ + ioeventfd doorbell + one drain per wakeup + `linuxd`
-  syscall handling.
+- Historical fixed-size RTT data for the older Tier 1 / hybrid path that drained
+  SQEs in `uservm` is retained below for comparison.
 - CQ interrupt suppression is now implemented end-to-end.
 - The previous `IkcFrame::Bulk` payload design remains in-tree as the
   compatibility path when `FIXED_BUF` is not used.
 - The benchmarked `pwrite()` / `pread()` path now uses the fixed-buffer Phase 3
   design: the ring shared region carries pre-registered payload buffers and the
-  host transport forwards `IkcFrame::Fixed` descriptors instead of bouncing
-  payload bytes through the older bulk path.
+  active path uses fixed-buffer descriptors instead of bouncing payload bytes
+  through the older bulk path.
 - The fixed-buffer path is runtime-validated end-to-end, and the canonical
   `/dev/zero` payload sweep has been rerun against fresh legacy and ring
   artifact trees.
+- The stronger direct path has now been benchmarked with:
+  - a fresh 5-trial interleaved `fcntl(F_GETFL)` round-trip rerun with warm-up
+    and pinned-core placement, and
+  - a fresh 3-trial `/dev/zero` payload sweep that exercises fixed-buffer
+    `pwrite()` / `pread()` traffic.
+- Because the benchmark was rerun in a shared development environment, the
+  absolute RTT numbers vary between historical runs; the interleaved medians and
+  ring/legacy ratios are the more stable signal.
 - Not yet implemented: Tier 2 adaptive polling, Tier 3 dedicated polling,
-  active guest-to-host doorbell suppression, inline SQE payloads, and direct
-  handling of the `Write`/`Read`/`Open`/`Close`/`Stat` SQE opcodes.
+  active guest-to-host doorbell suppression, inline SQE payloads, direct
+  handling of the `Write`/`Read`/`Open`/`Close`/`Stat` SQE opcodes, and full
+  elimination of the socket fallback for compatibility `IkcFrame::Bulk`
+  responses.
 
 ### Fixed-Size RTT
 
@@ -502,6 +531,10 @@ Using `fcntl(F_GETFL)` as a linuxd-backed round trip:
   - legacy median = `391014 ns`
   - ring median = `424155 ns`
   - ring / legacy = `1.085x`
+- After direct linuxd SQ/CQ bypass:
+  - legacy median = `531675 ns`
+  - ring median = `246793 ns`
+  - ring / legacy = `0.464x`
 
 ### Payload Sweeps
 
@@ -514,20 +547,22 @@ Selected ring / legacy ratios from the current 3-trial median rerun:
 
 | Operation | 4096 B | 8192 B | 16384 B | 32768 B |
 |-----------|--------|--------|---------|---------|
-| `pwrite()` | `1.104x` | `1.057x` | `1.137x` | `1.010x` |
-| `pread()` | `0.959x` | `0.921x` | `0.946x` | `1.002x` |
+| `pwrite()` | `0.661x` | `0.663x` | `0.722x` | `0.660x` |
+| `pread()` | `0.647x` | `0.540x` | `0.588x` | `0.600x` |
 
 Interpretation:
 
 - With `/dev/zero` backing the payload path, the absolute `32768`-byte latencies are now
-  `4.320 ms` legacy vs `4.363 ms` ring for `pwrite()`, and `4.540 ms` legacy vs `4.550 ms` ring
+  `3.855 ms` legacy vs `2.546 ms` ring for `pwrite()`, and `4.124 ms` legacy vs `2.472 ms` ring
   for `pread()`.
-- Compared with the earlier bulk-path rerun, fixed buffers materially improved the large-payload
-  behavior. `pread()` is now at or below legacy from `4096` B through `16384` B, and both
-  directions are effectively at parity by `32768` B.
-- `pwrite()` still carries a modest residual overhead on most points, which suggests that the
-  remaining costs are concentrated in the shared host pipeline—drain-thread forwarding, linuxd
-  processing, and CQ completion handling—rather than in the host storage backend.
+- Compared with the earlier hybrid fixed-buffer rerun, the direct-linuxd path materially improved
+  both directions. `pread()` now beats legacy at every measured size, while `pwrite()` beats
+  legacy at every size except `32` B and is effectively at parity by `64` B.
+- The fixed-size RTT rerun also now shows a cleaner absolute result after warm-up and core pinning:
+  `0.532 ms` legacy vs `0.247 ms` ring for `fcntl(F_GETFL)`.
+- These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
+  active transport path. Adaptive polling, guest-to-host doorbell suppression, and full fallback
+  elimination are still pending.
 
 ## Key Design Decisions
 

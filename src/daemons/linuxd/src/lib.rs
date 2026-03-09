@@ -17,6 +17,10 @@ use crate::{
         CONTROL_PLANE_CONNECT_TIMEOUT,
         READER_TASK_JOIN_TIMEOUT,
     },
+    direct_ring::{
+        DirectCqWriter,
+        spawn_sq_worker,
+    },
     message::RequestAssembler,
     syscalls::SyscallTable,
     shared_ring::SharedRing,
@@ -52,7 +56,10 @@ use ::std::{
     io::ErrorKind,
     path::Path,
     str::FromStr,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::AtomicBool,
+    },
 };
 use ::sys::{
     error::{
@@ -106,6 +113,7 @@ use ::user_vm_api::{
 //==================================================================================================
 
 mod assemble;
+mod direct_ring;
 mod error;
 mod linux;
 mod message;
@@ -320,8 +328,9 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         // enqueues them to the main reception channel monitored in this loop.
         let (user_vm_reader, user_vm_writer): (SocketStreamReader, SocketStreamWriter) =
             user_vm_stream.split();
-        let user_vm_reader_handle: JoinHandle<Result<()>> =
-            tokio::spawn(Self::user_vm_reader_loop(user_vm_id, user_vm_reader, user_vm_event_tx));
+        let user_vm_reader_handle: JoinHandle<Result<()>> = tokio::spawn(
+            Self::user_vm_reader_loop(user_vm_id, user_vm_reader, user_vm_event_tx.clone()),
+        );
 
         // In an L2 deployment, linuxd is deployed inside a network namespace and the gateway
         // address we receive from nanvixd is of the form <VETH_NS_IP>:<PER_USERVM_PORT>. This is
@@ -351,12 +360,38 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
 
         // Gateway listener for this user VM.
+        let direct_cq_writer: Option<Arc<DirectCqWriter>> =
+            shared_ring.as_ref().map(|ring| Arc::new(DirectCqWriter::new(ring.clone())));
+        let direct_ring_stop: Option<Arc<AtomicBool>> =
+            shared_ring.as_ref().map(|_| Arc::new(AtomicBool::new(false)));
+
+        if let (Some(shared_ring), Some(stop), Some(cq_writer)) = (
+            shared_ring.clone(),
+            direct_ring_stop.clone(),
+            direct_cq_writer.clone(),
+        ) {
+            spawn_sq_worker(
+                user_vm_id,
+                shared_ring,
+                stop,
+                user_vm_event_tx,
+                cq_writer,
+            )
+            .map_err(|e| {
+                let reason: &'static str = "failed to spawn direct ring SQ worker";
+                error!("{reason} (vm_id={user_vm_id}, error={e:?})");
+                Error::new(ErrorCode::IoErr, reason)
+            })?;
+        }
+
         let user_vm_handle: UserVmHandle = UserVmHandle::new(
             user_vm_writer,
             &gateway_sockaddr,
             new_msg.gateway_socket_type(),
             user_vm_reader_handle,
             shared_ring,
+            direct_cq_writer,
+            direct_ring_stop,
         );
 
         {
@@ -395,6 +430,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     ) {
         // Join reader task in user VM handle.
         if let Some(user_vm_handle) = user_vm_handle {
+            user_vm_handle.stop_direct_ring_worker();
             if let Some(mut user_vm_reader_handle) =
                 user_vm_handle.take_user_vm_reader_handle().await
             {

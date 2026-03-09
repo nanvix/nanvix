@@ -109,6 +109,17 @@ cargo +nanvix-x86_64 build \
   --target build/targets/x86_64-kernel.json \
   --release --no-default-features --features 'microvm ring-buffer'
 
+# Fixed-size RTT guest benchmark.
+RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' \
+cargo +nanvix-x86_64 build \
+  -Zbuild-std=core,alloc \
+  -Zjson-target-spec \
+  --release \
+  --target build/targets/x86_64-user.json \
+  -p syscall-bench-nostd \
+  --no-default-features \
+  --features panic
+
 # Payload-only guest benchmark.
 RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' \
 cargo +nanvix-x86_64 build \
@@ -148,6 +159,10 @@ Runtime setup and collection procedure:
    - `SIZEBENCH ...` lines for the payload sweeps.
 6. Summarize the payload sweeps by taking the median of the per-trial average nanoseconds.
 
+For tighter fixed-size RTT reruns, do one warm-up run per transport before the measured trials and
+pin `nanvixd.elf` (and its children) to a lightly loaded CPU with `taskset -c <cpu> ...`. The
+latest direct-linuxd RTT row below uses that warm-up + pinned-core procedure.
+
 The concrete parameters used in the payload sweeps were:
 
 - Payload backend: `/dev/zero` via the `syscall-bench-payload.tmp` symlink.
@@ -161,36 +176,37 @@ The concrete parameters used in the payload sweeps were:
 
 ### Fixed-Size RTT Results (`fcntl(F_GETFL)`)
 
-These runs compare a single linuxd-backed syscall before and after CQ interrupt suppression was
-implemented in the ring path.
+These runs compare a single linuxd-backed syscall across the main ring-transport milestones so far:
+the original ring path, the CQ-interrupt-suppressed hybrid path, and the newer direct-linuxd path.
 
 | Run Set | Legacy Median | Ring Median | Ring / Legacy | Notes |
 |---------|---------------|-------------|---------------|-------|
 | Before CQ interrupt suppression | `454885 ns` | `621284 ns` | `1.366x` | Ring path injected a guest IRQ for every CQE. |
 | After CQ interrupt suppression | `391014 ns` | `424155 ns` | `1.085x` | Current Tier 1 ring path; host only injects when the CQ transitions from empty to non-empty while `CQ_NOTIFY_ME` is armed. |
+| Direct linuxd SQ/CQ path | `531675 ns` | `246793 ns` | `0.464x` | Fresh 5-trial interleaved rerun with one warm-up run per transport and a pinned `nanvixd` core. `linuxd` drains SQEs and posts hot-path CQEs directly. |
 
 ### Payload Sweep Results (`pwrite()`)
 
-The latest rerun uses the fixed-buffer Phase 5e ring path for positioned writes. Instead of
-bouncing payload bytes through the older bulk push path, the guest now submits a fixed shared-ring
-buffer descriptor and linuxd reads directly from that pre-registered buffer. The table below
-reports 3-trial medians of the per-trial average latency with `/dev/zero` as the linuxd-side
-backend.
+The latest rerun uses the direct-linuxd fixed-buffer path for positioned writes. Instead of
+forwarding SQEs through the older `uservm` drain/CQ path, the guest now submits a fixed shared-ring
+buffer descriptor, `linuxd` drains that SQE directly, and the host reads the payload from the
+pre-registered buffer. The table below reports 3-trial medians of the per-trial average latency
+with `/dev/zero` as the linuxd-side backend.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.460 ms` | `0.555 ms` | `1.207x` |
-| 64 | `0.496 ms` | `0.535 ms` | `1.078x` |
-| 128 | `0.484 ms` | `0.541 ms` | `1.119x` |
-| 256 | `0.488 ms` | `0.558 ms` | `1.143x` |
-| 512 | `0.495 ms` | `0.561 ms` | `1.135x` |
-| 1024 | `0.445 ms` | `0.540 ms` | `1.213x` |
-| 1536 | `0.452 ms` | `0.481 ms` | `1.064x` |
-| 2048 | `0.496 ms` | `0.494 ms` | `0.994x` |
-| 4096 | `0.874 ms` | `0.965 ms` | `1.104x` |
-| 8192 | `1.301 ms` | `1.376 ms` | `1.057x` |
-| 16384 | `2.272 ms` | `2.584 ms` | `1.137x` |
-| 32768 | `4.320 ms` | `4.363 ms` | `1.010x` |
+| 32 | `0.471 ms` | `0.535 ms` | `1.137x` |
+| 64 | `0.461 ms` | `0.456 ms` | `0.989x` |
+| 128 | `0.522 ms` | `0.298 ms` | `0.570x` |
+| 256 | `0.459 ms` | `0.290 ms` | `0.631x` |
+| 512 | `0.434 ms` | `0.309 ms` | `0.712x` |
+| 1024 | `0.457 ms` | `0.292 ms` | `0.640x` |
+| 1536 | `0.503 ms` | `0.307 ms` | `0.610x` |
+| 2048 | `0.425 ms` | `0.300 ms` | `0.705x` |
+| 4096 | `0.900 ms` | `0.596 ms` | `0.661x` |
+| 8192 | `1.382 ms` | `0.917 ms` | `0.663x` |
+| 16384 | `2.095 ms` | `1.512 ms` | `0.722x` |
+| 32768 | `3.855 ms` | `2.546 ms` | `0.660x` |
 
 ### Payload Sweep Results (`pread()`)
 
@@ -201,46 +217,54 @@ arrives. This table uses the same methodology, but exercises the opposite data d
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.505 ms` | `0.497 ms` | `0.985x` |
-| 64 | `0.498 ms` | `0.526 ms` | `1.057x` |
-| 128 | `0.470 ms` | `0.498 ms` | `1.060x` |
-| 256 | `0.514 ms` | `0.479 ms` | `0.932x` |
-| 512 | `0.485 ms` | `0.473 ms` | `0.976x` |
-| 1024 | `0.480 ms` | `0.525 ms` | `1.094x` |
-| 1536 | `0.476 ms` | `0.503 ms` | `1.057x` |
-| 2048 | `0.485 ms` | `0.463 ms` | `0.956x` |
-| 4096 | `0.992 ms` | `0.951 ms` | `0.959x` |
-| 8192 | `1.606 ms` | `1.479 ms` | `0.921x` |
-| 16384 | `2.604 ms` | `2.464 ms` | `0.946x` |
-| 32768 | `4.540 ms` | `4.550 ms` | `1.002x` |
+| 32 | `0.429 ms` | `0.340 ms` | `0.793x` |
+| 64 | `0.518 ms` | `0.311 ms` | `0.600x` |
+| 128 | `0.443 ms` | `0.287 ms` | `0.647x` |
+| 256 | `0.452 ms` | `0.319 ms` | `0.704x` |
+| 512 | `0.475 ms` | `0.307 ms` | `0.645x` |
+| 1024 | `0.475 ms` | `0.287 ms` | `0.605x` |
+| 1536 | `0.427 ms` | `0.300 ms` | `0.702x` |
+| 2048 | `0.524 ms` | `0.262 ms` | `0.501x` |
+| 4096 | `0.921 ms` | `0.595 ms` | `0.647x` |
+| 8192 | `1.466 ms` | `0.792 ms` | `0.540x` |
+| 16384 | `2.398 ms` | `1.411 ms` | `0.588x` |
+| 32768 | `4.124 ms` | `2.472 ms` | `0.600x` |
 
 ### Interpretation
 
-- CQ interrupt suppression substantially improved the fixed-size RTT benchmark: the ring path moved
-  from `1.366x` slower than legacy to `1.085x` slower on a fresh 5-trial rerun.
+- CQ interrupt suppression substantially improved the original hybrid RTT benchmark: the ring path
+  moved from `1.366x` slower than legacy to `1.085x` slower on a fresh 5-trial rerun.
+- The direct-linuxd RTT rerun then pushed the fixed-size benchmark past parity: on the latest
+  warm-up + pinned-core 5-trial interleaved run, `fcntl(F_GETFL)` improved from `0.532 ms` legacy
+  to `0.247 ms` ring (`0.464x` ring / legacy).
 - The `/dev/zero` backend removes host ext4/page-cache work from the payload sweep, so these
   numbers are a better measure of syscall + transport overhead than the earlier regular-file runs.
-- With storage effects removed, a `32768`-byte transfer is now effectively at parity in both
-  directions: `4.320 ms` legacy vs `4.363 ms` ring for `pwrite()`, and `4.540 ms` legacy vs
-  `4.550 ms` ring for `pread()`.
-- The fixed-buffer rerun materially narrowed the earlier large-payload gap. `pread()` is now at or
-  below legacy through much of the mid/large range (`4096`-`16384` B), while `pwrite()` remains
-  modestly slower on most points but stays close to parity from `2048` B upward.
-- The smallest points still show visible noise in the shared development environment, so the
-  `4096`-byte-and-up trend is the more reliable indicator.
-- The remaining write-side gap is consistent with the current architecture: the fixed buffer
-  removed the older bulk bounce, but the system still pays for the host drain-thread handoff,
-  linuxd processing, and guest CQ completion path. Tier 2 adaptive polling is still pending.
+- With the direct-linuxd path enabled, a `32768`-byte transfer now favors ring in both directions:
+  `3.855 ms` legacy vs `2.546 ms` ring for `pwrite()`, and `4.124 ms` legacy vs `2.472 ms` ring
+  for `pread()`.
+- `pread()` is now faster than legacy at every measured size. `pwrite()` is faster at every size
+  except `32` B and is effectively at parity by `64` B.
+- These payload improvements are consistent with removing the `uservm` SQ-drain/CQ-write hot path
+  from the active transport path. Tier 2 adaptive polling, guest-to-host doorbell suppression, and
+  full fallback removal are still pending.
+- The fixed-size benchmark is still sensitive to host noise, but the warm-up + pinned-core rerun
+  brought the absolute RTTs back much closer to the earlier sub-millisecond baseline.
+- The smallest payload points can still show shared-environment noise, so the interleaved medians
+  and ring/legacy ratios are more reliable than any single raw timing.
 
-During the local rerun that produced the `/dev/zero` numbers above, the plotting step generated:
+The latest rerun and plotting step generated:
 
-- `/tmp/nanvix-bench/pwrite-latency-vs-size-dev-zero.png`
-- `/tmp/nanvix-bench/pread-latency-vs-size-dev-zero.png`
-- `/tmp/nanvix-bench/pwrite-ring-over-legacy-dev-zero.png`
-- `/tmp/nanvix-bench/pread-ring-over-legacy-dev-zero.png`
+- `benchmark-results/pwrite-latency-vs-size-dev-zero.png`
+- `benchmark-results/pread-latency-vs-size-dev-zero.png`
+- `benchmark-results/pwrite-ring-over-legacy-dev-zero.png`
+- `benchmark-results/pread-ring-over-legacy-dev-zero.png`
+- `benchmark-results/fcntl-rtt-history.png`
+- `benchmark-results/fcntl-rtt-direct-trials.png`
 
 Committed copies of the raw tables, summaries, and plots from this rerun live under
-`benchmark-results/`.
+`benchmark-results/`, including `results-direct-linuxd.tsv`,
+`results-direct-linuxd-summary.tsv`, `payload-size-results-dev-zero.tsv`, and
+`payload-size-summary-dev-zero.tsv`.
 
 When reproducing the benchmark, prefer the median trend and the ratio tables over any single trial:
 the experiments ran in a shared development environment, so larger payload points can show visible

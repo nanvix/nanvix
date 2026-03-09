@@ -97,3 +97,12 @@ pub const CTRL_CQ_TAIL: usize = 68;
 pub const CTRL_CQ_MASK: usize = 72;
 /// Byte offset of `cq_flags` within the control block.
 pub const CTRL_CQ_FLAGS: usize = 76;
+
+/// Byte offset of the host-side SQ notification sequence word.
+///
+/// This lives in the padding between the control block and the SQ so the shared
+/// region layout for SQ/CQ/data does not change.
+pub const HOST_SQ_SIGNAL_OFFSET: usize = 128;
+
+/// Byte offset of the host-side CQ notification sequence word.
+pub const HOST_CQ_SIGNAL_OFFSET: usize = 132;

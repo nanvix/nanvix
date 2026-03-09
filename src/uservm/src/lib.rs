@@ -48,6 +48,8 @@ pub mod orchestrator;
 pub mod pal;
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 pub mod ring_drain;
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+pub mod ring_signal;
 pub mod vmm;
 
 //==================================================================================================
@@ -94,6 +96,11 @@ use ::anyhow::Result;
 use ::log::{
     error,
     trace,
+};
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::nvx_ring::{
+    HOST_CQ_SIGNAL_OFFSET,
+    HOST_SQ_SIGNAL_OFFSET,
 };
 use ::std::{
     fs::File,
@@ -250,9 +257,6 @@ impl UserVm {
 
         // Move the stdout sender out of args so no extra clone keeps the
         // data_rx channel alive after the VMM thread finishes.
-        // Clone for the ring drain thread before the sender is consumed.
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        let ring_drain_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
         // Output function used for emulating I/O port writes.
         #[cfg(feature = "hyperlight")]
         let bulk_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
@@ -317,19 +321,39 @@ impl UserVm {
             );
         }
 
-        // Spawn the ring buffer drain thread. It blocks on the ioeventfd registered for
-        // the doorbell port and drains SQEs without a VM exit.
+        // Spawn helper threads that translate guest ring doorbells into linuxd wakeups and linuxd
+        // CQ completions into guest IRQ injections.
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        {
-            let drain_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd();
-            let drain_vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
+        if args.ring_shared_path.is_some() {
+            let ring_base_ptr: *mut u8 = {
+                let locked_vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
+                // SAFETY: the shared ring mapping is established above at `RING_BUFFER_GPA`.
+                unsafe { locked_vmem.get_raw_ptr().add(::config::microvm::RING_BUFFER_GPA) }
+            };
+            let sq_signal_word: *mut u32 =
+                // SAFETY: the signal words live inside the mapped ring control area.
+                unsafe { ring_base_ptr.add(HOST_SQ_SIGNAL_OFFSET).cast::<u32>() };
+            let cq_signal_word: *mut u32 =
+                // SAFETY: the signal words live inside the mapped ring control area.
+                unsafe { ring_base_ptr.add(HOST_CQ_SIGNAL_OFFSET).cast::<u32>() };
+            let sq_signal_word_addr: usize = sq_signal_word as usize;
+            let cq_signal_word_addr: usize = cq_signal_word as usize;
+            let doorbell_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd();
+            let cq_notifier = microvm.ikc_notifier();
+
             std::thread::Builder::new()
-                .name("ring-drain".into())
+                .name("ring-sq-signal".into())
                 .spawn(move || {
-                    crate::ring_drain::run(drain_evtfd, drain_vmem, ring_drain_stdout_tx);
+                    crate::ring_signal::run_sq_signal_thread(doorbell_evtfd, sq_signal_word_addr);
                 })
-                .map_err(|e| anyhow::anyhow!("failed to spawn ring drain thread: {e}"))?;
-            trace!("spawn(): ring drain thread started");
+                .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
+            std::thread::Builder::new()
+                .name("ring-cq-signal".into())
+                .spawn(move || {
+                    crate::ring_signal::run_cq_signal_thread(cq_signal_word_addr, cq_notifier);
+                })
+                .map_err(|e| anyhow::anyhow!("failed to spawn ring CQ signal thread: {e}"))?;
+            trace!("spawn(): direct ring signal threads started");
         }
 
         // Set hyperlight handles in counters for this UserVM instance.
