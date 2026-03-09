@@ -41,8 +41,8 @@ void test_utime(void)
 
     // Set new timestamps.
     struct utimbuf times = {
-        .actime = st.st_atime + 10, // Access time.
-        .modtime = st.st_mtime + 20 // Modification time.
+        .actime = st.st_atime + 20, // Access time.
+        .modtime = st.st_mtime + 10 // Modification time.
     };
 
     // Update the file timestamps using utime and check the result.
