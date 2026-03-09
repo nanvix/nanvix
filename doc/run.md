@@ -241,7 +241,6 @@ Optional flags:
 
 | Flag                  | Description                                                                   |
 | --------------------- | ----------------------------------------------------------------------------- |
-| `-memory <size>`      | Guest memory size (e.g., `64M`, `256K`). Defaults to the kernel config value. |
 | `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.                       |
 | `-initrd_args <args>` | Arguments forwarded to the initrd payload.                                    |
 | `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.                          |

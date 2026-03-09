@@ -84,7 +84,6 @@ pub async fn main() -> Result<ExitCode> {
     let initrd_filename: Option<String> = args.initrd_filename();
     let initrd_args: Option<String> = args.initrd_args();
     let ramfs_filename: Option<String> = args.ramfs_filename();
-    let memory_size: usize = args.memory_size();
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
     let standalone: bool = args.standalone();
@@ -100,12 +99,11 @@ pub async fn main() -> Result<ExitCode> {
 
     debug!(
         "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
-         memory_size_bytes={}, standalone={})",
+         standalone={})",
         user_vm_id,
         &kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
-        memory_size,
         standalone
     );
 
@@ -115,22 +113,13 @@ pub async fn main() -> Result<ExitCode> {
             initrd_filename,
             initrd_args,
             ramfs_filename,
-            memory_size,
             stderr,
             snapshot_path,
         )
         .await
     } else {
-        run_managed(
-            args,
-            kernel_filename,
-            initrd_filename,
-            initrd_args,
-            ramfs_filename,
-            memory_size,
-            stderr,
-        )
-        .await
+        run_managed(args, kernel_filename, initrd_filename, initrd_args, ramfs_filename, stderr)
+            .await
     }
 }
 
@@ -147,7 +136,6 @@ pub async fn main() -> Result<ExitCode> {
 /// - `initrd_filename`: Optional path to the initrd payload.
 /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
 /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-/// - `memory_size`: Amount of guest physical memory in bytes.
 /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
 /// - `snapshot_path`: Optional path to a snapshot from which to restore VM state instead of
 ///   cold-booting.
@@ -166,7 +154,6 @@ async fn run_standalone(
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
     ramfs_filename: Option<String>,
-    memory_size: usize,
     stderr: Option<String>,
     snapshot_path: Option<String>,
 ) -> Result<ExitCode> {
@@ -177,7 +164,6 @@ async fn run_standalone(
         initrd_filename,
         initrd_args,
         ramfs_filename,
-        memory_size,
         stderr,
         snapshot_path,
     );
@@ -198,7 +184,6 @@ async fn run_standalone(
 /// - `initrd_filename`: Optional path to the initrd payload.
 /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
 /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-/// - `memory_size`: Amount of guest physical memory in bytes.
 /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
 ///
 /// # Returns
@@ -217,7 +202,6 @@ async fn run_managed(
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
     ramfs_filename: Option<String>,
-    memory_size: usize,
     stderr: Option<String>,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
@@ -348,14 +332,12 @@ async fn run_managed(
 
     // Run virtual machine and check exit status code.
     debug!(
-        "main(): launching uservm (kernel={:?}, initrd={:?}, ramfs={:?}, memory_size_bytes={})",
+        "main(): launching uservm (kernel={:?}, initrd={:?}, ramfs={:?})",
         &kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
-        memory_size
     );
     let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
-        memory_size,
         initrd_filename,
         initrd_args,
         ramfs_filename,

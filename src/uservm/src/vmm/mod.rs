@@ -28,7 +28,6 @@ cfg_if::cfg_if! {
 }
 
 pub struct MicroVmArgs {
-    pub memory_size: usize,
     pub control_rx: Receiver<VcpuControlCommand>,
     pub control_tx: Sender<VcpuControlResponse>,
     pub kernel_filename: String,
@@ -51,7 +50,6 @@ pub struct MicroVmArgs {
 impl std::fmt::Debug for MicroVmArgs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MicroVmArgs")
-            .field("memory_size", &self.memory_size)
             .field("kernel_filename", &self.kernel_filename)
             .field("initrd_filename", &self.initrd_filename)
             .field("initrd_args", &self.initrd_args)
