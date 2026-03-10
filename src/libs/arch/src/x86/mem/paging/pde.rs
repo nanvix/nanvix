@@ -155,6 +155,9 @@ pub struct PageDirectoryEntry {
 }
 
 impl PageDirectoryEntry {
+    /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
+    pub const SIZE: usize = ::core::mem::size_of::<u32>();
+
     ///
     /// # Description
     ///

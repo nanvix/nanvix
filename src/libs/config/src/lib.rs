@@ -49,6 +49,26 @@ pub mod system {
 }
 
 //==================================================================================================
+// Platform-Specific Constants
+//==================================================================================================
+
+pub mod platform {
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "pc")] {
+            /// Number of extra boot page tables for memory-mapped I/O regions above physical
+            /// memory. On PC platforms, the LAPIC and IOAPIC are above physical memory and share
+            /// a single 4 MB page table block.
+            pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 1;
+        } else {
+            /// Number of extra boot page tables for memory-mapped I/O regions above physical
+            /// memory. On microvm and hyperlight, all MMIO is within physical memory, so no
+            /// extra page tables are needed.
+            pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 0;
+        }
+    }
+}
+
+//==================================================================================================
 // User Memory Layout
 //==================================================================================================
 

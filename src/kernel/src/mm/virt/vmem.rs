@@ -11,10 +11,7 @@ use crate::{
     hal::{
         arch::x86::mem::mmu::{
             self,
-            page_directory::{
-                PageDirectory,
-                PageDirectoryStorage,
-            },
+            page_directory::PageDirectory,
             page_table::PageTable,
         },
         mem::{
@@ -33,6 +30,7 @@ use crate::{
         phys::UserFrame,
         virt::{
             kpage::KernelPage,
+            PageDirectoryStorage,
             PageTableStorage,
         },
     },
@@ -134,7 +132,7 @@ unsafe extern "C" {
 /// A type that represents a virtual memory space.
 pub struct Vmem {
     /// Underlying page directory.
-    pgdir: PageDirectory,
+    pgdir: PageDirectory<PageDirectoryStorage>,
     /// List of kernel page tables.
     kernel_page_tables: LinkedList<Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>>,
     /// List of kernel pages mapped in the virtual address space.
@@ -155,8 +153,9 @@ impl Vmem {
         trace!("kernel_pages.len()={}", kernel_pages.len());
 
         // Create a clean page directory.
-        let mut pgdir: PageDirectory = PageDirectory::new(PageDirectoryStorage::new());
-        pgdir.clean();
+        let mut pgdir: PageDirectory<PageDirectoryStorage> =
+            // SAFETY: this constructor is only used during early single-threaded init.
+            PageDirectory::new(unsafe { PageDirectoryStorage::new_bss() });
 
         // Map and store root page tables.
         let mut kpage_tables: LinkedList<
@@ -185,10 +184,10 @@ impl Vmem {
     }
 
     /// Clones the target virtual memory space.
-    pub fn clone(from: &Vmem) -> Result<Vmem, Error> {
-        // Create a clean page directory.
-        let mut pgdir: PageDirectory = PageDirectory::new(PageDirectoryStorage::new());
-        pgdir.clean();
+    pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+        // Create a clean page directory backed by a kernel page from the pool.
+        let mut pgdir: PageDirectory<PageDirectoryStorage> =
+            PageDirectory::new(PageDirectoryStorage::new_from_kpage(pgdir_page));
 
         // Map and store root page tables.
         let mut kernel_page_tables: LinkedList<
@@ -223,7 +222,7 @@ impl Vmem {
     }
 
     /// Returns a reference to the underlying page directory.
-    pub fn pgdir(&self) -> &PageDirectory {
+    pub fn pgdir(&self) -> &PageDirectory<PageDirectoryStorage> {
         &self.pgdir
     }
 
