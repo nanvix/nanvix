@@ -19,6 +19,7 @@ arch = { workspace = true }
 bitmap = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true, optional = true }
+elf = { workspace = true }
 type-safe = { workspace = true }
 raw-array = { workspace = true }
 slab = { workspace = true }
