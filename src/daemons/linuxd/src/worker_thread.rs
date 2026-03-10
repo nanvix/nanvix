@@ -261,7 +261,7 @@ impl WorkerThreadHandle {
     ///
     /// # Cancel Safety
     ///
-    /// When `cancel_rx.changed()` wins the `select!`, the future `f` is dropped. The callers
+    /// When `cancel_rx.wait_for()` wins the `select!`, the future `f` is dropped. The callers
     /// pass tokio socket read/write futures which are cancel-safe, so no data is lost.
     ///
     fn run_cancellable_operation<F, R>(
@@ -276,7 +276,9 @@ impl WorkerThreadHandle {
 
             ::tokio::select! {
                 result = &mut f => result,
-                _ = cancel_rx.changed() => {
+                // `wait_for` resolves immediately if the value is already `true`,
+                // so a cancellation that arrived before this call is not missed.
+                _ = cancel_rx.wait_for(|v| *v) => {
                     Err(::std::io::Error::new(
                         ErrorKind::Interrupted,
                         "run_cancellable_operation(): operation cancelled",
@@ -326,7 +328,9 @@ impl WorkerThreadHandle {
                         },
                     }
                 }
-                _ = cancel_rx.changed() => {
+                // `wait_for` resolves immediately if the value is already `true`,
+                // so a cancellation that arrived before this call is not missed.
+                _ = cancel_rx.wait_for(|v| *v) => {
                     debug!("recv_with_timeout(): cancelled");
                     Err(WorkerThreadError::Interrupted)
                 }
