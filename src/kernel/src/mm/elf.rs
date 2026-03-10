@@ -32,7 +32,10 @@ use ::core::cmp::{
     min,
 };
 use ::sys::{
-    config,
+    config::memory_layout::{
+        USER_BASE,
+        USER_BASE_RAW,
+    },
     error::{
         Error,
         ErrorCode,
@@ -73,10 +76,10 @@ const PF_R: u32 = 1 << 2; // Segment is readable.
 
 // Object file types.
 const ET_NONE: u16 = 0; // No file type.
-const ET_REL: u16 = 1; // Relocatable file.
+const _ET_REL: u16 = 1; // Relocatable file.
 const ET_EXEC: u16 = 2; // Executable file.
 const ET_DYN: u16 = 3; // Shared object file.
-const ET_CORE: u16 = 4; // Core file.
+const _ET_CORE: u16 = 4; // Core file.
 const ET_LOPROC: u16 = 0xff00; // Processor-specific.
 const ET_HIPROC: u16 = 0xffff; // Processor-specific.
 
@@ -125,7 +128,25 @@ pub struct Elf32Fhdr {
 }
 
 impl Elf32Fhdr {
-    pub fn from_address(addr: usize) -> &'static Self {
+    ///
+    /// # Description
+    ///
+    /// Interprets the memory at the given address as an [`Elf32Fhdr`].
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Starting address of the ELF32 file header.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`Elf32Fhdr`] located at `addr`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `addr` points to a valid, properly aligned `Elf32Fhdr` that
+    /// outlives the returned `'static` reference.
+    ///
+    pub unsafe fn from_address(addr: usize) -> &'static Self {
         unsafe { &*(addr as *const Self) }
     }
 }
@@ -185,23 +206,64 @@ fn do_elf32_load(
 
     let mut last_address: usize = 0;
 
+    // Check if the ELF header is valid.
     if !elf.is_valid() {
-        return Err(Error::new(ErrorCode::BadFile, "invalid elf file"));
+        let reason: &str = "invalid ELF header";
+        error!("{reason}");
+        return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
-    let entry: VirtualAddress = VirtualAddress::new(elf.e_entry as usize);
-
-    // Check if entry point does not match what we expect.
-    if entry < config::memory_layout::USER_BASE {
-        let reason: &str = "invalid binary entry point";
-        error!("do_elf32_load: {} (entry={:?})", reason, entry);
-        return Err(Error::new(ErrorCode::BadFile, "invalid entry point"));
-    }
-
-    let phdr_base = unsafe {
+    // SAFETY: `e_phoff` is the byte offset from the ELF header to the program header table.
+    // The resulting pointer is within the ELF image, which the caller guarantees is valid.
+    let phdr_base: *const Elf32Phdr = unsafe {
         (elf as *const Elf32Fhdr as *const u8).offset(elf.e_phoff as isize) as *const Elf32Phdr
     };
-    let phdrs = unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
+    // SAFETY: `e_phnum` entries starting at `phdr_base` are guaranteed to reside within the
+    // ELF image. Each entry is a `repr(C)` `Elf32Phdr` with no invalid bit patterns.
+    let phdrs: &[Elf32Phdr] =
+        unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
+
+    // Only ET_EXEC and ET_DYN binaries are supported.
+    if elf.e_type != ET_EXEC && elf.e_type != ET_DYN {
+        let reason: &str = "unsupported ELF type";
+        error!("{reason} (e_type={:#x})", elf.e_type);
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
+
+    // Compute load base for PIE (ET_DYN) binaries. If the lowest PT_LOAD virtual address is
+    // below USER_BASE, offset all segment addresses so they land in user space.
+    let load_base: usize = if elf.e_type == ET_DYN {
+        let user_base: usize = USER_BASE_RAW;
+        let lowest_vaddr: usize = phdrs
+            .iter()
+            .filter(|phdr| phdr.p_type == PT_LOAD)
+            .map(|phdr| phdr.p_vaddr as usize)
+            .min()
+            .unwrap_or(0);
+        if lowest_vaddr < user_base {
+            user_base.saturating_sub(lowest_vaddr)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    let entry_raw: usize = (elf.e_entry as usize)
+        .checked_add(load_base)
+        .ok_or_else(|| {
+            let reason: &str = "entry address overflow";
+            error!("{reason} (e_entry={:#x}, load_base={:#x})", elf.e_entry, load_base);
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
+    let entry: VirtualAddress = VirtualAddress::new(entry_raw);
+
+    // Check if entry point does not match what we expect.
+    if entry < USER_BASE {
+        let reason: &str = "invalid binary entry point";
+        error!("{} (entry={:?})", reason, entry);
+        return Err(Error::new(ErrorCode::BadFile, "invalid entry point"));
+    }
 
     // Load segments.
     for phdr in phdrs {
@@ -218,7 +280,15 @@ fn do_elf32_load(
             .p_align
             .try_into()
             .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
-        let virt_addr_base: usize = ::sys::mm::align_down(phdr.p_vaddr as usize, align);
+        let adjusted_vaddr: usize =
+            (phdr.p_vaddr as usize)
+                .checked_add(load_base)
+                .ok_or_else(|| {
+                    let reason: &str = "virtual address overflow in PIE segment";
+                    error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);
+                    Error::new(ErrorCode::BadFile, reason)
+                })?;
+        let virt_addr_base: usize = ::sys::mm::align_down(adjusted_vaddr, align);
 
         // Compute access permissions.
         let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
@@ -233,16 +303,18 @@ fn do_elf32_load(
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
         let virt_addr_range_end: usize = virt_addr_base.checked_add(size).ok_or_else(|| {
             let reason: &str = "virtual address overflow in elf segment";
-            error!("do_elf32_load(): {reason} (virt_addr_base={virt_addr_base:#x}, size={size})");
+            error!("{reason} (virt_addr_base={virt_addr_base:#x}, size={size})");
             Error::new(ErrorCode::BadFile, reason)
         })?;
         let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_range_end, PAGE_ALIGNMENT)
             .ok_or_else(|| {
                 let reason: &str = "align_up overflow";
-                error!("do_elf32_load(): {reason} (virt_addr_range_end={virt_addr_range_end:#x})");
+                error!("{reason} (virt_addr_range_end={virt_addr_range_end:#x})");
                 Error::new(ErrorCode::BadFile, reason)
             })?;
 
+        // SAFETY: `p_offset` is the byte offset from the start of the ELF image to the
+        // segment data. The caller guarantees the ELF image spans at least this range.
         let phys_addr_base: usize = unsafe {
             (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
         };
@@ -251,8 +323,8 @@ fn do_elf32_load(
 
         // Load segment page by page.
         debug!(
-            "do_elf32_load(): loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, \
-             phys_addr_base={:#x}, phys_addr_end={:#x}, access={:?})",
+            "loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, phys_addr_base={:#x}, \
+             phys_addr_end={:#x}, access={:?})",
             virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
         );
 
@@ -260,9 +332,9 @@ fn do_elf32_load(
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
 
             // Check if address lies in user space.
-            if vaddr < config::memory_layout::USER_BASE {
+            if vaddr < USER_BASE {
                 let reason: &str = "invalid load address";
-                error!("do_elf32_load: {}", reason);
+                error!("{reason}");
                 return Err(Error::new(ErrorCode::BadFile, reason));
             }
 
@@ -303,7 +375,7 @@ fn do_elf32_load(
         .align_up(PAGE_ALIGNMENT)
         .ok_or_else(|| {
         let reason: &str = "align_up overflow";
-        error!("do_elf32_load(): {reason} (last_address={last_address:#x})");
+        error!("{reason} (last_address={last_address:#x})");
         Error::new(ErrorCode::BadFile, reason)
     })?;
 

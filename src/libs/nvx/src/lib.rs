@@ -16,6 +16,7 @@
 
 #[cfg(not(feature = "rustc-dep-of-std"))]
 mod panic;
+mod pie;
 
 //==================================================================================================
 // Imports
@@ -24,6 +25,8 @@ mod panic;
 // We link the `alloc` crate when building static libraries to provide heap allocation support.
 #[cfg(not(feature = "rustc-dep-of-std"))]
 extern crate alloc;
+
+use ::config::memory_layout::USER_BASE_RAW;
 
 /// Re-export the VFS crate when the `memfs` feature is enabled.
 #[cfg(feature = "memfs")]
@@ -139,6 +142,11 @@ core::arch::global_asm!(
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _start(argp: *mut i8, envp: *mut i8) -> ! {
+    // Apply PIE relocations before any global data access.
+    unsafe {
+        pie::relocate_pie_binary(USER_BASE_RAW);
+    }
+
     syslog::trace!("_start(): argv: {:?}, envp: {:?}", argp, envp);
 
     // Initializes the system runtime.
