@@ -12,6 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+chrono = { workspace = true }
 config = { workspace = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true }

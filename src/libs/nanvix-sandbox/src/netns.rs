@@ -562,7 +562,7 @@ impl NetnsPool {
     ///
     /// A handle to a network namespace, or an error if allocation fails.
     ///
-    pub fn allocate(&mut self) -> Result<NetnsHandle> {
+    pub fn allocate(&self) -> Result<NetnsHandle> {
         self.inner.allocate_impl()
     }
 }

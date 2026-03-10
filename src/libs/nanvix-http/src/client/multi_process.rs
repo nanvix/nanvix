@@ -40,7 +40,6 @@ use ::std::{
     sync::Arc,
 };
 use ::syscomm::SocketType;
-use ::tokio::sync::Mutex;
 use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
@@ -63,7 +62,7 @@ use ::user_vm_api::UserVmIdentifier;
 ///
 pub(crate) struct HttpClient<T> {
     /// Shared handle to the sandbox cache for managing sandboxes.
-    sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+    sandbox_cache: Arc<SandboxCache<T>>,
 }
 
 //==================================================================================================
@@ -84,7 +83,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     ///
     /// A new HTTP client handler ready to process requests.
     ///
-    pub(crate) fn new(sandbox_cache: Arc<Mutex<SandboxCache<T>>>) -> Self {
+    pub(crate) fn new(sandbox_cache: Arc<SandboxCache<T>>) -> Self {
         Self { sandbox_cache }
     }
 
@@ -107,7 +106,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     /// On failure, returns an error describing what went wrong.
     ///
     pub(super) async fn serve_new(
-        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+        sandbox_cache: Arc<SandboxCache<T>>,
         message: &message::New,
     ) -> Result<message::NewResponse> {
         trace!("serve_new(): {message:?}");
@@ -118,8 +117,6 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             String,
             SocketType,
         ) = sandbox_cache
-            .lock()
-            .await
             .get(
                 &message.tenant_id,
                 &message.program,
@@ -157,12 +154,10 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     /// returns an object that describes the error.
     ///
     pub(super) async fn serve_kill(
-        sandbox_cache: Arc<Mutex<SandboxCache<T>>>,
+        sandbox_cache: Arc<SandboxCache<T>>,
         message: &message::Kill,
     ) -> Result<message::KillResponse> {
-        let mut locked_sandbox_cache: tokio::sync::MutexGuard<'_, SandboxCache<T>> =
-            sandbox_cache.lock().await;
-        match locked_sandbox_cache.kill(message.user_vm_id).await {
+        match sandbox_cache.kill(message.user_vm_id).await {
             Ok(exit_code) => Ok(message::KillResponse { exit_code }),
             Err(error) => {
                 error!(
