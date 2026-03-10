@@ -27,6 +27,8 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["panic"]
+microvm = ["syscall/microvm"]
+ring-buffer = ["syscall/ring-buffer"]
 trace = ["nvx/trace", "syscall/trace", "syslog/trace"]
 debug = ["nvx/debug", "syscall/debug", "syslog/debug"]
 info = ["nvx/info", "syscall/info", "syslog/info"]
