@@ -62,10 +62,6 @@ impl FixedBufferReservation {
         }
     }
 
-    pub fn count(&self) -> usize {
-        self.count
-    }
-
     pub fn ids(&self) -> &[u32] {
         &self.ids[..self.count]
     }
@@ -284,19 +280,12 @@ pub fn fixed_buffer_vaddr(buffer_id: u32) -> Result<usize, Error> {
     Ok(RING_BASE + FIXED_BUF_OFFSET + buffer_index * FIXED_BUF_SIZE)
 }
 
-/// Returns the fixed buffer assigned to `caller_tid`, allocating one on first use.
-pub fn get_or_alloc_thread_fixed_buffer(caller_tid: ThreadIdentifier) -> Result<u32, Error> {
-    let reservation: FixedBufferReservation = get_or_alloc_thread_fixed_buffers(caller_tid, 1)?;
-    match reservation.ids().first() {
-        Some(buffer_id) => Ok(*buffer_id),
-        None => {
-            Err(Error::new(ErrorCode::ResourceBusy, "failed to allocate per-thread fixed buffer"))
-        },
-    }
-}
-
 /// Returns the number of fixed buffers required to carry `size` bytes.
 pub fn fixed_buffer_count_for_len(size: usize) -> usize {
+    debug_assert!(
+        size <= MAX_FIXED_TRANSFER_SIZE,
+        "logical transfer exceeds per-request fixed-buffer cap"
+    );
     if size == 0 {
         0
     } else {
