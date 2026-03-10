@@ -14,6 +14,12 @@ use ::sysapi::sys_types::{
     c_size_t,
     off_t,
 };
+#[cfg(feature = "standalone")]
+use ::sysapi::unistd::{
+    STDERR_FILENO,
+    STDIN_FILENO,
+    STDOUT_FILENO,
+};
 #[cfg(not(feature = "standalone"))]
 use {
     crate::{
@@ -66,11 +72,19 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         }
     }
 
-    // In standalone mode, reject non-VFS fds (no linuxd).
+    // In standalone mode, return ESPIPE for stdio fds and reject all others.
     #[cfg(feature = "standalone")]
     {
+        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+            let _ = (buffer, offset);
+            let reason: &str = "illegal seek on stdio";
+            ::syslog::error!("pread(): {reason} (fd={fd})");
+            return Err(Error::new(ErrorCode::IllegalSeek, reason));
+        }
         let _ = (fd, buffer, offset);
-        Err(Error::new(ErrorCode::OperationNotSupported, "pread not available in standalone mode"))
+        let reason: &str = "pread not available in standalone mode";
+        ::syslog::error!("pread(): {reason} (fd={fd})");
+        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
     // Forward to linuxd via IPC.
