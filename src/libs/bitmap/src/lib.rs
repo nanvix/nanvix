@@ -54,9 +54,9 @@ include!("lib.test.rs");
 /// A bitmap.
 ///
 #[verus_verify]
+//#[verus_verify(ext_equal)] // TODO - Restore when supported by Verus PR #2239
 #[verus_verify(external_derive)]
 #[derive(Debug)]
-#[verus_verify(ext_equal)]
 pub struct Bitmap {
     /// Capacity of the bitmap (in bits).
     number_of_bits: usize,
