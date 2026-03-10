@@ -51,7 +51,6 @@ use ::std::{
     ptr,
     sync::{
         atomic::{
-            AtomicBool,
             AtomicUsize,
             Ordering,
         },
@@ -163,6 +162,7 @@ use ::tokio::{
             Receiver,
             Sender,
         },
+        watch,
         Mutex,
         MutexGuard,
     },
@@ -176,27 +176,14 @@ use ::tokio::{
 // Constants
 //==================================================================================================
 
-/// Signal used to interrupt async operations in worker threads.
+/// Signal used to interrupt blocking libc syscalls in worker threads.
 const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
-/// Frequency to poll for cancellation flag.
-const CANCELLATION_POLL_FREQUENCY: Duration = Duration::from_millis(100);
-
-/// Maximum time (in seconds) a worker thread will wait for the bulk data message that must follow
+/// Maximum time a worker thread will wait for the bulk data message that must follow
 /// a `ReadRequest` or `WriteRequest`. If the guest VM crashes (or the channel stalls) after
 /// sending the IKC request but before the corresponding push/pull arrives, this timeout prevents
 /// the worker thread from blocking forever.
 const BULK_DATA_TIMEOUT: Duration = Duration::from_secs(30);
-
-//==================================================================================================
-// Thread-Local Storage
-//==================================================================================================
-
-thread_local! {
-    /// Atomic flag for interrupting async operations in the current worker thread.
-    /// This flag is set by the signal handler to indicate that the thread should be cancelled.
-    static CANCELLATION_FLAG: AtomicBool = const { AtomicBool::new(false) };
-}
 
 //==================================================================================================
 // Structures
@@ -204,13 +191,17 @@ thread_local! {
 
 /// State associated with a worker thread in linuxd.
 pub struct WorkerThreadHandle {
-    // Internal thread identifier in linuxd.
+    /// Internal thread identifier in linuxd.
     pub id: ThreadIdentifier,
-    // Underlying tid returned by pthread.
-    pub pthread_id: Arc<AtomicUsize>,
+    /// Underlying pthread id, used to deliver `INTERRUPT_SIGNAL` for blocking libc syscalls.
+    pthread_id: Arc<AtomicUsize>,
+    /// Join handle for the underlying tokio blocking task.
     pub handle: JoinHandle<()>,
-    // Handle to send shutdown messages to message queue.
+    /// Handle to send shutdown messages to message queue.
     pub cmd_tx: Sender<VenvCommand>,
+    /// Sender half of the cancellation watch channel.  Sending `true` triggers cancellation of
+    /// any in-flight `run_cancellable_operation` or `recv_with_timeout` on the worker thread.
+    cancel_tx: watch::Sender<bool>,
 }
 
 //==================================================================================================
@@ -218,18 +209,24 @@ pub struct WorkerThreadHandle {
 //==================================================================================================
 
 impl WorkerThreadHandle {
+    ///
+    /// # Description
+    ///
+    /// Installs a no-op signal handler for `INTERRUPT_SIGNAL` so that blocking libc syscalls
+    /// return `EINTR` instead of terminating the process.  The handler deliberately omits
+    /// `SA_RESTART` so interrupted syscalls are **not** automatically restarted.
+    ///
     fn install_signal_handler() {
-        // SAFETY: we install a signal handler that is a no-op so this is safe.
-        let ret = unsafe {
+        // SAFETY: We install a trivial no-op handler; the only side-effect is that blocking
+        // syscalls on this thread will return EINTR when the signal is delivered.
+        let ret: c_int = unsafe {
             let sig_action = sigaction {
                 sa_sigaction: linuxd_worker_thread_signal_handler as *const () as usize,
-                // Empty set to not block any other signals that may happen during signal handling.
                 sa_mask: {
                     let mut set = mem::zeroed();
                     sigemptyset(&mut set);
                     set
                 },
-                // No SA_RESTART so that syscall will return EINTR.
                 sa_flags: 0,
                 sa_restorer: None,
             };
@@ -238,7 +235,6 @@ impl WorkerThreadHandle {
         };
 
         if ret != 0 {
-            // Notify the error, but don't fail.
             let errno: i32 = unsafe { *libc::__errno_location() };
             error!("error installing signal handler (errno={errno:?})");
         }
@@ -247,54 +243,44 @@ impl WorkerThreadHandle {
     ///
     /// # Description
     ///
-    /// Run an async operation with cancellation support via the thread-local cancellation flag.
+    /// Run an async operation with cancellation support via a watch channel.
     ///
     /// This helper function wraps an async operation to make it interruptible via the
-    /// thread-local cancellation flag. When the flag is set (typically by a signal handler),
-    /// the operation is cancelled and returns `ErrorKind::Interrupted`.
+    /// cancellation watch channel. When `stop()` is called on the worker thread handle,
+    /// the watch value changes to `true` and the operation is cancelled immediately,
+    /// returning `ErrorKind::Interrupted`.
     ///
     /// # Parameters
     ///
     /// * `f` - The async operation to run. Must return a `std::io::Result<R>`.
+    /// * `cancel_rx` - The watch receiver used to detect cancellation.
     ///
     /// # Returns
     ///
     /// Returns the result of the async operation, or an `Interrupted` error if cancelled.
     ///
-    /// # Errors
+    /// # Cancel Safety
     ///
-    /// Returns an error if:
-    /// - The operation is cancelled via the cancellation flag
-    /// - The underlying operation fails
+    /// When `cancel_rx.changed()` wins the `select!`, the future `f` is dropped. The callers
+    /// pass tokio socket read/write futures which are cancel-safe, so no data is lost.
     ///
-    /// # Safety
-    ///
-    /// Note: The operation `f` may not be cancel-safe. This is acceptable in our use case because
-    /// cancellation only occurs when a signal interrupts the operation, ensuring that partial
-    /// completion is handled by the underlying I/O layer. The signal is sent externally to
-    /// interrupt blocking system calls, making cancellation safe.
-    ///
-    fn run_cancellable_operation<F, R>(f: F) -> ::std::io::Result<R>
+    fn run_cancellable_operation<F, R>(
+        f: F,
+        cancel_rx: &mut watch::Receiver<bool>,
+    ) -> ::std::io::Result<R>
     where
         F: ::std::future::Future<Output = ::std::io::Result<R>>,
     {
         Handle::current().block_on(async {
             ::tokio::pin!(f);
 
-            // Poll the cancellation flag periodically while waiting for the future.
-            loop {
-                ::tokio::select! {
-                    result = &mut f => return result,
-                    _ = ::tokio::time::sleep(CANCELLATION_POLL_FREQUENCY) => {
-                        // Check if cancellation was requested.
-                        let cancelled: bool = CANCELLATION_FLAG.with(|flag| flag.load(Ordering::Relaxed));
-                        if cancelled {
-                            return Err(::std::io::Error::new(
-                                ErrorKind::Interrupted,
-                                "run_cancellable_operation(): operation cancelled by signal",
-                            ));
-                        }
-                    }
+            ::tokio::select! {
+                result = &mut f => result,
+                _ = cancel_rx.changed() => {
+                    Err(::std::io::Error::new(
+                        ErrorKind::Interrupted,
+                        "run_cancellable_operation(): operation cancelled",
+                    ))
                 }
             }
         })
@@ -311,6 +297,7 @@ impl WorkerThreadHandle {
     ///
     /// - `channel_rx`: The channel receiver to read from.
     /// - `timeout`: Maximum duration to wait for the message.
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
     ///
     /// # Returns
     ///
@@ -320,25 +307,53 @@ impl WorkerThreadHandle {
     fn recv_with_timeout(
         channel_rx: &mut Receiver<VenvCommand>,
         timeout: Duration,
+        cancel_rx: &mut watch::Receiver<bool>,
     ) -> Result<VenvCommand, WorkerThreadError> {
         Handle::current().block_on(async {
-            match ::tokio::time::timeout(timeout, channel_rx.recv()).await {
-                Ok(Some(cmd)) => Ok(cmd),
-                Ok(None) => {
-                    error!("recv_with_timeout(): channel closed");
+            ::tokio::select! {
+                result = ::tokio::time::timeout(timeout, channel_rx.recv()) => {
+                    match result {
+                        Ok(Some(cmd)) => Ok(cmd),
+                        Ok(None) => {
+                            error!("recv_with_timeout(): channel closed");
+                            Err(WorkerThreadError::Interrupted)
+                        },
+                        Err(_elapsed) => {
+                            error!(
+                                "recv_with_timeout(): timed out after {timeout:?} waiting for bulk data"
+                            );
+                            Err(WorkerThreadError::Interrupted)
+                        },
+                    }
+                }
+                _ = cancel_rx.changed() => {
+                    debug!("recv_with_timeout(): cancelled");
                     Err(WorkerThreadError::Interrupted)
-                },
-                Err(_elapsed) => {
-                    error!(
-                        "recv_with_timeout(): timed out after {timeout:?} waiting for bulk data"
-                    );
-                    Err(WorkerThreadError::Interrupted)
-                },
+                }
             }
         })
     }
 
-    /// Spawn an interruptible worker thread.
+    ///
+    /// # Description
+    ///
+    /// Spawns an interruptible worker thread that processes [`VenvCommand`]s from the given
+    /// channel.  The thread installs a signal handler and runs the main message loop until a
+    /// shutdown command or cancellation is received.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Internal thread identifier in linuxd.
+    /// - `channel_rx`: Receiver end of the command channel.
+    /// - `channel_tx`: Sender end retained in the handle for shutdown delivery.
+    /// - `uvm_handle`: Handle to the user VM connection.
+    /// - `assembler`: Shared request assembler for multi-part messages.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    ///
+    /// # Returns
+    ///
+    /// A [`WorkerThreadHandle`] on success, or an error if spawning fails.
+    ///
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_worker_thread<T: Sync + Send + 'static>(
         id: ThreadIdentifier,
@@ -349,63 +364,90 @@ impl WorkerThreadHandle {
         syscall_table: Arc<SyscallTable<T>>,
     ) -> Result<Self, Error> {
         trace!("spawning worker thread (id={id:?})");
-        // We use an atomic to pass the id of the created thread back to the caller context. We
-        // need this because std::thread's JoinHandle does not expose the tid.
-        let pthread_id_holder = Arc::new(AtomicUsize::new(0));
 
-        // Make copies to return as part of the thread handle.
-        let pthread_id_holder_clone = pthread_id_holder.clone();
+        // Create a watch channel for cancellation.  The initial value `false` means "not
+        // cancelled".  Sending `true` triggers immediate cancellation of any in-flight
+        // cancellable operation.
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+
+        // Atomic holder for the pthread id so `stop()` can send a signal.
+        let pthread_id_holder: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let pthread_id_clone: Arc<AtomicUsize> = pthread_id_holder.clone();
 
         let join_handle = task::spawn_blocking(move || {
-            let pthread_id = unsafe { pthread_self() };
-            pthread_id_holder.store(pthread_id as usize, Ordering::Relaxed);
-
-            // Initialize the cancellation flag for this worker thread before installing signal
-            // handler to avoid race conditions.
-            CANCELLATION_FLAG.with(|flag| {
-                flag.store(false, Ordering::Relaxed);
-            });
+            // SAFETY: `pthread_self()` returns the calling thread's id.
+            let pthread_id: libc::pthread_t = unsafe { pthread_self() };
+            pthread_id_holder.store(pthread_id as usize, Ordering::Release);
 
             Self::install_signal_handler();
 
-            Self::handle_message(channel_rx, uvm_handle, syscall_table, assembler);
+            Self::handle_message(channel_rx, uvm_handle, syscall_table, assembler, cancel_rx);
 
-            trace!("thread shutting down after receiving interrupt (pthread_id={pthread_id})");
+            trace!("thread shutting down (pthread_id={pthread_id})");
         });
 
         Ok(Self {
             id,
-            pthread_id: pthread_id_holder_clone,
+            pthread_id: pthread_id_clone,
             handle: join_handle,
             cmd_tx: channel_tx,
+            cancel_tx,
         })
     }
 
-    /// Stop a worker-thread by sending an interrupt.
+    ///
+    /// # Description
+    ///
+    /// Stops a worker thread by triggering its cancellation watch channel and sending
+    /// `INTERRUPT_SIGNAL` to interrupt any blocking libc syscall.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the cancellation channel is already closed.
+    ///
     pub fn stop(&self) -> Result<(), Error> {
-        let raw_tid = self.pthread_id.load(Ordering::Relaxed);
-
-        if raw_tid == 0 {
-            let reason = "trying to stop thread with tid 0";
+        // Trigger the watch channel first so that any tokio `select!` branch sees
+        // the cancellation immediately.
+        self.cancel_tx.send(true).map_err(|_| {
+            let reason: &str = "cancellation channel closed";
             error!("{reason}");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
+            Error::new(ErrorCode::InvalidArgument, reason)
+        })?;
 
-        // SAFETY: We call pthread_kill() on a valid pthread_t that was stored when the thread was
-        // created via spawn_blocking(). The thread ID is non-zero and the thread is guaranteed to
-        // be alive because we hold a reference to its JoinHandle. The signal SIGUSR1 has a
-        // handler installed that safely triggers cancellation via the thread-local token.
-        let pthread_id = raw_tid as libc::pthread_t;
-        unsafe { pthread_kill(pthread_id, INTERRUPT_SIGNAL) };
+        // Also send a signal to interrupt blocking libc syscalls (e.g. read/write on
+        // non-gateway file descriptors) so they return EINTR.
+        let raw_tid: usize = self.pthread_id.load(Ordering::Acquire);
+        if raw_tid != 0 {
+            // SAFETY: `raw_tid` is a valid `pthread_t` stored by the worker thread at
+            // startup.  The thread is guaranteed to be alive because we hold a reference
+            // to its `JoinHandle`.  `INTERRUPT_SIGNAL` has a no-op handler installed.
+            unsafe { pthread_kill(raw_tid as libc::pthread_t, INTERRUPT_SIGNAL) };
+        }
 
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Main event loop for a worker thread.  Receives commands from the channel, dispatches
+    /// them to the appropriate handler, and sends responses back to the user VM.  The loop
+    /// exits on a `Shutdown` command, cancellation, or a fatal error.
+    ///
+    /// # Parameters
+    ///
+    /// - `channel_rx`: Receiver end of the command channel.
+    /// - `uvm_handle`: Handle to the user VM connection.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `assembler`: Shared request assembler for multi-part messages.
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
     fn handle_message<T>(
         mut channel_rx: Receiver<VenvCommand>,
         uvm_handle: UserVmHandle,
         syscall_table: Arc<SyscallTable<T>>,
         assembler: Arc<Mutex<RequestAssembler>>,
+        mut cancel_rx: watch::Receiver<bool>,
     ) {
         let worker_tid: ThreadId = thread::current().id();
         let uvm_stream: Arc<Mutex<SocketStreamWriter>> = uvm_handle.get_user_vm_writer();
@@ -423,6 +465,12 @@ impl WorkerThreadHandle {
             };
 
         loop {
+            // NOTE: `blocking_recv()` is intentionally not wrapped with `cancel_rx` here.
+            // During shutdown, `stop()` triggers the watch channel and then the caller enqueues a
+            // `Shutdown` command.  Because `stop()` runs first, any worker blocked in a
+            // cancellable I/O or `recv_with_timeout` is unblocked and starts draining the
+            // channel, so the bounded channel is guaranteed to have capacity for the `Shutdown`
+            // command that wakes this `blocking_recv()`.
             let message: Message = match channel_rx.blocking_recv() {
                 Some(VenvCommand::Work(message)) => message,
                 Some(VenvCommand::BulkData(_)) => {
@@ -495,6 +543,7 @@ impl WorkerThreadHandle {
                                         message,
                                         &mut channel_rx,
                                         uvm_stream.clone(),
+                                        &mut cancel_rx,
                                     ) {
                                         Ok(message) => message,
                                         Err(WorkerThreadError::Interrupted) => break,
@@ -647,6 +696,29 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Dispatches close, read, and write requests to their specialized handlers.  These
+    /// requests require interposition (gateway I/O or bulk data transfer) before being
+    /// forwarded to the backend syscall provider.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `gateway_reader`: Shared reader stream for the gateway socket.
+    /// - `gateway_writer`: Shared writer stream for the gateway socket.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    /// - `channel_rx`: Worker command channel receiver (for bulk data).
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
+    #[allow(clippy::too_many_arguments)]
     fn handle_special_messages<T>(
         syscall_table: &SyscallTable<T>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
@@ -655,6 +727,7 @@ impl WorkerThreadHandle {
         message: LinuxDaemonMessage,
         channel_rx: &mut Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        cancel_rx: &mut watch::Receiver<bool>,
     ) -> Result<Message, WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
@@ -670,6 +743,7 @@ impl WorkerThreadHandle {
                     request,
                     channel_rx,
                     uvm_stream,
+                    cancel_rx,
                 )
             },
             LinuxDaemonMessageHeader::WriteRequest => {
@@ -680,6 +754,7 @@ impl WorkerThreadHandle {
                     source,
                     request,
                     channel_rx,
+                    cancel_rx,
                 )
             },
             header => {
@@ -690,6 +765,21 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Dispatches syscall requests whose request and response data both fit in a single message.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_short_request_messages<T>(
         syscall_table: Arc<SyscallTable<T>>,
         source: ThreadIdentifier,
@@ -823,6 +913,23 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Dispatches syscall requests whose request data spans multiple messages.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `assembler`: Shared request assembler for multi-part messages.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_long_request_messages<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
@@ -965,6 +1072,22 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Dispatches syscall requests whose response data spans multiple messages.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_long_response_messages<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         syscall_table: &SyscallTable<T>,
@@ -989,6 +1112,20 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Sends an IKC message frame to the user VM over the shared writer stream.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `message`: The IKC message to send.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an I/O error if the write fails.
+    ///
     async fn send(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         message: Message,
@@ -999,8 +1136,21 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
-    /// Sends a data chunk transfer to the user VM. The frame is: frame type byte + 4-byte LE length
-    /// prefix + serialized DataChunk payload (header + data).
+    ///
+    /// # Description
+    ///
+    /// Sends a data chunk transfer to the user VM.  The frame is: frame type byte + 4-byte LE
+    /// length prefix + serialized [`DataChunk`](::sys::ipc::DataChunk) payload (header + data).
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `bulk`: The data chunk to send.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an I/O error if the write fails.
+    ///
     async fn send_bulk(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         bulk: &::sys::ipc::DataChunk,
@@ -1017,6 +1167,20 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Builds an error [`Message`] addressed to `source` with the given [`ErrorCode`].
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `code`: The error code to embed in the response.
+    ///
+    /// # Returns
+    ///
+    /// An IKC error [`Message`].
+    ///
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
         Message::new(
             MessageSender::from(LINUXD),
@@ -1027,6 +1191,23 @@ impl WorkerThreadHandle {
         )
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a close request.  Standard file descriptors (stdin, stdout, stderr) are faked
+    /// because they are shared with the host process; all other fds are closed via the syscall
+    /// table.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `request`: The close request payload.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_close_request<T>(
         syscall_table: &SyscallTable<T>,
         source: ThreadIdentifier,
@@ -1046,32 +1227,54 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a write request.  Receives the bulk data payload from the channel, then either
+    /// writes to the gateway stream (for stdout/stderr) as a cancellable async operation, or
+    /// delegates to the syscall table for other file descriptors.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `gateway_writer`: Shared writer stream for the gateway socket.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `request`: The write request payload.
+    /// - `channel_rx`: Worker command channel receiver (for bulk data).
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_write_request<T>(
         syscall_table: &SyscallTable<T>,
         gateway_writer: Arc<Mutex<SocketStreamWriter>>,
         source: ThreadIdentifier,
         request: WriteRequest,
         channel_rx: &mut Receiver<VenvCommand>,
+        cancel_rx: &mut watch::Receiver<bool>,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_write_request(): source={source:?}, request={request:?}");
 
         // Receive bulk data that carries the actual write payload. A timeout prevents the worker
         // thread from blocking forever if the guest VM crashes mid-protocol.
-        let mut bulk_data: Vec<u8> = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
-            Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
-            Ok(VenvCommand::Shutdown) => {
-                debug!("handle_write_request(): received shutdown while waiting for bulk data");
-                return Err(WorkerThreadError::Interrupted);
-            },
-            Ok(VenvCommand::Work(_)) => {
-                error!("handle_write_request(): expected bulk data, got IKC message");
-                return Ok(build_error(source, ErrorCode::InvalidMessage));
-            },
-            Err(e) => {
-                error!("handle_write_request(): failed to receive bulk data");
-                return Err(e);
-            },
-        };
+        let mut bulk_data: Vec<u8> =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT, cancel_rx) {
+                Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_write_request(): received shutdown while waiting for bulk data");
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_write_request(): expected bulk data, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_write_request(): failed to receive bulk data");
+                    return Err(e);
+                },
+            };
 
         // Label: linuxd::worker_thread::handle_write_request()
         profiler::timestamp_message!(&mut bulk_data, 0);
@@ -1095,8 +1298,10 @@ impl WorkerThreadHandle {
                     gateway_writer.blocking_lock();
 
                 // Run blocking write as a cancellable operation.
-                let result: ::std::io::Result<()> =
-                    Self::run_cancellable_operation(locked_gateway_writer.write_all(write_buf));
+                let result: ::std::io::Result<()> = Self::run_cancellable_operation(
+                    locked_gateway_writer.write_all(write_buf),
+                    cancel_rx,
+                );
 
                 match result {
                     Ok(()) => {
@@ -1153,6 +1358,28 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a read request.  Receives the bulk data pull header from the channel, then
+    /// either reads from the gateway stream (for stdin) as a cancellable async operation, or
+    /// delegates to the syscall table for other file descriptors.  The read data is sent back
+    /// to the kernel via a bulk response.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `gateway_reader`: Shared reader stream for the gateway socket.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `request`: The read request payload.
+    /// - `channel_rx`: Worker command channel receiver (for bulk data).
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_read_request<T>(
         syscall_table: &SyscallTable<T>,
         gateway_reader: Arc<Mutex<SocketStreamReader>>,
@@ -1160,6 +1387,7 @@ impl WorkerThreadHandle {
         request: ReadRequest,
         channel_rx: &mut Receiver<VenvCommand>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        cancel_rx: &mut watch::Receiver<bool>,
     ) -> Result<Message, WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
 
@@ -1167,7 +1395,7 @@ impl WorkerThreadHandle {
         // address where the response data should be written. A timeout prevents the worker thread
         // from blocking forever if the guest VM crashes mid-protocol.
         let pull_header: ::sys::ipc::DataChunkHeader =
-            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT, cancel_rx) {
                 Ok(VenvCommand::BulkData(bulk)) => *bulk.header(),
                 Ok(VenvCommand::Shutdown) => {
                     debug!("handle_read_request(): received shutdown while waiting for bulk data");
@@ -1218,8 +1446,10 @@ impl WorkerThreadHandle {
                 gateway_reader.blocking_lock();
 
             let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
-            let result: ::std::io::Result<usize> =
-                Self::run_cancellable_operation(locked_gateway_reader.read(&mut read_buf));
+            let result: ::std::io::Result<usize> = Self::run_cancellable_operation(
+                locked_gateway_reader.read(&mut read_buf),
+                cancel_rx,
+            );
             drop(locked_gateway_reader);
 
             match result {
@@ -1307,6 +1537,22 @@ impl WorkerThreadHandle {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a file stat request and sends the multi-message response to the user VM.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_fstat_request<T>(
         syscall_table: &SyscallTable<T>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
@@ -1326,6 +1572,21 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a get-current-directory request and sends the multi-message response.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_getcwd_request<T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         syscall_table: &SyscallTable<T>,
@@ -1341,6 +1602,22 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a get-directory-entries request and sends the multi-message response.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_getdents_request<T>(
         syscall_table: &SyscallTable<T>,
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
@@ -1360,6 +1637,25 @@ impl WorkerThreadHandle {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Assembles a multi-part request from its constituent message parts, then processes the
+    /// assembled request and sends the response.  The assembler lock is held only during the
+    /// assembly phase to avoid starving other worker threads.
+    ///
+    /// # Parameters
+    ///
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `assembler`: Shared request assembler for multi-part messages.
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `message`: The parsed linuxd daemon message.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`WorkerThreadError`] on failure.
+    ///
     fn handle_long_request<S, T>(
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         assembler: Arc<Mutex<RequestAssembler>>,
@@ -1435,21 +1731,9 @@ impl WorkerThreadHandle {
 ///
 /// # Description
 ///
-/// Signal handler for worker thread cancellation.
+/// No-op signal handler for `INTERRUPT_SIGNAL`.  Its only purpose is to make blocking libc
+/// syscalls return `EINTR` so the worker thread can check for cancellation.
 ///
-/// This handler is invoked when a registered signal is received by a worker thread. It sets the
-/// thread-local cancellation flag, which causes any ongoing async I/O operations to be interrupted
-/// and return `ErrorKind::Interrupted`.
+/// This function is async-signal-safe: it performs no heap allocations, locking, or I/O.
 ///
-/// # Safety
-///
-/// This function uses only async-signal-safe operations:
-/// - `AtomicBool::store()` is async-signal-safe as it performs a simple atomic write.
-/// - Thread-local storage access is async-signal-safe.
-/// - No heap allocations, locks, or other unsafe operations are performed.
-///
-extern "C" fn linuxd_worker_thread_signal_handler(_: i32) {
-    CANCELLATION_FLAG.with(|flag| {
-        flag.store(true, Ordering::Relaxed);
-    });
-}
+extern "C" fn linuxd_worker_thread_signal_handler(_: c_int) {}
