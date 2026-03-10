@@ -4,9 +4,10 @@
 //==================================================================================================
 // User Memory Layout
 //==================================================================================================
+
 pub mod memory_layout {
     use crate::mm::VirtualAddress;
-    use config::memory_layout::*;
+    pub use config::memory_layout::*;
 
     ///
     /// # Description
