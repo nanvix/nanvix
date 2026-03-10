@@ -206,6 +206,7 @@ impl<T> RawArrayStorage<T> {
 #[verus_verify(reject_recursive_types(T))]
 #[verus_verify(external_type_specification)]
 #[verus_verify(external_body)]
+#[allow(dead_code)]
 pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 
 //==================================================================================================
