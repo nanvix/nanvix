@@ -20,7 +20,6 @@ mod virt;
 //==================================================================================================
 
 pub mod kheap;
-use ::alloc::boxed::Box;
 use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
@@ -252,6 +251,9 @@ pub fn init(
 
     let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
+    // SAFETY: called during single-threaded kernel init, after all boot page tables are allocated.
+    unsafe { virt::seal_boot_allocator() };
+
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
         info!("mapping: {:?}", region);
@@ -260,15 +262,24 @@ pub fn init(
             VirtualAddress::new(region.start().into_raw_value() + (region.size() - 1));
 
         {
-            // SAFETY: the memory manager is initialized and access is synchronized.
-            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
             while vaddr.into_inner() < end {
-                let kpage: KernelPage = mm.alloc_kpage(false)?;
+                // NOTE: each `VirtMemoryManager::get_mut()` borrow is scoped to its own inner
+                // block so that the mutable reference is dropped before any subsequent borrow,
+                // including the borrow that may occur when `page_table_allocator` is invoked
+                // inside `map_kpage`.
+                let kpage: KernelPage = {
+                    // SAFETY: the memory manager is initialized and access is synchronized.
+                    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+                    mm.alloc_kpage(false)?
+                };
 
                 let page_table_allocator = || {
-                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
-                    ));
+                    let kpage: KernelPage = {
+                        // SAFETY: the memory manager is initialized and access is synchronized.
+                        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+                        mm.alloc_kpage(true)?
+                    };
+                    let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
                     let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
                     Ok(page_table)
                 };
