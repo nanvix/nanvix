@@ -8,21 +8,22 @@
 use crate::{
     hal::mem::VirtualAddress,
     pm::{
+        sync::condvar::Condvar,
         ProcessManager,
         SleepError,
-        sync::condvar::Condvar,
     },
 };
-use ::alloc::{
+use alloc::{
+    boxed::Box,
     collections::BTreeMap,
     sync::Arc,
 };
-use ::core::sync::atomic::{
+use core::sync::atomic::{
     AtomicI32,
     AtomicUsize,
     Ordering,
 };
-use ::sys::{
+use sys::{
     error::{
         Error,
         ErrorCode,
@@ -85,7 +86,7 @@ struct PendingFixedPull {
 //==================================================================================================
 
 /// Pending fixed-buffer pull requests keyed by thread identifier.
-static mut PENDING_FIXED_PULLS: BTreeMap<ThreadIdentifier, PendingFixedPull> = BTreeMap::new();
+static mut PENDING_FIXED_PULLS: BTreeMap<ThreadIdentifier, Box<PendingFixedPull>> = BTreeMap::new();
 
 //==================================================================================================
 // Public Functions
@@ -120,14 +121,14 @@ pub fn register_and_sleep(
     let status_code_clone: Arc<AtomicI32> = status_code.clone();
 
     // SAFETY: single-core system with interrupts disabled.
-    let pending: &mut BTreeMap<ThreadIdentifier, PendingFixedPull> =
+    let pending: &mut BTreeMap<ThreadIdentifier, Box<PendingFixedPull>> =
         unsafe { &mut PENDING_FIXED_PULLS };
     let mut stored_segments: [FixedPullSegment; crate::ring::MAX_FIXED_BUFFERS_PER_TRANSFER] =
         [FixedPullSegment::zeroed(); crate::ring::MAX_FIXED_BUFFERS_PER_TRANSFER];
     stored_segments[..segments.len()].copy_from_slice(segments);
     pending.insert(
         caller_tid,
-        PendingFixedPull {
+        Box::new(PendingFixedPull {
             condvar: condvar_clone,
             bytes_transferred: bytes_transferred_clone,
             status_code: status_code_clone,
@@ -135,7 +136,7 @@ pub fn register_and_sleep(
             buffer_raw,
             segments: stored_segments,
             segment_count: segments.len(),
-        },
+        }),
     );
 
     trace!(
@@ -168,7 +169,7 @@ pub fn register_and_sleep(
         },
         Err(error) => {
             // SAFETY: single-core system with interrupts disabled.
-            let pending: &mut BTreeMap<ThreadIdentifier, PendingFixedPull> =
+            let pending: &mut BTreeMap<ThreadIdentifier, Box<PendingFixedPull>> =
                 unsafe { &mut PENDING_FIXED_PULLS };
             pending.remove(&caller_tid);
             Err(error)
@@ -178,7 +179,7 @@ pub fn register_and_sleep(
 
 pub fn complete(caller_tid: ThreadIdentifier, buffer_id: u32, data_len: usize, more: bool) -> bool {
     // SAFETY: single-core system with interrupts disabled.
-    let pending: &mut BTreeMap<ThreadIdentifier, PendingFixedPull> =
+    let pending: &mut BTreeMap<ThreadIdentifier, Box<PendingFixedPull>> =
         unsafe { &mut PENDING_FIXED_PULLS };
 
     let Some(entry) = pending.get_mut(&caller_tid) else {
