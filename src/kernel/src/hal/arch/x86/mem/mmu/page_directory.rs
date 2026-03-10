@@ -13,26 +13,19 @@ use crate::hal::mem::{
     PageTableAddress,
     PhysicalAddress,
 };
-use ::alloc::boxed::Box;
-use ::arch::mem::{
-    self,
-    paging::{
-        AccessedFlag,
-        DirtyFlag,
-        FrameNumber,
-        PageCacheDisableFlag,
-        PageDirectoryEntry,
-        PageDirectoryEntryFlags,
-        PageWriteThroughFlag,
-        PresentFlag,
-        ReadWriteFlag,
-        UserSupervisorFlag,
-    },
+use ::arch::mem::paging::{
+    AccessedFlag,
+    DirtyFlag,
+    FrameNumber,
+    PageCacheDisableFlag,
+    PageDirectoryEntry,
+    PageDirectoryEntryFlags,
+    PageWriteThroughFlag,
+    PresentFlag,
+    ReadWriteFlag,
+    UserSupervisorFlag,
 };
-use ::core::ops::{
-    Deref,
-    DerefMut,
-};
+use ::core::ops::DerefMut;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -42,51 +35,23 @@ use ::sys::error::{
 // Structures
 //==================================================================================================
 
-pub enum PageDirectoryStorage {
-    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
-}
-
 ///
 /// # Description
 ///
 /// A type that represents a page directory.
 ///
-pub struct PageDirectory {
+pub struct PageDirectory<T: DerefMut<Target = [u32]>> {
     /// Entries.
-    entries: PageDirectoryStorage,
+    entries: T,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl PageDirectoryStorage {
-    pub fn new() -> Self {
-        Self::Heap(Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]))
-    }
-}
-
-impl Deref for PageDirectoryStorage {
-    type Target = [u32];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Heap(entries) => entries.deref(),
-        }
-    }
-}
-
-impl DerefMut for PageDirectoryStorage {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Heap(entries) => entries.deref_mut(),
-        }
-    }
-}
-
-impl PageDirectory {
-    pub fn new(entries: PageDirectoryStorage) -> Self {
-        let mut pgdir: PageDirectory = PageDirectory { entries };
+impl<T: DerefMut<Target = [u32]>> PageDirectory<T> {
+    pub fn new(entries: T) -> Self {
+        let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
         pgdir
     }
