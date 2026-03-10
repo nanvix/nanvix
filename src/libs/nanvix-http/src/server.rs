@@ -37,9 +37,10 @@ use ::nanvix_sandbox::simple_cache::SimpleSandboxCacheConfig;
 use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
+    SandboxCacheStateSummary,
 };
 use ::std::sync::Arc;
-#[cfg(not(feature = "standalone"))]
+#[cfg(feature = "single-process")]
 use ::tokio::sync::Mutex;
 use ::tokio::{
     net::{
@@ -186,8 +187,7 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
         let sandbox_cache: Arc<StandaloneState> =
             Arc::new(StandaloneState::new(self.config.clone()));
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
-            SandboxCache::new(self.config.clone()).await?;
+        let sandbox_cache: Arc<SandboxCache<T>> = SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
 
@@ -260,17 +260,15 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     }
                     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                     {
-                        let mut cache_guard = sandbox_cache.lock().await;
-                        let summary = cache_guard.state_summary();
+                        let summary: SandboxCacheStateSummary = sandbox_cache.state_summary().await;
                         info!(
                             "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
-                             control_plane_socket={}, l2_enabled={}",
+                             l2_enabled={}",
                             summary.running_sandboxes(),
                             summary.linuxd_instances(),
-                            summary.has_control_plane_bind_socket(),
                             summary.l2_enabled()
                         );
-                        cache_guard.cleanup().await;
+                        sandbox_cache.cleanup().await;
                     }
                     break Ok(());
                 },
