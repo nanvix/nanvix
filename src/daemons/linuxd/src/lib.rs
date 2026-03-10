@@ -417,19 +417,23 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 
                 // Each worker thread may be in one of three states:
                 // 1. Running
-                // 2. Blocked on a system call
-                // 3. Blocked waiting for a new message from the channel
+                // 2. Blocked on an async I/O operation (tokio socket read/write)
+                // 3. Blocked on a synchronous libc syscall (read/write on non-gateway fds)
+                // 4. Blocked waiting for a new message from the channel
                 //
-                // To gracefully shutdown the thread, we enqueue a shutdown message to the
-                // message channel. In case the thread is blocked on a system call, we also
-                // send it an interrupt signal and handle EINTR accordingly. Note that a signal
-                // interrupt will not unblock a thread waiting on a queue, so we need both
-                // mechanisms.
+                // Calling stop() does two things:
+                //   a) Triggers the cancellation watch channel, which immediately unblocks
+                //      the worker if it is in an async I/O select! or a channel recv.
+                //   b) Sends SIGUSR1 via pthread_kill, which causes any blocking libc
+                //      syscall to return EINTR so the worker can exit.
                 //
-                // Send the interrupt first so that a worker stuck in a syscall gets unblocked
-                // and starts draining the channel before we attempt to enqueue the shutdown
-                // command. This prevents a deadlock where the bounded channel is full and the
-                // send suspends forever because the worker never drains it.
+                // We also enqueue a Shutdown command as a belt-and-suspenders fallback so
+                // the worker sees an explicit shutdown even if it is between select! rounds.
+                //
+                // Trigger cancellation first so a worker blocked on I/O or a syscall gets
+                // unblocked and starts draining the channel before we attempt to enqueue
+                // the shutdown command. This prevents a deadlock where the bounded channel
+                // is full and the send suspends forever because the worker never drains it.
                 //
                 // If any of the commands fail, continue trying to drain the remaining
                 // threads.
