@@ -171,7 +171,7 @@ uservm = { path = "src/uservm", default-features = false }
 uuid = { version = "1.21.0", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
-vstd = { version = "=0.0.0-2026-02-08-0120", default-features = false }
+vstd = { version = "=v0.0.0-2026-03-08-0103", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.9", default-features = false }
 

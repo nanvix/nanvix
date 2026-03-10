@@ -197,14 +197,12 @@ impl<T> RawArrayStorage<T> {
     }
 }
 
-// External type specifications for Verus verification.
-#[cfg(verus_keep_ghost)]
-
 // TODO: Once #[verus_verify(reject_recursive_types(T))] and
 // #[verus_verify(external_type_specification)] are supported,
 // avoid verus! here
 
 // External type specification for RawArrayStorage.
+#[verus_verify]
 #[verus_verify(reject_recursive_types(T))]
 #[verus_verify(external_type_specification)]
 #[verus_verify(external_body)]
