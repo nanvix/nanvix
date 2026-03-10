@@ -63,6 +63,11 @@ const PAYLOAD_LARGE_THRESHOLD: usize = 4096;
 const PAYLOAD_SIZES: &[usize] = &[
     32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536,
 ];
+/// Payload sizes for the positioned payload-carrying syscall sweeps.
+#[cfg(feature = "payload-sweep")]
+const POSITIONED_PAYLOAD_SIZES: &[usize] = &[
+    32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536, 131072,
+];
 /// Temporary file used by the payload benchmarks.
 #[cfg(feature = "payload-sweep")]
 const PAYLOAD_BENCH_FILE: &str = "syscall-bench-payload.tmp";
@@ -188,17 +193,26 @@ fn payload_iterations(size: usize) -> u32 {
 
 /// Returns the largest payload size in the sweep.
 #[cfg(feature = "payload-sweep")]
-fn max_payload_size() -> usize {
-    match PAYLOAD_SIZES.last() {
+fn max_payload_size(sizes: &[usize]) -> usize {
+    match sizes.last() {
         Some(size) => *size,
         None => 0,
     }
 }
 
+/// Returns the largest payload size across all payload benchmark sweeps.
+#[cfg(feature = "payload-sweep")]
+fn max_benchmark_payload_size() -> usize {
+    core::cmp::max(
+        max_payload_size(PAYLOAD_SIZES),
+        max_payload_size(POSITIONED_PAYLOAD_SIZES),
+    )
+}
+
 /// Returns the minimum file capacity required for the sequential read/write sweeps.
 #[cfg(feature = "payload-sweep")]
 fn payload_file_capacity() -> usize {
-    max_payload_size() * (PAYLOAD_WARMUP_ITERATIONS + PAYLOAD_ITERATIONS_SMALL) as usize
+    max_benchmark_payload_size() * (PAYLOAD_WARMUP_ITERATIONS + PAYLOAD_ITERATIONS_SMALL) as usize
 }
 
 /// Prepares the payload benchmark file with deterministic contents.
@@ -402,7 +416,7 @@ fn run_payload_sweep() -> Result<(), Error> {
 
     print(b"--- linuxd payload sweep: pwrite() ---\n");
 
-    for &size in PAYLOAD_SIZES {
+    for &size in POSITIONED_PAYLOAD_SIZES {
         let iterations: u32 = payload_iterations(size);
         let payload: alloc::vec::Vec<u8> = alloc::vec![0x5au8; size];
 
@@ -422,7 +436,7 @@ fn run_payload_sweep() -> Result<(), Error> {
 
     print(b"--- linuxd payload sweep: pread() ---\n");
 
-    for &size in PAYLOAD_SIZES {
+    for &size in POSITIONED_PAYLOAD_SIZES {
         let iterations: u32 = payload_iterations(size);
         let mut payload: alloc::vec::Vec<u8> = alloc::vec![0u8; size];
 
