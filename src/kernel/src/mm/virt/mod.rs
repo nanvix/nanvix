@@ -30,15 +30,18 @@ use crate::hal::{
     },
 };
 use ::alloc::{
-    boxed::Box,
     collections::LinkedList,
     vec::Vec,
 };
 use ::arch::{
     mem,
-    mem::PGTAB_ALIGNMENT,
+    mem::{
+        paging::PageTableEntry,
+        PGTAB_ALIGNMENT,
+    },
 };
 use ::core::{
+    cell::UnsafeCell,
     cmp::Ordering,
     ops::{
         Deref,
@@ -59,11 +62,107 @@ pub use manager::VirtMemoryManager;
 pub use vmem::Vmem;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+// Number of page tables needed to identity-map all physical memory plus MMIO regions at boot.
+::static_assert::assert_eq!(config::kernel::MEMORY_SIZE.is_multiple_of(mem::PGTAB_SIZE));
+
+const NUM_BOOT_PAGE_TABLES: usize =
+    config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE + config::platform::NUM_MMIO_BOOT_PAGE_TABLES;
+
+/// Total number of boot page-table-sized slots: page tables + 1 slot for the root page directory.
+pub(crate) const NUM_BOOT_SLOTS: usize = NUM_BOOT_PAGE_TABLES + 1;
+
+/// Number of u32 entries in a single page table / page directory (4096 / 4 = 1024).
+const PAGE_TABLE_LENGTH: usize = mem::PAGE_SIZE / PageTableEntry::SIZE;
+
+//==================================================================================================
+// Boot Page Table BSS Storage
+//==================================================================================================
+
+/// Page-aligned BSS storage for boot page tables and the root page directory.
+#[repr(align(4096))]
+struct BootPageTableStorage {
+    tables: [[u32; PAGE_TABLE_LENGTH]; NUM_BOOT_SLOTS],
+}
+
+::static_assert::assert_eq_align!(BootPageTableStorage, mem::PAGE_SIZE);
+
+struct BootPageTableStorageWrapper(UnsafeCell<BootPageTableStorage>);
+
+// SAFETY: Only accessed during single-threaded kernel init via `alloc_boot_slot()`.
+unsafe impl Sync for BootPageTableStorageWrapper {}
+
+static BOOT_STORAGE: BootPageTableStorageWrapper =
+    BootPageTableStorageWrapper(UnsafeCell::new(BootPageTableStorage {
+        tables: [[0; PAGE_TABLE_LENGTH]; NUM_BOOT_SLOTS],
+    }));
+
+/// Next available slot in the boot storage bump allocator.
+struct BootSlotNextWrapper(UnsafeCell<usize>);
+
+// SAFETY: Only accessed during single-threaded kernel init via `alloc_boot_slot()`.
+unsafe impl Sync for BootSlotNextWrapper {}
+
+static BOOT_SLOT_NEXT: BootSlotNextWrapper = BootSlotNextWrapper(UnsafeCell::new(0));
+
+/// Flag that marks the boot allocator as sealed (no further allocations allowed).
+struct BootSealedWrapper(UnsafeCell<bool>);
+
+// SAFETY: Only accessed during single-threaded kernel init.
+unsafe impl Sync for BootSealedWrapper {}
+
+static BOOT_SEALED: BootSealedWrapper = BootSealedWrapper(UnsafeCell::new(false));
+
+///
+/// # Description
+///
+/// Seals the boot page-table bump allocator, preventing further allocations.
+///
+/// This should be called once the kernel page pool is available to catch accidental late uses.
+///
+/// # Safety
+///
+/// This function mutates global state and must only be called during single-threaded kernel init.
+///
+pub(crate) unsafe fn seal_boot_allocator() {
+    *BOOT_SEALED.0.get() = true;
+}
+
+///
+/// # Description
+///
+/// Allocates the next page-aligned boot slot from BSS storage.
+///
+/// This is a simple bump allocator used during early kernel initialization before the kernel page
+/// pool is available. Each slot is exactly one page (4096 bytes) of `[u32; 1024]`.
+///
+/// # Panics
+///
+/// Panics if all boot slots have been exhausted or if the allocator has been sealed.
+///
+/// # Safety
+///
+/// This function mutates global state and must only be called during single-threaded kernel init.
+///
+pub(crate) unsafe fn alloc_boot_slot() -> &'static mut [u32; PAGE_TABLE_LENGTH] {
+    assert!(!*BOOT_SEALED.0.get(), "boot allocator is sealed; allocations are no longer allowed");
+    let next: *mut usize = BOOT_SLOT_NEXT.0.get();
+    let idx: usize = *next;
+    assert!(idx < NUM_BOOT_SLOTS, "boot page table storage exhausted");
+    *next += 1;
+    &mut (*BOOT_STORAGE.0.get()).tables[idx]
+}
+
+//==================================================================================================
 // Structures and Enums
 //==================================================================================================
 
 pub enum PageTableStorage {
-    Heap(Box<[u32; mem::PAGE_SIZE / core::mem::size_of::<u32>()]>),
+    /// Boot-time BSS-backed storage, allocated via `alloc_boot_slot()`.
+    Bss(&'static mut [u32; PAGE_TABLE_LENGTH]),
+    /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
 }
 
@@ -72,12 +171,10 @@ impl Deref for PageTableStorage {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Heap(entries) => entries.deref(),
+            Self::Bss(entries) => entries.as_slice(),
             Self::KernelPage(page) => {
                 let base: *const u32 = page.base().into_raw_value() as *const u32;
-                unsafe {
-                    core::slice::from_raw_parts(base, mem::PAGE_SIZE / core::mem::size_of::<u32>())
-                }
+                unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
             },
         }
     }
@@ -86,15 +183,61 @@ impl Deref for PageTableStorage {
 impl DerefMut for PageTableStorage {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Self::Heap(entries) => entries.deref_mut(),
+            Self::Bss(entries) => entries.as_mut_slice(),
             Self::KernelPage(page) => {
                 let base: *mut u32 = page.base().into_raw_value() as *mut u32;
-                unsafe {
-                    core::slice::from_raw_parts_mut(
-                        base,
-                        mem::PAGE_SIZE / core::mem::size_of::<u32>(),
-                    )
-                }
+                unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
+            },
+        }
+    }
+}
+
+pub enum PageDirectoryStorage {
+    /// Boot-time BSS-backed storage, allocated via `alloc_boot_slot()`.
+    Bss(&'static mut [u32; PAGE_TABLE_LENGTH]),
+    /// Runtime storage backed by a kernel page from the page pool.
+    KernelPage(KernelPage),
+}
+
+impl PageDirectoryStorage {
+    /// Allocates a page directory from BSS boot storage (used for the root page directory during
+    /// early init, before the kernel page pool is available).
+    ///
+    /// # Safety
+    ///
+    /// This function must only be called during early single-threaded kernel init.
+    pub unsafe fn new_bss() -> Self {
+        Self::Bss(alloc_boot_slot())
+    }
+
+    /// Creates a page directory backed by a kernel page from the kernel page pool (used at runtime
+    /// for new process address spaces).
+    pub fn new_from_kpage(kpage: KernelPage) -> Self {
+        Self::KernelPage(kpage)
+    }
+}
+
+impl Deref for PageDirectoryStorage {
+    type Target = [u32];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Bss(entries) => entries.as_slice(),
+            Self::KernelPage(page) => {
+                let base: *const u32 = page.base().into_raw_value() as *const u32;
+                unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
+            },
+        }
+    }
+}
+
+impl DerefMut for PageDirectoryStorage {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Bss(entries) => entries.as_mut_slice(),
+            Self::KernelPage(page) => {
+                let base: *mut u32 = page.base().into_raw_value() as *mut u32;
+                unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
             },
         }
     }
@@ -157,9 +300,9 @@ pub fn init(
                     match page_table_addr.cmp(&last.0) {
                         Ordering::Greater => {
                             root_pagetables.push_back(last);
-                            let pgtable_storage: PageTableStorage = PageTableStorage::Heap(
-                                Box::new([0; mem::PAGE_SIZE / core::mem::size_of::<u32>()]),
-                            );
+                            let pgtable_storage: PageTableStorage =
+                                // SAFETY: called during single-threaded kernel init.
+                                PageTableStorage::Bss(unsafe { alloc_boot_slot() });
                             let page_table: PageTable<PageTableStorage> =
                                 PageTable::<PageTableStorage>::new(pgtable_storage);
                             let page_table_addr: PageTableAligned<VirtualAddress> =
@@ -177,9 +320,9 @@ pub fn init(
                     }
                 } else {
                     trace!("creating new page table for {:#010x}", raw_vaddr);
-                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
-                    ));
+                    let pgtable_storage: PageTableStorage =
+                        // SAFETY: called during single-threaded kernel init.
+                        PageTableStorage::Bss(unsafe { alloc_boot_slot() });
                     let page_table: PageTable<PageTableStorage> =
                         PageTable::<PageTableStorage>::new(pgtable_storage);
                     let page_table_addr: PageTableAligned<VirtualAddress> =

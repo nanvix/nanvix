@@ -196,7 +196,22 @@ impl VirtMemoryManager {
 
     /// Creates a new virtual address space, based on root.
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
-        let new_vmem: Vmem = Vmem::clone(vmem)?;
+        // Allocate a kernel page for the new page directory.
+        let pgdir_page: KernelPage = match self.physman.try_borrow_mut() {
+            Ok(mut physman) => {
+                // The page directory initialization logic (PageDirectory::new/clean)
+                // will zero the page; no need to clear the frame here.
+                let kframe: KernelFrame = physman.alloc_kernel_frame(false)?;
+                KernelPage::new(kframe)
+            },
+            Err(_) => {
+                let reason: &str = "failed to borrow physical memory manager";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            },
+        };
+
+        let new_vmem: Vmem = Vmem::clone(vmem, pgdir_page)?;
 
         trace!(
             "new_vmem={:?}, old_vmem={:?}",
