@@ -51,14 +51,14 @@ the syscall transport itself.
 ### What It Measures
 
 - `fcntl(F_GETFL)` on `STDOUT_FILENO` to force a real linuxd-backed round trip.
-- `pwrite()` payload sweeps, which stress the guest-to-host request path.
-- `pread()` payload sweeps, which stress the host-to-guest response path.
+- `write()`, `read()`, `pwrite()`, and `pread()` payload sweeps, covering both sequential and
+  positioned traffic.
 - Legacy microvm transport (`microvm` without `ring-buffer`) versus the ring microvm transport
   (`microvm ring-buffer`).
-- The fixed-size RTT section below still reflects the Tier 1 ring path with CQ interrupt
-  suppression, while the payload sweeps below use the fixed-buffer Phase 5e ring path.
+- Historical fixed-size RTT rows for the original ring path, the CQ-interrupt-suppressed path, and
+  the current direct-`linuxd` SQ/CQ path.
 - The payload benchmark program now emits `write()`, `read()`, `pwrite()`, and `pread()`
-  size sweeps; the committed tables below summarize the last positioned-I/O rerun.
+  size sweeps through `65536` bytes; the tables below summarize the latest full rerun.
 
 ### What It Does **Not** Measure
 
@@ -198,70 +198,118 @@ the original ring path, the CQ-interrupt-suppressed hybrid path, and the newer d
 |---------|---------------|-------------|---------------|-------|
 | Before CQ interrupt suppression | `454885 ns` | `621284 ns` | `1.366x` | Ring path injected a guest IRQ for every CQE. |
 | After CQ interrupt suppression | `391014 ns` | `424155 ns` | `1.085x` | Current Tier 1 ring path; host only injects when the CQ transitions from empty to non-empty while `CQ_NOTIFY_ME` is armed. |
-| Direct linuxd SQ/CQ path | `531675 ns` | `246793 ns` | `0.464x` | Fresh 5-trial interleaved rerun with one warm-up run per transport and a pinned `nanvixd` core. `linuxd` drains SQEs and posts hot-path CQEs directly. |
+| Direct linuxd SQ/CQ path | `241275 ns` | `113058 ns` | `0.469x` | Fresh 5-trial interleaved rerun with one warm-up run per transport and a pinned `nanvixd` core. `linuxd` drains SQEs and posts hot-path CQEs directly. |
+
+### Payload Sweep Results (`write()`)
+
+Sequential `write()` now uses the same multi-page fixed-buffer transport as the positioned path:
+the guest gathers the user buffer into up to `16` shared fixed buffers, and `linuxd` issues a
+single `writev()` per logical transfer. The table below reports 3-trial medians of the per-trial
+average latency with `/dev/zero` as the linuxd-side backend.
+
+| Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
+|--------------|---------------|-------------|---------------|
+| 32 | `0.747 ms` | `0.391 ms` | `0.523x` |
+| 64 | `1.042 ms` | `0.380 ms` | `0.364x` |
+| 128 | `0.619 ms` | `0.435 ms` | `0.703x` |
+| 256 | `0.620 ms` | `0.461 ms` | `0.745x` |
+| 512 | `0.775 ms` | `0.477 ms` | `0.615x` |
+| 1024 | `0.534 ms` | `0.393 ms` | `0.735x` |
+| 1536 | `0.511 ms` | `0.351 ms` | `0.687x` |
+| 2048 | `0.603 ms` | `0.346 ms` | `0.573x` |
+| 4096 | `1.533 ms` | `0.394 ms` | `0.257x` |
+| 8192 | `1.920 ms` | `0.404 ms` | `0.210x` |
+| 16384 | `4.001 ms` | `0.360 ms` | `0.090x` |
+| 32768 | `5.519 ms` | `0.374 ms` | `0.068x` |
+| 65536 | `12.461 ms` | `0.541 ms` | `0.043x` |
+
+### Payload Sweep Results (`read()`)
+
+Sequential `read()` uses the same multi-page descriptor flow in the opposite direction: `linuxd`
+fills the shared fixed buffers with one `readv()`, then the guest scatters those bytes back into
+the caller's user pages as the CQEs arrive.
+
+| Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
+|--------------|---------------|-------------|---------------|
+| 32 | `0.725 ms` | `0.413 ms` | `0.569x` |
+| 64 | `1.027 ms` | `0.362 ms` | `0.352x` |
+| 128 | `1.199 ms` | `0.348 ms` | `0.290x` |
+| 256 | `0.676 ms` | `0.394 ms` | `0.582x` |
+| 512 | `0.776 ms` | `0.350 ms` | `0.450x` |
+| 1024 | `0.827 ms` | `0.413 ms` | `0.500x` |
+| 1536 | `0.870 ms` | `0.349 ms` | `0.401x` |
+| 2048 | `0.706 ms` | `0.431 ms` | `0.611x` |
+| 4096 | `1.462 ms` | `0.438 ms` | `0.300x` |
+| 8192 | `2.267 ms` | `0.339 ms` | `0.150x` |
+| 16384 | `4.510 ms` | `0.945 ms` | `0.209x` |
+| 32768 | `8.081 ms` | `2.436 ms` | `0.301x` |
+| 65536 | `13.943 ms` | `5.459 ms` | `0.392x` |
 
 ### Payload Sweep Results (`pwrite()`)
 
-The latest rerun uses the direct-linuxd fixed-buffer path for positioned writes. Instead of
-forwarding SQEs through the older `uservm` drain/CQ path, the guest now submits a fixed shared-ring
-buffer descriptor, `linuxd` drains that SQE directly, and the host reads the payload from the
-pre-registered buffer. The table below reports 3-trial medians of the per-trial average latency
-with `/dev/zero` as the linuxd-side backend.
+The positioned write benchmark uses the same shared fixed-buffer scheme, but drives
+`linuxd` through `pwritev()` so the transport cost is isolated from file-position updates.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.471 ms` | `0.535 ms` | `1.137x` |
-| 64 | `0.461 ms` | `0.456 ms` | `0.989x` |
-| 128 | `0.522 ms` | `0.298 ms` | `0.570x` |
-| 256 | `0.459 ms` | `0.290 ms` | `0.631x` |
-| 512 | `0.434 ms` | `0.309 ms` | `0.712x` |
-| 1024 | `0.457 ms` | `0.292 ms` | `0.640x` |
-| 1536 | `0.503 ms` | `0.307 ms` | `0.610x` |
-| 2048 | `0.425 ms` | `0.300 ms` | `0.705x` |
-| 4096 | `0.900 ms` | `0.596 ms` | `0.661x` |
-| 8192 | `1.382 ms` | `0.917 ms` | `0.663x` |
-| 16384 | `2.095 ms` | `1.512 ms` | `0.722x` |
-| 32768 | `3.855 ms` | `2.546 ms` | `0.660x` |
+| 32 | `0.721 ms` | `0.434 ms` | `0.602x` |
+| 64 | `0.697 ms` | `0.366 ms` | `0.525x` |
+| 128 | `0.692 ms` | `0.338 ms` | `0.488x` |
+| 256 | `0.826 ms` | `0.367 ms` | `0.444x` |
+| 512 | `0.924 ms` | `0.405 ms` | `0.439x` |
+| 1024 | `0.719 ms` | `0.498 ms` | `0.693x` |
+| 1536 | `0.691 ms` | `0.501 ms` | `0.726x` |
+| 2048 | `0.754 ms` | `0.388 ms` | `0.515x` |
+| 4096 | `1.459 ms` | `0.428 ms` | `0.294x` |
+| 8192 | `1.982 ms` | `0.390 ms` | `0.197x` |
+| 16384 | `3.239 ms` | `0.426 ms` | `0.131x` |
+| 32768 | `4.978 ms` | `0.356 ms` | `0.071x` |
+| 65536 | `10.424 ms` | `0.606 ms` | `0.058x` |
 
 ### Payload Sweep Results (`pread()`)
 
-`pread()` now uses the same fixed-buffer scheme in the opposite direction: linuxd copies directly
-into the shared ring buffer and the guest copies back into the caller's buffer when the CQE
-arrives. This table uses the same methodology, but exercises the opposite data direction against
-`/dev/zero`.
+`pread()` uses the same fixed-buffer scheme in the opposite direction: `linuxd` copies directly
+into the shared ring buffer via `preadv()`, and the guest copies back into the caller's buffer when
+the CQEs arrive.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.429 ms` | `0.340 ms` | `0.793x` |
-| 64 | `0.518 ms` | `0.311 ms` | `0.600x` |
-| 128 | `0.443 ms` | `0.287 ms` | `0.647x` |
-| 256 | `0.452 ms` | `0.319 ms` | `0.704x` |
-| 512 | `0.475 ms` | `0.307 ms` | `0.645x` |
-| 1024 | `0.475 ms` | `0.287 ms` | `0.605x` |
-| 1536 | `0.427 ms` | `0.300 ms` | `0.702x` |
-| 2048 | `0.524 ms` | `0.262 ms` | `0.501x` |
-| 4096 | `0.921 ms` | `0.595 ms` | `0.647x` |
-| 8192 | `1.466 ms` | `0.792 ms` | `0.540x` |
-| 16384 | `2.398 ms` | `1.411 ms` | `0.588x` |
-| 32768 | `4.124 ms` | `2.472 ms` | `0.600x` |
+| 32 | `0.671 ms` | `0.431 ms` | `0.643x` |
+| 64 | `0.642 ms` | `0.461 ms` | `0.718x` |
+| 128 | `0.617 ms` | `0.413 ms` | `0.668x` |
+| 256 | `0.634 ms` | `0.508 ms` | `0.802x` |
+| 512 | `0.647 ms` | `0.472 ms` | `0.729x` |
+| 1024 | `0.637 ms` | `0.479 ms` | `0.752x` |
+| 1536 | `0.625 ms` | `0.605 ms` | `0.968x` |
+| 2048 | `0.725 ms` | `0.425 ms` | `0.586x` |
+| 4096 | `1.711 ms` | `0.349 ms` | `0.204x` |
+| 8192 | `1.922 ms` | `0.447 ms` | `0.233x` |
+| 16384 | `6.165 ms` | `0.895 ms` | `0.145x` |
+| 32768 | `5.832 ms` | `2.466 ms` | `0.423x` |
+| 65536 | `10.020 ms` | `5.339 ms` | `0.533x` |
 
 ### Interpretation
 
 - CQ interrupt suppression substantially improved the original hybrid RTT benchmark: the ring path
   moved from `1.366x` slower than legacy to `1.085x` slower on a fresh 5-trial rerun.
 - The direct-linuxd RTT rerun then pushed the fixed-size benchmark past parity: on the latest
-  warm-up + pinned-core 5-trial interleaved run, `fcntl(F_GETFL)` improved from `0.532 ms` legacy
-  to `0.247 ms` ring (`0.464x` ring / legacy).
+  warm-up + pinned-core 5-trial interleaved run, `fcntl(F_GETFL)` improved from `0.241 ms` legacy
+  to `0.113 ms` ring (`0.469x` ring / legacy).
 - The `/dev/zero` backend removes host ext4/page-cache work from the payload sweep, so these
   numbers are a better measure of syscall + transport overhead than the earlier regular-file runs.
-- With the direct-linuxd path enabled, a `32768`-byte transfer now favors ring in both directions:
-  `3.855 ms` legacy vs `2.546 ms` ring for `pwrite()`, and `4.124 ms` legacy vs `2.472 ms` ring
-  for `pread()`.
-- `pread()` is now faster than legacy at every measured size. `pwrite()` is faster at every size
-  except `32` B and is effectively at parity by `64` B.
+- Ring now beats legacy at every measured size for all four operations (`write()`, `read()`,
+  `pwrite()`, and `pread()`) through the new `65536`-byte cap.
+- The send-side operations benefit the most from the multi-buffer direct path: at `65536` bytes,
+  `write()` drops from `12.461 ms` to `0.541 ms`, and `pwrite()` drops from `10.424 ms` to
+  `0.606 ms`.
+- The receive-side operations also improve substantially above one page, but the gains are smaller
+  because the host-to-guest path still pays for CQ completion handling and guest scatter-back into
+  the caller's buffer. At `65536` bytes, `read()` improves from `13.943 ms` to `5.459 ms`, and
+  `pread()` improves from `10.020 ms` to `5.339 ms`.
 - These payload improvements are consistent with removing the `uservm` SQ-drain/CQ-write hot path
-  from the active transport path. Tier 2 adaptive polling, guest-to-host doorbell suppression, and
-  full fallback removal are still pending.
+  from the active transport path and amortizing one logical transfer across up to `16` shared fixed
+  buffers. Tier 2 adaptive polling, guest-to-host doorbell suppression, and full fallback removal
+  are still pending.
 - The fixed-size benchmark is still sensitive to host noise, but the warm-up + pinned-core rerun
   brought the absolute RTTs back much closer to the earlier sub-millisecond baseline.
 - The smallest payload points can still show shared-environment noise, so the interleaved medians
@@ -269,17 +317,20 @@ arrives. This table uses the same methodology, but exercises the opposite data d
 
 The latest rerun and plotting step generated:
 
+- `benchmark-results/write-latency-vs-size-dev-zero.png`
+- `benchmark-results/read-latency-vs-size-dev-zero.png`
 - `benchmark-results/pwrite-latency-vs-size-dev-zero.png`
 - `benchmark-results/pread-latency-vs-size-dev-zero.png`
+- `benchmark-results/write-ring-over-legacy-dev-zero.png`
+- `benchmark-results/read-ring-over-legacy-dev-zero.png`
 - `benchmark-results/pwrite-ring-over-legacy-dev-zero.png`
 - `benchmark-results/pread-ring-over-legacy-dev-zero.png`
 - `benchmark-results/fcntl-rtt-history.png`
 - `benchmark-results/fcntl-rtt-direct-trials.png`
 
-Committed copies of the raw tables, summaries, and plots from this rerun live under
-`benchmark-results/`, including `results-direct-linuxd.tsv`,
-`results-direct-linuxd-summary.tsv`, `payload-size-results-dev-zero.tsv`, and
-`payload-size-summary-dev-zero.tsv`.
+The refreshed raw tables, summaries, and plots from this rerun live under `benchmark-results/`,
+including `results-direct-linuxd.tsv`, `results-direct-linuxd-summary.tsv`,
+`payload-size-results-dev-zero.tsv`, and `payload-size-summary-dev-zero.tsv`.
 
 When reproducing the benchmark, prefer the median trend and the ratio tables over any single trial:
 the experiments ran in a shared development environment, so larger payload points can show visible

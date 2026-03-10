@@ -568,10 +568,10 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
 - CQ interrupt suppression is now implemented end-to-end.
 - The previous `IkcFrame::Bulk` payload design remains in-tree as the
   compatibility path when `FIXED_BUF` is not used.
-- The benchmarked `pwrite()` / `pread()` path now uses the fixed-buffer Phase 3
-  design: the ring shared region carries pre-registered payload buffers and the
-  active path uses fixed-buffer descriptors instead of bouncing payload bytes
-  through the older bulk path.
+- The benchmarked `write()` / `read()` / `pwrite()` / `pread()` path now uses
+  the fixed-buffer multi-page design: the ring shared region carries
+  pre-registered payload buffers and the active path uses fixed-buffer
+  descriptors instead of bouncing payload bytes through the older bulk path.
 - The fixed-buffer path is runtime-validated end-to-end, and the canonical
   `/dev/zero` payload sweep has been rerun against fresh legacy and ring
   artifact trees.
@@ -579,7 +579,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
   - a fresh 5-trial interleaved `fcntl(F_GETFL)` round-trip rerun with warm-up
     and pinned-core placement, and
   - a fresh 3-trial `/dev/zero` payload sweep that exercises fixed-buffer
-    `pwrite()` / `pread()` traffic.
+    `write()` / `read()` / `pwrite()` / `pread()` traffic.
 - Because the benchmark was rerun in a shared development environment, the
   absolute RTT numbers vary between historical runs; the interleaved medians and
   ring/legacy ratios are the more stable signal.
@@ -602,37 +602,42 @@ Using `fcntl(F_GETFL)` as a linuxd-backed round trip:
   - ring median = `424155 ns`
   - ring / legacy = `1.085x`
 - After direct linuxd SQ/CQ bypass:
-  - legacy median = `531675 ns`
-  - ring median = `246793 ns`
-  - ring / legacy = `0.464x`
+  - legacy median = `241275 ns`
+  - ring median = `113058 ns`
+  - ring / legacy = `0.469x`
 
 ### Payload Sweeps
 
-The payload sweeps now cover both directions (`pwrite()` and `pread()`) from `32` bytes up to
-`32768` bytes, including sizes beyond a single `4096`-byte page. The canonical payload results use
-`/dev/zero` as the linuxd-side backend so that the benchmark reflects syscall/transport delay
-rather than host filesystem work.
+The payload sweeps now cover both sequential and positioned traffic (`write()`, `read()`,
+`pwrite()`, and `pread()`) from `32` bytes up to `65536` bytes, including sizes well beyond a
+single `4096`-byte page. The canonical payload results use `/dev/zero` as the linuxd-side backend
+so that the benchmark reflects syscall/transport delay rather than host filesystem work.
 
 Selected ring / legacy ratios from the current 3-trial median rerun:
 
-| Operation | 4096 B | 8192 B | 16384 B | 32768 B |
-|-----------|--------|--------|---------|---------|
-| `pwrite()` | `0.661x` | `0.663x` | `0.722x` | `0.660x` |
-| `pread()` | `0.647x` | `0.540x` | `0.588x` | `0.600x` |
+| Operation | 4096 B | 8192 B | 16384 B | 32768 B | 65536 B |
+|-----------|--------|--------|---------|---------|---------|
+| `write()` | `0.257x` | `0.210x` | `0.090x` | `0.068x` | `0.043x` |
+| `read()` | `0.300x` | `0.150x` | `0.209x` | `0.301x` | `0.392x` |
+| `pwrite()` | `0.294x` | `0.197x` | `0.131x` | `0.071x` | `0.058x` |
+| `pread()` | `0.204x` | `0.233x` | `0.145x` | `0.423x` | `0.533x` |
 
 Interpretation:
 
-- With `/dev/zero` backing the payload path, the absolute `32768`-byte latencies are now
-  `3.855 ms` legacy vs `2.546 ms` ring for `pwrite()`, and `4.124 ms` legacy vs `2.472 ms` ring
-  for `pread()`.
-- Compared with the earlier hybrid fixed-buffer rerun, the direct-linuxd path materially improved
-  both directions. `pread()` now beats legacy at every measured size, while `pwrite()` beats
-  legacy at every size except `32` B and is effectively at parity by `64` B.
+- With `/dev/zero` backing the payload path, the direct-linuxd ring path now beats legacy at every
+  measured size for all four operations.
+- The strongest gains are on the send side: at `65536` bytes, `write()` drops from `12.461 ms` to
+  `0.541 ms`, and `pwrite()` drops from `10.424 ms` to `0.606 ms`.
+- The receive side also improves materially above one page, though the gains are smaller because
+  the guest still pays to scatter data back into user space after CQ completion. At `65536` bytes,
+  `read()` improves from `13.943 ms` to `5.459 ms`, and `pread()` improves from `10.020 ms` to
+  `5.339 ms`.
 - The fixed-size RTT rerun also now shows a cleaner absolute result after warm-up and core pinning:
-  `0.532 ms` legacy vs `0.247 ms` ring for `fcntl(F_GETFL)`.
+  `0.241 ms` legacy vs `0.113 ms` ring for `fcntl(F_GETFL)`.
 - These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
-  active transport path. Adaptive polling, guest-to-host doorbell suppression, and full fallback
-  elimination are still pending.
+  active transport path and amortizing one logical transfer across up to `16` shared fixed
+  buffers. Adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
+  still pending.
 
 ## Key Design Decisions
 
