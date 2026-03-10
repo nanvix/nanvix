@@ -3,8 +3,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(all(test, feature = "std"), feature(random))]
-#![feature(proc_macro_hygiene)]
-#![feature(stmt_expr_attributes)]
+
+// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+// we need `proc_macro_hygiene` and `stmt_expr_attributes`.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
+#![cfg_attr(verus_keep_ghost, feature(stmt_expr_attributes))]
 
 // Verus does not yet support compound assignment on struct fields (e.g., self.usage += 1).
 #![allow(clippy::assign_op_pattern)]
@@ -348,14 +351,14 @@ impl Bitmap {
         let mut done: bool = false;
 
         // Traverse the bitmap, wrapping around once if needed.
-        #[verus_spec(
+        #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
                 self.alloc_range_first_loop_invariant(old(self), size, start, initial_start, wrapped, done),
             decreases
                 if !done { 1int } else { 0int },
                 if !wrapped { 1int } else { 0int },
                 self.number_of_bits - start,
-        )]
+        ))]
         while !done
         {
             // Stop condition: exceeded the last valid starting position.
@@ -408,7 +411,7 @@ impl Bitmap {
                 let mut free: bool = true;
 
 
-                #[verus_spec(
+                #[cfg_attr(verus_keep_ghost, verus_spec(
                     invariant
                         self.alloc_range_second_loop_invariant(old(self), size, start, initial_start, offset,
                                                                wrapped, free, checked_before, start_before_inner),
@@ -419,7 +422,7 @@ impl Bitmap {
                         self.alloc_range_second_loop_ensures(size, start, initial_start, wrapped,
                                                              free, start_before_inner),
                     decreases size - offset,
-                )]
+                ))]
                 while offset < size
                 {
                     let idx: usize = start + offset;
@@ -443,12 +446,12 @@ impl Bitmap {
                         let ghost pre_alloc_self = *self;
                     }
 
-                    #[verus_spec(
+                    #[cfg_attr(verus_keep_ghost, verus_spec(
                         invariant
                             self.alloc_range_third_loop_invariant(old(self), pre_alloc_self, size, start,
                                                                   alloc_offset),
                         decreases size - alloc_offset,
-                    )]
+                    ))]
                     for alloc_offset in 0..size
                     {
                         let idx: usize = start + alloc_offset;
