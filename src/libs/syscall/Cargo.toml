@@ -18,7 +18,7 @@ arch = { workspace = true }
 sys = { workspace = true }
 config = { workspace = true }
 cfg-if = { workspace = true }
-elf = { workspace = true, optional = true }
+elf = { workspace = true, optional = true, features = ["relocation"] }
 goblin = { workspace = true, optional = true, features = [
     "elf32",
     "elf64",
