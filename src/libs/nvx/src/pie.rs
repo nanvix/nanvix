@@ -2,83 +2,24 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-// Lint Configuration
+// Imports
 //==================================================================================================
 
-#![allow(dead_code)]
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-// ELF object file types.
-const ET_DYN: u16 = 3;
-
-// ELF segment types.
-const PT_LOAD: u32 = 1;
-const PT_DYNAMIC: u32 = 2;
-
-// Dynamic section tags.
-const DT_NULL: i32 = 0;
-const DT_REL: i32 = 17;
-const DT_RELSZ: i32 = 18;
-const DT_JMPREL: i32 = 23;
-const DT_PLTRELSZ: i32 = 2;
-
-// Relocation types.
-const R_386_RELATIVE: u32 = 8;
-
-//==================================================================================================
-// ELF Structures
-//==================================================================================================
-
-const EI_NIDENT: usize = 16;
-
-// ELF32 file header.
-#[repr(C)]
-struct Elf32Ehdr {
-    e_ident: [u8; EI_NIDENT], // ELF magic numbers and other info.
-    e_type: u16,              // Object file type.
-    e_machine: u16,           // Required machine architecture type.
-    e_version: u32,           // Object file version.
-    e_entry: u32,             // Virtual address of process's entry point.
-    e_phoff: u32,             // Program header table file offset.
-    e_shoff: u32,             // Section header table file offset.
-    e_flags: u32,             // Processor-specific flags.
-    e_ehsize: u16,            // ELF header's size in bytes.
-    e_phentsize: u16,         // Program header table entry size.
-    e_phnum: u16,             // Entries in the program header table.
-    e_shentsize: u16,         // Section header table size.
-    e_shnum: u16,             // Entries in the section header table.
-    e_shstrndx: u16,          // Index for the section name string table.
-}
-
-// ELF32 program header.
-#[repr(C)]
-struct Elf32Phdr {
-    p_type: u32,   // Segment type.
-    p_offset: u32, // Offset of the first byte.
-    p_vaddr: u32,  // Virtual address of the first byte.
-    p_paddr: u32,  // Physical address of the first byte.
-    p_filesz: u32, // Bytes in the file image.
-    p_memsz: u32,  // Bytes in the memory image.
-    p_flags: u32,  // Segment flags.
-    p_align: u32,  // Alignment value.
-}
-
-// ELF32 dynamic section entry.
-#[repr(C)]
-struct Elf32Dyn {
-    d_tag: i32, // Entry type tag.
-    d_val: u32, // Integer value.
-}
-
-// ELF32 relocation entry (without addend).
-#[repr(C)]
-struct Elf32Rel {
-    r_offset: u32, // Offset at which to apply the relocation.
-    r_info: u32,   // Relocation type and symbol index.
-}
+use ::elf::elf32::{
+    Elf32Dyn,
+    Elf32Ehdr,
+    Elf32Phdr,
+    Elf32Rel,
+    DT_JMPREL,
+    DT_NULL,
+    DT_PLTRELSZ,
+    DT_REL,
+    DT_RELSZ,
+    ET_DYN,
+    PT_DYNAMIC,
+    PT_LOAD,
+    R_386_RELATIVE,
+};
 
 //==================================================================================================
 // Public Functions

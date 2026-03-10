@@ -13,20 +13,21 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
-goblin = { workspace = true, features = [
+goblin = { workspace = true, optional = true, features = [
     "elf32",
     "elf64",
     "endian_fd",
     "mach32",
     "mach64",
 ] }
-num_enum = { workspace = true }
-static_assert = { workspace = true }
+num_enum = { workspace = true, optional = true }
+static_assert = { workspace = true, optional = true }
 sys = { workspace = true }
 
 [features]
 default = []
 std = []
+relocation = ["dep:goblin", "dep:num_enum", "dep:static_assert"]
 
 [lints]
 workspace = true
