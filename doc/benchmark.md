@@ -57,6 +57,8 @@ the syscall transport itself.
   (`microvm ring-buffer`).
 - The fixed-size RTT section below still reflects the Tier 1 ring path with CQ interrupt
   suppression, while the payload sweeps below use the fixed-buffer Phase 5e ring path.
+- The payload benchmark program now emits `write()`, `read()`, `pwrite()`, and `pread()`
+  size sweeps; the committed tables below summarize the last positioned-I/O rerun.
 
 ### What It Does **Not** Measure
 
@@ -120,7 +122,7 @@ cargo +nanvix-x86_64 build \
   --no-default-features \
   --features panic
 
-# Payload-only guest benchmark.
+# Legacy payload-only guest benchmark.
 RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' \
 cargo +nanvix-x86_64 build \
   -Zbuild-std=core,alloc \
@@ -130,6 +132,17 @@ cargo +nanvix-x86_64 build \
   -p syscall-bench-nostd \
   --no-default-features \
   --features 'panic payload-sweep-only'
+
+# Ring payload-only guest benchmark.
+RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' \
+cargo +nanvix-x86_64 build \
+  -Zbuild-std=core,alloc \
+  -Zjson-target-spec \
+  --release \
+  --target build/targets/x86_64-user.json \
+  -p syscall-bench-nostd \
+  --no-default-features \
+  --features 'panic payload-sweep-only ring-buffer'
 ```
 
 Runtime setup and collection procedure:
@@ -139,9 +152,9 @@ Runtime setup and collection procedure:
    `nanvixd.elf`, `linuxd.elf`, and `syscall-bench-nostd.elf`.
 3. For the payload sweeps, create `syscall-bench-payload.tmp` as a symlink to `/dev/zero` inside
    each `bin/` directory before every run. The benchmark unlinks this path at the end, so it must
-   be recreated for the next trial. This makes `pwrite()` discard bytes and makes `pread()` return
-   zero-filled bytes, isolating syscall and transport overhead instead of measuring host filesystem
-   work.
+   be recreated for the next trial. This makes `write()` / `pwrite()` discard bytes and makes
+   `read()` / `pread()` return zero-filled bytes, isolating syscall and transport overhead instead
+   of measuring host filesystem work.
 4. Run the benchmark from inside each `bin/` directory because `nanvixd` resolves the guest
    program relative to the current working directory:
 
@@ -166,11 +179,13 @@ latest direct-linuxd RTT row below uses that warm-up + pinned-core procedure.
 The concrete parameters used in the payload sweeps were:
 
 - Payload backend: `/dev/zero` via the `syscall-bench-payload.tmp` symlink.
-- Payload sizes: `32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768` bytes.
+- Payload sweeps: `write()`, `read()`, `pwrite()`, and `pread()`.
+- Payload sizes: `32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536`
+  bytes.
 - Warmup iterations per size: `4`.
 - Measured iterations per size:
   - `32` iterations for sizes up to and including `4096` bytes.
-  - `16` iterations for `8192`, `16384`, and `32768` bytes.
+  - `16` iterations for `8192`, `16384`, `32768`, and `65536` bytes.
 - Trials per transport for payload sweeps: `3`.
 - Trials per transport for the fixed `fcntl(F_GETFL)` RTT benchmark: `5`.
 

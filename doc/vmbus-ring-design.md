@@ -421,6 +421,76 @@ also remain future work in the active drain path; today it still handles `Nop`,
 
 ---
 
+## Multi-page transfers
+
+The current ring path now supports one logical `read()` / `write()` /
+`pread()` / `pwrite()` transfer spanning multiple fixed buffers while keeping
+the direct-`linuxd` hot path. The underlying reason this works is not that
+guest user memory must be physically contiguous: the kernel already has
+`vmcopy_from_user()` / `vmcopy_to_user()` helpers that can walk a process'
+address space and copy across non-contiguous user pages. The transport limit is
+now the configured logical transfer cap rather than a single 4 KiB buffer.
+
+### Implemented design
+
+1. **Cap each logical transfer** to a bounded size and split only above that
+    cap. The initial target is **64 KiB per transfer** = `16 x 4 KiB` fixed
+    buffers.
+2. **Allocate multiple fixed buffers per request** in the guest kernel instead
+   of a single per-thread buffer.
+3. **Use `vmcopy_from_user()` / `vmcopy_to_user()`** to gather/scatter between
+   the caller's user buffer and the ring-backed fixed-buffer region. This lets a
+   single logical transfer span arbitrary guest user pages without depending on
+   their physical contiguity.
+4. **Keep one control request** (`PositionedWriteRequest` /
+   `PositionedReadRequest`) but follow it with multiple ordered `FIXED_BUF`
+   descriptors that together cover the requested byte range.
+ 5. **Have `linuxd` issue one host vectored syscall** for the whole logical
+    request:
+    - `write()` path: build a host `iovec[]` that points at the shared fixed
+      buffers and call `writev()`.
+    - `read()` path: build the same `iovec[]` and call `readv()`.
+    - `pwrite()` path: build a host `iovec[]` that points at the shared fixed
+      buffers and call `pwritev()`.
+    - `pread()` path: build the same `iovec[]` and call `preadv()`.
+6. **Preserve existing guest-visible completion semantics**:
+    - For writes, keep the normal `WriteResponse` message as the visible
+     completion.
+    - For reads, post one fixed-buffer CQE per completed shared buffer and use
+      `CqeFlags::MORE` on all but the final CQE so the guest can accumulate the
+      copied bytes and wake the blocked `pull()` caller only after the last
+      segment arrives. The normal `ReadResponse` message still follows so the
+      syscall layer keeps its existing validation path.
+7. **Keep legacy guest binaries safe by feature-gating the larger chunk size**
+   in the syscall crate. Ring-enabled guest builds raise the per-request chunk
+   limit to `64 KiB`; legacy guest builds continue to split at page
+   boundaries.
+
+### Transfer-size rule of thumb
+
+The cap should be large enough to amortize control-path costs, but small enough
+that one request does not monopolize the fixed-buffer pool.
+
+- Current ring region: `471` fixed buffers of `4096` bytes each.
+- Recommended initial cap: `16` buffers = `64 KiB`.
+- Share of pool consumed by one max-sized transfer: about `3.4%`.
+- Concurrent max-sized transfers still possible per VM: about `29`.
+
+That is a good starting point because it materially reduces per-page control
+overhead without turning the fixed-buffer region into effectively dedicated
+per-thread storage. If benchmarking later shows a clear benefit, the next
+tuning step would be `128 KiB`, but `64 KiB` is the safer initial default.
+
+### Guest API rollout
+
+`pwrite()` / `pread()` were moved to this multi-buffer transport first, and the
+same `64 KiB` ring-enabled chunking now also covers `write()` / `read()`.
+Guest `pwritev()` / `preadv()` still layer on top of those improved paths. A
+later optimization can teach guest vectored I/O to submit one logical
+multi-iovec request directly instead of looping per `iovec`.
+
+---
+
 ## Original Target Comparison (for Comparison Only)
 
 The table below is the original end-state estimate that motivated the design.
