@@ -223,7 +223,9 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
     let mut count: usize = 0;
     // Spawn all servers.
     for kmod in kmods.iter() {
-        let elf: &Elf32Fhdr = Elf32Fhdr::from_address(kmod.start().into_raw_value());
+        // SAFETY: `kmod.start()` points to a valid, page-aligned ELF image loaded by the
+        // bootloader that remains in memory for the lifetime of the kernel.
+        let elf: &Elf32Fhdr = unsafe { Elf32Fhdr::from_address(kmod.start().into_raw_value()) };
         let pid: ProcessIdentifier = {
             // Split command line into arguments an environment variables using ";" as the delimiter.
             let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
