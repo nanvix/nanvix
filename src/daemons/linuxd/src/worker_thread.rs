@@ -27,19 +27,19 @@ use crate::{
         RequestAssembler,
         RequestAssemblerTrait,
     },
-    syscalls::SyscallTable,
     shared_ring::SharedRing,
+    syscalls::SyscallTable,
     user_vm_handle::UserVmHandle,
     venv::VenvCommand,
 };
 use ::anyhow::Result;
 use ::libc::{
+    SIGUSR1,
     c_int,
     pthread_kill,
     pthread_self,
     sigaction,
     sigemptyset,
-    SIGUSR1,
 };
 use ::log::{
     debug,
@@ -52,12 +52,12 @@ use ::std::{
     mem,
     ptr,
     sync::{
+        Arc,
         atomic::{
             AtomicBool,
             AtomicUsize,
             Ordering,
         },
-        Arc,
     },
     thread::{
         self,
@@ -89,6 +89,9 @@ use ::sysapi::{
     },
 };
 use ::syscall::{
+    LINUXD,
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -141,9 +144,9 @@ use ::syscall::{
         LinkAtRequest,
         PartialReadRequest,
         PartialWriteRequest,
+        PipeRequest,
         PositionedReadRequest,
         PositionedWriteRequest,
-        PipeRequest,
         ReadLinkAtRequest,
         ReadRequest,
         ReadResponse,
@@ -152,9 +155,6 @@ use ::syscall::{
         WriteRequest,
         WriteResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-    LINUXD,
 };
 use ::syscomm::{
     SocketStreamReader,
@@ -164,12 +164,12 @@ use ::syscomm::{
 use ::tokio::{
     runtime::Handle,
     sync::{
+        Mutex,
+        MutexGuard,
         mpsc::{
             Receiver,
             Sender,
         },
-        Mutex,
-        MutexGuard,
     },
     task::{
         self,
@@ -443,8 +443,8 @@ impl WorkerThreadHandle {
                 },
                 Some(VenvCommand::FixedBuffer(_)) => {
                     warn!(
-                        "handle_message(): received unexpected fixed-buffer transfer without request \
-                         (worker_tid={worker_tid:?})"
+                        "handle_message(): received unexpected fixed-buffer transfer without \
+                         request (worker_tid={worker_tid:?})"
                     );
                     continue;
                 },
@@ -685,7 +685,8 @@ impl WorkerThreadHandle {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
                 let request: CloseRequest = CloseRequest::from_bytes(message.payload);
-                Self::handle_close_request(syscall_table, source, request).map(|message| (message, false))
+                Self::handle_close_request(syscall_table, source, request)
+                    .map(|message| (message, false))
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
@@ -713,7 +714,8 @@ impl WorkerThreadHandle {
                 .map(|message| (message, false))
             },
             LinuxDaemonMessageHeader::PositionedReadRequest => {
-                let request: PositionedReadRequest = PositionedReadRequest::from_bytes(message.payload);
+                let request: PositionedReadRequest =
+                    PositionedReadRequest::from_bytes(message.payload);
                 Self::handle_positioned_read_request(
                     syscall_table,
                     source,
@@ -1042,15 +1044,23 @@ impl WorkerThreadHandle {
         message: LinuxDaemonMessage,
     ) -> Result<(), WorkerThreadError> {
         match message.header {
-            LinuxDaemonMessageHeader::FileStatRequest => {
-                Self::handle_fstat_request(syscall_table, uvm_stream, direct_cq_writer, source, message)
-            },
+            LinuxDaemonMessageHeader::FileStatRequest => Self::handle_fstat_request(
+                syscall_table,
+                uvm_stream,
+                direct_cq_writer,
+                source,
+                message,
+            ),
             LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest => {
                 Self::handle_getcwd_request(uvm_stream, direct_cq_writer, syscall_table, source)
             },
-            LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
-                Self::handle_getdents_request(syscall_table, uvm_stream, direct_cq_writer, source, message)
-            },
+            LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => Self::handle_getdents_request(
+                syscall_table,
+                uvm_stream,
+                direct_cq_writer,
+                source,
+                message,
+            ),
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -1105,9 +1115,9 @@ impl WorkerThreadHandle {
     ) -> Result<(), std::io::Error> {
         if !force_socket {
             if let Some(direct_cq_writer) = direct_cq_writer {
-                return direct_cq_writer
-                    .write_message(&message)
-                    .map_err(|kind| std::io::Error::new(kind, "failed to write direct CQ message"));
+                return direct_cq_writer.write_message(&message).map_err(|kind| {
+                    std::io::Error::new(kind, "failed to write direct CQ message")
+                });
             }
         }
 
@@ -1118,14 +1128,66 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         direct_cq_writer: Option<Arc<DirectCqWriter>>,
         transfer: &FixedBufferTransfer,
+        more: bool,
     ) -> Result<(), std::io::Error> {
         if let Some(direct_cq_writer) = direct_cq_writer {
             return direct_cq_writer
-                .write_fixed(transfer)
-                .map_err(|kind| std::io::Error::new(kind, "failed to write direct CQ fixed transfer"));
+                .write_fixed(transfer, more)
+                .map_err(|kind| {
+                    std::io::Error::new(kind, "failed to write direct CQ fixed transfer")
+                });
         }
 
         Handle::current().block_on(Self::send_fixed(uvm_stream, transfer))
+    }
+
+    fn send_fixed_responses(
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        direct_cq_writer: Option<Arc<DirectCqWriter>>,
+        transfers: &[(FixedBufferTransfer, *mut u8)],
+        bytes_transferred: usize,
+    ) -> Result<(), std::io::Error> {
+        let Some((first_transfer, _)) = transfers.first() else {
+            return Ok(());
+        };
+
+        if bytes_transferred == 0 {
+            let response: FixedBufferTransfer = FixedBufferTransfer::new(
+                first_transfer.source_pid(),
+                first_transfer.source_tid(),
+                first_transfer.destination_pid(),
+                first_transfer.destination_tid(),
+                first_transfer.buffer_id(),
+                0,
+            );
+            return Self::send_fixed_response(uvm_stream, direct_cq_writer, &response, false);
+        }
+
+        let mut remaining: usize = bytes_transferred;
+        for (transfer, _) in transfers {
+            if remaining == 0 {
+                break;
+            }
+
+            let seg_len: usize = core::cmp::min(remaining, transfer.data_len() as usize);
+            remaining -= seg_len;
+            let response: FixedBufferTransfer = FixedBufferTransfer::new(
+                transfer.source_pid(),
+                transfer.source_tid(),
+                transfer.destination_pid(),
+                transfer.destination_tid(),
+                transfer.buffer_id(),
+                seg_len as u32,
+            );
+            Self::send_fixed_response(
+                uvm_stream.clone(),
+                direct_cq_writer.clone(),
+                &response,
+                remaining != 0,
+            )?;
+        }
+
+        Ok(())
     }
 
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
@@ -1170,31 +1232,87 @@ impl WorkerThreadHandle {
         // Receive bulk data that carries the actual write payload. A timeout prevents the worker
         // thread from blocking forever if the guest VM crashes mid-protocol.
         let mut bulk_data: Option<Vec<u8>> = None;
-        let mut fixed_buffer_ptr: Option<*mut u8> = None;
-        let fixed_buffer_len: usize = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+        let mut fixed_buffers: Option<Vec<(FixedBufferTransfer, *mut u8)>> = None;
+        let count: usize = request.count as usize;
+        match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => {
                 let mut data: Vec<u8> = bulk.into_data();
                 profiler::timestamp_message!(&mut data, 0);
-                let len: usize = data.len();
                 bulk_data = Some(data);
-                len
             },
-            Ok(VenvCommand::FixedBuffer(fixed)) => {
+            Ok(VenvCommand::FixedBuffer(first_fixed)) => {
                 let Some(shared_ring) = shared_ring else {
                     error!(
-                        "handle_write_request(): received fixed-buffer transfer without shared ring mapping"
+                        "handle_write_request(): received fixed-buffer transfer without shared \
+                         ring mapping"
                     );
                     return Ok(build_error(source, ErrorCode::InvalidMessage));
                 };
-                let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
-                    Ok(ptr) => ptr,
-                    Err(e) => {
-                        error!("handle_write_request(): invalid fixed buffer (error={e:?})");
+                let mut transfers: Vec<(FixedBufferTransfer, *mut u8)> = Vec::new();
+                let mut total_len: usize = 0;
+                let mut next_fixed: Option<FixedBufferTransfer> = Some(first_fixed);
+
+                while total_len < count {
+                    let fixed: FixedBufferTransfer = match next_fixed.take() {
+                        Some(fixed) => fixed,
+                        None => match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                            Ok(VenvCommand::FixedBuffer(fixed)) => fixed,
+                            Ok(VenvCommand::Shutdown) => {
+                                debug!(
+                                    "handle_write_request(): received shutdown while waiting for \
+                                     fixed-buffer segments"
+                                );
+                                return Err(WorkerThreadError::Interrupted);
+                            },
+                            Ok(VenvCommand::Work(_)) => {
+                                error!(
+                                    "handle_write_request(): expected fixed-buffer segment, got \
+                                     IKC message"
+                                );
+                                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            },
+                            Ok(VenvCommand::BulkData(_)) => {
+                                error!(
+                                    "handle_write_request(): expected fixed-buffer segment, got \
+                                     bulk payload"
+                                );
+                                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            },
+                            Err(e) => {
+                                error!(
+                                    "handle_write_request(): failed to receive fixed-buffer \
+                                     segment"
+                                );
+                                return Err(e);
+                            },
+                        },
+                    };
+
+                    let chunk_len: usize = fixed.data_len() as usize;
+                    let Some(new_total) = total_len.checked_add(chunk_len) else {
+                        error!("handle_write_request(): fixed-buffer payload length overflow");
                         return Ok(build_error(source, ErrorCode::InvalidMessage));
-                    },
-                };
-                fixed_buffer_ptr = Some(ptr);
-                fixed.data_len() as usize
+                    };
+                    if new_total > count {
+                        error!(
+                            "handle_write_request(): fixed-buffer payload exceeds request count \
+                             (request.count={count}, accumulated={new_total})"
+                        );
+                        return Ok(build_error(source, ErrorCode::InvalidMessage));
+                    }
+
+                    let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
+                        Ok(ptr) => ptr,
+                        Err(e) => {
+                            error!("handle_write_request(): invalid fixed buffer (error={e:?})");
+                            return Ok(build_error(source, ErrorCode::InvalidMessage));
+                        },
+                    };
+                    transfers.push((fixed, ptr));
+                    total_len = new_total;
+                }
+
+                fixed_buffers = Some(transfers);
             },
             Ok(VenvCommand::Shutdown) => {
                 debug!("handle_write_request(): received shutdown while waiting for bulk data");
@@ -1210,20 +1328,6 @@ impl WorkerThreadHandle {
             },
         };
 
-        let count: usize = request.count as usize;
-        let write_len: usize = core::cmp::min(count, fixed_buffer_len);
-        let write_buf: &[u8] = if let Some(ref bulk_data) = bulk_data {
-            &bulk_data[..core::cmp::min(count, bulk_data.len())]
-        } else {
-            let Some(ptr) = fixed_buffer_ptr else {
-                error!("handle_write_request(): missing fixed buffer pointer");
-                return Ok(build_error(source, ErrorCode::InvalidMessage));
-            };
-            // SAFETY: `fixed_buffer_ptr` is validated against the shared ring mapping and
-            // `write_len` is bounded by the fixed-buffer transfer length.
-            unsafe { ::std::slice::from_raw_parts(ptr.cast_const(), write_len) }
-        };
-
         // Check if writing to gateway.
         if request.fd == STDOUT_FILENO || request.fd == STDERR_FILENO {
             // Check if write size is invalid.
@@ -1236,13 +1340,43 @@ impl WorkerThreadHandle {
                     gateway_writer.blocking_lock();
 
                 // Run blocking write as a cancellable operation.
-                let result: ::std::io::Result<()> =
-                    Self::run_cancellable_operation(locked_gateway_writer.write_all(write_buf));
+                let result: ::std::io::Result<usize> = if let Some(ref bulk_data) = bulk_data {
+                    let write_buf: &[u8] = &bulk_data[..core::cmp::min(count, bulk_data.len())];
+                    Self::run_cancellable_operation(locked_gateway_writer.write_all(write_buf))
+                        .map(|()| write_buf.len())
+                } else {
+                    let Some(fixed_buffers) = fixed_buffers.as_ref() else {
+                        error!("handle_write_request(): missing fixed-buffer payload");
+                        return Ok(build_error(source, ErrorCode::InvalidMessage));
+                    };
+
+                    let mut written: usize = 0;
+                    let mut result: ::std::io::Result<()> = Ok(());
+                    for (transfer, ptr) in fixed_buffers {
+                        let write_len: usize = transfer.data_len() as usize;
+                        let write_buf: &[u8] =
+                            unsafe { ::std::slice::from_raw_parts(ptr.cast_const(), write_len) };
+                        match Self::run_cancellable_operation(
+                            locked_gateway_writer.write_all(write_buf),
+                        ) {
+                            Ok(()) => written += write_buf.len(),
+                            Err(e) => {
+                                result = Err(e);
+                                break;
+                            },
+                        }
+                    }
+
+                    match result {
+                        Ok(()) => Ok(written),
+                        Err(e) => Err(e),
+                    }
+                };
 
                 match result {
-                    Ok(()) => {
-                        debug!("wrote {} bytes to the gateway", write_buf.len());
-                        Ok(WriteResponse::build(source, write_buf.len() as i32))
+                    Ok(nwritten) => {
+                        debug!("wrote {nwritten} bytes to the gateway");
+                        Ok(WriteResponse::build(source, nwritten as i32))
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => {
                         debug!("handle_write_request(): write interrupted");
@@ -1257,13 +1391,49 @@ impl WorkerThreadHandle {
         } else {
             // Write to other file descriptor via syscall table redirection.
             let fd: libc::c_int = request.fd;
-            let ret: libc::ssize_t = unsafe {
-                unistd::do_write(
-                    syscall_table,
-                    fd,
-                    write_buf.as_ptr() as *const libc::c_void,
-                    count,
-                )
+            let ret: libc::ssize_t = if let Some(ref bulk_data) = bulk_data {
+                let write_buf: &[u8] = &bulk_data[..core::cmp::min(count, bulk_data.len())];
+                unsafe {
+                    unistd::do_write(
+                        syscall_table,
+                        fd,
+                        write_buf.as_ptr() as *const libc::c_void,
+                        write_buf.len(),
+                    )
+                }
+            } else {
+                let Some(fixed_buffers) = fixed_buffers.as_ref() else {
+                    error!("handle_write_request(): missing fixed-buffer payload");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                };
+
+                if fixed_buffers.len() == 1 {
+                    let (transfer, ptr): &(FixedBufferTransfer, *mut u8) = &fixed_buffers[0];
+                    unsafe {
+                        unistd::do_write(
+                            syscall_table,
+                            fd,
+                            ptr.cast_const() as *const libc::c_void,
+                            transfer.data_len() as usize,
+                        )
+                    }
+                } else {
+                    let mut iovecs: Vec<libc::iovec> = Vec::with_capacity(fixed_buffers.len());
+                    for (transfer, ptr) in fixed_buffers {
+                        iovecs.push(libc::iovec {
+                            iov_base: *ptr as *mut libc::c_void,
+                            iov_len: transfer.data_len() as usize,
+                        });
+                    }
+                    unsafe {
+                        unistd::do_writev_raw(
+                            syscall_table,
+                            fd,
+                            iovecs.as_ptr(),
+                            iovecs.len() as c_int,
+                        )
+                    }
+                }
             };
             if ret >= 0 {
                 Ok(WriteResponse::build(source, ret as i32))
@@ -1308,19 +1478,84 @@ impl WorkerThreadHandle {
 
         enum PullTarget {
             Bulk(::sys::ipc::DataChunkHeader),
-            Fixed(FixedBufferTransfer, Arc<SharedRing>),
+            Fixed(Vec<(FixedBufferTransfer, *mut u8)>),
         }
 
         let pull_target: PullTarget = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => PullTarget::Bulk(*bulk.header()),
-            Ok(VenvCommand::FixedBuffer(fixed)) => {
+            Ok(VenvCommand::FixedBuffer(first_fixed)) => {
                 let Some(shared_ring) = shared_ring else {
                     error!(
-                        "handle_read_request(): received fixed-buffer transfer without shared ring mapping"
+                        "handle_read_request(): received fixed-buffer transfer without shared \
+                         ring mapping"
                     );
                     return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                 };
-                PullTarget::Fixed(fixed, shared_ring)
+                let expected_len: usize = request.count as usize;
+                let mut transfers: Vec<(FixedBufferTransfer, *mut u8)> = Vec::new();
+                let mut total_len: usize = 0;
+                let mut next_fixed: Option<FixedBufferTransfer> = Some(first_fixed);
+
+                while total_len < expected_len {
+                    let fixed: FixedBufferTransfer = match next_fixed.take() {
+                        Some(fixed) => fixed,
+                        None => match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                            Ok(VenvCommand::FixedBuffer(fixed)) => fixed,
+                            Ok(VenvCommand::Shutdown) => {
+                                debug!(
+                                    "handle_read_request(): received shutdown while waiting for \
+                                     fixed-buffer segments"
+                                );
+                                return Err(WorkerThreadError::Interrupted);
+                            },
+                            Ok(VenvCommand::Work(_)) => {
+                                error!(
+                                    "handle_read_request(): expected fixed-buffer segment, got \
+                                     IKC message"
+                                );
+                                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                            },
+                            Ok(VenvCommand::BulkData(_)) => {
+                                error!(
+                                    "handle_read_request(): expected fixed-buffer segment, got \
+                                     bulk payload"
+                                );
+                                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                            },
+                            Err(e) => {
+                                error!(
+                                    "handle_read_request(): failed to receive fixed-buffer segment"
+                                );
+                                return Err(e);
+                            },
+                        },
+                    };
+
+                    let chunk_len: usize = fixed.data_len() as usize;
+                    let Some(new_total) = total_len.checked_add(chunk_len) else {
+                        error!("handle_read_request(): fixed-buffer payload length overflow");
+                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                    };
+                    if new_total > expected_len {
+                        error!(
+                            "handle_read_request(): fixed-buffer payload exceeds request count \
+                             (request.count={expected_len}, accumulated={new_total})"
+                        );
+                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                    }
+
+                    let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
+                        Ok(ptr) => ptr,
+                        Err(e) => {
+                            error!("handle_read_request(): invalid fixed buffer (error={e:?})");
+                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                        },
+                    };
+                    transfers.push((fixed, ptr));
+                    total_len = new_total;
+                }
+
+                PullTarget::Fixed(transfers)
             },
             Ok(VenvCommand::Shutdown) => {
                 debug!("handle_read_request(): received shutdown while waiting for bulk data");
@@ -1337,119 +1572,126 @@ impl WorkerThreadHandle {
         };
 
         let force_socket: bool = matches!(&pull_target, PullTarget::Bulk(_));
-        let max_len: usize = match &pull_target {
-            PullTarget::Bulk(header) => header.data_len() as usize,
-            PullTarget::Fixed(fixed, _) => fixed.data_len() as usize,
-        };
 
-        let send_response =
-            |data: Option<Vec<u8>>, len: u32, pull_target: &PullTarget| -> Result<(), WorkerThreadError> {
-                match pull_target {
-                    PullTarget::Bulk(header) => {
-                        let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
-                            ::sys::ipc::DataChunkHeader::new(
-                                header.source_pid(),
-                                header.source_tid(),
-                                header.destination_pid(),
-                                header.destination_tid(),
-                                header.data_addr(),
-                                len,
-                            ),
-                            data.unwrap_or_default(),
-                        );
-                        Handle::current()
-                            .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
-                            .map_err(|e| {
-                                if e.kind() == ErrorKind::BrokenPipe {
-                                    debug!("handle_read_request(): UVM stream closed (broken pipe)");
-                                    WorkerThreadError::Interrupted
-                                } else {
-                                    error!(
-                                        "handle_read_request(): failed to send bulk response (error={e:?})"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                }
-                            })
-                    },
-                    PullTarget::Fixed(fixed, _) => {
-                        let response: FixedBufferTransfer = FixedBufferTransfer::new(
-                            fixed.source_pid(),
-                            fixed.source_tid(),
-                            fixed.destination_pid(),
-                            fixed.destination_tid(),
-                            fixed.buffer_id(),
+        let send_response = |data: Option<Vec<u8>>,
+                             len: u32,
+                             pull_target: &PullTarget|
+         -> Result<(), WorkerThreadError> {
+            match pull_target {
+                PullTarget::Bulk(header) => {
+                    let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
+                        ::sys::ipc::DataChunkHeader::new(
+                            header.source_pid(),
+                            header.source_tid(),
+                            header.destination_pid(),
+                            header.destination_tid(),
+                            header.data_addr(),
                             len,
-                        );
-                        Self::send_fixed_response(
-                            uvm_stream.clone(),
-                            direct_cq_writer.clone(),
-                            &response,
-                        )
+                        ),
+                        data.unwrap_or_default(),
+                    );
+                    Handle::current()
+                        .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
                         .map_err(|e| {
                             if e.kind() == ErrorKind::BrokenPipe {
                                 debug!("handle_read_request(): UVM stream closed (broken pipe)");
                                 WorkerThreadError::Interrupted
                             } else {
                                 error!(
-                                    "handle_read_request(): failed to send fixed-buffer response (error={e:?})"
+                                    "handle_read_request(): failed to send bulk response \
+                                     (error={e:?})"
                                 );
                                 WorkerThreadError::Interrupted
                             }
                         })
-                    },
-                }
-            };
+                },
+                PullTarget::Fixed(transfers) => Self::send_fixed_responses(
+                    uvm_stream.clone(),
+                    direct_cq_writer.clone(),
+                    transfers,
+                    len as usize,
+                )
+                .map_err(|e| {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        debug!("handle_read_request(): UVM stream closed (broken pipe)");
+                        WorkerThreadError::Interrupted
+                    } else {
+                        error!(
+                            "handle_read_request(): failed to send fixed-buffer response \
+                             (error={e:?})"
+                        );
+                        WorkerThreadError::Interrupted
+                    }
+                }),
+            }
+        };
 
         if request.fd == STDIN_FILENO {
             let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
                 gateway_reader.blocking_lock();
 
             match &pull_target {
-                PullTarget::Fixed(fixed, ring) => {
-                    let ptr: *mut u8 = match ring.fixed_buffer_ptr(fixed.buffer_id()) {
-                        Ok(ptr) => ptr,
-                        Err(e) => {
-                            error!("handle_read_request(): invalid fixed buffer (error={e:?})");
-                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
-                        },
-                    };
-                    let read_slice: &mut [u8] =
-                        // SAFETY: `ptr` points to a validated fixed buffer and `max_len` is bounded.
-                        unsafe { ::std::slice::from_raw_parts_mut(ptr, max_len) };
-                    let result: ::std::io::Result<usize> =
-                        Self::run_cancellable_operation(locked_gateway_reader.read(read_slice));
-                    drop(locked_gateway_reader);
-
-                    match result {
-                        Ok(0) => {
-                            debug!("handle_read_request(): eof");
-                            send_response(None, 0, &pull_target)?;
-                            Ok((ReadResponse::eof(source), force_socket))
-                        },
-                        Ok(n) => {
-                            debug!("read {n} bytes from gateway");
-                            send_response(None, n as u32, &pull_target)?;
-                            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
-                                [0u8; ReadResponse::BUFFER_SIZE];
-                            Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
-                        },
-                        Err(e) if e.kind() == ErrorKind::Interrupted => {
-                            debug!("handle_read_request(): read interrupted");
-                            if let Err(send_err) = send_response(None, 0, &pull_target) {
-                                warn!(
-                                    "handle_read_request(): failed to send empty fixed-buffer response on interrupt (error={send_err:?})"
+                PullTarget::Fixed(transfers) => {
+                    let mut total_read: usize = 0;
+                    for (transfer, ptr) in transfers {
+                        let read_slice: &mut [u8] = unsafe {
+                            ::std::slice::from_raw_parts_mut(*ptr, transfer.data_len() as usize)
+                        };
+                        let result: ::std::io::Result<usize> =
+                            Self::run_cancellable_operation(locked_gateway_reader.read(read_slice));
+                        match result {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                total_read += n;
+                                if n < read_slice.len() {
+                                    break;
+                                }
+                            },
+                            Err(e) if e.kind() == ErrorKind::Interrupted => {
+                                debug!("handle_read_request(): read interrupted");
+                                if total_read == 0 {
+                                    if let Err(send_err) = send_response(None, 0, &pull_target) {
+                                        warn!(
+                                            "handle_read_request(): failed to send empty \
+                                             fixed-buffer response on interrupt \
+                                             (error={send_err:?})"
+                                        );
+                                    }
+                                    return Err(WorkerThreadError::Interrupted);
+                                }
+                                break;
+                            },
+                            Err(e) => {
+                                error!(
+                                    "handle_read_request(): error reading data from gateway \
+                                     (error={e:?})"
                                 );
-                            }
-                            Err(WorkerThreadError::Interrupted)
-                        },
-                        Err(e) => {
-                            error!("handle_read_request(): error reading data from gateway (error={e:?})");
-                            send_response(None, 0, &pull_target)?;
-                            Ok((ReadResponse::eof(source), force_socket))
-                        },
+                                if total_read == 0 {
+                                    send_response(None, 0, &pull_target)?;
+                                    return Ok((ReadResponse::eof(source), force_socket));
+                                }
+                                break;
+                            },
+                        }
+                    }
+                    drop(locked_gateway_reader);
+                    send_response(None, total_read as u32, &pull_target)?;
+                    if total_read == 0 {
+                        Ok((ReadResponse::eof(source), force_socket))
+                    } else {
+                        let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                            [0u8; ReadResponse::BUFFER_SIZE];
+                        Ok((
+                            ReadResponse::build(source, total_read as c_ssize_t, empty_buf),
+                            force_socket,
+                        ))
                     }
                 },
                 PullTarget::Bulk(_) => {
+                    let max_len: usize = match &pull_target {
+                        PullTarget::Bulk(header) => header.data_len() as usize,
+                        PullTarget::Fixed(_) => unreachable!(),
+                    };
                     let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
                     let result: ::std::io::Result<usize> =
                         Self::run_cancellable_operation(locked_gateway_reader.read(&mut read_buf));
@@ -1468,20 +1710,27 @@ impl WorkerThreadHandle {
                             send_response(Some(read_buf), n as u32, &pull_target)?;
                             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                                 [0u8; ReadResponse::BUFFER_SIZE];
-                            Ok((ReadResponse::build(source, n as c_ssize_t, empty_buf), force_socket))
+                            Ok((
+                                ReadResponse::build(source, n as c_ssize_t, empty_buf),
+                                force_socket,
+                            ))
                         },
                         Err(e) if e.kind() == ErrorKind::Interrupted => {
                             debug!("handle_read_request(): read interrupted");
                             if let Err(send_err) = send_response(Some(Vec::new()), 0, &pull_target)
                             {
                                 warn!(
-                                    "handle_read_request(): failed to send empty bulk response on interrupt (error={send_err:?})"
+                                    "handle_read_request(): failed to send empty bulk response on \
+                                     interrupt (error={send_err:?})"
                                 );
                             }
                             Err(WorkerThreadError::Interrupted)
                         },
                         Err(e) => {
-                            error!("handle_read_request(): error reading data from gateway (error={e:?})");
+                            error!(
+                                "handle_read_request(): error reading data from gateway \
+                                 (error={e:?})"
+                            );
                             send_response(Some(Vec::new()), 0, &pull_target)?;
                             Ok((ReadResponse::eof(source), force_socket))
                         },
@@ -1492,21 +1741,33 @@ impl WorkerThreadHandle {
             let fd: libc::c_int = request.fd;
 
             match &pull_target {
-                PullTarget::Fixed(fixed, ring) => {
-                    let ptr: *mut u8 = match ring.fixed_buffer_ptr(fixed.buffer_id()) {
-                        Ok(ptr) => ptr,
-                        Err(e) => {
-                            error!("handle_read_request(): invalid fixed buffer (error={e:?})");
-                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
-                        },
-                    };
-                    let ret: libc::ssize_t = unsafe {
-                        unistd::do_read(
-                            syscall_table,
-                            fd,
-                            ptr as *mut libc::c_void,
-                            max_len,
-                        )
+                PullTarget::Fixed(transfers) => {
+                    let ret: libc::ssize_t = if transfers.len() == 1 {
+                        let (transfer, ptr): &(FixedBufferTransfer, *mut u8) = &transfers[0];
+                        unsafe {
+                            unistd::do_read(
+                                syscall_table,
+                                fd,
+                                *ptr as *mut libc::c_void,
+                                transfer.data_len() as usize,
+                            )
+                        }
+                    } else {
+                        let mut iovecs: Vec<libc::iovec> = Vec::with_capacity(transfers.len());
+                        for (transfer, ptr) in transfers {
+                            iovecs.push(libc::iovec {
+                                iov_base: *ptr as *mut libc::c_void,
+                                iov_len: transfer.data_len() as usize,
+                            });
+                        }
+                        unsafe {
+                            unistd::do_readv_raw(
+                                syscall_table,
+                                fd,
+                                iovecs.as_ptr(),
+                                iovecs.len() as c_int,
+                            )
+                        }
                     };
                     if ret > 0 {
                         let n: usize = ret as usize;
@@ -1521,23 +1782,29 @@ impl WorkerThreadHandle {
                         let errno: i32 = unsafe { *libc::__errno_location() };
                         if errno == libc::EINTR {
                             error!(
-                                "handle_read_request(): worker thread interrupted while blocked on read()"
+                                "handle_read_request(): worker thread interrupted while blocked \
+                                 on read()"
                             );
                             if let Err(send_err) = send_response(None, 0, &pull_target) {
                                 warn!(
-                                    "handle_read_request(): failed to send empty fixed-buffer response on interrupt (error={send_err:?})"
+                                    "handle_read_request(): failed to send empty fixed-buffer \
+                                     response on interrupt (error={send_err:?})"
                                 );
                             }
                             Err(WorkerThreadError::Interrupted)
                         } else {
-                            error!("handle_read_request(): read via syscall table failed (errno={errno})");
+                            error!(
+                                "handle_read_request(): read via syscall table failed \
+                                 (errno={errno})"
+                            );
                             send_response(None, 0, &pull_target)?;
                             Ok((
                                 build_error(
                                     source,
                                     ErrorCode::try_from(errno).unwrap_or_else(|_| {
                                         error!(
-                                            "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                            "handle_read_request(): unmapped errno={errno}, \
+                                             falling back to IoErr"
                                         );
                                         ErrorCode::IoErr
                                     }),
@@ -1548,6 +1815,10 @@ impl WorkerThreadHandle {
                     }
                 },
                 PullTarget::Bulk(_) => {
+                    let max_len: usize = match &pull_target {
+                        PullTarget::Bulk(header) => header.data_len() as usize,
+                        PullTarget::Fixed(_) => unreachable!(),
+                    };
                     let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
                     let ret: libc::ssize_t = unsafe {
                         unistd::do_read(
@@ -1571,24 +1842,30 @@ impl WorkerThreadHandle {
                         let errno: i32 = unsafe { *libc::__errno_location() };
                         if errno == libc::EINTR {
                             error!(
-                                "handle_read_request(): worker thread interrupted while blocked on read()"
+                                "handle_read_request(): worker thread interrupted while blocked \
+                                 on read()"
                             );
                             if let Err(send_err) = send_response(Some(Vec::new()), 0, &pull_target)
                             {
                                 warn!(
-                                    "handle_read_request(): failed to send empty bulk response on interrupt (error={send_err:?})"
+                                    "handle_read_request(): failed to send empty bulk response on \
+                                     interrupt (error={send_err:?})"
                                 );
                             }
                             Err(WorkerThreadError::Interrupted)
                         } else {
-                            error!("handle_read_request(): read via syscall table failed (errno={errno})");
+                            error!(
+                                "handle_read_request(): read via syscall table failed \
+                                 (errno={errno})"
+                            );
                             send_response(Some(Vec::new()), 0, &pull_target)?;
                             Ok((
                                 build_error(
                                     source,
                                     ErrorCode::try_from(errno).unwrap_or_else(|_| {
                                         error!(
-                                            "handle_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                            "handle_read_request(): unmapped errno={errno}, \
+                                             falling back to IoErr"
                                         );
                                         ErrorCode::IoErr
                                     }),
@@ -1612,37 +1889,98 @@ impl WorkerThreadHandle {
         trace!("handle_positioned_write_request(): source={source:?}, request={request:?}");
 
         let mut bulk_data: Option<Vec<u8>> = None;
-        let mut fixed_buffer_ptr: Option<*mut u8> = None;
-        let fixed_buffer_len: usize = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+        let mut fixed_buffers: Option<Vec<(FixedBufferTransfer, *mut u8)>> = None;
+        let count: usize = request.count as usize;
+        match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => {
                 let mut data: Vec<u8> = bulk.into_data();
                 profiler::timestamp_message!(&mut data, 0);
-                let len: usize = data.len();
                 bulk_data = Some(data);
-                len
             },
-            Ok(VenvCommand::FixedBuffer(fixed)) => {
+            Ok(VenvCommand::FixedBuffer(first_fixed)) => {
                 let Some(shared_ring) = shared_ring else {
                     error!(
-                        "handle_positioned_write_request(): received fixed-buffer transfer without shared ring mapping"
+                        "handle_positioned_write_request(): received fixed-buffer transfer \
+                         without shared ring mapping"
                     );
                     return Ok(build_error(source, ErrorCode::InvalidMessage));
                 };
-                let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
-                    Ok(ptr) => ptr,
-                    Err(e) => {
+                let mut transfers: Vec<(FixedBufferTransfer, *mut u8)> = Vec::new();
+                let mut total_len: usize = 0;
+                let mut next_fixed: Option<FixedBufferTransfer> = Some(first_fixed);
+
+                while total_len < count {
+                    let fixed: FixedBufferTransfer = match next_fixed.take() {
+                        Some(fixed) => fixed,
+                        None => match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                            Ok(VenvCommand::FixedBuffer(fixed)) => fixed,
+                            Ok(VenvCommand::Shutdown) => {
+                                debug!(
+                                    "handle_positioned_write_request(): received shutdown while \
+                                     waiting for fixed-buffer segments"
+                                );
+                                return Err(WorkerThreadError::Interrupted);
+                            },
+                            Ok(VenvCommand::Work(_)) => {
+                                error!(
+                                    "handle_positioned_write_request(): expected fixed-buffer \
+                                     segment, got IKC message"
+                                );
+                                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            },
+                            Ok(VenvCommand::BulkData(_)) => {
+                                error!(
+                                    "handle_positioned_write_request(): expected fixed-buffer \
+                                     segment, got bulk payload"
+                                );
+                                return Ok(build_error(source, ErrorCode::InvalidMessage));
+                            },
+                            Err(e) => {
+                                error!(
+                                    "handle_positioned_write_request(): failed to receive \
+                                     fixed-buffer segment"
+                                );
+                                return Err(e);
+                            },
+                        },
+                    };
+
+                    let chunk_len: usize = fixed.data_len() as usize;
+                    let Some(new_total) = total_len.checked_add(chunk_len) else {
                         error!(
-                            "handle_positioned_write_request(): invalid fixed buffer (error={e:?})"
+                            "handle_positioned_write_request(): fixed-buffer payload length \
+                             overflow"
                         );
                         return Ok(build_error(source, ErrorCode::InvalidMessage));
-                    },
-                };
-                fixed_buffer_ptr = Some(ptr);
-                fixed.data_len() as usize
+                    };
+                    if new_total > count {
+                        error!(
+                            "handle_positioned_write_request(): fixed-buffer payload exceeds \
+                             request count (request.count={count}, accumulated={new_total})"
+                        );
+                        return Ok(build_error(source, ErrorCode::InvalidMessage));
+                    }
+
+                    let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
+                        Ok(ptr) => ptr,
+                        Err(e) => {
+                            error!(
+                                "handle_positioned_write_request(): invalid fixed buffer \
+                                 (error={e:?})"
+                            );
+                            return Ok(build_error(source, ErrorCode::InvalidMessage));
+                        },
+                    };
+                    transfers.push((fixed, ptr));
+                    total_len = new_total;
+                }
+
+                fixed_buffers = Some(transfers);
             },
             Ok(VenvCommand::Shutdown) => {
                 debug!(
-                    "handle_positioned_write_request(): received shutdown while waiting for bulk data"
+                    "handle_positioned_write_request(): received shutdown while waiting for bulk \
+                     data"
                 );
                 return Err(WorkerThreadError::Interrupted);
             },
@@ -1657,29 +1995,53 @@ impl WorkerThreadHandle {
         };
 
         let fd: libc::c_int = request.fd;
-        let count: usize = request.count as usize;
         let offset: libc::off_t = request.offset;
-        let write_buf: &[u8] = if let Some(ref bulk_data) = bulk_data {
-            &bulk_data[..core::cmp::min(count, bulk_data.len())]
+        let ret: libc::ssize_t = if let Some(ref bulk_data) = bulk_data {
+            let write_buf: &[u8] = &bulk_data[..core::cmp::min(count, bulk_data.len())];
+            unsafe {
+                unistd::do_pwrite_raw(
+                    syscall_table,
+                    fd,
+                    write_buf.as_ptr() as *const libc::c_void,
+                    write_buf.len(),
+                    offset,
+                )
+            }
         } else {
-            let Some(ptr) = fixed_buffer_ptr else {
-                error!("handle_positioned_write_request(): missing fixed buffer pointer");
+            let Some(fixed_buffers) = fixed_buffers.as_ref() else {
+                error!("handle_positioned_write_request(): missing fixed-buffer payload");
                 return Ok(build_error(source, ErrorCode::InvalidMessage));
             };
-            let write_len: usize = core::cmp::min(count, fixed_buffer_len);
-            // SAFETY: `ptr` points to a validated fixed buffer and `write_len` is bounded by the
-            // transfer length announced by the guest.
-            unsafe { ::std::slice::from_raw_parts(ptr.cast_const(), write_len) }
-        };
 
-        let ret: libc::ssize_t = unsafe {
-            unistd::do_pwrite_raw(
-                syscall_table,
-                fd,
-                write_buf.as_ptr() as *const libc::c_void,
-                count,
-                offset,
-            )
+            if fixed_buffers.len() == 1 {
+                let (transfer, ptr): &(FixedBufferTransfer, *mut u8) = &fixed_buffers[0];
+                unsafe {
+                    unistd::do_pwrite_raw(
+                        syscall_table,
+                        fd,
+                        ptr.cast_const() as *const libc::c_void,
+                        transfer.data_len() as usize,
+                        offset,
+                    )
+                }
+            } else {
+                let mut iovecs: Vec<libc::iovec> = Vec::with_capacity(fixed_buffers.len());
+                for (transfer, ptr) in fixed_buffers {
+                    iovecs.push(libc::iovec {
+                        iov_base: *ptr as *mut libc::c_void,
+                        iov_len: transfer.data_len() as usize,
+                    });
+                }
+                unsafe {
+                    unistd::do_pwritev_raw(
+                        syscall_table,
+                        fd,
+                        iovecs.as_ptr(),
+                        iovecs.len() as c_int,
+                        offset,
+                    )
+                }
+            }
         };
         if ret >= 0 {
             Ok(WriteResponse::build(source, ret as c_ssize_t))
@@ -1687,20 +2049,21 @@ impl WorkerThreadHandle {
             let errno: i32 = unsafe { *libc::__errno_location() };
             if errno == libc::EINTR {
                 error!(
-                    "handle_positioned_write_request(): worker thread interrupted while blocked on \
-                     pwrite()"
+                    "handle_positioned_write_request(): worker thread interrupted while blocked \
+                     on pwrite()"
                 );
                 Err(WorkerThreadError::Interrupted)
             } else {
                 error!(
-                    "handle_positioned_write_request(): pwrite via syscall table failed (errno={errno})"
+                    "handle_positioned_write_request(): pwrite via syscall table failed \
+                     (errno={errno})"
                 );
                 Ok(build_error(
                     source,
                     ErrorCode::try_from(errno).unwrap_or_else(|_| {
                         error!(
-                            "handle_positioned_write_request(): unmapped errno={errno}, falling back \
-                             to IoErr"
+                            "handle_positioned_write_request(): unmapped errno={errno}, falling \
+                             back to IoErr"
                         );
                         ErrorCode::IoErr
                     }),
@@ -1722,23 +2085,96 @@ impl WorkerThreadHandle {
 
         enum PullTarget {
             Bulk(::sys::ipc::DataChunkHeader),
-            Fixed(FixedBufferTransfer, Arc<SharedRing>),
+            Fixed(Vec<(FixedBufferTransfer, *mut u8)>),
         }
 
         let pull_target: PullTarget = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => PullTarget::Bulk(*bulk.header()),
-            Ok(VenvCommand::FixedBuffer(fixed)) => {
+            Ok(VenvCommand::FixedBuffer(first_fixed)) => {
                 let Some(shared_ring) = shared_ring else {
                     error!(
-                        "handle_positioned_read_request(): received fixed-buffer transfer without shared ring mapping"
+                        "handle_positioned_read_request(): received fixed-buffer transfer without \
+                         shared ring mapping"
                     );
                     return Ok((build_error(source, ErrorCode::InvalidMessage), true));
                 };
-                PullTarget::Fixed(fixed, shared_ring)
+                let expected_len: usize = request.count as usize;
+                let mut transfers: Vec<(FixedBufferTransfer, *mut u8)> = Vec::new();
+                let mut total_len: usize = 0;
+                let mut next_fixed: Option<FixedBufferTransfer> = Some(first_fixed);
+
+                while total_len < expected_len {
+                    let fixed: FixedBufferTransfer = match next_fixed.take() {
+                        Some(fixed) => fixed,
+                        None => match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
+                            Ok(VenvCommand::FixedBuffer(fixed)) => fixed,
+                            Ok(VenvCommand::Shutdown) => {
+                                debug!(
+                                    "handle_positioned_read_request(): received shutdown while \
+                                     waiting for fixed-buffer segments"
+                                );
+                                return Err(WorkerThreadError::Interrupted);
+                            },
+                            Ok(VenvCommand::Work(_)) => {
+                                error!(
+                                    "handle_positioned_read_request(): expected fixed-buffer \
+                                     segment, got IKC message"
+                                );
+                                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                            },
+                            Ok(VenvCommand::BulkData(_)) => {
+                                error!(
+                                    "handle_positioned_read_request(): expected fixed-buffer \
+                                     segment, got bulk payload"
+                                );
+                                return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                            },
+                            Err(e) => {
+                                error!(
+                                    "handle_positioned_read_request(): failed to receive \
+                                     fixed-buffer segment"
+                                );
+                                return Err(e);
+                            },
+                        },
+                    };
+
+                    let chunk_len: usize = fixed.data_len() as usize;
+                    let Some(new_total) = total_len.checked_add(chunk_len) else {
+                        error!(
+                            "handle_positioned_read_request(): fixed-buffer payload length \
+                             overflow"
+                        );
+                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                    };
+                    if new_total > expected_len {
+                        error!(
+                            "handle_positioned_read_request(): fixed-buffer payload exceeds \
+                             request count (request.count={expected_len}, accumulated={new_total})"
+                        );
+                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                    }
+
+                    let ptr: *mut u8 = match shared_ring.fixed_buffer_ptr(fixed.buffer_id()) {
+                        Ok(ptr) => ptr,
+                        Err(e) => {
+                            error!(
+                                "handle_positioned_read_request(): invalid fixed buffer \
+                                 (error={e:?})"
+                            );
+                            return Ok((build_error(source, ErrorCode::InvalidMessage), true));
+                        },
+                    };
+                    transfers.push((fixed, ptr));
+                    total_len = new_total;
+                }
+
+                PullTarget::Fixed(transfers)
             },
             Ok(VenvCommand::Shutdown) => {
                 debug!(
-                    "handle_positioned_read_request(): received shutdown while waiting for bulk data"
+                    "handle_positioned_read_request(): received shutdown while waiting for bulk \
+                     data"
                 );
                 return Err(WorkerThreadError::Interrupted);
             },
@@ -1753,94 +2189,95 @@ impl WorkerThreadHandle {
         };
 
         let force_socket: bool = matches!(&pull_target, PullTarget::Bulk(_));
-        let max_len: usize = match &pull_target {
-            PullTarget::Bulk(header) => header.data_len() as usize,
-            PullTarget::Fixed(fixed, _) => fixed.data_len() as usize,
-        };
         let offset: libc::off_t = request.offset;
 
-        let send_response =
-            |data: Option<Vec<u8>>, len: u32, pull_target: &PullTarget| -> Result<(), WorkerThreadError> {
-                match pull_target {
-                    PullTarget::Bulk(header) => {
-                        let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
-                            ::sys::ipc::DataChunkHeader::new(
-                                header.source_pid(),
-                                header.source_tid(),
-                                header.destination_pid(),
-                                header.destination_tid(),
-                                header.data_addr(),
-                                len,
-                            ),
-                            data.unwrap_or_default(),
-                        );
-                        Handle::current()
-                            .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
-                            .map_err(|e| {
-                                if e.kind() == ErrorKind::BrokenPipe {
-                                    debug!(
-                                        "handle_positioned_read_request(): UVM stream closed (broken pipe)"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                } else {
-                                    error!(
-                                        "handle_positioned_read_request(): failed to send bulk response (error={e:?})"
-                                    );
-                                    WorkerThreadError::Interrupted
-                                }
-                            })
-                    },
-                    PullTarget::Fixed(fixed, _) => {
-                        let response: FixedBufferTransfer = FixedBufferTransfer::new(
-                            fixed.source_pid(),
-                            fixed.source_tid(),
-                            fixed.destination_pid(),
-                            fixed.destination_tid(),
-                            fixed.buffer_id(),
+        let send_response = |data: Option<Vec<u8>>,
+                             len: u32,
+                             pull_target: &PullTarget|
+         -> Result<(), WorkerThreadError> {
+            match pull_target {
+                PullTarget::Bulk(header) => {
+                    let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
+                        ::sys::ipc::DataChunkHeader::new(
+                            header.source_pid(),
+                            header.source_tid(),
+                            header.destination_pid(),
+                            header.destination_tid(),
+                            header.data_addr(),
                             len,
-                        );
-                        Self::send_fixed_response(
-                            uvm_stream.clone(),
-                            direct_cq_writer.clone(),
-                            &response,
-                        )
+                        ),
+                        data.unwrap_or_default(),
+                    );
+                    Handle::current()
+                        .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
                         .map_err(|e| {
                             if e.kind() == ErrorKind::BrokenPipe {
                                 debug!(
-                                    "handle_positioned_read_request(): UVM stream closed (broken pipe)"
+                                    "handle_positioned_read_request(): UVM stream closed (broken \
+                                     pipe)"
                                 );
                                 WorkerThreadError::Interrupted
                             } else {
                                 error!(
-                                    "handle_positioned_read_request(): failed to send fixed-buffer response (error={e:?})"
+                                    "handle_positioned_read_request(): failed to send bulk \
+                                     response (error={e:?})"
                                 );
                                 WorkerThreadError::Interrupted
                             }
                         })
-                    },
-                }
-            };
+                },
+                PullTarget::Fixed(transfers) => Self::send_fixed_responses(
+                    uvm_stream.clone(),
+                    direct_cq_writer.clone(),
+                    transfers,
+                    len as usize,
+                )
+                .map_err(|e| {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        debug!("handle_positioned_read_request(): UVM stream closed (broken pipe)");
+                        WorkerThreadError::Interrupted
+                    } else {
+                        error!(
+                            "handle_positioned_read_request(): failed to send fixed-buffer \
+                             response (error={e:?})"
+                        );
+                        WorkerThreadError::Interrupted
+                    }
+                }),
+            }
+        };
 
         let fd: libc::c_int = request.fd;
         match &pull_target {
-            PullTarget::Fixed(fixed, ring) => {
-                let ptr: *mut u8 = match ring.fixed_buffer_ptr(fixed.buffer_id()) {
-                    Ok(ptr) => ptr,
-                    Err(e) => {
-                        error!(
-                            "handle_positioned_read_request(): invalid fixed buffer (error={e:?})"
-                        );
-                        return Ok((build_error(source, ErrorCode::InvalidMessage), true));
-                    },
-                };
-                let ret: libc::ssize_t = unsafe {
-                    unistd::do_pread_raw(
-                        syscall_table,
-                        fd,
-                        ptr as *mut libc::c_void,
-                        max_len,
-                        offset,
-                    )
+            PullTarget::Fixed(transfers) => {
+                let ret: libc::ssize_t = if transfers.len() == 1 {
+                    let (transfer, ptr): &(FixedBufferTransfer, *mut u8) = &transfers[0];
+                    unsafe {
+                        unistd::do_pread_raw(
+                            syscall_table,
+                            fd,
+                            *ptr as *mut libc::c_void,
+                            transfer.data_len() as usize,
+                            offset,
+                        )
+                    }
+                } else {
+                    let mut iovecs: Vec<libc::iovec> = Vec::with_capacity(transfers.len());
+                    for (transfer, ptr) in transfers {
+                        iovecs.push(libc::iovec {
+                            iov_base: *ptr as *mut libc::c_void,
+                            iov_len: transfer.data_len() as usize,
+                        });
+                    }
+                    unsafe {
+                        unistd::do_preadv_raw(
+                            syscall_table,
+                            fd,
+                            iovecs.as_ptr(),
+                            iovecs.len() as c_int,
+                            offset,
+                        )
+                    }
                 };
                 if ret > 0 {
                     let n: usize = ret as usize;
@@ -1855,17 +2292,20 @@ impl WorkerThreadHandle {
                     let errno: i32 = unsafe { *libc::__errno_location() };
                     if errno == libc::EINTR {
                         error!(
-                            "handle_positioned_read_request(): worker thread interrupted while blocked on pread()"
+                            "handle_positioned_read_request(): worker thread interrupted while \
+                             blocked on pread()"
                         );
                         if let Err(send_err) = send_response(None, 0, &pull_target) {
                             warn!(
-                                "handle_positioned_read_request(): failed to send empty fixed-buffer response on interrupt (error={send_err:?})"
+                                "handle_positioned_read_request(): failed to send empty \
+                                 fixed-buffer response on interrupt (error={send_err:?})"
                             );
                         }
                         Err(WorkerThreadError::Interrupted)
                     } else {
                         error!(
-                            "handle_positioned_read_request(): pread via syscall table failed (errno={errno})"
+                            "handle_positioned_read_request(): pread via syscall table failed \
+                             (errno={errno})"
                         );
                         send_response(None, 0, &pull_target)?;
                         Ok((
@@ -1873,7 +2313,8 @@ impl WorkerThreadHandle {
                                 source,
                                 ErrorCode::try_from(errno).unwrap_or_else(|_| {
                                     error!(
-                                        "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                        "handle_positioned_read_request(): unmapped \
+                                         errno={errno}, falling back to IoErr"
                                     );
                                     ErrorCode::IoErr
                                 }),
@@ -1884,6 +2325,10 @@ impl WorkerThreadHandle {
                 }
             },
             PullTarget::Bulk(_) => {
+                let max_len: usize = match &pull_target {
+                    PullTarget::Bulk(header) => header.data_len() as usize,
+                    PullTarget::Fixed(_) => unreachable!(),
+                };
                 let mut read_buf: Vec<u8> = ::std::vec![0u8; max_len];
                 let ret: libc::ssize_t = unsafe {
                     unistd::do_pread_raw(
@@ -1908,17 +2353,20 @@ impl WorkerThreadHandle {
                     let errno: i32 = unsafe { *libc::__errno_location() };
                     if errno == libc::EINTR {
                         error!(
-                            "handle_positioned_read_request(): worker thread interrupted while blocked on pread()"
+                            "handle_positioned_read_request(): worker thread interrupted while \
+                             blocked on pread()"
                         );
                         if let Err(send_err) = send_response(Some(Vec::new()), 0, &pull_target) {
                             warn!(
-                                "handle_positioned_read_request(): failed to send empty bulk response on interrupt (error={send_err:?})"
+                                "handle_positioned_read_request(): failed to send empty bulk \
+                                 response on interrupt (error={send_err:?})"
                             );
                         }
                         Err(WorkerThreadError::Interrupted)
                     } else {
                         error!(
-                            "handle_positioned_read_request(): pread via syscall table failed (errno={errno})"
+                            "handle_positioned_read_request(): pread via syscall table failed \
+                             (errno={errno})"
                         );
                         send_response(Some(Vec::new()), 0, &pull_target)?;
                         Ok((
@@ -1926,7 +2374,8 @@ impl WorkerThreadHandle {
                                 source,
                                 ErrorCode::try_from(errno).unwrap_or_else(|_| {
                                     error!(
-                                        "handle_positioned_read_request(): unmapped errno={errno}, falling back to IoErr"
+                                        "handle_positioned_read_request(): unmapped \
+                                         errno={errno}, falling back to IoErr"
                                     );
                                     ErrorCode::IoErr
                                 }),

@@ -8,41 +8,86 @@
 
 use ::alloc::collections::BTreeMap;
 use ::core::sync::atomic::{
-    fence,
     AtomicU32,
     Ordering,
+    fence,
 };
 use ::nvx_ring::{
-    CqFlags,
-    CqEntry,
-    RingControl,
-    SqEntry,
-    SqFlags,
     CONTROL_OFFSET,
     CQ_OFFSET,
     CQ_SIZE,
+    CqEntry,
+    CqFlags,
     DATA_OFFSET,
     DATA_SLOT_COUNT,
     DATA_SLOT_SIZE,
     FIXED_BUF_COUNT,
     FIXED_BUF_OFFSET,
     FIXED_BUF_SIZE,
+    RingControl,
     SQ_OFFSET,
     SQ_SIZE,
+    SqEntry,
+    SqFlags,
 };
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::ThreadIdentifier,
 };
-use ::sys::pm::ThreadIdentifier;
 
 /// Base virtual address of the ring buffer region (identity-mapped, equals GPA).
 const RING_BASE: usize = ::config::microvm::RING_BUFFER_GPA;
 
 /// Next data slot to use for guest-submitted request payloads.
 static NEXT_DATA_SLOT: AtomicU32 = AtomicU32::new(0);
+/// Maximum number of fixed buffers that one logical transfer may span.
+pub const MAX_FIXED_BUFFERS_PER_TRANSFER: usize = 16;
+/// Maximum number of payload bytes carried by one logical fixed-buffer transfer.
+pub const MAX_FIXED_TRANSFER_SIZE: usize = MAX_FIXED_BUFFERS_PER_TRANSFER * FIXED_BUF_SIZE;
+
+#[derive(Clone, Copy)]
+pub struct FixedBufferReservation {
+    count: usize,
+    ids: [u32; MAX_FIXED_BUFFERS_PER_TRANSFER],
+}
+
+impl FixedBufferReservation {
+    const fn empty() -> Self {
+        Self {
+            count: 0,
+            ids: [0u32; MAX_FIXED_BUFFERS_PER_TRANSFER],
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    pub fn ids(&self) -> &[u32] {
+        &self.ids[..self.count]
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ThreadFixedBuffers {
+    count: usize,
+    ids: [u32; MAX_FIXED_BUFFERS_PER_TRANSFER],
+}
+
+impl ThreadFixedBuffers {
+    const fn new() -> Self {
+        Self {
+            count: 0,
+            ids: [0u32; MAX_FIXED_BUFFERS_PER_TRANSFER],
+        }
+    }
+}
+
 /// Per-thread fixed-buffer assignments.
-static mut THREAD_FIXED_BUFFERS: BTreeMap<ThreadIdentifier, u32> = BTreeMap::new();
+static mut THREAD_FIXED_BUFFERS: BTreeMap<ThreadIdentifier, ThreadFixedBuffers> = BTreeMap::new();
 /// Allocation bitmap for fixed buffers.
 static mut FIXED_BUFFER_IN_USE: [bool; FIXED_BUF_COUNT] = [false; FIXED_BUF_COUNT];
 
@@ -241,54 +286,102 @@ pub fn fixed_buffer_vaddr(buffer_id: u32) -> Result<usize, Error> {
 
 /// Returns the fixed buffer assigned to `caller_tid`, allocating one on first use.
 pub fn get_or_alloc_thread_fixed_buffer(caller_tid: ThreadIdentifier) -> Result<u32, Error> {
-    // SAFETY: Nanvix runs on a single core and accesses this state with interrupts disabled while
-    // handling kernel calls and IKC completions.
-    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, u32> =
-        unsafe { &mut THREAD_FIXED_BUFFERS };
-    if let Some(&buffer_id) = thread_fixed_buffers.get(&caller_tid) {
-        return Ok(buffer_id);
+    let reservation: FixedBufferReservation = get_or_alloc_thread_fixed_buffers(caller_tid, 1)?;
+    match reservation.ids().first() {
+        Some(buffer_id) => Ok(*buffer_id),
+        None => {
+            Err(Error::new(ErrorCode::ResourceBusy, "failed to allocate per-thread fixed buffer"))
+        },
+    }
+}
+
+/// Returns the number of fixed buffers required to carry `size` bytes.
+pub fn fixed_buffer_count_for_len(size: usize) -> usize {
+    if size == 0 {
+        0
+    } else {
+        size.div_ceil(FIXED_BUF_SIZE)
+    }
+}
+
+/// Returns the fixed buffers assigned to `caller_tid`, allocating enough entries on first use.
+pub fn get_or_alloc_thread_fixed_buffers(
+    caller_tid: ThreadIdentifier,
+    needed: usize,
+) -> Result<FixedBufferReservation, Error> {
+    if needed == 0 {
+        return Ok(FixedBufferReservation::empty());
+    }
+    if needed > MAX_FIXED_BUFFERS_PER_TRANSFER {
+        let reason: &str = "logical transfer exceeds per-request fixed-buffer cap";
+        error!(
+            "{reason} (caller_tid={caller_tid:?}, needed={needed}, \
+             max={MAX_FIXED_BUFFERS_PER_TRANSFER})"
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
-    // SAFETY: see note above.
-    let fixed_buffer_in_use: &mut [bool; FIXED_BUF_COUNT] = unsafe { &mut FIXED_BUFFER_IN_USE };
-    for (buffer_index, in_use) in fixed_buffer_in_use.iter_mut().enumerate() {
-        if !*in_use {
+    // SAFETY: Nanvix runs on a single core and accesses this state with interrupts disabled while
+    // handling kernel calls and IKC completions.
+    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, ThreadFixedBuffers> =
+        unsafe { &mut THREAD_FIXED_BUFFERS };
+    let thread_buffers: &mut ThreadFixedBuffers = thread_fixed_buffers
+        .entry(caller_tid)
+        .or_insert_with(ThreadFixedBuffers::new);
+
+    if thread_buffers.count < needed {
+        // SAFETY: see note above.
+        let fixed_buffer_in_use: &mut [bool; FIXED_BUF_COUNT] = unsafe { &mut FIXED_BUFFER_IN_USE };
+        while thread_buffers.count < needed {
+            let Some((buffer_index, in_use)) = fixed_buffer_in_use
+                .iter_mut()
+                .enumerate()
+                .find(|(_, in_use)| !**in_use)
+            else {
+                let reason: &str = "no fixed ring buffers available";
+                error!("{reason} (caller_tid={caller_tid:?}, needed={needed})");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            };
+
             *in_use = true;
             let buffer_id: u32 = u32::try_from(buffer_index).map_err(|_| {
                 Error::new(ErrorCode::InvalidArgument, "fixed buffer index exceeds u32")
             })?;
-            thread_fixed_buffers.insert(caller_tid, buffer_id);
-            return Ok(buffer_id);
+            thread_buffers.ids[thread_buffers.count] = buffer_id;
+            thread_buffers.count += 1;
         }
     }
 
-    let reason: &str = "no fixed ring buffers available";
-    error!("{reason} (caller_tid={caller_tid:?})");
-    Err(Error::new(ErrorCode::ResourceBusy, reason))
+    let mut reservation: FixedBufferReservation = FixedBufferReservation::empty();
+    reservation.count = needed;
+    reservation.ids[..needed].copy_from_slice(&thread_buffers.ids[..needed]);
+    Ok(reservation)
 }
 
 /// Releases the fixed buffer assigned to `caller_tid`, if any.
 pub fn release_thread_fixed_buffer(caller_tid: ThreadIdentifier) {
     // SAFETY: Nanvix runs on a single core and accesses this state with interrupts disabled while
     // handling kernel calls and IKC completions.
-    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, u32> =
+    let thread_fixed_buffers: &mut BTreeMap<ThreadIdentifier, ThreadFixedBuffers> =
         unsafe { &mut THREAD_FIXED_BUFFERS };
-    let Some(buffer_id) = thread_fixed_buffers.remove(&caller_tid) else {
+    let Some(thread_buffers) = thread_fixed_buffers.remove(&caller_tid) else {
         return;
     };
 
-    let buffer_index: usize = buffer_id as usize;
-    if buffer_index >= FIXED_BUF_COUNT {
-        error!(
-            "fixed buffer id out of range while releasing thread buffer (caller_tid={caller_tid:?}, \
-             buffer_id={buffer_id}, fixed_buf_count={FIXED_BUF_COUNT})"
-        );
-        return;
-    }
-
     // SAFETY: see note above.
     let fixed_buffer_in_use: &mut [bool; FIXED_BUF_COUNT] = unsafe { &mut FIXED_BUFFER_IN_USE };
-    fixed_buffer_in_use[buffer_index] = false;
+    for &buffer_id in &thread_buffers.ids[..thread_buffers.count] {
+        let buffer_index: usize = buffer_id as usize;
+        if buffer_index >= FIXED_BUF_COUNT {
+            error!(
+                "fixed buffer id out of range while releasing thread buffer \
+                 (caller_tid={caller_tid:?}, buffer_id={buffer_id}, \
+                 fixed_buf_count={FIXED_BUF_COUNT})"
+            );
+            continue;
+        }
+        fixed_buffer_in_use[buffer_index] = false;
+    }
 }
 
 /// Copies a request payload into a shared data slot and returns its GPA.

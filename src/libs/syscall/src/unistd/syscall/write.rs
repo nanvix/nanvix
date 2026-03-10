@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     safe::RawFileDescriptor,
     unistd::message::{
         WriteRequest,
         WriteResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::sys::{
     error::{
@@ -30,7 +30,7 @@ use ::sysapi::{
     },
 };
 
-use super::util::page_chunk_size;
+use super::util::transfer_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -172,8 +172,7 @@ fn write_standalone(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Er
     Err(Error::new(ErrorCode::OperationNotSupported, "write not supported in standalone mode"))
 }
 
-/// Forwards a write request to linuxd via IPC, splitting the buffer into
-/// page-aligned chunks.
+/// Forwards a write request to linuxd via IPC, splitting the buffer into transport-sized chunks.
 #[cfg(not(feature = "standalone"))]
 fn write_linuxd(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
@@ -183,7 +182,7 @@ fn write_linuxd(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error>
 
     while offset < buffer.len() {
         let chunk_size: usize =
-            page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
+            transfer_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
         let written: c_size_t = write_chunk(tid, fd, chunk)?;

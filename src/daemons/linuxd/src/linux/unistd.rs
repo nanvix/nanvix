@@ -534,6 +534,66 @@ pub(crate) unsafe fn do_read<T>(
 }
 
 //==================================================================================================
+// do_writev_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a vectored write operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` readable `iovec` entries.
+///
+pub(crate) unsafe fn do_writev_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    match &syscall_table.writev {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, iov, iovcnt)
+        },
+    }
+}
+
+//==================================================================================================
+// do_readv_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a vectored read operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` writable `iovec` entries.
+///
+pub(crate) unsafe fn do_readv_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    match &syscall_table.readv {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, iov, iovcnt)
+        },
+    }
+}
+
+//==================================================================================================
 // do_pwrite_raw
 //==================================================================================================
 
@@ -565,6 +625,37 @@ pub(crate) unsafe fn do_pwrite_raw<T>(
 }
 
 //==================================================================================================
+// do_pwritev_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a vectored positioned write operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` readable `iovec` entries.
+///
+pub(crate) unsafe fn do_pwritev_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match &syscall_table.pwritev {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, iov, iovcnt, offset)
+        },
+    }
+}
+
+//==================================================================================================
 // do_pread_raw
 //==================================================================================================
 
@@ -591,6 +682,37 @@ pub(crate) unsafe fn do_pread_raw<T>(
         },
         SyscallAction::Forward(syscall_fn) => unsafe {
             syscall_fn(&syscall_table.state, fd, buf, count, offset)
+        },
+    }
+}
+
+//==================================================================================================
+// do_preadv_raw
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Dispatches a vectored positioned read operation through the syscall table.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` writable `iovec` entries.
+///
+pub(crate) unsafe fn do_preadv_raw<T>(
+    syscall_table: &SyscallTable<T>,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    match &syscall_table.preadv {
+        SyscallAction::Block => {
+            unsafe { *libc::__errno_location() = libc::EPERM };
+            -1
+        },
+        SyscallAction::Forward(syscall_fn) => unsafe {
+            syscall_fn(&syscall_table.state, fd, iov, iovcnt, offset)
         },
     }
 }

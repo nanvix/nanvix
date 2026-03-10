@@ -8,6 +8,9 @@
 use ::arch::mem::PAGE_SIZE;
 use ::core::cmp;
 
+#[cfg(feature = "ring-buffer")]
+const MAX_RING_TRANSFER_SIZE: usize = 16 * PAGE_SIZE;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -34,4 +37,22 @@ pub fn page_chunk_size(ptr: usize, remaining: usize) -> usize {
     let page_offset: usize = ptr & (PAGE_SIZE - 1);
     let available: usize = PAGE_SIZE - page_offset;
     cmp::min(available, remaining)
+}
+
+/// Computes the maximum byte count that should be forwarded in a single syscall-library request.
+///
+/// On the legacy transport this preserves the page-boundary restriction of the data-chunk path.
+/// On ring-buffer-enabled guest builds the kernel can gather/scatter across user pages, so
+/// requests are instead capped by the logical multi-buffer transfer limit.
+pub fn transfer_chunk_size(ptr: usize, remaining: usize) -> usize {
+    #[cfg(feature = "ring-buffer")]
+    {
+        let _ = ptr;
+        cmp::min(MAX_RING_TRANSFER_SIZE, remaining)
+    }
+
+    #[cfg(not(feature = "ring-buffer"))]
+    {
+        page_chunk_size(ptr, remaining)
+    }
 }

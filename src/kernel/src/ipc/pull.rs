@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-#[cfg(all(feature = "stdio", not(all(feature = "microvm", feature = "ring-buffer"))))]
+#[cfg(all(
+    feature = "stdio",
+    not(all(feature = "microvm", feature = "ring-buffer"))
+))]
 use crate::pm::ProcessManager;
 use crate::pm::SleepError;
 use ::sys::{
@@ -90,12 +93,7 @@ pub fn pull(
 
     trace!(
         "tid={:?}, pid={:?}, src_tid={:?}, src_pid={:?}, buffer={:#x}, len={}",
-        caller_tid,
-        caller_pid,
-        sender_tid,
-        sender_pid,
-        buffer_raw,
-        transfer_len
+        caller_tid, caller_pid, sender_tid, sender_pid, buffer_raw, transfer_len
     );
 
     // When the source is the kernel (linuxd), use the vmbus for data chunk transfer instead of the
@@ -106,29 +104,50 @@ pub fn pull(
     if sender_pid == ProcessIdentifier::KERNEL {
         cfg_if::cfg_if! {
             if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
-                let buffer_id: u32 =
-                    crate::ring::get_or_alloc_thread_fixed_buffer(caller_tid).map_err(SleepError::Generic)?;
+                let segment_count: usize = crate::ring::fixed_buffer_count_for_len(transfer_len);
+                let reservation: crate::ring::FixedBufferReservation =
+                    crate::ring::get_or_alloc_thread_fixed_buffers(caller_tid, segment_count)
+                        .map_err(SleepError::Generic)?;
+                let mut segments: [super::fixed_pull::FixedPullSegment;
+                    crate::ring::MAX_FIXED_BUFFERS_PER_TRANSFER] =
+                    [super::fixed_pull::FixedPullSegment::new(0, 0, 0);
+                        crate::ring::MAX_FIXED_BUFFERS_PER_TRANSFER];
 
-                trace!(
-                    "pull(): fixed-buffer transfer via ring (caller_pid={caller_pid:?}, \
-                     caller_tid={caller_tid:?}, buffer_id={buffer_id}, len={transfer_len})"
-                );
+                let mut announced: usize = 0;
+                for (index, &buffer_id) in reservation.ids().iter().enumerate() {
+                    if announced >= transfer_len {
+                        break;
+                    }
+                    let chunk_len: usize = core::cmp::min(
+                        transfer_len - announced,
+                        ::nvx_ring::FIXED_BUF_SIZE,
+                    );
 
-                crate::stdio::write_fixed_bulk(
-                    caller_pid,
-                    caller_tid,
-                    sender_pid,
-                    sender_tid,
-                    buffer_id,
-                    transfer_len_raw,
-                )
-                .map_err(SleepError::Generic)?;
+                    trace!(
+                        "pull(): fixed-buffer transfer via ring (caller_pid={caller_pid:?}, \
+                         caller_tid={caller_tid:?}, buffer_id={buffer_id}, offset={announced}, \
+                         len={chunk_len})"
+                    );
+
+                    crate::stdio::write_fixed_bulk(
+                        caller_pid,
+                        caller_tid,
+                        sender_pid,
+                        sender_tid,
+                        buffer_id,
+                        chunk_len as u32,
+                    )
+                    .map_err(SleepError::Generic)?;
+                    segments[index] =
+                        super::fixed_pull::FixedPullSegment::new(buffer_id, announced, chunk_len);
+                    announced += chunk_len;
+                }
 
                 return super::fixed_pull::register_and_sleep(
                     caller_pid,
                     caller_tid,
                     buffer_raw,
-                    transfer_len,
+                    &segments[..segment_count],
                 );
             } else {
                 // Reject transfers that cross a page boundary. The vmbus data chunk transfer path translates

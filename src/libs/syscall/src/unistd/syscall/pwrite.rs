@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     safe::RawFileDescriptor,
     unistd::message::{
         PositionedWriteRequest,
         WriteResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::sys::{
     error::{
@@ -27,7 +27,7 @@ use ::sysapi::sys_types::{
     off_t,
 };
 
-use super::util::page_chunk_size;
+use super::util::transfer_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -122,7 +122,8 @@ fn pwrite_chunk(
         },
         header => {
             ::syslog::error!(
-                "pwrite_chunk(): failed to parse response (fd={fd}, chunk.len={}, header={header:?})",
+                "pwrite_chunk(): failed to parse response (fd={fd}, chunk.len={}, \
+                 header={header:?})",
                 chunk.len()
             );
             Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
@@ -130,8 +131,8 @@ fn pwrite_chunk(
     }
 }
 
-/// Forwards a `pwrite` request to linuxd via IPC, splitting the buffer into
-/// page-aligned chunks.
+/// Forwards a `pwrite` request to linuxd via IPC, splitting the buffer into transport-sized
+/// chunks.
 #[cfg(not(feature = "standalone"))]
 fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
@@ -139,8 +140,10 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
-        let chunk_size: usize =
-            page_chunk_size(buffer[buffer_offset..].as_ptr() as usize, buffer.len() - buffer_offset);
+        let chunk_size: usize = transfer_chunk_size(
+            buffer[buffer_offset..].as_ptr() as usize,
+            buffer.len() - buffer_offset,
+        );
         let chunk: &[u8] = &buffer[buffer_offset..buffer_offset + chunk_size];
         let written: c_size_t = pwrite_chunk(tid, fd, chunk, offset + buffer_offset as off_t)?;
         total_written += written;

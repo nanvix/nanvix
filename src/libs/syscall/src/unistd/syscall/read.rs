@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     safe::RawFileDescriptor,
     unistd::message::{
         ReadRequest,
         ReadResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::sys::{
     error::{
@@ -27,7 +27,7 @@ use sysapi::{
     unistd::STDIN_FILENO,
 };
 
-use super::util::page_chunk_size;
+use super::util::transfer_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -192,8 +192,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
     read_linuxd(fd, buffer)
 }
 
-/// Forwards a `read` request to linuxd via IPC, splitting the buffer into
-/// page-aligned chunks.
+/// Forwards a `read` request to linuxd via IPC, splitting the buffer into transport-sized chunks.
 #[cfg(not(feature = "standalone"))]
 fn read_linuxd(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
@@ -203,7 +202,7 @@ fn read_linuxd(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Err
 
     while offset < buffer.len() {
         let chunk_size: usize =
-            page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
+            transfer_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
         let count: c_size_t = read_chunk(tid, fd, chunk)?;

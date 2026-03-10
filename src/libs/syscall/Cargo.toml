@@ -45,6 +45,8 @@ staticlib = ["dep:libc_stdlib"]
 syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall"]
 std = []
 dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
+microvm = ["config/microvm"]
+ring-buffer = ["microvm"]
 rustc-dep-of-std = [
     "core",
     "alloc",

@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
     safe::RawFileDescriptor,
     unistd::message::{
         PositionedReadRequest,
         ReadResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
 };
 use ::sys::{
     error::{
@@ -27,7 +27,7 @@ use sysapi::sys_types::{
     off_t,
 };
 
-use super::util::page_chunk_size;
+use super::util::transfer_chunk_size;
 
 //==================================================================================================
 // Standalone Functions
@@ -132,7 +132,8 @@ fn pread_chunk(
 
             if (count as usize) != bytes_pulled {
                 ::syslog::error!(
-                    "pread_chunk(): byte count mismatch (resp.count={count}, bytes_pulled={bytes_pulled})"
+                    "pread_chunk(): byte count mismatch (resp.count={count}, \
+                     bytes_pulled={bytes_pulled})"
                 );
                 return Err(Error::new(
                     ErrorCode::InvalidMessage,
@@ -153,8 +154,8 @@ fn pread_chunk(
     }
 }
 
-/// Forwards a `pread` request to linuxd via IPC, splitting the buffer into
-/// page-aligned chunks.
+/// Forwards a `pread` request to linuxd via IPC, splitting the buffer into transport-sized
+/// chunks.
 #[cfg(not(feature = "standalone"))]
 fn pread_linuxd(
     fd: RawFileDescriptor,
@@ -166,8 +167,10 @@ fn pread_linuxd(
     let mut buffer_offset: usize = 0;
 
     while buffer_offset < buffer.len() {
-        let chunk_size: usize =
-            page_chunk_size(buffer[buffer_offset..].as_ptr() as usize, buffer.len() - buffer_offset);
+        let chunk_size: usize = transfer_chunk_size(
+            buffer[buffer_offset..].as_ptr() as usize,
+            buffer.len() - buffer_offset,
+        );
         let chunk: &mut [u8] = &mut buffer[buffer_offset..buffer_offset + chunk_size];
         let count: c_size_t = pread_chunk(tid, fd, chunk, offset + buffer_offset as off_t)?;
 

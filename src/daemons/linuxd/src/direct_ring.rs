@@ -12,9 +12,7 @@ use ::log::{
     warn,
 };
 use ::nvx_ring::{
-    CqEntry,
-    CqFlags,
-    CqeFlags,
+    CQ_OFFSET,
     CTRL_CQ_FLAGS,
     CTRL_CQ_HEAD,
     CTRL_CQ_MASK,
@@ -22,7 +20,9 @@ use ::nvx_ring::{
     CTRL_SQ_HEAD,
     CTRL_SQ_MASK,
     CTRL_SQ_TAIL,
-    CQ_OFFSET,
+    CqEntry,
+    CqFlags,
+    CqeFlags,
     DATA_OFFSET,
     DATA_SLOT_COUNT,
     DATA_SLOT_SIZE,
@@ -152,11 +152,13 @@ impl DirectCqWriter {
         self.post_cqe(cqe)
     }
 
-    pub fn write_fixed(&self, transfer: &FixedBufferTransfer) -> Result<(), ErrorKind> {
+    pub fn write_fixed(&self, transfer: &FixedBufferTransfer, more: bool) -> Result<(), ErrorKind> {
         let source_tid_raw: i32 = transfer.source_tid().into();
-        let mut cqe: CqEntry =
-            CqEntry::new(source_tid_raw as u64, i64::from(transfer.data_len()));
+        let mut cqe: CqEntry = CqEntry::new(source_tid_raw as u64, i64::from(transfer.data_len()));
         cqe.flags = CqeFlags::BUFFER.0;
+        if more {
+            cqe.flags |= CqeFlags::MORE.0;
+        }
         cqe.buffer_id = transfer.buffer_id();
         self.post_cqe(cqe)
     }
@@ -280,8 +282,7 @@ fn drain_sq(
                 error!(
                     "drain_sq(): encountered non-fixed bulk SQE on direct ring path \
                      (uvm_id={uvm_id}, addr={:#x}, len={})",
-                    sqe.addr,
-                    sqe.len
+                    sqe.addr, sqe.len
                 );
                 return Err(ErrorKind::InvalidData);
             },
