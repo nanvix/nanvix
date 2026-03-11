@@ -130,10 +130,7 @@ RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2
 MEMORY_SIZE_BYTES = $(strip $(shell sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' $(BUILD_DIR)/kernel_config.toml | head -n1))
 MEMORY_SIZE_MB = $(shell echo $$(($(MEMORY_SIZE_BYTES) / 1048576)))
 
-# Legacy archive name (kept for backward compatibility; will be removed in a future release).
-RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
-# New archive name including memory size.
-RELEASE_ARCHIVE_NEW = nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
+RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
 MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
 #===================================================================================================
@@ -537,9 +534,6 @@ release: all install release-generate-manifest
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
 	@$(RM_CMD) ${RELEASE_ARCHIVE}
 	@tar -cjf ${RELEASE_ARCHIVE} --exclude=./src -C ${SYSROOT_DIR} .
-	@echo "Creating release archive ${RELEASE_ARCHIVE_NEW} from ${SYSROOT_DIR}..."
-	@$(RM_CMD) ${RELEASE_ARCHIVE_NEW}
-	@cp ${RELEASE_ARCHIVE} ${RELEASE_ARCHIVE_NEW}
 
 # Shows available make targets and build parameters.
 help:
