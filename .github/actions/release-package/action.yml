@@ -14,7 +14,7 @@ inputs:
 
 outputs:
   archive-path:
-    description: "Newline-separated paths to the generated release archives"
+    description: "Path to the generated release archive"
     value: ${{ steps.package.outputs.archive-path }}
 
 runs:
@@ -46,20 +46,9 @@ runs:
         memory_size_mb=$(( memory_size_bytes / 1048576 ))
 
         commit_id="${GITHUB_SHA}"
-        archive_ext=".tar.bz2"
+        archive_name="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${memory_size_mb}mb-${commit_id}.tar.bz2"
 
-        # Legacy format (backward-compatible; will be removed in a future release).
-        archive_legacy="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${commit_id}${archive_ext}"
-        # New format including memory size.
-        archive_new="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${memory_size_mb}mb-${commit_id}${archive_ext}"
+        echo "Reusing pre-built release archive: ${archive_src} -> ${archive_name}"
+        mv "${archive_src}" "${archive_name}"
 
-        echo "Creating release archives from: ${archive_src}"
-        cp "${archive_src}" "${archive_legacy}"
-        mv "${archive_src}" "${archive_new}"
-
-        {
-          echo "archive-path<<ARCHIVE_EOF"
-          echo "${archive_legacy}"
-          echo "${archive_new}"
-          echo "ARCHIVE_EOF"
-        } >> "${GITHUB_OUTPUT}"
+        echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
