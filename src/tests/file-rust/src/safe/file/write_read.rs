@@ -13,15 +13,35 @@ use ::syscall::safe::{
     RegularFile,
     RegularFileOpenFlags,
 };
+use alloc::vec::Vec;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
+const PAYLOAD_SIZES: &[usize] = &[32, 4096, 4097, 8192, 16384, 32768, 65536];
+
+fn payload_seed(index: usize) -> u8 {
+    match u8::try_from(index & 0xff) {
+        Ok(seed) => seed,
+        Err(error) => {
+            panic!("{error:?}");
+        },
+    }
+}
+
+fn make_payload(size: usize, seed: u8) -> Vec<u8> {
+    let mut payload: Vec<u8> = alloc::vec![0u8; size];
+    for (index, byte) in payload.iter_mut().enumerate() {
+        *byte = seed.wrapping_add(payload_seed(index));
+    }
+    payload
+}
+
 /// Tests whether we can write and read to/from a file.
 pub fn test() {
-    const DATA: &[u8] = b"Hello Nanvix!";
     let filename: &str = "test-write_read.txt";
+    let expected_total_len: usize = PAYLOAD_SIZES.iter().sum();
 
     let pathname: FileSystemPath = match FileSystemPath::new(filename) {
         Ok(pathname) => pathname,
@@ -61,17 +81,17 @@ pub fn test() {
             },
         };
 
-        // Write to file and assert result.
-        match file.write(DATA) {
-            Ok(n) if n == DATA.len() => {
-                // Successfully written.
-            },
-            Ok(n) => {
-                panic!("expected to write {} bytes, but wrote {n} bytes", DATA.len());
-            },
-            Err(error) => {
-                panic!("{error:?}");
-            },
+        for (index, &size) in PAYLOAD_SIZES.iter().enumerate() {
+            let payload: Vec<u8> = make_payload(size, payload_seed(index));
+            match file.write(&payload) {
+                Ok(n) if n == payload.len() => {},
+                Ok(n) => {
+                    panic!("expected to write {} bytes, but wrote {n} bytes", payload.len());
+                },
+                Err(error) => {
+                    panic!("{error:?}");
+                },
+            }
         }
 
         // File is automatically closed when it goes out of scope.
@@ -102,10 +122,10 @@ pub fn test() {
             };
 
             // Check if file has expected size.
-            if file_size != DATA.len() {
+            if file_size != expected_total_len {
                 panic!(
                     "file size does not match expected size (expected: {}, got: {file_size})",
-                    DATA.len(),
+                    expected_total_len,
                 );
             }
         },
@@ -128,18 +148,25 @@ pub fn test() {
             },
         };
 
-        // Read from file and assert result.
-        let mut expected_data: [u8; DATA.len()] = [0; DATA.len()];
-        match file.read(&mut expected_data) {
-            Ok(n) if n == DATA.len() => {
-                assert_eq!(&expected_data[..DATA.len()], DATA);
-            },
-            Ok(n) => {
-                panic!("expected to read {} bytes, but read {} bytes", DATA.len(), n);
-            },
-            Err(error) => {
-                panic!("{error:?}");
-            },
+        for (index, &size) in PAYLOAD_SIZES.iter().enumerate() {
+            let expected_data: Vec<u8> = make_payload(size, payload_seed(index));
+            let mut actual_data: Vec<u8> = alloc::vec![0u8; size];
+            match file.read(&mut actual_data) {
+                Ok(n) if n == expected_data.len() => {
+                    if actual_data != expected_data {
+                        panic!(
+                            "payload mismatch for size {size} (expected prefix byte {}, got {})",
+                            expected_data[0], actual_data[0],
+                        );
+                    }
+                },
+                Ok(n) => {
+                    panic!("expected to read {} bytes, but read {n} bytes", expected_data.len());
+                },
+                Err(error) => {
+                    panic!("{error:?}");
+                },
+            }
         }
 
         // File is automatically closed when it goes out of scope.

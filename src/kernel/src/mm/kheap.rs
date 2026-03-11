@@ -6,15 +6,15 @@
 //==================================================================================================
 
 use crate::collections::Slab;
-use ::alloc::alloc::{
+use alloc::alloc::{
     AllocError,
     GlobalAlloc,
     Layout,
 };
-use ::arch::mem;
-use ::config::constants;
-use ::core::ptr;
-use ::sys::error::{
+use arch::mem;
+use config::constants;
+use core::ptr;
+use sys::error::{
     Error,
     ErrorCode,
 };
@@ -196,6 +196,10 @@ impl Kheap {
 
 unsafe impl GlobalAlloc for ArenaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if layout.size() == 0 {
+            return layout.align() as *mut u8;
+        }
+
         let heap = ptr::addr_of_mut!(HEAP);
         if let Some(heap) = &mut *heap {
             match heap.allocate(layout) {
@@ -212,6 +216,10 @@ unsafe impl GlobalAlloc for ArenaAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if layout.size() == 0 {
+            return;
+        }
+
         let heap = ptr::addr_of_mut!(HEAP);
         if let Some(heap) = &mut *heap {
             if let Err(e) = heap.deallocate(ptr, layout) {

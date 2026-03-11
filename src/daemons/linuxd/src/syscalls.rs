@@ -49,16 +49,30 @@ pub type FtruncateFn<T> = unsafe fn(&T, libc::c_int, libc::off_t) -> libc::c_int
 pub type WriteFn<T> =
     unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t) -> libc::ssize_t;
 
+/// Type alias for `writev()` system call function.
+pub type WritevFn<T> = unsafe fn(&T, libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t;
+
 /// Type alias for `read()` system call function.
 pub type ReadFn<T> = unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t;
+
+/// Type alias for `readv()` system call function.
+pub type ReadvFn<T> = unsafe fn(&T, libc::c_int, *const libc::iovec, libc::c_int) -> libc::ssize_t;
 
 /// Type alias for `pwrite()` system call function.
 pub type PwriteFn<T> =
     unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
 
+/// Type alias for `pwritev()` system call function.
+pub type PwritevFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t;
+
 /// Type alias for `pread()` system call function.
 pub type PreadFn<T> =
     unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t, libc::off_t) -> libc::ssize_t;
+
+/// Type alias for `preadv()` system call function.
+pub type PreadvFn<T> =
+    unsafe fn(&T, libc::c_int, *const libc::iovec, libc::c_int, libc::off_t) -> libc::ssize_t;
 
 /// Type alias for `linkat()` system call function.
 pub type LinkatFn<T> = unsafe fn(
@@ -487,6 +501,42 @@ pub unsafe fn default_read<T>(
 ///
 /// # Description
 ///
+/// Default implementation for `writev()` system call.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` readable `iovec` entries.
+///
+pub unsafe fn default_writev<T>(
+    _state: &T,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    libc::writev(fd, iov, iovcnt)
+}
+
+///
+/// # Description
+///
+/// Default implementation for `readv()` system call.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` writable `iovec` entries.
+///
+pub unsafe fn default_readv<T>(
+    _state: &T,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+) -> libc::ssize_t {
+    libc::readv(fd, iov, iovcnt)
+}
+
+///
+/// # Description
+///
 /// Default implementation for `pwrite()` system call.
 ///
 /// # Parameters
@@ -518,6 +568,25 @@ pub unsafe fn default_pwrite<T>(
 ///
 /// # Description
 ///
+/// Default implementation for `pwritev()` system call.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` readable `iovec` entries.
+///
+pub unsafe fn default_pwritev<T>(
+    _state: &T,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    libc::pwritev(fd, iov, iovcnt, offset)
+}
+
+///
+/// # Description
+///
 /// Default implementation for `pread()` system call.
 ///
 /// # Parameters
@@ -544,6 +613,25 @@ pub unsafe fn default_pread<T>(
     offset: libc::off_t,
 ) -> libc::ssize_t {
     libc::pread(fd, buf, count, offset)
+}
+
+///
+/// # Description
+///
+/// Default implementation for `preadv()` system call.
+///
+/// # Safety
+///
+/// The caller must ensure that `iov` points to `iovcnt` writable `iovec` entries.
+///
+pub unsafe fn default_preadv<T>(
+    _state: &T,
+    fd: libc::c_int,
+    iov: *const libc::iovec,
+    iovcnt: libc::c_int,
+    offset: libc::off_t,
+) -> libc::ssize_t {
+    libc::preadv(fd, iov, iovcnt, offset)
 }
 
 ///
@@ -1707,9 +1795,13 @@ pub struct SyscallTable<T> {
     pub lseek: SyscallAction<LseekFn<T>>,
     pub pipe: SyscallAction<PipeFn<T>>,
     pub pread: SyscallAction<PreadFn<T>>,
+    pub preadv: SyscallAction<PreadvFn<T>>,
     pub pwrite: SyscallAction<PwriteFn<T>>,
+    pub pwritev: SyscallAction<PwritevFn<T>>,
     pub read: SyscallAction<ReadFn<T>>,
+    pub readv: SyscallAction<ReadvFn<T>>,
     pub write: SyscallAction<WriteFn<T>>,
+    pub writev: SyscallAction<WritevFn<T>>,
 
     // fcntl.rs system calls.
     pub fchmod: SyscallAction<FchmodFn<T>>,
@@ -1791,9 +1883,13 @@ impl<T> SyscallTable<T> {
             lseek: SyscallAction::Forward(default_lseek),
             pipe: SyscallAction::Forward(default_pipe),
             pread: SyscallAction::Forward(default_pread),
+            preadv: SyscallAction::Forward(default_preadv),
             pwrite: SyscallAction::Forward(default_pwrite),
+            pwritev: SyscallAction::Forward(default_pwritev),
             read: SyscallAction::Forward(default_read),
+            readv: SyscallAction::Forward(default_readv),
             write: SyscallAction::Forward(default_write),
+            writev: SyscallAction::Forward(default_writev),
 
             // fcntl.rs system calls.
             fchmod: SyscallAction::Forward(default_fchmod),

@@ -33,7 +33,8 @@ compatibility fallback for responses that still need `IkcFrame::Bulk`.
   and continues to execute syscalls on the existing worker-thread path.
 - For hot-path completions, `linuxd` writes CQEs directly into the shared ring:
   regular `Message` responses go into CQ data slots, and fixed-buffer read
-  completions use `CqeFlags::BUFFER`.
+  completions use `CqeFlags::BUFFER`; batched receive completions additionally
+  set `CqeFlags::BATCH`.
 - `uservm` watches a second shared notification word and injects an interrupt
   only when `linuxd` asks for it after posting a CQE while the guest has armed
   `CQ_NOTIFY_ME`.
@@ -421,6 +422,87 @@ also remain future work in the active drain path; today it still handles `Nop`,
 
 ---
 
+## Multi-page transfers
+
+The current ring path now supports one logical `read()` / `write()` /
+`pread()` / `pwrite()` transfer spanning multiple fixed buffers while keeping
+the direct-`linuxd` hot path. The underlying reason this works is not that
+guest user memory must be physically contiguous: the kernel already has
+`vmcopy_from_user()` / `vmcopy_to_user()` helpers that can walk a process'
+address space and copy across non-contiguous user pages. The transport limit is
+now the configured logical transfer cap rather than a single 4 KiB buffer.
+
+### Implemented design
+
+1. **Cap each logical transfer** to a bounded size and split only above that
+    cap. The initial target is **64 KiB per transfer** = `16 x 4 KiB` fixed
+    buffers.
+2. **Allocate multiple fixed buffers per request** in the guest kernel instead
+   of a single per-thread buffer.
+3. **Use `vmcopy_from_user()` / `vmcopy_to_user()`** to gather/scatter between
+   the caller's user buffer and the ring-backed fixed-buffer region. This lets a
+   single logical transfer span arbitrary guest user pages without depending on
+   their physical contiguity.
+4. **Keep one control request** (`PositionedWriteRequest` /
+   `PositionedReadRequest`) but follow it with multiple ordered `FIXED_BUF`
+   descriptors that together cover the requested byte range.
+ 5. **Have `linuxd` issue one host vectored syscall** for the whole logical
+    request:
+    - `write()` path: build a host `iovec[]` that points at the shared fixed
+      buffers and call `writev()`.
+    - `read()` path: build the same `iovec[]` and call `readv()`.
+    - `pwrite()` path: build a host `iovec[]` that points at the shared fixed
+      buffers and call `pwritev()`.
+    - `pread()` path: build the same `iovec[]` and call `preadv()`.
+6. **Batch receive-side completions while preserving guest-visible ownership semantics**:
+    - For writes, keep the normal `WriteResponse` message as the visible
+      completion.
+    - For reads, let `linuxd` complete one host `readv()` / `preadv()` across
+      the full ordered fixed-buffer list, then post one logical fixed-buffer
+      completion carrying the total transferred length instead of one CQE per
+      segment.
+    - On the direct ring path this completion is encoded as
+      `CqeFlags::BUFFER | CqeFlags::BATCH`; on the framed fallback path the
+      `FixedBufferTransfer` carries `COMPLETION_BATCH`.
+    - The guest still copies bytes from the shared fixed buffers back into the
+      caller's user buffer in segment order and wakes the blocked `pull()`
+      caller only once after the whole logical transfer completes. The final
+      copy is still required to preserve user-buffer ownership semantics.
+7. **Keep legacy guest binaries safe by feature-gating the larger chunk size**
+   in the syscall crate. Ring-enabled guest builds raise the per-request chunk
+   limit to `64 KiB`; legacy guest builds continue to split at page
+   boundaries.
+
+The trade-off is that the protocol now carries a bit more completion metadata
+and the guest receive path must retain the segment list until the final
+completion arrives, but the hot path removes per-segment CQ writes, guest CQ
+polls, state lookups, and wakeups.
+
+### Transfer-size rule of thumb
+
+The cap should be large enough to amortize control-path costs, but small enough
+that one request does not monopolize the fixed-buffer pool.
+
+- Current ring region: `471` fixed buffers of `4096` bytes each.
+- Recommended initial cap: `16` buffers = `64 KiB`.
+- Share of pool consumed by one max-sized transfer: about `3.4%`.
+- Concurrent max-sized transfers still possible per VM: about `29`.
+
+That is a good starting point because it materially reduces per-page control
+overhead without turning the fixed-buffer region into effectively dedicated
+per-thread storage. If benchmarking later shows a clear benefit, the next
+tuning step would be `128 KiB`, but `64 KiB` is the safer initial default.
+
+### Guest API rollout
+
+`pwrite()` / `pread()` were moved to this multi-buffer transport first, and the
+same `64 KiB` ring-enabled chunking now also covers `write()` / `read()`.
+Guest `pwritev()` / `preadv()` still layer on top of those improved paths. A
+later optimization can teach guest vectored I/O to submit one logical
+multi-iovec request directly instead of looping per `iovec`.
+
+---
+
 ## Original Target Comparison (for Comparison Only)
 
 The table below is the original end-state estimate that motivated the design.
@@ -476,7 +558,7 @@ It is not a summary of current measured behavior.
 
 ---
 
-## Current Status and Measured Results (2026-03-09 / 2026-03-10)
+## Current Status and Measured Results (2026-03-09 / 2026-03-11)
 
 Detailed methodology and the full result tables live in `doc/benchmark.md`.
 
@@ -484,7 +566,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
   fallback:
   - `linuxd` directly drains `IkcMessage` SQEs and `BulkData` SQEs marked with
     `FIXED_BUF`.
-  - `linuxd` directly writes CQEs for regular `Message` responses and
+  - `linuxd` directly writes CQEs for regular `Message` responses and batched
     fixed-buffer read completions.
   - `uservm` still owns the KVM-facing doorbell eventfd and guest IRQ
     injection, translating both through shared notification words.
@@ -498,10 +580,14 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
 - CQ interrupt suppression is now implemented end-to-end.
 - The previous `IkcFrame::Bulk` payload design remains in-tree as the
   compatibility path when `FIXED_BUF` is not used.
-- The benchmarked `pwrite()` / `pread()` path now uses the fixed-buffer Phase 3
-  design: the ring shared region carries pre-registered payload buffers and the
-  active path uses fixed-buffer descriptors instead of bouncing payload bytes
-  through the older bulk path.
+- The benchmarked `write()` / `read()` / `pwrite()` / `pread()` path now uses
+  the fixed-buffer multi-page design: the ring shared region carries
+  pre-registered payload buffers and the active path uses fixed-buffer
+  descriptors instead of bouncing payload bytes through the older bulk path.
+- The receive side now batches each logical fixed-buffer `read()` / `pread()`
+  completion into one CQ event after the host `readv()` / `preadv()` finishes.
+  The guest still performs the final fixed-buffer-to-user copy, but it now
+  walks the stored segment list locally and wakes the blocked caller once.
 - The fixed-buffer path is runtime-validated end-to-end, and the canonical
   `/dev/zero` payload sweep has been rerun against fresh legacy and ring
   artifact trees.
@@ -509,7 +595,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
   - a fresh 5-trial interleaved `fcntl(F_GETFL)` round-trip rerun with warm-up
     and pinned-core placement, and
   - a fresh 3-trial `/dev/zero` payload sweep that exercises fixed-buffer
-    `pwrite()` / `pread()` traffic.
+    `write()` / `read()` / `pwrite()` / `pread()` traffic.
 - Because the benchmark was rerun in a shared development environment, the
   absolute RTT numbers vary between historical runs; the interleaved medians and
   ring/legacy ratios are the more stable signal.
@@ -532,37 +618,43 @@ Using `fcntl(F_GETFL)` as a linuxd-backed round trip:
   - ring median = `424155 ns`
   - ring / legacy = `1.085x`
 - After direct linuxd SQ/CQ bypass:
-  - legacy median = `531675 ns`
-  - ring median = `246793 ns`
-  - ring / legacy = `0.464x`
+  - legacy median = `241275 ns`
+  - ring median = `118293 ns`
+  - ring / legacy = `0.490x`
 
 ### Payload Sweeps
 
-The payload sweeps now cover both directions (`pwrite()` and `pread()`) from `32` bytes up to
-`32768` bytes, including sizes beyond a single `4096`-byte page. The canonical payload results use
-`/dev/zero` as the linuxd-side backend so that the benchmark reflects syscall/transport delay
-rather than host filesystem work.
+The payload sweeps now cover both sequential and positioned traffic (`write()`, `read()`,
+`pwrite()`, and `pread()`) from `32` bytes up to `65536` bytes, including sizes well beyond a
+single `4096`-byte page. The canonical payload results use `/dev/zero` as the linuxd-side backend
+so that the benchmark reflects syscall/transport delay rather than host filesystem work.
 
 Selected ring / legacy ratios from the current 3-trial median rerun:
 
-| Operation | 4096 B | 8192 B | 16384 B | 32768 B |
-|-----------|--------|--------|---------|---------|
-| `pwrite()` | `0.661x` | `0.663x` | `0.722x` | `0.660x` |
-| `pread()` | `0.647x` | `0.540x` | `0.588x` | `0.600x` |
+| Operation | 4096 B | 8192 B | 16384 B | 32768 B | 65536 B |
+|-----------|--------|--------|---------|---------|---------|
+| `write()` | `0.290x` | `0.196x` | `0.130x` | `0.079x` | `0.060x` |
+| `read()` | `0.244x` | `0.199x` | `0.136x` | `0.068x` | `0.046x` |
+| `pwrite()` | `0.245x` | `0.234x` | `0.132x` | `0.078x` | `0.057x` |
+| `pread()` | `0.302x` | `0.216x` | `0.186x` | `0.190x` | `0.135x` |
 
 Interpretation:
 
-- With `/dev/zero` backing the payload path, the absolute `32768`-byte latencies are now
-  `3.855 ms` legacy vs `2.546 ms` ring for `pwrite()`, and `4.124 ms` legacy vs `2.472 ms` ring
-  for `pread()`.
-- Compared with the earlier hybrid fixed-buffer rerun, the direct-linuxd path materially improved
-  both directions. `pread()` now beats legacy at every measured size, while `pwrite()` beats
-  legacy at every size except `32` B and is effectively at parity by `64` B.
+- With `/dev/zero` backing the payload path, the direct-linuxd ring path now beats legacy at every
+  measured size for all four operations.
+- The strongest gains are still on the send side: at `65536` bytes, `write()` drops from
+  `10.157 ms` to `0.613 ms`, and `pwrite()` drops from `10.424 ms` to `0.592 ms`.
+- The new batched read-completion protocol materially improves the receive side too by removing the
+  old per-segment CQ/control overhead while keeping the unavoidable final copy back into user
+  space. At `65536` bytes, `read()` drops from `11.944 ms` to `0.551 ms`, and `pread()` drops from
+  `9.983 ms` to `1.346 ms`.
 - The fixed-size RTT rerun also now shows a cleaner absolute result after warm-up and core pinning:
-  `0.532 ms` legacy vs `0.247 ms` ring for `fcntl(F_GETFL)`.
+  `0.241 ms` legacy vs `0.118 ms` ring for `fcntl(F_GETFL)`.
 - These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
-  active transport path. Adaptive polling, guest-to-host doorbell suppression, and full fallback
-  elimination are still pending.
+  active transport path, amortizing one logical transfer across up to `16` shared fixed buffers,
+  and collapsing receive-side completion traffic to one logical CQ event per `readv()` / `preadv()`
+  result. Adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
+  still pending.
 
 ## Key Design Decisions
 

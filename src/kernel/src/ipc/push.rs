@@ -87,12 +87,7 @@ pub fn push(
 
     trace!(
         "tid={:?}, pid={:?}, dst_tid={:?}, dst_pid={:?}, buffer={:#x}, len={}",
-        caller_tid,
-        caller_pid,
-        destination_tid,
-        destination_pid,
-        buffer_raw,
-        transfer_len
+        caller_tid, caller_pid, destination_tid, destination_pid, buffer_raw, transfer_len
     );
 
     // When the destination is the kernel (linuxd), use the vmbus for data chunk transfer instead of the
@@ -103,32 +98,61 @@ pub fn push(
     if destination_pid == ProcessIdentifier::KERNEL {
         cfg_if::cfg_if! {
             if #[cfg(all(feature = "microvm", feature = "ring-buffer"))] {
-                let buffer_id: u32 =
-                    crate::ring::get_or_alloc_thread_fixed_buffer(caller_tid).map_err(SleepError::Generic)?;
-                let fixed_buffer_vaddr: usize =
-                    crate::ring::fixed_buffer_vaddr(buffer_id).map_err(SleepError::Generic)?;
-                let dst: crate::hal::mem::VirtualAddress =
-                    crate::hal::mem::VirtualAddress::from_raw_value(fixed_buffer_vaddr);
-                let src: crate::hal::mem::VirtualAddress =
-                    crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw);
+                let segment_count: usize = crate::ring::fixed_buffer_count_for_len(transfer_len);
+                let reservation: crate::ring::FixedBufferReservation =
+                    crate::ring::get_or_alloc_thread_fixed_buffers(caller_tid, segment_count)
+                        .map_err(SleepError::Generic)?;
                 let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
-                pm.vmcopy_from_user(caller_pid, dst, src, transfer_len)
+                let mut copied: usize = 0;
+
+                for &buffer_id in reservation.ids() {
+                    if copied >= transfer_len {
+                        break;
+                    }
+                    let chunk_len: usize = core::cmp::min(
+                        transfer_len - copied,
+                        ::nvx_ring::FIXED_BUF_SIZE,
+                    );
+                    let fixed_buffer_vaddr: usize =
+                        crate::ring::fixed_buffer_vaddr(buffer_id).map_err(SleepError::Generic)?;
+                    let dst: crate::hal::mem::VirtualAddress =
+                        crate::hal::mem::VirtualAddress::from_raw_value(fixed_buffer_vaddr);
+                    let src: crate::hal::mem::VirtualAddress =
+                        crate::hal::mem::VirtualAddress::from_raw_value(buffer_raw + copied);
+                    pm.vmcopy_from_user(caller_pid, dst, src, chunk_len)
+                        .map_err(SleepError::Generic)?;
+                    copied += chunk_len;
+                }
+
+                let mut sent: usize = 0;
+                for &buffer_id in reservation.ids() {
+                    if sent >= transfer_len {
+                        break;
+                    }
+                    let chunk_len: usize = core::cmp::min(
+                        transfer_len - sent,
+                        ::nvx_ring::FIXED_BUF_SIZE,
+                    );
+
+                    trace!(
+                        "push(): fixed-buffer transfer via ring (caller_pid={caller_pid:?}, \
+                         caller_tid={caller_tid:?}, buffer_id={buffer_id}, offset={sent}, \
+                         len={chunk_len})"
+                    );
+
+                    crate::stdio::write_fixed_bulk(
+                        caller_pid,
+                        caller_tid,
+                        destination_pid,
+                        destination_tid,
+                        buffer_id,
+                        chunk_len as u32,
+                    )
                     .map_err(SleepError::Generic)?;
+                    sent += chunk_len;
+                }
 
-                trace!(
-                    "push(): fixed-buffer transfer via ring (caller_pid={caller_pid:?}, \
-                     caller_tid={caller_tid:?}, buffer_id={buffer_id}, len={transfer_len})"
-                );
-
-                return crate::stdio::write_fixed_bulk(
-                    caller_pid,
-                    caller_tid,
-                    destination_pid,
-                    destination_tid,
-                    buffer_id,
-                    transfer_len_raw,
-                )
-                .map_err(SleepError::Generic);
+                return Ok(());
             } else {
                 // Reject transfers that cross a page boundary. The vmbus data chunk transfer path translates
                 // only the first page's virtual address to a guest physical address, so the entire buffer

@@ -5,8 +5,8 @@
 //!
 //! Measures the latency of local kernel calls and linuxd round-trip syscalls using the TSC.
 //! Reports per-call nanoseconds for comparing the legacy vmbus path against the
-//! shared-memory ring buffer path, including payload-carrying `pwrite()` and `pread()`
-//! sweeps that cross the 4 KiB page boundary.
+//! shared-memory ring buffer path, including payload-carrying `write()` / `read()` and
+//! `pwrite()` / `pread()` sweeps that cross the 4 KiB page boundary.
 
 #![no_std]
 #![no_main]
@@ -18,11 +18,6 @@ extern crate nvx;
 use ::sys::error::Error;
 #[cfg(feature = "payload-sweep")]
 use ::sys::error::ErrorCode;
-#[cfg(not(feature = "payload-sweep-only"))]
-use ::sysapi::{
-    fcntl::file_control_request,
-    unistd::STDOUT_FILENO,
-};
 #[cfg(feature = "payload-sweep")]
 use ::sysapi::fcntl::{
     atflags::AT_FDCWD,
@@ -36,6 +31,13 @@ use ::sysapi::fcntl::{
 use ::sysapi::sys_stat::file_mode::{
     S_IRUSR,
     S_IWUSR,
+};
+#[cfg(feature = "payload-sweep")]
+use ::sysapi::unistd::file_seek::SEEK_SET;
+#[cfg(not(feature = "payload-sweep-only"))]
+use ::sysapi::{
+    fcntl::file_control_request,
+    unistd::STDOUT_FILENO,
 };
 use ::syscall::fcntl;
 #[cfg(feature = "payload-sweep")]
@@ -56,9 +58,16 @@ const PAYLOAD_WARMUP_ITERATIONS: u32 = 4;
 /// Threshold beyond which payload points use fewer iterations to keep the total runtime bounded.
 #[cfg(feature = "payload-sweep")]
 const PAYLOAD_LARGE_THRESHOLD: usize = 4096;
-/// Payload sizes for the `pwrite()` / `pread()` sweeps.
+/// Payload sizes for the payload-carrying syscall sweeps.
 #[cfg(feature = "payload-sweep")]
-const PAYLOAD_SIZES: &[usize] = &[32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768];
+const PAYLOAD_SIZES: &[usize] = &[
+    32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536,
+];
+/// Payload sizes for the positioned payload-carrying syscall sweeps.
+#[cfg(feature = "payload-sweep")]
+const POSITIONED_PAYLOAD_SIZES: &[usize] = &[
+    32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536, 131072,
+];
 /// Temporary file used by the payload benchmarks.
 #[cfg(feature = "payload-sweep")]
 const PAYLOAD_BENCH_FILE: &str = "syscall-bench-payload.tmp";
@@ -127,6 +136,21 @@ fn bench_linuxd_pwrite(fd: i32, buffer: &[u8]) -> Result<u64, Error> {
     Ok(end.wrapping_sub(start))
 }
 
+/// Performs a `write()` round-trip using linuxd and returns the TSC delta.
+#[inline]
+#[cfg(feature = "payload-sweep")]
+fn bench_linuxd_write(fd: i32, buffer: &[u8]) -> Result<u64, Error> {
+    let start: u64 = rdtsc();
+    let nwritten: usize = unistd::write(fd, buffer)? as usize;
+    let end: u64 = rdtsc();
+
+    if nwritten != buffer.len() {
+        return Err(Error::new(ErrorCode::TryAgain, "short write"));
+    }
+
+    Ok(end.wrapping_sub(start))
+}
+
 /// Performs a `pread()` round-trip using linuxd and returns the TSC delta.
 #[inline]
 #[cfg(feature = "payload-sweep")]
@@ -137,6 +161,21 @@ fn bench_linuxd_pread(fd: i32, buffer: &mut [u8]) -> Result<u64, Error> {
 
     if nread != buffer.len() {
         return Err(Error::new(ErrorCode::TryAgain, "short pread"));
+    }
+
+    Ok(end.wrapping_sub(start))
+}
+
+/// Performs a `read()` round-trip using linuxd and returns the TSC delta.
+#[inline]
+#[cfg(feature = "payload-sweep")]
+fn bench_linuxd_read(fd: i32, buffer: &mut [u8]) -> Result<u64, Error> {
+    let start: u64 = rdtsc();
+    let nread: usize = unistd::read(fd, buffer)? as usize;
+    let end: u64 = rdtsc();
+
+    if nread != buffer.len() {
+        return Err(Error::new(ErrorCode::TryAgain, "short read"));
     }
 
     Ok(end.wrapping_sub(start))
@@ -154,11 +193,26 @@ fn payload_iterations(size: usize) -> u32 {
 
 /// Returns the largest payload size in the sweep.
 #[cfg(feature = "payload-sweep")]
-fn max_payload_size() -> usize {
-    match PAYLOAD_SIZES.last() {
+fn max_payload_size(sizes: &[usize]) -> usize {
+    match sizes.last() {
         Some(size) => *size,
         None => 0,
     }
+}
+
+/// Returns the largest payload size across all payload benchmark sweeps.
+#[cfg(feature = "payload-sweep")]
+fn max_benchmark_payload_size() -> usize {
+    core::cmp::max(
+        max_payload_size(PAYLOAD_SIZES),
+        max_payload_size(POSITIONED_PAYLOAD_SIZES),
+    )
+}
+
+/// Returns the minimum file capacity required for the sequential read/write sweeps.
+#[cfg(feature = "payload-sweep")]
+fn payload_file_capacity() -> usize {
+    max_benchmark_payload_size() * (PAYLOAD_WARMUP_ITERATIONS + PAYLOAD_ITERATIONS_SMALL) as usize
 }
 
 /// Prepares the payload benchmark file with deterministic contents.
@@ -172,6 +226,16 @@ fn prepare_payload_file(fd: i32, size: usize, fill: u8) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// Rewinds the payload benchmark file when the backing object is seekable.
+#[cfg(feature = "payload-sweep")]
+fn rewind_payload_file(fd: i32) -> Result<(), Error> {
+    match unistd::lseek(fd, 0, SEEK_SET) {
+        Ok(_) => Ok(()),
+        Err(error) if error.code == ErrorCode::IllegalSeek => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[inline]
@@ -302,13 +366,57 @@ fn print(msg: &[u8]) {
 fn run_payload_sweep() -> Result<(), Error> {
     let flags: i32 = O_CREAT | O_RDWR | O_TRUNC;
     let fd: i32 = fcntl::openat(AT_FDCWD, PAYLOAD_BENCH_FILE, flags, S_IRUSR | S_IWUSR)?;
-    let max_size: usize = max_payload_size();
+    let file_capacity: usize = payload_file_capacity();
 
-    prepare_payload_file(fd, max_size, 0xa5)?;
+    prepare_payload_file(fd, file_capacity, 0xa5)?;
+
+    print(b"--- linuxd payload sweep: write() ---\n");
+
+    for &size in PAYLOAD_SIZES {
+        let iterations: u32 = payload_iterations(size);
+        let payload: alloc::vec::Vec<u8> = alloc::vec![0x5au8; size];
+
+        rewind_payload_file(fd)?;
+        for _ in 0..PAYLOAD_WARMUP_ITERATIONS {
+            let _ = bench_linuxd_write(fd, &payload)?;
+        }
+
+        rewind_payload_file(fd)?;
+        let mut total_cycles: u64 = 0;
+        for _ in 0..iterations {
+            total_cycles += bench_linuxd_write(fd, &payload)?;
+        }
+
+        report_payload("write", size, iterations, total_cycles);
+    }
+
+    prepare_payload_file(fd, file_capacity, 0xa5)?;
+
+    print(b"--- linuxd payload sweep: read() ---\n");
+
+    for &size in PAYLOAD_SIZES {
+        let iterations: u32 = payload_iterations(size);
+        let mut payload: alloc::vec::Vec<u8> = alloc::vec![0u8; size];
+
+        rewind_payload_file(fd)?;
+        for _ in 0..PAYLOAD_WARMUP_ITERATIONS {
+            let _ = bench_linuxd_read(fd, &mut payload)?;
+        }
+
+        rewind_payload_file(fd)?;
+        let mut total_cycles: u64 = 0;
+        for _ in 0..iterations {
+            total_cycles += bench_linuxd_read(fd, &mut payload)?;
+        }
+
+        report_payload("read", size, iterations, total_cycles);
+    }
+
+    prepare_payload_file(fd, file_capacity, 0xa5)?;
 
     print(b"--- linuxd payload sweep: pwrite() ---\n");
 
-    for &size in PAYLOAD_SIZES {
+    for &size in POSITIONED_PAYLOAD_SIZES {
         let iterations: u32 = payload_iterations(size);
         let payload: alloc::vec::Vec<u8> = alloc::vec![0x5au8; size];
 
@@ -324,11 +432,11 @@ fn run_payload_sweep() -> Result<(), Error> {
         report_payload("pwrite", size, iterations, total_cycles);
     }
 
-    prepare_payload_file(fd, max_size, 0xa5)?;
+    prepare_payload_file(fd, file_capacity, 0xa5)?;
 
     print(b"--- linuxd payload sweep: pread() ---\n");
 
-    for &size in PAYLOAD_SIZES {
+    for &size in POSITIONED_PAYLOAD_SIZES {
         let iterations: u32 = payload_iterations(size);
         let mut payload: alloc::vec::Vec<u8> = alloc::vec![0u8; size];
 
