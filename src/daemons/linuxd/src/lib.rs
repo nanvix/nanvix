@@ -928,18 +928,13 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                         let mut writer_guard: MutexGuard<'_, SocketStreamWriter> =
                             uvm_writer.lock().await;
                         let err_bytes: [u8; IPC_MESSAGE_SIZE] = err_msg.to_bytes();
-                        writer_guard
-                            .write_all(&[IkcFrame::MESSAGE_FRAME])
-                            .await
-                            .map_err(|e| {
-                                let reason: &str = "failed to send error message to user VM";
-                                error!(
-                                    "forward_user_vm_msg_to_worker_thread(): {reason} \
-                                     (error={e:?})"
-                                );
-                                Error::new(ErrorCode::IoErr, reason)
-                            })?;
-                        writer_guard.write_all(&err_bytes).await.map_err(|e| {
+                        // Coalesce frame type byte and message payload into a single write
+                        // to reduce syscall overhead and avoid sending the frame byte as a
+                        // separate tiny segment.
+                        let mut buf: [u8; 1 + IPC_MESSAGE_SIZE] = [0; 1 + IPC_MESSAGE_SIZE];
+                        buf[0] = IkcFrame::MESSAGE_FRAME;
+                        buf[1..].copy_from_slice(&err_bytes);
+                        writer_guard.write_all(&buf).await.map_err(|e| {
                             let reason: &str = "failed to send error message to user VM";
                             error!(
                                 "forward_user_vm_msg_to_worker_thread(): {reason} (error={e:?})"
