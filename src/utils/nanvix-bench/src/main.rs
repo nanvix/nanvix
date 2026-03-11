@@ -1146,6 +1146,20 @@ impl Benchmark {
                 .start(new_msg, new_msg_headers, linuxd_deployment)
                 .await?;
 
+            // Warmup: send one untimed echo to trigger lazy initialization (worker thread
+            // creation, TCP path warm-up, etc.) so that timed iterations reflect steady-state
+            // latency.
+            {
+                // Use a warmup-specific duration alias to clarify phase semantics. Currently,
+                // this matches the cleanup sleep duration.
+                const WARMUP_SLEEP_DURATION: u64 = CLEANUP_SLEEP_DURATION;
+
+                let mut warmup_response = [0u8; DEFAULT_PAYLOAD_SIZE];
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut warmup_response).await?;
+                sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
+            }
+
             for _ in 0..self.iterations {
                 let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
 
