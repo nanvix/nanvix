@@ -4,10 +4,12 @@
 // Modules
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use crate::fcntl;
 use ::sys::error::Error;
+#[cfg(not(feature = "standalone"))]
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
     ffi::c_int,
     sys_types::mode_t,
 };
@@ -36,29 +38,16 @@ use ::sysapi::{
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
 
-    // Route to the VFS if the path matches an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        // In standalone mode, VFS is the only filesystem. Route all opens to VFS
-        // unconditionally — let VFS return proper errors for missing files.
-        #[cfg(feature = "standalone")]
-        {
-            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs open failed")
-            });
-        }
-
-        #[cfg(not(feature = "standalone"))]
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs open failed")
-            });
-        }
+        ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
+            Error::new(code, "vfs open failed")
+        })
     }
 
+    #[cfg(not(feature = "standalone"))]
     fcntl::openat(AT_FDCWD, pathname, flags, mode)
 }

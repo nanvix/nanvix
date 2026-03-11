@@ -5,21 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::RenameAtRequest,
-    message::MessagePartitioner,
-    safe::RawFileDescriptor,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::Error;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::RenameAtRequest,
+        message::MessagePartitioner,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ::alloc::vec::Vec,
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -58,31 +59,29 @@ pub fn renameat(
         newpath
     );
 
-    // Route to the VFS if the old path belongs to an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(oldpath) {
-            return ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(
-                |e| {
-                    let code: ::sys::error::ErrorCode = e.into();
-                    ::syslog::error!(
-                        "renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})"
-                    );
-                    Error::new(code, "vfs renameat failed")
-                },
-            );
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "renameat not available in standalone mode",
-        ));
+        ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})");
+            Error::new(code, "vfs renameat failed")
+        })
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    renameat_linuxd(olddirfd, oldpath, newdirfd, newpath)
+}
+
+/// Forwards a `renameat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn renameat_linuxd(
+    olddirfd: RawFileDescriptor,
+    oldpath: &str,
+    newdirfd: RawFileDescriptor,
+    newpath: &str,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

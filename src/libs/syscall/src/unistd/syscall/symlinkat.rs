@@ -5,10 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::sys::error::Error;
 #[cfg(not(feature = "standalone"))]
 use {
     crate::{
@@ -22,6 +19,7 @@ use {
         vec::Vec,
     },
     ::sys::{
+        error::ErrorCode,
         ipc::Message,
         pm::ThreadIdentifier,
     },
@@ -54,27 +52,16 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
         linkpath
     );
 
-    // FAT32 does not support symbolic links.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(linkpath) {
-            return ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!(
-                    "symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})"
-                );
-                Error::new(code, "vfs symlinkat failed")
-            });
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "symlinkat not available in standalone mode",
-        ))
+        ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!(
+                "symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})"
+            );
+            Error::new(code, "vfs symlinkat failed")
+        })
     }
 
     // Forward to linuxd via IPC.

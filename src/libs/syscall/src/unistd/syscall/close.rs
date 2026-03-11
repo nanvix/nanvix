@@ -30,8 +30,8 @@ use {
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_close(fd).map_err(|e| {
@@ -40,11 +40,6 @@ pub fn close(fd: i32) -> Result<(), Error> {
                 Error::new(code, "vfs close failed")
             });
         }
-    }
-
-    // In standalone mode, treat stdio fds as a no-op and reject other non-VFS fds.
-    #[cfg(feature = "standalone")]
-    {
         use ::sysapi::unistd::{
             STDERR_FILENO,
             STDIN_FILENO,
@@ -53,7 +48,6 @@ pub fn close(fd: i32) -> Result<(), Error> {
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             return Ok(());
         }
-        let _ = fd;
         Err(Error::new(ErrorCode::OperationNotSupported, "close not available in standalone mode"))
     }
 

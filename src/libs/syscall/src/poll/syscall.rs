@@ -5,33 +5,36 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-        MessagePartitioner,
-    },
-    poll::message::{
-        PollRequest,
-        PollResponse,
-    },
-    safe::RawFileDescriptor,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
+use crate::safe::RawFileDescriptor;
 use ::alloc::vec::Vec;
-use ::sys::{
-    error::Error,
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::ffi::{
     c_int,
     c_short,
 };
-use sys::{
-    error::ErrorCode,
-    kcall::ipc,
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::{
+            LinuxDaemonLongMessage,
+            LinuxDaemonMessagePart,
+            MessagePartitioner,
+        },
+        poll::message::{
+            PollRequest,
+            PollResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        kcall::ipc,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -142,12 +145,20 @@ pub fn poll(
     // In standalone mode, poll is not available (no linuxd).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "poll not available in standalone mode",
-        ));
+        Err(Error::new(ErrorCode::OperationNotSupported, "poll not available in standalone mode"))
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    poll_linuxd(fds, timeout)
+}
+
+/// Forwards a `poll` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn poll_linuxd(
+    fds: &[PollFd],
+    timeout: PollTimeout,
+) -> Result<Vec<(RawFileDescriptor, PollEvents)>, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

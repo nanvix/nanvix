@@ -5,35 +5,36 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    dirent::{
-        message::{
-            GetDirectoryEntriesRequest,
-            GetDirectoryEntriesResponse,
-        },
-        posix_dent,
-    },
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-        MessagePartitioner,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
+use crate::dirent::posix_dent;
 use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::ffi::c_int;
 use ::syslog::{
     error,
     trace,
+};
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        dirent::message::{
+            GetDirectoryEntriesRequest,
+            GetDirectoryEntriesResponse,
+        },
+        message::{
+            LinuxDaemonLongMessage,
+            LinuxDaemonMessagePart,
+            MessagePartitioner,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -55,33 +56,35 @@ use ::syslog::{
 /// On successful completion, a list with the directory entries, with at least `count` elements, is
 /// returned. On failure, an error code is returned instead.
 ///
-#[allow(unreachable_code)]
 pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     trace!("posix_getdents(): fd={}, count={:?}", fd, count);
 
-    // Capacity of message assembler.
-    const MESSAGE_ASSEMBLER_CAPACITY: usize =
-        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
-
-    // Route VFS file descriptors to the in-memory filesystem.
-    #[cfg(feature = "memfs")]
-    if ::nvx::vfs::fd::is_vfs_fd(fd) {
-        return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
-            let code: ErrorCode = e.into();
-            error!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
-            Error::new(code, "vfs getdents failed")
-        });
-    }
-
-    // In standalone mode without VFS fd, getdents is not available (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        let _ = (fd, count);
-        return Err(Error::new(
+        if ::nvx::vfs::fd::is_vfs_fd(fd) {
+            return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
+                let code: ErrorCode = e.into();
+                error!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
+                Error::new(code, "vfs getdents failed")
+            });
+        }
+        Err(Error::new(
             ErrorCode::OperationNotSupported,
             "getdents not available in standalone mode",
-        ));
+        ))
     }
+
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    posix_getdents_linuxd(fd, count)
+}
+
+/// Forwards a `posix_getdents` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
+    const MESSAGE_ASSEMBLER_CAPACITY: usize =
+        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 

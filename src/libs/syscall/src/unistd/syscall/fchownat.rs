@@ -66,18 +66,10 @@ pub fn fchownat(
         flag
     );
 
-    // FAT32 does not support ownership — silently succeed for VFS paths.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return Ok(());
-        }
-    }
-
-    // In standalone mode, succeed as a no-op (no linuxd).
+    // In standalone mode, this operation is not supported.
+    // TODO: https://github.com/nanvix/nanvix/issues/1609
     #[cfg(feature = "standalone")]
     {
-        let _ = (dirfd, path, owner, group, flag);
         Ok(())
     }
 
