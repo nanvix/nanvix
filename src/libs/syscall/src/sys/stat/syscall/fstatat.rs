@@ -5,20 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    sys::stat::message::FileStatAtRequest,
-};
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
-use ::sys::{
-    error::Error,
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use ::sys::error::Error;
 use ::sysapi::sys_stat;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        sys::stat::message::FileStatAtRequest,
+    },
+    ::alloc::{
+        string::ToString,
+        vec::Vec,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -42,66 +45,29 @@ use ::sysapi::sys_stat;
 ///
 #[allow(unreachable_code, unused_variables)]
 pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> Result<(), Error> {
-    // Route to the VFS if the path belongs to an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        // In standalone mode, VFS is the only filesystem. Route all stats to VFS
-        // unconditionally — let VFS return proper errors for missing files.
-        #[cfg(feature = "standalone")]
-        {
-            return ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
-                ::sys::error::Error::new(code, "vfs stat failed")
-            });
-        }
-
-        #[cfg(not(feature = "standalone"))]
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
-                ::sys::error::Error::new(code, "vfs stat failed")
-            });
-        }
+        ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
+            ::sys::error::Error::new(code, "vfs stat failed")
+        })
     }
 
-    // In standalone mode without memfs, reject all paths.
-    #[cfg(all(feature = "standalone", not(feature = "memfs")))]
-    {
-        let _ = (dirfd, path, buf, flag);
-        return Err(::sys::error::Error::new(
-            ::sys::error::ErrorCode::OperationNotSupported,
-            "fstatat not available in standalone mode without memfs",
-        ));
-    }
-
-    // Send request.
-    fstatat_request(dirfd, path, flag)?;
-
-    // Wait for response.
-    *buf = crate::sys::stat::syscall::fstatat_response()?;
-
-    Ok(())
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fstatat_linuxd(dirfd, path, buf, flag)
 }
 
-///
-/// # Description
-///
-/// This function sends a request to the daemon to execute the `fstatat()` system call.
-///
-/// # Parameters
-///
-/// - `dirfd`: Directory file descriptor.
-/// - `path`: Path to the file.
-/// - `flag`: Flags.
-///
-/// # Returns
-///
-/// Upon successful completion, empty result is returned. Upon failure, an error is returned
-/// instead.
-///
-fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
+/// Forwards a `fstatat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fstatat_linuxd(
+    dirfd: i32,
+    path: &str,
+    buf: &mut sys_stat::stat,
+    flag: i32,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
@@ -111,6 +77,8 @@ fn fstatat_request(dirfd: i32, path: &str, flag: i32) -> Result<(), Error> {
     for request in &requests {
         ::sys::kcall::ipc::send(request)?;
     }
+
+    *buf = crate::sys::stat::syscall::fstatat_response()?;
 
     Ok(())
 }

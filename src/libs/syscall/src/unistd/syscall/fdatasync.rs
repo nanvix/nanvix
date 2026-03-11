@@ -43,8 +43,8 @@ use {
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     ::syslog::trace!("fdatasync(): fd={:?}", fd);
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
@@ -53,12 +53,6 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
                 Error::new(code, "vfs fdatasync failed")
             });
         }
-    }
-
-    // In standalone mode, succeed as a no-op for non-VFS fds (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = fd;
         Ok(())
     }
 

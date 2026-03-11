@@ -130,8 +130,8 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             let n: c_size_t = ::nvx::vfs::fd::vfs_write(fd, buffer).map_err(|e| {
@@ -141,12 +141,8 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
             })?;
             return Ok(n);
         }
+        write_standalone(fd, buffer)
     }
-
-    // In standalone mode, route stdout/stderr through IKC
-    // and reject all other file descriptors.
-    #[cfg(feature = "standalone")]
-    return write_standalone(fd, buffer);
 
     // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]

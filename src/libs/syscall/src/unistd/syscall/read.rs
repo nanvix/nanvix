@@ -160,8 +160,8 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             let n: c_size_t = ::nvx::vfs::fd::vfs_read(fd, buffer).map_err(|e| {
@@ -171,11 +171,6 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
             })?;
             return Ok(n);
         }
-    }
-
-    // In standalone mode, route stdin through IKC and reject other file descriptors.
-    #[cfg(feature = "standalone")]
-    {
         if fd == STDIN_FILENO {
             return read_via_ikc(fd, buffer);
         }

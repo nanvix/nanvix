@@ -5,25 +5,26 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    sys::stat::message::UpdateFileAccessTimeAtRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use ::sys::error::Error;
 use ::sysapi::time::timespec;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        sys::stat::message::UpdateFileAccessTimeAtRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::{
+        string::ToString,
+        vec::Vec,
+    },
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -61,21 +62,26 @@ pub fn utimensat(
         flags
     );
 
-    // FAT32 does not support fine-grained timestamps — silently succeed.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return Ok(());
-        }
-    }
-
-    // In standalone mode, succeed as a no-op (no linuxd).
+    // In standalone mode, this operation is not supported.
+    // TODO: https://github.com/nanvix/nanvix/issues/1608
     #[cfg(feature = "standalone")]
     {
-        let _ = (dirfd, pathname, times, flags);
-        return Ok(());
+        Ok(())
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    utimensat_linuxd(dirfd, pathname, times, flags)
+}
+
+/// Forwards a `utimensat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn utimensat_linuxd(
+    dirfd: i32,
+    pathname: &str,
+    times: &[timespec; 2],
+    flags: i32,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: UpdateFileAccessTimeAtRequest =

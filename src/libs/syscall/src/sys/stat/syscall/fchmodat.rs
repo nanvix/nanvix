@@ -5,24 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    sys::stat::message::FileChmodAtRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use ::sys::error::Error;
 use ::sysapi::{
     ffi::c_int,
     sys_types::mode_t,
+};
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        sys::stat::message::FileChmodAtRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::vec::Vec,
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -47,32 +48,22 @@ use ::sysapi::{
 /// error.
 ///
 #[allow(unreachable_code)]
-pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
-    // FAT32 does not support permissions — silently succeed for VFS paths.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return Ok(());
-        }
-    }
-
-    // In standalone mode, succeed as a no-op (no linuxd).
+pub fn fchmodat(_dirfd: c_int, _path: &str, _mode: mode_t, _flag: c_int) -> Result<(), Error> {
+    // In standalone mode, this operation is not supported.
+    // TODO: https://github.com/nanvix/nanvix/issues/1607
     #[cfg(feature = "standalone")]
     {
-        let _ = (dirfd, path, mode, flag);
-        return Ok(());
+        Ok(())
     }
 
-    // Send request.
-    chmodat_request(dirfd, path, mode, flag)?;
-
-    // Wait for response.
-    chmodat_response()?;
-
-    Ok(())
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fchmodat_linuxd(_dirfd, _path, _mode, _flag)
 }
 
-fn chmodat_request(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
+/// Forwards a `fchmodat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fchmodat_linuxd(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: FileChmodAtRequest = FileChmodAtRequest::new(dirfd, mode, flag, path)?;
@@ -83,10 +74,6 @@ fn chmodat_request(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Resul
         ::sys::kcall::ipc::send(request)?;
     }
 
-    Ok(())
-}
-
-fn chmodat_response() -> Result<(), Error> {
     let response: Message = ::sys::kcall::ipc::recv()?;
 
     // Check whether system call succeeded or not.

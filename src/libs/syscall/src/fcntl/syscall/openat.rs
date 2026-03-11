@@ -5,27 +5,30 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::{
-        OpenAtRequest,
-        OpenAtResponse,
-    },
-    message::MessagePartitioner,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::{
     ffi::c_int,
     sys_types::mode_t,
+};
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::{
+            OpenAtRequest,
+            OpenAtResponse,
+        },
+        message::MessagePartitioner,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::vec::Vec,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -38,41 +41,24 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
         "openat(): dirfd={dirfd:?}, pathname={pathname:?}, flags={flags:?}, mode={mode:?}"
     );
 
-    // Route to the VFS if the path belongs to an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        // In standalone mode, VFS is the only filesystem. Route all opens to VFS
-        // unconditionally — let VFS return proper errors for missing files.
-        #[cfg(feature = "standalone")]
-        {
-            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!(
-                    "openat(): VFS open failed (pathname={pathname:?}, error={e})"
-                );
-                Error::new(code, "vfs open failed")
-            });
-        }
-
-        #[cfg(not(feature = "standalone"))]
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs open failed")
-            });
-        }
+        ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+            let code: ErrorCode = e.into();
+            ::syslog::error!("openat(): VFS open failed (pathname={pathname:?}, error={e})");
+            Error::new(code, "vfs open failed")
+        })
     }
 
-    // In standalone mode without memfs, reject all paths.
-    #[cfg(all(feature = "standalone", not(feature = "memfs")))]
-    {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "openat not available in standalone mode without memfs",
-        ));
-    }
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    openat_linuxd(dirfd, pathname, flags, mode)
+}
 
+/// Forwards an `openat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn openat_linuxd(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
