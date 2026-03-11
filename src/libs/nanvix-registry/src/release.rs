@@ -252,6 +252,12 @@ mod tests {
 
         let pattern: String = format!("nanvix-{}-{}-release", machine, deployment);
         assert_eq!(pattern, "nanvix-hyperlight-multi-process-release");
+
+        // Verify the pattern matches both legacy and new archive name formats.
+        let legacy_name: &str = "nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2";
+        let new_name: &str = "nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        assert!(legacy_name.contains(&pattern));
+        assert!(new_name.contains(&pattern));
     }
 
     ///
