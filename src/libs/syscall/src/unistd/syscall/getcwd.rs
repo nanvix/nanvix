@@ -36,22 +36,15 @@ use {
 
 /// Gets the current working directory.
 pub fn getcwd() -> Result<String, Error> {
-    // When memfs is enabled, return the VFS cwd if it has been changed from
-    // the default ("/"). If it is still "/" the user may have chdir'd via
-    // linuxd, so fall through to the standard IPC path.
-    // If the VFS is not initialized or getcwd fails, also fall through.
-    #[cfg(feature = "memfs")]
-    {
-        if let Ok(vfs_cwd) = ::nvx::vfs::fd::vfs_getcwd() {
-            if vfs_cwd != "/" {
-                return Ok(vfs_cwd);
-            }
-        }
-    }
-
-    // In standalone mode, return "/" as the default cwd (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
-    return Ok(String::from("/"));
+    {
+        ::nvx::vfs::fd::vfs_getcwd().map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("getcwd(): VFS getcwd failed (error={e})");
+            Error::new(code, "vfs getcwd failed")
+        })
+    }
 
     // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]

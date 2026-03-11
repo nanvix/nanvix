@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::sys::error::Error;
 use ::sysapi::ffi::c_int;
 #[cfg(not(feature = "standalone"))]
 use {
@@ -24,6 +21,7 @@ use {
         vec::Vec,
     },
     ::sys::{
+        error::ErrorCode,
         ipc::Message,
         pm::ThreadIdentifier,
     },
@@ -66,25 +64,14 @@ pub fn linkat(
         flags
     );
 
-    // FAT32 does not support hard links.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(oldpath) {
-            return ::nvx::vfs::fd::vfs_linkat(olddirfd, oldpath, newdirfd, newpath, flags)
-                .map_err(|e| {
-                    let code: ::sys::error::ErrorCode = e.into();
-                    ::syslog::error!(
-                        "linkat(): VFS linkat failed (oldpath={oldpath:?}, error={e})"
-                    );
-                    Error::new(code, "vfs linkat failed")
-                });
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(ErrorCode::OperationNotSupported, "linkat not available in standalone mode"))
+        ::nvx::vfs::fd::vfs_linkat(olddirfd, oldpath, newdirfd, newpath, flags).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("linkat(): VFS linkat failed (oldpath={oldpath:?}, error={e})");
+            Error::new(code, "vfs linkat failed")
+        })
     }
 
     // Forward to linuxd via IPC.

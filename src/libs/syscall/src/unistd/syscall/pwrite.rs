@@ -60,8 +60,8 @@ use {
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_pwrite(fd, buffer, offset).map_err(|e| {
@@ -70,18 +70,11 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
                 Error::new(code, "vfs pwrite failed")
             });
         }
-    }
-
-    // In standalone mode, return ESPIPE for stdio fds and reject all others.
-    #[cfg(feature = "standalone")]
-    {
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            let _ = (buffer, offset);
             let reason: &str = "illegal seek on stdio";
             ::syslog::error!("pwrite(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
-        let _ = (fd, buffer, offset);
         let reason: &str = "pwrite not available in standalone mode";
         ::syslog::error!("pwrite(): {reason} (fd={fd})");
         Err(Error::new(ErrorCode::OperationNotSupported, reason))

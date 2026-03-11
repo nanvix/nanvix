@@ -5,22 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::FileAdvisoryInformationRequest,
-    safe::RawFileDescriptor,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::ffi::c_int;
 use sysapi::sys_types::off_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::FileAdvisoryInformationRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -57,21 +60,31 @@ pub fn posix_fadvise(
         advice
     );
 
-    // No-op for VFS file descriptors (FAT32 does not support advisory info).
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+        Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "fadvise not available in standalone mode",
+        ))
     }
 
-    // In standalone mode, succeed as a no-op (advisory only, no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, offset, len, advice);
-        return Ok(());
-    }
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    posix_fadvise_linuxd(fd, offset, len, advice)
+}
 
+/// Forwards a `posix_fadvise` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn posix_fadvise_linuxd(
+    fd: RawFileDescriptor,
+    offset: off_t,
+    len: off_t,
+    advice: c_int,
+) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

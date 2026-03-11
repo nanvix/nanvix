@@ -54,25 +54,14 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         flag
     );
 
-    // Route to the VFS if the path matches an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("faccessat(): VFS access failed (path={path:?}, error={e})");
-                Error::new(code, "vfs access failed")
-            });
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "faccessat not available in standalone mode",
-        ))
+        ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
+            let code: ErrorCode = e.into();
+            ::syslog::error!("faccessat(): VFS access failed (path={path:?}, error={e})");
+            Error::new(code, "vfs access failed")
+        })
     }
 
     // Forward to linuxd via IPC.

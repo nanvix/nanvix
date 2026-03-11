@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::safe::RawFileDescriptor;
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 use ::sysapi::sys_types::{
     gid_t,
     uid_t,
@@ -19,7 +22,6 @@ use {
         LinuxDaemonMessageHeader,
     },
     ::sys::{
-        error::ErrorCode,
         ipc::Message,
         pm::ThreadIdentifier,
     },
@@ -47,19 +49,13 @@ use {
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
-    // FAT32 does not support ownership — silently succeed for VFS fds.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
-    }
-
-    // In standalone mode, succeed as a no-op (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, owner, group);
-        Ok(())
+        Err(Error::new(ErrorCode::OperationNotSupported, "fchown not available in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

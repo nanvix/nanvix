@@ -45,28 +45,14 @@ use {
 pub fn chdir(path: &str) -> Result<(), Error> {
     ::syslog::trace!("chdir(): path={:?}", path);
 
-    // Route to the VFS if the path matches an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        // In standalone mode the VFS is the only filesystem, so always route
-        // there regardless of what `is_vfs_path` returns.
-        #[cfg(feature = "standalone")]
-        {
-            ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
-                Error::new(code, "vfs chdir failed")
-            })
-        }
-
-        #[cfg(not(feature = "standalone"))]
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
-                Error::new(code, "vfs chdir failed")
-            });
-        }
+        ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
+            let code: ErrorCode = e.into();
+            ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
+            Error::new(code, "vfs chdir failed")
+        })
     }
 
     // Forward to linuxd via IPC.

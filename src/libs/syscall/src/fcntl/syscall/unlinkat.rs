@@ -5,23 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::UnlinkAtRequest,
-    message::MessagePartitioner,
-    safe::RawFileDescriptor,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use crate::safe::RawFileDescriptor;
+use ::sys::error::Error;
 use ::sysapi::ffi::c_int;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::UnlinkAtRequest,
+        message::MessagePartitioner,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::vec::Vec,
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -47,29 +48,24 @@ use ::sysapi::ffi::c_int;
 pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
     ::syslog::trace!("unlinkat(): dirfd={}, pathname={}, flags={}", dirfd, pathname, flags);
 
-    // Route to the VFS if the path belongs to an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
-    {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!(
-                    "unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})"
-                );
-                Error::new(code, "vfs unlinkat failed")
-            });
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "unlinkat not available in standalone mode",
-        ));
+        ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})");
+            Error::new(code, "vfs unlinkat failed")
+        })
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    unlinkat_linuxd(dirfd, pathname, flags)
+}
+
+/// Forwards an `unlinkat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn unlinkat_linuxd(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

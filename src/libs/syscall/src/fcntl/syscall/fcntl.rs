@@ -5,23 +5,26 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::{
-        FileControlRequest,
-        FileControlResponse,
-    },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::ffi::c_int;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::{
+            FileControlRequest,
+            FileControlResponse,
+        },
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -31,8 +34,8 @@ use ::sysapi::ffi::c_int;
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fcntl(fd, cmd).map_err(|e| {
@@ -41,26 +44,27 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
                 Error::new(code, "vfs fcntl failed")
             });
         }
-    }
-
-    // In standalone mode, handle common fcntl commands on non-VFS fds without IPC.
-    #[cfg(feature = "standalone")]
-    {
         use ::sysapi::fcntl::file_control_request;
         match cmd {
             file_control_request::F_GETFD
             | file_control_request::F_SETFD
             | file_control_request::F_GETFL
-            | file_control_request::F_SETFL => return Ok(0),
-            _ => {
-                return Err(Error::new(
-                    ErrorCode::OperationNotSupported,
-                    "fcntl cmd not supported in standalone mode",
-                ));
-            },
+            | file_control_request::F_SETFL => Ok(0),
+            _ => Err(Error::new(
+                ErrorCode::OperationNotSupported,
+                "fcntl cmd not supported in standalone mode",
+            )),
         }
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fcntl_linuxd(fd, cmd, arg)
+}
+
+/// Forwards a `fcntl` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fcntl_linuxd(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

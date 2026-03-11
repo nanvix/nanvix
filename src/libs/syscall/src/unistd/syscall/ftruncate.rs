@@ -47,8 +47,8 @@ use {
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     ::syslog::debug!("ftruncate(): fd={}, length={}", fd, length);
 
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_ftruncate(fd, length).map_err(|e| {
@@ -57,12 +57,6 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
                 Error::new(code, "vfs ftruncate failed")
             });
         }
-    }
-
-    // In standalone mode, reject non-VFS fds (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, length);
         Err(Error::new(
             ErrorCode::OperationNotSupported,
             "ftruncate not available in standalone mode",
