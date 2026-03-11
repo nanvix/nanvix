@@ -14,33 +14,52 @@ inputs:
 
 outputs:
   archive-path:
-    description: "Path to the generated release archive"
+    description: "Newline-separated paths to the generated release archives"
     value: ${{ steps.package.outputs.archive-path }}
 
 runs:
   using: "composite"
   steps:
-  - id: package
-    name: "Package Release Archive"
-    shell: bash
-    env:
-      MACHINE_TYPE: ${{ inputs.machine-type }}
-      DEPLOYMENT_TYPE: ${{ inputs.deployment-type }}
-    run: |
-      # Find the pre-built release archive produced by 'make release' inside
-      # Docker during the ci-build step. Building the archive inside Docker
-      # preserves file permissions (e.g., the execute bit on ELF binaries)
-      # that GitHub Actions artifact transfer would otherwise strip.
-      archive_src=$(ls -1t nanvix-*.tar.bz2 2>/dev/null | head -n 1)
-      if [[ -z "${archive_src}" ]]; then
-        echo "::error::No pre-built release archive found. Ensure ci-build ran 'make release'."
-        exit 1
-      fi
+    - id: package
+      name: "Package Release Archive"
+      shell: bash
+      env:
+        MACHINE_TYPE: ${{ inputs.machine-type }}
+        DEPLOYMENT_TYPE: ${{ inputs.deployment-type }}
+      run: |
+        # Find the pre-built release archive produced by 'make release' inside
+        # Docker during the ci-build step. Building the archive inside Docker
+        # preserves file permissions (e.g., the execute bit on ELF binaries)
+        # that GitHub Actions artifact transfer would otherwise strip.
+        archive_src=$(ls -1t nanvix-*.tar.bz2 2>/dev/null | head -n 1)
+        if [[ -z "${archive_src}" ]]; then
+          echo "::error::No pre-built release archive found. Ensure ci-build ran 'make release'."
+          exit 1
+        fi
 
-      commit_id="${GITHUB_SHA}"
-      archive_name="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${commit_id}.tar.bz2"
+        # Extract memory_size from kernel config and convert to megabytes.
+        memory_size_bytes=$(sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' build/kernel_config.toml | head -n1)
+        if [[ -z "${memory_size_bytes}" ]]; then
+          echo "::error::Failed to extract memory_size from build/kernel_config.toml."
+          exit 1
+        fi
+        memory_size_mb=$(( memory_size_bytes / 1048576 ))
 
-      echo "Reusing pre-built release archive: ${archive_src} -> ${archive_name}"
-      mv "${archive_src}" "${archive_name}"
+        commit_id="${GITHUB_SHA}"
+        archive_ext=".tar.bz2"
 
-      echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
+        # Legacy format (backward-compatible; will be removed in a future release).
+        archive_legacy="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${commit_id}${archive_ext}"
+        # New format including memory size.
+        archive_new="nanvix-${MACHINE_TYPE}-${DEPLOYMENT_TYPE}-release-${memory_size_mb}mb-${commit_id}${archive_ext}"
+
+        echo "Creating release archives from: ${archive_src}"
+        cp "${archive_src}" "${archive_legacy}"
+        mv "${archive_src}" "${archive_new}"
+
+        {
+          echo "archive-path<<ARCHIVE_EOF"
+          echo "${archive_legacy}"
+          echo "${archive_new}"
+          echo "ARCHIVE_EOF"
+        } >> "${GITHUB_OUTPUT}"
