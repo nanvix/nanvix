@@ -959,11 +959,11 @@ impl Registry {
     /// The commit ID is encoded in the release filename and uniquely identifies a specific
     /// build of Nanvix artifacts.
     ///
-    /// Example URL format:
-    /// `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2`
+    /// Supported URL formats:
+    /// - Legacy: `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2`
+    /// - New:    `https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2`
     ///
-    /// This method parses the filename to extract the commit ID between "release-" and
-    /// the file extension (e.g., `abc123def456` from the example above).
+    /// The commit ID is always the last hyphen-delimited segment before the file extension.
     ///
     /// # Parameters
     ///
@@ -978,20 +978,24 @@ impl Registry {
         // Extract the filename from the URL.
         let filename: &str = url.rsplit('/').next()?;
 
-        // Find "release-" prefix.
-        let release_prefix: &str = "release-";
-        let start_idx: usize = filename.find(release_prefix)? + release_prefix.len();
+        // Strip known archive extensions.
+        let stem: &str = filename
+            .strip_suffix(".tar.bz2")
+            .or_else(|| filename.strip_suffix(".tar.gz"))?;
 
-        // Find the first dot after "release-" to identify start of file extension.
-        let remaining: &str = &filename[start_idx..];
-        let end_idx: usize = start_idx + remaining.find('.')?;
+        // Ensure the filename contains "release-" to validate the format.
+        if !stem.contains("release-") {
+            return None;
+        }
 
-        // Extract and validate the commit ID.
-        if start_idx < end_idx {
-            let commit_id: &str = &filename[start_idx..end_idx];
-            Some(commit_id.to_string())
-        } else {
+        // The commit ID is the last hyphen-delimited segment of the stem.
+        let commit_id: &str = stem.rsplit('-').next()?;
+
+        // Validate that the commit ID is a non-empty hexadecimal string.
+        if commit_id.is_empty() || !commit_id.chars().all(|c: char| c.is_ascii_hexdigit()) {
             None
+        } else {
+            Some(commit_id.to_string())
         }
     }
 
@@ -1492,17 +1496,41 @@ mod tests {
     ///
     #[test]
     fn test_extract_commit_id() {
-        // Test valid URL with commit ID.
+        // Test valid legacy URL with commit ID.
         let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "abc123def456");
 
-        // Test another valid URL format.
+        // Test another valid legacy URL format.
         let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-1a2b3c4d5e6f.tar.bz2";
         let commit_id: Option<String> = Registry::extract_commit_id(url);
         assert!(commit_id.is_some());
         assert_eq!(commit_id.expect("failed"), "1a2b3c4d5e6f");
+
+        // Test new URL format with memory size.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.expect("failed"), "abc123def456");
+
+        // Test new URL format with different memory size.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-microvm-single-process-release-256mb-1a2b3c4d5e6f.tar.bz2";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.expect("failed"), "1a2b3c4d5e6f");
+
+        // Test valid URL with .tar.gz extension.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-abc123def456.tar.gz";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.expect("failed"), "abc123def456");
+
+        // Test new URL format with .tar.gz extension.
+        let url: &str = "https://github.com/nanvix/nanvix/releases/download/latest/nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.gz";
+        let commit_id: Option<String> = Registry::extract_commit_id(url);
+        assert!(commit_id.is_some());
+        assert_eq!(commit_id.expect("failed"), "abc123def456");
 
         // Test URL without release prefix.
         let url: &str =
