@@ -40,11 +40,23 @@ use ::sysapi::sys_stat;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-#[allow(unreachable_code)]
+#[allow(unreachable_code, unused_variables)]
 pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> Result<(), Error> {
     // Route to the VFS if the path belongs to an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
+        // In standalone mode, VFS is the only filesystem. Route all stats to VFS
+        // unconditionally — let VFS return proper errors for missing files.
+        #[cfg(feature = "standalone")]
+        {
+            return ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
+                ::sys::error::Error::new(code, "vfs stat failed")
+            });
+        }
+
+        #[cfg(not(feature = "standalone"))]
         if ::nvx::vfs::fd::is_vfs_path(path) {
             return ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
                 let code: ::sys::error::ErrorCode = e.into();
@@ -54,13 +66,13 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> R
         }
     }
 
-    // In standalone mode, reject non-VFS paths (no linuxd).
-    #[cfg(feature = "standalone")]
+    // In standalone mode without memfs, reject all paths.
+    #[cfg(all(feature = "standalone", not(feature = "memfs")))]
     {
         let _ = (dirfd, path, buf, flag);
         return Err(::sys::error::Error::new(
             ::sys::error::ErrorCode::OperationNotSupported,
-            "fstatat not available in standalone mode",
+            "fstatat not available in standalone mode without memfs",
         ));
     }
 

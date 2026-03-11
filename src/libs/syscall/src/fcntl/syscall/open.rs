@@ -32,25 +32,22 @@ use ::sysapi::{
 /// Upon successful completion, the file descriptor of the file is returned. Otherwise, an error is
 /// returned instead.
 ///
+#[allow(unreachable_code)]
 pub fn open(pathname: &str, flags: c_int, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("open(): pathname={:?}, flags={:?}, mode={:?}", pathname, flags, mode);
 
     // Route to the VFS if the path matches an in-memory filesystem mount.
     #[cfg(feature = "memfs")]
     {
-        // In standalone mode, VFS is the only filesystem. Route O_CREAT to VFS
-        // even if the file does not exist yet (is_vfs_path checks existence).
+        // In standalone mode, VFS is the only filesystem. Route all opens to VFS
+        // unconditionally — let VFS return proper errors for missing files.
         #[cfg(feature = "standalone")]
         {
-            if ::nvx::vfs::fd::is_vfs_path(pathname)
-                || flags & ::sysapi::fcntl::file_creation_flags::O_CREAT != 0
-            {
-                return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
-                    let code: ::sys::error::ErrorCode = e.into();
-                    ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
-                    Error::new(code, "vfs open failed")
-                });
-            }
+            return ::nvx::vfs::fd::vfs_open(pathname, flags).map_err(|e| {
+                let code: ::sys::error::ErrorCode = e.into();
+                ::syslog::error!("open(): VFS open failed (pathname={pathname:?}, error={e})");
+                Error::new(code, "vfs open failed")
+            });
         }
 
         #[cfg(not(feature = "standalone"))]
