@@ -7,7 +7,10 @@
 
 use crate::WriteAll;
 use ::log::error;
-use ::std::io::Result;
+use ::std::io::{
+    IoSlice,
+    Result,
+};
 use ::tokio::io::AsyncWriteExt;
 
 //==================================================================================================
@@ -70,6 +73,32 @@ impl SocketStreamWriter {
                 Err(error)
             },
         }
+    }
+
+    /// Writes all bytes from the provided I/O slices using vectored (scatter/gather) I/O.
+    /// This avoids extra allocations and copies when coalescing multi-part frames
+    /// (e.g., frame-type byte + length prefix + payload) into a single write.
+    pub async fn write_all_vectored(&mut self, bufs: &mut [IoSlice<'_>]) -> Result<()> {
+        let mut slices: &mut [IoSlice<'_>] = bufs;
+        while !slices.is_empty() {
+            let n: usize = match self {
+                SocketStreamWriter::Tcp(stream) => stream.write_vectored(slices).await,
+                SocketStreamWriter::Unix(stream) => stream.write_vectored(slices).await,
+            }
+            .map_err(|error| {
+                let reason: String = format!("write_all_vectored(): {error}");
+                error!("{reason}");
+                error
+            })?;
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "write_all_vectored(): write returned 0 bytes",
+                ));
+            }
+            IoSlice::advance_slices(&mut slices, n);
+        }
+        Ok(())
     }
 }
 

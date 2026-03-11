@@ -53,9 +53,12 @@ use ::tokio::{
 pub struct IoThread;
 
 /// Timestamps, serialises, and writes a single [`Message`] to the system VM socket.
+/// The `frame_type` byte is prepended to the message payload in a single write to avoid
+/// TCP Nagle delays in L2 deployment mode.
 async fn forward_message_to_system_vm(
     msg: &mut Message,
     system_vm_tx: &mut SocketStreamWriter,
+    frame_type: u8,
 ) -> Result<()> {
     // Label: uservm::io_thread::system_vm::write()
     profiler::timestamp_message!(
@@ -64,8 +67,12 @@ async fn forward_message_to_system_vm(
             + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
     );
     // SAFETY: `Message` derives `Clone`; cloning avoids consuming the caller's binding.
-    let bytes: [u8; ::std::mem::size_of::<Message>()] = msg.clone().to_bytes();
-    system_vm_tx.write_all(&bytes).await.map_err(|e| {
+    let msg_bytes: [u8; ::std::mem::size_of::<Message>()] = msg.clone().to_bytes();
+    let mut buf: [u8; 1 + ::std::mem::size_of::<Message>()] =
+        [0; 1 + ::std::mem::size_of::<Message>()];
+    buf[0] = frame_type;
+    buf[1..].copy_from_slice(&msg_bytes);
+    system_vm_tx.write_all(&buf).await.map_err(|e| {
         let reason: String = format!("failed writing message to system VM socket: {e}");
         error!("{reason}");
         anyhow::Error::msg(reason)
@@ -78,10 +85,12 @@ async fn forward_message_to_system_vm(
 const BULK_TRANSFER_LENGTH_PREFIX_SIZE: usize = mem::size_of::<u32>();
 
 /// Serialises and writes a [`DataChunk`] to the system VM socket using a simple
-/// length-prefixed framing protocol.
+/// length-prefixed framing protocol. The `frame_type` byte, length prefix, and payload are
+/// coalesced into a single write to avoid TCP Nagle delays in L2 deployment mode.
 async fn forward_bulk_to_system_vm(
     bulk: &mut DataChunk,
     system_vm_tx: &mut SocketStreamWriter,
+    frame_type: u8,
 ) -> Result<()> {
     // Label: uservm::io_thread::system_vm::write()
     profiler::timestamp_message!(bulk.data_mut(), 0);
@@ -92,38 +101,34 @@ async fn forward_bulk_to_system_vm(
             error!("{reason}");
             anyhow::Error::msg(reason)
         })?);
-    // Write length prefix followed by the serialized data chunk transfer.
-    system_vm_tx.write_all(&len_prefix).await.map_err(|e| {
-        let reason: String = format!("failed writing bulk length prefix: {e}");
-        error!("{reason}");
-        anyhow::Error::msg(reason)
-    })?;
-    system_vm_tx.write_all(&payload).await.map_err(|e| {
-        let reason: String = format!("failed writing bulk payload: {e}");
-        error!("{reason}");
-        anyhow::Error::msg(reason)
-    })?;
+    // Coalesce frame type, length prefix, and payload into a single vectored write
+    // to avoid an extra heap allocation and full-payload copy.
+    let frame_byte: [u8; 1] = [frame_type];
+    system_vm_tx
+        .write_all_vectored(&mut [
+            std::io::IoSlice::new(&frame_byte),
+            std::io::IoSlice::new(&len_prefix),
+            std::io::IoSlice::new(&payload),
+        ])
+        .await
+        .map_err(|e| {
+            let reason: String = format!("failed writing bulk transfer: {e}");
+            error!("{reason}");
+            anyhow::Error::msg(reason)
+        })?;
     Ok(())
 }
 
-/// Forwards a [`IkcFrame`] to the system VM socket. The frame type byte is written first based
-/// on the transfer variant, followed by the variant-specific payload.
+/// Forwards a [`IkcFrame`] to the system VM socket. The frame type byte is coalesced with the
+/// payload into a single write to avoid TCP Nagle delays in L2 deployment mode.
 async fn forward_transfer_to_system_vm(
     transfer: &mut IkcFrame,
     system_vm_tx: &mut SocketStreamWriter,
 ) -> Result<()> {
-    // Write frame type discriminator derived from the transfer variant.
-    system_vm_tx
-        .write_all(&[transfer.frame_type_byte()])
-        .await
-        .map_err(|e| {
-            let reason: String = format!("failed writing frame type: {e}");
-            error!("{reason}");
-            anyhow::Error::msg(reason)
-        })?;
+    let frame_type: u8 = transfer.frame_type_byte();
     match transfer {
-        IkcFrame::Message(msg) => forward_message_to_system_vm(msg, system_vm_tx).await,
-        IkcFrame::Bulk(bulk) => forward_bulk_to_system_vm(bulk, system_vm_tx).await,
+        IkcFrame::Message(msg) => forward_message_to_system_vm(msg, system_vm_tx, frame_type).await,
+        IkcFrame::Bulk(bulk) => forward_bulk_to_system_vm(bulk, system_vm_tx, frame_type).await,
     }
 }
 

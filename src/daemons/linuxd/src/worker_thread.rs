@@ -1134,9 +1134,15 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         message: Message,
     ) -> Result<(), std::io::Error> {
+        // Coalesce frame type byte and message payload into a single write to avoid
+        // TCP Nagle delays when the socket is TCP (L2 deployment).
+        let msg_bytes: [u8; std::mem::size_of::<Message>()] = message.to_bytes();
+        let mut buf: [u8; 1 + std::mem::size_of::<Message>()] =
+            [0; 1 + std::mem::size_of::<Message>()];
+        buf[0] = IkcFrame::MESSAGE_FRAME;
+        buf[1..].copy_from_slice(&msg_bytes);
         let mut guard: MutexGuard<'_, SocketStreamWriter> = uvm_stream.lock().await;
-        guard.write_all(&[IkcFrame::MESSAGE_FRAME]).await?;
-        guard.write_all(&message.to_bytes()).await?;
+        guard.write_all(&buf).await?;
         Ok(())
     }
 
@@ -1164,10 +1170,17 @@ impl WorkerThreadHandle {
             std::io::Error::new(std::io::ErrorKind::InvalidData, "bulk payload length exceeds u32")
         })?;
         let len_prefix: [u8; 4] = payload_len.to_le_bytes();
+        // Coalesce frame type byte, length prefix, and payload into a single vectored write
+        // to avoid TCP Nagle delays and extra allocation+copy.
+        let frame_byte: [u8; 1] = [IkcFrame::DATA_CHUNK_FRAME];
         let mut guard: MutexGuard<'_, SocketStreamWriter> = uvm_stream.lock().await;
-        guard.write_all(&[IkcFrame::DATA_CHUNK_FRAME]).await?;
-        guard.write_all(&len_prefix).await?;
-        guard.write_all(&payload).await?;
+        guard
+            .write_all_vectored(&mut [
+                std::io::IoSlice::new(&frame_byte),
+                std::io::IoSlice::new(&len_prefix),
+                std::io::IoSlice::new(&payload),
+            ])
+            .await?;
         Ok(())
     }
 
