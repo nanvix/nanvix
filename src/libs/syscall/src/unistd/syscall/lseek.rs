@@ -10,6 +10,12 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(feature = "standalone")]
+use ::sysapi::unistd::{
+    STDERR_FILENO,
+    STDIN_FILENO,
+    STDOUT_FILENO,
+};
 use ::sysapi::{
     ffi::c_int,
     sys_types::off_t,
@@ -49,11 +55,19 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
         }
     }
 
-    // In standalone mode, reject non-VFS fds (no linuxd).
+    // In standalone mode, return ESPIPE for stdio fds and reject all others.
     #[cfg(feature = "standalone")]
     {
+        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+            let _ = (offset, whence);
+            let reason: &str = "illegal seek on stdio";
+            ::syslog::error!("lseek(): {reason} (fd={fd})");
+            return Err(Error::new(ErrorCode::IllegalSeek, reason));
+        }
         let _ = (fd, offset, whence);
-        Err(Error::new(ErrorCode::OperationNotSupported, "lseek not available in standalone mode"))
+        let reason: &str = "lseek not available in standalone mode";
+        ::syslog::error!("lseek(): {reason} (fd={fd})");
+        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
     // Forward to linuxd via IPC.
