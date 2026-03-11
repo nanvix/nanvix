@@ -126,6 +126,7 @@ RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
 RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
+MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
 #===================================================================================================
 # Artifacts
@@ -515,7 +516,15 @@ endif
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
 	@$(MAKE_QUIET) update-sysroot-link
 
-release: all install
+# Generates a JSON manifest with build metadata and git info.
+.PHONY: release-generate-manifest
+release-generate-manifest:
+	@echo "Generating manifest $(MANIFEST_FILE)..."
+	@bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
+		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL) \
+		$(BUILD_DIR)/kernel_config.toml
+
+release: all install release-generate-manifest
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
 	@$(RM_CMD) ${RELEASE_ARCHIVE}
 	@tar -cjf ${RELEASE_ARCHIVE} --exclude=./src -C ${SYSROOT_DIR} .
