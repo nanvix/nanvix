@@ -5,26 +5,29 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::MessagePartitioner,
-    safe::RawFileDescriptor,
-    sys::stat::message::MakeDirectoryAtRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::sys_types::mode_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::MessagePartitioner,
+        sys::stat::message::MakeDirectoryAtRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::alloc::{
+        string::ToString,
+        vec::Vec,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -50,40 +53,24 @@ use ::sysapi::sys_types::mode_t;
 pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("mkdirat(): dirfd={:?}, pathname={:?}, mode={:?}", dirfd, pathname, mode);
 
-    // Route to the VFS if the path belongs to an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
-    {
-        // In standalone mode the VFS is the only filesystem, so always route
-        // there — even for paths that do not exist yet (`is_vfs_path` would
-        // return false for a not-yet-created directory).
-        #[cfg(feature = "standalone")]
-        {
-            return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs mkdir failed")
-            });
-        }
-
-        #[cfg(not(feature = "standalone"))]
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs mkdir failed")
-            });
-        }
-    }
-
-    // In standalone mode, reject non-VFS paths (no linuxd).
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "mkdirat not available in standalone mode",
-        ));
+        ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
+            let code: ErrorCode = e.into();
+            ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+            Error::new(code, "vfs mkdir failed")
+        })
     }
 
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    mkdirat_linuxd(dirfd, pathname, mode)
+}
+
+/// Forwards a `mkdirat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn mkdirat_linuxd(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     let request: MakeDirectoryAtRequest =

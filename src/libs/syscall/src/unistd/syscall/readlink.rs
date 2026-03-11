@@ -5,14 +5,14 @@
 // Modules
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use crate::unistd;
 use ::sys::error::Error;
-#[cfg(feature = "memfs")]
+#[cfg(feature = "standalone")]
 use ::sys::error::ErrorCode;
-use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
-    sys_types::c_ssize_t,
-};
+#[cfg(not(feature = "standalone"))]
+use ::sysapi::fcntl::atflags::AT_FDCWD;
+use ::sysapi::sys_types::c_ssize_t;
 
 //==================================================================================================
 // Standalone Functions
@@ -36,17 +36,13 @@ use ::sysapi::{
 pub fn readlink(path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): path={path:?}, buf.len={}", buf.len());
 
-    // FAT32 does not support symbolic links.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            ::syslog::error!("readlink(): symlinks not supported on VFS (path={path:?})");
-            return Err(Error::new(
-                ErrorCode::OperationNotSupported,
-                "symbolic links not supported on VFS",
-            ));
-        }
+        ::syslog::error!("readlink(): symlinks not supported on VFS (path={path:?})");
+        Err(Error::new(ErrorCode::OperationNotSupported, "symbolic links not supported on VFS"))
     }
 
+    #[cfg(not(feature = "standalone"))]
     unistd::readlinkat(AT_FDCWD, path, buf)
 }

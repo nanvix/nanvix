@@ -5,21 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    fcntl::message::FileSpaceControlRequest,
-    safe::RawFileDescriptor,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use crate::safe::RawFileDescriptor;
+use ::sys::error::Error;
 use sysapi::sys_types::off_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        fcntl::message::FileSpaceControlRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        error::ErrorCode,
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -44,8 +45,8 @@ use sysapi::sys_types::off_t;
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
 
-    // Extend VFS files to the requested size.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fallocate(fd, offset, len).map_err(|e| {
@@ -54,15 +55,17 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
                 Error::new(code, "vfs fallocate failed")
             });
         }
+        Ok(())
     }
 
-    // In standalone mode, succeed as a no-op (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, offset, len);
-        return Ok(());
-    }
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    posix_fallocate_linuxd(fd, offset, len)
+}
 
+/// Forwards a `posix_fallocate` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn posix_fallocate_linuxd(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.

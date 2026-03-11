@@ -5,21 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    sys::stat::message::FileChmodRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use sysapi::sys_types::mode_t;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        sys::stat::message::FileChmodRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -43,21 +46,23 @@ use sysapi::sys_types::mode_t;
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    // FAT32 does not support permissions — silently succeed for VFS fds.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+        Err(Error::new(ErrorCode::OperationNotSupported, "fchmod not available in standalone mode"))
     }
 
-    // In standalone mode, succeed as a no-op (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, mode);
-        return Ok(());
-    }
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fchmod_linuxd(fd, mode)
+}
 
+/// Forwards a `fchmod` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it

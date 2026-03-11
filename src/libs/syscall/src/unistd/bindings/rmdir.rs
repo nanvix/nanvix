@@ -37,24 +37,25 @@ pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
         },
     };
 
-    // Route to the VFS if the path matches an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            match ::nvx::vfs::fd::vfs_rmdir(pathname) {
-                Ok(()) => return 0,
-                Err(e) => {
-                    let code: ErrorCode = e.into();
-                    ::syslog::error!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
-                    *__errno_location() = code.get();
-                    return -1;
-                },
-            }
+        match ::nvx::vfs::fd::vfs_rmdir(pathname) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code: ErrorCode = e.into();
+                ::syslog::error!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
+                *__errno_location() = code.get();
+                -1
+            },
         }
     }
 
-    // linuxd does not support rmdir — return ENOSYS for non-VFS paths.
-    ::syslog::debug!("rmdir(): not supported for non-VFS path {:?}", pathname);
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
+    #[cfg(not(feature = "standalone"))]
+    {
+        // linuxd does not support rmdir — return ENOSYS for non-VFS paths.
+        ::syslog::debug!("rmdir(): not supported for non-VFS path {:?}", pathname);
+        *__errno_location() = ErrorCode::InvalidSysCall.get();
+        -1
+    }
 }

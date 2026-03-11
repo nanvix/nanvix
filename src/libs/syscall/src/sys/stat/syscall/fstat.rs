@@ -5,13 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::sys::stat::message::FileStatRequest;
-use ::sys::{
-    error::Error,
-    ipc::Message,
-    pm::ThreadIdentifier,
-};
+use ::sys::error::Error;
 use sysapi::sys_stat;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::sys::stat::message::FileStatRequest,
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -34,8 +37,8 @@ use sysapi::sys_stat;
 ///
 #[allow(unreachable_code)]
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
-    // Route to the VFS if this is a VFS file descriptor.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fstat(fd, buf).map_err(|e| {
@@ -44,11 +47,6 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
                 Error::new(code, "vfs fstat failed")
             });
         }
-    }
-
-    // In standalone mode, synthesize stat for stdio fds and reject others.
-    #[cfg(feature = "standalone")]
-    {
         use ::sysapi::{
             sys_stat::{
                 file_mode,
@@ -79,39 +77,22 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
             buf.st_ctim = ts;
             return Ok(());
         }
-        return Err(Error::new(
-            ::sys::error::ErrorCode::BadFile,
-            "fstat: invalid fd in standalone mode",
-        ));
+        Err(Error::new(::sys::error::ErrorCode::BadFile, "fstat: invalid fd in standalone mode"))
     }
 
-    // Send request.
-    fstat_request(fd)?;
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    fstat_linuxd(fd, buf)
+}
 
-    // Wait for response.
+/// Forwards a `fstat` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn fstat_linuxd(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
+    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let message: Message = FileStatRequest::build(tid, fd);
+    ::sys::kcall::ipc::send(&message)?;
+
     *buf = crate::sys::stat::syscall::fstatat_response()?;
 
     Ok(())
-}
-
-///
-/// # Description
-///
-/// This function sends a request to the daemon to execute the `fstat()` system call.
-///
-/// # Parameters
-///
-/// - `fd`: File descriptor.
-///
-/// # Returns
-///
-/// Upon successful completion, empty result is returned. Upon failure, an error is returned
-/// instead.
-///
-fn fstat_request(fd: i32) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-
-    let message: Message = FileStatRequest::build(tid, fd);
-
-    ::sys::kcall::ipc::send(&message)
 }

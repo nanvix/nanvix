@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use crate::sys::stat::fchmodat;
 use ::sys::error::Error;
-use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
-    sys_types::mode_t,
-};
+#[cfg(not(feature = "standalone"))]
+use ::sysapi::fcntl::atflags::AT_FDCWD;
+use ::sysapi::sys_types::mode_t;
 
 //==================================================================================================
 // Standalone Functions
@@ -31,14 +31,14 @@ use ::sysapi::{
 /// Upon successful completion, the `fchmodat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-pub fn chmod(path: &str, mode: mode_t) -> Result<(), Error> {
-    // FAT32 does not support permissions — silently succeed for VFS paths.
-    #[cfg(feature = "memfs")]
+pub fn chmod(_path: &str, _mode: mode_t) -> Result<(), Error> {
+    // In standalone mode, this operation is not supported.
+    // TODO: https://github.com/nanvix/nanvix/issues/1606
+    #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(path) {
-            return Ok(());
-        }
+        Ok(())
     }
 
-    fchmodat(AT_FDCWD, path, mode, 0)
+    #[cfg(not(feature = "standalone"))]
+    fchmodat(AT_FDCWD, _path, _mode, 0)
 }

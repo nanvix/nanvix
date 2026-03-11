@@ -5,10 +5,12 @@
 // Modules
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use crate::unistd;
 use ::sys::error::Error;
-#[cfg(feature = "memfs")]
+#[cfg(feature = "standalone")]
 use ::sys::error::ErrorCode;
+#[cfg(not(feature = "standalone"))]
 use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
@@ -46,17 +48,13 @@ use ::sysapi::fcntl::atflags::AT_FDCWD;
 pub fn symlink(target: &str, linkpath: &str) -> Result<(), Error> {
     ::syslog::trace!("symlink(): target = {:?}, linkpath = {:?}", target, linkpath);
 
-    // FAT32 does not support symbolic links.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(linkpath) {
-            ::syslog::error!("symlink(): symlinks not supported on VFS (linkpath={linkpath:?})");
-            return Err(Error::new(
-                ErrorCode::OperationNotSupported,
-                "symbolic links not supported on VFS",
-            ));
-        }
+        ::syslog::error!("symlink(): symlinks not supported on VFS (linkpath={linkpath:?})");
+        Err(Error::new(ErrorCode::OperationNotSupported, "symbolic links not supported on VFS"))
     }
 
+    #[cfg(not(feature = "standalone"))]
     unistd::symlinkat(target, AT_FDCWD, linkpath)
 }

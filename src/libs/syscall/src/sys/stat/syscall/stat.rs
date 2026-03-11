@@ -5,12 +5,12 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(feature = "standalone"))]
 use crate::sys;
 use ::sys::error::Error;
-use ::sysapi::{
-    fcntl::atflags::AT_FDCWD,
-    sys_stat,
-};
+#[cfg(not(feature = "standalone"))]
+use ::sysapi::fcntl::atflags::AT_FDCWD;
+use ::sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -31,20 +31,20 @@ use ::sysapi::{
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
+#[allow(unreachable_code)]
 pub fn stat(pathname: &str, statbuf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("stat(): pathname = {:?}", pathname);
 
-    // Route to the VFS if the path matches an in-memory filesystem mount.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_path(pathname) {
-            return ::nvx::vfs::fd::vfs_stat(pathname, statbuf).map_err(|e| {
-                let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("stat(): VFS stat failed (pathname={pathname:?}, error={e})");
-                Error::new(code, "vfs stat failed")
-            });
-        }
+        ::nvx::vfs::fd::vfs_stat(pathname, statbuf).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("stat(): VFS stat failed (pathname={pathname:?}, error={e})");
+            Error::new(code, "vfs stat failed")
+        })
     }
 
+    #[cfg(not(feature = "standalone"))]
     sys::stat::fstatat(AT_FDCWD, pathname, statbuf, 0)
 }

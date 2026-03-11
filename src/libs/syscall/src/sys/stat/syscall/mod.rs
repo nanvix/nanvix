@@ -21,23 +21,27 @@ mod utimensat;
 // Imports
 //==================================================================================================
 
-use crate::{
-    message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
-        MessagePartitioner,
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        message::{
+            LinuxDaemonLongMessage,
+            LinuxDaemonMessagePart,
+            MessagePartitioner,
+        },
+        sys::stat::message::FileStatAtResponse,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
     },
-    sys::stat::message::FileStatAtResponse,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::alloc::vec::Vec;
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
+    ::alloc::vec::Vec,
+    ::sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::Message,
     },
-    ipc::Message,
+    sysapi::sys_stat,
 };
 
 //==================================================================================================
@@ -54,7 +58,6 @@ pub use lstat::lstat;
 pub use mkdir::mkdir;
 pub use mkdirat::mkdirat;
 pub use stat::stat;
-use sysapi::sys_stat;
 pub use utimensat::utimensat;
 
 //==================================================================================================
@@ -71,6 +74,7 @@ pub use utimensat::utimensat;
 /// Upon successful completion, the file information is returned. Upon failure, an error is returned
 /// instead.
 ///
+#[cfg(not(feature = "standalone"))]
 fn fstatat_response() -> Result<sys_stat::stat, Error> {
     let capacity: usize = sys_stat::stat::SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
 

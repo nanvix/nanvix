@@ -5,21 +5,24 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    safe::RawFileDescriptor,
-    sys::stat::message::UpdateFileAccessTimeRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
-};
-use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    ipc::Message,
-    pm::ThreadIdentifier,
+use crate::safe::RawFileDescriptor;
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 use ::sysapi::time::timespec;
+#[cfg(not(feature = "standalone"))]
+use {
+    crate::{
+        sys::stat::message::UpdateFileAccessTimeRequest,
+        LinuxDaemonMessage,
+        LinuxDaemonMessageHeader,
+    },
+    ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    },
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -43,21 +46,26 @@ use ::sysapi::time::timespec;
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::error!("futimens(): fd={:?}, times={:?}", fd, times);
 
-    // FAT32 does not support fine-grained timestamps — silently succeed.
-    #[cfg(feature = "memfs")]
+    // In standalone mode, forward operation to virtual file system (VFS).
+    #[cfg(feature = "standalone")]
     {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return Ok(());
         }
+        Err(Error::new(
+            ErrorCode::OperationNotSupported,
+            "futimens not available in standalone mode",
+        ))
     }
 
-    // In standalone mode, succeed as a no-op (no linuxd).
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (fd, times);
-        return Ok(());
-    }
+    // Forward to linuxd via IPC.
+    #[cfg(not(feature = "standalone"))]
+    futimens_linuxd(fd, times)
+}
 
+/// Forwards a `futimens` request to linuxd via IPC.
+#[cfg(not(feature = "standalone"))]
+fn futimens_linuxd(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
 
     // Build request and send it.
