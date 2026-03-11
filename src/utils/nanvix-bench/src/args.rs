@@ -50,7 +50,7 @@ Usage:
 Benchmarks:
   boot-time              Measure raw user VM boot latency.
   cold-start             Measure start-up latency from client's perspective.
-  cold-start-l2          Same as cold-start, but deploy linuxd insdie an L2 VM.
+  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
   cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
   concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
   concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
@@ -67,10 +67,11 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
-  {num_concurrent_vms} <num>          Number of concurrent VMs to run (mandatory for concurrent \
-             benchmarks).
-  {netns_pool_size} <size>            Netns pool prefill size for nanvixd (default: \
-             {default_netns_pool_size}; 0 enables lazy initialization).
+  {num_concurrent_vms} <num>          Number of concurrent VMs (mandatory for concurrent and \
+             concurrent-l2 benchmarks).
+  {netns_pool_size} <size>            Netns pool prefill size for nanvixd (concurrent-l2 only; \
+             default: {default_netns_pool_size}). Other L2 benchmarks use 1; non-L2 benchmarks \
+             ignore this flag.
   {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
              etc.).
   {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
@@ -225,6 +226,29 @@ Examples:
                         }
                     },
                 }
+
+                // Reject -netns-pool-size when it would be silently ignored.
+                if netns_pool_size.is_some() {
+                    match benchmark {
+                        BenchmarkFlavour::ConcurrentL2 => {},
+                        _ => {
+                            Self::usage(args[0].as_str());
+                            return Err(anyhow::anyhow!(
+                                "{benchmark} benchmark does not accept {}",
+                                Self::OPT_NETNS_POOL_SIZE,
+                            ));
+                        },
+                    }
+                }
+
+                // Derive netns pool size from the benchmark flavour.
+                let netns_pool_size = match benchmark {
+                    BenchmarkFlavour::ConcurrentL2 => {
+                        Some(netns_pool_size.unwrap_or(Self::DEFAULT_NETNS_POOL_SIZE))
+                    },
+                    _ if benchmark.is_l2() => Some(1),
+                    _ => None,
+                };
 
                 Ok(Self {
                     benchmark,
