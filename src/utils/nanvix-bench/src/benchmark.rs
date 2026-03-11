@@ -38,6 +38,17 @@ pub enum BenchmarkFlavour {
 }
 
 impl BenchmarkFlavour {
+    /// Returns `true` when linuxd is deployed inside an L2 VM for this benchmark.
+    pub fn is_l2(&self) -> bool {
+        matches!(
+            self,
+            BenchmarkFlavour::ColdStartL2
+                | BenchmarkFlavour::ConcurrentL2
+                | BenchmarkFlavour::EchoBreakdownL2
+                | BenchmarkFlavour::WarmStartL2
+        )
+    }
+
     pub fn get_program(&self, root: &Path) -> String {
         match self {
             BenchmarkFlavour::BootTime => {
