@@ -3,6 +3,9 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
+# Prevent debconf prompts from blocking the script (e.g., grub2 install dialog).
+export DEBIAN_FRONTEND=noninteractive
+
 # Update package repository.
 apt-get update
 
@@ -16,6 +19,7 @@ apt-get install -y        \
     bison                 \
     bridge-utils          \
     build-essential       \
+    bzip2                 \
     clang-format          \
     cmake                 \
     codespell             \
