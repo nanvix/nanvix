@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
         pub use syscall::dlopen;
         pub use syscall::dlsym;
         pub use syscall::dladdr;
+        pub use syscall::dlinit;
     }
 }
 
