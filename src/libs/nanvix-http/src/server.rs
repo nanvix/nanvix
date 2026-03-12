@@ -197,6 +197,11 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     match result {
                         Ok((stream, sockaddr)) => {
                             debug!("accepted connection from {sockaddr:?}");
+                            // Disable Nagle's algorithm so small HTTP responses are sent immediately
+                            // instead of being delayed up to 40 ms by the TCP delayed-ACK interaction.
+                            if let Err(e) = stream.set_nodelay(true) {
+                                error!("failed to set TCP_NODELAY (error={e:?})");
+                            }
                             // In single-process and standalone mode, handle connections sequentially.
                             #[cfg(any(feature = "single-process", feature = "standalone"))]
                             {
