@@ -242,7 +242,7 @@ jobs:
   # all builds have finished rather than as soon as an individual build
   # completes.
   ci-build:
-    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
     needs: [precheck, checks, lint, verify]
     timeout-minutes: 120
     strategy:
@@ -251,11 +251,21 @@ jobs:
         build-type: [debug, release]
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
+        # Build all memory sizes only on dev pushes (for release archives);
+        # PRs and merge-queue runs build 128 MB only to reduce CI load.
+        memory-size: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && fromJSON('[128, 256, 512, 1024]') || fromJSON('[128]') }}
         exclude:
           - machine-type: qemu-pc
             deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
+          # Debug builds only run at the default memory size (128 MB).
+          - build-type: debug
+            memory-size: 256
+          - build-type: debug
+            memory-size: 512
+          - build-type: debug
+            memory-size: 1024
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -280,6 +290,26 @@ jobs:
       - name: "Setup"
         uses: ./.github/actions/docker-setup
 
+      - name: "Patch memory_size in kernel config"
+        shell: bash
+        env:
+          MEMORY_SIZE_MB: ${{ matrix.memory-size }}
+        run: |
+          memory_size_bytes=$(( MEMORY_SIZE_MB * 1048576 ))
+          sed -i "s/^memory_size = .*/memory_size = ${memory_size_bytes}/" build/kernel_config.toml
+          # Verify that exactly one memory_size line exists after patching
+          matches=$(grep -c "^memory_size = " build/kernel_config.toml || true)
+          if [ "${matches}" -ne 1 ]; then
+            echo "Error: Expected exactly one 'memory_size' entry in build/kernel_config.toml, found ${matches}." >&2
+            exit 1
+          fi
+          # Verify that the memory_size line has the expected value
+          if ! grep -q "^memory_size = ${memory_size_bytes}$" build/kernel_config.toml; then
+            echo "Error: Failed to set 'memory_size' to ${memory_size_bytes} bytes in build/kernel_config.toml." >&2
+            exit 1
+          fi
+          echo "Set memory_size to ${memory_size_bytes} bytes (${MEMORY_SIZE_MB} MB)"
+
       - name: "Setup sccache"
         uses: Mozilla-Actions/sccache-action@v0.0.9
         with:
@@ -299,7 +329,7 @@ jobs:
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
-          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
           overwrite: true
           retention-days: 1
           path: |
@@ -313,7 +343,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
           overwrite: "true"
           path: |
             logs/
@@ -870,9 +900,9 @@ jobs:
   # Stage 4: Post Actions (Conditional)
   # ==========================================================================================
 
-  # Create release archives for all applicable configurations.
+  # Create release archives for all applicable configurations and memory sizes.
   release-archive:
-    name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
     needs: [ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize]
     if: |
       github.repository == 'nanvix/nanvix' &&
@@ -887,6 +917,7 @@ jobs:
       matrix:
         machine-type: [qemu-pc, microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
+        memory-size: [128, 256, 512, 1024]
         exclude:
           - machine-type: qemu-pc
             deployment-type: standalone
@@ -902,7 +933,7 @@ jobs:
       - name: "Download CI Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
           path: .
 
       - name: "Package Release Archive"
@@ -915,7 +946,7 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
+          name: release-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
           path: ${{ steps.release-archive.outputs.archive-path }}
           overwrite: true
 
