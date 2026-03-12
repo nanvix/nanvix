@@ -100,6 +100,12 @@ impl UnboundSocket {
                         return Err(io::Error::new(error.kind(), format!("{error} (addr={addr})")));
                     },
                 };
+
+                // Disable Nagle's algorithm so small IKC frames are sent immediately
+                // instead of being delayed up to 40 ms by the TCP delayed-ACK interaction.
+                stream.set_nodelay(true).map_err(|error| {
+                    io::Error::new(error.kind(), format!("{error} (addr={addr})"))
+                })?;
                 Ok(SocketStream::Tcp(stream))
             },
             // Connect to a unix domain socket.
