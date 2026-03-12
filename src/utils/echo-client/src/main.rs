@@ -141,6 +141,9 @@ async fn client(
             let handle = tokio::spawn(async move {
                 let now = std::time::Instant::now();
                 let mut stream: TcpStream = TcpStream::connect(sockaddr2).await?;
+                // Disable Nagle's algorithm so small frames are sent immediately
+                // instead of being delayed up to 40 ms by the TCP delayed-ACK interaction.
+                stream.set_nodelay(true)?;
                 debug!("connected to server");
                 stream.write_all(&http_request2).await?;
 
