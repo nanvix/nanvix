@@ -16,7 +16,7 @@ export LIBRARIES := -Wl,--start-group $(LIBPOSIX) $(LIBC) $(LIBCXX) -Wl,--end-gr
 export SOURCES := $(wildcard *.cpp)
 
 # Object Files
-export OBJECTS = $(SOURCES:.cpp=.o)
+export OBJECTS = $(SOURCES:.cpp=.$(TARGET).$(MACHINE).$(DEPLOYMENT_MODE).o)
 
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
@@ -33,5 +33,5 @@ clean:
 	rm -rf $(BINARIES_DIR)/$(BINARY)
 
 # Builds C++ source files.
-%.o: %.cpp
+%.$(TARGET).$(MACHINE).$(DEPLOYMENT_MODE).o: %.cpp
 	$(NANVIX_CXX) $(NANVIX_CXXFLAGS) $< -c -o $@
