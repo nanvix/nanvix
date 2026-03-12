@@ -205,6 +205,11 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
         return -1;
     }
 
+    // The global scope handle (from dlopen(NULL)) is not closeable.
+    if DlHandle::from_mut_ptr(handle) == DlHandle::GLOBAL {
+        return 0;
+    }
+
     // Attempt to close the dynamic library handle.
     match dlfcn::dlclose(&DlHandle::from_mut_ptr(handle)) {
         Ok(()) => 0,
@@ -251,7 +256,8 @@ pub unsafe extern "C" fn dlerror() -> *mut c_char {
 ///
 /// # Parameters
 ///
-/// - `filename`: The name of the shared object file to be opened.
+/// - `filename`: The name of the shared object file to be opened, or NULL to obtain
+///   a handle to the global symbol scope (main executable + loaded libraries).
 /// - `mode`: The mode in which the object is opened.
 ///
 /// # Return Value
@@ -266,18 +272,17 @@ pub unsafe extern "C" fn dlerror() -> *mut c_char {
 /// - It may operate on global variables.
 ///
 /// It is safe to use this function if the caller ensures that:
-/// - `filename` points to a valid C-style string.
+/// - `filename` points to a valid C-style string, or is NULL.
 /// - No other thread modifies the error state while this function is being executed.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_void {
-    // Check if filename is not valid.
+    // Per POSIX: dlopen(NULL, mode) returns a handle to the global symbol scope.
     if filename.is_null() {
-        let reason: &str = "filename is null";
-        DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlopen(): {}", reason);
-        return ptr::null_mut();
+        // Populate the global symbol table from the executable's .dynsym section.
+        dlfcn::dlinit();
+        return DlHandle::GLOBAL.as_mut_ptr();
     }
 
     // Attempt to convert `filename` to a Rust string.
@@ -328,7 +333,8 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
 ///
 /// # Parameters
 ///
-/// - `handle`: A handle to the shared object or executable.
+/// - `handle`: A handle to the shared object or executable, or NULL/`RTLD_DEFAULT`
+///   to search the global symbol scope (main executable + loaded libraries).
 /// - `symbol`: The name of the symbol to be resolved.
 ///
 /// # Return Value
@@ -343,20 +349,16 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
 /// - It may operate on global variables.
 ///
 /// It is safe to use this function if the caller ensures that:
-/// - `handle` points to a valid dynamic library handle.
+/// - `handle` points to a valid dynamic library handle, or is NULL (`RTLD_DEFAULT`).
 /// - `symbol` points to a valid C-style string.
 /// - No other thread modifies the error state while this function is being executed.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
-    // Check if handle is not valid.
-    if handle.is_null() {
-        let reason: &str = "handle is null";
-        DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlsym(): {}", reason);
-        return ptr::null_mut();
-    }
+    // Per POSIX: NULL handle (RTLD_DEFAULT) searches the global symbol scope.
+    // The GLOBAL sentinel (from dlopen(NULL)) is also routed to the same path.
+    let use_global: bool = handle.is_null() || DlHandle::from_mut_ptr(handle) == DlHandle::GLOBAL;
 
     // Check if symbol is not valid.
     if symbol.is_null() {
@@ -378,7 +380,14 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     };
 
     // Attempt to resolve the symbol.
-    match dlfcn::dlsym(&DlHandle::from_mut_ptr(handle), symbol) {
+    // For global scope, use the GLOBAL sentinel which dlsym() in the syscall
+    // layer routes to global_symbol_lookup(). For regular handles, use as-is.
+    let effective_handle: DlHandle = if use_global {
+        DlHandle::GLOBAL
+    } else {
+        DlHandle::from_mut_ptr(handle)
+    };
+    match dlfcn::dlsym(&effective_handle, symbol) {
         Ok(symbol) => symbol.into_raw_value() as *mut c_void,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
