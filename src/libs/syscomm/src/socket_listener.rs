@@ -72,7 +72,7 @@ impl SocketListener {
                 listener,
                 addr: _addr,
             } => {
-                let (stream, _sockaddr): (TcpStream, std::net::SocketAddr) =
+                let (stream, sockaddr): (TcpStream, std::net::SocketAddr) =
                     match listener.accept().await {
                         Ok(res) => res,
                         Err(error) => {
@@ -82,6 +82,14 @@ impl SocketListener {
                         },
                     };
 
+                // Disable Nagle's algorithm so small IKC frames are sent immediately
+                // instead of being delayed up to 40 ms by the TCP delayed-ACK interaction.
+                stream.set_nodelay(true).map_err(|error| {
+                    Error::new(
+                        error.kind(),
+                        format!("accept(): set_nodelay failed: {error} (peer={sockaddr})"),
+                    )
+                })?;
                 Ok(SocketStream::Tcp(stream))
             },
             // Unix socket.
