@@ -220,10 +220,11 @@ impl ReleaseRegistry {
         &mut self,
         machine: Machine,
         deployment: Deployment,
+        memory_size_mb: u32,
         url: String,
         commit_id: String,
     ) {
-        let key: String = format!("{}-{}", machine, deployment);
+        let key: String = format!("{}-{}-{}mb", machine, deployment, memory_size_mb);
         let entry: ReleaseEntry = ReleaseEntry::new(url, commit_id);
         self.releases.insert(key, entry);
     }
@@ -246,8 +247,9 @@ impl ReleaseRegistry {
         &self,
         machine: Machine,
         deployment: Deployment,
+        memory_size_mb: u32,
     ) -> Option<&ReleaseEntry> {
-        let key: String = format!("{}-{}", machine, deployment);
+        let key: String = format!("{}-{}-{}mb", machine, deployment, memory_size_mb);
         self.releases.get(&key)
     }
 
@@ -543,13 +545,14 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             url.clone(),
             commit_id.clone(),
         );
 
         // Get the release.
         let entry: Option<&ReleaseEntry> =
-            registry.get_release(Machine::Microvm, Deployment::SingleProcess);
+            registry.get_release(Machine::Microvm, Deployment::SingleProcess, 128);
         assert!(entry.is_some());
 
         let entry: &ReleaseEntry = entry.expect("failed");
@@ -570,6 +573,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/microvm-sp.tar.bz2".to_string(),
             "abc111def".to_string(),
         );
@@ -577,6 +581,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::MultiProcess,
+            128,
             "https://test.com/microvm-mp.tar.bz2".to_string(),
             "abc222def".to_string(),
         );
@@ -584,6 +589,7 @@ mod tests {
         registry.set_release(
             Machine::Hyperlight,
             Deployment::SingleProcess,
+            128,
             "https://test.com/hyperlight-sp.tar.bz2".to_string(),
             "abc333def".to_string(),
         );
@@ -593,17 +599,17 @@ mod tests {
 
         // Verify each entry.
         let entry: &ReleaseEntry = registry
-            .get_release(Machine::Microvm, Deployment::SingleProcess)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Machine::Microvm, Deployment::MultiProcess)
+            .get_release(Machine::Microvm, Deployment::MultiProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Machine::Hyperlight, Deployment::SingleProcess)
+            .get_release(Machine::Hyperlight, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc333def");
     }
@@ -621,6 +627,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/old.tar.bz2".to_string(),
             "abc111def".to_string(),
         );
@@ -631,6 +638,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/new.tar.bz2".to_string(),
             "abc222def".to_string(),
         );
@@ -639,7 +647,7 @@ mod tests {
         assert_eq!(registry.len(), 1);
 
         let entry: &ReleaseEntry = registry
-            .get_release(Machine::Microvm, Deployment::SingleProcess)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.url(), "https://test.com/new.tar.bz2");
         assert_eq!(entry.commit_id(), "abc222def");
@@ -656,13 +664,14 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://example.com/release.tar.bz2".to_string(),
             "abc123def456".to_string(),
         );
 
         let json: String = serde_json::to_string(&registry).expect("failed");
         assert!(json.contains("releases"));
-        assert!(json.contains("microvm-single-process"));
+        assert!(json.contains("microvm-single-process-128mb"));
         assert!(json.contains("https://example.com/release.tar.bz2"));
         assert!(json.contains("abc123def456"));
     }
@@ -674,11 +683,11 @@ mod tests {
     ///
     #[test]
     fn test_deserialization() {
-        let json: &str = r#"{"releases":{"microvm-single-process":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
+        let json: &str = r#"{"releases":{"microvm-single-process-128mb":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
         let registry: ReleaseRegistry = serde_json::from_str(json).expect("failed");
 
         let entry: &ReleaseEntry = registry
-            .get_release(Machine::Microvm, Deployment::SingleProcess)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.url(), "https://example.com/release.tar.bz2");
         assert_eq!(entry.commit_id(), "abc123def456");
@@ -699,12 +708,14 @@ mod tests {
         original.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/file1.tar.bz2".to_string(),
             "abc111def".to_string(),
         );
         original.set_release(
             Machine::Hyperlight,
             Deployment::MultiProcess,
+            128,
             "https://test.com/file2.tar.bz2".to_string(),
             "abc222def".to_string(),
         );
@@ -721,12 +732,12 @@ mod tests {
         assert_eq!(loaded.len(), 2);
 
         let entry: &ReleaseEntry = loaded
-            .get_release(Machine::Microvm, Deployment::SingleProcess)
+            .get_release(Machine::Microvm, Deployment::SingleProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = loaded
-            .get_release(Machine::Hyperlight, Deployment::MultiProcess)
+            .get_release(Machine::Hyperlight, Deployment::MultiProcess, 128)
             .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
@@ -763,6 +774,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/file.tar.bz2".to_string(),
             "abc123def456".to_string(),
         );
@@ -790,6 +802,7 @@ mod tests {
         registry.set_release(
             Machine::Microvm,
             Deployment::SingleProcess,
+            128,
             "https://test.com/file.tar.bz2".to_string(),
             "abc123def456".to_string(),
         );
