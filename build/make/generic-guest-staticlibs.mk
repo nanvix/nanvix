@@ -2,12 +2,8 @@
 # Licensed under the MIT License.
 
 GUEST_STATICLIB_FEATURES := staticlib $(LOG_LEVEL)
-# Enable in-memory FAT32 filesystem for POSIX file I/O interception.
-ifeq ($(MEMFS),yes)
-GUEST_STATICLIB_FEATURES += memfs
-endif
 # Enable standalone mode: routes stdout/stderr to debug kcall,
-# file I/O to memfs, and disables IPC-based syscalls (no linuxd).
+# file I/O to in-memory VFS, and disables IPC-based syscalls (no linuxd).
 ifeq ($(DEPLOYMENT_MODE),standalone)
 GUEST_STATICLIB_FEATURES += standalone
 endif

@@ -28,8 +28,8 @@ extern crate alloc;
 
 use ::config::memory_layout::USER_BASE_RAW;
 
-/// Re-export the VFS crate when the `memfs` feature is enabled.
-#[cfg(feature = "memfs")]
+/// Re-export the VFS crate when the `standalone` feature is enabled.
+#[cfg(feature = "standalone")]
 pub use ::vfs;
 
 #[cfg(not(feature = "staticlib"))]
@@ -334,8 +334,8 @@ fn init() {
     }
 
     // Initialize in-memory filesystem from RAMFS MMIO region (if present).
-    #[cfg(feature = "memfs")]
-    memfs_init();
+    #[cfg(feature = "standalone")]
+    vfs_init_ramfs();
 }
 
 /// Cleans up system runtime.
@@ -356,7 +356,7 @@ fn cleanup() {
 
 /// Initializes the VFS and mounts the RAMFS MMIO region at the root (`/`).
 ///
-/// Called automatically during guest startup when the `memfs` feature is
+/// Called automatically during guest startup when the `standalone` feature is
 /// enabled. The RAMFS MMIO region is provided by the hypervisor via a
 /// well-known tag. If no RAMFS region is present, this function silently
 /// returns (the guest may not have been launched with `-ramfs`).
@@ -367,8 +367,8 @@ fn cleanup() {
 /// cleanup on exit) so the mounted image remains valid. The image is
 /// mounted at `/` so it serves as the root filesystem and relative paths
 /// resolve naturally against it.
-#[cfg(feature = "memfs")]
-fn memfs_init() {
+#[cfg(feature = "standalone")]
+fn vfs_init_ramfs() {
     use ::sys::{
         mm::Address,
         pm::Capability,
@@ -382,13 +382,13 @@ fn memfs_init() {
 
     // Initialize the VFS (idempotent — ignore AlreadyInitialized).
     if ::vfs::init().is_err() && !::vfs::is_initialized() {
-        ::syslog::warn!("memfs_init(): failed to initialize VFS");
+        ::syslog::warn!("vfs_init_ramfs(): failed to initialize VFS");
         return;
     }
 
     // Acquire IO management capability.
     if ::sys::kcall::pm::capctl(Capability::IoManagement, true).is_err() {
-        ::syslog::warn!("memfs_init(): failed to acquire IoManagement capability");
+        ::syslog::warn!("vfs_init_ramfs(): failed to acquire IoManagement capability");
         return;
     }
 
@@ -413,7 +413,7 @@ fn memfs_init() {
         // Mount the FAT image directly from the MMIO region (mapped read-write by the kernel).
         // The MMIO allocation is kept for the process lifetime so the image remains valid.
         if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, base_ptr, total_size) }.is_err() {
-            ::syslog::warn!("memfs_init(): failed to mount RAMFS image");
+            ::syslog::warn!("vfs_init_ramfs(): failed to mount RAMFS image");
             let _ = ::sys::kcall::mm::mmio_free(RAMFS_MMIO_TAG);
             return false;
         }
@@ -425,6 +425,6 @@ fn memfs_init() {
     let _ = ::sys::kcall::pm::capctl(Capability::IoManagement, false);
 
     if mounted {
-        ::syslog::info!("memfs_init(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);
+        ::syslog::info!("vfs_init_ramfs(): mounted RAMFS at {}", RAMFS_MOUNT_PATH);
     }
 }

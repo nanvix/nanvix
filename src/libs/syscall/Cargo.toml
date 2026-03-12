@@ -65,8 +65,7 @@ rustc-dep-of-std = [
     "spin/rustc-dep-of-std",
 ]
 sbrk = ["dep:sysalloc"]
-memfs = ["dep:nvx", "nvx/memfs", "dep:sysalloc"]
-standalone = ["memfs"]
+standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []
