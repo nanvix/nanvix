@@ -38,21 +38,6 @@ ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
 $(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
 endif
 
-# Enable in-memory FAT32 filesystem?
-export MEMFS ?= no
-
-# Standalone mode implies memfs.
-ifeq ($(DEPLOYMENT_MODE),standalone)
-override MEMFS := yes
-endif
-
-# Validate that MEMFS is only enabled in standalone mode.
-ifeq ($(MEMFS),yes)
-ifneq ($(DEPLOYMENT_MODE),standalone)
-$(error MEMFS=yes requires DEPLOYMENT_MODE=standalone (current: $(DEPLOYMENT_MODE)))
-endif
-endif
-
 # Log Level
 export LOG_LEVEL ?= warn
 
@@ -366,7 +351,10 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error fat32 type-safe pr
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust
+ifeq ($(DEPLOYMENT_MODE),standalone)
+ALL_GUEST_TESTS += vfs-test
+endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
