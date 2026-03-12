@@ -31,7 +31,11 @@ use ::nanvix::sandbox_cache::SimpleSandboxCacheConfig;
 #[cfg(feature = "standalone")]
 use ::nanvix::terminal::TerminalConfig;
 use ::nanvix::{
-    config::system::DEFAULT_MACHINE_NAME,
+    config::{
+        constants::MEGABYTE,
+        kernel::MEMORY_SIZE,
+        system::DEFAULT_MACHINE_NAME,
+    },
     http::HttpServer,
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
@@ -355,9 +359,10 @@ async fn ensure_all_binaries_available(
     log_info!("not all binaries found locally, fetching all from registry");
 
     let registry: Registry = Registry::new(None);
+    let memory_size_mb: u32 = (MEMORY_SIZE / MEGABYTE) as u32;
 
     let kernel_cached_path: String = registry
-        .get_cached_binary(machine, deployment, KERNEL_BINARY_NAME)
+        .get_cached_binary(machine, deployment, memory_size_mb, KERNEL_BINARY_NAME)
         .await?;
     log_info!("using registry binary {}: {}", KERNEL_BINARY_NAME, kernel_cached_path);
 
@@ -367,12 +372,12 @@ async fn ensure_all_binaries_available(
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     {
         let linuxd_cached_path: String = registry
-            .get_cached_binary(machine, deployment, LINUXD_BINARY_NAME)
+            .get_cached_binary(machine, deployment, memory_size_mb, LINUXD_BINARY_NAME)
             .await?;
         log_info!("using registry binary {}: {}", LINUXD_BINARY_NAME, linuxd_cached_path);
 
         let uservm_cached_path: String = registry
-            .get_cached_binary(machine, deployment, USERVM_BINARY_NAME)
+            .get_cached_binary(machine, deployment, memory_size_mb, USERVM_BINARY_NAME)
             .await?;
         log_info!("using registry binary {}: {}", USERVM_BINARY_NAME, uservm_cached_path);
 

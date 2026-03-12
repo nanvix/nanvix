@@ -54,6 +54,8 @@ pub(crate) struct LatestRelease {
     deployment: Deployment,
     /// Target machine type for the release.
     machine: Machine,
+    /// Memory size in megabytes for selecting the correct release archive.
+    memory_size_mb: u32,
     /// Rate limiter for GitHub API calls.
     rate_limiter: RateLimiter,
 }
@@ -66,21 +68,25 @@ impl LatestRelease {
     ///
     /// # Description
     ///
-    /// Creates a new handle for a latest release for the specified deployment and machine type.
+    /// Creates a new handle for a latest release for the specified deployment, machine type, and
+    /// memory size.
     ///
     /// # Parameters
     ///
     /// - `deployment`: The deployment type.
     /// - `machine`: The target machine type.
+    /// - `memory_size_mb`: The memory size in megabytes.
     ///
     /// # Returns
     ///
-    /// A new handle for a latest release for the specified deployment and machine type.
+    /// A new handle for a latest release for the specified deployment, machine type, and memory
+    /// size.
     ///
-    pub(crate) fn new(deployment: Deployment, machine: Machine) -> Self {
+    pub(crate) fn new(deployment: Deployment, machine: Machine, memory_size_mb: u32) -> Self {
         Self {
             deployment,
             machine,
+            memory_size_mb,
             rate_limiter: RateLimiter::for_github(),
         }
     }
@@ -196,8 +202,10 @@ impl LatestRelease {
             },
         };
 
-        let release_pattern: String =
-            format!("nanvix-{}-{}-release", self.machine, self.deployment);
+        let release_pattern: String = format!(
+            "nanvix-{}-{}-release-{}mb-",
+            self.machine, self.deployment, self.memory_size_mb
+        );
 
         // Search for the matching asset.
         for asset in assets {
@@ -234,30 +242,33 @@ mod tests {
     fn test_new() {
         let deployment: Deployment = Deployment::SingleProcess;
         let machine: Machine = Machine::Microvm;
-        let release: LatestRelease = LatestRelease::new(deployment, machine);
+        let release: LatestRelease = LatestRelease::new(deployment, machine, 128);
 
         assert!(matches!(release.deployment, Deployment::SingleProcess));
         assert!(matches!(release.machine, Machine::Microvm));
+        assert_eq!(release.memory_size_mb, 128);
     }
 
     ///
     /// # Description
     ///
-    /// Tests release pattern construction.
+    /// Tests release pattern construction with memory size.
     ///
     #[test]
     fn test_release_pattern() {
         let deployment: Deployment = Deployment::MultiProcess;
         let machine: Machine = Machine::Hyperlight;
 
-        let pattern: String = format!("nanvix-{}-{}-release", machine, deployment);
-        assert_eq!(pattern, "nanvix-hyperlight-multi-process-release");
+        let pattern: String = format!("nanvix-{}-{}-release-{}mb-", machine, deployment, 128);
+        assert_eq!(pattern, "nanvix-hyperlight-multi-process-release-128mb-");
 
-        // Verify the pattern matches both legacy and new archive name formats.
-        let legacy_name: &str = "nanvix-hyperlight-multi-process-release-abc123def456.tar.bz2";
-        let new_name: &str = "nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
-        assert!(legacy_name.contains(&pattern));
-        assert!(new_name.contains(&pattern));
+        // Verify the pattern matches the memory-size archive name format.
+        let name_128: &str = "nanvix-hyperlight-multi-process-release-128mb-abc123def456.tar.bz2";
+        assert!(name_128.contains(&pattern));
+
+        // Verify the pattern does NOT match a different memory size.
+        let name_1024: &str = "nanvix-hyperlight-multi-process-release-1024mb-abc123def456.tar.bz2";
+        assert!(!name_1024.contains(&pattern));
     }
 
     ///
@@ -281,12 +292,17 @@ mod tests {
     fn test_all_release_patterns() {
         let deployments: [Deployment; 2] = [Deployment::SingleProcess, Deployment::MultiProcess];
         let machines: [Machine; 2] = [Machine::Hyperlight, Machine::Microvm];
+        let memory_sizes: [u32; 4] = [128, 256, 512, 1024];
 
         for deployment in &deployments {
             for machine in &machines {
-                let pattern: String = format!("nanvix-{}-{}-release", machine, deployment);
-                assert!(pattern.contains("nanvix-"));
-                assert!(pattern.contains("-release"));
+                for memory_size_mb in &memory_sizes {
+                    let pattern: String =
+                        format!("nanvix-{}-{}-release-{}mb-", machine, deployment, memory_size_mb);
+                    assert!(pattern.contains("nanvix-"));
+                    assert!(pattern.contains("-release-"));
+                    assert!(pattern.ends_with("mb-"));
+                }
             }
         }
     }
