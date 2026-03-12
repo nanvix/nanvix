@@ -63,4 +63,18 @@ impl<T> RawArrayView<T> {
     }
 }
 
+impl<T> View for RawArray<T> {
+    type V = Seq<T>;
+
+    /// Abstract view of the array as a sequence (uninterpreted).
+    uninterp spec fn view(&self) -> Seq<T>;
+}
+
+impl<T> RawArray<T> {
+    /// Invariant: length is positive and bounded.
+    pub closed spec fn inv(&self) -> bool {
+        self@.len() > 0 && self@.len() < i32::MAX as nat
+    }
+}
+
 } // verus!
