@@ -234,6 +234,9 @@ pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     if let Some(heap) = locked_heap.as_mut() {
+        // Attempt to reclaim tail pages.
+        try_reclaim(heap);
+
         match heap.malloc(layout) {
             Ok(ptr) => ptr.as_ptr(),
             Err(_) => core::ptr::null_mut(),
@@ -246,11 +249,97 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
+    let nn_ptr = match ptr::NonNull::new(ptr) {
+        Some(p) => p,
+        None => return,
+    };
+
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     if let Some(heap) = locked_heap.as_mut() {
-        if let Some(ptr) = ptr::NonNull::new(ptr) {
-            heap.free(ptr, layout)
+        heap.free(nn_ptr, layout);
+
+        // Attempt to reclaim tail pages.
+        try_reclaim(heap);
+    }
+}
+
+/// Attempts to shrink the backing heap by unmapping tail pages that no longer
+/// contain live allocations. This returns physical frames to the kernel.
+fn try_reclaim(talc: &mut Talc<NanvixOomHandler>) {
+    // Only reclaim when the heap has reached its maximum capacity.
+    let heap_size: usize = talc.oom_handler.heap.size();
+    let capacity: usize = talc.oom_handler.heap.capacity();
+    if heap_size < capacity || heap_size <= PAGE_SIZE {
+        return;
+    }
+
+    let current_span: Span = match talc.oom_handler.span {
+        Some(span) => span,
+        None => {
+            ::syslog::trace!("try_reclaim(): no span, skipping");
+            return;
+        },
+    };
+
+    // Find the minimum span that contains all live allocations.
+    let allocated_span: Span = unsafe { talc.get_allocated_span(current_span) };
+
+    let base_raw: usize = talc.oom_handler.heap.base().into_raw_value();
+
+    // Compute the page-aligned high-water mark of live allocations.
+    let alloc_end: usize = if allocated_span.is_empty() {
+        // No live allocations — shrink to the initial page.
+        PAGE_SIZE
+    } else {
+        // Round up end of live allocations to a page boundary.
+        let (_, acme) = match allocated_span.get_base_acme() {
+            Some(pair) => pair,
+            None => {
+                ::syslog::error!("try_reclaim(): non-empty span returned None from get_base_acme");
+                return;
+            },
+        };
+        let raw_end: usize = acme as usize;
+        let relative_end: usize = match raw_end.checked_sub(base_raw) {
+            Some(v) => v,
+            None => {
+                ::syslog::error!("try_reclaim(): acme precedes heap base");
+                return;
+            },
+        };
+        match mm::align_up(relative_end, PAGE_ALIGNMENT) {
+            Some(v) => v,
+            None => {
+                ::syslog::error!(
+                    "try_reclaim(): align_up overflow (relative_end={:X?})",
+                    relative_end
+                );
+                return;
+            },
         }
+    };
+
+    let current_size: usize = talc.oom_handler.heap.size();
+
+    // Only reclaim if we can free at least one page.
+    if alloc_end >= current_size {
+        return;
+    }
+
+    // Truncate Talc's span BEFORE unmapping pages. The truncate() call reads
+    // metadata (gap sizes, tags) from the old heap region. If we unmap first,
+    // those reads hit unmapped pages and cause a guest page fault.
+    let new_span: Span = Span::from_base_size(talc.oom_handler.heap.base().as_mut_ptr(), alloc_end);
+    let span: Span = unsafe { talc.truncate(current_span, new_span) };
+    talc.oom_handler.span = Some(span);
+
+    // Now unmap the freed tail pages. If this fails, shrink() stops at the
+    // first failing page and updates heap.size() to reflect the actual mapped
+    // extent. Talc's span is already truncated so unmapped pages won't be
+    // reused; the still-mapped (but now outside Talc's view) pages are a
+    // benign leak that the next OOM cycle can reclaim.
+    if let Err(_error) = talc.oom_handler.heap.shrink(alloc_end) {
+        ::syslog::warn!("try_reclaim(): failed to shrink heap (error={:?})", _error);
     }
 }
 
@@ -268,4 +357,37 @@ unsafe impl GlobalAlloc for Allocator {
 /// Cleanups the memory management runtime.
 pub fn cleanup() -> Result<(), Error> {
     Ok(())
+}
+
+/// Returns the committed size of the heap in bytes.
+///
+/// This is the number of bytes currently backed by physical pages. It increases when the OOM
+/// handler grows the heap via `mmap` and decreases when `try_reclaim` shrinks it via `munmap`.
+pub fn heap_committed_size() -> usize {
+    let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
+    match locked_heap.as_ref() {
+        Some(heap) => heap.oom_handler.heap.size(),
+        None => 0,
+    }
+}
+
+/// Returns the maximum capacity of the heap in bytes.
+pub fn heap_capacity() -> usize {
+    let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
+    match locked_heap.as_ref() {
+        Some(heap) => heap.oom_handler.heap.capacity(),
+        None => 0,
+    }
+}
+
+/// C-callable wrapper for [`heap_committed_size`].
+#[unsafe(no_mangle)]
+pub extern "C" fn sysalloc_heap_committed_size() -> usize {
+    heap_committed_size()
+}
+
+/// C-callable wrapper for [`heap_capacity`].
+#[unsafe(no_mangle)]
+pub extern "C" fn sysalloc_heap_capacity() -> usize {
+    heap_capacity()
 }
