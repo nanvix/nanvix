@@ -16,7 +16,7 @@ export LIBRARIES := -Wl,--start-group $(LIBPOSIX) $(LIBC) -Wl,--end-group
 export SOURCES := $(wildcard *.c)
 
 # Object Files
-export OBJECTS = $(SOURCES:.c=.$(TARGET).$(MACHINE).o)
+export OBJECTS = $(SOURCES:.c=.$(TARGET).$(MACHINE).$(DEPLOYMENT_MODE).o)
 
 # Binary
 export BINARY := $(PROGRAM_NAME).$(EXEC_FORMAT)
@@ -48,5 +48,5 @@ libs-clean:
 	rm -rf $(LIBRARIES_DIR)/libmul.so
 
 # Builds C source files.
-%.$(TARGET).$(MACHINE).o: %.c
+%.$(TARGET).$(MACHINE).$(DEPLOYMENT_MODE).o: %.c
 	$(NANVIX_CC) $(NANVIX_CFLAGS) $< -c -o $@
