@@ -104,8 +104,14 @@ To run formal verification:
 ./z build --with-cached-options -- verify-bitmap
 ```
 
-Verus is installed to `$(TOOLCHAIN_DIR)/verus` by default. Override with `VERUS_DIR`:
+Verus is installed to `$(TOOLCHAIN_DIR)/verus` by default. When `VERUS_EXECUTABLE_DIR` points
+to a custom location, the build assumes pre-built or locally compiled Verus binaries are already
+present there and skips the automatic download (the directory is used read-only; nothing is
+written to it). `VERUS_EXECUTABLE_DIR` must point to the directory that contains the `verus`
+executable (and required companion binaries), not just the Verus source tree.
 
 ```bash
-./z build --with-cached-options -- verify VERUS_DIR=/path/to/verus
+# Use a custom Verus installation (pre-built or source-built).
+# VERUS_EXECUTABLE_DIR must be the directory that contains the verus binary.
+./z build --with-cached-options -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
 ```

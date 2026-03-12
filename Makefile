@@ -339,8 +339,12 @@ export SETCAP_CMD := setcap
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the Verus installation directory.
-export VERUS_DIR ?= $(TOOLCHAIN_DIR)/verus
+# Path to the directory containing the Verus executable.
+export VERUS_EXECUTABLE_DIR ?= $(TOOLCHAIN_DIR)/verus
+
+# Default Verus directory (used to detect custom VERUS_EXECUTABLE_DIR overrides).
+# patsubst strips trailing slashes so `toolchain/verus/` is not treated as custom.
+VERUS_DEFAULT_EXECUTABLE_DIR := $(patsubst %/,%,$(TOOLCHAIN_DIR)/verus)
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap
@@ -348,7 +352,7 @@ VERUS_CRATES := bitmap
 # Verus verification command.
 # Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
 # but needs to accept -Z flags passed by -Z build-std.
-export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH="$(VERUS_DIR):$$PATH" \
+export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH="$(VERUS_EXECUTABLE_DIR):$$PATH" \
 	$(CARGO) +$(RUST_CHANNEL) verus verify --no-default-features
 
 #===================================================================================================
@@ -578,7 +582,7 @@ help:
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
-	@echo "  VERUS_DIR        Path to Verus installation (default: $(VERUS_DIR))"
+	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (default: $(VERUS_EXECUTABLE_DIR))"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
@@ -594,9 +598,20 @@ help:
 verify: $(addprefix verify-,$(VERUS_CRATES))
 
 # Ensures the correct Verus version is installed before verification.
+# When VERUS_EXECUTABLE_DIR points to a custom location, we assume the user has pre-built or
+# pre-downloaded Verus there and just validate the binary exists (read-only; no writes to that
+# directory).  Otherwise the prebuilt release is downloaded into the default location.
 .PHONY: ensure-verus
 ensure-verus:
-	@$(SCRIPTS_DIR)/setup/verus.sh "$(VERUS_DIR)"
+ifneq ($(patsubst %/,%,$(VERUS_EXECUTABLE_DIR)),$(VERUS_DEFAULT_EXECUTABLE_DIR))
+	@if [ ! -x "$(VERUS_EXECUTABLE_DIR)/verus" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no verus binary found there."; \
+		exit 1; \
+	fi
+	@echo "Using custom Verus installation at $(VERUS_EXECUTABLE_DIR)."
+else
+	@$(SCRIPTS_DIR)/setup/verus.sh "$(VERUS_EXECUTABLE_DIR)"
+endif
 
 # Pattern rule for verifying individual crates.
 $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
