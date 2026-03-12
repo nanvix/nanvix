@@ -178,6 +178,26 @@ compatibility. Follow these steps to update your environment:
 Verus is installed automatically when you run `make verify`. The expected version is pinned in
 `build/verus-version` and installed to `toolchain/verus`. No manual setup is required.
 
+#### Using a Custom Verus Installation
+
+If you need a specific Verus version (e.g., to test a new feature or a nightly commit), you can
+build Verus from source and point `VERUS_EXECUTABLE_DIR` at the resulting binaries:
+
+```bash
+# 1. Clone and build Verus (see https://github.com/verus-lang/verus/blob/main/INSTALL.md).
+git clone https://github.com/verus-lang/verus.git ~/verus-src
+cd ~/verus-src/source
+# Follow the Verus build instructions to produce binaries.
+
+# 2. Point VERUS_EXECUTABLE_DIR at the directory containing the verus binary.
+make verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
+```
+
+> **Note:** When `VERUS_EXECUTABLE_DIR` is overridden, the automatic download is skipped and
+> the build validates that a `verus` binary exists at the given path (the directory is used
+> read-only; nothing is written to it). You are responsible for ensuring the Verus version is
+> compatible with the `vstd` crate version pinned in `Cargo.toml`.
+
 ## Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.

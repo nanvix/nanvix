@@ -118,7 +118,7 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 ```
 
 - The `ensure-verus` prerequisite downloads the correct Verus release automatically.
-- Override the install location with `VERUS_DIR=/path/to/verus`.
+- Override the install location with `VERUS_EXECUTABLE_DIR=/path/to/verus`.
 - The `vstd` crate version in `Cargo.toml` is exact-pinned (`=`) to match the Verus binary.
 
 ## Cleaning
