@@ -17,12 +17,14 @@ STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-ru
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
 # listed in STANDALONE_GUEST_BINARIES also get the 'standalone' cargo feature.
-_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),standalone)
+_STANDALONE_FEATURE := standalone
+_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE))
 _pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
 
 # Returns package-specific cargo features, falling back to generic features.
 GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))"))
 
+# Per-package rules retained for direct invocation (e.g., make all-guest-binaries-<pkg>).
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): init all-guest-staticlibs
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
@@ -50,22 +52,86 @@ endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
-all-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),all-guest-binaries-$(target))
+# Batched build/check/lint grouping: split guest binaries by feature set.
+# - Regular: all except test-kernel (and standalone-capable in standalone mode).
+# - Standalone: standalone-capable binaries (only in standalone mode).
+# - test-kernel: always separate (unique features).
+_GUEST_BINS_COMMON := $(filter-out test-kernel,$(ALL_GUEST_BINARIES))
+
+ifeq ($(DEPLOYMENT_MODE),standalone)
+_GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
+_GUEST_BINS_REGULAR := $(filter-out $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
+_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE))
+_GUEST_BINS_STANDALONE_CARGO_FEATURES := $(if $(_GUEST_BINS_STANDALONE_FEATURES),--features "$(_GUEST_BINS_STANDALONE_FEATURES)")
+else
+_GUEST_BINS_REGULAR := $(_GUEST_BINS_COMMON)
+_GUEST_BINS_STANDALONE :=
+endif
+
+_GUEST_BINS_REGULAR_PKGS := $(foreach pkg,$(_GUEST_BINS_REGULAR),-p $(pkg))
+_GUEST_BINS_STANDALONE_PKGS := $(foreach pkg,$(_GUEST_BINS_STANDALONE),-p $(pkg))
+
+# Batched build: group guest binaries by feature set, then copy all artifacts.
+all-guest-binaries: init all-guest-staticlibs
+ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
+	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
+endif
+ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
+	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
+endif
+ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_BUILD_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+endif
+	@for pkg in $(ALL_GUEST_BINARIES); do \
+		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
+	done
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks all
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/user all
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests all
 
-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),check-guest-binaries-$(target))
+check-guest-binaries:
+ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
+	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
+endif
+ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
+	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
+endif
+ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CHECK_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+endif
 
-format-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-guest-binaries-$(target))
+# Batched format: single cargo invocation for all guest binaries.
+_GUEST_BINS_FMT_PKGS := $(foreach pkg,$(ALL_GUEST_BINARIES),-p $(pkg))
+format-guest-binaries:
+	$(GUEST_CARGO_FMT_CMD) $(_GUEST_BINS_FMT_PKGS)
 
-format-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),format-check-guest-binaries-$(target))
+format-check-guest-binaries:
+	$(GUEST_CARGO_FMT_CMD) $(_GUEST_BINS_FMT_PKGS) --check
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks clean
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/user clean
 	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests clean
 
-rust-lint-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-guest-binaries-$(target))
+# Batched lint: group guest binaries by feature set (same as check).
+rust-lint-guest-binaries:
+ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+endif
+ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+endif
+ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+endif
 
-rust-lint-check-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),rust-lint-check-guest-binaries-$(target))
+rust-lint-check-guest-binaries:
+ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+endif
+ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) -- -D warnings
+endif
+ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings
+endif
