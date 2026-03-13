@@ -138,9 +138,8 @@ impl<T> NonEmptyVecDeque<T> {
                 Some(mut tail) => match tail.iter_mut().position(condition) {
                     Some(pos) => match tail.remove(pos) {
                         Some(extracted) => {
-                            let mut new_tail: VecDeque<T> = VecDeque::from([self.head]);
-                            new_tail.extend(tail);
-                            Ok((new_tail, extracted))
+                            tail.push_front(self.head);
+                            Ok((tail, extracted))
                         },
                         None => Err(Self {
                             head: self.head,
