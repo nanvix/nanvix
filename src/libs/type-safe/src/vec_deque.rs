@@ -138,9 +138,8 @@ impl<T> NonEmptyVecDeque<T> {
                 Some(mut tail) => match tail.iter_mut().position(condition) {
                     Some(pos) => match tail.remove(pos) {
                         Some(extracted) => {
-                            let mut new_tail: VecDeque<T> = VecDeque::from([self.head]);
-                            new_tail.extend(tail);
-                            Ok((new_tail, extracted))
+                            tail.push_front(self.head);
+                            Ok((tail, extracted))
                         },
                         None => Err(Self {
                             head: self.head,
@@ -179,19 +178,58 @@ impl<T> NonEmptyVecDeque<T> {
         F: Fn(U) -> T,
     {
         let new_head: T = f(vec_deque.head);
-        let new_tail: Option<VecDeque<T>> = match vec_deque.tail.take() {
-            Some(mut tail) => {
-                let mut new_tail: VecDeque<T> = VecDeque::new();
-                while let Some(value) = tail.pop_front() {
-                    new_tail.push_back(f(value));
-                }
-                Some(new_tail)
-            },
-            None => None,
-        };
+        let new_tail: Option<VecDeque<T>> = vec_deque
+            .tail
+            .take()
+            .map(|tail| tail.into_iter().map(&f).collect());
         NonEmptyVecDeque {
             head: new_head,
             tail: new_tail,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes the element with the minimum key from `self`.
+    ///
+    /// Since the deque is guaranteed to be non-empty, a minimum always exists and this operation
+    /// cannot fail.
+    ///
+    /// # Parameters
+    ///
+    /// - `key_fn` - Function that extracts a comparable key from each element.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the remaining elements and the removed minimum element.
+    ///
+    pub fn remove_min_by_key<K: Ord>(mut self, key_fn: impl Fn(&T) -> K) -> (VecDeque<T>, T) {
+        match self.tail.take() {
+            None => (VecDeque::new(), self.head),
+            Some(mut tail) => {
+                let mut min_key: K = key_fn(&self.head);
+                let mut min_pos: Option<usize> = None;
+                for (i, elem) in tail.iter().enumerate() {
+                    let k: K = key_fn(elem);
+                    if k < min_key {
+                        min_key = k;
+                        min_pos = Some(i);
+                    }
+                }
+                match min_pos {
+                    None => (tail, self.head),
+                    Some(pos) => match tail.remove(pos) {
+                        Some(extracted) => {
+                            tail.push_front(self.head);
+                            (tail, extracted)
+                        },
+                        // pos was found by enumerate on tail, so remove cannot fail.
+                        // Fall back to head removal to stay panic-free.
+                        None => (tail, self.head),
+                    },
+                }
+            },
         }
     }
 
@@ -214,12 +252,13 @@ impl<T> NonEmptyVecDeque<T> {
 
 impl<T> From<NonEmptyVecDeque<T>> for VecDeque<T> {
     fn from(vec_deque: NonEmptyVecDeque<T>) -> Self {
-        let mut vec = VecDeque::new();
-        vec.push_front(vec_deque.head);
-        if let Some(tail) = vec_deque.tail {
-            vec.extend(tail);
+        match vec_deque.tail {
+            Some(mut tail) => {
+                tail.push_front(vec_deque.head);
+                tail
+            },
+            None => VecDeque::from([vec_deque.head]),
         }
-        vec
     }
 }
 
@@ -479,6 +518,252 @@ mod test {
         let converted: VecDeque<i32> = VecDeque::from(vec_deque);
         assert_eq!(converted, VecDeque::from([0, 1, 2]));
     }
+
+    #[test]
+    fn test_into_vec_deque_single() {
+        let vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(42);
+        let converted: VecDeque<i32> = VecDeque::from(vec_deque);
+        assert_eq!(converted, VecDeque::from([42]));
+    }
+
+    #[test]
+    fn test_into_vec_deque_two() {
+        let mut vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(10);
+        vec_deque.push_back(20);
+        let converted: VecDeque<i32> = VecDeque::from(vec_deque);
+        assert_eq!(converted, VecDeque::from([10, 20]));
+    }
+
+    #[test]
+    fn test_into_vec_deque_order_preserved() {
+        let mut vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(0);
+        for i in 1..8 {
+            vec_deque.push_back(i);
+        }
+        let converted: VecDeque<i32> = VecDeque::from(vec_deque);
+        assert_eq!(converted, VecDeque::from([0, 1, 2, 3, 4, 5, 6, 7]));
+    }
+
+    #[test]
+    fn test_remove_if_head_single() {
+        let vec_deque = NonEmptyVecDeque::new(5);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 5).unwrap();
+        assert_eq!(removed, 5);
+        assert_eq!(tail, VecDeque::new());
+    }
+
+    #[test]
+    fn test_remove_if_no_match_single() {
+        let vec_deque = NonEmptyVecDeque::new(5);
+        let result = vec_deque.remove_if(|value| *value == 99);
+        assert_eq!(
+            result,
+            Err(NonEmptyVecDeque {
+                head: 5,
+                tail: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_remove_if_head_two_elements() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 0).unwrap();
+        assert_eq!(removed, 0);
+        assert_eq!(tail, VecDeque::from([1]));
+    }
+
+    #[test]
+    fn test_remove_if_tail_two_elements() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 1).unwrap();
+        assert_eq!(removed, 1);
+        assert_eq!(tail, VecDeque::from([0]));
+    }
+
+    #[test]
+    fn test_remove_if_last_in_tail() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 2).unwrap();
+        assert_eq!(removed, 2);
+        assert_eq!(tail, VecDeque::from([0, 1]));
+    }
+
+    #[test]
+    fn test_remove_if_order_preserved() {
+        let mut vec_deque = NonEmptyVecDeque::new(10);
+        vec_deque.push_back(20);
+        vec_deque.push_back(30);
+        vec_deque.push_back(40);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 20).unwrap();
+        assert_eq!(removed, 20);
+        assert_eq!(tail, VecDeque::from([10, 30, 40]));
+    }
+
+    #[test]
+    fn test_remove_if_first_match_only() {
+        let mut vec_deque = NonEmptyVecDeque::new(1);
+        vec_deque.push_back(2);
+        vec_deque.push_back(2);
+        vec_deque.push_back(3);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 2).unwrap();
+        assert_eq!(removed, 2);
+        assert_eq!(tail, VecDeque::from([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_remove_if_head_duplicate() {
+        let mut vec_deque = NonEmptyVecDeque::new(1);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let (tail, removed) = vec_deque.remove_if(|value| *value == 1).unwrap();
+        assert_eq!(removed, 1);
+        assert_eq!(tail, VecDeque::from([1, 2]));
+    }
+
+    #[test]
+    fn test_map_large_tail() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        for i in 1..6 {
+            vec_deque.push_back(i);
+        }
+        let mapped: NonEmptyVecDeque<i32> = NonEmptyVecDeque::map(vec_deque, |v| v * 10);
+        assert_eq!(mapped.head, 0);
+        assert_eq!(mapped.tail, Some(VecDeque::from([10, 20, 30, 40, 50])));
+    }
+
+    #[test]
+    fn test_map_type_change() {
+        let mut vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::new(1);
+        vec_deque.push_back(2);
+        vec_deque.push_back(3);
+        let mapped: NonEmptyVecDeque<bool> = NonEmptyVecDeque::map(vec_deque, |v| v > 1);
+        assert!(!mapped.head);
+        assert_eq!(mapped.tail, Some(VecDeque::from([true, true])));
+    }
+
+    #[test]
+    fn test_map_preserves_count() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        for i in 1..10 {
+            vec_deque.push_back(i);
+        }
+        let mapped: NonEmptyVecDeque<i32> = NonEmptyVecDeque::map(vec_deque, |v| v + 1);
+        let count = mapped.iter().count();
+        assert_eq!(count, 10);
+    }
+
+    #[test]
+    fn test_pop_front_three_elements() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let (tail, head) = vec_deque.pop_front();
+        assert_eq!(head, 0);
+        assert_eq!(tail, VecDeque::from([1, 2]));
+    }
+
+    #[test]
+    fn test_roundtrip_from_into() {
+        let original = VecDeque::from([10, 20, 30, 40]);
+        let non_empty = NonEmptyVecDeque::from(original.clone()).unwrap();
+        let converted: VecDeque<i32> = VecDeque::from(non_empty);
+        assert_eq!(converted, original);
+    }
+
+    #[test]
+    fn test_remove_min_by_key_single() {
+        let vec_deque = NonEmptyVecDeque::new(42);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 42);
+        assert_eq!(remaining, VecDeque::new());
+    }
+
+    #[test]
+    fn test_remove_min_by_key_head_is_min() {
+        let mut vec_deque = NonEmptyVecDeque::new(1);
+        vec_deque.push_back(3);
+        vec_deque.push_back(2);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 1);
+        assert_eq!(remaining, VecDeque::from([3, 2]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_tail_is_min() {
+        let mut vec_deque = NonEmptyVecDeque::new(5);
+        vec_deque.push_back(2);
+        vec_deque.push_back(8);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 2);
+        assert_eq!(remaining, VecDeque::from([5, 8]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_last_is_min() {
+        let mut vec_deque = NonEmptyVecDeque::new(5);
+        vec_deque.push_back(3);
+        vec_deque.push_back(1);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 1);
+        assert_eq!(remaining, VecDeque::from([5, 3]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_duplicates_takes_first() {
+        let mut vec_deque = NonEmptyVecDeque::new(3);
+        vec_deque.push_back(1);
+        vec_deque.push_back(1);
+        vec_deque.push_back(5);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 1);
+        assert_eq!(remaining, VecDeque::from([3, 1, 5]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_head_duplicate_min() {
+        let mut vec_deque = NonEmptyVecDeque::new(1);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 1);
+        assert_eq!(remaining, VecDeque::from([1, 2]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_order_preserved() {
+        let mut vec_deque = NonEmptyVecDeque::new(40);
+        vec_deque.push_back(10);
+        vec_deque.push_back(30);
+        vec_deque.push_back(20);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 10);
+        assert_eq!(remaining, VecDeque::from([40, 30, 20]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_custom_key() {
+        // Use a derived key: minimize (value % 10), so 30 has key 0, 15 has key 5, etc.
+        let mut vec_deque = NonEmptyVecDeque::new(15);
+        vec_deque.push_back(22);
+        vec_deque.push_back(30);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| v % 10);
+        assert_eq!(min, 30);
+        assert_eq!(remaining, VecDeque::from([15, 22]));
+    }
+
+    #[test]
+    fn test_remove_min_by_key_two_elements() {
+        let mut vec_deque = NonEmptyVecDeque::new(10);
+        vec_deque.push_back(5);
+        let (remaining, min) = vec_deque.remove_min_by_key(|v| *v);
+        assert_eq!(min, 5);
+        assert_eq!(remaining, VecDeque::from([10]));
+    }
 }
 
 //==================================================================================================
@@ -541,6 +826,23 @@ mod benchmarks {
         b.iter(|| {
             let vec = NonEmptyVecDeque::from(VecDeque::from([0, 1])).unwrap();
             let _ = black_box(vec.remove_if(|value| *value == 1));
+        });
+    }
+
+    #[bench]
+    fn bench_remove_min_by_key(b: &mut Bencher) {
+        b.iter(|| {
+            let vec = NonEmptyVecDeque::from(VecDeque::from([3, 1, 2])).unwrap();
+            black_box(vec.remove_min_by_key(|v| *v));
+        });
+    }
+
+    #[bench]
+    fn bench_remove_min_by_key_large(b: &mut Bencher) {
+        b.iter(|| {
+            let data: VecDeque<i32> = (0..64).collect();
+            let vec = NonEmptyVecDeque::from(data).unwrap();
+            black_box(vec.remove_min_by_key(|v| *v));
         });
     }
 
