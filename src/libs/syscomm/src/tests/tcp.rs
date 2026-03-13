@@ -16,6 +16,7 @@ use crate::{
     UnboundSocket,
     WriteAll,
 };
+use ::std::io::IoSlice;
 use ::tokio::task::JoinHandle;
 
 //==================================================================================================
@@ -156,4 +157,98 @@ async fn tcp_socket_connect_invalid_address() {
         .connect("127.0.0.1:99999")
         .await;
     assert!(res.is_err());
+}
+
+#[tokio::test]
+async fn tcp_socket_write_all_vectored_success() {
+    let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
+        .bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+
+    let addr: SocketAddr = match &listener {
+        SocketListener::Tcp { listener, .. } => {
+            let bound: ::std::net::SocketAddr = listener.local_addr().expect("local_addr failed");
+            SocketAddr::Tcp(bound)
+        },
+        _ => unreachable!(),
+    };
+
+    let server: JoinHandle<()> = tokio::spawn(async move {
+        let stream: SocketStream = listener.accept().await.expect("accept failed");
+        let (mut r, _w): (SocketStreamReader, SocketStreamWriter) = stream.split();
+        let mut buf: [u8; 10] = [0u8; 10];
+        r.read_exact(&mut buf).await.expect("read_exact failed");
+        assert_eq!(&buf, b"helloworld");
+    });
+
+    let connect_target: String = match &addr {
+        SocketAddr::Tcp(addr) => addr.to_string(),
+        SocketAddr::Unix(_) => unreachable!(),
+    };
+
+    let client: SocketStream = UnboundSocket::new(SocketType::Tcp)
+        .connect(&connect_target)
+        .await
+        .expect("connect failed");
+
+    let (_r, mut w): (SocketStreamReader, SocketStreamWriter) = client.split();
+    let a: &[u8] = b"hello";
+    let b: &[u8] = b"world";
+    w.write_all_vectored(&mut [IoSlice::new(a), IoSlice::new(b)])
+        .await
+        .expect("write_all_vectored failed");
+
+    server.await.expect("server task join failed");
+}
+
+#[tokio::test]
+async fn tcp_socket_write_all_vectored_three_slices() {
+    let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
+        .bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+
+    let addr: SocketAddr = match &listener {
+        SocketListener::Tcp { listener, .. } => {
+            let bound: ::std::net::SocketAddr = listener.local_addr().expect("local_addr failed");
+            SocketAddr::Tcp(bound)
+        },
+        _ => unreachable!(),
+    };
+
+    let server: JoinHandle<()> = tokio::spawn(async move {
+        let stream: SocketStream = listener.accept().await.expect("accept failed");
+        let (mut r, _w): (SocketStreamReader, SocketStreamWriter) = stream.split();
+        // Frame type (1) + length prefix (4) + payload (6) = 11 bytes.
+        let mut buf: [u8; 11] = [0u8; 11];
+        r.read_exact(&mut buf).await.expect("read_exact failed");
+        assert_eq!(buf[0], 0x01);
+        assert_eq!(&buf[1..5], &6u32.to_le_bytes());
+        assert_eq!(&buf[5..], b"abcdef");
+    });
+
+    let connect_target: String = match &addr {
+        SocketAddr::Tcp(addr) => addr.to_string(),
+        SocketAddr::Unix(_) => unreachable!(),
+    };
+
+    let client: SocketStream = UnboundSocket::new(SocketType::Tcp)
+        .connect(&connect_target)
+        .await
+        .expect("connect failed");
+
+    let (_r, mut w): (SocketStreamReader, SocketStreamWriter) = client.split();
+    let frame_type: [u8; 1] = [0x01];
+    let len_prefix: [u8; 4] = 6u32.to_le_bytes();
+    let payload: &[u8] = b"abcdef";
+    w.write_all_vectored(&mut [
+        IoSlice::new(&frame_type),
+        IoSlice::new(&len_prefix),
+        IoSlice::new(payload),
+    ])
+    .await
+    .expect("write_all_vectored failed");
+
+    server.await.expect("server task join failed");
 }
