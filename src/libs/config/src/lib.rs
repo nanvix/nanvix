@@ -185,14 +185,6 @@ pub mod memory_layout {
     /// and grows lazily on demand.
     ///
     pub const USER_HEAP_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
-
-    ///
-    /// # Description
-    ///
-    /// Maximum capacity of the C runtime heap (`sbrk`) in bytes. The sbrk heap is backed by the
-    /// unified mmap region and grows lazily on demand.
-    ///
-    pub const USER_SBRK_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================

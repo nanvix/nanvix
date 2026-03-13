@@ -54,9 +54,3 @@ cfg_if::cfg_if! {
        pub mod bindings;
     }
 }
-
-cfg_if::cfg_if! {
-    if #[cfg(all(feature = "syscall", feature = "sbrk"))] {
-        pub use self::syscall::sbrk;
-    }
-}

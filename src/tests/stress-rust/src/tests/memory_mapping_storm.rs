@@ -62,7 +62,7 @@ pub fn run() -> Result<(), StressError> {
     let pid: ProcessIdentifier = getpid()?;
 
     // Reserve address space from the unified bump allocator so we don't conflict with the heap
-    // or sbrk regions.
+    // region.
     let region_size: usize = MMAP_STRESS_PAGES * MMAP_STRESS_STRIDE_BYTES;
     let region_base: VirtualAddress = ::syscall::sys::mman::mmap_reserve(region_size)?;
     let mut current_addr: VirtualAddress = region_base;
