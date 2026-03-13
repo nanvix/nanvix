@@ -207,12 +207,13 @@ impl<T> NonEmptyVecDeque<T> {
 
 impl<T> From<NonEmptyVecDeque<T>> for VecDeque<T> {
     fn from(vec_deque: NonEmptyVecDeque<T>) -> Self {
-        let mut vec = VecDeque::new();
-        vec.push_front(vec_deque.head);
-        if let Some(tail) = vec_deque.tail {
-            vec.extend(tail);
+        match vec_deque.tail {
+            Some(mut tail) => {
+                tail.push_front(vec_deque.head);
+                tail
+            },
+            None => VecDeque::from([vec_deque.head]),
         }
-        vec
     }
 }
 
