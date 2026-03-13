@@ -26,6 +26,18 @@ use ::sys::{
 pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
     ::syslog::trace!("dlsym(): handle={:?}, symbol={}", handle, symbol);
 
+    // Handle the global scope sentinel (returned by dlopen(NULL)).
+    if *handle == DlHandle::GLOBAL {
+        return match super::global_symbol_lookup(symbol) {
+            Some(addr) => Ok(VirtualAddress::from_raw_value(addr)),
+            None => {
+                let reason: &str = "symbol not found in global scope";
+                ::syslog::error!("dlsym(): {}", reason);
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        };
+    }
+
     // Get dynamic file.
     match DYNAMIC_LIBRARY_REGISTRY.lock().get_mut(handle) {
         Some(dlfile) => {

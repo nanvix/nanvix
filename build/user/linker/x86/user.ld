@@ -45,6 +45,29 @@ SECTIONS
 		*(.rodata*)
 	}
 
+	/* Dynamic symbol table (populated by --export-dynamic). */
+	.dynsym : ALIGN(4)
+	{
+		PROVIDE(__dynsym_start = .);
+		*(.dynsym)
+		PROVIDE(__dynsym_end = .);
+	}
+
+	/* Dynamic string table (symbol names for .dynsym). */
+	.dynstr : ALIGN(4)
+	{
+		PROVIDE(__dynstr_start = .);
+		*(.dynstr)
+		PROVIDE(__dynstr_end = .);
+	}
+
+	/* Symbol hash table. */
+	.hash : ALIGN(4)
+	{
+		*(.hash)
+		*(.gnu.hash)
+	}
+
 	/* Exception handling frame header */
 	.eh_frame_hdr : ALIGN(4)
 	{

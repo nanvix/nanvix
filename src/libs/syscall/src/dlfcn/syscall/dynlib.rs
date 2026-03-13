@@ -76,6 +76,11 @@ use ::type_safe::UnalignedPointer;
 pub struct DlHandle(c_int);
 
 impl DlHandle {
+    /// Sentinel handle returned by `dlopen(NULL)` representing the global
+    /// symbol scope (main executable + pre-loaded libraries). This value
+    /// never collides with real file-descriptor-based handles.
+    pub const GLOBAL: Self = DlHandle(c_int::MAX);
+
     /// Casts the target handle to a pointer.
     pub fn as_mut_ptr(&self) -> *mut c_void {
         self.0 as *mut c_void
@@ -479,6 +484,13 @@ impl DynamicLibrary {
                             return Ok(Some((base, symbol_value)));
                         }
                     }
+                }
+
+                // Fall back to the global symbol table (symbols from the
+                // main executable, registered via --export-dynamic).
+                if let Some(addr) = super::global_symbol_lookup(symbol_name) {
+                    // Global symbols are absolute addresses, so base is 0.
+                    return Ok(Some((0, addr)));
                 }
             } else {
                 return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
