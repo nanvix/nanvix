@@ -144,6 +144,13 @@ const CLEANUP_SLEEP_DURATION: u64 = 10;
 ///
 /// # Description
 ///
+/// Sleep duration (in ms) after the warmup echo, before timed iterations begin.
+///
+const WARMUP_SLEEP_DURATION: u64 = CLEANUP_SLEEP_DURATION;
+
+///
+/// # Description
+///
 /// Timeout (in seconds) for HTTP requests to nanvixd (start, kill, etc.).
 ///
 const NANVIXD_HTTP_TIMEOUT_SECS: u64 = 60;
@@ -1146,6 +1153,16 @@ impl Benchmark {
                 .start(new_msg, new_msg_headers, linuxd_deployment)
                 .await?;
 
+            // Warmup: send one untimed echo to trigger lazy initialization (worker thread
+            // creation, TCP path warm-up, etc.) so that timed iterations reflect steady-state
+            // latency.
+            {
+                let mut warmup_response = [0u8; DEFAULT_PAYLOAD_SIZE];
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut warmup_response).await?;
+                sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
+            }
+
             for _ in 0..self.iterations {
                 let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
 
@@ -1230,6 +1247,90 @@ impl Benchmark {
             counters,
             snapshot_path: None,
         });
+
+        // Warmup: run one untimed echo cycle through the full IKC protocol to trigger
+        // lazy initialization so that timed iterations reflect steady-state latency.
+        {
+            // Step 1: Receive the ReadRequest IKC message from the guest.
+            let warmup_read_msg: Message = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Message(message)) => message,
+                Some(IkcFrame::Bulk(_)) => {
+                    anyhow::bail!("warmup: unexpected bulk during ReadRequest")
+                },
+                None => anyhow::bail!("warmup: channel closed during ReadRequest"),
+            };
+            let warmup_linuxd_msg: LinuxDaemonMessage =
+                LinuxDaemonMessage::try_from_bytes(warmup_read_msg.payload)
+                    .map_err(|_| anyhow::anyhow!("warmup: error parsing LinuxDaemon message"))?;
+            // NOTE: `as_id()` returns `Err(ThreadIdentifier)` when the source is a
+            // thread (expected) and `Ok(ProcessIdentifier)` when it is a process.
+            let warmup_tid: ThreadIdentifier = match { warmup_read_msg.source }.as_id() {
+                Err(tid) => tid,
+                Ok(pid) => anyhow::bail!("warmup: unexpected message source: {pid:?}"),
+            };
+            let _warmup_read_req: ReadRequest = ReadRequest::from_bytes(warmup_linuxd_msg.payload);
+
+            // Step 2: Receive the bulk pull request from the guest kernel.
+            let warmup_pull_header: DataChunkHeader = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+                Some(IkcFrame::Message(_)) => {
+                    anyhow::bail!("warmup: unexpected message during bulk pull")
+                },
+                None => anyhow::bail!("warmup: channel closed during bulk pull"),
+            };
+
+            // Step 3: Send the bulk data response back to the kernel buffer.
+            let warmup_bulk_response: DataChunk = DataChunk::new(
+                DataChunkHeader::new(
+                    warmup_pull_header.source_pid(),
+                    warmup_pull_header.source_tid(),
+                    warmup_pull_header.destination_pid(),
+                    warmup_pull_header.destination_tid(),
+                    warmup_pull_header.data_addr(),
+                    payload.len() as u32,
+                ),
+                payload.clone(),
+            );
+            io_thread_data_tx
+                .send(IkcFrame::Bulk(warmup_bulk_response))
+                .await?;
+
+            // Step 4: Send ReadResponse metadata.
+            let warmup_empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
+                [0u8; ReadResponse::BUFFER_SIZE];
+            let warmup_read_response: Message =
+                ReadResponse::build(warmup_tid, payload.len() as i32, warmup_empty_buf);
+            io_thread_data_tx
+                .send(IkcFrame::Message(warmup_read_response))
+                .await?;
+
+            // Step 5: Receive the WriteRequest IKC message from the guest.
+            match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Message(_)) => {},
+                Some(IkcFrame::Bulk(_)) => {
+                    anyhow::bail!("warmup: unexpected bulk during WriteRequest")
+                },
+                None => anyhow::bail!("warmup: channel closed during WriteRequest"),
+            };
+
+            // Step 6: Receive the bulk push data from the guest.
+            match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(_)) => {},
+                Some(IkcFrame::Message(_)) => {
+                    anyhow::bail!("warmup: unexpected message during bulk push")
+                },
+                None => anyhow::bail!("warmup: channel closed during bulk push"),
+            };
+
+            // Step 7: Send WriteResponse to acknowledge the write.
+            let warmup_write_response: Message =
+                WriteResponse::build(warmup_tid, payload.len() as i32);
+            io_thread_data_tx
+                .send(IkcFrame::Message(warmup_write_response))
+                .await?;
+
+            sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
+        }
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
@@ -1442,10 +1543,16 @@ impl Benchmark {
         let header_size = 1;
         let data_size = header_size + profiler::MAX_NUMBER_MESSAGE_TIMESTAMPS * 2;
 
-        // Before running this experiment, we need to wait for the user VM to
-        // fully boot, as otherwise the boot time will tamper the hot-path
-        // measurements.
-        sleep(Duration::from_millis(200)).await;
+        // Warmup: send one untimed echo to trigger lazy initialization (worker thread
+        // creation, TCP path warm-up, etc.) so that timed iterations reflect steady-state
+        // latency.
+        {
+            let warmup_data: Vec<u8> = vec![0u8; data_size];
+            let mut warmup_response: Vec<u8> = vec![0u8; data_size];
+            gateway_stream.write_all(&warmup_data).await?;
+            gateway_stream.read_exact(&mut warmup_response).await?;
+            sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
+        }
 
         // For each different step we measure, we record the delta for each iteration.
         let mut latencies: Vec<Vec<u16>> = Vec::with_capacity(steps.len() + 1);
