@@ -19,12 +19,7 @@ sys = { workspace = true }
 cfg-if = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
-syscall = { workspace = true, features = [
-    "staticlib",
-    "syscall",
-    "dlfcn",
-    "sbrk",
-] }
+syscall = { workspace = true, features = ["staticlib", "syscall", "dlfcn"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
@@ -34,7 +29,7 @@ type-safe = { workspace = true }
 [features]
 default = ["syscall", "allocator", "staticlib"]
 allocator = ["dep:sysalloc"]
-syscall = ["syslog", "syscall/dlfcn", "syscall/sbrk"]
+syscall = ["syslog", "syscall/dlfcn"]
 standalone = ["syscall/standalone"]
 std = []
 staticlib = ["nvx/staticlib"]

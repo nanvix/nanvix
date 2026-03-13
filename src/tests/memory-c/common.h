@@ -6,9 +6,6 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
-// Tests whether we can allocate memory using `sbrk()`.
-extern void test_sbrk(void);
-
 // Tests whether we can map and unmap memory using `mmap()` and `munmap()`.
 extern void test_mmap_munmap(void);
 
@@ -20,5 +17,11 @@ extern void test_aligned_alloc_free(void);
 
 // Tests whether we can query the usable size of allocated blocks using `malloc_usable_size()`.
 extern void test_malloc_usable_size(void);
+
+// Stresses the heap allocator with alloc/free cycles under fragmentation pressure.
+extern void test_heap_reclaim(void);
+
+// Tests the allocator by attempting to consume the maximum allowed heap capacity.
+extern void test_heap_max_capacity(void);
 
 #endif
