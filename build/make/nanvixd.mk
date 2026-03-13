@@ -26,6 +26,9 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@if [ -f $(LIBRARIES_DIR)/libmul.so ]; then \
 		cp -f $(LIBRARIES_DIR)/libmul.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
 	fi
+	@if [ -f $(LIBRARIES_DIR)/libmul-pie.so ]; then \
+		cp -f $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
+	fi
 	$(BINARIES_DIR)/mkramfs.elf -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage

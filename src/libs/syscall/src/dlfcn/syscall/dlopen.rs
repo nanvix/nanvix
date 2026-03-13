@@ -34,6 +34,12 @@ use ::sys::error::Error;
 pub fn dlopen(filename: &str) -> Result<DlHandle, Error> {
     ::syslog::trace!("dlopen(): filename={}", filename);
 
+    // Ensure the global symbol table is populated so that symbols exported
+    // by the main executable can be resolved during relocation, even if the
+    // caller never invoked dlopen(NULL). Guarded by Once, so subsequent
+    // calls are a no-op.
+    super::dlinit();
+
     // TODO: Normalize filename.
 
     let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =

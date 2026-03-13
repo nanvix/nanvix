@@ -100,6 +100,12 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/dlfcn-pie-c.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/file-c.elf"
 input = "[]"
 expected_output = "ok"
@@ -222,6 +228,11 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/dlfcn-c.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/dlfcn-pie-c.elf"
 expected_output = "ok"
 
 [[tests]]
