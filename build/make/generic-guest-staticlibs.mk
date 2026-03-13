@@ -10,6 +10,7 @@ endif
 GUEST_STATICLIB_FEATURES := $(strip $(GUEST_STATICLIB_FEATURES))
 GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$(GUEST_STATICLIB_FEATURES)")
 
+# Per-package rules retained for direct invocation (e.g., make all-guest-staticlib-<pkg>).
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1): init
 	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(GUEST_STATICLIB_CARGO_FEATURES)
@@ -38,16 +39,29 @@ endef
 
 $(foreach target,$(ALL_GUEST_STATIC_LIBS),$(eval $(call GUEST_STATICLIB_RULES,$(target))))
 
-all-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),all-guest-staticlib-$(target))
+# Batched targets: single cargo invocations for all guest staticlibs.
+_GUEST_STATICLIB_PKGS := $(foreach pkg,$(ALL_GUEST_STATIC_LIBS),-p $(pkg))
 
-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),check-guest-staticlib-$(target))
+all-guest-staticlibs: init
+	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES)
+	@for pkg in $(ALL_GUEST_STATIC_LIBS); do \
+		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$$pkg.a $(LIBRARIES_DIR)/lib$$pkg.a; \
+	done
 
-format-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-guest-staticlib-$(target))
+check-guest-staticlibs:
+	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS)
+	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES)
 
-format-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),format-check-guest-staticlib-$(target))
+format-guest-staticlibs:
+	$(GUEST_CARGO_FMT_CMD) $(_GUEST_STATICLIB_PKGS)
+
+format-check-guest-staticlibs:
+	$(GUEST_CARGO_FMT_CMD) $(_GUEST_STATICLIB_PKGS) --check
 
 clean-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),clean-guest-staticlib-$(target))
 
-rust-lint-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-guest-staticlib-$(target))
+rust-lint-guest-staticlibs:
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 
-rust-lint-check-guest-staticlibs: $(foreach target,$(ALL_GUEST_STATIC_LIBS),rust-lint-check-guest-staticlib-$(target))
+rust-lint-check-guest-staticlibs:
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_STATICLIB_PKGS) $(GUEST_STATICLIB_CARGO_FEATURES) -- -D warnings
