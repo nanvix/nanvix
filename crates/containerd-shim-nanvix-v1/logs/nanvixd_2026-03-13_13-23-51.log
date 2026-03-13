@@ -1,0 +1,2 @@
+[2026-03-13 13:23:51.899286 +00:00] [38;5;196mERROR[0m [syscomm::socket_stream] src/libs/syscomm/src/socket_stream.rs:296: write_all(): write_all(): Broken pipe (os error 32)
+[2026-03-13 13:23:51.899767 +00:00] [38;5;208mWARN[0m [nanvix_sandbox::sandbox::multi_process::uservm] src/libs/nanvix-sandbox/src/sandbox/multi_process/uservm.rs:284: shutdown(): failed to send shutdown command to user VM (error=Os { code: 32, kind: BrokenPipe, message: "Broken pipe" })
