@@ -10,6 +10,7 @@ mod debug_console_spam;
 mod event_registration;
 mod heap_max_capacity;
 mod heap_reclaim;
+mod heap_shrink;
 mod kcall_hammer;
 mod memory_mapping_storm;
 mod mmap_rapid_cycle;
@@ -49,6 +50,7 @@ pub fn run_all() -> Result<(), Error> {
     scoreboard_backpressure::run()?;
     heap_reclaim::run()?;
     heap_max_capacity::run()?;
+    heap_shrink::run()?;
     sleep_burst::run()?;
     debug_console_spam::run()?;
     event_registration::run()?;
