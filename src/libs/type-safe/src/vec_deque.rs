@@ -178,16 +178,10 @@ impl<T> NonEmptyVecDeque<T> {
         F: Fn(U) -> T,
     {
         let new_head: T = f(vec_deque.head);
-        let new_tail: Option<VecDeque<T>> = match vec_deque.tail.take() {
-            Some(mut tail) => {
-                let mut new_tail: VecDeque<T> = VecDeque::new();
-                while let Some(value) = tail.pop_front() {
-                    new_tail.push_back(f(value));
-                }
-                Some(new_tail)
-            },
-            None => None,
-        };
+        let new_tail: Option<VecDeque<T>> = vec_deque
+            .tail
+            .take()
+            .map(|tail| tail.into_iter().map(&f).collect());
         NonEmptyVecDeque {
             head: new_head,
             tail: new_tail,
