@@ -10,10 +10,6 @@
 #![feature(never_type)] // pthread requires this.
 #![feature(c_variadic)] // fcntl requires this.
 
-// Standalone mode requires memfs — reject the invalid combination at compile time.
-#[cfg(all(feature = "standalone", not(feature = "memfs")))]
-compile_error!("the `standalone` feature requires `memfs` to be enabled");
-
 //==================================================================================================
 // Modules
 //==================================================================================================

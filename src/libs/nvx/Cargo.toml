@@ -30,7 +30,7 @@ sysalloc = { workspace = true }
 [features]
 default = ["staticlib"]
 staticlib = []
-memfs = ["dep:vfs"]
+standalone = ["dep:vfs"]
 rustc-dep-of-std = [
     "alloc",
     "core",
