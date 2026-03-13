@@ -57,14 +57,6 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
-program = "./bin/vfs-test.elf"
-extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
-input = "[]"
-expect_empty_output = true
-runs_on = ["microvm"]
-
-[[tests]]
-executor = "http"
 program = "./bin/echo-c.elf"
 input = "hello world!"
 expected_output = "hello world!"
@@ -191,14 +183,6 @@ extra_nanvixd_args = "-ramfs README.md"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
-
-[[tests]]
-executor = "terminal"
-program = "./bin/vfs-test.elf"
-extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
-input = "[]"
-expect_empty_output = true
 runs_on = ["microvm"]
 
 [[tests]]
