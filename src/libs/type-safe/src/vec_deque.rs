@@ -188,6 +188,51 @@ impl<T> NonEmptyVecDeque<T> {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Removes the element with the minimum key from `self`.
+    ///
+    /// Since the deque is guaranteed to be non-empty, a minimum always exists and this operation
+    /// cannot fail.
+    ///
+    /// # Parameters
+    ///
+    /// - `key_fn` - Function that extracts a comparable key from each element.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the remaining elements and the removed minimum element.
+    ///
+    pub fn remove_min_by_key<K: Ord>(mut self, key_fn: impl Fn(&T) -> K) -> (VecDeque<T>, T) {
+        match self.tail.take() {
+            None => (VecDeque::new(), self.head),
+            Some(mut tail) => {
+                let mut min_key: K = key_fn(&self.head);
+                let mut min_pos: Option<usize> = None;
+                for (i, elem) in tail.iter().enumerate() {
+                    let k: K = key_fn(elem);
+                    if k < min_key {
+                        min_key = k;
+                        min_pos = Some(i);
+                    }
+                }
+                match min_pos {
+                    None => (tail, self.head),
+                    Some(pos) => match tail.remove(pos) {
+                        Some(extracted) => {
+                            tail.push_front(self.head);
+                            (tail, extracted)
+                        },
+                        // pos was found by enumerate on tail, so remove cannot fail.
+                        // Fall back to head removal to stay panic-free.
+                        None => (tail, self.head),
+                    },
+                }
+            },
+        }
+    }
+
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             passed_head: false,
