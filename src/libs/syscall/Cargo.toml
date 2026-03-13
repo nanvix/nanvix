@@ -49,7 +49,6 @@ rustc-dep-of-std = [
     "core",
     "alloc",
     "sigaction",
-    "sbrk",
     "arch/rustc-dep-of-std",
     "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
@@ -64,7 +63,6 @@ rustc-dep-of-std = [
     "type-safe/rustc-dep-of-std",
     "spin/rustc-dep-of-std",
 ]
-sbrk = ["dep:sysalloc"]
 standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
 
 # TODO (#798): remove this feature flag once the signal module is stable.

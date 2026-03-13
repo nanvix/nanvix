@@ -25,7 +25,7 @@ const MM_TEST_NTIMES: usize = 64;
 // NOTE: these low-level kcall tests map pages starting at `USER_MMAP_END`, which lies in the
 // guard region between the unified mmap region and the user stack. This address is deliberately
 // outside the bump-allocated mmap region so that direct kcall mappings do not conflict with
-// heap, sbrk, or higher-level mmap reservations.
+// heap or higher-level mmap reservations.
 
 // Compile-time check: ensure the test pages fit within the guard region.
 const _: () = assert!(

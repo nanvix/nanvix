@@ -101,7 +101,7 @@ pub fn run() -> Result<(), StressError> {
     let worker_count: usize = cmp::max(SCOREBOARD_SLOT_HINT * 2, MIN_SCOREBOARD_PRESSURE_WORKERS);
 
     // Reserve address space for all workers from the unified bump allocator so that direct
-    // kcall mmap/munmap calls don't conflict with the heap or sbrk regions.
+    // kcall mmap/munmap calls don't conflict with the heap region.
     let total_region_size: usize = worker_count * SCOREBOARD_PRESSURE_REGION_STRIDE_BYTES;
     let region_base: ::sys::mm::VirtualAddress =
         ::syscall::sys::mman::mmap_reserve(total_region_size)?;

@@ -4,12 +4,6 @@
  */
 
 //==================================================================================================
-// Configuration
-//==================================================================================================
-
-#define _BSD_SOURCE 1 // sbrk()
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -68,11 +62,12 @@ int main(int argc, const char *argv[])
     (void)argc;
     (void)argv;
 
-    test_sbrk();
     test_mmap_munmap();
     test_malloc_free();
     test_aligned_alloc_free();
     test_malloc_usable_size();
+    test_heap_reclaim();
+    test_heap_max_capacity();
 
     // Write magic string to signal that the test passed.
     {
