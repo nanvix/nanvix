@@ -807,6 +807,14 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
     Ok(n as c_size_t)
 }
 
+/// Changes file mode bits through the VFS.
+///
+/// FAT32 does not support POSIX permission bits, so the mode is accepted
+/// but silently ignored. Returns `Err` if the path does not exist.
+pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), Fat32Error> {
+    crate::stat(path).map(|_| ())
+}
+
 /// Checks file accessibility through the VFS.
 ///
 /// Returns `Ok(())` if the path exists, `Err` otherwise.
@@ -985,6 +993,33 @@ pub fn vfs_linkat(
 /// Always returns [`Fat32Error::NotSupported`].
 pub fn vfs_symlinkat(_target: &str, _dirfd: c_int, _linkpath: &str) -> Result<(), Fat32Error> {
     Err(Fat32Error::NotSupported)
+}
+
+/// Changes the mode of a file relative to a directory file descriptor through the VFS.
+///
+/// FAT32 does not support POSIX permission bits. This function validates
+/// its arguments and returns success without modifying any permissions.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor for relative path resolution.
+/// - `path`: Path to the target file.
+/// - `_mode`: File mode bits (ignored on FAT32).
+/// - `_flag`: Flags (ignored on FAT32).
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if the path cannot be resolved.
+/// Returns [`Fat32Error::FileNotFound`] if the resolved path does not exist.
+pub fn vfs_fchmodat(
+    dirfd: c_int,
+    path: &str,
+    _mode: ::sysapi::sys_types::mode_t,
+    _flag: c_int,
+) -> Result<(), Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    // Verify that the target exists using the VFS-level stat for consistent semantics.
+    crate::stat(&resolved).map(|_| ())
 }
 
 //==================================================================================================
