@@ -47,6 +47,7 @@ use ::sysapi::{
         file_type,
         stat,
     },
+    time::timespec,
 };
 
 //==================================================================================================
@@ -89,6 +90,10 @@ pub fn main() -> Result<(), Error> {
     test_stat_timestamps()?;
     test_fcntl_fd_flags()?;
     test_resolve_path()?;
+    test_chmod()?;
+    test_fchmodat()?;
+    test_fchownat()?;
+    test_utimensat()?;
     test_ramfs_mount()?;
 
     Ok(())
@@ -840,6 +845,220 @@ fn test_resolve_path() -> Result<(), Error> {
     vfs::unmount("/rp").map_err(|e| fat_err(e, "unmount /rp"))?;
 
     ::syslog::info!("vfs-test: test_resolve_path passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Chmod
+//==================================================================================================
+
+/// Tests that `vfs_chmod()` succeeds on an existing file and fails on a missing one.
+fn test_chmod() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_chmod begin");
+
+    vfs::create_mount("/chm", 128 * 1024).map_err(|e| fat_err(e, "create_mount /chm failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/chm/f.txt")
+            .map_err(|e| fat_err(e, "create f.txt"))?;
+        file.write(b"chmod test")
+            .map_err(|e| fat_err(e, "write f.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush f.txt"))?;
+    }
+
+    // chmod on an existing file should succeed (FAT32 ignores mode).
+    vfs::fd::vfs_chmod("/chm/f.txt", 0o644).map_err(|e| fat_err(e, "chmod existing file"))?;
+
+    // chmod on a non-existent file should fail.
+    if vfs::fd::vfs_chmod("/chm/missing.txt", 0o644).is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "chmod on missing file should fail"));
+    }
+
+    // Clean up.
+    vfs::unlink("/chm/f.txt").map_err(|e| fat_err(e, "unlink f.txt"))?;
+    vfs::unmount("/chm").map_err(|e| fat_err(e, "unmount /chm"))?;
+
+    ::syslog::info!("vfs-test: test_chmod passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fchmodat
+//==================================================================================================
+
+/// Tests that `vfs_fchmodat()` validates path resolution and file existence.
+fn test_fchmodat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fchmodat begin");
+
+    vfs::create_mount("/fca", 128 * 1024).map_err(|e| fat_err(e, "create_mount /fca failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/fca/f.txt")
+            .map_err(|e| fat_err(e, "create f.txt"))?;
+        file.write(b"fchmodat test")
+            .map_err(|e| fat_err(e, "write f.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush f.txt"))?;
+    }
+
+    // fchmodat with absolute path should succeed regardless of dirfd.
+    vfs::fd::vfs_fchmodat(0, "/fca/f.txt", 0o755, 0)
+        .map_err(|e| fat_err(e, "fchmodat absolute path"))?;
+
+    // fchmodat with AT_FDCWD and relative path.
+    vfs::chdir("/fca").map_err(|e| fat_err(e, "chdir /fca"))?;
+    let result = vfs::fd::vfs_fchmodat(::sysapi::fcntl::atflags::AT_FDCWD, "f.txt", 0o755, 0);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    result.map_err(|e| fat_err(e, "fchmodat AT_FDCWD relative"))?;
+
+    // fchmodat with a VFS directory fd and relative path.
+    let dir_fd: i32 = vfs::fd::vfs_open("/fca", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /fca O_DIRECTORY"))?;
+    vfs::fd::vfs_fchmodat(dir_fd, "f.txt", 0o755, 0)
+        .map_err(|e| fat_err(e, "fchmodat dirfd relative"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+
+    // fchmodat on a non-existent file should fail.
+    if vfs::fd::vfs_fchmodat(0, "/fca/missing.txt", 0o755, 0).is_ok() {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fchmodat on missing file should fail",
+        ));
+    }
+
+    // Clean up.
+    vfs::unlink("/fca/f.txt").map_err(|e| fat_err(e, "unlink f.txt"))?;
+    vfs::unmount("/fca").map_err(|e| fat_err(e, "unmount /fca"))?;
+
+    ::syslog::info!("vfs-test: test_fchmodat passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fchownat
+//==================================================================================================
+
+/// Tests that `vfs_fchownat()` validates path resolution and file existence.
+fn test_fchownat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fchownat begin");
+
+    vfs::create_mount("/fco", 128 * 1024).map_err(|e| fat_err(e, "create_mount /fco failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/fco/f.txt")
+            .map_err(|e| fat_err(e, "create f.txt"))?;
+        file.write(b"fchownat test")
+            .map_err(|e| fat_err(e, "write f.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush f.txt"))?;
+    }
+
+    // fchownat with absolute path should succeed (FAT32 ignores owner/group).
+    vfs::fd::vfs_fchownat(0, "/fco/f.txt", 1000, 1000, 0)
+        .map_err(|e| fat_err(e, "fchownat absolute path"))?;
+
+    // fchownat with AT_FDCWD and relative path.
+    vfs::chdir("/fco").map_err(|e| fat_err(e, "chdir /fco"))?;
+    let result = vfs::fd::vfs_fchownat(::sysapi::fcntl::atflags::AT_FDCWD, "f.txt", 0, 0, 0);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    result.map_err(|e| fat_err(e, "fchownat AT_FDCWD relative"))?;
+
+    // fchownat with a VFS directory fd and relative path.
+    let dir_fd: i32 = vfs::fd::vfs_open("/fco", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /fco O_DIRECTORY"))?;
+    vfs::fd::vfs_fchownat(dir_fd, "f.txt", 0, 0, 0)
+        .map_err(|e| fat_err(e, "fchownat dirfd relative"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+
+    // fchownat on a non-existent file should fail.
+    if vfs::fd::vfs_fchownat(0, "/fco/missing.txt", 0, 0, 0).is_ok() {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fchownat on missing file should fail",
+        ));
+    }
+
+    // Clean up.
+    vfs::unlink("/fco/f.txt").map_err(|e| fat_err(e, "unlink f.txt"))?;
+    vfs::unmount("/fco").map_err(|e| fat_err(e, "unmount /fco"))?;
+
+    ::syslog::info!("vfs-test: test_fchownat passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Utimensat
+//==================================================================================================
+
+/// Tests that `vfs_utimensat()` validates path resolution and file existence.
+fn test_utimensat() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_utimensat begin");
+
+    vfs::create_mount("/uts", 128 * 1024).map_err(|e| fat_err(e, "create_mount /uts failed"))?;
+
+    // Create a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/uts/f.txt")
+            .map_err(|e| fat_err(e, "create f.txt"))?;
+        file.write(b"utimensat test")
+            .map_err(|e| fat_err(e, "write f.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush f.txt"))?;
+    }
+
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 1_000_000,
+            tv_nsec: 0,
+        },
+        timespec {
+            tv_sec: 2_000_000,
+            tv_nsec: 0,
+        },
+    ];
+
+    // utimensat with absolute path should succeed (FAT32 ignores times).
+    vfs::fd::vfs_utimensat(0, "/uts/f.txt", &times, 0)
+        .map_err(|e| fat_err(e, "utimensat absolute path"))?;
+
+    // utimensat with AT_FDCWD and relative path.
+    vfs::chdir("/uts").map_err(|e| fat_err(e, "chdir /uts"))?;
+    let result = vfs::fd::vfs_utimensat(::sysapi::fcntl::atflags::AT_FDCWD, "f.txt", &times, 0);
+    vfs::chdir("/").map_err(|e| fat_err(e, "chdir /"))?;
+    result.map_err(|e| fat_err(e, "utimensat AT_FDCWD relative"))?;
+
+    // utimensat with a VFS directory fd and relative path.
+    let dir_fd: i32 = vfs::fd::vfs_open("/uts", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open /uts O_DIRECTORY"))?;
+    vfs::fd::vfs_utimensat(dir_fd, "f.txt", &times, 0)
+        .map_err(|e| fat_err(e, "utimensat dirfd relative"))?;
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+
+    // utimensat on a non-existent file should fail.
+    if vfs::fd::vfs_utimensat(0, "/uts/missing.txt", &times, 0).is_ok() {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "utimensat on missing file should fail",
+        ));
+    }
+
+    // Clean up.
+    vfs::unlink("/uts/f.txt").map_err(|e| fat_err(e, "unlink f.txt"))?;
+    vfs::unmount("/uts").map_err(|e| fat_err(e, "unmount /uts"))?;
+
+    ::syslog::info!("vfs-test: test_utimensat passed");
     Ok(())
 }
 
