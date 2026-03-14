@@ -526,11 +526,10 @@ impl VirtualProcessor {
                 },
                 // Halt the virtual processor.
                 VcpuExit::Hlt => VirtualProcessorExitContext::Halt,
-                // Shutdown the virtual processor.
+                // Shutdown the virtual processor (e.g., triple fault).
                 VcpuExit::Shutdown => {
-                    // TODO: handle shutdown.
                     warn!("run(): shutdown");
-                    VirtualProcessorExitContext::Unknown
+                    VirtualProcessorExitContext::Shutdown
                 },
                 // Fail to run the virtual processor.
                 VcpuExit::FailEntry(reason, cpud) => {
