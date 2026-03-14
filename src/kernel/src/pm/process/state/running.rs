@@ -223,7 +223,7 @@ impl RunningProcess {
         if let Some(interrupted_threads) = interrupted_threads {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
                 self.state,
-                self.sleeping_threads.take(),
+                None, // Sleeping threads were converted to interrupted above.
                 interrupted_threads,
                 Some(zombie_threads),
             );
