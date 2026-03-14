@@ -48,17 +48,20 @@ use {
 /// error.
 ///
 #[allow(unreachable_code)]
-pub fn fchmodat(_dirfd: c_int, _path: &str, _mode: mode_t, _flag: c_int) -> Result<(), Error> {
-    // In standalone mode, this operation is not supported.
-    // TODO: https://github.com/nanvix/nanvix/issues/1607
+pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(), Error> {
+    // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        Ok(())
+        ::nvx::vfs::fd::vfs_fchmodat(dirfd, path, mode, flag).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!("fchmodat(): VFS fchmodat failed (path={path:?}, error={e})");
+            ::sys::error::Error::new(code, "vfs fchmodat failed")
+        })
     }
 
     // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]
-    fchmodat_linuxd(_dirfd, _path, _mode, _flag)
+    fchmodat_linuxd(dirfd, path, mode, flag)
 }
 
 /// Forwards a `fchmodat` request to linuxd via IPC.

@@ -31,14 +31,15 @@ use ::sysapi::sys_types::mode_t;
 /// Upon successful completion, the `fchmodat()` system call returns empty. Otherwise, it returns an
 /// error.
 ///
-pub fn chmod(_path: &str, _mode: mode_t) -> Result<(), Error> {
-    // In standalone mode, this operation is not supported.
-    // TODO: https://github.com/nanvix/nanvix/issues/1606
+pub fn chmod(path: &str, mode: mode_t) -> Result<(), Error> {
     #[cfg(feature = "standalone")]
     {
-        Ok(())
+        ::nvx::vfs::fd::vfs_chmod(path, mode).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            Error::new(code, "vfs chmod failed")
+        })
     }
 
     #[cfg(not(feature = "standalone"))]
-    fchmodat(AT_FDCWD, _path, _mode, 0)
+    fchmodat(AT_FDCWD, path, mode, 0)
 }
