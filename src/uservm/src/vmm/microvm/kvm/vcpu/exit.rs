@@ -18,6 +18,8 @@ pub enum VirtualProcessorExitReason {
     PmioAccess(PmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Shutdown virtual processor (e.g., triple fault).
+    Shutdown,
     /// Interrupted.
     Interrupted,
     /// Unknown.
@@ -30,6 +32,8 @@ pub enum VirtualProcessorExitContext {
     Pmio(PmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Shutdown virtual processor (e.g., triple fault).
+    Shutdown,
     /// Interrupt virtual processor.
     Interrupted,
     /// Unknown.
@@ -43,6 +47,8 @@ pub enum VirtualProcessorExitReasonRef<'a> {
     PmioAccess(&'a PmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Shutdown virtual processor (e.g., triple fault).
+    Shutdown,
     /// Interrupted.
     Interrupted,
     /// Unknown.
@@ -78,6 +84,7 @@ impl VirtualProcessorExitContext {
                 VirtualProcessorExitReasonRef::PmioAccess(access)
             },
             VirtualProcessorExitContext::Halt => VirtualProcessorExitReasonRef::Halt,
+            VirtualProcessorExitContext::Shutdown => VirtualProcessorExitReasonRef::Shutdown,
             VirtualProcessorExitContext::Interrupted => VirtualProcessorExitReasonRef::Interrupted,
             VirtualProcessorExitContext::Unknown => VirtualProcessorExitReasonRef::Unknown,
         }
@@ -91,6 +98,7 @@ impl<'a> From<VirtualProcessorExitReasonRef<'a>> for VirtualProcessorExitReason 
                 VirtualProcessorExitReason::PmioAccess(access.clone())
             },
             VirtualProcessorExitReasonRef::Halt => VirtualProcessorExitReason::Halt,
+            VirtualProcessorExitReasonRef::Shutdown => VirtualProcessorExitReason::Shutdown,
             VirtualProcessorExitReasonRef::Interrupted => VirtualProcessorExitReason::Interrupted,
             VirtualProcessorExitReasonRef::Unknown => VirtualProcessorExitReason::Unknown,
         }
