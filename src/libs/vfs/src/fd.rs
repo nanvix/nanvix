@@ -39,7 +39,9 @@ use ::sysapi::{
     },
     sys_types::{
         c_size_t,
+        gid_t,
         off_t,
+        uid_t,
     },
     time::timespec,
     unistd::file_seek,
@@ -1015,6 +1017,35 @@ pub fn vfs_fchmodat(
     dirfd: c_int,
     path: &str,
     _mode: ::sysapi::sys_types::mode_t,
+    _flag: c_int,
+) -> Result<(), Fat32Error> {
+    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    // Verify that the target exists using the VFS-level stat for consistent semantics.
+    crate::stat(&resolved).map(|_| ())
+}
+
+/// Changes the owner and group of a file relative to a directory file descriptor through the VFS.
+///
+/// FAT32 does not support POSIX ownership. This function validates
+/// its arguments and returns success without modifying any ownership.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor for relative path resolution.
+/// - `path`: Path to the target file.
+/// - `_owner`: Owner of the file (ignored on FAT32).
+/// - `_group`: Group of the file (ignored on FAT32).
+/// - `_flag`: Flags (ignored on FAT32).
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if the path cannot be resolved.
+/// Returns [`Fat32Error::FileNotFound`] if the resolved path does not exist.
+pub fn vfs_fchownat(
+    dirfd: c_int,
+    path: &str,
+    _owner: uid_t,
+    _group: gid_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
