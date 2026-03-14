@@ -62,11 +62,12 @@ pub fn utimensat(
         flags
     );
 
-    // In standalone mode, this operation is not supported.
-    // TODO: https://github.com/nanvix/nanvix/issues/1608
     #[cfg(feature = "standalone")]
     {
-        Ok(())
+        ::nvx::vfs::fd::vfs_utimensat(dirfd, pathname, times, flags).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            Error::new(code, "vfs utimensat failed")
+        })
     }
 
     // Forward to linuxd via IPC.
