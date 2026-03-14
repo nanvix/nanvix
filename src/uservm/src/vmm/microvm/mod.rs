@@ -527,7 +527,10 @@ impl Vmm {
 
                 // Virtual machine exited due to an unknown reason.
                 VirtualProcessorExitReasonRef::Unknown => {
-                    break Ok(ErrorCode::IllegalByteSequence.into());
+                    error!("run(): guest exited due to an unknown reason");
+                    let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
+                    Handle::current().block_on(self.handle_shutdown(exit_status));
+                    break Ok(exit_status);
                 },
             }
         }
