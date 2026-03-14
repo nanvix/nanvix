@@ -1053,6 +1053,38 @@ pub fn vfs_fchownat(
     crate::stat(&resolved).map(|_| ())
 }
 
+/// Sets file access and modification times through the VFS.
+///
+/// FAT32 does not support fine-grained POSIX timestamps. This function
+/// validates its arguments and returns success without modifying any
+/// timestamps.
+///
+/// # Parameters
+///
+/// - `dirfd`: Directory file descriptor for relative path resolution.
+/// - `pathname`: Path to the target file.
+/// - `_times`: Access and modification times (ignored on FAT32).
+/// - `flags`: Flags (must be zero; unsupported flags are rejected).
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if the path cannot be resolved.
+/// Returns [`Fat32Error::FileNotFound`] if the resolved path does not exist.
+pub fn vfs_utimensat(
+    dirfd: c_int,
+    pathname: &str,
+    _times: &[timespec; 2],
+    flags: c_int,
+) -> Result<(), Fat32Error> {
+    // Reject unsupported flags since FAT32 does not handle them.
+    if flags != 0 {
+        return Err(Fat32Error::InvalidArgument);
+    }
+    let path: String = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
+    // Verify that the target exists using the VFS-level stat for consistent semantics.
+    crate::stat(&path).map(|_| ())
+}
+
 //==================================================================================================
 // Unit Tests
 //==================================================================================================
