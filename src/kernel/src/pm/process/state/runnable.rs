@@ -32,7 +32,6 @@ use crate::{
 use ::alloc::boxed::Box;
 use ::sys::pm::ProcessIdentifier;
 use ::type_safe::NonEmptyVecDeque;
-use alloc::collections::vec_deque::VecDeque;
 use sys::{
     error::ErrorCode,
     mm::VirtualAddress,
@@ -111,23 +110,11 @@ impl RunnableProcess {
         mut self,
     ) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
     {
-        let mut ready_threads: VecDeque<ReadyThread> = self.ready_threads.into();
-
-        // Select thread with the earliest admission time.
-        let mut index_selected_thread: usize = 0;
-        for (i, thread) in ready_threads.iter().enumerate() {
-            if thread.admission_time() < ready_threads[index_selected_thread].admission_time() {
-                index_selected_thread = i;
-            }
-        }
-        let next_thread: ReadyThread = match ready_threads.remove(index_selected_thread) {
-            Some(thread) => thread,
-            None => {
-                // SAFETY: the following statement is unreachable because there should always be at
-                // least one ready thread in a runnable process.
-                unreachable!("no ready threads in runnable process");
-            },
-        };
+        // Select and remove the thread with the earliest admission time.
+        // NOTE: uses `remove_min_by_key()` to operate directly on `NonEmptyVecDeque`, avoiding
+        // the heap allocation that a `VecDeque` conversion would require.
+        let (ready_threads, next_thread) =
+            self.ready_threads.remove_min_by_key(|t| t.admission_time());
 
         let (running_thread, interrupt_reason, next_context, user_tda): (
             RunningThread,
