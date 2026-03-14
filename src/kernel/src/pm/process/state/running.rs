@@ -294,7 +294,7 @@ impl RunningProcess {
                 self.state,
                 self.sleeping_threads.take(),
                 interrupted_threads,
-                self.zombie.take(),
+                Some(zombie_threads),
             );
 
             Ok((join_cond, interrupted_process.resume(), ctx))

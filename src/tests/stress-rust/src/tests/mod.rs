@@ -21,6 +21,7 @@ mod sleep_burst;
 mod thread_data_area;
 mod thread_fan_out;
 mod thread_identity;
+mod zombie_join_pressure;
 
 //==================================================================================================
 // Imports
@@ -42,6 +43,7 @@ use ::sys::error::Error;
 /// `Ok(())` on success or an error if any workload fails.
 ///
 pub fn run_all() -> Result<(), Error> {
+    zombie_join_pressure::run()?;
     thread_fan_out::run()?;
     mutex_churn::run()?;
     parallel_spawners::run()?;
