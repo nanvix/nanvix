@@ -223,11 +223,19 @@ pub fn run() -> Result<(), StressError> {
 /// Attempts to allocate a tagged block, returning `Err` on allocation failure instead of
 /// panicking. This is used in phases where running out of memory is an expected outcome.
 fn try_alloc_tagged_block(size: usize, index: usize) -> Result<Box<[u8]>, Error> {
-    // `Vec::try_reserve` returns Err on OOM instead of aborting.
+    // Use try_reserve to check capacity, then fill via write_bytes + set_len to avoid
+    // the infallible reallocation path in Vec::resize.
     let mut v: Vec<u8> = Vec::new();
     v.try_reserve(size)
         .map_err(|_| Error::new(ErrorCode::OutOfMemory, "allocation failed"))?;
-    v.resize(size, 0u8);
+
+    // SAFETY: try_reserve succeeded so the buffer has capacity for `size` bytes.
+    // We zero the memory before exposing it.
+    unsafe {
+        ::core::ptr::write_bytes(v.as_mut_ptr(), 0u8, size);
+        v.set_len(size);
+    }
+
     let mut block: Box<[u8]> = v.into_boxed_slice();
     let tag: u8 = u8::try_from(index & 0xFF).unwrap_or(0);
     block[0] = tag;

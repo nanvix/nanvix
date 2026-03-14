@@ -24,4 +24,8 @@ extern void test_heap_reclaim(void);
 // Tests the allocator by attempting to consume the maximum allowed heap capacity.
 extern void test_heap_max_capacity(void);
 
+// Exercises the heap shrink path through bulk-free, shrink-to-minimum, anchor-pinned,
+// repeated cycles, and small-heap scenarios.
+extern void test_heap_shrink(void);
+
 #endif
