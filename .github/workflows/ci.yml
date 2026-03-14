@@ -340,7 +340,7 @@ jobs:
             nanvix-*.tar.bz2
 
       - name: "Upload logs in case of failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}-${{ matrix.memory-size }}mb
@@ -421,7 +421,7 @@ jobs:
           phase: post
 
       - name: "Upload logs in case of failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.deployment-type }}
@@ -511,7 +511,7 @@ jobs:
           deployment-type: "l2"
 
       - name: "Collect L2 diagnostics"
-        if: failure()
+        if: failure() || cancelled()
         uses: ./.github/actions/collect-l2-diagnostics
 
       - name: "Post-Cleanup Dangling Resources"
@@ -521,7 +521,7 @@ jobs:
           phase: post
 
       - name: "Upload logs in case of failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-l2-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
@@ -647,7 +647,7 @@ jobs:
           phase: post
 
       - name: "Upload logs in case of benchmark failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-benchmark-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
@@ -711,7 +711,7 @@ jobs:
           target-dir: "data/baremetal"
 
       - name: "Upload logs in case of finalize failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
@@ -824,7 +824,7 @@ jobs:
           path: nanvix_bench_*.csv
 
       - name: "Upload logs in case of benchmark failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-benchmark-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
@@ -885,7 +885,7 @@ jobs:
           target-dir: "data/github"
 
       - name: "Upload logs in case of finalize failures"
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-benchmark-ci-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
