@@ -89,6 +89,10 @@ impl Heap {
         self.size
     }
 
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     pub fn grow(&mut self, increment: usize) -> Result<(), Error> {
         ::syslog::trace!("grow(): increment={:X?}", increment);
 
@@ -123,6 +127,58 @@ impl Heap {
         // Update metadata.
         self.size += increment;
 
+        Ok(())
+    }
+
+    /// Shrinks the heap by unmapping tail pages from the end backwards.
+    ///
+    /// Pages are unmapped in reverse order (highest address first). If a `munmap` call fails,
+    /// unmapping stops immediately and `self.size` is updated to reflect the lowest still-mapped
+    /// boundary. This guarantees that `self.size` always represents the actual contiguous mapped
+    /// extent, preventing inconsistencies between metadata and the page table.
+    ///
+    /// # Parameters
+    ///
+    /// - `new_size`: New committed size in bytes. Must be page-aligned and smaller than the
+    ///   current size. Values below a single page are clamped.
+    pub fn shrink(&mut self, new_size: usize) -> Result<(), Error> {
+        ::syslog::trace!("shrink(): new_size={:X?}, current_size={:X?}", new_size, self.size);
+
+        // Check if new size is page-aligned.
+        if !mm::is_aligned(new_size, PAGE_ALIGNMENT) {
+            ::syslog::error!("shrink(): unaligned new_size");
+            return Err(Error::new(ErrorCode::BadAddress, "unaligned new_size"));
+        }
+
+        // Clamp values below a single page.
+        let new_size: usize = new_size.max(mem::PAGE_SIZE);
+
+        // Nothing to do if the (possibly clamped) new size is not smaller.
+        if new_size >= self.size {
+            return Ok(());
+        }
+
+        // Unmap tail pages from the end backwards, stopping at the first failure so that
+        // self.size always reflects the actual contiguous mapped extent.
+        let base_raw: usize = self.base.into_raw_value();
+        let new_end: usize = base_raw + new_size;
+        let old_end: usize = base_raw + self.size;
+
+        for page in (new_end..old_end).step_by(mem::PAGE_SIZE).rev() {
+            let page_addr: VirtualAddress = VirtualAddress::from_raw_value(page);
+            if let Err(error) = kcall::mm::munmap(self.pid, page_addr) {
+                ::syslog::error!(
+                    "shrink(): failed to unmap page at {:X?}, stopping (error={:?})",
+                    page_addr,
+                    error
+                );
+                self.size = (page + mem::PAGE_SIZE) - base_raw;
+                return Err(error);
+            }
+        }
+
+        // All tail pages unmapped successfully.
+        self.size = new_size;
         Ok(())
     }
 }
