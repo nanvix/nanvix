@@ -91,32 +91,42 @@ impl core::fmt::Debug for Exception {
     }
 }
 
-impl From<u32> for Exception {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => Exception::DivisionByZero,
-            1 => Exception::Debug,
-            2 => Exception::NonMaskableInterrupt,
-            3 => Exception::Breakpoint,
-            4 => Exception::Overflow,
-            5 => Exception::BoundsCheck,
-            6 => Exception::InvalidOpcode,
-            7 => Exception::CoprocessorNotAvailable,
-            8 => Exception::DoubleFault,
-            9 => Exception::CoprocessorSegmentOverrun,
-            10 => Exception::InvalidTaskStateSegment,
-            11 => Exception::SegmentNotPresent,
-            12 => Exception::StackSegmentFault,
-            13 => Exception::GeneralProtectionFault,
-            14 => Exception::PageFault,
-            15 => Exception::Reserved,
-            16 => Exception::FloatingPoint,
-            17 => Exception::AlignmentCheck,
-            18 => Exception::MachineCheck,
-            19 => Exception::SmidUnit,
-            20 => Exception::Virtualization,
-            30 => Exception::Security,
-            _ => panic!("invalid exception"),
+impl TryFrom<u32> for Exception {
+    type Error = u32;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Self::try_from_vector(value as usize).ok_or(value)
+    }
+}
+
+impl Exception {
+    /// Converts an exception vector number into an [`Exception`], returning `None` for
+    /// invalid or unrecognized vector numbers.
+    pub fn try_from_vector(vector: usize) -> Option<Self> {
+        match vector {
+            0 => Some(Exception::DivisionByZero),
+            1 => Some(Exception::Debug),
+            2 => Some(Exception::NonMaskableInterrupt),
+            3 => Some(Exception::Breakpoint),
+            4 => Some(Exception::Overflow),
+            5 => Some(Exception::BoundsCheck),
+            6 => Some(Exception::InvalidOpcode),
+            7 => Some(Exception::CoprocessorNotAvailable),
+            8 => Some(Exception::DoubleFault),
+            9 => Some(Exception::CoprocessorSegmentOverrun),
+            10 => Some(Exception::InvalidTaskStateSegment),
+            11 => Some(Exception::SegmentNotPresent),
+            12 => Some(Exception::StackSegmentFault),
+            13 => Some(Exception::GeneralProtectionFault),
+            14 => Some(Exception::PageFault),
+            15 => Some(Exception::Reserved),
+            16 => Some(Exception::FloatingPoint),
+            17 => Some(Exception::AlignmentCheck),
+            18 => Some(Exception::MachineCheck),
+            19 => Some(Exception::SmidUnit),
+            20 => Some(Exception::Virtualization),
+            30 => Some(Exception::Security),
+            _ => None,
         }
     }
 }
