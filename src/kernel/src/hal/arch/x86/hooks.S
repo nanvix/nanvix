@@ -204,13 +204,26 @@
 #define EXCP_STACK_GUARD 0x00806000
 
 /*
+ * VMM shutdown exit-status encoding (low 16 bits of the outl value):
+ *
+ *   0x0001          — ESP guard overflow (deep stack consumption already in
+ *                     progress, page tables may be corrupted).
+ *   0x0100 | excnum — Kernel-mode page fault detected.  The faulting
+ *                     address is in CR2 at the time of shutdown.  Low byte
+ *                     carries the exception vector (always 14 for now).
+ *
+ * In both cases the VMM reads guest registers (ESP, EIP, CR2, CR3) for
+ * post-mortem diagnostics.
+ */
+
+/*
  * Macro: excp_stack_guard_check
  *
  * Checks whether ESP has dropped below the safe threshold.  Uses only
  * register operations and an I/O-port write — no memory accesses — so it
  * cannot itself trigger a page fault on a corrupted page table.
  *
- * Clobbers: EDX, EAX (only on the overflow path which never returns).
+ * Clobbers: EAX, EDX (only on the overflow path which never returns).
  */
 .macro excp_stack_guard_check
     cmpl $EXCP_STACK_GUARD, %esp
@@ -223,6 +236,38 @@
 2:  hlt
     jmp 2b
 1:
+.endm
+
+/*
+ * Macro: excp_kernel_fault_check  number
+ *
+ * For exceptions that push an error code with a U/S bit (bit 2), this
+ * macro detects faults that originated in kernel mode (ring 0).  In
+ * Nanvix the kernel address space is identity-mapped and pre-allocated,
+ * so a kernel-mode page fault is always a bug — typically a recursive
+ * exception cascade.
+ *
+ * The error code sits at (%esp) because the CPU pushed it before
+ * transferring control.  Reading it requires a stack-page access, but
+ * the CPU just wrote to that same page, so it is guaranteed present.
+ *
+ * Before shutting down, the macro loads the faulting instruction's EIP
+ * from the exception frame (4(%esp)) into EBX so the VMM can include
+ * it in the diagnostic dump.
+ *
+ * Clobbers: EAX, EBX, EDX (only on the abort path which never returns).
+ */
+.macro excp_kernel_fault_check number
+    testl $4, (%esp)           /* bit 2 = U/S: 0 → kernel, 1 → user */
+    jnz   3f
+    /* Kernel-mode fault — capture faulting EIP for VMM diagnostics. */
+    movl  4(%esp), %ebx        /* EIP of the instruction that faulted */
+    movl $(0x20000100 | \number), %eax
+    movw $0x604, %dx
+    outl %eax, (%dx)
+4:  hlt
+    jmp 4b
+3:
 .endm
 
 /*----------------------------------------------------------------------------*
@@ -266,6 +311,7 @@
 .macro _do_excp_err2_code, number
     _do_excp\()\number:
         excp_stack_guard_check
+        excp_kernel_fault_check \number
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
         xchg %eax, (%esp)
