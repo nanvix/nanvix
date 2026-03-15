@@ -234,9 +234,6 @@ pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     if let Some(heap) = locked_heap.as_mut() {
-        // Attempt to reclaim tail pages.
-        try_reclaim(heap);
-
         match heap.malloc(layout) {
             Ok(ptr) => ptr.as_ptr(),
             Err(_) => core::ptr::null_mut(),
@@ -265,6 +262,12 @@ pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
 
 /// Attempts to shrink the backing heap by unmapping tail pages that no longer
 /// contain live allocations. This returns physical frames to the kernel.
+///
+/// Only activates when the heap has reached its maximum capacity (`heap_size >= capacity`).
+/// After a successful reclaim the committed size drops below capacity, so subsequent
+/// `dealloc` calls skip reclamation cheaply. The next time `grow()` pushes the heap
+/// back to capacity the guard fires again, giving a natural "reclaim every time we
+/// reach capacity" cadence without per-dealloc overhead.
 fn try_reclaim(talc: &mut Talc<NanvixOomHandler>) {
     // Only reclaim when the heap has reached its maximum capacity.
     let heap_size: usize = talc.oom_handler.heap.size();
