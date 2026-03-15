@@ -50,6 +50,7 @@ const ORDER: Ordering = Ordering::Relaxed;
 pub use clock::ticks;
 pub use kcall::*;
 pub use process::{
+    ExceptionGuard,
     ProcessManager,
     SleepError,
 };

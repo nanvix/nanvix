@@ -98,6 +98,9 @@ static REMAINING_QUANTUM: AtomicUsize = AtomicUsize::new(SCHEDULER_FREQ);
 /// ID of thread that owns the FPU.
 pub(super) static FPU_OWNER_TID: AtomicI32 = AtomicI32::new(ThreadIdentifier::KERNEL_RAW);
 
+/// Nesting depth of exception handlers currently being served.
+static SERVING_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -806,5 +809,47 @@ impl ProcessManager {
                 // Interrupts are automatically disabled when we leave this scope.
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the CPU as serving an exception and returns an RAII guard that decrements the nesting
+    /// depth on drop. Supports nesting: each call increments a depth counter and the corresponding
+    /// guard decrements it, so the flag remains set until all guards have been dropped.
+    ///
+    /// # Returns
+    ///
+    /// An [`ExceptionGuard`] that decrements the nesting depth when dropped.
+    ///
+    pub fn enter_exception_handler() -> ExceptionGuard {
+        SERVING_EXCEPTION.fetch_add(1, ORDER);
+        ExceptionGuard(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the CPU is currently serving an exception.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the exception handler flag is set, `false` otherwise.
+    ///
+    pub(super) fn is_serving_exception() -> bool {
+        SERVING_EXCEPTION.load(ORDER) > 0
+    }
+}
+
+/// RAII guard that decrements the `SERVING_EXCEPTION` nesting depth on drop.
+///
+/// Cannot be constructed outside this module — only [`ProcessManager::enter_exception_handler`]
+/// produces instances.
+#[must_use = "guard must be held for the duration of the exception handler"]
+pub struct ExceptionGuard(());
+
+impl Drop for ExceptionGuard {
+    fn drop(&mut self) {
+        SERVING_EXCEPTION.fetch_sub(1, ORDER);
     }
 }
