@@ -47,6 +47,7 @@ standalone = [
     "nanvix-sandbox/standalone",
     "nanvix-terminal/standalone",
 ]
+gdb = ["nanvix-http/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
 hyperlight = [
     "config/hyperlight",
     "nanvix-http/hyperlight",
