@@ -927,10 +927,7 @@ fn test_fchmodat() -> Result<(), Error> {
 
     // fchmodat on a non-existent file should fail.
     if vfs::fd::vfs_fchmodat(0, "/fca/missing.txt", 0o755, 0).is_ok() {
-        return Err(Error::new(
-            ErrorCode::InvalidArgument,
-            "fchmodat on missing file should fail",
-        ));
+        return Err(Error::new(ErrorCode::InvalidArgument, "fchmodat on missing file should fail"));
     }
 
     // Clean up.
@@ -982,10 +979,7 @@ fn test_fchownat() -> Result<(), Error> {
 
     // fchownat on a non-existent file should fail.
     if vfs::fd::vfs_fchownat(0, "/fco/missing.txt", 0, 0, 0).is_ok() {
-        return Err(Error::new(
-            ErrorCode::InvalidArgument,
-            "fchownat on missing file should fail",
-        ));
+        return Err(Error::new(ErrorCode::InvalidArgument, "fchownat on missing file should fail"));
     }
 
     // Clean up.
