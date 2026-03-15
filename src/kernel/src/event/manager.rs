@@ -16,6 +16,7 @@ use crate::{
     },
     pm::{
         sync::condvar::Condvar,
+        ExceptionGuard,
         InterruptReason,
         ProcessManager,
         SleepError,
@@ -987,6 +988,7 @@ fn do_exception_handler(
 }
 
 fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
+    let _guard: ExceptionGuard = ProcessManager::enter_exception_handler();
     if let Err(sleep_error) = do_exception_handler(info, ctx) {
         let status: ErrorCode = match sleep_error {
             SleepError::Generic(generic_error) => {
