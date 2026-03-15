@@ -24,6 +24,7 @@ use crate::{
             PageAligned,
             VirtualAddress,
         },
+        platform,
     },
     mm::{
         elf::Elf32Fhdr,
@@ -94,6 +95,12 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
+
+//==================================================================================================
+// Exports
+//==================================================================================================
+
+pub use self::r#unsafe::ExceptionGuard;
 
 //==================================================================================================
 // Sleep Error
@@ -1371,20 +1378,31 @@ impl ProcessManager {
     /// # Description
     ///
     /// Checks the running thread's kernel stack guard watermark for corruption.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the watermark has been corrupted, indicating a stack overflow.
+    /// If corrupted, logs an error and halts the VM immediately.
     ///
     fn check_running_stack_guard(&self) {
+        // Skip when serving an exception: the stack may already be overflowed and
+        // the halt path would aggravate the situation by consuming more stack.
+        if Self::is_serving_exception() {
+            return;
+        }
+
         if let Some(ref running) = self.running {
-            if let Err(e) = running.check_guard_watermark() {
-                panic!(
-                    "stack overflow detected for thread {:?} in process {:?}: {:?}",
+            if let Err(_e) = running.check_guard_watermark() {
+                // Do NOT panic here. A panic formats debug information via core::fmt, which
+                // allocates a large stack frame. When this function is called from do_schedule
+                // (invoked by the timer interrupt handler), the kernel stack is already near its
+                // limit. The additional stack consumed by panic formatting can corrupt page
+                // directory entries, triggering a recursive exception cascade (triple fault).
+                //
+                // Instead, log a fixed-size message and halt immediately. The error! macro and
+                // platform::shutdown use minimal stack compared to panic! formatting.
+                error!(
+                    "stack overflow detected: tid={:?}, pid={:?}",
                     running.get_tid(),
                     running.state().pid(),
-                    e
                 );
+                platform::shutdown(ExitStatus::from(ErrorCode::UnrecoverableState).into());
             }
         }
     }
