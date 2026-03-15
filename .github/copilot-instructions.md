@@ -19,6 +19,7 @@ Use the corresponding skill when the user request matches the topic:
 - `ci-cd-pipeline` → CI workflow behavior, failures, and release flow.
 - `coding-standards` → detailed style, documentation, and review conventions.
 - `daemon-development` → daemon architecture, implementation, and debugging.
+- `gdb-debugging` → GDB remote debugging of Nanvix guests via the microvm GDB server.
 - `kernel-development` → kernel internals and kernel-call paths.
 - `library-development` → crates under `src/libs` and related architecture.
 - `test-development` → writing and debugging tests.

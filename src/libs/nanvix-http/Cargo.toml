@@ -34,6 +34,7 @@ default = ["microvm", "multi-process"]
 single-process = ["linuxd", "nanvix-sandbox", "nanvix-sandbox/single-process"]
 multi-process = ["nanvix-sandbox-cache", "nanvix-sandbox-cache/multi-process"]
 standalone = ["nanvix-sandbox", "nanvix-sandbox/standalone"]
+gdb = ["uservm/gdb"]
 hyperlight = [
     "config/hyperlight",
     "uservm/hyperlight",

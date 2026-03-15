@@ -16,9 +16,10 @@ This guide will help you set up your development environment to build and run Na
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 - [Updating Your Development Tools](#updating-your-development-tools)
-  - [Verus (Formal Verification: ./z build … -- verify / make verify)](#verus-formal-verification)
+  - [Verus (Formal Verification)](#verus-formal-verification)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
+- [Setting Up GDB Debugging (Optional)](#setting-up-gdb-debugging-optional)
 
 ---
 
@@ -208,3 +209,18 @@ Choose one of the following options to set up your IDE for Nanvix development.
 mkdir -p .vscode && cd .vscode
 ln -s ../scripts/setup/vscode/settings.json settings.json
 ```
+
+## Setting Up GDB Debugging (Optional)
+
+The repository includes a `.gdbinit` file that automatically configures GDB for debugging.  By
+default, GDB refuses to auto-load `.gdbinit` files from arbitrary directories. To allow it for this
+project, add the repository path to your GDB auto-load safe-path:
+
+```bash
+echo "add-auto-load-safe-path $(pwd)/.gdbinit" >> ~/.gdbinit
+```
+
+After this, launching `gdb-multiarch` from the project root will automatically pick up the
+project's `.gdbinit`.
+
+For full debugging instructions, see [doc/gdb.md](gdb.md).

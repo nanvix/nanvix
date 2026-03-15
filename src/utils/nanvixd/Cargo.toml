@@ -25,7 +25,8 @@ default = ["microvm", "multi-process"]
 # into Nanvix Daemon (nanvixd).
 single-process = ["nanvix/single-process"]
 multi-process = ["nanvix/multi-process"]
-standalone = ["nanvix/standalone"]
+standalone = ["gdb", "nanvix/standalone"]
+gdb = ["microvm", "nanvix/gdb"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 

@@ -43,8 +43,11 @@ pub struct MicroVmArgs {
     /// restored from a snapshot.
     pub restoring_from_snapshot: bool,
     /// Shared coalescing flag for IKC IRQ notification (microvm only).
-    #[cfg(feature = "microvm")]
+    #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
     pub ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Optional GDB server port (standalone mode only, microvm only).
+    #[cfg(feature = "gdb")]
+    pub gdb_port: Option<u16>,
 }
 
 impl std::fmt::Debug for MicroVmArgs {

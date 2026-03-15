@@ -25,6 +25,8 @@ cfg-if = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 elf = { workspace = true }
+gdbstub = { workspace = true, optional = true }
+gdbstub_arch = { workspace = true, optional = true }
 hyperlight-host = { workspace = true, optional = true }
 log = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
@@ -46,6 +48,7 @@ libc = { workspace = true }
 
 [features]
 default = ["microvm"]
+gdb = ["microvm", "dep:gdbstub", "dep:gdbstub_arch"]
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
 timestamp-messages = ["profiler/timestamp-messages"]

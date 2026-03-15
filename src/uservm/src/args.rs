@@ -66,6 +66,10 @@ pub struct Args {
     standalone: bool,
     /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
     snapshot_path: Option<String>,
+    /// Optional GDB server port: when set, start a GDB RSP server on this TCP port and wait for a
+    /// debugger to connect before running the guest. Requires standalone mode.
+    #[cfg(feature = "gdb")]
+    gdb_port: Option<u16>,
 }
 
 //==================================================================================================
@@ -107,6 +111,9 @@ impl Args {
     pub const OPT_STANDALONE: &'static str = "-standalone";
     /// Command-line option for snapshot restore path.
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
+    /// Command-line option for GDB server port (standalone mode only).
+    #[cfg(feature = "gdb")]
+    pub const OPT_GDB_PORT: &'static str = "-gdb-port";
 
     /// Program name.
     const PROGRAM_NAME: &'static str = env!("CARGO_PKG_NAME");
@@ -141,6 +148,8 @@ impl Args {
         let mut gateway_socket_type: String = String::new();
         let mut standalone: bool = false;
         let mut snapshot_path: Option<String> = None;
+        #[cfg(feature = "gdb")]
+        let mut gdb_port: Option<u16> = None;
 
         // Parse command-line arguments.
         let mut i: usize = 1;
@@ -226,6 +235,14 @@ impl Args {
                 // Set snapshot path.
                 Self::OPT_SNAPSHOT if i + 1 < args.len() => {
                     snapshot_path = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set GDB server port (standalone mode only).
+                #[cfg(feature = "gdb")]
+                Self::OPT_GDB_PORT if i + 1 < args.len() => {
+                    gdb_port = Some(args[i + 1].parse::<u16>().map_err(|e| {
+                        anyhow::anyhow!("invalid GDB port (arg={}, error={e:?})", args[i + 1])
+                    })?);
                     i += 1;
                 },
                 // Set log to file flag.
@@ -349,6 +366,13 @@ impl Args {
             }
         }
 
+        // Validate that GDB port is only used in standalone mode.
+        #[cfg(feature = "gdb")]
+        if gdb_port.is_some() && !standalone {
+            Self::usage();
+            anyhow::bail!("-gdb-port requires -standalone mode");
+        }
+
         Ok(Self {
             user_vm_id,
             kernel_filename,
@@ -366,6 +390,8 @@ impl Args {
             gateway_socket_type,
             standalone,
             snapshot_path,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         })
     }
 
@@ -378,7 +404,7 @@ impl Args {
         eprintln!(
             "Usage: {} [{} <id>] {} <kernel> [{} <file>] [{} <file>] [{}] [{} <system-vm-addr> {} \
              <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} <args>] [{} <file>] [{} \
-             <path>]",
+             <path>]{}",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -393,6 +419,11 @@ impl Args {
             Self::OPT_INITRD_ARGS,
             Self::OPT_RAMFS,
             Self::OPT_SNAPSHOT,
+            if cfg!(feature = "gdb") {
+                " [-gdb-port <port>]"
+            } else {
+                ""
+            },
         );
     }
 
@@ -615,6 +646,20 @@ impl Args {
     pub fn take_snapshot_path(&mut self) -> Option<String> {
         self.snapshot_path.take()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the optional GDB server port.
+    ///
+    /// # Returns
+    ///
+    /// The TCP port for the GDB server, or `None` if GDB debugging was not requested.
+    ///
+    #[cfg(feature = "gdb")]
+    pub fn gdb_port(&self) -> Option<u16> {
+        self.gdb_port
+    }
 }
 
 //==================================================================================================
@@ -756,5 +801,64 @@ mod tests {
         let parsed_args: Args = Args::parse(args_vec)?;
         assert!(!parsed_args.standalone(), "standalone should default to false");
         Ok(())
+    }
+
+    #[cfg(feature = "gdb")]
+    #[test]
+    fn parse_gdb_port_success() -> AnyResult<()> {
+        let args_vec: Vec<String> = vec![
+            String::from("uservm"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+            Args::OPT_STANDALONE.to_string(),
+            Args::OPT_GDB_PORT.to_string(),
+            String::from("1234"),
+        ];
+
+        let parsed_args: Args = Args::parse(args_vec)?;
+        assert_eq!(parsed_args.gdb_port(), Some(1234));
+        Ok(())
+    }
+
+    #[cfg(feature = "gdb")]
+    #[test]
+    fn parse_gdb_port_invalid_value() {
+        let args_vec: Vec<String> = vec![
+            String::from("uservm"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+            Args::OPT_STANDALONE.to_string(),
+            Args::OPT_GDB_PORT.to_string(),
+            String::from("not-a-number"),
+        ];
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "invalid port value should fail");
+    }
+
+    #[cfg(feature = "gdb")]
+    #[test]
+    fn parse_gdb_port_missing_value() {
+        let args_vec: Vec<String> = vec![
+            String::from("uservm"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+            Args::OPT_STANDALONE.to_string(),
+            Args::OPT_GDB_PORT.to_string(),
+        ];
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "missing port value should fail");
+    }
+
+    #[cfg(feature = "gdb")]
+    #[test]
+    fn parse_gdb_port_requires_standalone() {
+        let mut args_vec: Vec<String> = build_base_args();
+        args_vec.push(Args::OPT_GDB_PORT.to_string());
+        args_vec.push(String::from("1234"));
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "-gdb-port without -standalone should fail");
     }
 }

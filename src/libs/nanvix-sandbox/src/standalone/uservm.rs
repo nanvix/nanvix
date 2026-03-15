@@ -136,6 +136,8 @@ impl UserVm {
                         io_control_tx,
                         counters,
                         snapshot_path: None,
+                        #[cfg(feature = "gdb")]
+                        gdb_port: None,
                     });
 
                 // Drain the VM's stdout channel. In standalone mode there is no system VM to

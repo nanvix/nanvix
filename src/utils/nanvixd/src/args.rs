@@ -77,6 +77,9 @@ pub struct Args {
     program_args: Vec<String>,
     /// Base directory path for creating temporary directories.
     tmp_directory: String,
+    /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
+    #[cfg(feature = "gdb")]
+    gdb_port: Option<u16>,
 }
 
 //==================================================================================================
@@ -118,6 +121,9 @@ impl Args {
     pub const OPT_SEPARATOR: &'static str = "--";
     /// Command-line option that sets the base temporary directory path.
     pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
+    /// Command-line option for GDB server port (standalone mode only).
+    #[cfg(feature = "gdb")]
+    pub const OPT_GDB_PORT: &'static str = "-gdb-port";
 
     ///
     /// # Description
@@ -163,6 +169,8 @@ impl Args {
         let mut program_name: Option<String> = None;
         let mut program_args: Vec<String> = Vec::new();
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
+        #[cfg(feature = "gdb")]
+        let mut gdb_port: Option<u16> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -256,6 +264,18 @@ impl Args {
                     }
                     tmp_directory = args[i].clone();
                 },
+                // Set GDB server port (standalone mode only).
+                #[cfg(feature = "gdb")]
+                Self::OPT_GDB_PORT => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_GDB_PORT));
+                    }
+                    gdb_port = Some(args[i].parse::<u16>().map_err(|e| {
+                        anyhow::anyhow!("invalid GDB port (arg={}, error={e:?})", args[i])
+                    })?);
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -339,6 +359,8 @@ impl Args {
             program_name,
             program_args,
             tmp_directory,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         })
     }
 
@@ -383,7 +405,7 @@ Options:
   {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
   {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
   {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
-             {DEFAULT_TMP_DIRECTORY}).
+             {DEFAULT_TMP_DIRECTORY}).{gdb_port_line}
 ",
             program_name = program_name,
             http_addr = Self::OPT_HTTP_SOCKADDR,
@@ -402,6 +424,12 @@ Options:
             l2 = Self::OPT_L2,
             l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
             tmp_dir = Self::OPT_TMP_DIRECTORY,
+            gdb_port_line = if cfg!(feature = "gdb") {
+                "\n  -gdb-port <port>                         GDB server port (standalone mode \
+                 only)."
+            } else {
+                ""
+            },
         );
     }
 
@@ -624,5 +652,19 @@ Options:
     ///
     pub fn tmp_directory(&self) -> &str {
         &self.tmp_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the GDB server port.
+    ///
+    /// # Returns
+    ///
+    /// The GDB server port, if specified.
+    ///
+    #[cfg(feature = "gdb")]
+    pub fn gdb_port(&self) -> Option<u16> {
+        self.gdb_port
     }
 }

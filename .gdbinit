@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 layout split
+set architecture i386:x86-64
 target remote tcp::1234
 file bin/kernel.elf
 symbol-file bin/kernel.elf
