@@ -850,8 +850,12 @@ impl ProcessManager {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
-        // Check the running thread's kernel stack guard watermark before switching away.
-        self.check_running_stack_guard();
+        // NOTE: do NOT call check_running_stack_guard() here. This function is called from both
+        // the exit() syscall and the exception handler. When a stack overflow corrupts the guard
+        // page, the panic triggered by the guard check consumes additional stack space, which can
+        // corrupt page directory entries and cause a recursive exception cascade (triple fault).
+        // The guard check in do_schedule() and do_sleep() already catches overflow at every
+        // context-switch point, so removing it here does not reduce coverage.
 
         let running_process: RunningProcess = self.take_running();
         trace!(
@@ -937,8 +941,7 @@ impl ProcessManager {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
-        // Check the running thread's kernel stack guard watermark before switching away.
-        self.check_running_stack_guard();
+        // NOTE: guard check removed for the same reason as do_exit() — see comment there.
 
         let running_process: RunningProcess = self.take_running();
 
@@ -1012,6 +1015,7 @@ impl ProcessManager {
 
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
+            Self::validate_ready_list(&self.ready, process, "do_terminate/ready");
             let process: RunnableProcess = self.ready.remove(process);
             match process.terminate() {
                 Ok(interrupted_process) => {
@@ -1363,27 +1367,67 @@ impl ProcessManager {
             }
         }
 
+        // Validate list integrity before remove.
+        Self::validate_ready_list(&self.ready, selected.0, "take_earliest_ready");
+
         // Remove the selected process from the list of ready processes.
         self.ready.remove(selected.0)
+    }
+
+    /// Validates that a LinkedList's stored length matches its actual node count.
+    /// If the list is corrupt, logs diagnostics and halts to avoid a panic in `remove()`.
+    fn validate_ready_list(list: &LinkedList<RunnableProcess>, index: usize, caller: &str) {
+        let stored_len: usize = list.len();
+        // Traverse the list to count actual nodes (bounded to avoid infinite loops on corruption).
+        let actual_count: usize = list.iter().take(stored_len + 1).count();
+        if actual_count != stored_len {
+            error!(
+                "[BUG] {}: LinkedList corrupt: stored len={}, actual count={}, remove index={}",
+                caller, stored_len, actual_count, index,
+            );
+            // Log PIDs of reachable processes for debugging.
+            for (i, process) in list.iter().enumerate() {
+                error!("  ready[{}]: pid={:?}", i, process.state().pid(),);
+            }
+            hal::platform::shutdown(
+                ::sys::ExitStatus::from(::sys::error::ErrorCode::UnrecoverableState).into(),
+            );
+        }
+        if index >= stored_len {
+            error!(
+                "[BUG] {}: index {} out of bounds for list of len {}",
+                caller, index, stored_len,
+            );
+            hal::platform::shutdown(
+                ::sys::ExitStatus::from(::sys::error::ErrorCode::UnrecoverableState).into(),
+            );
+        }
     }
 
     ///
     /// # Description
     ///
     /// Checks the running thread's kernel stack guard watermark for corruption.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the watermark has been corrupted, indicating a stack overflow.
+    /// If corrupted, logs an error and halts the VM immediately.
     ///
     fn check_running_stack_guard(&self) {
         if let Some(ref running) = self.running {
-            if let Err(e) = running.check_guard_watermark() {
-                panic!(
-                    "stack overflow detected for thread {:?} in process {:?}: {:?}",
+            if let Err(_e) = running.check_guard_watermark() {
+                // Do NOT panic here. A panic formats debug information via core::fmt, which
+                // allocates a large stack frame. When this function is called from do_schedule
+                // (invoked by the timer interrupt handler), the kernel stack is already near its
+                // limit. The additional stack consumed by panic formatting can corrupt page
+                // directory entries, triggering a recursive exception cascade (triple fault).
+                //
+                // Instead, log a fixed-size message and halt immediately. The error! macro and
+                // platform::shutdown use minimal stack compared to panic! formatting.
+                error!(
+                    "stack overflow detected: tid={:?}, pid={:?}",
                     running.get_tid(),
                     running.state().pid(),
-                    e
+                );
+                hal::platform::shutdown(
+                    ::sys::ExitStatus::from(::sys::error::ErrorCode::UnrecoverableState).into(),
                 );
             }
         }

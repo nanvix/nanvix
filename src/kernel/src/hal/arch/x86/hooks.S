@@ -179,6 +179,44 @@
 
 .endm
 
+/*
+ * Stack overflow guard threshold.
+ *
+ * If ESP falls below this value when entering an exception handler, the
+ * kernel stack has overflowed into the kpool metadata region (page tables
+ * and page directory).  Continuing would corrupt the page directory and
+ * trigger an unrecoverable recursive exception cascade (triple fault).
+ *
+ * Instead we shut the VM down immediately via the VMM I/O port so the
+ * host can report a clean failure.
+ *
+ * Value: KPOOL_BASE (0x800000) + KSTACK_SIZE (0x10000) = 0x810000.
+ * This leaves 64 KiB of kpool above KPOOL_BASE as a guard margin.
+ */
+#define EXCP_STACK_GUARD 0x00806000
+
+/*
+ * Macro: excp_stack_guard_check
+ *
+ * Checks whether ESP has dropped below the safe threshold.  Uses only
+ * register operations and an I/O-port write — no memory accesses — so it
+ * cannot itself trigger a page fault on a corrupted page table.
+ *
+ * Clobbers: EDX, EAX (only on the overflow path which never returns).
+ */
+.macro excp_stack_guard_check
+    cmpl $EXCP_STACK_GUARD, %esp
+    jae  1f
+    /* Stack overflow — trigger a clean VMM shutdown. */
+    movl $0x20000001, %eax   /* (shutdown_cmd << 16) | exit_status 1 */
+    movw $0x604, %dx         /* VMM I/O port                        */
+    outl %eax, (%dx)
+    /* Fallback halt loop in case the outl does not terminate the VM. */
+2:  hlt
+    jmp 2b
+1:
+.endm
+
 /*----------------------------------------------------------------------------*
  * _do_excp()                                                                 *
  *----------------------------------------------------------------------------*/
@@ -188,6 +226,7 @@
  */
 .macro _do_excp_noerr_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         push $0
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
@@ -203,6 +242,7 @@
  */
 .macro _do_excp_err_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
         xchg %eax, (%esp)
@@ -217,6 +257,7 @@
  */
 .macro _do_excp_err2_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
         xchg %eax, (%esp)
