@@ -540,6 +540,46 @@ impl VirtualProcessor {
         self.online
     }
 
+    //==============================================================================================
+    // GDB Debug Methods
+    //==============================================================================================
+
+    /// Enables or disables KVM guest debug mode.
+    ///
+    /// When enabled with `KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_USE_SW_BP`, the guest will exit with
+    /// `VcpuExit::Debug` when hitting an `INT3` instruction. Adding `KVM_GUESTDBG_SINGLESTEP`
+    /// causes the guest to exit after every instruction.
+    #[cfg(feature = "gdb")]
+    pub fn set_guest_debug(&self, dbg: &kvm_bindings::kvm_guest_debug) -> Result<()> {
+        self.fd
+            .set_guest_debug(dbg)
+            .map_err(|e| anyhow::anyhow!("failed to set guest debug (error={e:?})"))
+    }
+
+    /// Returns the current general-purpose registers of the virtual processor.
+    #[cfg(feature = "gdb")]
+    pub fn get_regs(&self) -> Result<kvm_regs> {
+        self.fd
+            .get_regs()
+            .map_err(|e| anyhow::anyhow!("failed to get regs (error={e:?})"))
+    }
+
+    /// Sets the general-purpose registers of the virtual processor.
+    #[cfg(feature = "gdb")]
+    pub fn set_regs(&self, regs: &kvm_regs) -> Result<()> {
+        self.fd
+            .set_regs(regs)
+            .map_err(|e| anyhow::anyhow!("failed to set regs (error={e:?})"))
+    }
+
+    /// Returns the current segment and control registers of the virtual processor.
+    #[cfg(feature = "gdb")]
+    pub fn get_sregs(&self) -> Result<kvm_sregs> {
+        self.fd
+            .get_sregs()
+            .map_err(|e| anyhow::anyhow!("failed to get sregs (error={e:?})"))
+    }
+
     ///
     /// # Description
     ///

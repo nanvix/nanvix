@@ -33,6 +33,13 @@
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
+// Feature Gates
+//==================================================================================================
+
+#[cfg(all(feature = "gdb", not(feature = "microvm")))]
+compile_error!("feature `gdb` requires feature `microvm`");
+
+//==================================================================================================
 // Public Modules
 //==================================================================================================
 
@@ -173,6 +180,9 @@ pub struct UserVmArgs {
     pub counters: MessageCounters,
     /// Optional snapshot path: when set, restore VM state from this snapshot before running.
     pub snapshot_path: Option<String>,
+    /// Optional GDB server port (standalone mode only).
+    #[cfg(feature = "gdb")]
+    pub gdb_port: Option<u16>,
 }
 
 //==================================================================================================
@@ -278,8 +288,10 @@ impl UserVm {
             initrd_args: args.initrd_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
             restoring_from_snapshot: args.snapshot_path.is_some(),
-            #[cfg(feature = "microvm")]
+            #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
             ikc_pending: ikc_pending.clone(),
+            #[cfg(feature = "gdb")]
+            gdb_port: args.gdb_port,
         })?;
 
         // If a snapshot path is provided, restore VM state from the snapshot.
