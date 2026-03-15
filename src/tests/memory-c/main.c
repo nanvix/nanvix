@@ -69,6 +69,7 @@ int main(int argc, const char *argv[])
     test_heap_reclaim();
     test_heap_max_capacity();
     test_heap_shrink();
+    test_realloc();
 
     // Write magic string to signal that the test passed.
     {
