@@ -28,4 +28,7 @@ extern void test_heap_max_capacity(void);
 // repeated cycles, and small-heap scenarios.
 extern void test_heap_shrink(void);
 
+// Tests realloc growth, shrink, NULL-ptr, data preservation, and alignment boundary sizes.
+extern void test_realloc(void);
+
 #endif
