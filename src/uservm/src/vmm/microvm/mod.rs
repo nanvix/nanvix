@@ -38,6 +38,7 @@ use crate::{
     vmm::emulator::Emulator,
     vmm::microvm::kvm::vcpu::{
         VirtualProcessor,
+        VirtualProcessorDumpInfo,
         VirtualProcessorExitContext,
         VirtualProcessorExitReasonRef,
     },
@@ -528,6 +529,7 @@ impl Vmm {
                 // The guest was shutdown (triple fault).
                 VirtualProcessorExitReasonRef::Shutdown => {
                     error!("run(): guest shutdown (triple fault)");
+                    self.dump_vm_info();
                     let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
                     Handle::current().block_on(self.handle_shutdown(exit_status));
                     break Ok(exit_status);
@@ -536,6 +538,7 @@ impl Vmm {
                 // Virtual machine exited due to an unknown reason.
                 VirtualProcessorExitReasonRef::Unknown => {
                     error!("run(): guest exited due to an unknown reason");
+                    self.dump_vm_info();
                     let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
                     Handle::current().block_on(self.handle_shutdown(exit_status));
                     break Ok(exit_status);
@@ -906,5 +909,253 @@ impl Vmm {
         locked_inner.skip_next_snapshot = true;
 
         Ok(())
+    }
+
+    //==============================================================================================
+    // Diagnostic Dump Helpers
+    //==============================================================================================
+
+    /// Number of bytes to dump around RIP (instruction pointer).
+    const CODE_DUMP_RADIUS: u64 = 32;
+    /// Number of bytes to dump around RSP (stack pointer).
+    const STACK_DUMP_RADIUS: u64 = 64;
+    /// Maximum number of stack frames to walk via the RBP chain.
+    const MAX_STACK_FRAMES: usize = 32;
+
+    ///
+    /// # Description
+    ///
+    /// Dumps the virtual machine state for diagnostic purposes.
+    ///
+    /// This method reads the vCPU registers and guest memory, then logs:
+    /// - General-purpose registers, control registers, segment registers, and descriptor tables.
+    /// - Code bytes around RIP (instruction vicinity).
+    /// - Stack bytes around RSP (stack vicinity).
+    /// - Stack trace by walking the RBP frame-pointer chain.
+    ///
+    /// All memory reads use guest physical addresses. This is correct because the Nanvix kernel
+    /// identity-maps its virtual address space.
+    ///
+    /// Failures to read registers or memory are logged but do not propagate — this method
+    /// is best-effort diagnostics.
+    ///
+    fn dump_vm_info(&self) {
+        // Read vCPU registers (narrow scope releases the lock before acquiring vmem).
+        let info: VirtualProcessorDumpInfo = {
+            let vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
+            match vcpu.get_dump_info() {
+                Ok(i) => i,
+                Err(e) => {
+                    error!("dump_vm_info(): failed to read registers (error={e:?})");
+                    return;
+                },
+            }
+        };
+
+        // Dump register state.
+        Self::dump_registers(&info);
+
+        // Dump memory context (narrow scope releases the lock at the end).
+        {
+            let vmem: MutexGuard<'_, VirtualMemory> = self.vmem.blocking_lock();
+            let mem_size: u64 = vmem.get_size() as u64;
+
+            // Dump code bytes around RIP.
+            Self::dump_region(&vmem, mem_size, "Code", info.rip, Self::CODE_DUMP_RADIUS);
+
+            // Dump stack bytes around RSP.
+            Self::dump_region(&vmem, mem_size, "Stack", info.rsp, Self::STACK_DUMP_RADIUS);
+
+            // Walk the RBP frame-pointer chain to produce a stack trace.
+            Self::dump_stack_trace(&vmem, mem_size, info.rip, info.rbp);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Dumps general-purpose registers, control registers, segment registers, and descriptor
+    /// table pointers from a hypervisor-independent register snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Register snapshot to dump.
+    ///
+    fn dump_registers(info: &VirtualProcessorDumpInfo) {
+        error!("=== General Purpose Registers ===");
+        error!("  RIP={:#018x}  RFLAGS={:#018x}", info.rip, info.rflags);
+        error!(
+            "  RAX={:#018x}  RBX={:#018x}  RCX={:#018x}  RDX={:#018x}",
+            info.rax, info.rbx, info.rcx, info.rdx
+        );
+        error!(
+            "  RSI={:#018x}  RDI={:#018x}  RSP={:#018x}  RBP={:#018x}",
+            info.rsi, info.rdi, info.rsp, info.rbp
+        );
+        error!(
+            "  R8 ={:#018x}  R9 ={:#018x}  R10={:#018x}  R11={:#018x}",
+            info.r8, info.r9, info.r10, info.r11
+        );
+        error!(
+            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}",
+            info.r12, info.r13, info.r14, info.r15
+        );
+        error!("=== Control Registers ===");
+        error!(
+            "  CR0={:#018x}  CR2={:#018x}  CR3={:#018x}  CR4={:#018x}  CR8={:#018x}  EFER={:#018x}",
+            info.cr0, info.cr2, info.cr3, info.cr4, info.cr8, info.efer
+        );
+        error!("=== Segment Registers ===");
+        error!(
+            "  CS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.cs.selector, info.cs.base, info.cs.limit
+        );
+        error!(
+            "  DS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ds.selector, info.ds.base, info.ds.limit
+        );
+        error!(
+            "  SS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ss.selector, info.ss.base, info.ss.limit
+        );
+        error!(
+            "  ES:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.es.selector, info.es.base, info.es.limit
+        );
+        error!(
+            "  FS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.fs.selector, info.fs.base, info.fs.limit
+        );
+        error!(
+            "  GS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.gs.selector, info.gs.base, info.gs.limit
+        );
+        error!("=== Descriptor Tables ===");
+        error!("  GDT: base={:#018x}  limit={:#06x}", info.gdt.base, info.gdt.limit);
+        error!("  IDT: base={:#018x}  limit={:#06x}", info.idt.base, info.idt.limit);
+        error!(
+            "  TR:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.tr.selector, info.tr.base, info.tr.limit
+        );
+        error!(
+            "  LDT: selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ldt.selector, info.ldt.base, info.ldt.limit
+        );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Dumps a region of guest memory around a given address.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Handle to the guest virtual memory.
+    /// - `mem_size`: Total size of guest memory in bytes.
+    /// - `label`: Human-readable label for the region (e.g., "Code", "Stack").
+    /// - `center`: Address around which to dump.
+    /// - `radius`: Number of bytes to dump before and after `center`.
+    ///
+    fn dump_region(vmem: &VirtualMemory, mem_size: u64, label: &str, center: u64, radius: u64) {
+        let start: u64 = center.saturating_sub(radius);
+        let end: u64 = center.saturating_add(radius).min(mem_size);
+
+        if start >= mem_size || start >= end {
+            error!("=== {label} Dump (addr={center:#018x}) ===");
+            error!("  address outside guest memory");
+            return;
+        }
+
+        let len: usize = match usize::try_from(end - start) {
+            Ok(v) => v,
+            Err(_) => {
+                error!("=== {label} Dump (addr={center:#018x}) ===");
+                error!("  region too large to dump");
+                return;
+            },
+        };
+        let mut buf: Vec<u8> = vec![0u8; len];
+        if let Err(e) = vmem.read_bytes(start, &mut buf) {
+            error!("=== {label} Dump (addr={center:#018x}) ===");
+            error!("  failed to read memory (error={e:?})");
+            return;
+        }
+
+        error!("=== {label} Dump ({center:#018x}, {start:#018x}..{end:#018x}) ===");
+        for (i, chunk) in buf.chunks(16).enumerate() {
+            let addr: u64 = start + (i as u64) * 16;
+            let hex: String = chunk
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            error!("  {addr:#018x}: {hex}");
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Walks the RBP frame-pointer chain and logs a stack trace.
+    ///
+    /// Each x86-64 stack frame (with frame pointers) stores the caller's RBP at [RBP] and the
+    /// return address at [RBP+8]. The walk terminates when RBP is zero, points outside guest
+    /// memory, or the maximum frame depth is reached.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Handle to the guest virtual memory.
+    /// - `mem_size`: Total size of guest memory in bytes.
+    /// - `rip`: Current instruction pointer (frame 0 return address).
+    /// - `rbp`: Current base pointer (start of the frame chain).
+    ///
+    fn dump_stack_trace(vmem: &VirtualMemory, mem_size: u64, rip: u64, rbp: u64) {
+        error!("=== Stack Trace ===");
+        error!("  #{:<3} RIP={rip:#018x}", 0);
+
+        let mut current_rbp: u64 = rbp;
+
+        for frame in 1..Self::MAX_STACK_FRAMES {
+            // Each frame requires 16 bytes: saved_rbp (8) + return_addr (8).
+            if current_rbp == 0 || current_rbp.checked_add(16).is_none_or(|end| end > mem_size) {
+                break;
+            }
+
+            let mut frame_data: [u8; 16] = [0u8; 16];
+            if vmem.read_bytes(current_rbp, &mut frame_data).is_err() {
+                error!("  #{frame:<3} <unreadable frame at RBP={current_rbp:#018x}>");
+                break;
+            }
+
+            let saved_rbp: u64 = u64::from_le_bytes([
+                frame_data[0],
+                frame_data[1],
+                frame_data[2],
+                frame_data[3],
+                frame_data[4],
+                frame_data[5],
+                frame_data[6],
+                frame_data[7],
+            ]);
+            let ret_addr: u64 = u64::from_le_bytes([
+                frame_data[8],
+                frame_data[9],
+                frame_data[10],
+                frame_data[11],
+                frame_data[12],
+                frame_data[13],
+                frame_data[14],
+                frame_data[15],
+            ]);
+
+            error!("  #{frame:<3} RIP={ret_addr:#018x}  (RBP={current_rbp:#018x})");
+
+            // Detect cycles or backward frame-pointer movement.
+            if saved_rbp == 0 || saved_rbp <= current_rbp {
+                break;
+            }
+
+            current_rbp = saved_rbp;
+        }
     }
 }
