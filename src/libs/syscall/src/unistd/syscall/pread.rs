@@ -75,9 +75,9 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
             ::syslog::error!("pread(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
-        let reason: &str = "pread not available in standalone mode";
+        let reason: &str = "pread: fd is not a VFS fd in standalone mode";
         ::syslog::error!("pread(): {reason} (fd={fd})");
-        Err(Error::new(ErrorCode::OperationNotSupported, reason))
+        Err(Error::new(ErrorCode::BadFile, reason))
     }
 
     // Forward to linuxd via IPC.
