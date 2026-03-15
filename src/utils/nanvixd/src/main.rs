@@ -206,6 +206,8 @@ async fn async_main() -> Result<ExitCode> {
         kernel_binary_path.clone(),
         args.ramfs_filename().map(|s| s.to_string()),
         args.console_file().clone(),
+        #[cfg(feature = "gdb")]
+        args.gdb_port(),
     );
 
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
@@ -258,6 +260,8 @@ async fn async_main() -> Result<ExitCode> {
             kernel_binary_path.clone(),
             args.ramfs_filename().map(|s| s.to_string()),
             args.console_file().clone(),
+            #[cfg(feature = "gdb")]
+            args.gdb_port(),
         ));
         // In multi-process mode, the terminal connects through the sandbox cache.
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
