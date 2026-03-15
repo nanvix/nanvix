@@ -340,8 +340,20 @@ _do_excp_err_code   30 /* Security Exception.         */
 
 /*
  * Low-level exception handler dispatcher.
+ *
+ * Recursion guard: if we are already inside _do_excp, a second exception
+ * means the handler itself faulted (e.g., stack overflow into page tables).
+ * Re-entering do_exception would deepen the overflow, corrupt the page
+ * directory, and cause a triple fault.  Instead, halt the CPU immediately.
  */
 _do_excp:
+    /* Check recursion guard. */
+    cmpb $0, _in_exception
+    jne _do_excp_halt
+
+    /* Arm the recursion guard. */
+    movb $1, _in_exception
+
     /* Save exception information. */
     movl CONTEXT_EIP(%eax), %edx
     subl $EXCEPTION_SIZE, %esp
@@ -359,12 +371,27 @@ _do_excp:
     addl  $(2*WORD_SIZE), %esp
     addl $EXCEPTION_SIZE, %esp
 
+    /* Disarm the recursion guard. */
+    movb $0, _in_exception
+
     context_restore
 
     /* Pop error code. */
     addl $WORD_SIZE, %esp
 
     jmp __leave_kernel
+
+/*
+ * Halt path for recursive exception.
+ * Signal shutdown to the VMM via port I/O and loop forever.
+ */
+_do_excp_halt:
+    cli
+    movl $0x20000000, %eax
+    movw $0x604, %dx
+    outl %eax, %dx
+    hlt
+    jmp _do_excp_halt
 
 /*----------------------------------------------------------------------------*
  * _do_kcall()                                                                *
@@ -472,6 +499,7 @@ __context_switch:
      * Restore execution context.
      * NOTE: we do not restore scratch registers (eax, ecx, edx).
      */
+    movb $0, _in_exception
     movl CONTEXT_EBX(%edx), %ebx
     movl CONTEXT_ESI(%edx), %esi
     movl CONTEXT_EDI(%edx), %edi
@@ -673,3 +701,14 @@ __phys_memset.loop:
     popl %edi
 
     ret
+
+/*============================================================================*
+ * BSS Section                                                                *
+ *============================================================================*/
+
+.section .bss
+
+/* Recursion guard flag for the exception dispatcher (0 = idle, 1 = active). */
+.balign 4
+_in_exception:
+    .byte 0
