@@ -38,6 +38,7 @@ use crate::{
     vmm::emulator::Emulator,
     vmm::microvm::kvm::vcpu::{
         VirtualProcessor,
+        VirtualProcessorDumpInfo,
         VirtualProcessorExitContext,
         VirtualProcessorExitReasonRef,
     },
@@ -528,6 +529,7 @@ impl Vmm {
                 // The guest was shutdown (triple fault).
                 VirtualProcessorExitReasonRef::Shutdown => {
                     error!("run(): guest shutdown (triple fault)");
+                    self.dump_vm_info();
                     let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
                     Handle::current().block_on(self.handle_shutdown(exit_status));
                     break Ok(exit_status);
@@ -536,6 +538,7 @@ impl Vmm {
                 // Virtual machine exited due to an unknown reason.
                 VirtualProcessorExitReasonRef::Unknown => {
                     error!("run(): guest exited due to an unknown reason");
+                    self.dump_vm_info();
                     let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
                     Handle::current().block_on(self.handle_shutdown(exit_status));
                     break Ok(exit_status);
@@ -906,5 +909,109 @@ impl Vmm {
         locked_inner.skip_next_snapshot = true;
 
         Ok(())
+    }
+
+    //==============================================================================================
+    // Diagnostic Dump Helpers
+    //==============================================================================================
+
+    ///
+    /// # Description
+    ///
+    /// Dumps the virtual machine state for diagnostic purposes.
+    ///
+    /// This method reads the vCPU registers and logs general-purpose registers, control
+    /// registers, segment registers, and descriptor tables.
+    ///
+    /// Failures to read registers are logged but do not propagate — this method
+    /// is best-effort diagnostics.
+    ///
+    fn dump_vm_info(&self) {
+        // Read vCPU registers.
+        let info: VirtualProcessorDumpInfo = {
+            let vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
+            match vcpu.get_dump_info() {
+                Ok(i) => i,
+                Err(e) => {
+                    error!("dump_vm_info(): failed to read registers (error={e:?})");
+                    return;
+                },
+            }
+        };
+
+        // Dump register state.
+        Self::dump_registers(&info);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Dumps general-purpose registers, control registers, segment registers, and descriptor
+    /// table pointers from a hypervisor-independent register snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Register snapshot to dump.
+    ///
+    fn dump_registers(info: &VirtualProcessorDumpInfo) {
+        error!("=== General Purpose Registers ===");
+        error!("  RIP={:#018x}  RFLAGS={:#018x}", info.rip, info.rflags);
+        error!(
+            "  RAX={:#018x}  RBX={:#018x}  RCX={:#018x}  RDX={:#018x}",
+            info.rax, info.rbx, info.rcx, info.rdx
+        );
+        error!(
+            "  RSI={:#018x}  RDI={:#018x}  RSP={:#018x}  RBP={:#018x}",
+            info.rsi, info.rdi, info.rsp, info.rbp
+        );
+        error!(
+            "  R8 ={:#018x}  R9 ={:#018x}  R10={:#018x}  R11={:#018x}",
+            info.r8, info.r9, info.r10, info.r11
+        );
+        error!(
+            "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}",
+            info.r12, info.r13, info.r14, info.r15
+        );
+        error!("=== Control Registers ===");
+        error!(
+            "  CR0={:#018x}  CR2={:#018x}  CR3={:#018x}  CR4={:#018x}  CR8={:#018x}  EFER={:#018x}",
+            info.cr0, info.cr2, info.cr3, info.cr4, info.cr8, info.efer
+        );
+        error!("=== Segment Registers ===");
+        error!(
+            "  CS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.cs.selector, info.cs.base, info.cs.limit
+        );
+        error!(
+            "  DS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ds.selector, info.ds.base, info.ds.limit
+        );
+        error!(
+            "  SS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ss.selector, info.ss.base, info.ss.limit
+        );
+        error!(
+            "  ES:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.es.selector, info.es.base, info.es.limit
+        );
+        error!(
+            "  FS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.fs.selector, info.fs.base, info.fs.limit
+        );
+        error!(
+            "  GS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.gs.selector, info.gs.base, info.gs.limit
+        );
+        error!("=== Descriptor Tables ===");
+        error!("  GDT: base={:#018x}  limit={:#06x}", info.gdt.base, info.gdt.limit);
+        error!("  IDT: base={:#018x}  limit={:#06x}", info.idt.base, info.idt.limit);
+        error!(
+            "  TR:  selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.tr.selector, info.tr.base, info.tr.limit
+        );
+        error!(
+            "  LDT: selector={:#06x}  base={:#018x}  limit={:#010x}",
+            info.ldt.selector, info.ldt.base, info.ldt.limit
+        );
     }
 }

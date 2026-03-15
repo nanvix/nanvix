@@ -102,6 +102,85 @@ const MSR_IA32_TSC: u32 = 0x10;
 ///
 /// # Description
 ///
+/// Hypervisor-independent segment register descriptor for diagnostic dumps.
+///
+pub struct SegmentRegister {
+    /// Segment selector.
+    pub selector: u16,
+    /// Segment base address.
+    pub base: u64,
+    /// Segment limit.
+    pub limit: u32,
+}
+
+///
+/// # Description
+///
+/// Hypervisor-independent descriptor table register for diagnostic dumps.
+///
+pub struct DescriptorTable {
+    /// Table base address.
+    pub base: u64,
+    /// Table limit.
+    pub limit: u16,
+}
+
+///
+/// # Description
+///
+/// Hypervisor-independent snapshot of virtual processor register state for diagnostic dumps.
+///
+pub struct VirtualProcessorDumpInfo {
+    /// Instruction pointer.
+    pub rip: u64,
+    /// Flags register.
+    pub rflags: u64,
+    /// General-purpose registers.
+    pub rax: u64,
+    pub rbx: u64,
+    pub rcx: u64,
+    pub rdx: u64,
+    pub rsi: u64,
+    pub rdi: u64,
+    /// Stack pointer.
+    pub rsp: u64,
+    /// Base (frame) pointer.
+    pub rbp: u64,
+    pub r8: u64,
+    pub r9: u64,
+    pub r10: u64,
+    pub r11: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,
+    /// Control registers.
+    pub cr0: u64,
+    pub cr2: u64,
+    pub cr3: u64,
+    pub cr4: u64,
+    pub cr8: u64,
+    /// Extended feature enable register.
+    pub efer: u64,
+    /// Segment registers.
+    pub cs: SegmentRegister,
+    pub ds: SegmentRegister,
+    pub ss: SegmentRegister,
+    pub es: SegmentRegister,
+    pub fs: SegmentRegister,
+    pub gs: SegmentRegister,
+    /// Descriptor table registers.
+    pub gdt: DescriptorTable,
+    pub idt: DescriptorTable,
+    /// Task register.
+    pub tr: SegmentRegister,
+    /// Local descriptor table register.
+    pub ldt: SegmentRegister,
+}
+
+///
+/// # Description
+///
 /// A structure that represents a virtual processor.
 ///
 pub struct VirtualProcessor {
@@ -464,6 +543,105 @@ impl VirtualProcessor {
     ///
     /// # Description
     ///
+    /// Returns a hypervisor-independent snapshot of the virtual processor's register state for
+    /// diagnostic dumps.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns a [`VirtualProcessorDumpInfo`]. Otherwise,
+    /// it returns an error.
+    ///
+    pub fn get_dump_info(&self) -> Result<VirtualProcessorDumpInfo> {
+        let regs: kvm_regs = self.fd.get_regs().map_err(|e| {
+            let reason: String = format!("failed to get registers (error={e:?})");
+            error!("get_dump_info(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        let sregs: kvm_sregs = self.fd.get_sregs().map_err(|e| {
+            let reason: String = format!("failed to get special registers (error={e:?})");
+            error!("get_dump_info(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+
+        Ok(VirtualProcessorDumpInfo {
+            rip: regs.rip,
+            rflags: regs.rflags,
+            rax: regs.rax,
+            rbx: regs.rbx,
+            rcx: regs.rcx,
+            rdx: regs.rdx,
+            rsi: regs.rsi,
+            rdi: regs.rdi,
+            rsp: regs.rsp,
+            rbp: regs.rbp,
+            r8: regs.r8,
+            r9: regs.r9,
+            r10: regs.r10,
+            r11: regs.r11,
+            r12: regs.r12,
+            r13: regs.r13,
+            r14: regs.r14,
+            r15: regs.r15,
+            cr0: sregs.cr0,
+            cr2: sregs.cr2,
+            cr3: sregs.cr3,
+            cr4: sregs.cr4,
+            cr8: sregs.cr8,
+            efer: sregs.efer,
+            cs: SegmentRegister {
+                selector: sregs.cs.selector,
+                base: sregs.cs.base,
+                limit: sregs.cs.limit,
+            },
+            ds: SegmentRegister {
+                selector: sregs.ds.selector,
+                base: sregs.ds.base,
+                limit: sregs.ds.limit,
+            },
+            ss: SegmentRegister {
+                selector: sregs.ss.selector,
+                base: sregs.ss.base,
+                limit: sregs.ss.limit,
+            },
+            es: SegmentRegister {
+                selector: sregs.es.selector,
+                base: sregs.es.base,
+                limit: sregs.es.limit,
+            },
+            fs: SegmentRegister {
+                selector: sregs.fs.selector,
+                base: sregs.fs.base,
+                limit: sregs.fs.limit,
+            },
+            gs: SegmentRegister {
+                selector: sregs.gs.selector,
+                base: sregs.gs.base,
+                limit: sregs.gs.limit,
+            },
+            gdt: DescriptorTable {
+                base: sregs.gdt.base,
+                limit: sregs.gdt.limit,
+            },
+            idt: DescriptorTable {
+                base: sregs.idt.base,
+                limit: sregs.idt.limit,
+            },
+            tr: SegmentRegister {
+                selector: sregs.tr.selector,
+                base: sregs.tr.base,
+                limit: sregs.tr.limit,
+            },
+            ldt: SegmentRegister {
+                selector: sregs.ldt.selector,
+                base: sregs.ldt.base,
+                limit: sregs.ldt.limit,
+            },
+        })
+    }
+
+    ///
+    /// # Description
+    ///
     /// Runs the virtual processor until it exits.
     ///
     /// # Returns
@@ -473,7 +651,6 @@ impl VirtualProcessor {
     ///
     pub fn run(&mut self) -> VirtualProcessorExitContext {
         // Run the virtual processor and parse exit reason.
-        let mut should_dump: bool = false;
         let ctx: VirtualProcessorExitContext = match self.fd.run() {
             Ok(vcpu_exit) => match vcpu_exit {
                 // Read from an I/O port.
@@ -509,60 +686,50 @@ impl VirtualProcessor {
                 },
                 // Halt the virtual processor.
                 VcpuExit::Hlt => VirtualProcessorExitContext::Halt,
-                // All other exit reasons trigger a machine state dump.
                 // Exception occurred.
                 VcpuExit::Exception => {
                     warn!("run(): exception");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Hypervisor call invoked.
                 VcpuExit::Hypercall(_) => {
                     warn!("run(): hypercall");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Debugging event occurred.
                 VcpuExit::Debug(_) => {
                     warn!("run(): debug");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Shutdown the virtual processor (e.g., triple fault).
                 VcpuExit::Shutdown => {
                     warn!("run(): shutdown");
-                    should_dump = true;
                     VirtualProcessorExitContext::Shutdown
                 },
                 // Fail to run the virtual processor.
                 VcpuExit::FailEntry(reason, cpud) => {
                     warn!("run(): fail entry (reason={reason:?}, cpud={cpud})");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Non-maskable interrupt occurred.
                 VcpuExit::Nmi => {
                     warn!("run(): nmi");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Internal error occurred.
                 VcpuExit::InternalError => {
                     warn!("run(): internal error");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Unsupported exit reason.
                 VcpuExit::Unsupported(reason) => {
                     warn!("run(): unsupported exit reason ({reason:?})");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
                 // Unknown exit reason.
                 // NOTE: we do not parse all exit reasons, so it is worthy checking what happened.
                 _ => {
                     warn!("run(): unknown exit reason");
-                    should_dump = true;
                     VirtualProcessorExitContext::Unknown
                 },
             },
@@ -575,100 +742,11 @@ impl VirtualProcessor {
             },
             Err(error) => {
                 error!("run(): error running vCPU (error={error:?})");
-                should_dump = true;
                 VirtualProcessorExitContext::Unknown
             },
         };
 
-        if should_dump {
-            self.dump_state();
-        }
-
         ctx
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Dumps the machine state for debugging purposes, including general purpose registers,
-    /// special registers (control registers, segment registers), and descriptor table pointers.
-    ///
-    fn dump_state(&self) {
-        // Dump general purpose registers.
-        match self.fd.get_regs() {
-            Ok(regs) => {
-                error!("=== General Purpose Registers ===");
-                error!("  RIP={:#018x}  RFLAGS={:#018x}", regs.rip, regs.rflags);
-                error!(
-                    "  RAX={:#018x}  RBX={:#018x}  RCX={:#018x}  RDX={:#018x}",
-                    regs.rax, regs.rbx, regs.rcx, regs.rdx
-                );
-                error!(
-                    "  RSI={:#018x}  RDI={:#018x}  RSP={:#018x}  RBP={:#018x}",
-                    regs.rsi, regs.rdi, regs.rsp, regs.rbp
-                );
-                error!(
-                    "  R8 ={:#018x}  R9 ={:#018x}  R10={:#018x}  R11={:#018x}",
-                    regs.r8, regs.r9, regs.r10, regs.r11
-                );
-                error!(
-                    "  R12={:#018x}  R13={:#018x}  R14={:#018x}  R15={:#018x}",
-                    regs.r12, regs.r13, regs.r14, regs.r15
-                );
-            },
-            Err(e) => {
-                error!("dump_state(): failed to read registers (error={e:?})");
-            },
-        }
-
-        // Dump special registers and descriptor table pointers.
-        match self.fd.get_sregs() {
-            Ok(sregs) => {
-                error!("=== Control Registers ===");
-                error!(
-                    "  CR0={:#018x}  CR2={:#018x}  CR3={:#018x}  CR4={:#018x}  CR8={:#018x}  \
-                     EFER={:#018x}",
-                    sregs.cr0, sregs.cr2, sregs.cr3, sregs.cr4, sregs.cr8, sregs.efer
-                );
-                error!("=== Segment Registers ===");
-                error!(
-                    "  CS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.cs.selector, sregs.cs.base, sregs.cs.limit
-                );
-                error!(
-                    "  DS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.ds.selector, sregs.ds.base, sregs.ds.limit
-                );
-                error!(
-                    "  SS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.ss.selector, sregs.ss.base, sregs.ss.limit
-                );
-                error!(
-                    "  ES:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.es.selector, sregs.es.base, sregs.es.limit
-                );
-                error!(
-                    "  FS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.fs.selector, sregs.fs.base, sregs.fs.limit
-                );
-                error!(
-                    "  GS:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.gs.selector, sregs.gs.base, sregs.gs.limit
-                );
-                error!("=== Descriptor Tables ===");
-                error!("  GDT: base={:#018x}  limit={:#06x}", sregs.gdt.base, sregs.gdt.limit);
-                error!("  IDT: base={:#018x}  limit={:#06x}", sregs.idt.base, sregs.idt.limit);
-                error!(
-                    "  TR:  selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.tr.selector, sregs.tr.base, sregs.tr.limit
-                );
-                error!(
-                    "  LDT: selector={:#06x}  base={:#018x}  limit={:#010x}",
-                    sregs.ldt.selector, sregs.ldt.base, sregs.ldt.limit
-                );
-            },
-            Err(e) => error!("dump_state(): failed to read special registers (error={e:?})"),
-        }
     }
 
     ///
