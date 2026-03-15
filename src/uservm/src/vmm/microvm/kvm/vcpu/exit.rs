@@ -22,6 +22,8 @@ pub enum VirtualProcessorExitReason {
     Shutdown,
     /// Interrupted.
     Interrupted,
+    /// Debug event.
+    DebugEvent,
     /// Unknown.
     Unknown,
 }
@@ -36,6 +38,8 @@ pub enum VirtualProcessorExitContext {
     Shutdown,
     /// Interrupt virtual processor.
     Interrupted,
+    /// Debug event.
+    DebugEvent,
     /// Unknown.
     Unknown,
 }
@@ -51,6 +55,8 @@ pub enum VirtualProcessorExitReasonRef<'a> {
     Shutdown,
     /// Interrupted.
     Interrupted,
+    /// Debug event.
+    DebugEvent,
     /// Unknown.
     Unknown,
 }
@@ -86,6 +92,7 @@ impl VirtualProcessorExitContext {
             VirtualProcessorExitContext::Halt => VirtualProcessorExitReasonRef::Halt,
             VirtualProcessorExitContext::Shutdown => VirtualProcessorExitReasonRef::Shutdown,
             VirtualProcessorExitContext::Interrupted => VirtualProcessorExitReasonRef::Interrupted,
+            VirtualProcessorExitContext::DebugEvent => VirtualProcessorExitReasonRef::DebugEvent,
             VirtualProcessorExitContext::Unknown => VirtualProcessorExitReasonRef::Unknown,
         }
     }
@@ -100,6 +107,7 @@ impl<'a> From<VirtualProcessorExitReasonRef<'a>> for VirtualProcessorExitReason 
             VirtualProcessorExitReasonRef::Halt => VirtualProcessorExitReason::Halt,
             VirtualProcessorExitReasonRef::Shutdown => VirtualProcessorExitReason::Shutdown,
             VirtualProcessorExitReasonRef::Interrupted => VirtualProcessorExitReason::Interrupted,
+            VirtualProcessorExitReasonRef::DebugEvent => VirtualProcessorExitReason::DebugEvent,
             VirtualProcessorExitReasonRef::Unknown => VirtualProcessorExitReason::Unknown,
         }
     }

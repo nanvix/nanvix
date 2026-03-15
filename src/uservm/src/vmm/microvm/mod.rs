@@ -535,6 +535,15 @@ impl Vmm {
                     break Ok(exit_status);
                 },
 
+                // Debug event without GDB server — treat as unknown.
+                VirtualProcessorExitReasonRef::DebugEvent => {
+                    warn!("run(): debug exit without GDB server enabled");
+                    self.dump_vm_info();
+                    let exit_status: u16 = ErrorCode::IllegalByteSequence.into();
+                    Handle::current().block_on(self.handle_shutdown(exit_status));
+                    break Ok(exit_status);
+                },
+
                 // Virtual machine exited due to an unknown reason.
                 VirtualProcessorExitReasonRef::Unknown => {
                     error!("run(): guest exited due to an unknown reason");

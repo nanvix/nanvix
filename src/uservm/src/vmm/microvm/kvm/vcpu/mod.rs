@@ -697,10 +697,7 @@ impl VirtualProcessor {
                     VirtualProcessorExitContext::Unknown
                 },
                 // Debugging event occurred.
-                VcpuExit::Debug(_) => {
-                    warn!("run(): debug");
-                    VirtualProcessorExitContext::Unknown
-                },
+                VcpuExit::Debug(_) => VirtualProcessorExitContext::DebugEvent,
                 // Shutdown the virtual processor (e.g., triple fault).
                 VcpuExit::Shutdown => {
                     warn!("run(): shutdown");
