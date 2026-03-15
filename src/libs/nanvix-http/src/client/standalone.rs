@@ -82,6 +82,9 @@ pub struct StandaloneConfig {
     pub(crate) ramfs_filename: Option<String>,
     /// Optional file path for capturing guest stderr output.
     pub(crate) console_file: Option<String>,
+    /// Optional GDB server port for debugging the guest.
+    #[cfg(feature = "gdb")]
+    pub(crate) gdb_port: Option<u16>,
 }
 
 impl StandaloneConfig {
@@ -95,16 +98,20 @@ impl StandaloneConfig {
     /// - `kernel_binary_path`: Path to the guest kernel binary.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `console_file`: Optional file path for guest stderr capture.
+    /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
+        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
             kernel_binary_path,
             ramfs_filename,
             console_file,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         }
     }
 }
@@ -268,6 +275,8 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
             state.config.ramfs_filename.clone(),
             state.config.console_file.clone(),
             None,
+            #[cfg(feature = "gdb")]
+            state.config.gdb_port,
         );
 
         // Create a Unix socket that serves as the gateway stream. The test harness (or any

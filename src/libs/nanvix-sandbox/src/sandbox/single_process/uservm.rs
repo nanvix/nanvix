@@ -274,6 +274,8 @@ impl UserVm {
                         io_control_tx,
                         counters,
                         snapshot_path: None,
+                        #[cfg(feature = "gdb")]
+                        gdb_port: None,
                     });
 
                 // Wait for VMM thread to finish.

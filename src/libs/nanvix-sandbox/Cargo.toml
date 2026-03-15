@@ -36,6 +36,7 @@ default = ["microvm", "multi-process"]
 single-process = ["linuxd"]
 multi-process = ["linuxd"]
 standalone = []
+gdb = ["uservm/gdb"]
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
 
