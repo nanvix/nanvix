@@ -59,6 +59,9 @@ pub struct TerminalConfig {
     ramfs_filename: Option<String>,
     /// Optional file path for capturing guest stderr output.
     console_file: Option<String>,
+    /// Optional GDB server port for debugging the guest.
+    #[cfg(feature = "gdb")]
+    gdb_port: Option<u16>,
 }
 
 impl TerminalConfig {
@@ -72,16 +75,20 @@ impl TerminalConfig {
     /// - `kernel_binary_path`: Path to the guest kernel binary.
     /// - `ramfs_filename`: Optional path to a RAM filesystem image.
     /// - `console_file`: Optional file path for guest stderr capture.
+    /// - `gdb_port`: Optional GDB server port.
     ///
     pub fn new(
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
+        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
             kernel_binary_path,
             ramfs_filename,
             console_file,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         }
     }
 }
@@ -156,6 +163,8 @@ impl Terminal {
             self.config.ramfs_filename.clone(),
             self.config.console_file.clone(),
             None,
+            #[cfg(feature = "gdb")]
+            self.config.gdb_port,
         );
 
         // Bridge host stdin/stdout with guest I/O channels.

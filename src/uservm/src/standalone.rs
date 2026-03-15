@@ -143,6 +143,7 @@ impl StandaloneVmHandle {
         ramfs_filename: Option<String>,
         stderr: Option<String>,
         snapshot_path: Option<String>,
+        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
         // Create internal VM channels. In standalone mode these are wired directly without an
         // I/O thread.
@@ -174,6 +175,8 @@ impl StandaloneVmHandle {
             kernel_filename,
             counters,
             snapshot_path,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         });
 
         // Spawn the I/O handler task that processes guest IKC messages and bridges them to the
