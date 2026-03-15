@@ -174,7 +174,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         if fd == STDIN_FILENO {
             return read_via_ikc(fd, buffer);
         }
-        Err(Error::new(ErrorCode::OperationNotSupported, "read not supported in standalone mode"))
+        Err(Error::new(ErrorCode::BadFile, "read: fd is not a VFS fd in standalone mode"))
     }
 
     // Forward to linuxd via IPC.

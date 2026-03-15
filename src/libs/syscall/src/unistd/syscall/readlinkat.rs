@@ -58,13 +58,21 @@ use {
 pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, Error> {
     ::syslog::trace!("readlinkat(): dirfd={:?}, path={:?}, buf.len={:?}", dirfd, path, buf.len());
 
-    // In standalone mode, readlinkat is not available (no symlinks).
+    // In standalone mode, resolve the path via VFS and return POSIX-accurate errors.
+    // Symlinks never exist on FAT32, so an existing path yields EINVAL (not a symlink)
+    // and a missing path yields ENOENT.
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "readlinkat not available in standalone mode",
-        ))
+        match ::nvx::vfs::fd::vfs_resolve_path(dirfd, path) {
+            Some(resolved) => {
+                if ::nvx::vfs::fd::is_vfs_path(&resolved) {
+                    Err(Error::new(ErrorCode::InvalidArgument, "readlinkat: not a symbolic link"))
+                } else {
+                    Err(Error::new(ErrorCode::NoSuchEntry, "readlinkat: no such file or directory"))
+                }
+            },
+            None => Err(Error::new(ErrorCode::BadFile, "readlinkat: invalid directory fd")),
+        }
     }
 
     // Forward to linuxd via IPC.

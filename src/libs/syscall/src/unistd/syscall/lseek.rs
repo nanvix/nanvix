@@ -58,9 +58,9 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
             ::syslog::error!("lseek(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
-        let reason: &str = "lseek not available in standalone mode";
+        let reason: &str = "lseek: fd is not a VFS fd in standalone mode";
         ::syslog::error!("lseek(): {reason} (fd={fd})");
-        Err(Error::new(ErrorCode::OperationNotSupported, reason))
+        Err(Error::new(ErrorCode::BadFile, reason))
     }
 
     // Forward to linuxd via IPC.
