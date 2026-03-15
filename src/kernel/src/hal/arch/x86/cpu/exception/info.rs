@@ -61,11 +61,17 @@ impl core::fmt::Debug for ExceptionInformation {
         let code: u32 = self.code;
         let addr: u32 = self.addr;
         let instr: u32 = self.instruction;
-        let excp: Exception = num.into();
-        write!(
-            f,
-            "{excp:?} (error code={code}, faulting addr={addr:#010x}, faulting \
-             instruction={instr:#010x})",
-        )
+        match Exception::try_from(num) {
+            Ok(excp) => write!(
+                f,
+                "{excp:?} (error code={code}, faulting addr={addr:#010x}, faulting \
+                 instruction={instr:#010x})",
+            ),
+            Err(_) => write!(
+                f,
+                "unknown exception {num} (error code={code}, faulting addr={addr:#010x}, faulting \
+                 instruction={instr:#010x})",
+            ),
+        }
     }
 }
