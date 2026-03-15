@@ -608,6 +608,8 @@ impl Benchmark {
                 io_control_tx,
                 counters,
                 snapshot_path: None,
+                #[cfg(feature = "gdb")]
+                gdb_port: None,
             });
 
             let join_result = user_vm_handle.await;
@@ -713,6 +715,8 @@ impl Benchmark {
                 io_control_tx,
                 counters,
                 snapshot_path: None,
+                #[cfg(feature = "gdb")]
+                gdb_port: None,
             });
 
             let join_result = user_vm_handle.await;
@@ -796,6 +800,8 @@ impl Benchmark {
                 io_control_tx,
                 counters,
                 snapshot_path: Some(kernel_filename.clone()),
+                #[cfg(feature = "gdb")]
+                gdb_port: None,
             });
 
             let join_result = user_vm_handle.await;
@@ -1246,6 +1252,8 @@ impl Benchmark {
             io_control_tx,
             counters,
             snapshot_path: None,
+            #[cfg(feature = "gdb")]
+            gdb_port: None,
         });
 
         // Warmup: run one untimed echo cycle through the full IKC protocol to trigger
