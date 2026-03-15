@@ -507,6 +507,40 @@ impl Vmm {
                         if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
                             Handle::current().block_on(self.handle_snapshot())?;
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                            // Dump guest registers for abnormal shutdown diagnostics.
+                            if let Some((regs, cr2, cr3)) =
+                                self.vcpu.blocking_lock().dump_registers()
+                            {
+                                let r =
+                                    |v: u64| -> u32 { u32::try_from(v & 0xFFFF_FFFF).unwrap_or(0) };
+                                let esp = r(regs.rsp);
+                                let eip = r(regs.rip);
+                                let eax = r(regs.rax);
+                                let ebx = r(regs.rbx);
+                                let ecx = r(regs.rcx);
+                                let edx = r(regs.rdx);
+                                let esi = r(regs.rsi);
+                                let edi = r(regs.rdi);
+                                let ebp = r(regs.rbp);
+                                if exit_status & 0xFF00 == 0x0100 {
+                                    let excp_num = exit_status & 0x00FF;
+                                    error!(
+                                        "run(): kernel-mode page fault detected \
+                                         (vector={excp_num}) fault_eip={ebx:#010x} \
+                                         CR2={cr2:#010x} CR3={cr3:#010x} ESP={esp:#010x} \
+                                         EIP={eip:#010x} EAX={eax:#010x} ECX={ecx:#010x} \
+                                         EDX={edx:#010x} ESI={esi:#010x} EDI={edi:#010x} \
+                                         EBP={ebp:#010x}"
+                                    );
+                                } else if exit_status == 1 {
+                                    error!(
+                                        "run(): kernel stack overflow guard triggered \
+                                         ESP={esp:#010x} EIP={eip:#010x} CR2={cr2:#010x} \
+                                         CR3={cr3:#010x}"
+                                    );
+                                }
+                            }
+
                             Handle::current().block_on(self.handle_shutdown(exit_status));
 
                             break Ok(exit_status);

@@ -464,6 +464,24 @@ impl VirtualProcessor {
     ///
     /// # Description
     ///
+    /// Reads the guest's general-purpose and system registers and returns them
+    /// for post-mortem diagnostics when the vCPU has exited abnormally.
+    ///
+    /// # Returns
+    ///
+    /// A `kvm_regs` + key system register tuple, or `None` if either KVM ioctl fails.
+    ///
+    pub fn dump_registers(&self) -> Option<(kvm_regs, u32, u32)> {
+        let regs = self.fd.get_regs().ok()?;
+        let sregs = self.fd.get_sregs().ok()?;
+        let cr2 = u32::try_from(sregs.cr2 & 0xFFFF_FFFF).unwrap_or(0);
+        let cr3 = u32::try_from(sregs.cr3 & 0xFFFF_FFFF).unwrap_or(0);
+        Some((regs, cr2, cr3))
+    }
+
+    ///
+    /// # Description
+    ///
     /// Runs the virtual processor until it exits.
     ///
     /// # Returns
