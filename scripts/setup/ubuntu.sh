@@ -31,6 +31,7 @@ apt-get install -y        \
     g++-multilib          \
     gawk                  \
     gcc-multilib          \
+    gdb-multiarch         \
     git                   \
     graphviz              \
     grub2                 \
