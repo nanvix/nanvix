@@ -66,11 +66,16 @@ pub fn fchownat(
         flag
     );
 
-    // In standalone mode, this operation is not supported.
-    // TODO: https://github.com/nanvix/nanvix/issues/1609
+    // In standalone mode, forward to VFS.
     #[cfg(feature = "standalone")]
     {
-        Ok(())
+        ::nvx::vfs::fd::vfs_fchownat(dirfd, path, owner, group, flag).map_err(|e| {
+            let code: ::sys::error::ErrorCode = e.into();
+            ::syslog::error!(
+                "fchownat(): VFS fchownat failed (dirfd={dirfd:?}, path={path:?}, error={e})"
+            );
+            Error::new(code, "vfs fchownat failed")
+        })
     }
 
     // Forward to linuxd via IPC.
