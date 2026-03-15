@@ -850,8 +850,12 @@ impl ProcessManager {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
-        // Check the running thread's kernel stack guard watermark before switching away.
-        self.check_running_stack_guard();
+        // NOTE: do NOT call check_running_stack_guard() here. This function is called from both
+        // the exit() syscall and the exception handler. When a stack overflow corrupts the guard
+        // page, the panic triggered by the guard check consumes additional stack space, which can
+        // corrupt page directory entries and cause a recursive exception cascade (triple fault).
+        // The guard check in do_schedule() and do_sleep() already catches overflow at every
+        // context-switch point, so removing it here does not reduce coverage.
 
         let running_process: RunningProcess = self.take_running();
         trace!(
@@ -937,8 +941,7 @@ impl ProcessManager {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
-        // Check the running thread's kernel stack guard watermark before switching away.
-        self.check_running_stack_guard();
+        // NOTE: guard check removed for the same reason as do_exit() — see comment there.
 
         let running_process: RunningProcess = self.take_running();
 
@@ -1378,12 +1381,22 @@ impl ProcessManager {
     ///
     fn check_running_stack_guard(&self) {
         if let Some(ref running) = self.running {
-            if let Err(e) = running.check_guard_watermark() {
-                panic!(
-                    "stack overflow detected for thread {:?} in process {:?}: {:?}",
+            if let Err(_e) = running.check_guard_watermark() {
+                // Do NOT panic here. A panic formats debug information via core::fmt, which
+                // allocates a large stack frame. When this function is called from do_schedule
+                // (invoked by the timer interrupt handler), the kernel stack is already near its
+                // limit. The additional stack consumed by panic formatting can corrupt page
+                // directory entries, triggering a recursive exception cascade (triple fault).
+                //
+                // Instead, log a fixed-size message and halt immediately. The error! macro and
+                // platform::shutdown use minimal stack compared to panic! formatting.
+                error!(
+                    "stack overflow detected: tid={:?}, pid={:?}",
                     running.get_tid(),
                     running.state().pid(),
-                    e
+                );
+                hal::platform::shutdown(
+                    ::sys::ExitStatus::from(::sys::error::ErrorCode::UnrecoverableState).into(),
                 );
             }
         }
