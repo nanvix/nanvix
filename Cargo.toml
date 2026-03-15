@@ -105,6 +105,8 @@ fat32 = { path = "src/libs/fat32", default-features = false }
 fatfs = { git = "https://github.com/rafalh/rust-fatfs", rev = "4eccb50d011146fbed20e133d33b22f3c27292e7", default-features = false }
 flexi_logger = "0.31.8"
 globset = { version = "0.4.18", default-features = false }
+gdbstub = { version = "0.7", default-features = false, features = ["std"] }
+gdbstub_arch = { version = "0.3", default-features = false }
 goblin = { version = "0.10.5", default-features = false }
 indicatif = "0.18.4"
 http = "1.4.0"

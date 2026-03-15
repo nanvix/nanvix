@@ -12,6 +12,8 @@
 //==================================================================================================
 
 pub mod emulator;
+#[cfg(feature = "gdb")]
+pub mod gdb;
 pub mod guest;
 pub mod kvm;
 pub mod ramfs;
@@ -244,6 +246,9 @@ pub struct Vmm {
     inner: Arc<Mutex<InteriorMicroVmHandle>>,
     /// Lock-free IKC interrupt notifier (duplicated VM fd).
     ikc_notifier: IkcNotifier,
+    /// Optional GDB server TCP port (standalone mode only).
+    #[cfg(feature = "gdb")]
+    gdb_port: Option<u16>,
 }
 
 ///
@@ -252,7 +257,7 @@ pub struct Vmm {
 /// An internal structure to the VMM that wraps its contents in `Arc<Mutex<_>>`. It allows
 /// `MicroVm` to be clonable without wrapping each field in `Arc<Mutex<_>>`.
 ///
-struct InteriorMicroVmHandle {
+pub(crate) struct InteriorMicroVmHandle {
     /// Handle to the KVM (keep it)
     kvm: Kvm,
     /// Handle to the virtual machine.
@@ -293,6 +298,13 @@ pub type StderrFn = dyn Write + Send;
 /// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
 extern "C" fn vcpu_thread_signal_handler(_: i32) {
     SHUTDOWN.with(|shutdown| shutdown.store(true, Ordering::SeqCst));
+}
+
+impl InteriorMicroVmHandle {
+    /// Returns a mutable reference to the emulator.
+    pub(crate) fn emulator_mut(&mut self) -> &mut Emulator {
+        &mut self.emulator
+    }
 }
 
 impl Vmm {
@@ -421,6 +433,8 @@ impl Vmm {
                 skip_next_snapshot: false,
             })),
             ikc_notifier,
+            #[cfg(feature = "gdb")]
+            gdb_port: args.gdb_port,
         })
     }
 
@@ -478,6 +492,19 @@ impl Vmm {
         // Install a signal handler in the virtual processor's thread.
         Self::install_signal_handler();
 
+        // When GDB server is enabled, delegate to the GDB event loop instead of the normal loop.
+        #[cfg(feature = "gdb")]
+        if let Some(port) = self.gdb_port {
+            let exit_status = gdb::run_gdb_server(
+                port,
+                self.vcpu.clone(),
+                self.vmem.clone(),
+                self.inner.clone(),
+            )?;
+            Handle::current().block_on(self.handle_shutdown(exit_status));
+            return Ok(exit_status);
+        }
+
         loop {
             // Check shutdown flag before entering KVM_RUN, and blocking indefinitely.
             if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
@@ -502,7 +529,7 @@ impl Vmm {
                     let exit_status = self
                         .inner
                         .blocking_lock()
-                        .emulator
+                        .emulator_mut()
                         .handle_pmio_access(access)?;
                     if let Some(exit_status) = exit_status {
                         if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {

@@ -88,6 +88,8 @@ pub async fn main() -> Result<ExitCode> {
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
     let standalone: bool = args.standalone();
     let snapshot_path: Option<String> = args.take_snapshot_path();
+    #[cfg(feature = "gdb")]
+    let gdb_port: Option<u16> = args.gdb_port();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -115,6 +117,8 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             stderr,
             snapshot_path,
+            #[cfg(feature = "gdb")]
+            gdb_port,
         )
         .await
     } else {
@@ -156,6 +160,7 @@ async fn run_standalone(
     ramfs_filename: Option<String>,
     stderr: Option<String>,
     snapshot_path: Option<String>,
+    #[cfg(feature = "gdb")] gdb_port: Option<u16>,
 ) -> Result<ExitCode> {
     info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
 
@@ -166,6 +171,8 @@ async fn run_standalone(
         ramfs_filename,
         stderr,
         snapshot_path,
+        #[cfg(feature = "gdb")]
+        gdb_port,
     );
 
     convert_exit_status(handle.wait().await)
@@ -349,6 +356,8 @@ async fn run_managed(
         kernel_filename,
         counters,
         snapshot_path: None,
+        #[cfg(feature = "gdb")]
+        gdb_port: None,
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;
