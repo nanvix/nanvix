@@ -14,6 +14,7 @@ mod state;
 //==================================================================================================
 
 pub use manager::{
+    ExceptionGuard,
     ProcessManager,
     SleepError,
 };
