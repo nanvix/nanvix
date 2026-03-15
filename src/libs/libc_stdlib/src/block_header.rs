@@ -11,10 +11,7 @@ use ::alloc::alloc::{
 };
 use ::core::{
     alloc::Layout,
-    mem::{
-        align_of,
-        size_of,
-    },
+    mem::size_of,
     ptr::{
         copy_nonoverlapping,
         null_mut,
@@ -29,10 +26,20 @@ use ::syslog::{
 // Constants
 //==================================================================================================
 
-/// Minimum alignment guaranteed by this allocator.
-const BLOCK_HEADER_ALIGNMENT: usize = align_of::<usize>();
+/// Alignment for allocations passed to the underlying allocator. Must be at
+/// least `align_of::<LlistNode>()` (8 on 32-bit) so that talc can safely write
+/// its free-list nodes into freed chunks without misaligned access.
+const UNDERLYING_ALIGNMENT: usize = 8;
+/// Alignment of the BlockHeader struct itself.
+const BLOCK_HEADER_ALIGNMENT: usize = core::mem::align_of::<BlockHeader>();
 /// Block header size.
 const BLOCK_HEADER_SIZE: usize = size_of::<BlockHeader>();
+/// Maximum alignment that the allocator supports.
+const MAX_ALIGNMENT: usize = 4096;
+/// Start of user mmap region.
+const USER_MMAP_BASE_RAW: usize = ::config::memory_layout::USER_MMAP_BASE_RAW;
+/// End of user mmap region.
+const USER_MMAP_END_RAW: usize = ::config::memory_layout::USER_MMAP_END_RAW;
 
 //==================================================================================================
 // Structures
@@ -89,6 +96,12 @@ impl BlockHeader {
         // Get alignment for user memory area, or default to minimum alignment.
         let alignment: usize = alignment.unwrap_or(1);
 
+        // Validate alignment invariants so that free() can trust the header.
+        if !alignment.is_power_of_two() || alignment > MAX_ALIGNMENT {
+            error!("alloc(): invalid alignment (alignment={alignment:?}, size={size:?})");
+            return null_mut();
+        }
+
         // Compute size for underlying allocation (header_size + padding_size + requested_size).
         let alloc_size: usize = {
             let Some(alloc_size) = size.checked_add(BLOCK_HEADER_SIZE) else {
@@ -106,11 +119,21 @@ impl BlockHeader {
                 return null_mut();
             };
 
-            alloc_size
+            // Round up to UNDERLYING_ALIGNMENT so that talc's free-list nodes
+            // (LlistNode, 8 bytes) are always naturally aligned when placed at
+            // the base of a freed chunk.
+            let Some(rounded) = alloc_size.checked_add(UNDERLYING_ALIGNMENT - 1) else {
+                error!(
+                    "alloc(): overflow when rounding allocation size (size={size:?}, \
+                     alignment={alignment:?})"
+                );
+                return null_mut();
+            };
+            rounded & !(UNDERLYING_ALIGNMENT - 1)
         };
 
         // Compute layout for underlying allocation.
-        let layout: Layout = match Layout::from_size_align(alloc_size, BLOCK_HEADER_ALIGNMENT) {
+        let layout: Layout = match Layout::from_size_align(alloc_size, UNDERLYING_ALIGNMENT) {
             Ok(layout) => layout,
             Err(error) => {
                 error!("alloc(): {error:?} (alignment={alignment:?}, size={size:?})");
@@ -207,18 +230,48 @@ impl BlockHeader {
 
         let header_ptr: *mut BlockHeader = Self::get_mut_ptr(user_ptr);
         let header: BlockHeader = header_ptr.read(); // move out
-        let layout: Layout =
-            match Layout::from_size_align(header.alloc_size, BLOCK_HEADER_ALIGNMENT) {
-                Ok(layout) => layout,
-                Err(error) => {
-                    // Corrupted header; cannot recover.
-                    error!(
-                        "BlockHeader::free(): corrupted header (error={error:?}, \
-                         header={header:?})"
-                    );
-                    return Err(());
-                },
-            };
+
+        // Validate header sanity.
+        // After a shrinking realloc, requested_alloc_size < original, so we only check >=.
+        let valid_alignment: bool = header.alignment > 0
+            && header.alignment.is_power_of_two()
+            && header.alignment <= MAX_ALIGNMENT;
+        let valid_alloc_size: bool = header
+            .requested_alloc_size
+            .checked_add(BLOCK_HEADER_SIZE)
+            .is_some_and(|min_size| header.alloc_size >= min_size);
+        let base_addr: usize = header.base as usize;
+        let valid_base: bool = (USER_MMAP_BASE_RAW..USER_MMAP_END_RAW).contains(&base_addr);
+        let uptr: usize = user_ptr as usize;
+        let valid_user_ptr: bool = base_addr
+            .checked_add(header.alloc_size)
+            .is_some_and(|end| uptr >= base_addr && uptr < end && end <= USER_MMAP_END_RAW);
+        let valid_underlying_alignment: bool = base_addr.is_multiple_of(UNDERLYING_ALIGNMENT)
+            && header.alloc_size.is_multiple_of(UNDERLYING_ALIGNMENT);
+        let valid: bool = valid_alignment
+            && valid_alloc_size
+            && valid_base
+            && valid_user_ptr
+            && valid_underlying_alignment;
+
+        if !valid {
+            error!(
+                "BlockHeader::free(): corrupted header detected, leaking (user_ptr={user_ptr:p}, \
+                 header={header:?})"
+            );
+            return Err(());
+        }
+
+        let layout: Layout = match Layout::from_size_align(header.alloc_size, UNDERLYING_ALIGNMENT)
+        {
+            Ok(layout) => layout,
+            Err(error) => {
+                error!(
+                    "BlockHeader::free(): corrupted header (error={error:?}, header={header:?})"
+                );
+                return Err(());
+            },
+        };
 
         dealloc(header.base, layout);
 

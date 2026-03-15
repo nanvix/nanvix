@@ -16,6 +16,7 @@ crate-type = ["lib"]
 alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
 cfg-if = { workspace = true }
 compiler_builtins = { workspace = true, optional = true }
+config = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 flexi_logger = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
@@ -34,6 +35,7 @@ rustc-dep-of-std = [
     "core",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
+    "config/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
     "syslog/rustc-dep-of-std",
