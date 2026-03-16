@@ -48,8 +48,6 @@ pub struct Slab {
     index: Bitmap,
     /// Base address of data blocks.
     data_addr: *mut u8,
-    /// Number of index blocks in the slab.
-    num_index_blocks: usize,
     /// Number of data blocks in the slab.
     num_data_blocks: usize,
     /// Size of blocks in the slab.
@@ -116,13 +114,21 @@ impl Slab {
         // Compute layout of the slab allocator.
         let total_num_blocks: usize = len / block_size;
         // info!("total number of blocks: {:?}", total_num_blocks);
-        if !total_num_blocks.is_multiple_of(u8::BITS as usize) {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
-        }
-        let index_len: usize = total_num_blocks / u8::BITS as usize;
-        // info!("index length: {:?}", index_len);
-        let num_index_blocks: usize = (index_len / block_size)
-            + if index_len.is_multiple_of(block_size) {
+
+        // The number of index blocks (`num_index_blocks`) we need is
+        //  `ceil(total_num_blocks / (block_size * u8::BITS + 1))`
+        // for the following reason. This condition implies:
+        //  `num_index_blocks * (block_size * u8::BITS + 1) >= total_num_blocks`
+        // This, in turn, implies that:
+        //  `num_index_blocks * block_size * u8::BITS  >= total_num_blocks - num_index_blocks`
+        // The left-hand side of this inequality is the number of bits that
+        // `num_index_blocks` blocks contain. The right-hand side of this inequality
+        // is the number of blocks that aren't index blocks. So, a bitmap occupying
+        // `num_index_blocks` blocks can address all the blocks outside of that bitmap.
+        let u8_bits: usize = u8::BITS as usize;
+        let divisor: usize = block_size * u8_bits + 1;
+        let num_index_blocks: usize = (total_num_blocks / divisor)
+            + if total_num_blocks.is_multiple_of(divisor) {
                 0
             } else {
                 1
@@ -131,14 +137,18 @@ impl Slab {
         if num_index_blocks >= total_num_blocks {
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
-        let num_data_blocks: usize = total_num_blocks - num_index_blocks;
-        // info!("number of data blocks: {:?}", num_data_blocks);
+
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
-        // Check if `data_addr` is aligned to `block_size`.
-        if !(data_addr as usize).is_multiple_of(block_size) {
-            return Err(Error::new(ErrorCode::InvalidArgument, "unaligned data address"));
-        }
+        let num_data_blocks: usize = total_num_blocks - num_index_blocks;
+        // info!("number of data blocks: {:?}", num_data_blocks);
+        let index_len = (num_data_blocks / u8_bits)
+            + if num_data_blocks.is_multiple_of(u8_bits) {
+                0
+            } else {
+                1
+            };
+        // info!("length of index in bytes: {:?}", index_len);
 
         // Instantiate index.
         let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
@@ -148,12 +158,17 @@ impl Slab {
         // the memory region is left in a modified state.
 
         // Initialize index.
-        for i in 0..num_index_blocks {
+        //
+        // The uppermost bits of the index may point beyond the end of
+        // the allocated region. So, we need to set those bits to mark
+        // them "in use" and thereby prevent them from being
+        // allocated. Note that there are at most 7 such bits we need
+        // to set.
+        for i in num_data_blocks..(index_len * u8_bits) {
             index.set(i)?;
         }
 
         Ok(Slab {
-            num_index_blocks,
             num_data_blocks,
             block_size,
             data_addr,
@@ -174,10 +189,7 @@ impl Slab {
     pub fn allocate(&mut self) -> Result<*mut u8, Error> {
         let block: usize = self.index.alloc()?;
         // Safety: the start and resulting addresses are valid.
-        let block_addr: *mut u8 = unsafe {
-            self.data_addr
-                .add((block - self.num_index_blocks) * self.block_size)
-        };
+        let block_addr: *mut u8 = unsafe { self.data_addr.add(block * self.block_size) };
         Ok(block_addr)
     }
 
@@ -201,20 +213,20 @@ impl Slab {
     /// - It dereferences the pointer `ptr`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
-        // Check if the pointer lies in a memory region that is not managed by this allocator.
-        // Safety: the start and resulting addresses are valid.
-        if ptr < self.data_addr
-            || ptr >= unsafe { self.data_addr.add(self.num_data_blocks * self.block_size) }
-        {
+        // Return an error if the pointer is before the data blocks.
+        if ptr < self.data_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
 
         // Compute the block index.
-        // Safety: we have already checked that ptr is within the bounds of the slab.
-        let index: usize = self.num_index_blocks
-            + unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
+        let index: usize = unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
 
-        // Check if the block is already free.
+        // Return an error if the pointer is after the data blocks.
+        if index >= self.num_data_blocks {
+            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
+        }
+
+        // Return an error if the block is already free.
         if !self.index.test(index)? {
             return Err(Error::new(ErrorCode::BadAddress, "block is already free"));
         }
