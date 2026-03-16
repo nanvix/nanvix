@@ -29,6 +29,7 @@ pub use ::nanvix_sandbox::{
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::chrono::Local;
 use ::log::{
     debug,
     error,
@@ -54,6 +55,7 @@ use ::nanvix_sandbox::{
     tcp_port::TcpPort,
     user_vm_sockaddr_builder,
     InitializedSandbox,
+    LinuxDaemonArgs,
     RunningSandbox,
     SandboxConfig,
     SnapshotDirHandle,
@@ -63,11 +65,14 @@ use ::nanvix_sandbox::{
 use ::std::{
     collections::HashMap,
     fs,
-    marker::PhantomData,
     path::PathBuf,
     sync::Arc,
 };
-use ::tokio::sync::Mutex;
+use ::tokio::sync::{
+    Mutex,
+    MutexGuard,
+    RwLock,
+};
 
 //==================================================================================================
 // Constants
@@ -97,15 +102,23 @@ pub struct SandboxCache<T> {
     /// Configuration parameters for all sandboxes.
     config: SandboxCacheConfig<T>,
     /// Registry of all currently running sandboxes indexed by their unique User VM identifier.
-    running_sandboxes: HashMap<UserVmIdentifier, RunningSandbox>,
-    /// Registry of Linux Daemon instances indexed by tenant ID (one per tenant).
-    linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
+    running_sandboxes: RwLock<HashMap<UserVmIdentifier, RunningSandbox>>,
+    /// Registry of all tenant's state indexed by the unique tenant ID.
+    tenants: RwLock<HashMap<String, Arc<TenantState>>>,
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
-    control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
+    control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>>,
     /// Network namespace pool for different L2 VMs.
     netns_pool: NetnsPool,
-    /// Phantom data to maintain the generic type parameter `T` in the structure.
-    _phantom: PhantomData<T>,
+}
+
+///
+/// # Description
+///
+/// Per-tenant state used to serialize Linux Daemon creation.
+///
+struct TenantState {
+    /// Optional Linux Daemon handle for this tenant.
+    linuxd_instance: RwLock<Option<Arc<LinuxDaemon>>>,
 }
 
 ///
@@ -120,7 +133,6 @@ pub struct SandboxCache<T> {
 pub struct SandboxCacheStateSummary {
     running_sandboxes: usize,
     linuxd_instances: usize,
-    has_control_plane_bind_socket: bool,
     l2_enabled: bool,
 }
 
@@ -146,15 +158,6 @@ impl SandboxCacheStateSummary {
     ///
     /// # Description
     ///
-    /// Returns `true` when a control-plane socket listener is cached.
-    ///
-    pub fn has_control_plane_bind_socket(&self) -> bool {
-        self.has_control_plane_bind_socket
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns whether the daemon is running with L2 mode enabled.
     ///
     pub fn l2_enabled(&self) -> bool {
@@ -166,7 +169,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Description
     ///
-    /// Creates a new sandbox cache wrapped in a shared mutex.
+    /// Creates a new sandbox cache with interior locking for concurrent access.
     ///
     /// # Parameters
     ///
@@ -174,14 +177,15 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Returns
     ///
-    /// A shared, mutex-protected sandbox cache ready for concurrent access.
+    /// A shared `Arc<Self>` sandbox cache that uses internal `RwLock` and `Mutex` guards for
+    /// fine-grained concurrent access.
     ///
     /// # Errors
     ///
     /// This function returns an error if network namespace pool initialization fails or if the
     /// control plane socket cannot be bound.
     ///
-    pub async fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+    pub async fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Self>> {
         // Only pre-allocate network namespaces when L2 is enabled; otherwise keep it lazy so
         // non-L2 deployments do not try to create netns at startup (which triggers sudo+sysctl).
         let netns_init_strategy: NetnsPoolInitStrategy = if config.l2() {
@@ -230,15 +234,15 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 },
             };
 
-        Ok(Arc::new(Mutex::new(Self {
+        Ok(Arc::new(Self {
             config,
-            running_sandboxes: HashMap::new(),
-            linuxd_instances: HashMap::new(),
-            control_plane_bind_socket: Some(Arc::new(Mutex::new((
+            running_sandboxes: RwLock::new(HashMap::new()),
+            tenants: RwLock::new(HashMap::new()),
+            control_plane_bind_socket: Arc::new(Mutex::new((
                 control_plane_bind_socket,
                 control_plane_bind_sockaddr,
                 control_plane_bind_socket_type,
-            )))),
+            ))),
             netns_pool: NetnsPool::new(
                 NetnsPoolConfig::new(
                     ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
@@ -246,8 +250,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 )?,
                 netns_init_strategy,
             )?,
-            _phantom: PhantomData,
-        })))
+        }))
     }
 
     ///
@@ -259,13 +262,216 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// A `SandboxCacheStateSummary` instance describing key counters.
     ///
-    pub fn state_summary(&self) -> SandboxCacheStateSummary {
+    pub async fn state_summary(&self) -> SandboxCacheStateSummary {
+        let running_sandboxes: usize = self.running_sandboxes.read().await.len();
+        let tenants = self.tenants.read().await;
+        let mut linuxd_instances: usize = 0;
+        for tenant_state in tenants.values() {
+            if tenant_state.linuxd_instance.read().await.is_some() {
+                linuxd_instances += 1;
+            }
+        }
         SandboxCacheStateSummary {
-            running_sandboxes: self.running_sandboxes.len(),
-            linuxd_instances: self.linuxd_instances.len(),
-            has_control_plane_bind_socket: self.control_plane_bind_socket.is_some(),
+            running_sandboxes,
+            linuxd_instances,
             l2_enabled: self.config.l2(),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Ensures the temporary directory for a tenant exists and returns its path.
+    ///
+    /// # Arguments
+    ///
+    /// - `tenant_id`: unique tenant identifier.
+    ///
+    /// # Returns
+    ///
+    /// The path to the tenant's temporary directory.
+    ///
+    fn ensure_tenant_tmp_dir(&self, tenant_id: &str) -> Result<PathBuf> {
+        let tenant_tmp_dir: PathBuf = PathBuf::from(self.config.tmp_directory()).join(tenant_id);
+        fs::create_dir_all(&tenant_tmp_dir).map_err(|error| {
+            let reason: String = format!(
+                "failed to create tenant temporary directory (tenant_id={tenant_id}, \
+                 tmp_dir={tenant_tmp_dir:?}, error={error:?})"
+            );
+            error!("ensure_tenant_tmp_dir(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        Ok(tenant_tmp_dir)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets or creates tenant state.
+    ///
+    /// This method provides an accessor to a given tenant's state that supports concurrent
+    /// requests for the same tenant. It encapsulates the logic of accessing read/write locks and
+    /// managing races.
+    ///
+    /// # Arguments
+    ///
+    /// - `tenant_id`: tenant identifier.
+    ///
+    /// # Returns
+    ///
+    /// The unique tenant state associated to the provided tenant id.
+    ///
+    async fn get_or_insert_tenant(&self, tenant_id: &str) -> Arc<TenantState> {
+        if let Some(state) = self.tenants.read().await.get(tenant_id) {
+            return Arc::clone(state);
+        }
+
+        let new_state: Arc<TenantState> = Arc::new(TenantState {
+            linuxd_instance: RwLock::new(None),
+        });
+
+        let mut tenants = self.tenants.write().await;
+        // After acquiring a write lock, check if another task already provisioned the tenant
+        // state.
+        match tenants.get(tenant_id) {
+            Some(existing) => Arc::clone(existing),
+            None => {
+                tenants.insert(tenant_id.to_string(), Arc::clone(&new_state));
+                new_state
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets or creates the Linux Daemon for the target tenant.
+    ///
+    /// This method provides a safe accessor to the linux daemon, such that concurrent requests
+    /// from the same tenant are serialized around linuxd creation, but can otherwise execute in
+    /// parallel.
+    ///
+    /// # Arguments
+    ///
+    /// - `tenant_state`: reference to the tenant's state.
+    /// - `tenant_id`: unique tenant identifier.
+    ///
+    /// # Returns
+    ///
+    /// An initialized linuxd daemon.
+    ///
+    async fn get_or_create_linuxd(
+        &self,
+        tenant_state: &Arc<TenantState>,
+        tenant_id: &str,
+    ) -> Result<Arc<LinuxDaemon>> {
+        // Fast path: return existing linuxd without serializing.
+        if let Some(linuxd) = tenant_state.linuxd_instance.read().await.clone() {
+            return Ok(linuxd);
+        }
+
+        // Slow path: acquire write lock to serialize creation. Re-check after acquiring the lock
+        // in case another task completed initialization while we were waiting.
+        let mut linuxd_instance = tenant_state.linuxd_instance.write().await;
+        if let Some(linuxd) = linuxd_instance.clone() {
+            return Ok(linuxd);
+        }
+
+        // Allocate network namespace handle for this linuxd instance.
+        let netns_handle: Option<NetnsHandle> = if self.config.l2() {
+            Some(self.netns_pool.allocate().map_err(|error| {
+                let reason: String = format!(
+                    "failed to allocate netns for linuxd (tenant_id={tenant_id}, error={error:?})"
+                );
+                error!("get_or_create_linuxd(): {reason}");
+                anyhow::anyhow!(reason)
+            })?)
+        } else {
+            None
+        };
+        let netns_info: Option<NetnsInfo> = netns_handle
+            .as_ref()
+            .and_then(|netns_handle| netns_handle.netns_info().ok());
+
+        let (_control_plane_bind_sockaddr, control_plane_connect_sockaddr): (String, String) =
+            control_plane_sockaddr_builder(self.config.tmp_directory(), netns_info.clone())?;
+        let system_vm_sockaddr: String =
+            user_vm_sockaddr_builder(self.config.tmp_directory(), tenant_id, self.config.l2())?;
+        let linuxd_tmp_dir: PathBuf = self.ensure_tenant_tmp_dir(tenant_id)?;
+
+        // Allocate snapshot dir handle for this linuxd instance.
+        let snapshot_dir_handle: Option<SnapshotDirHandle> = if self.config.l2() {
+            let linuxd_log_file: PathBuf = PathBuf::from(self.config.log_directory()).join(
+                format!("linuxd-l2_{}_{}.log", tenant_id, Local::now().format("%Y-%m-%d_%H-%M-%S")),
+            );
+            let snapshot_dir: PathBuf =
+                linuxd_tmp_dir.join(format!("l2-sysvm-snapshot-{tenant_id}"));
+
+            Some(
+                SnapshotDirHandle::new(
+                    &snapshot_dir,
+                    self.config.l2_snapshot_path(),
+                    linuxd_log_file,
+                )
+                .map_err(|error| {
+                    let reason: String = format!(
+                        "failed to create snapshot directory handle (tenant_id={tenant_id}, \
+                         error={error:?})"
+                    );
+                    error!("get_or_create_linuxd(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?,
+            )
+        } else {
+            None
+        };
+
+        let linuxd_args: LinuxDaemonArgs<T> = LinuxDaemonArgs::new(
+            tenant_id,
+            (control_plane_connect_sockaddr, self.config.control_plane_sockaddr_type()),
+            (system_vm_sockaddr, self.config.system_vm_sockaddr_type()),
+            self.config.hwloc(),
+            self.config.linuxd_binary_path().to_string(),
+            self.config.toolchain_binary_directory().to_string(),
+            self.config.log_directory().to_string(),
+            linuxd_tmp_dir.to_string_lossy().into_owned(),
+            self.config.l2(),
+        );
+
+        // Here we acquire a lock on the control-plane bind socket while holding the write lock
+        // on linuxd_instance. There is no risk of deadlocks because the only two other places
+        // where we try and lock this socket are:
+        //
+        // - UninitializedSandbox::initialize() - in the branch where linuxd is not initialized,
+        //   but we never hit this branch in multi-process, as we are spawning linuxd here.
+        //
+        // - InitializedSandbox::start() - when spawning a user VM. Note that a user VM whose
+        //   tenant has not been initialized will never make it to start(), so it is not possible
+        //   for two tasks to be competing on the linuxd_instance write lock and the control-plane
+        //   lock when spawning a user VM for the same tenant.
+        let linuxd: Arc<LinuxDaemon> = {
+            let mut listener_and_info: MutexGuard<'_, (SocketListener, String, SocketType)> =
+                self.control_plane_bind_socket.lock().await;
+            match LinuxDaemon::spawn(
+                &linuxd_args,
+                &mut listener_and_info.0,
+                netns_handle,
+                snapshot_dir_handle,
+            )
+            .await
+            {
+                Ok(linuxd) => Arc::new(linuxd),
+                Err(error) => {
+                    let reason: String =
+                        format!("failed to spawn linuxd (tenant_id={tenant_id}, error={error:?})");
+                    error!("get_or_create_linuxd(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            }
+        };
+
+        *linuxd_instance = Some(Arc::clone(&linuxd));
+        Ok(linuxd)
     }
 
     ///
@@ -307,11 +513,12 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// ## Shared Resources (Retained for Reuse)
     ///
-    /// - **LinuxDaemon**: Wrapped in `Arc<LinuxDaemon>` and stored in `linuxd_instances` map
-    ///   (indexed by tenant ID). If Linux Daemon spawns successfully but User VM initialization
-    ///   fails, the daemon is **kept** in the cache and reused for subsequent sandbox creation
-    ///   attempts within the same tenant. This is intentional: the daemon remains operational and
-    ///   can service future requests, avoiding the overhead of respawning.
+    /// - **LinuxDaemon**: Wrapped in `Arc<LinuxDaemon>` and stored per-tenant in the `tenants`
+    ///   map (indexed by tenant ID). If Linux Daemon spawns successfully but User VM
+    ///   initialization fails, the daemon is **kept** in the cache and reused for subsequent
+    ///   sandbox creation attempts within the same tenant. This is intentional: the daemon
+    ///   remains operational and can service future requests, avoiding the overhead of
+    ///   respawning.
     ///
     /// - **Control Plane Socket**: Wrapped in `Arc<Mutex<(SocketListener, String, SocketType)>>`
     ///   and stored in `control_plane_socket`. Like the Linux Daemon, it is shared across all
@@ -324,13 +531,15 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// - **running_sandboxes**: Only updated after **successful** sandbox startup. Failures during
     ///   initialization or startup do not pollute this map.
     ///
-    /// - **linuxd_instances**: Updated after **successful** Linux Daemon spawn, even if User VM
-    ///   initialization fails later. This allows daemon reuse across retry attempts.
+    /// - **tenants**: Tenant state is inserted eagerly on first access (before spawning Linux
+    ///   Daemon). The `linuxd_instance` field within the tenant state is only populated after a
+    ///   **successful** Linux Daemon spawn, even if User VM initialization fails later. This
+    ///   allows daemon reuse across retry attempts.
     ///
     /// ## Arc Reference Counting
     ///
     /// The `LinuxDaemon` and control plane socket are wrapped in `Arc` to enable safe sharing:
-    /// - One reference is held in `linuxd_instances` or `control_plane_socket`.
+    /// - One reference is held in `tenants` or `control_plane_bind_socket`.
     /// - Additional references are held by `InitializedSandbox` and `RunningSandbox` instances.
     /// - When sandboxes are terminated via `kill()` or `cleanup()`, their references are dropped.
     /// - The resources are only destroyed when the last `Arc` reference is dropped (typically
@@ -347,7 +556,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// - No partial state is present in the cache maps that would interfere with retry attempts.
     ///
     pub async fn get(
-        &mut self,
+        &self,
         tenant_id: &str,
         program: &str,
         app_name: &str,
@@ -358,243 +567,155 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
              program_args={program_args:?}"
         );
 
-        // Construct a tag for the sandbox.
+        // Construct a new tag for sandbox creation.
         let tag: SandboxTag = SandboxTag::new(tenant_id, program, app_name, program_args);
 
-        // Check if sandbox is in cache.
-        match self.running_sandboxes.get(&tag.sandbox_id()) {
-            // Cache hit: sandbox found.
-            Some(sandbox) => Ok((
+        // Check if a sandbox with this tag already exists in the cache.
+        if let Some(sandbox) = self.running_sandboxes.read().await.get(&tag.sandbox_id()) {
+            return Ok((
                 tag.sandbox_id(),
                 sandbox.gateway_socket_info().0.clone(),
                 sandbox.gateway_socket_info().1,
-            )),
-            // Cache miss: sandbox not found.
-            None => {
-                // Get control plane socket (must exist, initialized in new()).
-                let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
-                    self.control_plane_bind_socket.clone().ok_or_else(|| {
-                        let reason: &str = "control plane socket not initialized";
-                        error!("get(): {reason}");
-                        anyhow::anyhow!(reason)
-                    })?;
-
-                let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
+            ));
+        }
+        let tenant_state: Arc<TenantState> = self.get_or_insert_tenant(tag.tenant_id()).await;
+        let linuxd: Arc<LinuxDaemon> = self
+            .get_or_create_linuxd(&tenant_state, tag.tenant_id())
+            .await
+            .map_err(|error| {
+                let reason: String = format!(
+                    "failed to get or create linuxd (tenant_id={}, program={}, app_name={}, \
+                     error={error:?})",
+                    tag.tenant_id(),
                     tag.program(),
-                    tag.program_args().cloned(),
-                    self.config.ramfs_filename().map(|s| s.to_string()),
-                    control_plane_bind_socket,
+                    tag.app_name()
                 );
+                error!("get(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
 
-                // Gateway port guard for L2 deployments.
-                let mut gateway_l2_port: Option<TcpPort> = None;
-
-                // Add Linux Daemon instance to sandbox if one exists for the tenant.
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
-                        let uninitialized_sandbox: UninitializedSandbox<T> = {
-                            // Clone ownership of the network namespace from linuxd (pre-existing) to
-                            // the new user VM (only in L2-mode).
-                            let netns_handle: Option<NetnsHandle> = linuxd.netns_handle();
-
-                            // Allocate new gateway port from the allocator inside the network
-                            // namespace.
-                            if let Some(netns_handle) = &netns_handle {
-                                let tcp_port: TcpPort =
-                                    netns_handle.allocate_gateway_port().map_err(|e| {
-                                        let reason: String = format!(
-                                            "error allocating gateway port (tenant_id={}, \
-                                             program={}, app_name={}, error={e:?})",
-                                            tag.tenant_id(),
-                                            tag.program(),
-                                            tag.app_name()
-                                        );
-                                        error!("get(): {reason}");
-                                        anyhow::anyhow!(reason)
-                                    })?;
-
-                                // Pass ownership of the tcp_port to the outer scope.
-                                gateway_l2_port = Some(tcp_port);
-                            }
-
-                            uninitialized_sandbox.with_netns_handle(linuxd.netns_handle())
-                        };
-
-                        uninitialized_sandbox.with_linuxd(linuxd.clone())
-                    } else {
-                        // Allocate a network namespace for the new linuxd (and user VM) instance
-                        // in L2 deployments.
-                        if self.config.l2() {
-                            let netns_handle: NetnsHandle =
-                                self.netns_pool.allocate().map_err(|e| {
-                                    let reason: String = format!(
-                                        "failed to allocate netns (tenant_id={}, program={}, \
-                                         app_name={}, error={e:?})",
-                                        tag.tenant_id(),
-                                        tag.program(),
-                                        tag.app_name()
-                                    );
-                                    error!("get(): {reason}");
-                                    anyhow::anyhow!("{reason}")
-                                })?;
-
-                            let tcp_port: TcpPort =
-                                netns_handle.allocate_gateway_port().map_err(|e| {
-                                    let reason: String = format!(
-                                        "error allocating gateway port (tenant_id={}, program={}, \
-                                         app_name={}, error={e:?})",
-                                        tag.tenant_id(),
-                                        tag.program(),
-                                        tag.app_name()
-                                    );
-                                    error!("get(): {reason}");
-                                    anyhow::anyhow!(reason)
-                                })?;
-
-                            // Pass ownership of the tcp_port to the outer scope.
-                            gateway_l2_port = Some(tcp_port);
-
-                            // Pass ownership of the netns handle to the sandbox.
-                            uninitialized_sandbox.with_netns_handle(Some(netns_handle))
-                        } else {
-                            uninitialized_sandbox
-                        }
-                    };
-
-                // Work-out socket addresses. In L2 deployments these addresses depend on the
-                // network namespace, so we assign them right after setting up the netns.
-                let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
-                let (control_plane_bind_sockaddr, control_plane_connect_sockaddr): (
-                    String,
-                    String,
-                ) = (control_plane_sockaddr_builder)(
-                    self.config.tmp_directory(),
-                    netns_info.clone(),
-                )?;
-                let user_vm_sockaddr: String = (user_vm_sockaddr_builder)(
-                    self.config.tmp_directory(),
+        // Allocate gateway port if on an L2 deployment.
+        let mut gateway_l2_port: Option<TcpPort> = None;
+        let netns_handle: Option<NetnsHandle> = linuxd.netns_handle();
+        if let Some(netns_handle) = &netns_handle {
+            let tcp_port: TcpPort = netns_handle.allocate_gateway_port().map_err(|e| {
+                let reason: String = format!(
+                    "error allocating gateway port (tenant_id={}, program={}, app_name={}, \
+                     error={e:?})",
                     tag.tenant_id(),
-                    self.config.l2(),
-                )?;
-                let gateway_sockaddr: String = (gateway_sockaddr_builder)(
-                    self.config.tmp_directory(),
+                    tag.program(),
+                    tag.app_name()
+                );
+                error!("get(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+            gateway_l2_port = Some(tcp_port);
+        }
+
+        let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
+            self.control_plane_bind_socket.clone();
+        let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
+            tag.program(),
+            tag.program_args().cloned(),
+            self.config.ramfs_filename().map(|s| s.to_string()),
+            control_plane_bind_socket,
+        )
+        .with_netns_handle(netns_handle)
+        .with_linuxd(linuxd);
+
+        // Work-out socket addresses. In L2 deployments these addresses depend on the
+        // network namespace, so we assign them right after setting up the netns.
+        let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
+        let (control_plane_bind_sockaddr, control_plane_connect_sockaddr): (String, String) =
+            control_plane_sockaddr_builder(self.config.tmp_directory(), netns_info.clone())?;
+        let user_vm_sockaddr: String = user_vm_sockaddr_builder(
+            self.config.tmp_directory(),
+            tag.tenant_id(),
+            self.config.l2(),
+        )?;
+        let gateway_sockaddr: String = gateway_sockaddr_builder(
+            self.config.tmp_directory(),
+            tag.tenant_id(),
+            tag.sandbox_id(),
+            netns_info.clone(),
+            &gateway_l2_port,
+        )?;
+
+        let gateway_socket_address: String = gateway_sockaddr.clone();
+        let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
+
+        // Work-out the temporary directory for this sandbox based on the base temporary
+        // directory for the sandbox cache, and the tenant id.
+        let sandbox_tmp_dir: PathBuf =
+            self.ensure_tenant_tmp_dir(tag.tenant_id()).map_err(|e| {
+                let reason: String = format!(
+                    "failed to prepare sandbox temporary directory (tenant_id={}, program={}, \
+                     app_name={}, error={e:?})",
                     tag.tenant_id(),
-                    tag.sandbox_id(),
-                    netns_info.clone(),
-                    &gateway_l2_port,
-                )?;
+                    tag.program(),
+                    tag.app_name()
+                );
+                error!("get(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
 
-                let gateway_socket_address: String = gateway_sockaddr.clone();
-                let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
+        let config: SandboxConfig<T> = SandboxConfig::new(
+            tag.tenant_id(),
+            tag.sandbox_id(),
+            (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
+            (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
+            self.config.console_file().map(|s| s.to_string()),
+            self.config.hwloc().clone(),
+            self.config.kernel_binary_path(),
+            self.config.linuxd_binary_path(),
+            self.config.uservm_binary_path(),
+            self.config.log_directory(),
+            Some((control_plane_bind_sockaddr.clone(), self.config.control_plane_sockaddr_type())),
+            (control_plane_connect_sockaddr.clone(), self.config.control_plane_sockaddr_type()),
+            Some(self.config.toolchain_binary_directory().to_string()),
+            Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
+            Some(self.config.l2()),
+        );
 
-                // Work-out the temporary directory for this sandbox based on the base temporary
-                // directory for the sandbox cache, and the tenant id.
-                let sandbox_tmp_dir: PathBuf =
-                    PathBuf::from(self.config.tmp_directory()).join(tag.tenant_id());
-                if let Err(error) = fs::create_dir_all(&sandbox_tmp_dir) {
-                    let reason: String = format!(
-                        "failed to create sandbox temporary directory (tenant_id={}, program={}, \
-                         app_name={}, tmp_dir={sandbox_tmp_dir:?}, error={error:?})",
+        let uninitialized_sandbox: UninitializedSandbox<T> =
+            uninitialized_sandbox.with_config(config);
+
+        let initialized_sandbox: InitializedSandbox<T> =
+            match uninitialized_sandbox.initialize().await {
+                Ok(sandbox) => sandbox,
+                Err(error) => {
+                    error!(
+                        "get(): failed to initialize sandbox (tenant_id={}, program={}, \
+                         app_name={}, error={error:?})",
                         tag.tenant_id(),
                         tag.program(),
                         tag.app_name()
                     );
-                    error!("get(): {reason}");
-                    anyhow::bail!(reason);
-                }
+                    return Err(error);
+                },
+            };
 
-                let l2_sysvm_snapshot_dir: PathBuf =
-                    sandbox_tmp_dir.join(format!("l2-sysvm-snapshot-{}", tag.sandbox_id()));
-
-                let config: SandboxConfig<T> = SandboxConfig::new(
-                    tag.tenant_id(),
-                    tag.sandbox_id(),
-                    (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
-                    (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
-                    self.config.console_file().map(|s| s.to_string()),
-                    self.config.hwloc().clone(),
-                    self.config.kernel_binary_path(),
-                    self.config.linuxd_binary_path(),
-                    self.config.uservm_binary_path(),
-                    self.config.log_directory(),
-                    Some((
-                        control_plane_bind_sockaddr.clone(),
-                        self.config.control_plane_sockaddr_type(),
-                    )),
-                    (
-                        control_plane_connect_sockaddr.clone(),
-                        self.config.control_plane_sockaddr_type(),
-                    ),
-                    Some(self.config.toolchain_binary_directory().to_string()),
-                    Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
-                    Some(self.config.l2()),
-                );
-
-                let uninitialized_sandbox: UninitializedSandbox<T> = if self.config.l2() {
-                    let snapshot_dir_handle: SnapshotDirHandle = SnapshotDirHandle::new(
-                        &l2_sysvm_snapshot_dir,
-                        self.config.l2_snapshot_path(),
-                        config.l2_linuxd_log_file(),
-                    )
-                    .map_err(|error| {
-                        let reason: String = format!(
-                            "failed to create snapshot directory handle (tenant_id={}, \
-                             program={}, app_name={}, error={error:?})",
-                            tag.tenant_id(),
-                            tag.program(),
-                            tag.app_name()
-                        );
-                        error!("get(): {reason}");
-                        anyhow::anyhow!(reason)
-                    })?;
-
-                    uninitialized_sandbox
-                        .with_config(config)
-                        .with_snapshot_dir_handle(Some(snapshot_dir_handle))
-                } else {
-                    uninitialized_sandbox.with_config(config)
-                };
-
-                let initialized_sandbox: InitializedSandbox<T> =
-                    match uninitialized_sandbox.initialize().await {
-                        Ok(sandbox) => sandbox,
-                        Err(error) => {
-                            error!(
-                                "get(): failed to initialize sandbox (tenant_id={}, program={}, \
-                                 app_name={}, error={error:?})",
-                                tag.tenant_id(),
-                                tag.program(),
-                                tag.app_name()
-                            );
-                            return Err(error);
-                        },
-                    };
-
-                // Update Linux Daemon instance.
-                self.linuxd_instances
-                    .insert(tag.tenant_id().to_string(), initialized_sandbox.linuxd());
-
-                // Run sandbox.
-                match initialized_sandbox.start(tag.clone()).await {
-                    Ok(running_sandbox) => {
-                        self.running_sandboxes
-                            .insert(tag.sandbox_id(), running_sandbox);
-                    },
-                    Err(error) => {
-                        error!(
-                            "get(): failed to start sandbox (tenant_id={}, program={}, \
-                             app_name={}, error={error:?})",
-                            tag.tenant_id(),
-                            tag.program(),
-                            tag.app_name()
-                        );
-                        return Err(error);
-                    },
-                };
-
-                Ok((tag.sandbox_id(), gateway_sockaddr, gateway_socket_type))
+        // Run sandbox.
+        match initialized_sandbox.start(tag.clone()).await {
+            Ok(running_sandbox) => {
+                self.running_sandboxes
+                    .write()
+                    .await
+                    .insert(tag.sandbox_id(), running_sandbox);
             },
-        }
+            Err(error) => {
+                error!(
+                    "get(): failed to start sandbox (tenant_id={}, program={}, app_name={}, \
+                     error={error:?})",
+                    tag.tenant_id(),
+                    tag.program(),
+                    tag.app_name()
+                );
+                return Err(error);
+            },
+        };
+
+        Ok((tag.sandbox_id(), gateway_sockaddr, gateway_socket_type))
     }
 
     ///
@@ -611,8 +732,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// On success, returns the exit code of the User VM. On failure, returns an error if the
     /// User VM identifier was not found in the cache or if the shutdown did not complete.
     ///
-    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<i32> {
-        if let Some(sandbox) = self.running_sandboxes.remove(&user_vm_id) {
+    pub async fn kill(&self, user_vm_id: UserVmIdentifier) -> Result<i32> {
+        let sandbox: Option<RunningSandbox> =
+            self.running_sandboxes.write().await.remove(&user_vm_id);
+        if let Some(sandbox) = sandbox {
             match sandbox.shutdown().await {
                 Some(status) => {
                     let exit_code: i32 = status.code().unwrap_or(DEFAULT_EXIT_CODE);
@@ -652,11 +775,16 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// This method shuts down all User VMs first, then terminates all Linux Daemon instances.
     /// It should be called when the daemon is shutting down to ensure proper resource cleanup.
     ///
-    pub async fn cleanup(&mut self) {
+    pub async fn cleanup(&self) {
         debug!("cleaning up sandbox cache");
 
+        let running_sandboxes: HashMap<UserVmIdentifier, RunningSandbox> = {
+            let mut running_sandboxes = self.running_sandboxes.write().await;
+            ::std::mem::take(&mut *running_sandboxes)
+        };
+
         // First shutdown all user VMs.
-        for (tag, sandbox) in self.running_sandboxes.drain() {
+        for (tag, sandbox) in running_sandboxes {
             debug!("cleaning user vm instance (tag={tag:?})");
             match sandbox.shutdown().await {
                 Some(status) => {
@@ -672,8 +800,20 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             }
         }
 
+        let tenants: HashMap<String, Arc<TenantState>> = {
+            let mut tenants = self.tenants.write().await;
+            ::std::mem::take(&mut *tenants)
+        };
+
         // Shutdown all linuxd instances.
-        for (tenant_id, linuxd_instance) in self.linuxd_instances.drain() {
+        for (tenant_id, tenant_state) in tenants {
+            let linuxd_instance: Option<Arc<LinuxDaemon>> = {
+                let mut linuxd = tenant_state.linuxd_instance.write().await;
+                linuxd.take()
+            };
+            let Some(linuxd_instance) = linuxd_instance else {
+                continue;
+            };
             debug!("cleanup(): cleaning linuxd instance (tenant_id={tenant_id:?})");
             let strong_count: usize = Arc::strong_count(&linuxd_instance);
             if strong_count > 1 {
@@ -685,13 +825,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             linuxd_instance.shutdown().await;
         }
 
-        let summary: SandboxCacheStateSummary = self.state_summary();
+        let summary: SandboxCacheStateSummary = self.state_summary().await;
         debug!(
-            "cleanup summary: running_sandboxes={}, linuxd_instances={}, control_plane_socket={}, \
-             l2_enabled={}",
+            "cleanup summary: running_sandboxes={}, linuxd_instances={}, l2_enabled={}",
             summary.running_sandboxes(),
             summary.linuxd_instances(),
-            summary.has_control_plane_bind_socket(),
             summary.l2_enabled()
         );
     }
@@ -854,7 +992,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_creates_cache() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
+        let result: Result<Arc<SandboxCache<()>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
     }
 
@@ -866,13 +1004,12 @@ mod tests {
     #[tokio::test]
     async fn test_new_multi_process_mode() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
+        let result: Result<Arc<SandboxCache<()>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
 
-        let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
-        let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
-        assert_eq!(cache_guard.running_sandboxes.len(), 0);
-        assert_eq!(cache_guard.linuxd_instances.len(), 0);
+        let cache: Arc<SandboxCache<()>> = result.unwrap();
+        assert_eq!(cache.running_sandboxes.read().await.len(), 0);
+        assert_eq!(cache.tenants.read().await.len(), 0);
     }
 
     ///
@@ -884,7 +1021,7 @@ mod tests {
     async fn test_new_l2_mode() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
+        let result: Result<Arc<SandboxCache<()>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
     }
 
@@ -896,13 +1033,9 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_empties_cache() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
-
-        {
-            let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
-            cache_guard.cleanup().await;
-            assert_eq!(cache_guard.running_sandboxes.len(), 0);
-        }
+        let cache: Arc<SandboxCache<()>> = SandboxCache::new(config).await.unwrap();
+        cache.cleanup().await;
+        assert_eq!(cache.running_sandboxes.read().await.len(), 0);
     }
 
     ///
@@ -913,11 +1046,10 @@ mod tests {
     #[tokio::test]
     async fn test_kill_nonexistent_sandbox_fails() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
-        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
+        let cache: Arc<SandboxCache<()>> = SandboxCache::new(config).await.unwrap();
 
-        let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         let nonexistent_id: UserVmIdentifier = UserVmIdentifier::new(NONEXISTENT_USER_VM_ID);
-        let result: Result<i32> = cache_guard.kill(nonexistent_id).await;
+        let result: Result<i32> = cache.kill(nonexistent_id).await;
         assert!(result.is_err());
     }
 
