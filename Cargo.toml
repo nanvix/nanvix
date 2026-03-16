@@ -135,7 +135,7 @@ nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-feature
 nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
-num_enum = { version = "0.7.5", default-features = false }
+num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
 profiler = { path = "src/libs/profiler", default-features = false }
 posix = { path = "src/libs/posix", default-features = false }
