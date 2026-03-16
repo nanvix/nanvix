@@ -139,6 +139,14 @@
     movw %fs, CONTEXT_FS(%esp)
     movw %gs, CONTEXT_GS(%esp)
 
+    /*
+     * Clear the direction flag.  User code may set DF=1 (via std), and
+     * all compiler-generated code (including Rust's rep-based memcpy)
+     * assumes DF=0.  The hardware-saved EFLAGS in the exception frame
+     * preserves the original DF for restoration on iret.
+     */
+    cld
+
     movl %esp, \ret
 
 .endm
@@ -386,6 +394,14 @@ _do_kcall:
     pushl %esi
     pushl %edi
     pushl %ebx
+
+    /*
+     * Clear the direction flag.  User code may set DF=1 (via std), and
+     * all compiler-generated code (including Rust's rep-based memcpy)
+     * assumes DF=0.  The int instruction does not clear DF, so we must
+     * do it explicitly before calling into C/Rust kernel code.
+     */
+    cld
 
     mov %esp, %ebp
 
