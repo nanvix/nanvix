@@ -1,7 +1,9 @@
 # Nanvix OCI Image Specification
 
 This document describes how Nanvix workloads are packaged as OCI-compliant container images,
-including the layer structure, annotation conventions, and Dockerfile patterns.
+including the layer structure, annotation conventions, and how the shim consumes them.
+
+> To build images in practice, see [Building Nanvix OCI Images](docker-images.md).
 
 ## Background
 
@@ -33,17 +35,15 @@ OCI Image
 │   └── /ramfs/
 │       ├── lib/
 │       │   ├── libc.so
-│       │   ├── libssl.so
 │       │   └── ...
 │       ├── usr/
 │       │   └── lib/
 │       │       └── python3.12/
-│       ├── data/
-│       │   └── config.txt
-│       └── ...
+│       └── data/
+│           └── config.txt
 │
 ├── Config JSON:
-│   ├── os: "linux"                          # pragmatic compatibility (see note below)
+│   ├── os: "linux"                          # pragmatic compatibility (see below)
 │   ├── architecture: "amd64"
 │   ├── config.Entrypoint: ["/initrd/app.elf"]
 │   └── config.Labels: { com.nanvix.* annotations }
@@ -52,9 +52,9 @@ OCI Image
     ├── com.nanvix.os: "nanvix"              # real target OS
     ├── com.nanvix.arch: "x86"               # real target architecture
     ├── com.nanvix.initrd.path: "/initrd/app.elf"
-    ├── com.nanvix.initrd.args: ""           # optional arguments for the app
+    ├── com.nanvix.initrd.args: ""           # optional arguments
     ├── com.nanvix.ramfs.root: "/ramfs"      # directory to convert to FAT32
-    └── com.nanvix.version: "0.12.166"       # optional Nanvix version hint
+    └── com.nanvix.version: "0.12.166"       # optional version hint
 ```
 
 ### Why Two Well-Known Directories?
@@ -78,126 +78,6 @@ and tools only recognize `linux` and `windows`. The real target OS is conveyed v
 
 The containerd shim identifies Nanvix workloads by the presence of `com.nanvix.*` labels, not
 by the platform field. This matches the approach used by urunc/bima in the unikernel ecosystem.
-
-In the future, if `nanvix` is registered as a recognized OS value in the OCI spec, images can
-use `os: "nanvix"` natively. This would be a non-breaking change.
-
-## Dockerfile Patterns
-
-### Minimal Image (Static Binary + Data)
-
-The simplest case: a pre-compiled Nanvix binary with some data files.
-
-```dockerfile
-FROM scratch
-
-# Application binary
-COPY myapp.elf /initrd/myapp.elf
-
-# Filesystem contents
-COPY sysroot/ /ramfs/
-
-# Nanvix annotations
-LABEL com.nanvix.os="nanvix"
-LABEL com.nanvix.arch="x86"
-LABEL com.nanvix.initrd.path="/initrd/myapp.elf"
-LABEL com.nanvix.ramfs.root="/ramfs"
-
-ENTRYPOINT ["/initrd/myapp.elf"]
-```
-
-Build and push:
-```bash
-docker build -t registry.io/myapp:v1 .
-docker push registry.io/myapp:v1
-```
-
-### Multi-Stage Build (Compile + Package)
-
-Cross-compile the application inside a build container, then package for Nanvix.
-
-```dockerfile
-# ---- Stage 1: Cross-compile ----
-FROM nanvix-sdk:latest AS builder
-COPY src/ /build/src/
-RUN nanvix-cc -o /build/app.elf /build/src/main.c
-
-# ---- Stage 2: Package for Nanvix ----
-FROM scratch
-
-COPY --from=builder /build/app.elf /initrd/app.elf
-COPY config/ /ramfs/etc/
-
-LABEL com.nanvix.os="nanvix"
-LABEL com.nanvix.arch="x86"
-LABEL com.nanvix.initrd.path="/initrd/app.elf"
-LABEL com.nanvix.ramfs.root="/ramfs"
-
-ENTRYPOINT ["/initrd/app.elf"]
-```
-
-### Using a Base Image (Shared Libraries)
-
-When a base image provides shared libraries (e.g., Python runtime), the application image
-inherits those layers and adds only its own code.
-
-```dockerfile
-# Base image provides /ramfs/lib/, /ramfs/usr/, etc.
-FROM nanvix-python:3.12
-
-# Add application code to the ramfs
-COPY server.py /ramfs/app/server.py
-COPY requirements/ /ramfs/app/requirements/
-
-# Override initrd with the application entry point
-COPY myapp.elf /initrd/myapp.elf
-
-LABEL com.nanvix.initrd.path="/initrd/myapp.elf"
-LABEL com.nanvix.initrd.args="/app/server.py"
-
-ENTRYPOINT ["/initrd/myapp.elf"]
-```
-
-The `nanvix-python:3.12` base image Dockerfile would look like:
-
-```dockerfile
-FROM scratch
-
-# Cross-compiled Python runtime and dependencies
-COPY python-sysroot/lib/    /ramfs/lib/
-COPY python-sysroot/usr/    /ramfs/usr/
-COPY python-sysroot/etc/    /ramfs/etc/
-
-# Default initrd (can be overridden by child images)
-COPY python-runner.elf /initrd/python-runner.elf
-
-LABEL com.nanvix.os="nanvix"
-LABEL com.nanvix.arch="x86"
-LABEL com.nanvix.initrd.path="/initrd/python-runner.elf"
-LABEL com.nanvix.ramfs.root="/ramfs"
-LABEL com.nanvix.version="0.12.166"
-
-ENTRYPOINT ["/initrd/python-runner.elf"]
-```
-
-### Image With No Ramfs
-
-Some Nanvix applications are self-contained and don't need a filesystem. In this case,
-omit the ramfs annotations:
-
-```dockerfile
-FROM scratch
-
-COPY hello.elf /initrd/hello.elf
-
-LABEL com.nanvix.os="nanvix"
-LABEL com.nanvix.arch="x86"
-LABEL com.nanvix.initrd.path="/initrd/hello.elf"
-
-ENTRYPOINT ["/initrd/hello.elf"]
-```
-
-The shim detects that `com.nanvix.ramfs.root` is absent and launches nanvixd without `-ramfs`.
 
 ## How the Shim Consumes These Images
 
@@ -225,11 +105,10 @@ When the containerd shim (`containerd-shim-nanvix-v1`) receives an OCI bundle:
 4. If ramfs_root is set, shim creates FAT32 image:
    mkramfs -o /tmp/<container-id>.img <ramfs_dir>
 
-5. Shim launches nanvixd:
-   nanvixd.elf -ramfs /tmp/<container-id>.img -- <initrd_binary> <initrd_args>
+5. Shim launches nanvixd in HTTP mode and spawns the application via the NEW API.
 ```
 
-## Layer Deduplication in Practice
+## Layer Deduplication
 
 Because ramfs contents are stored as standard filesystem layers, Docker's layer caching and
 registry deduplication work naturally:
@@ -250,8 +129,8 @@ Pulling `my-python-app:v2` on a machine that already has `v1` downloads only Lay
 | `com.nanvix.os` | Yes | Target OS (always `"nanvix"`) |
 | `com.nanvix.arch` | Yes | Target architecture (`"x86"`) |
 | `com.nanvix.initrd.path` | Yes | Path to the application binary within the image |
-| `com.nanvix.ramfs.root` | No | Path to the ramfs directory within the image. If absent, no ramfs is attached. |
+| `com.nanvix.ramfs.root` | No | Path to the ramfs directory. If absent, no ramfs is attached. |
 | `com.nanvix.initrd.args` | No | Arguments passed to the application (space-separated) |
 | `com.nanvix.initrd.env` | No | Environment variables (`"KEY1=val1 KEY2=val2"`) |
-| `com.nanvix.execution-mode` | No | Execution mode override (e.g., `"standalone"`, `"hyperlight"`). Uses host default if absent. |
+| `com.nanvix.execution-mode` | No | Execution mode override (`"standalone"`, `"hyperlight"`). Uses host default if absent. |
 | `com.nanvix.version` | No | Nanvix version compatibility hint |

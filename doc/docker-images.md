@@ -1,10 +1,9 @@
 # Building Nanvix OCI Images
 
-This guide explains how to build OCI-compliant container images for Nanvix workloads.
-These images are used with the `containerd-shim-nanvix-v1` runtime.
+This guide shows how to build and run OCI container images for Nanvix workloads.
 
-For full details on the image format, annotations, and layer structure, see
-[Nanvix OCI Image Specification](nanvix-oci-image-spec.md).
+> For details on the image format, layer structure, and annotation semantics, see the
+> [Nanvix OCI Image Specification](nanvix-oci-image-spec.md).
 
 ## Prerequisites
 
@@ -30,12 +29,11 @@ ls $NANVIX_DIR/bin/*.elf
 # hello-rust-nostd.elf  — "Hello, world!" (no std, no filesystem)
 # vfs-test.elf          — VFS test (requires ramfs)
 # echo-c.elf            — Echo server (C)
-# ...
 ```
 
 ### Cross-compiling your own application
 
-Use the Nanvix cross-compiler toolchain to build your application:
+Use the Nanvix cross-compiler toolchain:
 
 ```bash
 # Rust (no_std)
@@ -46,12 +44,11 @@ cp target/i686-unknown-nanvix/release/myapp myapp.elf
 i686-nanvix-gcc -o myapp.elf main.c
 ```
 
-See the [Nanvix documentation](https://github.com/nanvix/nanvix) for details on the toolchain
-and supported targets.
+See the [Nanvix documentation](https://github.com/nanvix/nanvix) for toolchain details.
 
 ### Preparing the build context
 
-Once you have your `.elf` binary, place it alongside a `Dockerfile` in a build directory:
+Place your `.elf` binary alongside a `Dockerfile` in a build directory:
 
 ```
 build-ctx/
@@ -62,7 +59,9 @@ build-ctx/
     └── data/
 ```
 
-## Minimal Image (No Ramfs)
+## Dockerfile Examples
+
+### Minimal Image (No Ramfs)
 
 For self-contained applications that don't need a filesystem:
 
@@ -75,23 +74,9 @@ LABEL com.nanvix.initrd.path="/initrd/myapp.elf"
 ENTRYPOINT ["/initrd/myapp.elf"]
 ```
 
-Build and run:
+### Image With Ramfs
 
-```bash
-# Place your .elf and the Dockerfile above in a directory, then:
-docker build -t myapp:latest .
-docker save myapp:latest | sudo ctr images import -
-sudo ctr run --rm --runtime io.containerd.nanvix.v1 \
-  --label com.nanvix.os=nanvix \
-  --label com.nanvix.arch=x86 \
-  --label com.nanvix.initrd.path=/initrd/myapp.elf \
-  docker.io/library/myapp:latest myapp-test
-```
-
-## Image With Ramfs
-
-For applications that need shared libraries, data files, or configuration. The shim invokes
-`mkramfs` at runtime to convert the `/ramfs/` tree into a FAT32 image for the VM.
+For applications that need shared libraries, data files, or configuration:
 
 ```dockerfile
 FROM scratch
@@ -104,11 +89,71 @@ LABEL com.nanvix.ramfs.root="/ramfs"
 ENTRYPOINT ["/initrd/myapp.elf"]
 ```
 
-Build and run:
+### Multi-Stage Build (Compile + Package)
+
+Cross-compile inside a build container, then package for Nanvix:
+
+```dockerfile
+FROM nanvix-sdk:latest AS builder
+COPY src/ /build/src/
+RUN nanvix-cc -o /build/app.elf /build/src/main.c
+
+FROM scratch
+COPY --from=builder /build/app.elf /initrd/app.elf
+COPY config/ /ramfs/etc/
+LABEL com.nanvix.os="nanvix"
+LABEL com.nanvix.arch="x86"
+LABEL com.nanvix.initrd.path="/initrd/app.elf"
+LABEL com.nanvix.ramfs.root="/ramfs"
+ENTRYPOINT ["/initrd/app.elf"]
+```
+
+### Base Image With Shared Libraries
+
+```dockerfile
+# nanvix-python:3.12 base image
+FROM scratch
+COPY python-sysroot/lib/ /ramfs/lib/
+COPY python-sysroot/usr/ /ramfs/usr/
+COPY python-runner.elf /initrd/python-runner.elf
+LABEL com.nanvix.os="nanvix"
+LABEL com.nanvix.arch="x86"
+LABEL com.nanvix.initrd.path="/initrd/python-runner.elf"
+LABEL com.nanvix.ramfs.root="/ramfs"
+ENTRYPOINT ["/initrd/python-runner.elf"]
+```
+
+Application images inherit the base layers:
+
+```dockerfile
+FROM nanvix-python:3.12
+COPY server.py /ramfs/app/server.py
+COPY myapp.elf /initrd/myapp.elf
+LABEL com.nanvix.initrd.path="/initrd/myapp.elf"
+LABEL com.nanvix.initrd.args="/app/server.py"
+ENTRYPOINT ["/initrd/myapp.elf"]
+```
+
+## Building and Running
 
 ```bash
-docker build -t myapp-ramfs:latest .
-docker save myapp-ramfs:latest | sudo ctr images import -
+# Build
+docker build -t myapp:latest .
+
+# Import into containerd
+docker save myapp:latest | sudo ctr images import -
+
+# Run with the Nanvix shim
+sudo ctr run --rm --runtime io.containerd.nanvix.v1 \
+  --label com.nanvix.os=nanvix \
+  --label com.nanvix.arch=x86 \
+  --label com.nanvix.initrd.path=/initrd/myapp.elf \
+  docker.io/library/myapp:latest myapp-test
+```
+
+For images with ramfs, add the ramfs label:
+
+```bash
 sudo ctr run --rm --runtime io.containerd.nanvix.v1 \
   --label com.nanvix.os=nanvix \
   --label com.nanvix.arch=x86 \
@@ -117,19 +162,10 @@ sudo ctr run --rm --runtime io.containerd.nanvix.v1 \
   docker.io/library/myapp-ramfs:latest myapp-ramfs-test
 ```
 
-## Annotation Reference
+> **Note:** `ctr run` does not propagate Docker `LABEL` directives into the OCI runtime spec
+> automatically. You must pass `com.nanvix.*` annotations via `--label` flags.
 
-| Annotation | Required | Description |
-|------------|----------|-------------|
-| `com.nanvix.os` | Yes | Target OS (always `"nanvix"`) |
-| `com.nanvix.arch` | Yes | Target architecture (`"x86"`) |
-| `com.nanvix.initrd.path` | Yes | Path to the application binary within the image |
-| `com.nanvix.ramfs.root` | No | Path to the ramfs directory. If absent, no ramfs is attached. |
-| `com.nanvix.initrd.args` | No | Arguments passed to the application (space-separated) |
-| `com.nanvix.initrd.env` | No | Environment variables (`"KEY1=val1 KEY2=val2"`) |
-| `com.nanvix.execution-mode` | No | Execution mode override (`"standalone"`, `"hyperlight"`). Uses host default if absent. |
-| `com.nanvix.version` | No | Nanvix version compatibility hint |
+## Further Reading
 
-> **Note:** When using `ctr run`, annotations from Docker `LABEL` directives are not
-> automatically propagated to the OCI runtime spec. You must pass them explicitly via
-> `--label` flags as shown above.
+- [Nanvix OCI Image Specification](nanvix-oci-image-spec.md) — Layer structure, annotation
+  semantics, platform compatibility, and how the shim consumes images.
