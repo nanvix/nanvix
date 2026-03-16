@@ -37,6 +37,18 @@ pub struct ExitStatus(u32);
 //==================================================================================================
 
 impl ExitStatus {
+    /// Stack overflow detected at exception entry (assembly guard).
+    ///
+    /// The assembly macro `excp_stack_guard_check` in `hooks.S` mirrors this value as
+    /// `STACK_OVERFLOW_EXIT_STATUS`. Both constants must be kept in sync manually.
+    pub const STACK_OVERFLOW_EXCEPTION: Self = Self(200);
+
+    /// Stack overflow detected at a scheduling checkpoint (Rust guard watermark).
+    pub const STACK_OVERFLOW_WATERMARK: Self = Self(201);
+
+    /// Kernel panic handler invoked.
+    pub const KERNEL_PANIC: Self = Self(202);
+
     ///
     /// # Description
     ///
