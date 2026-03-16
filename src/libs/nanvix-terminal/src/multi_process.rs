@@ -60,7 +60,6 @@ use ::tokio::{
             UnboundedReceiver,
             UnboundedSender,
         },
-        Mutex,
     },
 };
 use ::user_vm_api::UserVmIdentifier;
@@ -143,8 +142,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         guest_binary_path: &str,
         guest_binary_args: &str,
     ) -> Result<i32> {
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
-            SandboxCache::new(self.config.clone()).await?;
+        let sandbox_cache: Arc<SandboxCache<T>> = SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
         let tenant_id: String = match tenant_id {
@@ -159,8 +157,6 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             String,
             SocketType,
         ) = sandbox_cache
-            .lock()
-            .await
             .get(
                 &tenant_id,
                 guest_binary_path,
@@ -283,7 +279,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         };
 
         // Terminate the sandbox and retrieve the exit code.
-        let exit_code: i32 = sandbox_cache.lock().await.kill(uservm_id).await?;
+        let exit_code: i32 = sandbox_cache.kill(uservm_id).await?;
 
         // Send SIGUSR1 signal to stdin thread to interrupt the blocking read operation.
         // SAFETY: The thread ID is valid and was obtained from the stdin thread itself.
