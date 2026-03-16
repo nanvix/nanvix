@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 # Install Docker and containerd for Nanvix shim integration testing.
 # Run from WSL (Ubuntu 24.04): ./scripts/install-containerd.sh
 

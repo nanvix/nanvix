@@ -1,0 +1,30 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "containerd-shim-nanvix-v1"
+description = "Containerd shimv2 runtime for Nanvix OS workloads"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license-file.workspace = true
+
+[[bin]]
+name = "containerd-shim-nanvix-v1"
+path = "src/main.rs"
+
+[dependencies]
+nanvix-shim-proto = { workspace = true }
+nanvix-shim-core = { workspace = true }
+nanvix-shim-standalone = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+env_logger = { workspace = true }
+
+[dev-dependencies]
+nanvix-oci = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
