@@ -113,7 +113,6 @@ impl Slab {
 
         // Compute layout of the slab allocator.
         let total_num_blocks: usize = len / block_size;
-        // info!("total number of blocks: {:?}", total_num_blocks);
 
         // The number of index blocks (`num_index_blocks`) we need is
         //  `ceil(total_num_blocks / (block_size * u8::BITS + 1))`
@@ -133,7 +132,6 @@ impl Slab {
             } else {
                 1
             };
-        // info!("number of index blocks: {:?}", num_index_blocks);
         if num_index_blocks >= total_num_blocks {
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
@@ -141,14 +139,12 @@ impl Slab {
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
-        // info!("number of data blocks: {:?}", num_data_blocks);
         let index_len = (num_data_blocks / U8_BITS)
             + if num_data_blocks.is_multiple_of(U8_BITS) {
                 0
             } else {
                 1
             };
-        // info!("length of index in bytes: {:?}", index_len);
 
         // Instantiate index.
         let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
