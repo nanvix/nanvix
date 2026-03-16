@@ -8,17 +8,17 @@
 ///
 /// # Description
 ///
-/// Shutdowns the machine.
+/// Shuts down the machine.
 ///
 /// # Parameters
 ///
 /// - `status`: The shutdown status code.
 ///
-/// # Return
+/// # Returns
 ///
 /// This function never returns.
 ///
-pub fn shutdown(_status: usize) -> ! {
+pub(in crate::hal::platform) fn do_shutdown(_status: usize) -> ! {
     unsafe {
         ::arch::io::out16(::config::pc::DEFAULT_VMM_PORT, ::config::pc::DEFAULT_VMM_SHUTDOWN_CMD);
     };

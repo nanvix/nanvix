@@ -31,7 +31,9 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         },
     };
-    unsafe { crate::klog::puts(message) }
+    // SAFETY: the standard output device is present, initialized, and accessed
+    // exclusively from a single core with interrupts disabled.
+    unsafe { crate::klog::puts(message) };
 
     Ok(())
 }
