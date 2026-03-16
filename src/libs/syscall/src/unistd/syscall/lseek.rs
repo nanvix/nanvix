@@ -55,11 +55,11 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
         }
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             let reason: &str = "illegal seek on stdio";
-            ::syslog::error!("lseek(): {reason} (fd={fd})");
+            ::syslog::trace!("lseek(): {reason} (fd={fd})");
             return Err(Error::new(ErrorCode::IllegalSeek, reason));
         }
         let reason: &str = "lseek: fd is not a VFS fd in standalone mode";
-        ::syslog::error!("lseek(): {reason} (fd={fd})");
+        ::syslog::trace!("lseek(): {reason} (fd={fd})");
         Err(Error::new(ErrorCode::BadFile, reason))
     }
 

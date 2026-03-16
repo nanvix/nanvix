@@ -51,7 +51,7 @@ pub extern "C" fn sysconf(name: c_int) -> c_long {
     let name: SysConfigName = match SysConfigName::try_from(name) {
         Ok(name) => name,
         Err(error) => {
-            ::syslog::error!("sysconf(): {error:?}");
+            ::syslog::trace!("sysconf(): {error:?}");
             unsafe {
                 *__errno_location() = error.code.get();
             }
@@ -63,7 +63,7 @@ pub extern "C" fn sysconf(name: c_int) -> c_long {
     match System::config(name) {
         Ok(value) => value.into(),
         Err(error) => {
-            ::syslog::error!("sysconf(): {error:?}");
+            ::syslog::trace!("sysconf(): {error:?}");
             unsafe {
                 *__errno_location() = error.code.get();
             }

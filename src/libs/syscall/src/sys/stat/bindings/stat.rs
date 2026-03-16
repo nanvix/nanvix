@@ -48,7 +48,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::s
     let pathname: &str = match core::ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!("stat(): invalid pathname");
+            ::syslog::trace!("stat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn stat(pathname: *const c_char, statbuf: *mut sys_stat::s
     match crate::sys::stat::stat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "stat(): failed (pathname={}, statbuf={:p}, error={:?})",
                 pathname,
                 statbuf,

@@ -27,7 +27,7 @@ pub unsafe extern "C" fn fstat(fd: c_int, buf: *mut sys_stat::stat) -> c_int {
     match crate::sys::stat::fstat(fd, &mut *buf) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
+            ::syslog::trace!("fstat(): failed (fd={}, buf={:p}, error={:?})", fd, buf, error);
             *__errno_location() = error.code.get();
             -1
         },
