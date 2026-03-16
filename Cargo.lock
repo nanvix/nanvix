@@ -1998,6 +1998,7 @@ dependencies = [
  "serde",
  "shell-words",
  "tokio",
+ "tokio-util",
  "toml",
 ]
 
