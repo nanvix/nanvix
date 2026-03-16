@@ -119,7 +119,6 @@ impl KernelStack {
     ///
     /// The guard threshold value.
     ///
-    #[allow(dead_code)]
     pub fn guard_threshold(&self) -> u32 {
         self.guard_threshold
     }
@@ -295,7 +294,6 @@ pub fn check_boot_stack_guard() -> Result<(), Error> {
 ///
 /// - `threshold`: The guard threshold (lowest safe ESP) for the new active stack.
 ///
-#[allow(dead_code)]
 pub fn set_active_guard(threshold: u32) {
     EXCP_STACK_GUARD.store(threshold, Ordering::Release);
 }
