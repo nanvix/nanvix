@@ -19,10 +19,7 @@ use ::core::{
         PanicMessage,
     },
 };
-use ::sys::{
-    error::ErrorCode,
-    ExitStatus,
-};
+use ::sys::ExitStatus;
 
 //==================================================================================================
 // Standalone Functions
@@ -53,5 +50,5 @@ pub fn kpanic(info: &PanicInfo) -> ! {
         let _ = write!(klog, "file='{file}', line={line} :: {m}");
     }
 
-    platform::shutdown(ExitStatus::from(ErrorCode::UnrecoverableState).into());
+    platform::shutdown(ExitStatus::KERNEL_PANIC.into());
 }
