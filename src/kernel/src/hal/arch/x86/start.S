@@ -16,6 +16,8 @@
 
 /* KSTACK_GUARD_PATTERN is defined via -DKSTACK_GUARD_PATTERN=<value> from build.rs. */
 
+#include "asm_defs.h"
+
 /* Multiboot2 magic constant */
 #define MBOOT2_HEADER_MAGIC 0xe85250d6
 
@@ -39,6 +41,7 @@
 .extern __BSS_START
 .extern __BSS_END
 .extern do_ap_start
+.extern EXCP_STACK_GUARD
 
 /*============================================================================*
  * Bootstrap Section                                                          *
@@ -132,6 +135,16 @@ _do_start2:
     /* Reset stack. */
     movl $kstack, %esp /* Stack pointer. */
     movl %esp, %ebp    /* Frame pointer. */
+
+    /*
+     * Initialize the dynamic stack overflow guard for the boot stack.
+     * CONTEXT_HW_SIZE (24) accounts for the maximum hardware-pushed exception
+     * frame: EIP + CS + EFLAGS + ESP + SS + error code.
+     *
+     * No LOCK prefix needed: aligned 32-bit stores are naturally atomic on
+     * x86, and at this point only the BSP is running with interrupts disabled.
+     */
+    movl $(kstack_guard + CONTEXT_HW_SIZE), EXCP_STACK_GUARD
 
     /* Save boot information on the stack. */
     push %ebx
