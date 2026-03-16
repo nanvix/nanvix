@@ -139,7 +139,7 @@ impl Slab {
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
-        let index_len = (num_data_blocks / U8_BITS)
+        let index_len: usize = (num_data_blocks / U8_BITS)
             + if num_data_blocks.is_multiple_of(U8_BITS) {
                 0
             } else {
