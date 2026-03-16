@@ -21,6 +21,7 @@ use ::sys::error::{
 // Modules
 //==================================================================================================
 
+mod direction_flag;
 #[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
 #[cfg(not(feature = "hyperlight"))]
@@ -55,6 +56,8 @@ pub fn main() -> Result<(), Error> {
     mmio_ramfs::run()?;
 
     tls::run()?;
+
+    direction_flag::run()?;
 
     #[cfg(not(feature = "hyperlight"))]
     rendezvous::run()?;
