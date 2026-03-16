@@ -98,7 +98,7 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
         }
 
-        // Check if block size is valid.
+        // Check if the block size is valid.
         if block_size == 0 || block_size >= i32::MAX as usize || block_size > len {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
         }
@@ -108,7 +108,7 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "block size is not a power of two"));
         }
 
-        // Check if `start_addr` is aligned to `block_size`.
+        // Check if `addr` is aligned to `block_size`.
         if !(addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
         }
