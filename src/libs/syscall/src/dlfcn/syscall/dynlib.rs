@@ -381,7 +381,7 @@ impl DynamicLibrary {
             let dynrel_size: usize =
                 pltrel_header.sh_size as usize / mem::size_of::<RelocationEntry>();
             let dynrel_table_ptr: *mut RelocationEntry = (load_address.into_raw_value()
-                + pltrel_header.sh_offset as usize)
+                + pltrel_header.sh_addr as usize)
                 as *mut RelocationEntry;
 
             // SAFETY: `ptr` is a valid pointer to a relocation table of `len`.
@@ -399,7 +399,7 @@ impl DynamicLibrary {
         if let Some(pltrel_header) = section_headers.get(".rel.plt") {
             let len: usize = pltrel_header.sh_size as usize / mem::size_of::<RelocationEntry>();
             let ptr: *mut RelocationEntry = (load_address.into_raw_value()
-                + pltrel_header.sh_offset as usize)
+                + pltrel_header.sh_addr as usize)
                 as *mut RelocationEntry;
 
             // SAFETY: `ptr` is a valid pointer to a relocation table of `len`.
@@ -417,7 +417,7 @@ impl DynamicLibrary {
         if let Some(dynstr_header) = section_headers.get(".dynstr") {
             let len: usize = dynstr_header.sh_size as usize;
             let ptr: *mut u8 =
-                (load_address.into_raw_value() + dynstr_header.sh_offset as usize) as *mut u8;
+                (load_address.into_raw_value() + dynstr_header.sh_addr as usize) as *mut u8;
 
             // SAFETY: `ptr` is a valid pointer to a string table of `len`.
             Some(unsafe { StringTable::from_raw_parts(ptr, len) })
@@ -434,7 +434,7 @@ impl DynamicLibrary {
         if let Some(dynsym_header) = section_headers.get(".dynsym") {
             let len: usize = dynsym_header.sh_size as usize / mem::size_of::<Symbol>();
             let ptr: *mut Symbol =
-                (load_address.into_raw_value() + dynsym_header.sh_offset as usize) as *mut Symbol;
+                (load_address.into_raw_value() + dynsym_header.sh_addr as usize) as *mut Symbol;
             // SAFETY: `ptr` is a valid pointer to a symbol table of `len`.
             Some(unsafe { SymbolTable::from_raw_parts(ptr, len) })
         } else {
