@@ -51,6 +51,41 @@ On Windows, you can run the UserVM in standalone mode directly:
 
 Interactive mode runs a single application, waits for it to exit, and forwards its exit code.
 
+### Shim Configuration
+
+| Key              | Description                                    | Default          |
+| ---------------- | ---------------------------------------------- | ---------------- |
+| `kernel_path`    | Path to `nanvixd.elf` on the host.             | `nanvixd.elf`    |
+| `mkramfs_path`   | Path to `mkramfs.elf` on the host.             | `mkramfs.elf`    |
+| `temp_dir`       | Directory for generated ramfs images.          | System temp dir  |
+| `execution_mode` | Execution mode (`"standalone"` for V1).        | `"standalone"`   |
+| `extra_args`     | Additional arguments passed to `nanvixd`.      | `[]`             |
+
+Example:
+
+```toml
+kernel_path = "/opt/nanvix/bin/nanvixd.elf"
+mkramfs_path = "/opt/nanvix/bin/mkramfs.elf"
+temp_dir = "/tmp"
+execution_mode = "standalone"
+extra_args = ["-console-file", "/dev/null"]
+```
+
+> **Note:** When containerd provides a stdout path (e.g., via `ctr run`), the shim
+> automatically overrides `-console-file` from `extra_args` to redirect guest console
+> output to containerd's stdout pipe.
+
+## Running Containers
+
+### Building a Nanvix OCI image
+
+See [Building Nanvix OCI Images](docker-images.md) for Dockerfile patterns, annotation
+conventions, and step-by-step build instructions.
+
+### Importing and running with `ctr`
+
+Once you have a Docker image, import it into containerd and run it with the Nanvix runtime:
+
 ```bash
 ./bin/nanvixd.elf -- ./bin/hello-rust-nostd.elf
 ```
