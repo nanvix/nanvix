@@ -70,16 +70,16 @@ pub mod mboot;
 //==================================================================================================
 
 #[cfg(any(feature = "qemu-isapc", feature = "qemu-pc"))]
-pub use qemu::{
-    putb,
-    shutdown,
-};
+pub use qemu::putb;
+
+#[cfg(any(feature = "qemu-isapc", feature = "qemu-pc"))]
+pub(in crate::hal::platform) use qemu::do_shutdown;
 
 #[cfg(feature = "qemu-baremetal")]
-pub use baremetal::{
-    putb,
-    shutdown,
-};
+pub use baremetal::putb;
+
+#[cfg(feature = "qemu-baremetal")]
+pub(in crate::hal::platform) use baremetal::do_shutdown;
 
 ///
 /// # Description

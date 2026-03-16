@@ -194,17 +194,17 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// # Description
 ///
-/// Shutdowns the machine.
+/// Shuts down the machine.
 ///
 /// # Parameters
 ///
 /// - `status`: The shutdown status code.
 ///
-/// # Return
+/// # Returns
 ///
 /// This function never returns.
 ///
-pub fn shutdown(status: usize) -> ! {
+pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
     unsafe {
         let status: u16 = (status & 0xffff) as u16;
         let cmd: u16 = ::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD;
