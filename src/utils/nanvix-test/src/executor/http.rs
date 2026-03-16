@@ -44,6 +44,7 @@ use ::std::{
     },
 };
 use ::tokio::time::timeout;
+use ::tokio_util::sync::CancellationToken;
 
 //==================================================================================================
 // Standalone Functions
@@ -74,125 +75,133 @@ pub(crate) async fn test_with_http_executor(
     workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
     extra_nanvixd_args: &[String],
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
-    let l2_enabled: bool = runner_config.l2_enabled;
-    let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
-    let program_path: String = workload.program_path().to_string();
-    let request_payload: Option<Vec<u8>> = workload.input().map(|value| value.as_bytes().to_vec());
-    let response_timeout: Duration =
-        Duration::from_millis(runner_config.stream_collection_timeout_ms);
-    let log_root: &Path = Path::new(runner_config.log_directory.as_str());
-    let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
-    let execution_epoch_ms: u128 = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_millis(),
-        Err(error) => {
-            let reason: String = format!(
-                "failed to compute execution timestamp (program_path={}, error={error})",
-                program_path
-            );
-            error!("test_with_http_executor(): {reason}");
-            return Err(::anyhow::anyhow!(reason));
-        },
-    };
+    tokio::select! {
+        result = async {
+            let l2_enabled: bool = runner_config.l2_enabled;
+            let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
+            let program_path: String = workload.program_path().to_string();
+            let request_payload: Option<Vec<u8>> = workload.input().map(|value| value.as_bytes().to_vec());
+            let response_timeout: Duration =
+                Duration::from_millis(runner_config.stream_collection_timeout_ms);
+            let log_root: &Path = Path::new(runner_config.log_directory.as_str());
+            let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
+            let execution_epoch_ms: u128 = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(duration) => duration.as_millis(),
+                Err(error) => {
+                    let reason: String = format!(
+                        "failed to compute execution timestamp (program_path={}, error={error})",
+                        program_path
+                    );
+                    error!("test_with_http_executor(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+            };
 
-    let RunnerLogPaths {
-        stdout: stdout_file_path,
-        stderr: stderr_file_path,
-    } = log_layout.allocate_runner_logs(None);
+            let RunnerLogPaths {
+                stdout: stdout_file_path,
+                stderr: stderr_file_path,
+            } = log_layout.allocate_runner_logs(None);
 
-    // Resolve an available port, searching for alternatives if the configured port is in use.
-    // Run in a blocking task to avoid stalling the Tokio runtime with synchronous bind calls.
-    let ipv4_addr_clone: String = runner_config.ipv4_addr.clone();
-    let port_num: u16 = runner_config.port_num;
-    let resolved_port: u16 = ::tokio::task::spawn_blocking(move || {
-        resolve_http_port(ipv4_addr_clone.as_str(), port_num)
-    })
-    .await
-    .map_err(|e| {
-        let reason: String = format!("port resolution task failed (error={e})");
-        error!("test_with_http_executor(): {reason}");
-        ::anyhow::anyhow!(reason)
-    })??;
+            // Resolve an available port, searching for alternatives if the configured port is in use.
+            // Run in a blocking task to avoid stalling the Tokio runtime with synchronous bind calls.
+            let ipv4_addr_clone: String = runner_config.ipv4_addr.clone();
+            let port_num: u16 = runner_config.port_num;
+            let resolved_port: u16 = ::tokio::task::spawn_blocking(move || {
+                resolve_http_port(ipv4_addr_clone.as_str(), port_num)
+            })
+            .await
+            .map_err(|e| {
+                let reason: String = format!("port resolution task failed (error={e})");
+                error!("test_with_http_executor(): {reason}");
+                ::anyhow::anyhow!(reason)
+            })??;
 
-    let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
-        (stdout_file_path.as_path(), stderr_file_path.as_path()),
-        (runner_config.ipv4_addr.as_str(), resolved_port),
-        hwloc_file_path.clone(),
-        l2_enabled,
-        runner_config.netns_pool_size,
-        log_layout.test_directory(),
-        extra_nanvixd_args,
-    )?;
-
-    // Run tests within a scoped block to ensure logs are captured before moving them.
-    {
-        let _nanvixd_handle: NanvixdHttp = NanvixdHttp::spawn(runner_config, &nanvixd_args).await?;
-
-        for iteration in 0..iterations {
-            let app_name: String = format!("{execution_epoch_ms}-{iteration}");
-            let uservm_args: UserVmArgs = UserVmArgs::new(
-                DEFAULT_TENANT_ID,
-                app_name.as_str(),
-                program_path.as_str(),
-                workload.program_args(),
+            let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
+                (stdout_file_path.as_path(), stderr_file_path.as_path()),
+                (runner_config.ipv4_addr.as_str(), resolved_port),
+                hwloc_file_path.clone(),
                 l2_enabled,
+                runner_config.netns_pool_size,
+                log_layout.test_directory(),
+                extra_nanvixd_args,
             )?;
 
-            let mut user_vm: UserVm = UserVm::spawn(runner_config, &uservm_args).await?;
+            // Run tests within a scoped block to ensure logs are captured before moving them.
+            {
+                let _nanvixd_handle: NanvixdHttp = NanvixdHttp::spawn(runner_config, &nanvixd_args).await?;
 
-            if let Some(payload) = request_payload.as_ref() {
-                send_payload(&mut user_vm, payload.as_slice()).await?;
-            }
+                for iteration in 0..iterations {
+                    let app_name: String = format!("{execution_epoch_ms}-{iteration}");
+                    let uservm_args: UserVmArgs = UserVmArgs::new(
+                        DEFAULT_TENANT_ID,
+                        app_name.as_str(),
+                        program_path.as_str(),
+                        workload.program_args(),
+                        l2_enabled,
+                    )?;
 
-            close_gateway_input(&mut user_vm).await?;
+                    let mut user_vm: UserVm = UserVm::spawn(runner_config, &uservm_args).await?;
 
-            let expected_pattern: Option<&[u8]> = workload.expected_output().and_then(|value| {
-                if value.is_empty() {
-                    None
-                } else {
-                    Some(value.as_bytes())
+                    if let Some(payload) = request_payload.as_ref() {
+                        send_payload(&mut user_vm, payload.as_slice()).await?;
+                    }
+
+                    close_gateway_input(&mut user_vm).await?;
+
+                    let expected_pattern: Option<&[u8]> = workload.expected_output().and_then(|value| {
+                        if value.is_empty() {
+                            None
+                        } else {
+                            Some(value.as_bytes())
+                        }
+                    });
+
+                    let payload: Vec<u8> = receive_payload(
+                            &mut user_vm,
+                            expected_pattern,
+                            response_timeout,
+                            workload.expect_empty_output(),
+                        ).await?;
+                    if workload.expect_empty_output() && !payload.is_empty() {
+                        let reason: String = format!(
+                            "uservm produced unexpected stdout (bytes={:?}, len={})",
+                            payload,
+                            payload.len()
+                        );
+                        error!("test_with_http_executor(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    }
+                    log_layout.persist_program_output(iteration, payload.as_slice())?;
+
+                    // Explicitly terminate the User VM to get the exit code.
+                    let exit_code: i32 = user_vm.terminate().await?;
+
+                    // Validate exit code.
+                    if exit_code != workload.expected_exit_code() {
+                        let expected: i32 = workload.expected_exit_code();
+                        let reason: String = format!(
+                            "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                            expected, exit_code, program_path, iteration
+                        );
+                        error!("test_with_http_executor(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    }
                 }
-            });
-
-            let payload: Vec<u8> = receive_payload(
-                &mut user_vm,
-                expected_pattern,
-                response_timeout,
-                workload.expect_empty_output(),
-            )
-            .await?;
-            if workload.expect_empty_output() && !payload.is_empty() {
-                let reason: String = format!(
-                    "uservm produced unexpected stdout (bytes={:?}, len={})",
-                    payload,
-                    payload.len()
-                );
-                error!("test_with_http_executor(): {reason}");
-                return Err(::anyhow::anyhow!(reason));
             }
-            log_layout.persist_program_output(iteration, payload.as_slice())?;
 
-            // Explicitly terminate the User VM to get the exit code.
-            let exit_code: i32 = user_vm.terminate().await?;
+            let last_iteration: usize = iterations.saturating_sub(1);
+            guest_log_tracker.move_new_logs(log_layout.test_directory())?;
+            log_layout.normalize_component_logs(last_iteration)?;
 
-            // Validate exit code.
-            if exit_code != workload.expected_exit_code() {
-                let expected: i32 = workload.expected_exit_code();
-                let reason: String = format!(
-                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
-                    expected, exit_code, program_path, iteration
-                );
-                error!("test_with_http_executor(): {reason}");
-                return Err(::anyhow::anyhow!(reason));
-            }
+            Ok(())
+        } => result,
+        _ = cancellation_token.cancelled() => {
+            error!("test_with_http_executor(): cancellation requested");
+            Err(::anyhow::anyhow!("cancelled"))
         }
     }
-
-    let last_iteration: usize = iterations.saturating_sub(1);
-    guest_log_tracker.move_new_logs(log_layout.test_directory())?;
-    log_layout.normalize_component_logs(last_iteration)?;
-
-    Ok(())
 }
 
 ///
