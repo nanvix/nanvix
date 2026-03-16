@@ -125,8 +125,8 @@ impl Slab {
         // `num_index_blocks` blocks contain. The right-hand side of this inequality
         // is the number of blocks that aren't index blocks. So, a bitmap occupying
         // `num_index_blocks` blocks can address all the blocks outside of that bitmap.
-        let u8_bits: usize = u8::BITS as usize;
-        let divisor: usize = block_size * u8_bits + 1;
+        const U8_BITS: usize = u8::BITS as usize;
+        let divisor: usize = block_size * U8_BITS + 1;
         let num_index_blocks: usize = (total_num_blocks / divisor)
             + if total_num_blocks.is_multiple_of(divisor) {
                 0
@@ -142,8 +142,8 @@ impl Slab {
 
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
         // info!("number of data blocks: {:?}", num_data_blocks);
-        let index_len = (num_data_blocks / u8_bits)
-            + if num_data_blocks.is_multiple_of(u8_bits) {
+        let index_len = (num_data_blocks / U8_BITS)
+            + if num_data_blocks.is_multiple_of(U8_BITS) {
                 0
             } else {
                 1
@@ -164,7 +164,7 @@ impl Slab {
         // them "in use" and thereby prevent them from being
         // allocated. Note that there are at most 7 such bits we need
         // to set.
-        for i in num_data_blocks..(index_len * u8_bits) {
+        for i in num_data_blocks..(index_len * U8_BITS) {
             index.set(i)?;
         }
 
