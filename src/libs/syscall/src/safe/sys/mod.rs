@@ -99,7 +99,7 @@ impl System {
             SysConfigName::NumProcessorsAvailable => Ok(NUM_PROCESSORS.try_into()?),
             _ => {
                 let reason: &str = "unsupported system configuration name";
-                ::syslog::error!("config(): {reason}");
+                ::syslog::trace!("config(): {reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
         }

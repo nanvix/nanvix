@@ -54,7 +54,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
     // Check if `path` is null.
     if path.is_null() {
-        ::syslog::error!(
+        ::syslog::trace!(
             "open(): null path pointer (path={path:?}, flags={flags:?}, mode={mode:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "open(): invalid pathname (path={path:?}, flags={flags:?}, mode={mode:?})"
             );
             *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -
     match fcntl::open(pathname, flags, mode) {
         Ok(fd) => fd,
         Err(error) => {
-            ::syslog::error!("open(): {error:?} (path={path:?}, flags={flags:?}, mode={mode:?})",);
+            ::syslog::trace!("open(): {error:?} (path={path:?}, flags={flags:?}, mode={mode:?})");
             *__errno_location() = error.code.get();
             -1
         },

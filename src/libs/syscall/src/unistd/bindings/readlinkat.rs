@@ -68,7 +68,7 @@ pub unsafe extern "C" fn readlinkat(
     let buf: &mut [u8] = {
         // Check if `bufsize` is invalid.
         let bufsize: usize = if (bufsize == 0) || (bufsize as usize > PATH_MAX) {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "readlinkat(): invalid buffer size (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
                  bufsize={bufsize:?})"
             );
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn readlinkat(
 
         // Check if `buf` is invalid.
         if buf.is_null() {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "readlinkat(): invalid buffer (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
                  bufsize={bufsize:?})"
             );
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn readlinkat(
     let path: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_error) => {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "readlinkat(): invalid path (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
                  bufsize={bufsize:?})"
             );
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn readlinkat(
     match unistd::readlinkat(dirfd, path, buf) {
         Ok(bytes_read) => bytes_read,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "readlinkat(): {error:?}, (dirfd={dirfd:?}, path={path:?}, buf={buf:?}, \
                  bufsize={bufsize:?})"
             );
