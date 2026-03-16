@@ -58,16 +58,16 @@ fn test_double_deallocate() {
 
 #[test]
 fn test_slab_creation_minimal_valid_blocks() {
-    // Use a minimal valid configuration: 8 blocks of block_size=1 bytes.
+    // Use a minimal valid configuration: 2 blocks of block_size=1 bytes.
     // This exercises the smallest valid slab layout and ensures the
-    // guard against `num_index_blocks > total_num_blocks` does not
+    // guard against `num_index_blocks >= total_num_blocks` does not
     // reject a valid configuration.
     let block_size: usize = 1;
-    let total_num_blocks: usize = 8;
+    let total_num_blocks: usize = 2;
     let len: usize = total_num_blocks * block_size;
     let mut memory = vec![0u8; len];
     let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), len, block_size) };
-    // With block_size=1 and len=8: total=8, index_len=1, num_index=1, data=7 → should succeed.
+    // With block_size=1 and len=2: total_num_blocks=2, num_index_blocks=1 → should succeed.
     assert!(slab.is_ok());
 }
 
