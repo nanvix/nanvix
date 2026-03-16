@@ -1,10 +1,13 @@
 #!/bin/bash
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 # Build, install, and configure the Nanvix containerd shim.
 #
 # Prerequisites:
 #   - Rust toolchain (cargo) in PATH
 #   - Docker/containerd installed (see install-containerd.sh)
-#   - Nanvix built at ~/nanvix/nanvix (see setup-nanvix.sh)
+#   - Nanvix built at ~/nanvix (see setup-nanvix.sh)
 #
 # Usage: ./scripts/install-shim.sh
 
@@ -14,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Default Nanvix binary locations — override with env vars if needed
-NANVIX_DIR="${NANVIX_DIR:-$HOME/nanvix/nanvix}"
+NANVIX_DIR="${NANVIX_DIR:-$HOME/nanvix}"
 NANVIXD_PATH="${NANVIXD_PATH:-$NANVIX_DIR/bin/nanvixd.elf}"
 MKRAMFS_PATH="${MKRAMFS_PATH:-$NANVIX_DIR/bin/mkramfs.elf}"
 

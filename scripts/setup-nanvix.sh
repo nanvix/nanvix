@@ -1,8 +1,15 @@
 #!/bin/bash
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
 set -e
 
+NANVIX_DIR="${NANVIX_DIR:-$HOME/nanvix}"
+
+echo "Using NANVIX_DIR=${NANVIX_DIR}"
+
 echo "=== Step 1: Install system dependencies ==="
-cd ~/nanvix/nanvix
+cd "${NANVIX_DIR}"
 sudo -E ./scripts/setup/ubuntu.sh
 
 echo "=== Step 2: Install sccache ==="
@@ -18,22 +25,22 @@ echo "sccache installed: $(sccache --version)"
 export RUSTC_WRAPPER=sccache
 
 echo "=== Step 3: Build cross-compiler toolchain ==="
-cd ~/nanvix/nanvix
+cd "${NANVIX_DIR}"
 ./z setup --toolchain-dir $HOME/toolchain
 ln -T -sf $HOME/toolchain toolchain
 
 echo "=== Step 4: Build Nanvix ==="
-cd ~/nanvix/nanvix
+cd "${NANVIX_DIR}"
 ./z build -- all
 
 echo "=== Step 5: Quick test ==="
-cd ~/nanvix/nanvix
+cd "${NANVIX_DIR}"
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
 
 echo ""
 echo "=== Done! Nanvix is built and tested ==="
-echo "Binaries are in ~/nanvix/nanvix/bin/"
+echo "Binaries are in ${NANVIX_DIR}/bin/"
 echo ""
 echo "To re-run the test:"
-echo "  cd ~/nanvix/nanvix"
+echo "  cd ${NANVIX_DIR}"
 echo "  ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf"
