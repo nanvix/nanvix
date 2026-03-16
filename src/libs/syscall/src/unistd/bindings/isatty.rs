@@ -62,12 +62,12 @@ pub unsafe extern "C" fn isatty(fd: c_int) -> c_int {
     match unistd::isatty(fd) {
         Ok(true) => 1,
         Ok(false) => {
-            ::syslog::warn!("isatty(): file descriptor is not a terminal (fd={fd:?})");
+            ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={fd:?})");
             *__errno_location() = ErrorCode::NotTerminal.get();
             0
         },
         Err(error) => {
-            ::syslog::error!("isatty(): {error:?}, (fd={fd:?})");
+            ::syslog::trace!("isatty(): {error:?}, (fd={fd:?})");
             *__errno_location() = error.code.get();
             0
         },

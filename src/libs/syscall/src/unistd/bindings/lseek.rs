@@ -49,7 +49,7 @@ pub unsafe extern "C" fn lseek(fd: c_int, offset: off_t, whence: c_int) -> off_t
     match unistd::lseek(fd, offset, whence) {
         Ok(offset) => offset,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::trace!(
                 "lseek(): {error:?} (fd={fd:?}, offset={offset:?}, whence={whence:?})"
             );
             *__errno_location() = error.code.get();
