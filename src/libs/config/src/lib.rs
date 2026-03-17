@@ -142,6 +142,18 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Minimum number of stack bytes mapped at process creation.
+    /// Additional pages up to [`USER_STACK_SIZE`] are demand-paged on stack growth faults.
+    ///
+    /// # Notes:
+    ///
+    /// - This size should be a multiple of a page size.
+    ///
+    pub const USER_STACK_MIN_SIZE: usize = 32 * crate::constants::KILOBYTE;
+
+    ///
+    /// # Description
+    ///
     /// Number of entries in the user stack. This should be a multiple of 8.
     ///
     pub const NUM_USER_STACK_ENTRIES: usize = 8;

@@ -14,6 +14,7 @@ use crate::{
         },
         Hal,
     },
+    mm::VirtMemoryManager,
     pm::{
         sync::condvar::Condvar,
         ExceptionGuard,
@@ -960,6 +961,24 @@ fn do_exception_handler(
         error!("{:?}", info);
         error!("{:?}", ctx);
         panic!("the kernel triggered an exception");
+    }
+
+    // Handle page faults: demand-page user stack pages.
+    if info.num() == ::arch::cpu::excp::Exception::PageFault as u32 {
+        // SAFETY: This is the only thread running, thus access to the managers is synchronized.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
+        if pm
+            .handle_stack_page_fault(
+                mm,
+                info.addr() as usize,
+                ::arch::cpu::excp::ErrorCode::new(info.code()),
+            )
+            .map_err(SleepError::Generic)?
+        {
+            return Ok(());
+        }
     }
 
     // Handle FPU Exceptions.
