@@ -7,14 +7,14 @@ use ::sys::error::ErrorCode;
 #[test]
 fn test_slab_creation() {
     let mut memory = vec![0u8; 1024];
-    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 4) };
+    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 4) };
     assert!(slab.is_ok());
 }
 
 #[test]
 fn test_slab_creation_invalid_length() {
     let mut memory = vec![0u8; 0];
-    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 4) };
+    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 4) };
     assert!(slab.is_err());
     assert_eq!(slab.unwrap_err().code, ErrorCode::InvalidArgument);
 }
@@ -22,7 +22,7 @@ fn test_slab_creation_invalid_length() {
 #[test]
 fn test_slab_creation_invalid_block_size() {
     let mut memory = vec![0u8; 1024];
-    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 0) };
+    let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 0) };
     assert!(slab.is_err());
     assert_eq!(slab.unwrap_err().code, ErrorCode::InvalidArgument);
 }
@@ -30,8 +30,7 @@ fn test_slab_creation_invalid_block_size() {
 #[test]
 fn test_allocate_deallocate() {
     let mut memory = vec![0u8; 1024];
-    let mut slab =
-        unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 4) }.unwrap();
+    let mut slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 4) }.unwrap();
 
     let block = slab.allocate();
     assert!(block.is_ok());
@@ -43,8 +42,7 @@ fn test_allocate_deallocate() {
 #[test]
 fn test_double_deallocate() {
     let mut memory = vec![0u8; 1024];
-    let mut slab =
-        unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 4) }.unwrap();
+    let mut slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 4) }.unwrap();
 
     let block = slab.allocate().unwrap();
     unsafe {
@@ -82,7 +80,7 @@ fn test_slab_creation_minimal_valid_blocks() {
     assert!(memory.as_ptr() <= block1);
     assert!(unsafe { block1.add(block_size) <= memory.as_mut_ptr().add(len) });
     let block2 = slab.allocate();
-    assert!(!block2.is_ok());
+    assert!(block2.is_err());
 }
 
 #[test]
@@ -105,8 +103,7 @@ fn test_slab_creation_non_power_of_2() {
 #[test]
 fn test_allocate_out_of_bounds() {
     let mut memory = vec![0u8; 1024];
-    let mut slab =
-        unsafe { Slab::from_raw_parts(memory.as_mut_ptr() as *mut u8, memory.len(), 4) }.unwrap();
+    let mut slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), memory.len(), 4) }.unwrap();
 
     let invalid_ptr = unsafe { memory.as_mut_ptr().add(2048) };
     let dealloc_result = unsafe { slab.deallocate(invalid_ptr as *const u8) };
