@@ -673,7 +673,7 @@ impl Bitmap {
     )]
     fn index(&self, index: usize) -> Result<(usize, usize), Error> {
         // Check if the index is out of bounds.
-        if index >= self.bits.len() * u8::BITS as usize {
+        if index >= self.number_of_bits {
             let reason: &str = "index out of bounds";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
