@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 use super::{
-    CLEANUP_L2_SLEEP_DURATION,
-    CLEANUP_SLEEP_DURATION,
+    super::{
+        CLEANUP_L2_SLEEP_DURATION,
+        CLEANUP_SLEEP_DURATION,
+    },
     DEFAULT_APP_NAME,
     DEFAULT_TENANT_ID,
 };
