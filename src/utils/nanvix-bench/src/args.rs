@@ -52,7 +52,11 @@ impl Args {
   warm-start             Measure round-trip latency from client's perspective.
   warm-start-vmm         Measure raw round-trip latency inside the user VM.";
 
-        #[cfg(all(not(feature = "l2"), not(feature = "multi-process")))]
+        #[cfg(all(
+            not(feature = "l2"),
+            not(feature = "multi-process"),
+            feature = "single-process"
+        ))]
         let benchmarks = "\
   boot-time              Measure raw user VM boot latency.
   cold-start             Measure start-up latency from client's perspective.
@@ -61,6 +65,16 @@ impl Args {
   round-trip-latency     Measure latency (warm-start) as we increase the payload size.
   snapshot-restore       Measure snapshot restore latency vs boot-time.
   warm-start             Measure round-trip latency from client's perspective.
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.";
+
+        #[cfg(all(
+            not(feature = "l2"),
+            not(feature = "multi-process"),
+            not(feature = "single-process")
+        ))]
+        let benchmarks = "\
+  boot-time              Measure raw user VM boot latency.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
   warm-start-vmm         Measure raw round-trip latency inside the user VM.";
 
         #[cfg(feature = "l2")]

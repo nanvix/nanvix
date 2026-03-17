@@ -6,13 +6,19 @@
 //==================================================================================================
 
 mod boot_time;
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 mod cold_start;
 #[cfg(feature = "multi-process")]
 mod concurrent;
-#[cfg(feature = "timestamp-messages")]
+#[cfg(all(
+    feature = "timestamp-messages",
+    any(feature = "multi-process", feature = "single-process")
+))]
 mod echo_breakdown;
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 mod round_trip_latency;
 mod snapshot_restore;
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 mod warm_start;
 mod warm_start_vmm;
 

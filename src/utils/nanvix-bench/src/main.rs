@@ -23,14 +23,18 @@ mod benchmarks;
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "timestamp-messages"))]
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
+use crate::benchmark::LinuxdDeployment;
+#[cfg(all(
+    not(feature = "timestamp-messages"),
+    any(feature = "multi-process", feature = "single-process")
+))]
 use crate::benchmark::UserVmDeployment;
 use crate::{
     args::Args,
     benchmark::{
         Benchmark,
         BenchmarkFlavour,
-        LinuxdDeployment,
     },
 };
 use ::anyhow::Result;
@@ -148,6 +152,7 @@ async fn main() -> Result<()> {
                 benchmark.run_boot_time().await
             }
         },
+        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         BenchmarkFlavour::ColdStart => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -179,6 +184,7 @@ async fn main() -> Result<()> {
                     .await
             }
         },
+        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         BenchmarkFlavour::ColdStartUvm => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -194,6 +200,7 @@ async fn main() -> Result<()> {
                     .await
             }
         },
+        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         BenchmarkFlavour::EchoBreakdown => {
             #[cfg(not(feature = "timestamp-messages"))]
             {
@@ -225,6 +232,7 @@ async fn main() -> Result<()> {
                 benchmark.run_echo_breakdown(&LinuxdDeployment::L2Vm).await
             }
         },
+        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         BenchmarkFlavour::RoundTripLatency => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -280,6 +288,7 @@ async fn main() -> Result<()> {
                 }
             }
         },
+        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         BenchmarkFlavour::WarmStart => {
             #[cfg(feature = "timestamp-messages")]
             {
