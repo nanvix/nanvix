@@ -15,8 +15,10 @@ name = "test-kernel"
 
 [dependencies]
 arch = { workspace = true }
+config = { workspace = true }
 libc_string = { workspace = true }
 nvx = { workspace = true }
+static_assert = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 syslog = { workspace = true, default-features = true }
 
