@@ -1,0 +1,104 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+use super::{
+    CLEANUP_SLEEP_DURATION,
+    DEFAULT_PAYLOAD_SIZE,
+    WARMUP_SLEEP_DURATION,
+};
+use crate::benchmark::{
+    Benchmark,
+    LinuxdDeployment,
+};
+use ::anyhow::Result;
+use ::indicatif::{
+    ProgressBar,
+    ProgressStyle,
+};
+use ::log::error;
+use ::nanvix::syscomm::{
+    ReadExact,
+    WriteAll,
+};
+use ::std::time::{
+    Duration,
+    Instant,
+};
+use ::tokio::time::sleep;
+
+impl Benchmark {
+    /// This function runs the warm start benchmark, where we measure the time to send a request
+    /// into the VM once it has started executing.
+    pub async fn run_warm_start(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
+        // Display a progress bar
+        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                .expect("error creating progress bar")
+                .progress_chars("#>-"),
+        );
+        pb.set_message("Benchmark progress:");
+
+        // Payload we are sending over the wire
+        let payload = [7u8; DEFAULT_PAYLOAD_SIZE];
+
+        let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
+
+        // Start nanvixd.
+        self.setup(linuxd_deployment);
+
+        // Start User VM.
+        let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
+        let user_vm_id = {
+            let (user_vm_id, mut gateway_stream) = self
+                .start(new_msg, new_msg_headers, linuxd_deployment)
+                .await?;
+
+            // Warmup: send one untimed echo to trigger lazy initialization (worker thread
+            // creation, TCP path warm-up, etc.) so that timed iterations reflect steady-state
+            // latency.
+            {
+                let mut warmup_response = [0u8; DEFAULT_PAYLOAD_SIZE];
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut warmup_response).await?;
+                sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
+            }
+
+            for _ in 0..self.iterations {
+                let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
+
+                let start = Instant::now();
+                gateway_stream.write_all(&payload).await?;
+                gateway_stream.read_exact(&mut response_payload).await?;
+                latencies.push(start.elapsed().as_micros());
+
+                // Sanity-check the message to make sure is the same we sent.
+                if response_payload != payload {
+                    error!("received payload does not match sent payload!");
+                    error!(" - sent: {payload:?}");
+                    error!(" - got: {response_payload:?}");
+                }
+
+                pb.inc(1);
+                sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
+            }
+            user_vm_id
+        };
+
+        // Kill the user VM.
+        self.kill(user_vm_id).await?;
+
+        // Stop nanvixd.
+        self.cleanup();
+
+        pb.finish();
+        println!("First req: {} us", latencies[0]);
+        latencies.sort();
+        println!("p50: {} us", latencies[(self.iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
+
+        Ok(())
+    }
+}
