@@ -86,6 +86,23 @@ fn test_slab_creation_minimal_valid_blocks() {
 }
 
 #[test]
+fn test_slab_creation_non_power_of_2() {
+    let block_size: usize = 10;
+    let total_num_blocks: usize = 15;
+    let len: usize = total_num_blocks * block_size;
+    let mut memory = vec![0u8; len + block_size];
+    let memory_offset_mod_block_size: usize = (memory.as_mut_ptr() as usize) % block_size;
+    let padding_needed = if memory_offset_mod_block_size != 0 {
+        block_size - memory_offset_mod_block_size
+    } else {
+        0
+    };
+    let slab =
+        unsafe { Slab::from_raw_parts(memory.as_mut_ptr().add(padding_needed), len, block_size) };
+    assert!(slab.is_ok());
+}
+
+#[test]
 fn test_allocate_out_of_bounds() {
     let mut memory = vec![0u8; 1024];
     let mut slab =
