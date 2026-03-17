@@ -184,6 +184,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     );
     constants.push_str(&format!("pub const DEBUG_BUFFER_SIZE: usize = {val};\n"));
 
+    let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "klog_buffer_size"),
+        "klog_buffer_size",
+    );
+    constants.push_str(&format!("pub const KLOG_BUFFER_SIZE: usize = {val};\n"));
+
     constants.push_str("}\n");
 
     //==============================================================================================
