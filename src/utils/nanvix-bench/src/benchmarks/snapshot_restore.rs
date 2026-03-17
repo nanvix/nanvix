@@ -218,9 +218,9 @@ impl Benchmark {
 
         pb.finish();
         latencies.sort();
-        println!("p50: {} us", latencies[(self.iterations * 50) / 100]);
-        println!("p95: {} us", latencies[(self.iterations * 95) / 100]);
-        println!("p99: {} us", latencies[(self.iterations * 99) / 100]);
+        println!("p50: {} us", latencies[(self.iterations as f32 * 0.5) as usize]);
+        println!("p95: {} us", latencies[(self.iterations as f32 * 0.95) as usize]);
+        println!("p99: {} us", latencies[(self.iterations as f32 * 0.99) as usize]);
 
         Ok(())
     }
