@@ -72,7 +72,7 @@ use ::alloc::{
 };
 use ::arch::mem::PAGE_SIZE;
 use ::config::memory_layout::USER_STACK_TOP_RAW;
-
+use ::no_fail::no_fail;
 use ::sys::{
     error::{
         Error,
@@ -287,40 +287,39 @@ impl ProcessManager {
         // Reserve the next thread identifier early, before any resource allocation.
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
 
-        let ready_thread: ReadyThread = {
-            let enable_interrupts: bool = self.interrupt_capable;
+        let enable_interrupts: bool = self.interrupt_capable;
 
-            // Create a kernel context.
-            let (kernel_stack, context): (KernelStack, ContextInformation) =
-                Self::forge_user_context(
-                    mm,
-                    self.get_running_mut().state_mut().vmem_mut(),
-                    thread_create_args,
-                    enable_interrupts,
-                )?;
+        // Create a kernel context.
+        let (kernel_stack, context): (KernelStack, ContextInformation) = Self::forge_user_context(
+            mm,
+            self.get_running_mut().state_mut().vmem_mut(),
+            thread_create_args,
+            enable_interrupts,
+        )?;
 
-            //==============================================================
-            // NOTE: if we fail beyond this point we need to page mappings.
-            //==============================================================
+        //==============================================================
+        // NOTE: if we fail beyond this point we need to page mappings.
+        //==============================================================
 
+        Ok(no_fail!(ThreadIdentifier, {
             // Create a new thread.
-            self.tm.create_thread(
+            let ready_thread: ReadyThread = self.tm.create_thread(
                 tid,
                 Some(kernel_stack),
                 None,
                 thread_create_args.user_tda,
                 context,
-            )
-        };
+            );
 
-        // Commit the next thread identifier now that all fallible operations have succeeded.
-        self.tm.commit_next_tid(next_tid);
+            // Commit the next thread identifier now that all fallible operations have succeeded.
+            self.tm.commit_next_tid(next_tid);
 
-        // Add the new thread to the running process.
-        let tid: ThreadIdentifier = ready_thread.id();
-        self.get_running_mut().add_thread(ready_thread);
+            // Add the new thread to the running process.
+            let tid: ThreadIdentifier = ready_thread.id();
+            self.get_running_mut().add_thread(ready_thread);
 
-        Ok(tid)
+            Ok(tid)
+        }))
     }
 
     ///
@@ -553,23 +552,25 @@ impl ProcessManager {
         // NOTE: if we fail beyond this point we need to page mappings.
         //==============================================================
 
-        let thread: ReadyThread = self.tm.create_thread(
-            tid,
-            Some(kernel_stack),
-            Some(user_stack),
-            args.user_tda,
-            context,
-        );
+        Ok(no_fail!(ProcessIdentifier, {
+            let thread: ReadyThread = self.tm.create_thread(
+                tid,
+                Some(kernel_stack),
+                Some(user_stack),
+                args.user_tda,
+                context,
+            );
 
-        // Commit the next process and thread identifiers now that all fallible operations have succeeded.
-        self.next_pid = next_pid;
-        self.tm.commit_next_tid(next_tid);
-        let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
+            // Commit the next process and thread identifiers now that all fallible operations have succeeded.
+            self.next_pid = next_pid;
+            self.tm.commit_next_tid(next_tid);
+            let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
-        // Add process to the queue of ready processes.
-        self.ready.push_back(process);
+            // Add process to the queue of ready processes.
+            self.ready.push_back(process);
 
-        Ok(pid)
+            Ok(pid)
+        }))
     }
 
     ///
