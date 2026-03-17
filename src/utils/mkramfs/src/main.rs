@@ -29,7 +29,10 @@ const MIN_IMAGE_SIZE: u64 = 1024 * 1024;
 
 /// Extra headroom added to the computed image size to leave free space for
 /// guest-created temporary files at runtime.
-const HEADROOM_FACTOR: f64 = 2.0;
+/// Reduced from 2.0 to 1.3: standalone mode is mostly read-only, so minimal
+/// headroom suffices.  Smaller images reduce host memory pressure and improve
+/// TLB utilization.
+const HEADROOM_FACTOR: f64 = 1.3;
 
 //==================================================================================================
 // Main
@@ -123,6 +126,10 @@ fn generate_image(output: &Path, source_dir: &Path, size: u64) {
 /// Recursively copies the contents of `current` into the FAT directory `fat_dir`.
 ///
 /// `base` is the original source root, used to compute relative paths for error messages.
+///
+/// Files are sorted by size in descending order before writing to maximize
+/// contiguous cluster allocation in FAT.  This improves the hit rate of
+/// the VFS `DirectReadHandle` zero-copy path.
 fn copy_dir_recursive<IO, TP, OCC>(fat_dir: &fatfs::Dir<IO, TP, OCC>, current: &Path, base: &Path)
 where
     IO: fatfs::ReadWriteSeek,
@@ -134,6 +141,10 @@ where
         process::exit(1);
     });
 
+    // Collect and partition entries into directories and files.
+    let mut dirs: Vec<(PathBuf, String, PathBuf)> = Vec::new();
+    let mut files: Vec<(PathBuf, String, PathBuf, u64)> = Vec::new();
+
     for entry in entries {
         let entry = entry.unwrap_or_else(|e| {
             eprintln!("mkramfs: failed to read entry in {}: {e}", current.display());
@@ -144,26 +155,41 @@ where
         let rel: PathBuf = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
 
         if path.is_dir() {
-            fat_dir.create_dir(&name).unwrap_or_else(|_| {
-                panic!("mkramfs: failed to create directory {}", rel.display())
-            });
-            let sub_dir = fat_dir
-                .open_dir(&name)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to open directory {}", rel.display()));
-            copy_dir_recursive(&sub_dir, &path, base);
+            dirs.push((path, name, rel));
         } else if path.is_file() {
-            let data: Vec<u8> = fs::read(&path).unwrap_or_else(|e| {
-                eprintln!("mkramfs: failed to read {}: {e}", rel.display());
-                process::exit(1);
-            });
-            let mut fat_file = fat_dir
-                .create_file(&name)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to create {}", rel.display()));
-            fatfs::Write::write_all(&mut fat_file, &data)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to write {}", rel.display()));
-            fatfs::Write::flush(&mut fat_file)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to flush {}", rel.display()));
+            let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            files.push((path, name, rel, size));
         }
+    }
+
+    // Sort files largest-first so they get contiguous clusters in FAT.
+    files.sort_by(|a, b| b.3.cmp(&a.3));
+
+    // Write files first (before subdirectories) to pack them at the
+    // beginning of the FAT cluster chain.
+    for (path, name, rel, _size) in &files {
+        let data: Vec<u8> = fs::read(path).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to read {}: {e}", rel.display());
+            process::exit(1);
+        });
+        let mut fat_file = fat_dir
+            .create_file(name)
+            .unwrap_or_else(|_| panic!("mkramfs: failed to create {}", rel.display()));
+        fatfs::Write::write_all(&mut fat_file, &data)
+            .unwrap_or_else(|_| panic!("mkramfs: failed to write {}", rel.display()));
+        fatfs::Write::flush(&mut fat_file)
+            .unwrap_or_else(|_| panic!("mkramfs: failed to flush {}", rel.display()));
+    }
+
+    // Then recurse into subdirectories.
+    for (path, name, rel) in &dirs {
+        fat_dir.create_dir(name).unwrap_or_else(|_| {
+            panic!("mkramfs: failed to create directory {}", rel.display())
+        });
+        let sub_dir = fat_dir
+            .open_dir(name)
+            .unwrap_or_else(|_| panic!("mkramfs: failed to open directory {}", rel.display()));
+        copy_dir_recursive(&sub_dir, path, base);
     }
 }
 

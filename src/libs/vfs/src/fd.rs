@@ -579,6 +579,11 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
+    // Fast path: check negative cache to avoid FAT32 traversal.
+    if crate::cache::is_negative(path) {
+        return Err(Fat32Error::NotFound);
+    }
+
     let info: VfsStat = fat32_backend::stat(path)?;
 
     // Zero-initialize the stat buffer.

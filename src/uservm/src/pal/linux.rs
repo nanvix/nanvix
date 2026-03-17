@@ -266,6 +266,47 @@ impl AnonymousMapping {
     ///
     /// # Description
     ///
+    /// Issues an `madvise` hint for a sub-region of the mapping.
+    ///
+    /// # Parameters
+    ///
+    /// * `start` - Byte offset from the start of the mapping (must be page-aligned).
+    /// * `len` - Size of the region in bytes.
+    /// * `advice` - madvise advice constant (e.g., `MADV_SEQUENTIAL`, `MADV_WILLNEED`).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn madvise_at(&self, start: usize, len: usize, advice: i32) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+
+        if start.checked_add(len).is_none_or(|end| end > self.size) {
+            anyhow::bail!(
+                "madvise region [{start:#x}, {:#x}) exceeds mapping bounds (size={:#x})",
+                start.saturating_add(len),
+                self.size
+            );
+        }
+
+        // SAFETY: `start` has been bounds-checked, so `self.ptr + start` stays within the mapping.
+        let addr: *mut ::libc::c_void = unsafe { self.ptr.cast::<u8>().add(start).cast() };
+        let ret: i32 = unsafe { ::libc::madvise(addr, len, advice) };
+        if ret != 0 {
+            anyhow::bail!(
+                "madvise failed at {addr:?} (error={})",
+                ::std::io::Error::last_os_error()
+            );
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Replaces the entire mapping with a fresh anonymous read-write mapping using `MAP_FIXED`.
     /// This is useful for restoring a neutral memory region after a failed file-backed remap.
     ///

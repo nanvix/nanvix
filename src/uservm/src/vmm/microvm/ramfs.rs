@@ -318,6 +318,18 @@ impl RamFs {
                 anyhow::anyhow!(reason)
             })?;
 
+        // Advise the host kernel to prefault ramfs pages.  MADV_SEQUENTIAL
+        // enables aggressive readahead, and MADV_WILLNEED triggers immediate
+        // prefaulting.  This avoids page-fault stalls during guest execution.
+        vmem.madvise_at(base, length, ::libc::MADV_SEQUENTIAL)
+            .unwrap_or_else(|e| {
+                trace!("RamFs::map_file_into_guest(): madvise MADV_SEQUENTIAL failed: {e}");
+            });
+        vmem.madvise_at(base, length, ::libc::MADV_WILLNEED)
+            .unwrap_or_else(|e| {
+                trace!("RamFs::map_file_into_guest(): madvise MADV_WILLNEED failed: {e}");
+            });
+
         Ok(())
     }
 }

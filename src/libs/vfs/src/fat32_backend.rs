@@ -40,6 +40,14 @@ use ::sysapi::{
 ///
 /// - `path`: Absolute or relative path to check.
 pub fn exists(path: &str) -> bool {
+    // Fast path: check negative cache.
+    if crate::cache::is_negative(path) {
+        return false;
+    }
+    // Fast path: check stat cache.
+    if crate::cache::get_stat(path).is_some() {
+        return true;
+    }
     if crate::stat(path).is_ok() {
         return true;
     }
@@ -111,7 +119,15 @@ pub fn open(path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32Error> {
     let creation_flags: c_int =
         file_creation_flags::O_CREAT | file_creation_flags::O_TRUNC | file_creation_flags::O_EXCL;
     if is_read_only && (flags & creation_flags) == 0 {
-        if let Some((data_ptr, size)) = crate::file_raw_region(path) {
+        // Check raw region cache first, then fall back to VFS lookup.
+        let raw_region = if let Some(cached) = crate::cache::get_raw_region(path) {
+            cached
+        } else {
+            let region = crate::file_raw_region(path);
+            crate::cache::put_raw_region(path, region);
+            region
+        };
+        if let Some((data_ptr, size)) = raw_region {
             return Ok(VfsFileHandle::DirectRead(DirectReadHandle::new(data_ptr, size)));
         }
     }

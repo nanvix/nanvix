@@ -392,15 +392,20 @@ pub fn open(path: &str) -> Result<File, Fat32Error> {
 ///
 /// - `path`: The path to the file.
 pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
+    // Check cache first.
+    if let Some(cached) = crate::cache::get_raw_region(path) {
+        return cached;
+    }
+
     let (mount_idx, relative_path): (usize, String) = resolve_path(path).ok()?;
-    state::with_vfs(|vfs| {
+    let result = state::with_vfs(|vfs| {
         let mount: &crate::mount::Mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount
-            .fat()
-            .file_raw_region(&relative_path)
-            .ok_or(Fat32Error::NotFound)
+        Ok(mount.fat().file_raw_region(&relative_path))
     })
-    .ok()
+    .ok()?;
+
+    crate::cache::put_raw_region(path, result);
+    result
 }
 
 /// File metadata.
@@ -451,18 +456,50 @@ impl Stat {
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
-    let (mount_idx, relative_path) = resolve_path(path)?;
+    // Check negative cache first (known ENOENT).
+    if crate::cache::is_negative(path) {
+        return Err(Fat32Error::NotFound);
+    }
+
+    // Check stat cache.
+    if let Some(cached) = crate::cache::get_stat(path) {
+        return Ok(cached);
+    }
+
+    let result = resolve_path(path);
+    let (mount_idx, relative_path) = match result {
+        Ok(v) => v,
+        Err(Fat32Error::NotFound) => {
+            crate::cache::put_negative(path);
+            return Err(Fat32Error::NotFound);
+        },
+        Err(e) => return Err(e),
+    };
 
     // Handle root of mount specially.
     if relative_path.is_empty() {
-        return Ok(Stat::new(0, true));
+        let s = Stat::new(0, true);
+        crate::cache::put_stat(path, s);
+        return Ok(s);
     }
 
-    state::with_vfs(|vfs| {
+    let result = state::with_vfs(|vfs| {
         let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
         let fat_stat = mount.fat().stat(&relative_path)?;
         Ok(Stat::new(fat_stat.size, fat_stat.is_dir))
-    })
+    });
+
+    match result {
+        Ok(s) => {
+            crate::cache::put_stat(path, s);
+            Ok(s)
+        },
+        Err(Fat32Error::NotFound) => {
+            crate::cache::put_negative(path);
+            Err(Fat32Error::NotFound)
+        },
+        Err(e) => Err(e),
+    }
 }
 
 /// Directory entry returned by [`read_dir()`].
@@ -521,10 +558,15 @@ impl DirEntry {
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().mkdir(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        crate::cache::invalidate_path(path);
+    }
+    result
 }
 
 /// Removes an empty directory.
@@ -542,10 +584,15 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().rmdir(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        crate::cache::invalidate_path(path);
+    }
+    result
 }
 
 /// Deletes a file.
@@ -562,10 +609,15 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
 
-    state::with_vfs_mut(|vfs| {
+    let result = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat_mut().unlink(&relative_path)
-    })
+    });
+
+    if result.is_ok() {
+        crate::cache::invalidate_path(path);
+    }
+    result
 }
 
 /// Lists the contents of a directory.
@@ -630,10 +682,16 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
         return Err(Fat32Error::InvalidPath);
     }
 
-    state::with_vfs(|vfs| {
+    let result = state::with_vfs(|vfs| {
         let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
         mount.fat().rename(&old_rel, &new_rel)
-    })
+    });
+
+    if result.is_ok() {
+        crate::cache::invalidate_path(old_path);
+        crate::cache::invalidate_path(new_path);
+    }
+    result
 }
 
 /// Gets the current working directory.
