@@ -32,6 +32,20 @@ use ::sys::error::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// FlatBuffer serialization overhead in bytes for a `HostPrint` call with one `String` parameter.
+/// Derived from `hyperlight_common::flatbuffer_wrappers::util::estimate_flatbuffer_capacity`:
+/// base (20) + function_name "HostPrint" (9 + 12) + params vector (12 + 6) + parameter (16 + 20).
+const FLATBUFFER_OVERHEAD: usize = 95;
+
+/// Maximum chunk size for [`ProcessEnvironmentBlock::host_print`] messages. Chosen so that every
+/// internal allocation made by `call_host_function` (FlatBufferBuilder, `String`, `Vec`) fits
+/// within the 256-byte slab bucket (`SlabSize::Slab256`).
+const HOST_PRINT_CHUNK_SIZE: usize = 256 - FLATBUFFER_OVERHEAD;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
@@ -42,6 +56,10 @@ static mut OUTPUT_BUFFER: Buffer = Buffer {
     data: [0; Buffer::CAPACITY],
     len: 0,
 };
+
+/// Pre-allocated buffer used by [`ProcessEnvironmentBlock::host_print`] to stage message chunks
+/// whose size is bounded by [`HOST_PRINT_CHUNK_SIZE`].
+static mut PRINT_BUFFER: [u8; HOST_PRINT_CHUNK_SIZE] = [0; HOST_PRINT_CHUNK_SIZE];
 
 //==================================================================================================
 // Process Environment Block
@@ -183,15 +201,36 @@ impl ProcessEnvironmentBlock {
 
     /// Writes a string to the host's standard output.
     ///
+    /// Messages are split into chunks of at most [`HOST_PRINT_CHUNK_SIZE`] bytes, copied into a
+    /// pre-allocated static buffer, and sent as separate `HostPrint` calls. The chunk size is chosen
+    /// so that every heap allocation made internally by `call_host_function` (FlatBufferBuilder,
+    /// `String`, `Vec<ParameterValue>`) fits within the 256-byte slab bucket. Splits are performed
+    /// on valid UTF-8 boundaries using [`str::floor_char_boundary`].
+    ///
     /// # Safety
     ///
-    /// This function is unsafe because it uses a static mutable variable.
+    /// This function is unsafe because it uses static mutable variables.
     unsafe fn host_print(message: &str) {
-        let _ = GUEST_HANDLE.call_host_function::<i32>(
-            "HostPrint",
-            Some(Vec::from(&[ParameterValue::String(message.to_string())])),
-            ReturnType::Int,
-        );
+        let buf: &mut [u8; HOST_PRINT_CHUNK_SIZE] = &mut *::core::ptr::addr_of_mut!(PRINT_BUFFER);
+        let mut remaining: &str = message;
+
+        while !remaining.is_empty() {
+            let end: usize =
+                remaining.floor_char_boundary(remaining.len().min(HOST_PRINT_CHUNK_SIZE));
+            let chunk: &str = &remaining[..end];
+
+            buf[..chunk.len()].copy_from_slice(chunk.as_bytes());
+            // SAFETY: chunk is a valid UTF-8 slice, so the buffer contents are valid UTF-8.
+            let chunk_str: &str = ::core::str::from_utf8_unchecked(&buf[..chunk.len()]);
+
+            let _ = GUEST_HANDLE.call_host_function::<i32>(
+                "HostPrint",
+                Some(Vec::from(&[ParameterValue::String(chunk_str.to_string())])),
+                ReturnType::Int,
+            );
+
+            remaining = &remaining[end..];
+        }
     }
 }
 

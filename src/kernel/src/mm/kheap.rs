@@ -27,6 +27,9 @@ pub const NUM_OF_SLABS: usize = 7;
 const SLAB_COUNT: usize = 32;
 pub const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
+/// Maximum single allocation size supported by the kernel heap slab allocator.
+#[allow(dead_code)]
+pub const MAX_ALLOCATION_SIZE: usize = SlabSize::Slab512 as usize;
 
 //==================================================================================================
 //  Structures
