@@ -16,7 +16,13 @@ use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
 #[cfg(debug_assertions)]
 use ::config::kernel::KSTACK_GUARD_PATTERN;
-use ::core::fmt;
+use ::core::{
+    fmt,
+    sync::atomic::{
+        AtomicU32,
+        Ordering,
+    },
+};
 #[cfg(debug_assertions)]
 use ::sys::error::ErrorCode;
 use ::sys::{
@@ -26,6 +32,26 @@ use ::sys::{
         VirtualAddress,
     },
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+use ::arch::cpu::excp::Exception;
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Dynamic stack overflow guard threshold, read by the assembly `excp_stack_guard_check` macro.
+///
+/// Holds the lowest safe ESP value for the currently-active kernel stack. Updated on every context
+/// switch and at boot. A value of 0 disables the guard check.
+///
+/// TODO (#1665): this is a single global, so it is only correct on uniprocessor builds. For SMP,
+/// replace with a per-core variable (e.g., indexed by APIC ID or stored in per-core data).
+#[unsafe(no_mangle)]
+pub static EXCP_STACK_GUARD: AtomicU32 = AtomicU32::new(0);
 
 //==================================================================================================
 // Structures
@@ -38,6 +64,8 @@ use ::sys::{
 ///
 pub struct KernelStack {
     kpages: Vec<KernelPage>,
+    /// Lowest safe ESP value for this stack (base + CONTEXT_HW_SIZE).
+    guard_threshold: u32,
 }
 
 //==================================================================================================
@@ -66,13 +94,33 @@ impl KernelStack {
         let kpages: Vec<KernelPage> =
             mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
 
-        let stack: Self = Self { kpages };
+        let guard_threshold: u32 =
+            (kpages[0].base().into_raw_value() + Exception::CONTEXT_HW_SIZE) as u32;
+
+        let stack: Self = Self {
+            kpages,
+            guard_threshold,
+        };
 
         // Fill the bottom page of the stack with the watermark pattern.
         #[cfg(debug_assertions)]
         stack.fill_guard_watermark();
 
         Ok(stack)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the guard threshold for this kernel stack. This is the lowest safe ESP value:
+    /// the stack base address plus the maximum hardware-pushed exception frame size.
+    ///
+    /// # Returns
+    ///
+    /// The guard threshold value.
+    ///
+    pub fn guard_threshold(&self) -> u32 {
+        self.guard_threshold
     }
 
     ///
@@ -236,6 +284,20 @@ pub fn check_boot_stack_guard() -> Result<(), Error> {
     }
 }
 
+///
+/// # Description
+///
+/// Sets the active stack overflow guard threshold. Called on every context switch to update the
+/// assembly-level guard to the currently-active kernel stack.
+///
+/// # Parameters
+///
+/// - `threshold`: The guard threshold (lowest safe ESP) for the new active stack.
+///
+pub fn set_active_guard(threshold: u32) {
+    EXCP_STACK_GUARD.store(threshold, Ordering::Release);
+}
+
 //==================================================================================================
 // Trait Implementations
 //==================================================================================================
@@ -255,6 +317,16 @@ impl fmt::Debug for KernelStack {
 impl Drop for KernelStack {
     fn drop(&mut self) {
         debug!("{:?}", &self);
+
+        // If this stack was the active one, clear the guard so a stale threshold is never
+        // checked against a freed stack region.
+        let _ = EXCP_STACK_GUARD.compare_exchange(
+            self.guard_threshold,
+            0,
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+
         while let Some(kpage) = self.kpages.pop() {
             drop(kpage);
         }

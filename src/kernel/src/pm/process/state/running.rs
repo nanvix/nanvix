@@ -334,6 +334,20 @@ impl RunningProcess {
     ///
     /// # Description
     ///
+    /// Returns the guard threshold of the running thread's kernel stack, if any.
+    ///
+    /// # Returns
+    ///
+    /// The guard threshold value, or `None` if the running thread has no kernel stack.
+    ///
+    #[inline]
+    pub fn guard_threshold(&self) -> Option<u32> {
+        self.running.guard_threshold()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Adds a ready thread to the running process.
     ///
     /// # Parameters
