@@ -97,6 +97,13 @@ async fn main() -> Result<()> {
 
     let args: Args = Args::parse(std::env::args().collect())?;
 
+    // Validate that iterations is at least 1 to avoid panicking on percentile indexing.
+    if args.iterations() == 0 {
+        let reason: String = format!("{CARGO_PKG_NAME} requires at least 1 iteration");
+        error!("{reason}");
+        anyhow::bail!(reason);
+    }
+
     // Parse hwloc from JSON file.
     let hwloc: Option<HwLoc> = if let Some(hwloc_file_path) = args.hwloc_file() {
         let hwloc_file: File = File::open(hwloc_file_path)?;
