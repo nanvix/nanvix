@@ -24,15 +24,19 @@ use ::std::{
 pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
+    #[cfg(feature = "l2")]
     ColdStartL2,
     ColdStartUvm,
     Concurrent,
+    #[cfg(feature = "l2")]
     ConcurrentL2,
     EchoBreakdown,
+    #[cfg(feature = "l2")]
     EchoBreakdownL2,
     RoundTripLatency,
     SnapshotRestore,
     WarmStart,
+    #[cfg(feature = "l2")]
     WarmStartL2,
     WarmStartVMM,
 }
@@ -40,13 +44,20 @@ pub enum BenchmarkFlavour {
 impl BenchmarkFlavour {
     /// Returns `true` when linuxd is deployed inside an L2 VM for this benchmark.
     pub fn is_l2(&self) -> bool {
-        matches!(
-            self,
-            BenchmarkFlavour::ColdStartL2
-                | BenchmarkFlavour::ConcurrentL2
-                | BenchmarkFlavour::EchoBreakdownL2
-                | BenchmarkFlavour::WarmStartL2
-        )
+        #[cfg(feature = "l2")]
+        {
+            matches!(
+                self,
+                BenchmarkFlavour::ColdStartL2
+                    | BenchmarkFlavour::ConcurrentL2
+                    | BenchmarkFlavour::EchoBreakdownL2
+                    | BenchmarkFlavour::WarmStartL2
+            )
+        }
+        #[cfg(not(feature = "l2"))]
+        {
+            false
+        }
     }
 
     pub fn get_program(&self, root: &Path) -> String {
@@ -58,16 +69,19 @@ impl BenchmarkFlavour {
                 format!("{}/bin/snapshot-rust-nostd.elf", root.display())
             },
             BenchmarkFlavour::ColdStart
-            | BenchmarkFlavour::ColdStartL2
             | BenchmarkFlavour::ColdStartUvm
             | BenchmarkFlavour::Concurrent
-            | BenchmarkFlavour::ConcurrentL2
             | BenchmarkFlavour::EchoBreakdown
-            | BenchmarkFlavour::EchoBreakdownL2
             | BenchmarkFlavour::RoundTripLatency
             | BenchmarkFlavour::WarmStart
-            | BenchmarkFlavour::WarmStartL2
             | BenchmarkFlavour::WarmStartVMM => {
+                format!("{}/bin/echo-rust-nostd.elf", root.display())
+            },
+            #[cfg(feature = "l2")]
+            BenchmarkFlavour::ColdStartL2
+            | BenchmarkFlavour::ConcurrentL2
+            | BenchmarkFlavour::EchoBreakdownL2
+            | BenchmarkFlavour::WarmStartL2 => {
                 format!("{}/bin/echo-rust-nostd.elf", root.display())
             },
         }
@@ -79,15 +93,19 @@ impl fmt::Display for BenchmarkFlavour {
         let s = match self {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
+            #[cfg(feature = "l2")]
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
             BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
             BenchmarkFlavour::Concurrent => "concurrent",
+            #[cfg(feature = "l2")]
             BenchmarkFlavour::ConcurrentL2 => "concurrent-l2",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
+            #[cfg(feature = "l2")]
             BenchmarkFlavour::EchoBreakdownL2 => "echo-breakdown-l2",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
             BenchmarkFlavour::WarmStart => "warm-start",
+            #[cfg(feature = "l2")]
             BenchmarkFlavour::WarmStartL2 => "warm-start-l2",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
         };
@@ -102,15 +120,19 @@ impl FromStr for BenchmarkFlavour {
         match s.to_lowercase().as_str() {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
+            #[cfg(feature = "l2")]
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
             "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
             "concurrent" => Ok(BenchmarkFlavour::Concurrent),
+            #[cfg(feature = "l2")]
             "concurrent-l2" => Ok(BenchmarkFlavour::ConcurrentL2),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
+            #[cfg(feature = "l2")]
             "echo-breakdown-l2" => Ok(BenchmarkFlavour::EchoBreakdownL2),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
+            #[cfg(feature = "l2")]
             "warm-start-l2" => Ok(BenchmarkFlavour::WarmStartL2),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
             _ => Err(format!("Invalid benchmark type: {}", s)),

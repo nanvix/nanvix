@@ -163,6 +163,7 @@ async fn main() -> Result<()> {
                     .await
             }
         },
+        #[cfg(feature = "l2")]
         BenchmarkFlavour::ColdStartL2 => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -171,7 +172,15 @@ async fn main() -> Result<()> {
                 );
             }
 
-            #[cfg(not(feature = "timestamp-messages"))]
+            #[cfg(not(feature = "l2"))]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
+                     DEPLOYMENT_MODE=l2"
+                );
+            }
+
+            #[cfg(all(not(feature = "timestamp-messages"), feature = "l2"))]
             {
                 benchmark
                     .run_cold_start(&LinuxdDeployment::L2Vm, &UserVmDeployment::OneToOne)
@@ -209,6 +218,7 @@ async fn main() -> Result<()> {
                     .await
             }
         },
+        #[cfg(feature = "l2")]
         BenchmarkFlavour::EchoBreakdownL2 => {
             #[cfg(not(feature = "timestamp-messages"))]
             {
@@ -218,7 +228,15 @@ async fn main() -> Result<()> {
                 );
             }
 
-            #[cfg(feature = "timestamp-messages")]
+            #[cfg(not(feature = "l2"))]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
+                     DEPLOYMENT_MODE=l2"
+                );
+            }
+
+            #[cfg(all(feature = "timestamp-messages", feature = "l2"))]
             {
                 benchmark.run_echo_breakdown(&LinuxdDeployment::L2Vm).await
             }
@@ -257,6 +275,7 @@ async fn main() -> Result<()> {
                 }
             }
         },
+        #[cfg(feature = "l2")]
         BenchmarkFlavour::ConcurrentL2 => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -265,7 +284,15 @@ async fn main() -> Result<()> {
                 );
             }
 
-            #[cfg(not(feature = "timestamp-messages"))]
+            #[cfg(not(feature = "l2"))]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
+                     DEPLOYMENT_MODE=l2"
+                );
+            }
+
+            #[cfg(all(not(feature = "timestamp-messages"), feature = "l2"))]
             {
                 if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
                     benchmark
@@ -289,6 +316,7 @@ async fn main() -> Result<()> {
                 benchmark.run_warm_start(&LinuxdDeployment::Process).await
             }
         },
+        #[cfg(feature = "l2")]
         BenchmarkFlavour::WarmStartL2 => {
             #[cfg(feature = "timestamp-messages")]
             {
@@ -297,7 +325,15 @@ async fn main() -> Result<()> {
                 );
             }
 
-            #[cfg(not(feature = "timestamp-messages"))]
+            #[cfg(not(feature = "l2"))]
+            {
+                anyhow::bail!(
+                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
+                     DEPLOYMENT_MODE=l2"
+                );
+            }
+
+            #[cfg(all(not(feature = "timestamp-messages"), feature = "l2"))]
             {
                 benchmark.run_warm_start(&LinuxdDeployment::L2Vm).await
             }

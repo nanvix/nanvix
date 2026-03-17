@@ -40,6 +40,25 @@ impl Args {
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
+        #[cfg(not(feature = "l2"))]
+        let benchmarks = "\
+  boot-time              Measure raw user VM boot latency.
+  cold-start             Measure start-up latency from client's perspective.
+  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
+  concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
+  echo-breakdown         Analyze the latency contributions of each step in the data path.
+  round-trip-latency     Measure latency (warm-start) as we increase the payload size.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
+  warm-start             Measure round-trip latency from client's perspective.
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.";
+
+        #[cfg(feature = "l2")]
+        let benchmarks = "\
+  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
+  concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
+  echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
+  warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.";
+
         println!(
             "\
 Nanvix Benchmarks - Benchmarking suite for Nanvix OS performance.
@@ -48,19 +67,7 @@ Usage:
   {program_name} {benchmark} [OPTIONS]
 
 Benchmarks:
-  boot-time              Measure raw user VM boot latency.
-  cold-start             Measure start-up latency from client's perspective.
-  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
-  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
-  concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
-  concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
-  echo-breakdown         Analyze the latency contributions of each step in the data path.
-  echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
-  round-trip-latency     Measure latency (warm-start) as we increase the payload size.
-  snapshot-restore       Measure snapshot restore latency vs boot-time.
-  warm-start             Measure round-trip latency from client's perspective.
-  warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.
-  warm-start-vmm         Measure raw round-trip latency inside the user VM.
+{benchmarks}
 
 Options:
   {benchmark} <benchmark>             Select which benchmark to run (required).
@@ -197,7 +204,28 @@ Examples:
             Ok(benchmark) => {
                 match benchmark {
                     // The concurrent benchmarks take slightly different command-line arguments.
+                    #[cfg(feature = "l2")]
                     BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
+                        // Must pass -num-concurrent-vms
+                        if num_concurrent_vms.is_none() {
+                            Self::usage(args[0].as_str());
+                            return Err(anyhow::anyhow!(
+                                "missing value for: {}",
+                                Self::OPT_NUM_CONCURRENT_VMS
+                            ));
+                        }
+
+                        // Must not pass -hwloc.
+                        if hwloc_file.is_some() {
+                            Self::usage(args[0].as_str());
+                            return Err(anyhow::anyhow!(
+                                "{benchmark} benchmark does not take {} flag",
+                                Self::OPT_HWLOC,
+                            ));
+                        }
+                    },
+                    #[cfg(not(feature = "l2"))]
+                    BenchmarkFlavour::Concurrent => {
                         // Must pass -num-concurrent-vms
                         if num_concurrent_vms.is_none() {
                             Self::usage(args[0].as_str());
@@ -230,6 +258,7 @@ Examples:
                 // Reject -netns-pool-size when it would be silently ignored.
                 if netns_pool_size.is_some() {
                     match benchmark {
+                        #[cfg(feature = "l2")]
                         BenchmarkFlavour::ConcurrentL2 => {},
                         _ => {
                             Self::usage(args[0].as_str());
@@ -243,6 +272,7 @@ Examples:
 
                 // Derive netns pool size from the benchmark flavour.
                 let netns_pool_size = match benchmark {
+                    #[cfg(feature = "l2")]
                     BenchmarkFlavour::ConcurrentL2 => {
                         Some(netns_pool_size.unwrap_or(Self::DEFAULT_NETNS_POOL_SIZE))
                     },
