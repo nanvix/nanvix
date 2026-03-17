@@ -626,6 +626,7 @@ impl ProcessManager {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
+        self.update_active_stack_guard();
         (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
@@ -722,6 +723,7 @@ impl ProcessManager {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
+        self.update_active_stack_guard();
         (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
@@ -904,6 +906,7 @@ impl ProcessManager {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
+        self.update_active_stack_guard();
         (next_pid, next_tid, previous_context, next_context, user_tda)
     }
 
@@ -995,6 +998,7 @@ impl ProcessManager {
         let next_tid: ThreadIdentifier = next_process.get_tid();
         self.interrupt_reason = reason;
         self.running = Some(next_process);
+        self.update_active_stack_guard();
         (next_pid, next_tid, join_cond, previous_context, next_context, user_tda)
     }
 
@@ -1402,9 +1406,28 @@ impl ProcessManager {
                     running.get_tid(),
                     running.state().pid(),
                 );
-                platform::shutdown(ExitStatus::from(ErrorCode::UnrecoverableState).into());
+                platform::shutdown(ExitStatus::STACK_OVERFLOW_WATERMARK.into());
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Updates the assembly-level stack overflow guard to match the currently-active kernel stack.
+    /// Called after setting `self.running` in every scheduling path.
+    ///
+    fn update_active_stack_guard(&self) {
+        if let Some(ref running) = self.running {
+            if let Some(threshold) = running.guard_threshold() {
+                crate::mm::kstack::set_active_guard(threshold);
+                return;
+            }
+        }
+
+        // When there is no running process or no guard threshold, clear the guard so that
+        // a stale threshold from a previous stack does not trigger a false overflow.
+        crate::mm::kstack::set_active_guard(0);
     }
 
     ///

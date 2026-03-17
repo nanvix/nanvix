@@ -224,6 +224,20 @@ impl RunningThread {
     ///
     /// # Description
     ///
+    /// Returns the guard threshold of the running thread's kernel stack, if any.
+    ///
+    /// # Returns
+    ///
+    /// The guard threshold value, or `None` if the thread has no kernel stack.
+    ///
+    #[inline]
+    pub fn guard_threshold(&self) -> Option<u32> {
+        self.state.guard_threshold()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Sets the base address for the user-space thread data area for the target thread.
     ///
     /// # Parameters

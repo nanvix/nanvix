@@ -9,9 +9,23 @@
 #define DWORD_SIZE 8 /** Number of bytes in a double-word. */
 
 /**
- * @brief Hardware-saved execution context size (in bytes).
+ * @brief VMM control I/O port.
  */
-#define CONTEXT_HW_SIZE 24
+#define VMM_PORT 0x604
+
+/**
+ * @brief VMM shutdown command (upper 16 bits of the outl value).
+ */
+#define VMM_SHUTDOWN_CMD 0x2000
+
+/**
+ * @brief Exit status used by the stack overflow guard.
+ *
+ * Must match `ExitStatus::STACK_OVERFLOW_EXCEPTION` in `src/libs/sys/src/exit_status.rs`.
+ */
+#define STACK_OVERFLOW_EXIT_STATUS 200
+
+#include "asm_defs.h"
 
 /**
  * @brief Software-saved execution context size (in bytes).
@@ -187,6 +201,42 @@
 
 .endm
 
+/*
+ * Macro: excp_stack_guard_check
+ *
+ * Dynamic stack overflow guard.  Compares ESP against the global variable
+ * EXCP_STACK_GUARD, which holds the lowest safe ESP for the currently-active
+ * kernel stack.  Updated by Rust on every context switch and at boot.
+ *
+ * A value of 0 in EXCP_STACK_GUARD disables the check (guard not yet set).
+ *
+ * This macro performs one memory read from the kernel .bss section.  This is
+ * safe even when kpool page tables are corrupted, because the kernel data
+ * pages reside in different PDE entries than the kpool region.
+ *
+ * Clobbers: EDX, EAX (only on the overflow path which never returns).
+ *
+ * Atomicity note: on x86, aligned 32-bit loads and stores are naturally
+ * atomic, and the Total Store Order (TSO) memory model guarantees that every
+ * store is implicitly release-ordered and every load is implicitly
+ * acquire-ordered.  No LOCK prefix or fence is required for the plain
+ * cmpl instructions used here.
+ */
+.macro excp_stack_guard_check
+    cmpl $0, EXCP_STACK_GUARD
+    je   1f
+    cmpl EXCP_STACK_GUARD, %esp
+    jae  1f
+    /* Stack overflow — trigger a clean VMM shutdown. */
+    movl $(VMM_SHUTDOWN_CMD << 16 | STACK_OVERFLOW_EXIT_STATUS), %eax
+    movw $VMM_PORT, %dx
+    outl %eax, (%dx)
+    /* Fallback halt loop in case the outl does not terminate the VM. */
+2:  hlt
+    jmp 2b
+1:
+.endm
+
 /*----------------------------------------------------------------------------*
  * _do_excp()                                                                 *
  *----------------------------------------------------------------------------*/
@@ -196,6 +246,7 @@
  */
 .macro _do_excp_noerr_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         push $0
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
@@ -211,6 +262,7 @@
  */
 .macro _do_excp_err_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
         xchg %eax, (%esp)
@@ -225,6 +277,7 @@
  */
 .macro _do_excp_err2_code, number
     _do_excp\()\number:
+        excp_stack_guard_check
         xchg %eax, (%esp)
         xchg %eax, EXCEPTION_SKIP(%esp)
         xchg %eax, (%esp)
@@ -258,12 +311,17 @@
 .section .text,"ax",@progbits
 
 /*----------------------------------------------------------------------------*
- * Exported Symbols                                                           *
+ * Imported Symbols                                                           *
  *----------------------------------------------------------------------------*/
 
 .extern do_exception
 .extern do_kcall
 .extern do_interrupt
+.extern EXCP_STACK_GUARD
+
+/*----------------------------------------------------------------------------*
+ * Exported Symbols                                                           *
+ *----------------------------------------------------------------------------*/
 
 /* Exception hooks. */
 .globl _do_excp0

@@ -100,6 +100,11 @@ impl TryFrom<u32> for Exception {
 }
 
 impl Exception {
+    /// Maximum number of bytes the CPU pushes onto the stack when an exception happens (with a
+    /// privilege-level change): EIP (4) + CS (4) + EFLAGS (4) + ESP (4) + SS (4) + error code (4) =
+    /// 24 bytes.
+    pub const CONTEXT_HW_SIZE: usize = 24;
+
     /// Converts an exception vector number into an [`Exception`], returning `None` for
     /// invalid or unrecognized vector numbers.
     pub fn try_from_vector(vector: usize) -> Option<Self> {
