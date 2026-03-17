@@ -116,7 +116,9 @@ impl Benchmark {
             }
 
             if first_timestamp.is_some() && last_timestamp.is_some() {
-                latencies[steps.len()][iter] = last_timestamp.unwrap() - first_timestamp.unwrap()
+                latencies[steps.len()][iter] = last_timestamp
+                    .unwrap()
+                    .wrapping_sub(first_timestamp.unwrap())
             } else {
                 return Err(anyhow::anyhow!("have not collected enough timestamps!"));
             }
