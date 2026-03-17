@@ -134,15 +134,32 @@ const GATEWAY_CONNECT_RETRY_SLEEP_MS: u64 = 1;
 ///
 pub(crate) const CHANNEL_CAPACITY: usize = 1024;
 
+///
+/// # Description
+///
+/// Address used to communicate with nanvixd over HTTP.
+///
 pub(crate) const NANVIXD_ADDRESS: &str = "127.0.0.1:9999";
 
 ///
 /// # Description
 ///
 /// Default size of the message we are sending to the user VM.
+///
 pub(crate) const DEFAULT_PAYLOAD_SIZE: usize = 32;
 
+///
+/// # Description
+///
+/// Default tenant identifier used when no explicit tenant is provided.
+///
 pub(crate) const DEFAULT_TENANT_ID: &str = "foo";
+
+///
+/// # Description
+///
+/// Default application name used when no explicit name is provided.
+///
 pub(crate) const DEFAULT_APP_NAME: &str = "bar";
 
 //==================================================================================================
