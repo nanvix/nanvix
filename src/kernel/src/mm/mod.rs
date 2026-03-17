@@ -170,6 +170,14 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_TOP_RAW >= config::memory_layout::USER_BASE_RAW
 );
+// Ensure that the minimum stack size is a multiple of a page size.
+::static_assert::assert_eq!(
+    config::memory_layout::USER_STACK_MIN_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize)
+);
+// Ensure that the minimum stack size does not exceed the total stack size.
+::static_assert::assert_eq!(
+    config::memory_layout::USER_STACK_MIN_SIZE <= config::memory_layout::USER_STACK_SIZE
+);
 
 //==================================================================================================
 // Standalone Functions

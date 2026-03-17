@@ -70,8 +70,15 @@ use ::alloc::{
     },
     ffi::CString,
 };
-use ::arch::mem::PAGE_SIZE;
-use ::config::memory_layout::USER_STACK_TOP_RAW;
+use ::arch::{
+    cpu::excp,
+    mem::PAGE_SIZE,
+};
+use ::config::memory_layout::{
+    USER_STACK_MIN_SIZE,
+    USER_STACK_SIZE,
+    USER_STACK_TOP_RAW,
+};
 use ::no_fail::no_fail;
 use ::sys::{
     error::{
@@ -538,13 +545,16 @@ impl ProcessManager {
         let (kernel_stack, context): (KernelStack, ContextInformation) =
             Self::forge_user_context(mm, &mut vmem, &args, self.interrupt_capable)?;
 
-        // Alloc user stack and map it.
+        // Map only the minimum number of stack pages near the stack top (where ESP starts).
+        // Additional pages up to USER_STACK_SIZE are demand-paged on stack growth faults.
         // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
         // will leak underlying pages.
+        let initial_stack_base: PageAligned<VirtualAddress> =
+            PageAligned::from_raw_value(user_stack.top().into_raw_value() - USER_STACK_MIN_SIZE)?;
         mm.alloc_upages(
             &mut vmem,
-            user_stack.base(),
-            user_stack.size() / PAGE_SIZE,
+            initial_stack_base,
+            USER_STACK_MIN_SIZE / PAGE_SIZE,
             AccessPermission::RDWR,
         )?;
 
@@ -2044,5 +2054,54 @@ impl ProcessManager {
         self.get_running_mut().state_mut().remove_event(ev);
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a page fault that may be caused by user-space stack growth.
+    /// If the faulting address falls within the user stack region and the page is not present,
+    /// a new page is demand-allocated and mapped.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `fault_addr`: Faulting virtual address.
+    /// - `error_code`: Typed x86 page-fault error code.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if the fault was resolved by mapping a new stack page.
+    /// - `Ok(false)` if the fault address is not within the user stack region or the fault is not
+    ///   a page-not-present fault from user mode.
+    /// - `Err(...)` if page allocation failed.
+    ///
+    pub fn handle_stack_page_fault(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        fault_addr: usize,
+        error_code: excp::ErrorCode,
+    ) -> Result<bool, Error> {
+        // Only handle page-not-present faults from user mode.
+        if error_code.is_present() || !error_code.is_user() {
+            return Ok(false);
+        }
+
+        // Check if the faulting address falls within the main-thread user stack region.
+        // The stack occupies [USER_STACK_TOP_RAW, USER_STACK_TOP_RAW + USER_STACK_SIZE).
+        const STACK_REGION_START: usize = USER_STACK_TOP_RAW;
+        const STACK_REGION_END: usize = STACK_REGION_START + USER_STACK_SIZE;
+        if !(STACK_REGION_START..STACK_REGION_END).contains(&fault_addr) {
+            return Ok(false);
+        }
+
+        // Page-align the faulting address and map the page.
+        let page_addr: usize = fault_addr & !(PAGE_SIZE - 1);
+        let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
+        let pid: ProcessIdentifier = self.get_pid();
+        debug!("demand-paging stack page (pid={pid:?}, vaddr={vaddr:?})");
+        self.mmap(mm, pid, vaddr, AccessPermission::RDWR)?;
+
+        Ok(true)
     }
 }
