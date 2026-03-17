@@ -39,13 +39,11 @@ impl Benchmark {
     /// This function runs the round-trip latency benchmark, where we measure the latency of
     /// sending one message and getting it back, as we increase the message size.
     ///
-    /// Given that we have many message sizes (hence many rows in the result table) we default to
-    /// reporting only one percentile.
+    /// Results are reported as p50, p95, and p99 percentiles for each message size.
     ///
     /// # Arguments
     ///
     /// - `linuxd_deployment`: deployment mode for linuxd.
-    /// - `percentile`: what percentile to report.
     ///
     pub async fn run_round_trip_latency(
         &mut self,
