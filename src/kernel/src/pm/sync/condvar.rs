@@ -127,7 +127,7 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Wakes up all threads of a process that are waiting on the target condition variable.
+    /// Wakes up the first thread of a process that is waiting on the target condition variable.
     ///
     /// # Parameters
     ///
