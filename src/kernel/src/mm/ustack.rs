@@ -56,7 +56,7 @@ impl UserStack {
     ///
     /// # Notes
     ///
-    /// As sacks grow downwards, the base address is the highest address of the stack.
+    /// As stacks grow downwards, the base address is the lowest address of the stack region.
     ///
     pub fn base(&self) -> PageAligned<VirtualAddress> {
         self.base
@@ -73,7 +73,7 @@ impl UserStack {
     ///
     /// # Notes
     ///
-    /// As stacks grow downwards, the top address is the lowest address of the stack.
+    /// As stacks grow downwards, the top address is the highest address of the stack region.
     ///
     pub fn top(&self) -> PageAligned<VirtualAddress> {
         PageAligned::from_raw_value(self.base.into_raw_value() + self.size()).unwrap()
