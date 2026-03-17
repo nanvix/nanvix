@@ -40,12 +40,23 @@ impl Args {
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
-        #[cfg(not(feature = "l2"))]
+        #[cfg(all(not(feature = "l2"), feature = "multi-process"))]
         let benchmarks = "\
   boot-time              Measure raw user VM boot latency.
   cold-start             Measure start-up latency from client's perspective.
   cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
   concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
+  echo-breakdown         Analyze the latency contributions of each step in the data path.
+  round-trip-latency     Measure latency (warm-start) as we increase the payload size.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
+  warm-start             Measure round-trip latency from client's perspective.
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.";
+
+        #[cfg(all(not(feature = "l2"), not(feature = "multi-process")))]
+        let benchmarks = "\
+  boot-time              Measure raw user VM boot latency.
+  cold-start             Measure start-up latency from client's perspective.
+  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
   echo-breakdown         Analyze the latency contributions of each step in the data path.
   round-trip-latency     Measure latency (warm-start) as we increase the payload size.
   snapshot-restore       Measure snapshot restore latency vs boot-time.
@@ -204,7 +215,7 @@ Examples:
             Ok(benchmark) => {
                 match benchmark {
                     // The concurrent benchmarks take slightly different command-line arguments.
-                    #[cfg(feature = "l2")]
+                    #[cfg(all(feature = "multi-process", feature = "l2"))]
                     BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
                         // Must pass -num-concurrent-vms
                         if num_concurrent_vms.is_none() {
@@ -224,7 +235,7 @@ Examples:
                             ));
                         }
                     },
-                    #[cfg(not(feature = "l2"))]
+                    #[cfg(all(feature = "multi-process", not(feature = "l2")))]
                     BenchmarkFlavour::Concurrent => {
                         // Must pass -num-concurrent-vms
                         if num_concurrent_vms.is_none() {

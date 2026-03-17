@@ -27,6 +27,7 @@ pub enum BenchmarkFlavour {
     #[cfg(feature = "l2")]
     ColdStartL2,
     ColdStartUvm,
+    #[cfg(feature = "multi-process")]
     Concurrent,
     #[cfg(feature = "l2")]
     ConcurrentL2,
@@ -70,11 +71,14 @@ impl BenchmarkFlavour {
             },
             BenchmarkFlavour::ColdStart
             | BenchmarkFlavour::ColdStartUvm
-            | BenchmarkFlavour::Concurrent
             | BenchmarkFlavour::EchoBreakdown
             | BenchmarkFlavour::RoundTripLatency
             | BenchmarkFlavour::WarmStart
             | BenchmarkFlavour::WarmStartVMM => {
+                format!("{}/bin/echo-rust-nostd.elf", root.display())
+            },
+            #[cfg(feature = "multi-process")]
+            BenchmarkFlavour::Concurrent => {
                 format!("{}/bin/echo-rust-nostd.elf", root.display())
             },
             #[cfg(feature = "l2")]
@@ -96,6 +100,7 @@ impl fmt::Display for BenchmarkFlavour {
             #[cfg(feature = "l2")]
             BenchmarkFlavour::ColdStartL2 => "cold-start-l2",
             BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
+            #[cfg(feature = "multi-process")]
             BenchmarkFlavour::Concurrent => "concurrent",
             #[cfg(feature = "l2")]
             BenchmarkFlavour::ConcurrentL2 => "concurrent-l2",
@@ -123,6 +128,7 @@ impl FromStr for BenchmarkFlavour {
             #[cfg(feature = "l2")]
             "cold-start-l2" => Ok(BenchmarkFlavour::ColdStartL2),
             "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
+            #[cfg(feature = "multi-process")]
             "concurrent" => Ok(BenchmarkFlavour::Concurrent),
             #[cfg(feature = "l2")]
             "concurrent-l2" => Ok(BenchmarkFlavour::ConcurrentL2),
