@@ -49,7 +49,6 @@ use ::nanvix::{
         UnboundSocket,
         WriteAll,
     },
-    uservm,
 };
 use ::reqwest::header::{
     CONTENT_TYPE,
@@ -203,42 +202,6 @@ impl Benchmark {
             .spawn()?;
 
         Ok(nanvixd_cmd)
-    }
-
-    /// Auxiliary method to start a user VM used by low-level benchmarks that want to bypass
-    /// nanvixd.
-    fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
-        let mut user_vm_args: Vec<String> = vec![
-            format!("{}/bin/uservm.elf", self.workspace_root.display()),
-            uservm::args::Args::OPT_USER_VM_ID.to_string(),
-            "1".to_string(),
-            uservm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/bin/kernel.elf", self.workspace_root.display()),
-            uservm::args::Args::OPT_INITRD.to_string(),
-            self.flavour.get_program(&self.workspace_root),
-        ];
-        if let Some(gateway_addr) = gateway_addr {
-            user_vm_args.push(uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
-            user_vm_args.push(gateway_addr);
-        }
-        if let Some(hwloc) = self.hwloc.clone() {
-            let taskset: Vec<String> = vec![
-                "taskset".to_string(),
-                "-ac".to_string(),
-                hwloc.get_nanovm_core_str(),
-            ];
-            user_vm_args.splice(0..0, taskset);
-        }
-
-        debug!("Starting user VM with command: {}", user_vm_args.join(" "));
-        let user_vm_cmd = Command::new(&user_vm_args[0])
-            .args(&user_vm_args[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .current_dir(&self.workspace_root)
-            .spawn()?;
-
-        Ok(user_vm_cmd)
     }
 
     /// Configures the set-up by starting linuxd and the gateway server.
