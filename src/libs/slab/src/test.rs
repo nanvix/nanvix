@@ -69,6 +69,20 @@ fn test_slab_creation_minimal_valid_blocks() {
     let slab = unsafe { Slab::from_raw_parts(memory.as_mut_ptr(), len, block_size) };
     // With block_size=1 and len=2: total_num_blocks=2, num_index_blocks=1 → should succeed.
     assert!(slab.is_ok());
+    let mut slab = slab.unwrap();
+
+    // It should only be possible to allocate a single block from this
+    // minimal configuration: the one block that isn't an index block.
+    // The failure to allocate more than one block tests that the
+    // current implementation correctly avoids allocating beyond the
+    // end of the valid region.
+    let block1 = slab.allocate();
+    assert!(block1.is_ok());
+    let block1 = block1.unwrap();
+    assert!(memory.as_ptr() <= block1);
+    assert!(unsafe { block1.add(block_size) <= memory.as_mut_ptr().add(len) });
+    let block2 = slab.allocate();
+    assert!(!block2.is_ok());
 }
 
 #[test]
