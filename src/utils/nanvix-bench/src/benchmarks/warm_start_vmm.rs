@@ -72,7 +72,7 @@ impl Benchmark {
         // Payload we are sending over the wire.
         let data = [7u8; DEFAULT_PAYLOAD_SIZE];
         let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
-        payload.extend_from_slice(&DEFAULT_PAYLOAD_SIZE.to_le_bytes());
+        payload.extend_from_slice(&(DEFAULT_PAYLOAD_SIZE as u32).to_le_bytes());
         payload.extend_from_slice(&data);
         let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
             mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
