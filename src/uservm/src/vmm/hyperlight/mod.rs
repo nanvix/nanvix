@@ -40,8 +40,12 @@ use ::log::{
     error,
 };
 use ::std::{
+    fs::File,
     io::Write,
-    os::raw::c_int,
+    os::{
+        raw::c_int,
+        unix::io::AsRawFd,
+    },
     path::Path,
     sync::Arc,
     time::Duration,
@@ -85,6 +89,59 @@ pub type StdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
 pub type BulkStdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
 
 pub type StderrFn = dyn Write + Send;
+
+//==================================================================================================
+// StderrRedirect
+//==================================================================================================
+
+/// RAII guard that redirects process stderr to a file and restores the original fd on drop.
+struct StderrRedirect {
+    saved_fd: c_int,
+}
+
+impl StderrRedirect {
+    /// Redirects process stderr to `path`, returning a guard that restores it on drop.
+    fn new(path: &str) -> Result<Self> {
+        // SAFETY: STDERR_FILENO is always valid. `dup` returns a new fd or -1 on failure.
+        let saved_fd: c_int = unsafe { libc::dup(libc::STDERR_FILENO) };
+        if saved_fd == -1 {
+            return Err(anyhow::anyhow!(
+                "failed to save stderr fd: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let file: File = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|e| {
+                // SAFETY: saved_fd was just obtained from dup() and is valid.
+                unsafe { libc::close(saved_fd) };
+                anyhow::anyhow!("failed to open stderr file {path:?}: {e}")
+            })?;
+        // SAFETY: both fds are valid — file was just opened and STDERR_FILENO is always
+        // present. On success dup2 returns the new fd; on failure it returns -1.
+        if unsafe { libc::dup2(file.as_raw_fd(), libc::STDERR_FILENO) } == -1 {
+            let err: std::io::Error = std::io::Error::last_os_error();
+            // SAFETY: saved_fd was obtained from dup() and is valid.
+            unsafe { libc::close(saved_fd) };
+            return Err(anyhow::anyhow!("failed to redirect stderr to {path:?}: {err}"));
+        }
+        // After dup2, STDERR_FILENO holds a copy of the fd. The original File is dropped here.
+        Ok(Self { saved_fd })
+    }
+}
+
+impl Drop for StderrRedirect {
+    fn drop(&mut self) {
+        // SAFETY: saved_fd was obtained from dup() in new() and has not been closed.
+        unsafe {
+            libc::dup2(self.saved_fd, libc::STDERR_FILENO);
+            libc::close(self.saved_fd);
+        }
+    }
+}
 
 //==================================================================================================
 // Structure
@@ -171,6 +228,8 @@ pub struct Vmm {
 
 struct InnerVmm {
     control_tx: Sender<VcpuControlResponse>,
+    /// RAII guard that restores the original stderr fd when dropped.
+    _stderr_redirect: Option<StderrRedirect>,
 }
 
 //==================================================================================================
@@ -385,18 +444,14 @@ impl Vmm {
 
         let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
 
-        // Create a closure that takes a String and writes it to stderr.
-        // NOTE: underlying writer implements `Write` and requires mutable access.
-        let mut stderr_writer: Box<StderrFn> = args.stderr;
-        sandbox.register_print(move |s: String| -> i32 {
-            if stderr_writer.write_all(s.as_bytes()).is_err() {
-                return -1;
-            }
-            if stderr_writer.flush().is_err() {
-                return -1;
-            }
-            0
-        })?;
+        // Redirect process stderr to the custom file when configured, so that DebugPrint VM-exit
+        // output (sent via `eprint!` in the hyperlight SDK) reaches the intended destination.
+        // The guard restores the original stderr when the Vmm is dropped.
+        let stderr_redirect: Option<StderrRedirect> = args
+            .stderr_path
+            .as_deref()
+            .map(StderrRedirect::new)
+            .transpose()?;
 
         // Create a closure for VmbusWrite that matches the expected signature
         // NOTE: output function is FnMut, so we must keep it mutable when captured.
@@ -423,6 +478,7 @@ impl Vmm {
             guest,
             inner: Arc::new(Mutex::new(InnerVmm {
                 control_tx: args.control_tx,
+                _stderr_redirect: stderr_redirect,
             })),
         })
     }
@@ -466,6 +522,9 @@ impl Vmm {
 
         // Run the sandbox.
         let result: Result<MultiUseSandbox, HyperlightError> = uninit.evolve();
+
+        // Drop the stderr redirect guard to restore the original stderr fd.
+        self.inner.blocking_lock()._stderr_redirect.take();
 
         // Communicate shutdown to orchestrator.
         if let Err(error) = self

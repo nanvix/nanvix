@@ -14,10 +14,7 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
+use ::alloc::vec::Vec;
 use ::hyperlight_common::{
     flatbuffer_wrappers::function_types::{
         ParameterValue,
@@ -78,12 +75,22 @@ impl ProcessEnvironmentBlock {
         }
     }
 
-    /// Writes a string to the guest's standard output.
+    ///
+    /// # Description
+    ///
+    /// Writes a string to the guest's standard debug output.
+    ///
+    /// # Note
+    ///
+    /// `debug_print()` is infallible (it uses inline `out` instructions), so this method always
+    /// returns `Ok(())`. The `Result` return type is preserved for API compatibility.
     ///
     /// # Safety
+    ///
     /// This function is unsafe because it uses raw asm under the hood.
+    ///
     pub unsafe fn puts(message: &str) -> Result<(), Error> {
-        Self::host_print(message);
+        ::hyperlight_guest::exit::debug_print(message);
         Ok(())
     }
 
@@ -166,18 +173,5 @@ impl ProcessEnvironmentBlock {
         GUEST_HANDLE
             .call_host_function::<Vec<u8>>("VmbusRead", None, ReturnType::VecBytes)
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))
-    }
-
-    /// Writes a string to the host's standard output.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it uses a static mutable variable.
-    unsafe fn host_print(message: &str) {
-        let _ = GUEST_HANDLE.call_host_function::<i32>(
-            "HostPrint",
-            Some(Vec::from(&[ParameterValue::String(message.to_string())])),
-            ReturnType::Int,
-        );
     }
 }
