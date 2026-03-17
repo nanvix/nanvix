@@ -236,6 +236,7 @@ impl UserVm {
             Receiver<VcpuControlResponse>,
         ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
+        #[cfg(not(feature = "hyperlight"))]
         let vmm_stderr_fn: Box<dyn Write + Send> = match get_stderr_writer(args.stderr.clone()) {
             Ok(vmm_stderr_fn) => vmm_stderr_fn,
             Err(e) => {
@@ -280,7 +281,10 @@ impl UserVm {
             output: vmm_stdout_fn,
             #[cfg(feature = "hyperlight")]
             bulk_output: vmm_bulk_stdout_fn,
+            #[cfg(not(feature = "hyperlight"))]
             stderr: vmm_stderr_fn,
+            #[cfg(feature = "hyperlight")]
+            stderr_path: args.stderr.clone(),
             control_rx: vcpu_thread_control_rx,
             control_tx: vcpu_thread_control_tx,
             kernel_filename: args.kernel_filename,
