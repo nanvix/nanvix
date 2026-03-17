@@ -99,6 +99,11 @@ pub fn kcall_handler() -> ExitStatus {
 
         // No work to do, so yield the CPU.
         if !message_received && !harvested_process {
+            // Flush the kernel log buffer.
+            // SAFETY: the standard output device is present, initialized, and accessed
+            // exclusively from a single core with interrupts disabled.
+            unsafe { crate::klog::flush() };
+
             // SAFETY: the kernel process does not hold any resources.
             if let Err(error) = unsafe { ProcessManager::giveup() } {
                 error!("context switch failed (error={:?})", error);

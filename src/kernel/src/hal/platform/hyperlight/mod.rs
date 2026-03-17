@@ -251,17 +251,17 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// # Description
 ///
-/// Shutdowns the machine.
+/// Shuts down the machine.
 ///
 /// # Parameters
 ///
 /// - `status`: The shutdown status code (low 8 bits are passed to the VMM).
 ///
-/// # Return
+/// # Returns
 ///
 /// This function never returns.
 ///
-pub fn shutdown(status: usize) -> ! {
+pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
     // Pass the low 8 bits of status as the exit code to the VMM.
     let code: u8 = (status & 0xFF) as u8;
     // NOTE: We use abort_with_code() for all exit codes (including 0) rather than halt() because

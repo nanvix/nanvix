@@ -16,10 +16,10 @@ mod pc;
 //==================================================================================================
 
 #[cfg(feature = "qemu-isapc")]
-pub use isapc::shutdown;
+pub(in crate::hal::platform) use isapc::do_shutdown;
 
 #[cfg(feature = "qemu-pc")]
-pub use pc::shutdown;
+pub(in crate::hal::platform) use pc::do_shutdown;
 
 //==================================================================================================
 // Standalone Functions

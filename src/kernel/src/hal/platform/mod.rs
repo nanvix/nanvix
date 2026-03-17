@@ -39,9 +39,47 @@ pub use microvm::*;
 #[cfg(feature = "hyperlight")]
 pub use hyperlight::*;
 
+#[cfg(any(
+    feature = "qemu-pc",
+    feature = "qemu-isapc",
+    feature = "qemu-baremetal"
+))]
+use pc::do_shutdown;
+
+#[cfg(feature = "microvm")]
+use microvm::do_shutdown;
+
+#[cfg(feature = "hyperlight")]
+use hyperlight::do_shutdown;
+
 pub mod acpi;
 pub mod bootinfo;
 pub mod madt;
+
+//==================================================================================================
+// Shutdown
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Shuts down the machine. Flushes the kernel log buffer to ensure all buffered output is emitted,
+/// then delegates to the platform-specific shutdown implementation.
+///
+/// # Parameters
+///
+/// - `status`: The shutdown status code.
+///
+/// # Returns
+///
+/// This function never returns.
+///
+pub fn shutdown(status: usize) -> ! {
+    // SAFETY: the standard output device is present, initialized, and accessed exclusively from a
+    // single core with interrupts disabled.
+    unsafe { crate::klog::flush() };
+    do_shutdown(status);
+}
 
 //==================================================================================================
 // Interrupts
