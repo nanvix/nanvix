@@ -7,6 +7,7 @@
 
 mod boot_time;
 mod cold_start;
+#[cfg(feature = "multi-process")]
 mod concurrent;
 #[cfg(feature = "timestamp-messages")]
 mod echo_breakdown;
