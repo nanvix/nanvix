@@ -101,11 +101,6 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
         }
 
-        // Check if the `block_size` is a power of two.
-        if block_size & (block_size - 1) != 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "block size is not a power of two"));
-        }
-
         // Check if `addr` is aligned to `block_size`.
         if !(addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
