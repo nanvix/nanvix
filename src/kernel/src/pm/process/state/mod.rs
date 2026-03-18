@@ -429,7 +429,9 @@ impl ProcessState {
     ///
     pub fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         // Check if maximum number of mutexes has been reached.
-        if self.mutexes.len() >= MUTEX_OPEN_MAX {
+        // Only reject if the mutex is not already present, since accessing an
+        // existing entry does not grow the map.
+        if !self.mutexes.contains_key(&mutex_addr) && self.mutexes.len() >= MUTEX_OPEN_MAX {
             let reason: &'static str = "maximum number of mutexes reached";
             error!("{:?} (addr={:#x?})", reason, mutex_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -488,7 +490,9 @@ impl ProcessState {
     ///
     pub fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         // Check if maximum number of condition variables has been reached.
-        if self.conditions.len() >= COND_OPEN_MAX {
+        // Only reject if the condvar is not already present, since accessing an
+        // existing entry does not grow the map.
+        if !self.conditions.contains_key(&cond_addr) && self.conditions.len() >= COND_OPEN_MAX {
             let reason: &'static str = "maximum number of condition variables reached";
             error!("{:?} (addr={:#x?})", reason, cond_addr);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
