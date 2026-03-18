@@ -112,7 +112,8 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address of user stack.
+    /// High address of the user stack region (initial stack pointer).
+    /// The stack grows downward from this address.
     ///
     /// # Notes
     ///
@@ -123,7 +124,8 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// End address of the user stack
+    /// Low address of the user stack region.
+    /// The stack occupies [`USER_STACK_TOP_RAW`, [`USER_STACK_BASE_RAW`).
     ///
     pub const USER_STACK_TOP_RAW: usize = USER_STACK_BASE_RAW - USER_STACK_SIZE;
 
