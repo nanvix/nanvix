@@ -30,6 +30,44 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logging.sh"
 #
 # Description
 #
+#   Resolves a path to an absolute path without assuming GNU realpath -m is available.
+#   If the path exists, it is resolved via cd + pwd -P. Otherwise, an absolute path
+#   is constructed without normalization.
+#
+# Arguments
+#
+#   $1 - The path to resolve.
+#
+# Return Value
+#
+#   - On success, prints the resolved absolute path.
+#
+# Usage Example
+#
+#   resolved=$(resolve_path "$TARGET_DIR")
+#
+resolve_path() {
+    local path="$1"
+    local resolved=""
+
+    if cd "${path}" >/dev/null 2>&1; then
+        resolved="$(pwd -P)"
+        cd - >/dev/null 2>&1 || true
+    else
+        # For non-existent paths, construct an absolute path without normalization.
+        if [[ "${path}" == /* ]]; then
+            resolved="${path}"
+        else
+            resolved="$(pwd -P)/${path}"
+        fi
+    fi
+
+    printf '%s\n' "${resolved}"
+}
+
+#
+# Description
+#
 #   Gets the current version from a Cargo.toml file.
 #
 # Arguments
