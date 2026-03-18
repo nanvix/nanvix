@@ -2,6 +2,88 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Wraps the hardware error code pushed by the CPU for exceptions that include one
+/// (Double Fault, Invalid TSS, Segment Not Present, Stack Segment Fault,
+/// General Protection Fault, Page Fault, Alignment Check, and Security).
+///
+/// For page faults the individual bits carry specific meaning defined by the x86 ISA.
+/// For selector-based exceptions (GP, SS, NP, TSS) the low 16 bits encode the
+/// offending segment selector.
+///
+#[derive(Clone, Copy)]
+#[must_use]
+pub struct ErrorCode(u32);
+
+impl ErrorCode {
+    /// Creates a new [`ErrorCode`] from a raw 32-bit value.
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Returns the raw 32-bit value.
+    pub const fn raw(self) -> u32 {
+        self.0
+    }
+
+    /// Page-fault bit 0 — *Present*.
+    ///
+    /// `true` when the fault was caused by a page-level protection violation.
+    /// `false` when the fault was caused by a non-present page.
+    pub const fn is_present(self) -> bool {
+        (self.0 & (1 << 0)) != 0
+    }
+
+    /// Page-fault bit 1 — *Write*.
+    ///
+    /// `true` when the access that caused the fault was a write.
+    pub const fn is_write(self) -> bool {
+        (self.0 & (1 << 1)) != 0
+    }
+
+    /// Page-fault bit 2 — *User*.
+    ///
+    /// `true` when the fault occurred while the CPU was in user mode (CPL = 3).
+    pub const fn is_user(self) -> bool {
+        (self.0 & (1 << 2)) != 0
+    }
+
+    /// Page-fault bit 3 — *Reserved-bit violation*.
+    ///
+    /// `true` when a reserved bit was set in a page-structure entry.
+    pub const fn is_reserved_bit_violation(self) -> bool {
+        (self.0 & (1 << 3)) != 0
+    }
+
+    /// Page-fault bit 4 — *Instruction fetch*.
+    ///
+    /// `true` when the fault was caused by an instruction fetch (requires NX support).
+    pub const fn is_instruction_fetch(self) -> bool {
+        (self.0 & (1 << 4)) != 0
+    }
+}
+
+impl core::fmt::Debug for ErrorCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "ErrorCode({:#x} [P={}, W={}, U={}, RSVD={}, I/D={}])",
+            self.0,
+            self.is_present() as u8,
+            self.is_write() as u8,
+            self.is_user() as u8,
+            self.is_reserved_bit_violation() as u8,
+            self.is_instruction_fetch() as u8,
+        )
+    }
+}
+
+//==================================================================================================
 // Enumerations
 //==================================================================================================
 
