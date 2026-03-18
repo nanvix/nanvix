@@ -146,8 +146,7 @@ async fn test_standalone_lifecycle_no_ramfs() {
 
     let runtime_config = paths.runtime_config(tmp.path());
     let mode = StandaloneMode::new("test-no-ramfs".to_string(), runtime_config.clone());
-    let mut sandbox_config =
-        make_sandbox_config("test-no-ramfs", &rootfs, &runtime_config, false);
+    let mut sandbox_config = make_sandbox_config("test-no-ramfs", &rootfs, &runtime_config, false);
 
     // Point stdout to a temp file so we can verify it after execution.
     let stdout_file = tmp.path().join("stdout.log");
@@ -214,8 +213,7 @@ async fn test_standalone_lifecycle_with_ramfs() {
 
     let runtime_config = paths.runtime_config(tmp.path());
     let mode = StandaloneMode::new("test-with-ramfs".to_string(), runtime_config.clone());
-    let mut sandbox_config =
-        make_sandbox_config("test-with-ramfs", &rootfs, &runtime_config, true);
+    let mut sandbox_config = make_sandbox_config("test-with-ramfs", &rootfs, &runtime_config, true);
 
     // Point stdout to a temp file so we can verify it after execution.
     let stdout_file = tmp.path().join("stdout.log");

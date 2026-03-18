@@ -414,6 +414,21 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
 
+      - name: "Link Toolchain"
+        if: matrix.machine-type == 'microvm' || matrix.machine-type == 'hyperlight'
+        uses: ./.github/actions/link-toolchain
+
+      - name: "Shim Integration Test"
+        if: matrix.machine-type == 'microvm' || matrix.machine-type == 'hyperlight'
+        shell: bash
+        env:
+          NANVIX_DIR: ${{ github.workspace }}
+        run: |
+          set -Eeuo pipefail
+          echo "Running shim integration tests with NANVIX_DIR=${NANVIX_DIR}"
+          cargo +nanvix-x86 test --no-default-features \
+            -p containerd-shim-nanvix-v1 --test integration -- --nocapture
+
       - name: "Post-Cleanup Dangling Resources"
         if: always()
         uses: ./.github/actions/cleanup
