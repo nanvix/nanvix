@@ -21,6 +21,7 @@ use ::sys::error::{
 // Modules
 //==================================================================================================
 
+mod demand_paging;
 mod direction_flag;
 #[cfg(not(feature = "hyperlight"))]
 mod mmio_ramfs;
@@ -58,6 +59,8 @@ pub fn main() -> Result<(), Error> {
     tls::run()?;
 
     direction_flag::run()?;
+
+    demand_paging::run()?;
 
     #[cfg(not(feature = "hyperlight"))]
     rendezvous::run()?;
