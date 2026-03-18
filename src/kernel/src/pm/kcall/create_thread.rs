@@ -16,7 +16,7 @@ use crate::{
         ProcessManager,
     },
 };
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_STACK_MIN_SIZE;
 use ::core::mem::size_of;
 use ::sys::{
     error::ErrorCode,
@@ -97,7 +97,7 @@ pub fn create_thread(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
     }
 
     // Check if user stack size is too small.
-    if thread_create_args.user_stack_size < USER_STACK_SIZE {
+    if thread_create_args.user_stack_size < USER_STACK_MIN_SIZE {
         let reason: &str = "user stack size is too small";
         error!(
             "create_thread(): {reason} (user_stack_size={})",
