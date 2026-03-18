@@ -23,7 +23,10 @@ use crate::{
         SleepError,
     },
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::collections::{
+    LinkedList,
+    VecDeque,
+};
 use ::core::{
     cell::{
         RefCell,
@@ -67,7 +70,58 @@ static mut MANAGER: Option<EventManager> = None;
 
 struct ExceptionEventInformation {
     pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
     info: ExceptionInformation,
+}
+
+///
+/// # Description
+///
+/// RAII guard that removes a thread from the event manager's waiting list on drop.
+///
+struct WaitingThreadGuard {
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+}
+
+impl WaitingThreadGuard {
+    /// Registers the thread in the event manager's waiting list and returns a guard that removes
+    /// it on drop.
+    fn register(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Result<Self, Error> {
+        EventManager::get()?
+            .try_borrow_mut()?
+            .waiting_threads
+            .push_back((pid, tid));
+        Ok(Self { pid, tid })
+    }
+}
+
+impl Drop for WaitingThreadGuard {
+    fn drop(&mut self) {
+        match EventManager::get() {
+            Ok(em) => match em.try_borrow_mut() {
+                Ok(mut inner) => {
+                    inner
+                        .waiting_threads
+                        .retain(|&(p, t)| p != self.pid || t != self.tid);
+                },
+                Err(e) => {
+                    error!(
+                        "WaitingThreadGuard::drop(): failed to borrow event manager (pid={:?}, \
+                         tid={:?}, error={:?})",
+                        self.pid, self.tid, e
+                    );
+                },
+            },
+            Err(e) => {
+                error!(
+                    "WaitingThreadGuard::drop(): failed to get event manager (pid={:?}, tid={:?}, \
+                     error={:?})",
+                    self.pid, self.tid, e
+                );
+            },
+        }
+    }
 }
 
 pub struct EventOwnership {
@@ -124,6 +178,7 @@ struct EventManagerInner {
     interrupt_capable: bool,
     nevents: usize,
     wait: Option<Condvar>,
+    waiting_threads: VecDeque<(ProcessIdentifier, ThreadIdentifier)>,
     interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
     pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
     exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
@@ -435,7 +490,7 @@ impl EventManagerInner {
     ///
     /// # Parameters
     ///
-    /// - `ev`: Exception event.
+    /// - `evdesc`: Full event descriptor (id + event type) identifying the pending exception.
     ///
     /// # Returns
     ///
@@ -449,36 +504,34 @@ impl EventManagerInner {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    unsafe fn resume_exception(&mut self, ev: ExceptionEvent) -> Result<(), Error> {
-        let idx: usize = usize::from(ev);
-
-        let is_pending_exception = |evdesc: &EventDescriptor, ev: &ExceptionEvent| -> bool {
-            match evdesc.event() {
-                Event::Exception(ev2) => &ev2 == ev,
-                _ => false,
-            }
-        };
-
-        // Get exception owner.
-        let pid: ProcessIdentifier = match self.exception_ownership[idx] {
-            Some(owner) => owner,
-            None => {
-                let reason: &str = "no owner for exception";
-                error!("reason={:?}", reason);
-                unimplemented!("terminate process")
+    unsafe fn resume_exception(&mut self, evdesc: EventDescriptor) -> Result<(), Error> {
+        let idx: usize = match evdesc.event() {
+            Event::Exception(ev) => usize::from(ev),
+            other => {
+                let reason: &str = "event descriptor does not refer to an exception";
+                error!("reason={:?}, event={:?}", reason, other);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
 
-        // Search and remove event from pending exceptions.
+        // Check that the exception has an owner.
+        if self.exception_ownership[idx].is_none() {
+            let reason: &str = "no owner for exception";
+            error!("reason={:?}", reason);
+            unimplemented!("terminate process")
+        }
+
+        // Search and remove event from pending exceptions by full descriptor (id + event).
         if let Some(entry) = self.pending_exceptions[idx]
             .iter()
-            .position(|(evdesc, _info, _resume)| is_pending_exception(evdesc, &ev))
+            .position(|(pending_evdesc, _info, _resume)| *pending_evdesc == evdesc)
         {
-            let (_enventinfo, _excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
+            let (_eventinfo, excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
-            if let Err(error) = resume.notify_process(pid) {
-                warn!("{error:?}");
-                unimplemented!("terminate process")
+            if let Err(error) = resume.notify_thread(excpinfo.tid) {
+                // The faulting thread may have already been terminated by the exception owner .
+                // This is a legitimate outcome, not an error.
+                warn!("faulting thread already gone (tid={:?}, error={:?})", excpinfo.tid, error);
             }
         }
 
@@ -530,7 +583,7 @@ impl EventManagerInner {
             },
         };
 
-        self.get_wait().notify_process(pid)
+        self.notify_all_process_threads(pid)
     }
 
     ///
@@ -541,7 +594,8 @@ impl EventManagerInner {
     /// # Parameters
     ///
     /// - `exceptions`: Bit mask of exceptions.
-    /// - `pid`: Identifier of the target process.
+    /// - `pid`: Identifier of the faulting process.
+    /// - `tid`: Identifier of the faulting thread.
     /// - `info`: Exception information.
     ///
     /// # Returns
@@ -563,9 +617,10 @@ impl EventManagerInner {
         &mut self,
         exceptions: usize,
         pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         info: &ExceptionInformation,
     ) -> Result<Condvar, Error> {
-        trace!("exceptions={:#x}, pid={:?}, info={:?}", exceptions, pid, info);
+        trace!("exceptions={:#x}, pid={:?}, tid={:?}, info={:?}", exceptions, pid, tid, info);
         self.nevents += 1;
         let idx: usize = exceptions.trailing_zeros() as usize;
         let ev: Event = Event::from(ExceptionEvent::try_from(idx)?);
@@ -575,6 +630,7 @@ impl EventManagerInner {
             eventid,
             ExceptionEventInformation {
                 pid,
+                tid,
                 info: info.clone(),
             },
             resume.clone(),
@@ -591,7 +647,7 @@ impl EventManagerInner {
         };
 
         // Notify exception owner.
-        self.get_wait().notify_process(pid)?;
+        self.notify_all_process_threads(pid)?;
 
         Ok(resume)
     }
@@ -607,7 +663,7 @@ impl EventManagerInner {
         match receiver.as_id() {
             Ok(pid) => {
                 // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
-                unsafe { self.get_wait().notify_process(pid) }
+                unsafe { self.notify_all_process_threads(pid) }
             },
             Err(tid) => {
                 // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
@@ -661,7 +717,7 @@ impl EventManagerInner {
             };
 
         trace!("pid={:?}, info={:?}", pid, info);
-        self.get_wait().notify_process(pid)?;
+        self.notify_all_process_threads(pid)?;
 
         Ok(())
     }
@@ -669,6 +725,46 @@ impl EventManagerInner {
     fn get_wait(&self) -> &Condvar {
         // NOTE: it is safe to unwrap because the wait field is always Some.
         self.wait.as_ref().unwrap()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes up all threads of a process that are waiting on the event manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the target process.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    unsafe fn notify_all_process_threads(&self, pid: ProcessIdentifier) -> Result<(), Error> {
+        let mut first_error: Option<Error> = None;
+
+        // Wake up all threads of the target process in the waiting list.
+        for (_p, tid) in self.waiting_threads.iter().filter(|(p, _)| *p == pid) {
+            if let Err(error) = self.get_wait().notify_thread(*tid) {
+                warn!("{error:?} (pid={pid:?}, tid={tid:?})");
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }
 
@@ -707,7 +803,9 @@ impl EventManager {
                 // No further action is required for interrupts.
                 Ok(())
             },
-            Event::Exception(ev) => EventManager::get()?.try_borrow_mut()?.resume_exception(ev),
+            Event::Exception(_ev) => EventManager::get()?
+                .try_borrow_mut()?
+                .resume_exception(evdesc),
             Event::Scheduling(_ev) => {
                 // No further action is required for scheduling events.
                 Ok(())
@@ -789,6 +887,10 @@ impl EventManager {
             .map_err(SleepError::Generic)?
             .get_wait()
             .clone();
+
+        // Register this thread in the waiting list so producers can find it by pid.
+        let _guard: WaitingThreadGuard =
+            WaitingThreadGuard::register(pid, tid).map_err(SleepError::Generic)?;
 
         loop {
             let message: Option<Message> = EventManager::get()
@@ -963,6 +1065,8 @@ fn do_exception_handler(
         panic!("the kernel triggered an exception");
     }
 
+    let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
+
     // Handle page faults: demand-page user stack pages.
     if info.num() == ::arch::cpu::excp::Exception::PageFault as u32 {
         // SAFETY: This is the only thread running, thus access to the managers is synchronized.
@@ -998,7 +1102,7 @@ fn do_exception_handler(
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
-            .wakeup_exception(1 << info.num() as usize, pid, info)
+            .wakeup_exception(1 << info.num() as usize, pid, tid, info)
             .map_err(SleepError::Generic)?
     };
 
@@ -1120,6 +1224,7 @@ pub fn init() -> Result<(), Error> {
         exception_ownership,
         pending_scheduling,
         scheduling_ownership,
+        waiting_threads: VecDeque::new(),
         wait: Some(Condvar::new()),
     });
 
