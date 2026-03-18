@@ -23,6 +23,7 @@
 //==================================================================================================
 
 use ::alloc::boxed::Box;
+use ::config::memory_layout::USER_STACK_SIZE;
 use ::sys::{
     error::{
         Error,
@@ -59,8 +60,8 @@ const WORKER_TDA_MAGIC: u32 = 0xCAFE_BABE;
 /// Expected exit status returned by the worker thread.
 const WORKER_EXIT_STATUS: usize = 0xDEAD_BEEF;
 
-/// Worker stack size in bytes (512 KiB, matching `config::memory_layout::USER_STACK_SIZE`).
-const WORKER_STACK_SIZE: usize = 512 * 1024;
+/// Worker stack size in bytes.
+const WORKER_STACK_SIZE: usize = USER_STACK_SIZE;
 
 //==================================================================================================
 // Types
