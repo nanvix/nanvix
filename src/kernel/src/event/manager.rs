@@ -490,7 +490,7 @@ impl EventManagerInner {
     ///
     /// # Parameters
     ///
-    /// - `ev`: Exception event.
+    /// - `evdesc`: Full event descriptor (id + event type) identifying the pending exception.
     ///
     /// # Returns
     ///
@@ -504,14 +504,14 @@ impl EventManagerInner {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    unsafe fn resume_exception(&mut self, ev: ExceptionEvent) -> Result<(), Error> {
-        let idx: usize = usize::from(ev);
-
-        let is_pending_exception = |evdesc: &EventDescriptor, ev: &ExceptionEvent| -> bool {
-            match evdesc.event() {
-                Event::Exception(ev2) => &ev2 == ev,
-                _ => false,
-            }
+    unsafe fn resume_exception(&mut self, evdesc: EventDescriptor) -> Result<(), Error> {
+        let idx: usize = match evdesc.event() {
+            Event::Exception(ev) => usize::from(ev),
+            other => {
+                let reason: &str = "event descriptor does not refer to an exception";
+                error!("reason={:?}, event={:?}", reason, other);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
         };
 
         // Check that the exception has an owner.
@@ -521,10 +521,10 @@ impl EventManagerInner {
             unimplemented!("terminate process")
         }
 
-        // Search and remove event from pending exceptions.
+        // Search and remove event from pending exceptions by full descriptor (id + event).
         if let Some(entry) = self.pending_exceptions[idx]
             .iter()
-            .position(|(evdesc, _info, _resume)| is_pending_exception(evdesc, &ev))
+            .position(|(pending_evdesc, _info, _resume)| *pending_evdesc == evdesc)
         {
             let (_eventinfo, excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
@@ -803,7 +803,9 @@ impl EventManager {
                 // No further action is required for interrupts.
                 Ok(())
             },
-            Event::Exception(ev) => EventManager::get()?.try_borrow_mut()?.resume_exception(ev),
+            Event::Exception(_ev) => EventManager::get()?
+                .try_borrow_mut()?
+                .resume_exception(evdesc),
             Event::Scheduling(_ev) => {
                 // No further action is required for scheduling events.
                 Ok(())
