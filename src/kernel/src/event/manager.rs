@@ -67,6 +67,7 @@ static mut MANAGER: Option<EventManager> = None;
 
 struct ExceptionEventInformation {
     pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
     info: ExceptionInformation,
 }
 
@@ -459,26 +460,24 @@ impl EventManagerInner {
             }
         };
 
-        // Get exception owner.
-        let pid: ProcessIdentifier = match self.exception_ownership[idx] {
-            Some(owner) => owner,
-            None => {
-                let reason: &str = "no owner for exception";
-                error!("reason={:?}", reason);
-                unimplemented!("terminate process")
-            },
-        };
+        // Check that the exception has an owner.
+        if self.exception_ownership[idx].is_none() {
+            let reason: &str = "no owner for exception";
+            error!("reason={:?}", reason);
+            unimplemented!("terminate process")
+        }
 
         // Search and remove event from pending exceptions.
         if let Some(entry) = self.pending_exceptions[idx]
             .iter()
             .position(|(evdesc, _info, _resume)| is_pending_exception(evdesc, &ev))
         {
-            let (_enventinfo, _excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
+            let (_eventinfo, excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
-            if let Err(error) = resume.notify_process(pid) {
-                warn!("{error:?}");
-                unimplemented!("terminate process")
+            if let Err(error) = resume.notify_thread(excpinfo.tid) {
+                // The faulting thread may have already been terminated by the exception owner .
+                // This is a legitimate outcome, not an error.
+                warn!("faulting thread already gone (tid={:?}, error={:?})", excpinfo.tid, error);
             }
         }
 
@@ -541,7 +540,8 @@ impl EventManagerInner {
     /// # Parameters
     ///
     /// - `exceptions`: Bit mask of exceptions.
-    /// - `pid`: Identifier of the target process.
+    /// - `pid`: Identifier of the faulting process.
+    /// - `tid`: Identifier of the faulting thread.
     /// - `info`: Exception information.
     ///
     /// # Returns
@@ -563,9 +563,10 @@ impl EventManagerInner {
         &mut self,
         exceptions: usize,
         pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
         info: &ExceptionInformation,
     ) -> Result<Condvar, Error> {
-        trace!("exceptions={:#x}, pid={:?}, info={:?}", exceptions, pid, info);
+        trace!("exceptions={:#x}, pid={:?}, tid={:?}, info={:?}", exceptions, pid, tid, info);
         self.nevents += 1;
         let idx: usize = exceptions.trailing_zeros() as usize;
         let ev: Event = Event::from(ExceptionEvent::try_from(idx)?);
@@ -575,6 +576,7 @@ impl EventManagerInner {
             eventid,
             ExceptionEventInformation {
                 pid,
+                tid,
                 info: info.clone(),
             },
             resume.clone(),
@@ -963,6 +965,8 @@ fn do_exception_handler(
         panic!("the kernel triggered an exception");
     }
 
+    let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
+
     // Handle page faults: demand-page user stack pages.
     if info.num() == ::arch::cpu::excp::Exception::PageFault as u32 {
         // SAFETY: This is the only thread running, thus access to the managers is synchronized.
@@ -998,7 +1002,7 @@ fn do_exception_handler(
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
             .map_err(SleepError::Generic)?
-            .wakeup_exception(1 << info.num() as usize, pid, info)
+            .wakeup_exception(1 << info.num() as usize, pid, tid, info)
             .map_err(SleepError::Generic)?
     };
 
