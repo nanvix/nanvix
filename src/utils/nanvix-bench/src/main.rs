@@ -23,14 +23,13 @@ mod benchmarks;
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "timestamp-messages"))]
-use crate::benchmark::UserVmDeployment;
 use crate::{
     args::Args,
     benchmark::{
         Benchmark,
         BenchmarkFlavour,
         LinuxdDeployment,
+        UserVmDeployment,
     },
 };
 use ::anyhow::Result;
@@ -64,6 +63,50 @@ const CARGO_PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
 /// Timeout (in seconds) for HTTP requests to nanvixd (start, kill, etc.).
 ///
 const NANVIXD_HTTP_TIMEOUT_SECS: u64 = 60;
+
+//==================================================================================================
+// Validation
+//==================================================================================================
+
+/// Validates that the selected benchmark is compatible with the compile-time feature set.
+fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
+    let has_multi = cfg!(feature = "multi-process");
+    let has_single = cfg!(feature = "single-process");
+    let has_l2 = cfg!(feature = "l2");
+    let has_timestamp = cfg!(feature = "timestamp-messages");
+
+    // System-level benchmarks (those using nanvixd) need multi-process or single-process.
+    if flavour.needs_nanvixd() {
+        if !has_multi && !has_single {
+            anyhow::bail!(
+                "benchmark '{flavour}' requires compilation with multi-process or single-process"
+            );
+        }
+
+        // L2 benchmarks additionally need the l2 feature.
+        if flavour.is_l2() && !has_l2 {
+            anyhow::bail!("benchmark '{flavour}' requires compilation with l2");
+        }
+
+        // concurrent (non-L2) needs multi-process specifically.
+        if matches!(flavour, BenchmarkFlavour::Concurrent) && !has_multi {
+            anyhow::bail!("benchmark '{flavour}' requires compilation with multi-process");
+        }
+    }
+
+    // echo-breakdown benchmarks require timestamp-messages; all others reject it.
+    if flavour.requires_timestamp_messages() {
+        if !has_timestamp {
+            anyhow::bail!(
+                "benchmark '{flavour}' requires Nanvix (re-) compilation with TIMESTAMP_MSG=yes"
+            );
+        }
+    } else if has_timestamp {
+        anyhow::bail!("benchmark '{flavour}' must be compiled with TIMESTAMP_MSG=no (or omit it)");
+    }
+
+    Ok(())
+}
 
 //==================================================================================================
 // Main
@@ -104,6 +147,9 @@ async fn main() -> Result<()> {
         anyhow::bail!(reason);
     }
 
+    // Validate that the selected benchmark is compatible with the compile-time feature set.
+    validate_benchmark(&args.benchmark())?;
+
     // Parse hwloc from JSON file.
     let hwloc: Option<HwLoc> = if let Some(hwloc_file_path) = args.hwloc_file() {
         let hwloc_file: File = File::open(hwloc_file_path)?;
@@ -134,200 +180,37 @@ async fn main() -> Result<()> {
         user_vm_id: None,
     };
 
-    let result = match benchmark.flavour {
-        BenchmarkFlavour::BootTime => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark.run_boot_time().await
-            }
-        },
-        BenchmarkFlavour::ColdStart => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark
-                    .run_cold_start(&LinuxdDeployment::Process, &UserVmDeployment::OneToOne)
-                    .await
-            }
-        },
-        BenchmarkFlavour::ColdStartL2 => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark
-                    .run_cold_start(&LinuxdDeployment::L2Vm, &UserVmDeployment::OneToOne)
-                    .await
-            }
+    let deployment: LinuxdDeployment = benchmark.flavour.deployment();
+    let result: Result<(), anyhow::Error> = match &benchmark.flavour {
+        BenchmarkFlavour::BootTime => benchmark.run_boot_time().await,
+        BenchmarkFlavour::ColdStart | BenchmarkFlavour::ColdStartL2 => {
+            benchmark
+                .run_cold_start(&deployment, &UserVmDeployment::OneToOne)
+                .await
         },
         BenchmarkFlavour::ColdStartUvm => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
+            benchmark
+                .run_cold_start(&deployment, &UserVmDeployment::PreWarm)
+                .await
+        },
+        BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
+            benchmark.run_echo_breakdown(&deployment).await
+        },
+        BenchmarkFlavour::RoundTripLatency => benchmark.run_round_trip_latency(&deployment).await,
+        BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
+            if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
                 benchmark
-                    .run_cold_start(&LinuxdDeployment::Process, &UserVmDeployment::PreWarm)
+                    .run_concurrent(&deployment, num_concurrent_vms)
                     .await
+            } else {
+                anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
             }
         },
-        BenchmarkFlavour::EchoBreakdown => {
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
-                     TIMESTAMP_MSG=yes"
-                );
-            }
-
-            #[cfg(feature = "timestamp-messages")]
-            {
-                benchmark
-                    .run_echo_breakdown(&LinuxdDeployment::Process)
-                    .await
-            }
+        BenchmarkFlavour::WarmStart | BenchmarkFlavour::WarmStartL2 => {
+            benchmark.run_warm_start(&deployment).await
         },
-        BenchmarkFlavour::EchoBreakdownL2 => {
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark requires Nanvix (re-) compilation with \
-                     TIMESTAMP_MSG=yes"
-                );
-            }
-
-            #[cfg(feature = "timestamp-messages")]
-            {
-                benchmark.run_echo_breakdown(&LinuxdDeployment::L2Vm).await
-            }
-        },
-        BenchmarkFlavour::RoundTripLatency => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark
-                    .run_round_trip_latency(&LinuxdDeployment::Process)
-                    .await
-            }
-        },
-        BenchmarkFlavour::Concurrent => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
-                    benchmark
-                        .run_concurrent(&LinuxdDeployment::Process, num_concurrent_vms)
-                        .await
-                } else {
-                    anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
-                }
-            }
-        },
-        BenchmarkFlavour::ConcurrentL2 => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
-                    benchmark
-                        .run_concurrent(&LinuxdDeployment::L2Vm, num_concurrent_vms)
-                        .await
-                } else {
-                    anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
-                }
-            }
-        },
-        BenchmarkFlavour::WarmStart => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark.run_warm_start(&LinuxdDeployment::Process).await
-            }
-        },
-        BenchmarkFlavour::WarmStartL2 => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark.run_warm_start(&LinuxdDeployment::L2Vm).await
-            }
-        },
-        BenchmarkFlavour::WarmStartVMM => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark.run_warm_start_vmm().await
-            }
-        },
-        BenchmarkFlavour::SnapshotRestore => {
-            #[cfg(feature = "timestamp-messages")]
-            {
-                anyhow::bail!(
-                    "WARNING: this benchmark must be compiled with TIMESTAMP_MSG=no (or omit it)"
-                );
-            }
-
-            #[cfg(not(feature = "timestamp-messages"))]
-            {
-                benchmark.run_snapshot_restore().await
-            }
-        },
+        BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,
+        BenchmarkFlavour::SnapshotRestore => benchmark.run_snapshot_restore().await,
     };
     match result {
         Ok(()) => {},

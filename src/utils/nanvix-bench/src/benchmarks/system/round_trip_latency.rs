@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use super::CLEANUP_SLEEP_DURATION;
+use super::super::CLEANUP_SLEEP_DURATION;
 use crate::benchmark::{
     Benchmark,
     LinuxdDeployment,

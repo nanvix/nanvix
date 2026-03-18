@@ -49,6 +49,30 @@ impl BenchmarkFlavour {
         )
     }
 
+    /// Returns the linuxd deployment mode for this benchmark.
+    pub fn deployment(&self) -> LinuxdDeployment {
+        if self.is_l2() {
+            LinuxdDeployment::L2Vm
+        } else {
+            LinuxdDeployment::Process
+        }
+    }
+
+    /// Returns `true` when this benchmark requires the `timestamp-messages` feature.
+    pub fn requires_timestamp_messages(&self) -> bool {
+        matches!(self, BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2)
+    }
+
+    /// Returns `true` when this benchmark needs nanvixd (system-level benchmark).
+    pub fn needs_nanvixd(&self) -> bool {
+        !matches!(
+            self,
+            BenchmarkFlavour::BootTime
+                | BenchmarkFlavour::SnapshotRestore
+                | BenchmarkFlavour::WarmStartVMM
+        )
+    }
+
     pub fn get_program(&self, root: &Path) -> String {
         match self {
             BenchmarkFlavour::BootTime => {
@@ -57,17 +81,7 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::SnapshotRestore => {
                 format!("{}/bin/snapshot-rust-nostd.elf", root.display())
             },
-            BenchmarkFlavour::ColdStart
-            | BenchmarkFlavour::ColdStartL2
-            | BenchmarkFlavour::ColdStartUvm
-            | BenchmarkFlavour::Concurrent
-            | BenchmarkFlavour::ConcurrentL2
-            | BenchmarkFlavour::EchoBreakdown
-            | BenchmarkFlavour::EchoBreakdownL2
-            | BenchmarkFlavour::RoundTripLatency
-            | BenchmarkFlavour::WarmStart
-            | BenchmarkFlavour::WarmStartL2
-            | BenchmarkFlavour::WarmStartVMM => {
+            _ => {
                 format!("{}/bin/echo-rust-nostd.elf", root.display())
             },
         }
@@ -137,7 +151,7 @@ pub struct Benchmark {
 ///
 /// Linuxd deployment mode.
 ///
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum LinuxdDeployment {
     /// Linuxd deployed inside an L2 VM.
     L2Vm,

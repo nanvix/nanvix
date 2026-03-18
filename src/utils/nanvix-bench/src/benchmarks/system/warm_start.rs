@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use super::{
+use super::super::{
     CLEANUP_SLEEP_DURATION,
     DEFAULT_PAYLOAD_SIZE,
     WARMUP_SLEEP_DURATION,
