@@ -40,6 +40,69 @@ impl Args {
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
+        let mut benchmarks = String::new();
+
+        // VMM-level benchmarks are always available.
+        benchmarks.push_str(
+            "\
+  boot-time              Measure raw user VM boot latency.\n",
+        );
+
+        // System-level benchmarks require multi-process or single-process.
+        if cfg!(any(feature = "multi-process", feature = "single-process")) {
+            benchmarks.push_str(
+                "\
+  cold-start             Measure start-up latency from client's perspective.
+  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
+  round-trip-latency     Measure latency (warm-start) as we increase the payload size.\n",
+            );
+        }
+
+        // echo-breakdown requires timestamp-messages in addition to multi/single-process.
+        if cfg!(feature = "timestamp-messages") {
+            benchmarks.push_str(
+                "\
+  echo-breakdown         Analyze the latency contributions of each step in the data path.\n",
+            );
+        }
+
+        // concurrent requires multi-process specifically.
+        if cfg!(feature = "multi-process") {
+            benchmarks.push_str(
+                "\
+  concurrent             Measure cold-start times as we increase the number of concurrent user \
+                 VMs.\n",
+            );
+        }
+
+        // L2 variants.
+        if cfg!(feature = "l2") {
+            benchmarks.push_str(
+                "\
+  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
+  concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
+  echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
+  warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.\n",
+            );
+        }
+
+        benchmarks.push_str(
+            "\
+  snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
+        );
+
+        if cfg!(any(feature = "multi-process", feature = "single-process")) {
+            benchmarks.push_str(
+                "\
+  warm-start             Measure round-trip latency from client's perspective.\n",
+            );
+        }
+
+        benchmarks.push_str(
+            "\
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.",
+        );
+
         println!(
             "\
 Nanvix Benchmarks - Benchmarking suite for Nanvix OS performance.
@@ -48,19 +111,7 @@ Usage:
   {program_name} {benchmark} [OPTIONS]
 
 Benchmarks:
-  boot-time              Measure raw user VM boot latency.
-  cold-start             Measure start-up latency from client's perspective.
-  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
-  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
-  concurrent             Measure cold-start times as we increase the number of concurrent user VMs.
-  concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
-  echo-breakdown         Analyze the latency contributions of each step in the data path.
-  echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
-  round-trip-latency     Measure latency (warm-start) as we increase the payload size.
-  snapshot-restore       Measure snapshot restore latency vs boot-time.
-  warm-start             Measure round-trip latency from client's perspective.
-  warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.
-  warm-start-vmm         Measure raw round-trip latency inside the user VM.
+{benchmarks}
 
 Options:
   {benchmark} <benchmark>             Select which benchmark to run (required).
