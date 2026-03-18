@@ -434,6 +434,6 @@ impl Benchmark {
         &mut self,
         _linuxd_deployment: &LinuxdDeployment,
     ) -> Result<()> {
-        unreachable!("echo-breakdown requires compilation with timestamp-messages feature")
+        anyhow::bail!("echo-breakdown requires compilation with timestamp-messages feature")
     }
 }

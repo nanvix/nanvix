@@ -28,6 +28,7 @@ use crate::{
     benchmark::{
         Benchmark,
         BenchmarkFlavour,
+        LinuxdDeployment,
         UserVmDeployment,
     },
 };
@@ -179,41 +180,34 @@ async fn main() -> Result<()> {
         user_vm_id: None,
     };
 
-    let result = match benchmark.flavour {
+    let deployment: LinuxdDeployment = benchmark.flavour.deployment();
+    let result: Result<(), anyhow::Error> = match &benchmark.flavour {
         BenchmarkFlavour::BootTime => benchmark.run_boot_time().await,
         BenchmarkFlavour::ColdStart | BenchmarkFlavour::ColdStartL2 => {
             benchmark
-                .run_cold_start(&benchmark.flavour.deployment(), &UserVmDeployment::OneToOne)
+                .run_cold_start(&deployment, &UserVmDeployment::OneToOne)
                 .await
         },
         BenchmarkFlavour::ColdStartUvm => {
             benchmark
-                .run_cold_start(&benchmark.flavour.deployment(), &UserVmDeployment::PreWarm)
+                .run_cold_start(&deployment, &UserVmDeployment::PreWarm)
                 .await
         },
         BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
-            benchmark
-                .run_echo_breakdown(&benchmark.flavour.deployment())
-                .await
+            benchmark.run_echo_breakdown(&deployment).await
         },
-        BenchmarkFlavour::RoundTripLatency => {
-            benchmark
-                .run_round_trip_latency(&benchmark.flavour.deployment())
-                .await
-        },
+        BenchmarkFlavour::RoundTripLatency => benchmark.run_round_trip_latency(&deployment).await,
         BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
             if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
                 benchmark
-                    .run_concurrent(&benchmark.flavour.deployment(), num_concurrent_vms)
+                    .run_concurrent(&deployment, num_concurrent_vms)
                     .await
             } else {
                 anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
             }
         },
         BenchmarkFlavour::WarmStart | BenchmarkFlavour::WarmStartL2 => {
-            benchmark
-                .run_warm_start(&benchmark.flavour.deployment())
-                .await
+            benchmark.run_warm_start(&deployment).await
         },
         BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,
         BenchmarkFlavour::SnapshotRestore => benchmark.run_snapshot_restore().await,
