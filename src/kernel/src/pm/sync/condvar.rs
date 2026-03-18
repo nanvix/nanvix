@@ -11,7 +11,7 @@ use crate::pm::{
     ProcessManager,
 };
 use ::alloc::{
-    collections::LinkedList,
+    collections::VecDeque,
     sync::Arc,
 };
 use ::core::{
@@ -40,7 +40,7 @@ use ::sys::{
 /// Represents the inner state of a condition variable.
 ///
 struct CondvarInner {
-    sleeping: RefCell<LinkedList<(ProcessIdentifier, ThreadIdentifier)>>,
+    sleeping: RefCell<VecDeque<ThreadIdentifier>>,
 }
 
 ///
@@ -70,7 +70,7 @@ impl Condvar {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(CondvarInner {
-                sleeping: RefCell::new(LinkedList::new()),
+                sleeping: RefCell::new(VecDeque::new()),
             }),
         }
     }
@@ -116,57 +116,12 @@ impl Condvar {
         let mut awakened: u32 = 0;
 
         // Attempt to wake up the first thread in the sleeping queue.
-        if let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+        if let Some(tid) = self.inner.sleeping.borrow_mut().pop_front() {
             ProcessManager::wakeup(tid)?;
             awakened += 1;
         }
 
         Ok(awakened)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Wakes up the first thread of a process that is waiting on the target condition variable.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: Identifier of the target process.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it operates on global variables.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process does not hold a reference to the process manager.
-    ///
-    pub unsafe fn notify_process(&self, pid: ProcessIdentifier) -> Result<(), Error> {
-        // Find process.
-        let idx: Option<usize> = self
-            .inner
-            .sleeping
-            .borrow()
-            .iter()
-            .position(|&(p, _)| p == pid);
-
-        // Remove process from sleeping queue.
-        if let Some(at) = idx {
-            let (_notified_pid, tid) = self.inner.sleeping.borrow_mut().remove(at);
-            debug_assert!(
-                _notified_pid == pid,
-                "notify_process(): pid and tid do not match (expected: pid={:?}, got pid={:?})",
-                pid,
-                _notified_pid
-            );
-            ProcessManager::wakeup(tid)?;
-        }
-
-        Ok(())
     }
 
     ///
@@ -192,24 +147,18 @@ impl Condvar {
     ///
     pub unsafe fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Find thread.
-        let idx: Option<usize> = self
-            .inner
-            .sleeping
-            .borrow()
-            .iter()
-            .position(|&(_p, t)| t == tid);
+        let idx: Option<usize> = self.inner.sleeping.borrow().iter().position(|&t| t == tid);
 
-        // Remove thread from sleeping queue.
+        // Remove thread from sleeping queue and wake it up.
         if let Some(at) = idx {
-            let (_notified_pid, notified_tid): (ProcessIdentifier, ThreadIdentifier) =
-                self.inner.sleeping.borrow_mut().remove(at);
-            debug_assert!(
-                notified_tid == tid,
-                "notify_thread(): pid and tid do not match (expected: tid={:?}, got tid={:?})",
-                tid,
-                notified_tid
-            );
-            ProcessManager::wakeup(tid)?;
+            if let Some(notified_tid) = self.inner.sleeping.borrow_mut().remove(at) {
+                debug_assert!(
+                    notified_tid == tid,
+                    "notify_thread(): tid does not match (expected: tid={tid:?}, got \
+                     tid={notified_tid:?})",
+                );
+                ProcessManager::wakeup(tid)?;
+            }
         }
 
         Ok(())
@@ -241,11 +190,11 @@ impl Condvar {
         let mut first_error: Option<Error> = None; // First error encountered (if any).
 
         // Traverse the sleeping queue, waking up all threads.
-        while let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+        while let Some(tid) = self.inner.sleeping.borrow_mut().pop_front() {
             // Attempt to wake up thread and check for errors.
             if let Err(error) = ProcessManager::wakeup(tid) {
                 // Failed to wake up thread, log a warning, store the first error, and continue.
-                warn!("{error:?} (pid={pid:?}, tid={tid:?})");
+                warn!("{error:?} (tid={tid:?})");
                 if first_error.is_none() {
                     first_error = Some(error);
                 }
@@ -306,16 +255,13 @@ impl Condvar {
             }
         }
 
-        self.inner.sleeping.borrow_mut().push_back((pid, tid));
+        self.inner.sleeping.borrow_mut().push_back(tid);
 
         match ProcessManager::sleep(alarm) {
             Ok(()) => Ok(()),
             Err(error) => {
                 // Remove the thread from the sleeping queue if it was not woken up.
-                self.inner
-                    .sleeping
-                    .borrow_mut()
-                    .retain(|&mut (p, t)| p != pid || t != tid);
+                self.inner.sleeping.borrow_mut().retain(|&t| t != tid);
                 Err(error)
             },
         }
