@@ -54,8 +54,15 @@ impl Args {
                 "\
   cold-start             Measure start-up latency from client's perspective.
   cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
-  echo-breakdown         Analyze the latency contributions of each step in the data path.
   round-trip-latency     Measure latency (warm-start) as we increase the payload size.\n",
+            );
+        }
+
+        // echo-breakdown requires timestamp-messages in addition to multi/single-process.
+        if cfg!(feature = "timestamp-messages") {
+            benchmarks.push_str(
+                "\
+  echo-breakdown         Analyze the latency contributions of each step in the data path.\n",
             );
         }
 

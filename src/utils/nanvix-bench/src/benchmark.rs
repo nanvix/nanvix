@@ -151,7 +151,7 @@ pub struct Benchmark {
 ///
 /// Linuxd deployment mode.
 ///
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum LinuxdDeployment {
     /// Linuxd deployed inside an L2 VM.
     L2Vm,
