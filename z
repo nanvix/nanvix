@@ -394,7 +394,7 @@ check_filesystem_support() {
 #         * Verifies the expected image (derived from current Nanvix version) is present locally.
 #         * Validates the derived tag matches the MAJOR.MINOR.x pattern expected.
 #     - When building with the local toolchain:
-#         * Ensures the version file exists and is readable.
+#         * Ensures the version file exists, is outside the repository, and is readable.
 #         * Compares its contents to the expected version string.
 #
 #   On mismatch or missing artifacts, an error is printed and the function returns non-zero.
@@ -576,6 +576,18 @@ main() {
             TOOLCHAIN_DIR="${param#TOOLCHAIN_DIR=}"
         fi
     done
+
+    # Disallow TOOLCHAIN_DIR inside the repository only for non-Docker builds.
+    if [[ "${BUILD_WITH_DOCKER:-false}" != "true" ]]; then
+        local resolved_toolchain resolved_repo
+        resolved_toolchain="$(resolve_path "$TOOLCHAIN_DIR")"
+        resolved_repo="$(cd "${REPO_ROOT_DIR}" && pwd -P)"
+        if [[ "${resolved_toolchain}" == "${resolved_repo}" || "${resolved_toolchain}" == "${resolved_repo}/"* ]]; then
+            print_error "Absolute path to the toolchain directory must not be inside the repository (${REPO_ROOT_DIR})."
+            print_info "Hint: Specify the toolchain by passing '--toolchain-dir'"
+            exit 1
+        fi
+    fi
 
     # If using cache, restore variables from cache when not overridden by command line options.
     if ${WITH_CACHED_OPTIONS}; then
