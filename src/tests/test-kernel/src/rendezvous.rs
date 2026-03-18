@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::alloc::alloc::Layout;
+use ::config::memory_layout::USER_STACK_SIZE;
 use ::core::sync::atomic::{
     AtomicBool,
     AtomicU32,
@@ -37,7 +38,7 @@ use ::sys::{
 const ORDER: Ordering = Ordering::SeqCst;
 
 /// Size of the stack allocated for child threads.
-const STACK_SIZE: usize = 512 * 1024;
+const STACK_SIZE: usize = USER_STACK_SIZE;
 
 /// Test payload for the basic 16-byte push/pull test.
 const TEST_PAYLOAD_16: [u8; 16] = [
