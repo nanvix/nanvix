@@ -19,7 +19,7 @@ nanvix-shim-proto = { workspace = true }
 nanvix-shim-core = { workspace = true }
 nanvix-shim-standalone = { workspace = true }
 anyhow = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 env_logger = { workspace = true }
 
 [dev-dependencies]

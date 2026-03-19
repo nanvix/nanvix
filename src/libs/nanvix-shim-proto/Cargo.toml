@@ -23,7 +23,7 @@ oci-spec = { workspace = true }
 protobuf = "3.2"
 sha2 = { workspace = true }
 ttrpc = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }
