@@ -178,6 +178,10 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_MIN_SIZE <= config::memory_layout::USER_STACK_SIZE
 );
+// Ensure that the thread stack size is at least the minimum stack size.
+::static_assert::assert_eq!(
+    config::memory_layout::USER_THREAD_STACK_SIZE >= config::memory_layout::USER_STACK_MIN_SIZE
+);
 
 //==================================================================================================
 // Standalone Functions

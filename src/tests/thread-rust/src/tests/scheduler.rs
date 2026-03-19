@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::runtime::raw_entry_address;
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::core::sync::atomic::{
     AtomicU8,
     Ordering,
@@ -42,7 +42,7 @@ pub fn run() -> Result<(), Error> {
 
 fn test_sched_yield_progress() -> Result<(), Error> {
     SCHED_STATE.store(0, Ordering::Relaxed);
-    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         user_fn: ThreadCreateArgs::NULL_USER_FN,
         user_fn_arg0: raw_entry_address(yield_worker),

@@ -65,7 +65,7 @@ pub fn run() -> Result<(), StressError> {
     FAN_OUT_COMPLETED.store(0, Ordering::Relaxed);
 
     for round in 0..FAN_OUT_ROUNDS {
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, fan_out_worker, round);
         let tid: ThreadIdentifier = create_thread(&mut args)?;
 
