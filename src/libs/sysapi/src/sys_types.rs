@@ -29,8 +29,8 @@ use crate::{
     sys_socket::socklen_t,
 };
 use ::config::memory_layout::{
-    USER_STACK_SIZE,
     USER_STACK_TOP_RAW,
+    USER_THREAD_STACK_SIZE,
 };
 use ::core::mem::size_of;
 
@@ -171,7 +171,7 @@ impl Default for pthread_attr_t {
         Self {
             is_initialized: 1,
             stackaddr: USER_STACK_TOP_RAW as *mut _,
-            stacksize: USER_STACK_SIZE as c_size_t,
+            stacksize: USER_THREAD_STACK_SIZE as c_size_t,
             contentionscope: 0,
             inheritsched: 0,
             schedpolicy: SCHED_OTHER,
