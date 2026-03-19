@@ -1835,11 +1835,19 @@ impl ProcessManager {
                                 unreachable!("address conversion should succeed")
                             },
                         };
-                    // Attempt to unmap page
-                    if let Err(error) = mm.unmap_upage(state.vmem_mut(), vaddr) {
-                        // We failed, but this is not too bad, as we will free all pages
-                        // when wiping out the address space anyways.
-                        warn!("failed to unmap page (vaddr={:?}, error={:?})", vaddr, error);
+                    // Attempt to unmap page.
+                    match mm.try_unmap_upage(state.vmem_mut(), vaddr) {
+                        Ok(true) => {
+                            // Page was present and has been successfully unmapped.
+                        },
+                        Ok(false) => {
+                            // Page was never mapped (not demand-paged). Skip silently.
+                        },
+                        Err(error) => {
+                            // Unexpected failure — log but continue since the
+                            // address space will be reclaimed when it is destroyed.
+                            warn!("failed to unmap page (vaddr={:?}, error={:?})", vaddr, error);
+                        },
                     }
                 }
 
@@ -1871,7 +1879,13 @@ impl ProcessManager {
     ) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
-        mm.unmap_upage(vmem, vaddr)
+        if mm.try_unmap_upage(vmem, vaddr)? {
+            Ok(())
+        } else {
+            let reason: &str = "page is not mapped";
+            error!("munmap(): {reason} (pid={pid:?}, vaddr={vaddr:?})");
+            Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        }
     }
 
     pub fn mctrl(
