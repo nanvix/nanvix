@@ -18,8 +18,8 @@
     .\z.ps1 build -- lint-check
     .\z.ps1 clean
     .\z.ps1 distclean
-    .\z.ps1 setup
     .\z.ps1 run
+    .\z.ps1 setup
 #>
 
 # ==================================================================================================
@@ -73,10 +73,8 @@ Options
   --with-minimal-docker   Use the minimal Docker toolchain image (default).
 
 Build Targets (after --)
-  all                     Build everything (guest + uservm + nanvixd).
+  all                     Build everything (guest + uservm).
   uservm                  Build UserVM only (native Windows, microvm backend).
-  nanvixd                 Build nanvixd only (native Windows, standalone + microvm).
-  nanvix-test             Build nanvix-test only (native Windows, standalone + microvm).
   guest                   Build guest components only (kernel + hello-rust-nostd).
   format-check            Check code formatting (via Docker).
   lint-check              Check for linting issues (via Docker).
@@ -94,7 +92,6 @@ Build Targets (after --)
 Run Options (after --)
   -kernel <path>          Path to kernel binary (default: bin/kernel.elf).
   -initrd <path>          Path to guest binary (default: bin/hello-rust-nostd.elf).
-  -memory <size>          Memory size with suffix K/M/G (default: 32M).
 
 Build Parameters (after --)
   RELEASE=yes             Enable release mode.
@@ -370,7 +367,7 @@ function Build-Guest {
 
     Write-Info "Building guest components (Docker)..."
     $releaseFlag = if ($IsRelease) { "RELEASE=yes" } else { "" }
-    $buildParams = "all-guest-staticlibs all-kernel all-guest-binaries all-nanvixd $releaseFlag MACHINE=microvm DEPLOYMENT_MODE=standalone"
+    $buildParams = "all-guest-staticlibs all-kernel all-guest-binaries $releaseFlag MACHINE=microvm DEPLOYMENT_MODE=standalone"
     if ($ExtraMakeParams.Count -gt 0) {
         $buildParams += " " + ($ExtraMakeParams -join ' ')
     }
@@ -412,6 +409,60 @@ function Invoke-DistClean {
         if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
     }
     Write-Success "Full cleanup complete."
+}
+
+# ==================================================================================================
+# Run
+# ==================================================================================================
+
+function Invoke-Run {
+    param([string[]]$RunArgs = @())
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    # Default values.
+    $kernel = Join-Path $BinDir "kernel.elf"
+    $initrd = Join-Path $BinDir "hello-rust-nostd.elf"
+
+    # Parse run options.
+    for ($i = 0; $i -lt $RunArgs.Count; $i++) {
+        switch ($RunArgs[$i]) {
+            "-kernel"  {
+                if ($i + 1 -ge $RunArgs.Count) {
+                    Write-Err "Missing value for -kernel. Usage: .\z.ps1 run -- -kernel <path> [-initrd <path>]"
+                    exit 1
+                }
+                $i++
+                $kernel = $RunArgs[$i]
+            }
+            "-initrd"  {
+                if ($i + 1 -ge $RunArgs.Count) {
+                    Write-Err "Missing value for -initrd. Usage: .\z.ps1 run -- [-kernel <path>] -initrd <path>"
+                    exit 1
+                }
+                $i++
+                $initrd = $RunArgs[$i]
+            }
+            default    { Write-Warn "Unknown run option: $($RunArgs[$i])" }
+        }
+    }
+
+    $uvmBin = Join-Path $BinDir "uservm.exe"
+    if (-not (Test-Path $uvmBin)) {
+        Write-Err "UserVM binary not found at $uvmBin. Build it first with: .\z.ps1 build -- uservm"
+        exit 1
+    }
+
+    Write-Info "Running UserVM in standalone mode..."
+    Write-Host "  Kernel: $kernel" -ForegroundColor DarkGray
+    Write-Host "  Initrd: $initrd" -ForegroundColor DarkGray
+
+    & $uvmBin -kernel $kernel -initrd $initrd -standalone
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "UserVM exited with code $LASTEXITCODE."
+        exit $LASTEXITCODE
+    }
 }
 
 # ==================================================================================================
@@ -461,7 +512,7 @@ function Main {
 
     # If the first argument looks like a build target (not a known command),
     # treat it as an implicit "build <target>" for convenience.
-    $knownCommands = @("build", "clean", "distclean", "setup", "help")
+    $knownCommands = @("build", "clean", "distclean", "setup", "run", "help")
     if ($command -notin $knownCommands) {
         $remaining = @($command) + $remaining
         $command = "build"
@@ -556,6 +607,10 @@ function Main {
 
         "distclean" {
             Invoke-DistClean
+        }
+
+        "run" {
+            Invoke-Run -RunArgs $buildParams
         }
 
         "setup" {
