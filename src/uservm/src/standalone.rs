@@ -391,7 +391,11 @@ async fn handle_write_request(
             );
             let response: Message = WriteResponse::build(tid, 0);
             counters.increment_io_thread_messages_received();
-            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
+                );
+            }
             return;
         },
     };
@@ -401,17 +405,38 @@ async fn handle_write_request(
         warn!("standalone io_handler: rejecting write to unsupported fd={fd} (tid={tid:?})");
         let response: Message = WriteResponse::build(tid, -1);
         counters.increment_io_thread_messages_received();
-        let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
+        }
         return;
     }
 
-    let written: i32 = i32::try_from(data.len()).unwrap_or(i32::MAX);
+    let written: i32 = match i32::try_from(data.len()) {
+        Ok(n) => n,
+        Err(_) => {
+            error!("standalone io_handler: write size overflows i32 (len={})", data.len());
+            let response: Message = WriteResponse::build(tid, -1);
+            counters.increment_io_thread_messages_received();
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
+                );
+            }
+            return;
+        },
+    };
 
-    // Forward to consumer (terminal stdout, HTTP gateway, etc.). If the consumer has dropped
-    // their receiver or the channel is full, the data is silently discarded — matching the
-    // previous drain behavior.
-    if output_tx.try_send(data).is_err() {
-        trace!("standalone io_handler: output channel closed or full, discarding write data");
+    // Forward to consumer (terminal stdout, HTTP gateway, etc.). Use send().await to apply
+    // back-pressure when the channel is full, preventing silent data loss that could cause
+    // intermittent output mismatches.
+    if output_tx.send(data).await.is_err() {
+        trace!("standalone io_handler: output channel closed, discarding write data");
+        let response: Message = WriteResponse::build(tid, -1);
+        counters.increment_io_thread_messages_received();
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
+        }
+        return;
     }
 
     // Send WriteResponse back to guest.
@@ -455,7 +480,11 @@ async fn handle_read_request(
             );
             let response: Message = ReadResponse::eof(tid);
             counters.increment_io_thread_messages_received();
-            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
+                );
+            }
             return;
         },
     };
@@ -475,10 +504,15 @@ async fn handle_read_request(
         let error_bulk: DataChunk = DataChunk::new(error_header, Vec::new());
         counters.increment_io_thread_messages_received();
         counters.increment_io_thread_messages_received();
-        let _ = vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await;
+        if vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await.is_err() {
+            error!("standalone io_handler: failed to send bulk response (VM input channel closed)");
+            return;
+        }
         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         let response: Message = ReadResponse::build(tid, -1, empty_buf);
-        let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+        }
         return;
     }
 
@@ -497,7 +531,21 @@ async fn handle_read_request(
     // Take up to max_bytes from the buffer.
     let available: usize = core::cmp::min(input_buffer.len(), max_bytes);
     let data: Vec<u8> = input_buffer.drain(..available).collect();
-    let actual_len: u32 = u32::try_from(data.len()).unwrap_or(u32::MAX);
+    let actual_len: u32 = match u32::try_from(data.len()) {
+        Ok(n) => n,
+        Err(_) => {
+            error!("standalone io_handler: read size overflows u32 (len={})", data.len());
+            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+            let response: Message = ReadResponse::build(tid, -1, empty_buf);
+            counters.increment_io_thread_messages_received();
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
+                );
+            }
+            return;
+        },
+    };
 
     // Construct bulk response with the read data and send it to the guest. The input_fn will
     // write this data to guest memory at the pull_header's data_addr and construct a
