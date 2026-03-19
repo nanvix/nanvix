@@ -407,11 +407,17 @@ async fn handle_write_request(
 
     let written: i32 = i32::try_from(data.len()).unwrap_or(i32::MAX);
 
-    // Forward to consumer (terminal stdout, HTTP gateway, etc.). If the consumer has dropped
-    // their receiver or the channel is full, the data is silently discarded — matching the
-    // previous drain behavior.
-    if output_tx.try_send(data).is_err() {
-        trace!("standalone io_handler: output channel closed or full, discarding write data");
+    // Forward to consumer (terminal stdout, HTTP gateway, etc.). Use send().await to apply
+    // back-pressure when the channel is full, preventing silent data loss that could cause
+    // intermittent output mismatches.
+    if output_tx.send(data).await.is_err() {
+        trace!("standalone io_handler: output channel closed, discarding write data");
+        let response: Message = WriteResponse::build(tid, -1);
+        counters.increment_io_thread_messages_received();
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
+        }
+        return;
     }
 
     // Send WriteResponse back to guest.
