@@ -27,6 +27,32 @@ SECTIONS
 		*(.text*)
 	}
 
+	/* C runtime init/fini (called by c_trampoline before/after main). */
+	.init : ALIGN(4)
+	{
+		KEEP(*(.init))
+	}
+
+	.fini : ALIGN(4)
+	{
+		KEEP(*(.fini))
+	}
+
+	/* C++ global constructors/destructors (called from _init/_fini). */
+	.ctors : ALIGN(4)
+	{
+		KEEP(*crtbegin*.o(.ctors))
+		KEEP(*(SORT(.ctors.*)))
+		KEEP(*(.ctors))
+	}
+
+	.dtors : ALIGN(4)
+	{
+		KEEP(*crtbegin*.o(.dtors))
+		KEEP(*(SORT(.dtors.*)))
+		KEEP(*(.dtors))
+	}
+
 	/* Initialized data section. */
 	.data : ALIGN(PAGE_SIZE)
 	{
