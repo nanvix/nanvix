@@ -30,7 +30,16 @@ pub const DEFAULT_TOOLCHAIN_BIN_DIRECTORY: &str = "./toolchain/bin";
 ///
 /// Default path to the temporary directory.
 ///
+#[cfg(unix)]
 pub const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
+
+///
+/// # Description
+///
+/// Default path to the temporary directory.
+///
+#[cfg(windows)]
+pub const DEFAULT_TMP_DIRECTORY: &str = ".";
 
 ///
 /// # Description

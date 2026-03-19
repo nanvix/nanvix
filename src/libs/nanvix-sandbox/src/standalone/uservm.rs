@@ -26,9 +26,12 @@ use ::log::{
 };
 use ::std::{
     convert::TryInto,
-    os::unix::process::ExitStatusExt,
     process::ExitStatus,
 };
+#[cfg(unix)]
+use ::std::os::unix::process::ExitStatusExt;
+#[cfg(windows)]
+use ::std::os::windows::process::ExitStatusExt;
 use ::sys::ipc::IkcFrame;
 use ::tokio::{
     runtime::Handle,
@@ -263,5 +266,14 @@ impl UserVm {
 ///
 fn exit_status_from_exit_code(raw_code: u8) -> ExitStatus {
     let code: i32 = i32::from(raw_code) & 0xff;
-    ExitStatus::from_raw(code << 8)
+    // On Unix, encode as a wait status (exit code in upper byte).
+    #[cfg(unix)]
+    {
+        ExitStatus::from_raw(code << 8)
+    }
+    // On Windows, use the exit code directly.
+    #[cfg(windows)]
+    {
+        ExitStatus::from_raw(code as u32)
+    }
 }

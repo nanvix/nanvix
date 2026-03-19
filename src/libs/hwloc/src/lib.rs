@@ -5,19 +5,21 @@
 // Imports
 //==================================================================================================
 
-use ::log::error;
-use anyhow::Result;
-use libc::{
+#[cfg(unix)]
+use ::libc::{
     cpu_set_t,
     sched_setaffinity,
     CPU_SET,
     CPU_ZERO,
 };
-use serde::Deserialize;
-use std::{
-    mem,
-    str::FromStr,
-};
+#[cfg(unix)]
+use ::log::error;
+use ::serde::Deserialize;
+#[cfg(unix)]
+use ::std::mem;
+#[cfg(unix)]
+use ::std::str::FromStr;
+use anyhow::Result;
 
 //==================================================================================================
 // Structures
@@ -45,6 +47,7 @@ impl HwLoc {
 }
 
 /// Parses a CPU mask string (e.g., "0-3,5,7-8") into a Vec of CPU indices.
+#[cfg(unix)]
 fn parse_cpu_mask(mask: &str) -> Result<Vec<usize>> {
     let mut cpus = Vec::new();
     for part in mask.split(',') {
@@ -67,6 +70,7 @@ fn parse_cpu_mask(mask: &str) -> Result<Vec<usize>> {
 }
 
 /// Pins the current thread to a given CPU set parsed from a mask string.
+#[cfg(unix)]
 fn pin_current_thread_to_mask(mask: &str) -> Result<()> {
     match parse_cpu_mask(mask) {
         Ok(cpus) => unsafe {
@@ -95,5 +99,13 @@ fn pin_current_thread_to_mask(mask: &str) -> Result<()> {
 
 /// This method pins the client (running thread) to a pre-defined CPU core.
 pub fn pin_main_thread(mask: String) -> Result<()> {
-    pin_current_thread_to_mask(&mask)
+    #[cfg(unix)]
+    {
+        pin_current_thread_to_mask(&mask)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mask;
+        Ok(())
+    }
 }

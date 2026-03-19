@@ -10,8 +10,9 @@ use ::log::{
     error,
     trace,
 };
+#[cfg(unix)]
+use ::std::fs;
 use ::std::{
-    fs,
     io::{
         Error,
         Result,
@@ -21,6 +22,9 @@ use ::std::{
 use ::tokio::net::{
     TcpListener,
     TcpStream,
+};
+#[cfg(unix)]
+use ::tokio::net::{
     UnixListener,
     UnixStream,
 };
@@ -40,6 +44,7 @@ pub enum SocketListener {
         addr: SocketAddr,
     },
     /// Unix socket.
+    #[cfg(unix)]
     Unix {
         /// Unix listener.
         listener: UnixListener,
@@ -93,6 +98,7 @@ impl SocketListener {
                 Ok(SocketStream::Tcp(stream))
             },
             // Unix socket.
+            #[cfg(unix)]
             SocketListener::Unix {
                 listener,
                 path: _path,
@@ -120,6 +126,7 @@ impl Drop for SocketListener {
                 listener: _,
                 addr: _,
             } => {},
+            #[cfg(unix)]
             SocketListener::Unix { listener: _, path } => {
                 // Remove underlying socket file, because dropping the listener just closes the file
                 // descriptor.

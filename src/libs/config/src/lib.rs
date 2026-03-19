@@ -217,6 +217,10 @@ pub mod microvm {
     /// I/O port that is connected to the standard input of the virtual machine.
     pub const DEFAULT_STDIN_PORT: u16 = 0xea;
 
+    /// Timer period in microseconds, derived from the kernel timer frequency.
+    pub const TIMER_PERIOD_US: u64 =
+        (crate::constants::MICROSECONDS_PER_SECOND as u64) / (crate::kernel::TIMER_FREQ as u64);
+
     /// I/O port that enables the guest to invoke functionalities of the virtual machine monitor.
     pub const DEFAULT_VMM_PORT: u16 = 0x604;
 
