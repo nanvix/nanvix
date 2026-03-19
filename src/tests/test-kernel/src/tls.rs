@@ -23,7 +23,7 @@
 //==================================================================================================
 
 use ::alloc::boxed::Box;
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::sys::{
     error::{
         Error,
@@ -59,9 +59,6 @@ const WORKER_TDA_MAGIC: u32 = 0xCAFE_BABE;
 
 /// Expected exit status returned by the worker thread.
 const WORKER_EXIT_STATUS: usize = 0xDEAD_BEEF;
-
-/// Worker stack size in bytes.
-const WORKER_STACK_SIZE: usize = USER_STACK_SIZE;
 
 //==================================================================================================
 // Types
@@ -584,7 +581,7 @@ fn test_tda_survives_create_join() -> Result<(), Error> {
     unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), WORKER_TDA_MAGIC) };
 
     // --- Spawn and join worker ---
-    let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+    let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs =
         make_thread_args(&stack, tda_worker, worker_tda.as_mut_ptr() as usize);
     let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
@@ -636,7 +633,7 @@ fn test_repeated_create_join() -> Result<(), Error> {
         let mut worker_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
         unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), worker_magic) };
 
-        let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs =
             make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
         let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
@@ -704,7 +701,7 @@ fn test_worker_tda_independence() -> Result<(), Error> {
     let mut worker_tda: TdaBuffer = Box::new([0u32; TDA_SLOTS]);
     unsafe { core::ptr::write_volatile(worker_tda.as_mut_ptr(), WORKER_TDA_MAGIC) };
 
-    let stack: WorkerStack = WorkerStack::new(WORKER_STACK_SIZE)?;
+    let stack: WorkerStack = WorkerStack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs =
         make_thread_args(&stack, tda_worker_generic, worker_tda.as_mut_ptr() as usize);
     let tid: ThreadIdentifier = pm::create_thread(&mut args)?;

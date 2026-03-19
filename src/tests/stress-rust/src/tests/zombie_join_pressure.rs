@@ -108,7 +108,7 @@ fn run_round(_round: usize) -> Result<(), StressError> {
 
     // Spawn all workers before joining any, so they sleep concurrently.
     for _worker_id in 0..WORKERS {
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, zombie_join_worker, 0);
         match create_thread(&mut args) {
             Ok(tid) => {

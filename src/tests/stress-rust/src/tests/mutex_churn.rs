@@ -77,7 +77,7 @@ pub fn run() -> Result<(), StressError> {
         ::alloc::vec::Vec::with_capacity(CHURN_WORKERS);
 
     for worker_id in 0..CHURN_WORKERS {
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, mutex_churn_worker, worker_id);
         let tid: ThreadIdentifier = create_thread(&mut args)?;
         tids.push(tid);

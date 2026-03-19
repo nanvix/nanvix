@@ -35,7 +35,7 @@ mod pthread_getattr_np;
 
 use crate::safe::mem::stack::Stack;
 use ::alloc::collections::btree_map::BTreeMap;
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::spin::{
     Lazy,
     Mutex,
@@ -100,7 +100,7 @@ pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result
     // Create a new stack.
     // NOTE: The stack is automatically deallocated if this object is dropped.
     // TODO: Allocate thread stack on-demand via kernel mmap support (https://github.com/nanvix/nanvix/issues/1699).
-    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
 
     let user_tda: Option<VirtualAddress> =
         ::sysalloc::tda::alloc()?.map(|tda_ptr| VirtualAddress::new(tda_ptr as usize));

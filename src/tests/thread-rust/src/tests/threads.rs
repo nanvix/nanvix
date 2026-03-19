@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::runtime::raw_entry_address;
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::core::sync::atomic::{
     AtomicBool,
     AtomicUsize,
@@ -64,7 +64,7 @@ fn test_create_and_join() -> Result<(), Error> {
 
     let main_tid_raw: usize = usize::try_from(gettid()?)?;
 
-    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         user_fn: ThreadCreateArgs::NULL_USER_FN,
         user_fn_arg0: raw_entry_address(worker_thread),

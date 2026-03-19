@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::core::time::Duration;
 use ::sys::{
     error::{
@@ -44,7 +44,7 @@ pub struct KernelThread {
 impl KernelThread {
     /// Spawns a new kernel thread that starts executing `entry` with `arg`.
     pub fn spawn(entry: extern "C" fn(usize) -> usize, arg: usize) -> Result<Self, Error> {
-        let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+        let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
 
         let mut args: ThreadCreateArgs = ThreadCreateArgs {
             user_fn: ThreadCreateArgs::NULL_USER_FN,

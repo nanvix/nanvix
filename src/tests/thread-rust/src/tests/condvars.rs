@@ -10,7 +10,7 @@ use crate::runtime::{
     raw_entry_address,
     raw_pointer_address,
 };
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::core::{
     ptr,
     sync::atomic::{
@@ -93,7 +93,7 @@ fn test_condition_signal() -> Result<(), Error> {
     reset_sync_primitives();
     WAIT_STATE.store(0, Ordering::Relaxed);
 
-    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         user_fn: ThreadCreateArgs::NULL_USER_FN,
         user_fn_arg0: raw_entry_address(condition_wait_worker),
@@ -125,7 +125,7 @@ fn test_condition_timeout() -> Result<(), Error> {
     reset_sync_primitives();
     WAIT_STATE.store(0, Ordering::Relaxed);
 
-    let stack: Stack = Stack::new(USER_STACK_SIZE)?;
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         user_fn: ThreadCreateArgs::NULL_USER_FN,
         user_fn_arg0: raw_entry_address(condition_timeout_worker),

@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use ::alloc::alloc::Layout;
-use ::config::memory_layout::USER_STACK_SIZE;
+use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::core::sync::atomic::{
     AtomicBool,
     AtomicU32,
@@ -36,9 +36,6 @@ use ::sys::{
 
 /// Ordering used for all atomic operations.
 const ORDER: Ordering = Ordering::SeqCst;
-
-/// Size of the stack allocated for child threads.
-const STACK_SIZE: usize = USER_STACK_SIZE;
 
 /// Test payload for the basic 16-byte push/pull test.
 const TEST_PAYLOAD_16: [u8; 16] = [
@@ -76,8 +73,9 @@ static ITERATION_COUNT: AtomicU32 = AtomicU32::new(0);
 /// stack.  On failure, returns an error.
 ///
 fn alloc_thread_stack() -> Result<(*mut u8, Layout, VirtualAddress), Error> {
-    let layout: Layout = Layout::from_size_align(STACK_SIZE, core::mem::align_of::<usize>())
-        .map_err(|_| Error::new(ErrorCode::OutOfMemory, "bad stack layout"))?;
+    let layout: Layout =
+        Layout::from_size_align(USER_THREAD_STACK_SIZE, core::mem::align_of::<usize>())
+            .map_err(|_| Error::new(ErrorCode::OutOfMemory, "bad stack layout"))?;
     // SAFETY: layout has non-zero size.
     let stack_ptr: *mut u8 = unsafe { ::alloc::alloc::alloc(layout) };
     if stack_ptr.is_null() {
@@ -130,7 +128,7 @@ fn spawn_child_thread(
         user_fn_arg0: entry as *const () as usize,
         user_fn_arg1: 0,
         user_stack_base: stack_base,
-        user_stack_size: STACK_SIZE,
+        user_stack_size: USER_THREAD_STACK_SIZE,
         user_tda: None,
     };
     pm::create_thread(&mut args)
@@ -1071,7 +1069,7 @@ fn test_concurrent_push(transfer_size: usize) -> Result<(), Error> {
             user_fn_arg0: concurrent_pusher_thread as *const () as usize,
             user_fn_arg1: i,
             user_stack_base: stack_base,
-            user_stack_size: STACK_SIZE,
+            user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
         let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
@@ -1227,7 +1225,7 @@ fn test_concurrent_pull(transfer_size: usize) -> Result<(), Error> {
             user_fn_arg0: concurrent_puller_thread as *const () as usize,
             user_fn_arg1: i,
             user_stack_base: stack_base,
-            user_stack_size: STACK_SIZE,
+            user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
         let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
@@ -1471,7 +1469,7 @@ fn test_independent_pairs() -> Result<(), Error> {
             user_fn_arg0: independent_pair_thread as *const () as usize,
             user_fn_arg1: i,
             user_stack_base: stack_base,
-            user_stack_size: STACK_SIZE,
+            user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
         let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
@@ -2222,7 +2220,7 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
             user_fn_arg0: stress_pair_thread as *const () as usize,
             user_fn_arg1: i,
             user_stack_base: stack_base,
-            user_stack_size: STACK_SIZE,
+            user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
         let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
