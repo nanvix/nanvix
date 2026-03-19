@@ -70,7 +70,7 @@ pub fn run() -> Result<(), StressError> {
     let mut stacks: Vec<WorkerStack> = Vec::with_capacity(CONCURRENT_SPAWNERS);
 
     for worker_id in 0..CONCURRENT_SPAWNERS {
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, spawner_worker, worker_id);
         let tid: ThreadIdentifier = create_thread(&mut args)?;
         tids.push(tid);
@@ -141,7 +141,7 @@ extern "C" fn spawner_worker(worker_id: usize) -> usize {
 fn spawner_worker_impl(worker_id: usize) -> Result<usize, Error> {
     for child_index in 0..SPAWN_CHILDREN_PER_WORKER {
         let signature: usize = (worker_id << 8) | child_index;
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, spawn_child_worker, signature);
         let tid: ThreadIdentifier = create_thread(&mut args)?;
 
