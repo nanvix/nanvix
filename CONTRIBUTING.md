@@ -24,6 +24,9 @@ git clone https://github.com/nanvix/nanvix.git && cd nanvix
 ./z build --with-minimal-docker -- all
 ```
 
+On Windows, run `./z.ps1 setup --with-minimal-docker` to pull the Docker image and install the
+repository Git hooks from `.githooks`.
+
 Further reading: [Building](doc/build.md) | [Running](doc/run.md) | [Testing](doc/test.md) |
 [Benchmarking](doc/benchmark.md) | [Troubleshooting](doc/troubleshooting.md)
 
