@@ -1,10 +1,16 @@
-// Visual Studio Code Settings for Nanvix Development
+// Visual Studio Code Settings for Nanvix Development on Windows
 //
 // How to use:
 // 1. Create a folder named '.vscode' in the root of your Nanvix workspace.
 // 2. Copy this file into the '.vscode' folder as 'settings.json'.
-// 3. Ensure the "C_Cpp.default.compilerPath" setting below points to the GCC binary of your Nanvix
-//    toolchain.
+// 3. Ensure Docker Desktop is running before relying on Rust Analyzer diagnostics for guest crates.
+//
+// Notes:
+// - Rust Analyzer must route both check-on-save and build-script discovery through './z.bat'.
+//   A native 'cargo check' on Windows cannot build guest crates because the required guest GCC/binutils
+//   live inside Docker rather than on the host PATH.
+// - 'C_Cpp.default.compilerPath' is intentionally omitted here because the guest cross-toolchain is not
+//   installed natively on Windows by default.
 {
     //==============================================================================================
     // Editor Settings
@@ -36,20 +42,24 @@
     //==============================================================================================
     "rust-analyzer.cargo.allTargets": false,
     "rust-analyzer.checkOnSave": true,
-    "rust-analyzer.check.overrideCommand": [
-        "./z",
+    "rust-analyzer.files.exclude": [
+        "target",
+        "sysroot",
+        "sysroot-debug",
+        "sysroot-release"
+    ],
+    "rust-analyzer.cargo.buildScripts.overrideCommand": [
+        "./z.bat",
         "build",
-        "--with-cached-options",
         "--",
         "check"
     ],
-    //==============================================================================================
-    // C/C++ Settings
-    //==============================================================================================
-    "C_Cpp.default.compilerPath": "${workspaceFolder}/toolchain/bin/i686-nanvix-gcc",
-    "C_Cpp.files.exclude": {
-        "sysroot-*/**": true
-    },
+    "rust-analyzer.check.overrideCommand": [
+        "./z.bat",
+        "build",
+        "--",
+        "check"
+    ],
     //==============================================================================================
     // Assembly Settings
     //==============================================================================================
