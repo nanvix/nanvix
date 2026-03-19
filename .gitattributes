@@ -1,0 +1,61 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Default: auto-detect and normalize to LF in the repository.
+* text=auto eol=lf
+
+# Ensure shell scripts always use LF (required for Linux/Docker execution).
+*.sh text eol=lf
+
+# Makefiles must use LF (tabs are significant, CRLF breaks recipes in Docker).
+Makefile text eol=lf
+*.mk text eol=lf
+
+# Dockerfiles must use LF.
+Dockerfile* text eol=lf
+
+# Rust source files.
+*.rs text eol=lf
+*.toml text eol=lf
+
+# Linker scripts.
+*.ld text eol=lf
+
+# Python scripts.
+*.py text eol=lf
+
+# C/C++ source files.
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+
+# Assembly files.
+*.S text eol=lf
+*.s text eol=lf
+*.asm text eol=lf
+
+# Configuration files.
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.cfg text eol=lf
+
+# PowerShell scripts keep CRLF (Windows native).
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binary files — do not normalize.
+*.elf binary
+*.wasm binary
+*.o binary
+*.a binary
+*.so binary
+*.iso binary
+*.tar binary
+*.tar.gz binary
+*.tar.bz2 binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

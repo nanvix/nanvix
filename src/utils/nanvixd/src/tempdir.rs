@@ -239,7 +239,10 @@ mod tests {
     #[tokio::test]
     async fn test_create_failure() {
         // Use an invalid path that cannot be created.
+        #[cfg(unix)]
         let path: PathBuf = PathBuf::from("/proc/invalid/path/that/cannot/be/created");
+        #[cfg(windows)]
+        let path: PathBuf = PathBuf::from("\\\\?\\invalid:\\<>|path");
         let result: Result<TemporaryDirectory> = TemporaryDirectory::new(path).await;
 
         assert!(result.is_err(), "Expected new() to fail for invalid path");

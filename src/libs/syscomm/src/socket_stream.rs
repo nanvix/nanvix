@@ -17,6 +17,11 @@ use ::log::{
     trace,
 };
 use ::std::io::Result;
+#[cfg(unix)]
+use ::tokio::net::{
+    unix,
+    UnixStream,
+};
 use ::tokio::{
     io::{
         AsyncReadExt,
@@ -24,9 +29,7 @@ use ::tokio::{
     },
     net::{
         tcp,
-        unix,
         TcpStream,
-        UnixStream,
     },
 };
 
@@ -40,6 +43,7 @@ pub enum SocketStream {
     /// Underlying TCP socket stream.
     Tcp(TcpStream),
     /// Underlying Unix socket stream.
+    #[cfg(unix)]
     Unix(UnixStream),
 }
 
@@ -69,6 +73,7 @@ impl SocketStream {
                 (SocketStreamReader::Tcp(reader), SocketStreamWriter::Tcp(writer))
             },
             // Split a Unix socket stream.
+            #[cfg(unix)]
             SocketStream::Unix(stream) => {
                 let (reader, writer): (unix::OwnedReadHalf, unix::OwnedWriteHalf) =
                     stream.into_split();
@@ -103,6 +108,7 @@ impl SocketStream {
         // Read bytes.
         let result: Result<usize> = match self {
             SocketStream::Tcp(stream) => stream.read(buf).await,
+            #[cfg(unix)]
             SocketStream::Unix(stream) => stream.read(buf).await,
         };
 
@@ -144,6 +150,7 @@ impl SocketStream {
         // Write bytes.
         let result: Result<usize> = match self {
             SocketStream::Tcp(stream) => stream.write(buf).await,
+            #[cfg(unix)]
             SocketStream::Unix(stream) => stream.write(buf).await,
         };
 
@@ -171,6 +178,7 @@ impl SocketStream {
     pub async fn shutdown_write(&mut self) -> Result<()> {
         let result: Result<()> = match self {
             SocketStream::Tcp(stream) => stream.shutdown().await,
+            #[cfg(unix)]
             SocketStream::Unix(stream) => stream.shutdown().await,
         };
 
@@ -204,6 +212,7 @@ impl SocketStream {
                     Err(error)
                 },
             },
+            #[cfg(unix)]
             SocketStream::Unix(stream) => match stream.peer_addr() {
                 Ok(addr) => Ok(SocketAddr::Unix(addr)),
                 Err(error) => {
@@ -243,6 +252,7 @@ impl ReadExact for SocketStream {
         // Read bytes.
         let result: Result<usize> = match self {
             SocketStream::Tcp(stream) => stream.read_exact(buf).await,
+            #[cfg(unix)]
             SocketStream::Unix(stream) => stream.read_exact(buf).await,
         };
 
@@ -285,6 +295,7 @@ impl WriteAll for SocketStream {
         // Write bytes.
         let result: Result<()> = match self {
             SocketStream::Tcp(stream) => stream.write_all(buf).await,
+            #[cfg(unix)]
             SocketStream::Unix(stream) => stream.write_all(buf).await,
         };
 

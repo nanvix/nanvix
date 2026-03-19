@@ -1,0 +1,265 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::vmm::whp::vmem::VirtualMemory;
+use ::anyhow::Result;
+use ::arch::mem::PAGE_SIZE;
+use ::log::{
+    error,
+    trace,
+};
+use ::std::{
+    fs::File,
+    io::Read,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Minimum slack size (in bytes) required between the end of the initrd and the start of the RAMFS.
+const RAMFS_MIN_SLACK_BYTES: usize = 4 * 1024 * 1024;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Encapsulates a RAM filesystem image and the operations required to load it into guest memory.
+///
+#[derive(Debug)]
+pub struct RamFs {
+    /// Filesystem path from which the RAMFS image was loaded.
+    path: PathBuf,
+    /// Contents of the RAMFS image.
+    data: Vec<u8>,
+}
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl RamFs {
+    ///
+    /// # Description
+    ///
+    /// Opens a RAMFS image from the provided path and reads it into memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path to the RAMFS image on the host filesystem.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns a `RamFs` descriptor. Otherwise, returns an error.
+    ///
+    pub fn open(path: &Path) -> Result<Self> {
+        trace!("RamFs::open(): path={path:?}");
+
+        let mut file: File = match File::open(path) {
+            Ok(file) => file,
+            Err(error) => {
+                let reason: String =
+                    format!("failed to open ramfs image (path={path:?}, error={error:?})");
+                error!("RamFs::open(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        let mut data: Vec<u8> = Vec::new();
+        if let Err(error) = file.read_to_end(&mut data) {
+            let reason: String =
+                format!("failed to read ramfs image (path={path:?}, error={error:?})");
+            error!("RamFs::open(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        Ok(Self {
+            path: path.to_path_buf(),
+            data,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads this RAMFS image near the end of the provided virtual memory while maintaining the
+    /// alignment and slack guarantees required by the initrd.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory that will host the RAMFS.
+    /// - `initrd_end`: The first byte immediately after the initrd contents in guest memory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns the guest-physical base address and size where the RAMFS was loaded.
+    /// Otherwise, returns an error.
+    ///
+    pub fn load_into_virtual_memory(
+        &self,
+        vmem: &mut VirtualMemory,
+        initrd_end: usize,
+    ) -> Result<(usize, usize)> {
+        trace!(
+            "RamFs::load_into_virtual_memory(): path={:?}, initrd_end={:#010x}",
+            self.path, initrd_end
+        );
+
+        let ramfs_size: usize = self.data.len();
+        let memory_size: usize = vmem.get_size();
+
+        if ramfs_size > memory_size {
+            let reason: String = format!(
+                "ramfs image exceeds guest memory size (ramfs_size={ramfs_size}, memory_size={})",
+                memory_size
+            );
+            error!("RamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let min_available_base: usize = match initrd_end.checked_add(RAMFS_MIN_SLACK_BYTES) {
+            Some(value) => value,
+            None => {
+                let reason: &str = "overflow while computing required ramfs slack";
+                error!("RamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        if min_available_base > memory_size {
+            let reason: String = format!(
+                "guest memory ({memory_size}) is smaller than initrd end plus slack \
+                 ({min_available_base})",
+            );
+            error!("RamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let ramfs_base_unaligned: usize = match memory_size.checked_sub(ramfs_size) {
+            Some(base) => base,
+            None => {
+                let reason: String = format!(
+                    "ramfs image does not fit in guest memory (ramfs_size={ramfs_size}, \
+                     memory_size={memory_size})",
+                );
+                error!("RamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        let ramfs_base: usize = ramfs_base_unaligned - (ramfs_base_unaligned % PAGE_SIZE);
+
+        if ramfs_base < min_available_base {
+            let available: usize = match memory_size.checked_sub(min_available_base) {
+                Some(value) => value,
+                None => {
+                    let reason: &str = "underflow while computing available guest memory for ramfs";
+                    error!("RamFs::load_into_virtual_memory(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            let reason: String = format!(
+                "ramfs image conflicts with initrd requirements (ramfs_size={ramfs_size}, \
+                 available_for_ramfs={available}, required_slack={} bytes)",
+                RAMFS_MIN_SLACK_BYTES,
+            );
+            error!("RamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Copy RAMFS data into guest memory.
+        vmem.write_bytes(ramfs_base as u64, &self.data)
+            .map_err(|e| {
+                let reason: String = format!(
+                    "failed to write ramfs image into guest memory (path={:?}, error={e})",
+                    self.path
+                );
+                error!("RamFs::load_into_virtual_memory(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
+        trace!(
+            "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
+             size={ramfs_size})",
+            self.path, ramfs_base
+        );
+
+        Ok((ramfs_base, ramfs_size))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes the RAMFS base and size registers exposed to the guest.
+    ///
+    /// # Note
+    ///
+    /// The RAMFS registers at GPA `0xC` and GPA `0x10` fall inside the kernel ELF's `.zero`
+    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The ELF loader zero-fills
+    /// this range when `load_kernel()` runs. This method must therefore execute **after** the
+    /// ELF has been loaded, so that the VMM-written values are not overwritten.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory instance that holds the control registers.
+    /// - `ramfs_region`: Optional tuple containing the guest-physical base and size of the RAMFS.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn write_registers(
+        vmem: &mut VirtualMemory,
+        ramfs_region: Option<(usize, usize)>,
+    ) -> Result<()> {
+        let base_register_addr: u64 = ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_BASE as u64;
+        let size_register_addr: u64 = ::config::microvm::DEFAULT_MICROVM_CTRL_RAMFS_SIZE as u64;
+
+        let (base_value, size_value): (u32, u32) = match ramfs_region {
+            Some((base, size)) => {
+                trace!("RamFs::write_registers(): base={:#010x}, size={:#x}", base, size);
+
+                let base_value: u32 = match u32::try_from(base) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        let reason: String =
+                            format!("ramfs base does not fit into 32 bits (base={base:#010x})");
+                        error!("RamFs::write_registers(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
+                let size_value: u32 = match u32::try_from(size) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        let reason: String =
+                            format!("ramfs size does not fit into 32 bits (size={size:#010x})");
+                        error!("RamFs::write_registers(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                };
+
+                (base_value, size_value)
+            },
+            None => (0, 0),
+        };
+
+        let base_bytes: [u8; 4] = base_value.to_le_bytes();
+        let size_bytes: [u8; 4] = size_value.to_le_bytes();
+
+        vmem.write_bytes(base_register_addr, &base_bytes)?;
+        vmem.write_bytes(size_register_addr, &size_bytes)?;
+
+        Ok(())
+    }
+}

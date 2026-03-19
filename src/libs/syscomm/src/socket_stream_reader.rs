@@ -8,12 +8,11 @@
 use crate::ReadExact;
 use ::log::error;
 use ::std::io::Result;
+#[cfg(unix)]
+use ::tokio::net::unix;
 use ::tokio::{
     io::AsyncReadExt,
-    net::{
-        tcp,
-        unix,
-    },
+    net::tcp,
 };
 
 //==================================================================================================
@@ -29,6 +28,7 @@ pub enum SocketStreamReader {
     /// Underlying TCP read half.
     Tcp(tcp::OwnedReadHalf),
     /// Underlying Unix read half.
+    #[cfg(unix)]
     Unix(unix::OwnedReadHalf),
 }
 
@@ -63,6 +63,7 @@ impl SocketStreamReader {
         // Read bytes.
         let result: Result<usize> = match self {
             SocketStreamReader::Tcp(reader) => reader.read(buf).await,
+            #[cfg(unix)]
             SocketStreamReader::Unix(reader) => reader.read(buf).await,
         };
 
@@ -105,6 +106,7 @@ impl ReadExact for SocketStreamReader {
         // Read bytes.
         let result: Result<usize> = match self {
             SocketStreamReader::Tcp(stream) => stream.read_exact(buf).await,
+            #[cfg(unix)]
             SocketStreamReader::Unix(stream) => stream.read_exact(buf).await,
         };
 

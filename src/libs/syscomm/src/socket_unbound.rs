@@ -14,10 +14,11 @@ use ::log::{
     error,
     trace,
 };
+#[cfg(unix)]
+use ::std::io::Error;
 use ::std::{
     io::{
         self,
-        Error,
         ErrorKind,
         Result,
     },
@@ -26,6 +27,9 @@ use ::std::{
 use ::tokio::net::{
     TcpListener,
     TcpStream,
+};
+#[cfg(unix)]
+use ::tokio::net::{
     UnixListener,
     UnixStream,
 };
@@ -109,6 +113,7 @@ impl UnboundSocket {
                 Ok(SocketStream::Tcp(stream))
             },
             // Connect to a unix domain socket.
+            #[cfg(unix)]
             SocketType::Unix => {
                 let stream: UnixStream = match UnixStream::connect(addr).await {
                     Ok(stream) => stream,
@@ -118,6 +123,11 @@ impl UnboundSocket {
                 };
                 Ok(SocketStream::Unix(stream))
             },
+            #[cfg(not(unix))]
+            SocketType::Unix => Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "Unix domain sockets are not supported on this platform",
+            )),
         }
     }
 
@@ -162,6 +172,7 @@ impl UnboundSocket {
                 }
             },
             // Bind a unix domain socket.
+            #[cfg(unix)]
             SocketType::Unix => match UnixListener::bind(addr) {
                 Ok(listener) => Ok(SocketListener::Unix {
                     listener,
@@ -172,6 +183,14 @@ impl UnboundSocket {
                     error!("bind(): {reason}");
                     Err(Error::new(error.kind(), reason))
                 },
+            },
+            #[cfg(not(unix))]
+            SocketType::Unix => {
+                let _ = addr;
+                Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "Unix domain sockets are not supported on this platform",
+                ))
             },
         }
     }
