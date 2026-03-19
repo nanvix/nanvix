@@ -7,6 +7,9 @@
 //! bypassing the sandbox cache, gateway sockets, and control-plane infrastructure. Guest I/O is
 //! bridged through IKC channels: host stdin is forwarded to the guest's stdin, and guest stdout
 //! is forwarded to the host's stdout.
+//!
+//! Input and output are handled by independent async tasks so that a slow stdout write can never
+//! stall stdin forwarding.
 
 //==================================================================================================
 // Imports
@@ -26,6 +29,7 @@ use ::tokio::{
         Stdout,
     },
     sync::mpsc,
+    time,
 };
 use ::uservm::standalone::{
     StandaloneVmHandle,
@@ -36,9 +40,14 @@ use ::uservm::standalone::{
 // Constants
 //==================================================================================================
 
-/// Size of I/O buffers for terminal communication.
-/// Set to 1 byte for character-by-character I/O to ensure responsive terminal interaction.
-const IO_BUFFER_SIZE: usize = 1;
+/// Size of the buffer used by the blocking stdin reader thread.
+const IO_BUFFER_SIZE: usize = 4096;
+
+/// Capacity of the bounded channel between the stdin reader thread and the async input task.
+const STDIN_CHANNEL_CAPACITY: usize = 4096;
+
+/// Maximum time to wait for the input task to shut down gracefully before aborting it.
+const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(1);
 
 //==================================================================================================
 // Structures
@@ -190,8 +199,15 @@ impl Terminal {
     ///
     /// Bridges host stdin/stdout with the guest's I/O channels.
     ///
-    /// Spawns a blocking thread for stdin reads and multiplexes guest output → host stdout and
-    /// host stdin → guest input using `tokio::select!`.
+    /// Input and output are handled by independent async tasks: a dedicated task forwards host
+    /// stdin to the guest input channel, while the current task drains guest output to host
+    /// stdout. This decoupling ensures that a slow stdout write (e.g., a `spawn_blocking` call
+    /// on Windows piped stdout) can never stall stdin forwarding.
+    ///
+    /// EOF propagation is structural: when the stdin reader thread exits (EOF, error, or receiver
+    /// dropped), `stdin_tx` is dropped, causing `stdin_rx.recv()` to return `None` in the input
+    /// task. The input task then exits and drops `input_tx`, which signals EOF to the guest via
+    /// the standalone I/O handler.
     ///
     async fn bridge_io(io: StandaloneVmIo) -> Result<()> {
         let StandaloneVmIo {
@@ -199,63 +215,43 @@ impl Terminal {
             input_tx,
         } = io;
 
-        // Create channel for stdin data.
-        let (stdin_tx, mut stdin_rx): (
-            mpsc::UnboundedSender<Vec<u8>>,
-            mpsc::UnboundedReceiver<Vec<u8>>,
-        ) = mpsc::unbounded_channel();
+        // --- Input path (independent task): host stdin → guest input ---
+        let mut input_handle: ::tokio::task::JoinHandle<()> = ::tokio::spawn(async move {
+            let (stdin_tx, mut stdin_rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) =
+                mpsc::channel(STDIN_CHANNEL_CAPACITY);
 
-        // Create channel for EOF notification.
-        let (eof_tx, mut eof_rx): (mpsc::UnboundedSender<()>, mpsc::UnboundedReceiver<()>) =
-            mpsc::unbounded_channel();
+            // Spawn a dedicated OS thread for blocking stdin reads. Not joined — the
+            // thread may block on stdin.read() until the process exits; this is acceptable
+            // during shutdown.
+            let _stdin_handle: ::std::thread::JoinHandle<()> = ::std::thread::spawn(move || {
+                Self::stdin_thread(stdin_tx);
+            });
 
-        // Spawn a dedicated thread for blocking stdin reads.
-        let _stdin_handle: ::std::thread::JoinHandle<()> = ::std::thread::spawn(move || {
-            Self::stdin_thread(stdin_tx, eof_tx);
+            // Forward all stdin data to the guest. When stdin_rx returns None the stdin thread
+            // has exited (EOF or error). Dropping input_tx signals EOF to the guest.
+            while let Some(data) = stdin_rx.recv().await {
+                if input_tx.send(data).await.is_err() {
+                    break;
+                }
+            }
+            // input_tx dropped here → standalone_io_handler sees channel close → guest EOF.
         });
 
+        // --- Output path (current task): guest output → host stdout ---
+        // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
         let mut stdout: Stdout = io::stdout();
+        while let Some(data) = output_rx.recv().await {
+            stdout.write_all(&data).await?;
+            stdout.flush().await?;
+        }
 
-        loop {
-            tokio::select! {
-                // Handle output from guest VM.
-                result = output_rx.recv() => {
-                    match result {
-                        Some(data) => {
-                            stdout.write_all(&data).await?;
-                            stdout.flush().await?;
-                        },
-                        None => {
-                            // VM output channel closed — VM has exited.
-                            break;
-                        },
-                    }
-                },
-                // Handle input from host stdin.
-                Some(data) = stdin_rx.recv() => {
-                    if input_tx.send(data).await.is_err() {
-                        // Guest input channel closed — VM has exited.
-                        break;
-                    }
-                },
-                // Handle EOF from stdin.
-                Some(()) = eof_rx.recv() => {
-                    // Flush any remaining buffered stdin data.
-                    while let Ok(data) = stdin_rx.try_recv() {
-                        if input_tx.send(data).await.is_err() {
-                            break;
-                        }
-                    }
-                    // Drop input_tx to signal EOF to the guest.
-                    drop(input_tx);
-                    // Continue reading guest output until the VM exits.
-                    while let Some(data) = output_rx.recv().await {
-                        stdout.write_all(&data).await?;
-                        stdout.flush().await?;
-                    }
-                    break;
-                },
-            }
+        // Wait briefly for the input task to shut down; abort if it does not complete in time.
+        if time::timeout(INPUT_SHUTDOWN_TIMEOUT, &mut input_handle)
+            .await
+            .is_err()
+        {
+            warn!("input task did not shut down in time, aborting");
+            input_handle.abort();
         }
 
         Ok(())
@@ -266,36 +262,37 @@ impl Terminal {
     ///
     /// Thread function for reading from stdin in a blocking manner.
     ///
+    /// Reads chunks from host stdin and forwards them to the async input task via `stdin_tx`.
+    /// When EOF is reached, the read returns a non-recoverable error, or the receiver is dropped,
+    /// the thread exits and `stdin_tx` is dropped — which propagates EOF structurally through the
+    /// channel chain. Transient `EINTR` errors are retried automatically.
+    ///
     /// # Parameters
     ///
-    /// - `stdin_tx`: Channel sender to forward stdin data to the async task.
-    /// - `eof_tx`: Channel sender to notify when EOF is reached on stdin.
+    /// - `stdin_tx`: Bounded channel sender to forward stdin data to the async input task.
     ///
-    fn stdin_thread(stdin_tx: mpsc::UnboundedSender<Vec<u8>>, eof_tx: mpsc::UnboundedSender<()>) {
+    fn stdin_thread(stdin_tx: mpsc::Sender<Vec<u8>>) {
         let mut stdin: ::std::io::Stdin = ::std::io::stdin();
         let mut buffer: [u8; IO_BUFFER_SIZE] = [0; IO_BUFFER_SIZE];
 
         loop {
             match stdin.read(&mut buffer) {
+                Ok(0) => break,
                 Ok(n) => {
-                    if n == 0 {
-                        // EOF reached, notify the main task.
-                        let _ = eof_tx.send(());
-                        break;
-                    }
-                    if stdin_tx.send(buffer[..n].to_vec()).is_err() {
+                    if stdin_tx.blocking_send(buffer[..n].to_vec()).is_err() {
                         break;
                     }
                 },
                 Err(error) => {
                     if error.kind() == ::std::io::ErrorKind::Interrupted {
-                        info!("stdin thread interrupted by signal, exiting.");
-                        break;
+                        // Retry on interrupts.
+                        continue;
                     }
                     error!("failed to read from stdin: {error}");
                     break;
                 },
             }
         }
+        // stdin_tx dropped here → stdin_rx.recv() returns None → input_tx dropped → guest EOF.
     }
 }
