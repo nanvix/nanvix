@@ -21,6 +21,8 @@ sudo usermod -aG kvm "$(whoami)" 2>/dev/null || true
 
 echo "=== Starting dockerd ==="
 if ! pgrep -x dockerd &>/dev/null; then
+    # shellcheck disable=SC2024
+    # Redirection intentionally runs as current user; /tmp is world-writable.
     sudo dockerd --iptables=false &>/tmp/dockerd.log &
     sleep 3
 fi
