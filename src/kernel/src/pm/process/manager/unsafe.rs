@@ -361,8 +361,8 @@ impl ProcessManager {
                                         unreachable!("address conversion should succeed")
                                     },
                                 };
-                            // Attempt to unmap page
-                            if let Err(error) = VirtMemoryManager::get_mut().unmap_upage(
+                            // Attempt to unmap page.
+                            match VirtMemoryManager::get_mut().try_unmap_upage(
                                 Self::get_mut()
                                     .find_process_mut(pid)
                                     .map_err(SleepError::Generic)?
@@ -370,13 +370,21 @@ impl ProcessManager {
                                     .vmem_mut(),
                                 vaddr,
                             ) {
-                                // We failed, but this is not too bad, as we will free all pages
-                                // when wiping out the address space anyways.
-                                warn!(
-                                    "harvest_zombies(): failed to unmap page (vaddr={:?}, \
-                                     error={:?})",
-                                    vaddr, error
-                                );
+                                Ok(true) => {
+                                    // Page was present and has been successfully unmapped.
+                                },
+                                Ok(false) => {
+                                    // Page was never mapped (not demand-paged). Skip silently.
+                                },
+                                Err(error) => {
+                                    // Unexpected failure — log but continue since the
+                                    // address space will be reclaimed when it is destroyed.
+                                    warn!(
+                                        "harvest_zombies(): failed to unmap page (vaddr={:?}, \
+                                         error={:?})",
+                                        vaddr, error
+                                    );
+                                },
                             }
                         }
 

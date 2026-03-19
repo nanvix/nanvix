@@ -268,7 +268,7 @@ impl VirtMemoryManager {
     ///
     /// # Description
     ///
-    /// Unmaps a user page from the target virtual memory space.
+    /// Attempts to unmap a user page from the target virtual memory space.
     ///
     /// # Parameters
     ///
@@ -277,15 +277,21 @@ impl VirtMemoryManager {
     ///
     /// # Return Values
     ///
-    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    /// - `Ok(true)` if the page was present and has been unmapped.
+    /// - `Ok(false)` if the page was not present.
+    /// - `Err(_)` on unexpected failures.
     ///
-    pub fn unmap_upage(
+    pub fn try_unmap_upage(
         &mut self,
         vmem: &mut Vmem,
         vaddr: PageAligned<VirtualAddress>,
-    ) -> Result<(), Error> {
-        let uframe: UserFrame = vmem.unmap(vaddr)?;
-        self.physman.borrow_mut().free_user_frame(uframe)
+    ) -> Result<bool, Error> {
+        if let Some(uframe) = vmem.unmap(vaddr)? {
+            self.physman.borrow_mut().free_user_frame(uframe)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     pub fn alloc_upages(
