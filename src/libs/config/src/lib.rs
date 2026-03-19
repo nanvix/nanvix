@@ -155,6 +155,21 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
+    /// Default stack size for spawned threads.
+    ///
+    /// Unlike the main thread whose stack is demand-paged within the [`USER_STACK_SIZE`] virtual
+    /// region, additional threads have their stacks heap-allocated at this fixed size.
+    ///
+    /// # Notes:
+    ///
+    /// - This size should be a multiple of a page size.
+    /// - Must be at least [`USER_STACK_MIN_SIZE`].
+    ///
+    pub const USER_THREAD_STACK_SIZE: usize = 512 * crate::constants::KILOBYTE;
+
+    ///
+    /// # Description
+    ///
     /// Base address for the unified mmap region.
     ///
     /// All dynamic memory allocations (heap, shared libraries, and explicit memory mappings) are
