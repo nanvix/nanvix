@@ -22,7 +22,34 @@ use ::std::{
     process,
 };
 use ::syslog::DEFAULT_LOG_DIRECTORY;
+#[cfg(target_os = "linux")]
 use ::user_vm_api::UserVmIdentifier;
+
+/// Minimal cross-platform replacement for [`user_vm_api::UserVmIdentifier`] on non-Linux targets.
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserVmIdentifier(u32);
+
+#[cfg(not(target_os = "linux"))]
+impl UserVmIdentifier {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+impl From<UserVmIdentifier> for u32 {
+    fn from(id: UserVmIdentifier) -> Self {
+        id.0
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+impl std::fmt::Display for UserVmIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 //==================================================================================================
 // Public Structures

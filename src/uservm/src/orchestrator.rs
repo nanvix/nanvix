@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
 use crate::vmm::KILL_SIGNAL;
 use ::anyhow::Result;
 use ::log::{
@@ -251,8 +252,18 @@ impl Orchestrator {
                             SHUTDOWN_TIMEOUT.as_millis()
                         );
                         // Forcefully terminate the vCPU thread.
-                        let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                        unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        #[cfg(target_os = "linux")]
+                        {
+                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
+                            unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        }
+                        // TODO: on Windows, implement forceful vCPU termination.
+                        // The WHP backend currently relies on cooperative shutdown
+                        // (guest writes to the VMM exit port), so if the guest hangs
+                        // this timeout path is a no-op. A possible approach is to
+                        // pass a cancellation callback into the orchestrator that
+                        // calls `WHvCancelRunVirtualProcessor` and sets the SHUTDOWN
+                        // flag, similar to the existing `pause_microvm` callback.
                         break;
                     },
                 }
@@ -510,9 +521,21 @@ impl Orchestrator {
                     } else {
                         // SAFETY: we call pthread_kill on a non-zero TID that we have received from
                         // the VCPU thread after boot, so this is safe.
-                        let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
                         debug!("try_receive_from_io_thread(): signaling to vcpu thread (tid={})", self.vcpu_tid);
-                        unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
+                        #[cfg(target_os = "linux")]
+                        {
+                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
+                            unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            // TODO: Set shared shutdown flag so the WHP run loop exits on next
+                            // iteration.  Then cancel the blocking WHvRunVirtualProcessor call.
+                            // Currently not possible because:
+                            //   1. SHUTDOWN is thread-local, not accessible from the orchestrator
+                            //   2. The orchestrator doesn't hold the WHP partition handle
+                            // A cancellation callback (like pause_microvm) would solve both.
+                        }
 
                         // Transition to shutting down state.
                         self.state = State::ShuttingDown;

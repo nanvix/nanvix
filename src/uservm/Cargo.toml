@@ -35,16 +35,19 @@ serde = { workspace = true, features = ["derive"] }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true }
-syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
-user-vm-api = { workspace = true }
-vmm-sys-util = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 kvm-bindings = { workspace = true, features = ["fam-wrappers", "serde"] }
 kvm-ioctls = { workspace = true }
 libc = { workspace = true }
+syscomm = { workspace = true }
+user-vm-api = { workspace = true }
+vmm-sys-util = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true }
 
 [features]
 default = ["microvm"]

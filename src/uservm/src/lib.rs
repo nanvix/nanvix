@@ -47,6 +47,7 @@ pub mod args;
 pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
+#[cfg(target_os = "linux")]
 pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
@@ -236,7 +237,6 @@ impl UserVm {
             Receiver<VcpuControlResponse>,
         ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
-        #[cfg(not(feature = "hyperlight"))]
         let vmm_stderr_fn: Box<dyn Write + Send> = match get_stderr_writer(args.stderr.clone()) {
             Ok(vmm_stderr_fn) => vmm_stderr_fn,
             Err(e) => {
@@ -257,10 +257,10 @@ impl UserVm {
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
 
         // Input function used for emulating I/O port reads.
-        #[cfg(not(feature = "hyperlight"))]
+        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
         let ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool> =
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        #[cfg(not(feature = "hyperlight"))]
+        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
         let vmm_stdin_fn: Box<StdinFn> =
             build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
 
@@ -281,7 +281,6 @@ impl UserVm {
             output: vmm_stdout_fn,
             #[cfg(feature = "hyperlight")]
             bulk_output: vmm_bulk_stdout_fn,
-            #[cfg(not(feature = "hyperlight"))]
             stderr: vmm_stderr_fn,
             #[cfg(feature = "hyperlight")]
             stderr_path: args.stderr.clone(),
@@ -322,7 +321,7 @@ impl UserVm {
             add_credit_fn(
                 guest.clone(),
                 vmem.clone(),
-                #[cfg(not(feature = "hyperlight"))]
+                #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
                 microvm.ikc_notifier(),
             ),
             args.counters.clone(),
@@ -430,12 +429,12 @@ fn resume_microvm(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> 
 fn add_credit_fn(
     guest: Arc<Mutex<Guest>>,
     vmem: Arc<Mutex<VirtualMemory>>,
-    #[cfg(not(feature = "hyperlight"))] notifier: crate::vmm::IkcNotifier,
+    #[cfg(all(feature = "microvm", not(feature = "hyperlight")))] notifier: crate::vmm::IkcNotifier,
 ) -> Box<AddCreditFn> {
     Box::new(move || {
         let guest: Arc<Mutex<Guest>> = guest.clone();
         let vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
-        #[cfg(not(feature = "hyperlight"))]
+        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
         let notifier: crate::vmm::IkcNotifier = notifier.clone();
         Box::pin(async move {
             // Scope the locks so they are released before the IRQ injection.
@@ -444,10 +443,10 @@ fn add_credit_fn(
                 let mut vmem = vmem.lock().await;
                 guest.add_credit(&mut vmem)?;
             }
-            // Inject an edge-triggered IRQ to wake the guest from HLT
-            // immediately, rather than waiting for the next PIT timer tick.
-            // This is lock-free — the notifier uses a duplicated VM fd.
-            #[cfg(not(feature = "hyperlight"))]
+            // Inject an edge-triggered IRQ to wake the guest from HLT immediately, rather than
+            // waiting for the next PIT timer tick.  This is lock-free — the notifier uses a
+            // duplicated VM fd (KVM) or cancels the vCPU (WHP).
+            #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
             notifier.notify()?;
             Ok(())
         })
@@ -509,7 +508,7 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
 ///
-#[cfg(not(feature = "hyperlight"))]
+#[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
 pub fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
@@ -780,7 +779,7 @@ pub fn build_input_fn(
 ///
 pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
     // Output function used for emulating I/O port writes.
-    #[cfg(not(feature = "hyperlight"))]
+    #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
     let output =
         move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
             use std::mem;
