@@ -73,7 +73,7 @@ pub fn run() -> Result<(), StressError> {
     let main_pid: ProcessIdentifier = getpid()?;
     let main_tid: ThreadIdentifier = gettid()?;
 
-    let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+    let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = thread_args(&stack, thread_identity_worker, 0);
     let tid: ThreadIdentifier = create_thread(&mut args)?;
 

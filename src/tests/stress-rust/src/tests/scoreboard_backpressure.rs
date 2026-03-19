@@ -112,7 +112,7 @@ pub fn run() -> Result<(), StressError> {
     let mut stacks: Vec<WorkerStack> = Vec::with_capacity(worker_count);
 
     for worker_id in 0..worker_count {
-        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?;
+        let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, scoreboard_pressure_worker, worker_id);
         let tid: ThreadIdentifier = create_thread(&mut args)?;
         tids.push(tid);

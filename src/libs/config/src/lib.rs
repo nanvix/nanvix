@@ -112,7 +112,8 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address of user stack.
+    /// High address of the user stack region (initial stack pointer).
+    /// The stack grows downward from this address.
     ///
     /// # Notes
     ///
@@ -123,10 +124,10 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// End address of the user stack
+    /// Low address of the user stack region.
+    /// The stack occupies [`USER_STACK_TOP_RAW`, [`USER_STACK_BASE_RAW`).
     ///
-    pub const USER_STACK_TOP_RAW: usize =
-        USER_STACK_BASE_RAW - USER_STACK_SIZE * NUM_USER_STACK_ENTRIES;
+    pub const USER_STACK_TOP_RAW: usize = USER_STACK_BASE_RAW - USER_STACK_SIZE;
 
     ///
     /// # Description
@@ -137,7 +138,7 @@ pub mod memory_layout {
     ///
     /// - This size should be a multiple of a page size.
     ///
-    pub const USER_STACK_SIZE: usize = 512 * crate::constants::KILOBYTE;
+    pub const USER_STACK_SIZE: usize = 4 * crate::constants::MEGABYTE;
 
     ///
     /// # Description
@@ -154,9 +155,17 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Number of entries in the user stack. This should be a multiple of 8.
+    /// Default stack size for spawned threads.
     ///
-    pub const NUM_USER_STACK_ENTRIES: usize = 8;
+    /// Unlike the main thread whose stack is demand-paged within the [`USER_STACK_SIZE`] virtual
+    /// region, additional threads have their stacks heap-allocated at this fixed size.
+    ///
+    /// # Notes:
+    ///
+    /// - This size should be a multiple of a page size.
+    /// - Must be at least [`USER_STACK_MIN_SIZE`].
+    ///
+    pub const USER_THREAD_STACK_SIZE: usize = 512 * crate::constants::KILOBYTE;
 
     ///
     /// # Description

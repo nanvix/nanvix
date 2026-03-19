@@ -102,7 +102,7 @@ pub fn run() -> Result<(), StressError> {
     let mut stacks: ::alloc::vec::Vec<WorkerStack> =
         ::alloc::vec::Vec::with_capacity(PRESSURE_WORKERS);
     for _ in 0..PRESSURE_WORKERS {
-        stacks.push(WorkerStack::new(::config::memory_layout::USER_STACK_SIZE)?);
+        stacks.push(WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?);
     }
 
     // Spawn all workers upfront to maximize concurrent scheduling pressure.
