@@ -15,6 +15,7 @@ pub enum SocketAddr {
     /// TCP socket address.
     Tcp(::std::net::SocketAddr),
     /// Unix socket address.
+    #[cfg(unix)]
     Unix(::tokio::net::unix::SocketAddr),
 }
 
