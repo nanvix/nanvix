@@ -512,7 +512,19 @@ async fn handle_read_request(
     // Take up to max_bytes from the buffer.
     let available: usize = core::cmp::min(input_buffer.len(), max_bytes);
     let data: Vec<u8> = input_buffer.drain(..available).collect();
-    let actual_len: u32 = u32::try_from(data.len()).unwrap_or(u32::MAX);
+    let actual_len: u32 = match u32::try_from(data.len()) {
+        Ok(n) => n,
+        Err(_) => {
+            error!("standalone io_handler: read size overflows u32 (len={})", data.len());
+            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+            let response: Message = ReadResponse::build(tid, -1, empty_buf);
+            counters.increment_io_thread_messages_received();
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+            }
+            return;
+        },
+    };
 
     // Construct bulk response with the read data and send it to the guest. The input_fn will
     // write this data to guest memory at the pull_header's data_addr and construct a
