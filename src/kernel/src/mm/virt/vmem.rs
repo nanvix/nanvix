@@ -572,6 +572,43 @@ impl Vmem {
     ///
     /// # Description
     ///
+    /// Attempts to find a user frame in the target virtual memory space.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the target page.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(addr))` if the page is present.
+    /// - `Ok(None)` if the page table or page is not present.
+    /// - `Err(_)` on unexpected failures.
+    ///
+    fn try_find_user_frame(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<FrameAddress>, Error> {
+        let page_addr: PageAddress = PageAddress::new(vaddr);
+        let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+            ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+        )?);
+
+        for (lookup_pgtable_addr, page_table) in self.user_page_tables.iter() {
+            if lookup_pgtable_addr == &pgtab_addr {
+                if page_table.is_page_present(page_addr)? {
+                    return Ok(Some(page_table.lookup(page_addr)?));
+                } else {
+                    return Ok(None);
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Translates a user-space virtual address to a guest physical address by walking the page
     /// tables. The returned physical address includes the intra-page offset from the original
     /// virtual address.
@@ -1041,16 +1078,24 @@ impl Vmem {
     ///
     /// Unmaps a page from the target virtual address space.
     ///
+    /// If the page is not present (e.g., was never demand-paged), `Ok(None)` is returned without
+    /// logging any errors. This makes the method suitable for cleaning up lazily-allocated regions
+    /// such as user stacks.
+    ///
     /// # Parameters
     ///
     /// - `vaddr`: Virtual address of the target page.
     ///
     /// # Returns
     ///
-    /// Upon success, the user frame that was unmapped is returned. Upon failure, an error code is
-    /// returned instead.
+    /// - `Ok(Some(frame))` if the page was present and has been unmapped.
+    /// - `Ok(None)` if the page was not present.
+    /// - `Err(_)` on unexpected failures.
     ///
-    pub fn unmap(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<UserFrame, Error> {
+    pub fn unmap(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<UserFrame>, Error> {
         // Check if the provided address lies outside the user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in user space";
@@ -1058,8 +1103,11 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        // Find the corresponding frame address.
-        let frame_address: FrameAddress = self.find_user_frame(vaddr)?;
+        // Find the corresponding frame address, returning None if the page is not present.
+        let frame_address: FrameAddress = match self.try_find_user_frame(vaddr)? {
+            Some(addr) => addr,
+            None => return Ok(None),
+        };
 
         let (pgtable_vaddr, unmap_pgtable): (PageTableAddress, bool) = {
             // Get corresponding page table.
@@ -1121,7 +1169,7 @@ impl Vmem {
             self.pgdir.unmap(pgtable_vaddr)?;
         }
 
-        Ok(UserFrame::new(frame_address))
+        Ok(Some(UserFrame::new(frame_address)))
     }
 
     /// Changes access permissions on a page.
