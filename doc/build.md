@@ -9,20 +9,27 @@ simplified build process or do it manually.
 
 ## Table of Contents
 
-- [Building Nanvix with `z` (Preferred Method)](#building-nanvix-with-z-preferred-method)
-  - [Getting Started with `z`](#getting-started-with-z)
-  - [Using `z` to Build Nanvix with Docker](#using-z-to-build-nanvix-with-docker)
-  - [Using `z` to Build Nanvix with a Local Toolchain](#using-z-to-build-nanvix-with-a-local-toolchain)
-- [Building Nanvix Manually](#building-nanvix-manually)
-  - [Manually Building Nanvix with Docker](#manually-building-nanvix-with-docker)
-  - [Manually Building Nanvix with a Local Toolchain](#manually-building-nanvix-with-a-local-toolchain)
+- [Building Nanvix on Linux](#building-nanvix-on-linux)
+  - [Building Nanvix with `z` (Preferred Method)](#building-nanvix-with-z-preferred-method)
+  - [Building Nanvix Manually](#building-nanvix-manually)
+  - [Formal Verification with Verus](#formal-verification-with-verus)
+- [Building Nanvix on Windows](#building-nanvix-on-windows)
+  - [Building Everything](#building-everything)
+  - [Building Individual Components](#building-individual-components)
+  - [Build Parameters (Windows)](#build-parameters-windows)
+  - [Code Quality Checks (Windows)](#code-quality-checks-windows)
+  - [Cleaning (Windows)](#cleaning-windows)
 
-## Building Nanvix with `z` (Preferred Method)
+## Building Nanvix on Linux
+
+> ℹ️ Ensure you have completed the [Linux setup](setup.md#linux-setup) before proceeding.
+
+### Building Nanvix with `z` (Preferred Method)
 
 `z` is a utility for building Nanvix. It provides you with a simplified interface for building
 Nanvix either using Docker or your local toolchain.
 
-### Getting Started with `z`
+#### Getting Started with `z`
 
 For more information on how to use the `z` utility, you can run:
 
@@ -30,7 +37,7 @@ For more information on how to use the `z` utility, you can run:
 ./z help
 ```
 
-### Using `z` to Build Nanvix with Docker
+#### Using `z` to Build Nanvix with Docker
 
 To build Nanvix using the latest Docker image and default build parameters, run:
 
@@ -38,7 +45,7 @@ To build Nanvix using the latest Docker image and default build parameters, run:
 ./z build --with-docker -- all
 ```
 
-### Using `z` to Build Nanvix with a Local Toolchain
+#### Using `z` to Build Nanvix with a Local Toolchain
 
 To build Nanvix using your local toolchain and default build parameters, run:
 
@@ -46,11 +53,11 @@ To build Nanvix using your local toolchain and default build parameters, run:
 ./z build -- all
 ```
 
-## Building Nanvix Manually
+### Building Nanvix Manually
 
 Instead of using the `z` utility, you can build Nanvix manually.
 
-### Manually Building Nanvix with Docker
+#### Manually Building Nanvix with Docker
 
 To build Nanvix using the latest Docker image and default build parameters, run:
 
@@ -71,7 +78,7 @@ DOCKER_BUILDKIT=1 docker build \
 > to `/mnt`, but should be set to `$(pwd -P)` so that Python and other binaries with
 > embedded absolute paths can find their libraries at runtime.
 
-### Manually Building Nanvix with a Local Toolchain
+#### Manually Building Nanvix with a Local Toolchain
 
 To build Nanvix using your local toolchain and default build parameters, run:
 
@@ -86,7 +93,7 @@ local in-memory VFS layer and kernel debug serial port:
 make all DEPLOYMENT_MODE=standalone
 ```
 
-## Formal Verification with Verus
+### Formal Verification with Verus
 
 Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected
 kernel crates. The correct Verus version is pinned in `build/verus-version` and is automatically
@@ -112,4 +119,85 @@ executable (and required companion binaries), not just the Verus source tree.
 # Use a custom Verus installation (pre-built or source-built).
 # VERUS_EXECUTABLE_DIR must be the directory that contains the verus binary.
 ./z build --with-cached-options -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
+```
+
+## Building Nanvix on Windows
+
+On Windows, the `z.ps1` PowerShell script provides the same interface as the Linux `z` utility.
+Guest components (kernel, user binaries) are cross-compiled inside Docker, while the UserVM is
+built natively using the Windows Hypervisor Platform (WHP) backend. The WHP backend is
+automatically selected when building with the `microvm` feature on Windows.
+
+> ℹ️ Ensure you have completed the [Windows setup](setup.md#windows-setup) before proceeding.
+
+### Building Everything
+
+Build all components:
+
+```powershell
+.\z.ps1 build -- all
+```
+
+### Building Individual Components
+
+```powershell
+# Build only the UserVM.
+.\z.ps1 build -- uservm
+
+# Build only guest components.
+.\z.ps1 build -- guest
+```
+
+### Build Parameters (Windows)
+
+Pass build parameters after `--`, just like on Linux:
+
+```powershell
+# Release build.
+.\z.ps1 build -- all RELEASE=yes
+
+# Use the full (non-minimal) Docker image.
+.\z.ps1 build --with-docker -- all
+```
+
+Any make target not handled by `z.ps1` directly is forwarded to `make` via Docker:
+
+```powershell
+# Forward a custom make target to Docker.
+.\z.ps1 build -- kernel
+```
+
+### Code Quality Checks (Windows)
+
+Code quality checks run inside Docker and work the same as on Linux:
+
+```powershell
+# Check formatting.
+.\z.ps1 build -- format-check
+
+# Fix formatting.
+.\z.ps1 build -- format
+
+# Check linting.
+.\z.ps1 build -- lint-check
+
+# Fix linting.
+.\z.ps1 build -- lint
+
+# Spell checking.
+.\z.ps1 build -- spellcheck
+.\z.ps1 build -- spellcheck-fix
+
+# Run unit tests.
+.\z.ps1 build -- run-unit-tests
+```
+
+### Cleaning (Windows)
+
+```powershell
+# Quick clean (removes build artifacts and cache).
+.\z.ps1 clean
+
+# Full clean (removes everything).
+.\z.ps1 distclean
 ```

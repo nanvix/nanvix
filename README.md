@@ -9,6 +9,8 @@ Nanvix is a microkernel-based research operating system.
 
 ## Quick Start
 
+### Linux
+
 Requires Ubuntu 24.04 with sudo privileges, [Docker](doc/setup.md#5-setup-docker-optional), and
 [KVM](doc/setup.md#4-setup-kvm) enabled.
 
@@ -24,6 +26,27 @@ git clone https://github.com/nanvix/nanvix.git && cd nanvix
 
 # Run an example application.
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf
+```
+
+### Windows
+
+Requires Windows 11 with [Docker Desktop](doc/setup.md#windows-setup) (Linux containers), [Windows
+Hypervisor Platform](doc/setup.md#1-enable-windows-hypervisor-platform) enabled, [Developer
+Mode](doc/setup.md#2-enable-developer-mode) turned on, and a Rust toolchain installed via
+[rustup](https://rustup.rs).
+
+```powershell
+# Clone this source code (symlinks require Developer Mode).
+git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
+
+# Setup the development environment (pulls Docker image).
+.\z.ps1 setup
+
+# Build Nanvix.
+.\z.ps1 build -- all
+
+# Run an example application.
+.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
 ```
 
 > For more details, see the full [setup](doc/setup.md), [build](doc/build.md), and
