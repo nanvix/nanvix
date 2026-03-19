@@ -4,26 +4,33 @@ This guide will help you set up your development environment to build and run Na
 
 ## Table of Contents
 
-- [Setting Up Your System](#setting-up-your-system)
+- [Linux Setup](#linux-setup)
   - [1. Check Your System and Permissions](#1-check-your-system-and-permissions)
   - [2. Clone This Repository](#2-clone-this-repository)
   - [3. Install Dependencies for Development Tools](#3-install-dependencies-for-development-tools)
   - [4. Setup KVM](#4-setup-kvm)
   - [5. Setup Docker (Optional)](#5-setup-docker-optional)
   - [6. Setup SCCACHE (Optional)](#6-setup-sccache-optional)
+  - [7. Set Up GDB Debugging (Optional)](#7-set-up-gdb-debugging-optional)
 - [Setting Up Development Tools for the First Time](#setting-up-development-tools-for-the-first-time)
   - [Option 1: Build Development Tools Locally (Preferred Method)](#option-1-build-development-tools-locally-preferred-method)
   - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
   - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
 - [Updating Your Development Tools](#updating-your-development-tools)
   - [Verus (Formal Verification)](#verus-formal-verification)
+- [Windows Setup](#windows-setup)
+  - [1. Enable Windows Hypervisor Platform](#1-enable-windows-hypervisor-platform)
+  - [2. Enable Developer Mode](#2-enable-developer-mode)
+  - [3. Install Docker Desktop](#3-install-docker-desktop)
+  - [4. Install the Rust Toolchain](#4-install-the-rust-toolchain)
+  - [5. Clone This Repository](#5-clone-this-repository)
+  - [6. Pull the Docker Toolchain Image](#6-pull-the-docker-toolchain-image)
 - [Setup Your IDE (Optional)](#setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
-- [Setting Up GDB Debugging (Optional)](#setting-up-gdb-debugging-optional)
 
 ---
 
-## Setting Up Your System
+## Linux Setup
 
 ### 1. Check Your System and Permissions
 
@@ -101,6 +108,21 @@ rm -rf "${SCCACHE_TAR}" "${SCCACHE_FILENAME}"
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+### 7. Set Up GDB Debugging (Optional)
+
+The repository includes a `.gdbinit` file that automatically configures GDB for debugging. By
+default, GDB refuses to auto-load `.gdbinit` files from arbitrary directories. To allow it for
+this project, add the repository path to your GDB auto-load safe-path:
+
+```bash
+echo "add-auto-load-safe-path $(pwd)/.gdbinit" >> ~/.gdbinit
+```
+
+After this, launching `gdb-multiarch` from the project root will automatically pick up the
+project's `.gdbinit`.
+
+For full debugging instructions, see [doc/gdb.md](gdb.md).
 
 ---
 
@@ -202,28 +224,117 @@ make verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
 > read-only; nothing is written to it). You are responsible for ensuring the Verus version is
 > compatible with the `vstd` crate version pinned in `Cargo.toml`.
 
+## Windows Setup
+
+Nanvix currently supports Windows 11 on the host side. On Windows 11, guest components (kernel,
+user binaries) are cross-compiled inside Docker while the UserVM is built natively using the
+Windows Hypervisor Platform (WHP) backend. The `z.ps1` PowerShell script mirrors the Linux `z`
+utility interface.
+
+### 1. Enable Windows Hypervisor Platform
+
+The Windows Hypervisor Platform (WHP) feature is required to run the UserVM natively. This step
+requires an elevated PowerShell session.
+
+```powershell
+# Run in an elevated PowerShell prompt.
+Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
+```
+
+Restart your machine after enabling the feature.
+
+### 2. Enable Developer Mode
+
+This repository uses symbolic links. On Windows, Git needs Developer Mode enabled to create native
+symlinks during clone. Without it, symlinks are checked out as small text files and tools that
+expect real files may fail.
+
+1. Open **Settings > Privacy & Security > For developers**.
+2. Turn on **Developer Mode**.
+
+Using the Settings app may prompt for approval, but it does not require you to manually open an
+elevated PowerShell session.
+
+Alternatively, enable it from PowerShell. This command does require an elevated PowerShell
+session:
+
+```powershell
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+```
+
+### 3. Install Docker Desktop
+
+Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) and ensure
+it is configured to use **Linux containers** (the default).
+
+Verify Docker is working:
+
+```powershell
+docker info
+```
+
+### 4. Install the Rust Toolchain
+
+Install Rust via [rustup](https://rustup.rs):
+
+```powershell
+# Download and run the rustup installer.
+winget install Rustlang.Rustup
+```
+
+After installation, restart your terminal and verify:
+
+```powershell
+rustc --version
+cargo --version
+```
+
+### 5. Clone This Repository
+
+```powershell
+git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git
+cd nanvix
+```
+
+> **Note:** The `-c core.symlinks=true` flag ensures Git creates native symlinks instead of text
+> stub files. This requires [Developer Mode](#2-enable-developer-mode) to be enabled. If you
+> already cloned without this flag, prefer re-cloning after enabling Developer Mode so your
+> existing worktree is not overwritten.
+>
+> **Note:** Cloning the repository does not require an elevated PowerShell session once Developer
+> Mode is enabled.
+
+### 6. Pull the Docker Toolchain Image
+
+```powershell
+.\z.ps1 setup
+```
+
+This pulls the pre-built minimal Docker toolchain image required for cross-compiling guest
+components. To use the full (non-minimal) image instead:
+
+```powershell
+.\z.ps1 setup --with-docker
+```
+
+---
+
 ## Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.
 
 ### Visual Studio Code
 
+**Linux:**
+
 ```bash
 mkdir -p .vscode && cd .vscode
 ln -s ../scripts/setup/vscode/settings.json settings.json
 ```
 
-## Setting Up GDB Debugging (Optional)
+**Windows (PowerShell):**
 
-The repository includes a `.gdbinit` file that automatically configures GDB for debugging.  By
-default, GDB refuses to auto-load `.gdbinit` files from arbitrary directories. To allow it for this
-project, add the repository path to your GDB auto-load safe-path:
-
-```bash
-echo "add-auto-load-safe-path $(pwd)/.gdbinit" >> ~/.gdbinit
+```powershell
+New-Item -ItemType Directory -Path .vscode -Force
+Copy-Item scripts\setup\vscode\settings.json .vscode\settings.json
 ```
-
-After this, launching `gdb-multiarch` from the project root will automatically pick up the
-project's `.gdbinit`.
-
-For full debugging instructions, see [doc/gdb.md](gdb.md).
