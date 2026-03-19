@@ -234,6 +234,32 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         Ok(paddr)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Checks whether a page is present in the target page table.
+    ///
+    /// # Parameters
+    ///
+    /// - `page_address`: Page address to check.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if the page is present.
+    /// - `Ok(false)` if the page is not present.
+    /// - `Err(_)` if the page table entry could not be read.
+    ///
+    pub fn is_page_present(&self, page_address: PageAddress) -> Result<bool, Error> {
+        match self.read_pte(page_address) {
+            Some(pte) => Ok(pte.is_present()),
+            None => {
+                let reason: &str = "failed to read page table entry";
+                error!("{reason} (page_address={page_address:?})");
+                Err(Error::new(ErrorCode::TryAgain, reason))
+            },
+        }
+    }
+
     /// Changes access permissions on a page.
     pub fn ctrl(
         &mut self,
