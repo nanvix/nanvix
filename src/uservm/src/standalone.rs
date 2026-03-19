@@ -391,7 +391,11 @@ async fn handle_write_request(
             );
             let response: Message = WriteResponse::build(tid, 0);
             counters.increment_io_thread_messages_received();
-            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
+                );
+            }
             return;
         },
     };
@@ -401,7 +405,9 @@ async fn handle_write_request(
         warn!("standalone io_handler: rejecting write to unsupported fd={fd} (tid={tid:?})");
         let response: Message = WriteResponse::build(tid, -1);
         counters.increment_io_thread_messages_received();
-        let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
+        }
         return;
     }
 
@@ -411,7 +417,11 @@ async fn handle_write_request(
             error!("standalone io_handler: write size overflows i32 (len={})", data.len());
             let response: Message = WriteResponse::build(tid, -1);
             counters.increment_io_thread_messages_received();
-            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
+                );
+            }
             return;
         },
     };
@@ -470,7 +480,11 @@ async fn handle_read_request(
             );
             let response: Message = ReadResponse::eof(tid);
             counters.increment_io_thread_messages_received();
-            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+                error!(
+                    "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
+                );
+            }
             return;
         },
     };
@@ -490,10 +504,15 @@ async fn handle_read_request(
         let error_bulk: DataChunk = DataChunk::new(error_header, Vec::new());
         counters.increment_io_thread_messages_received();
         counters.increment_io_thread_messages_received();
-        let _ = vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await;
+        if vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await.is_err() {
+            error!("standalone io_handler: failed to send bulk response (VM input channel closed)");
+            return;
+        }
         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
         let response: Message = ReadResponse::build(tid, -1, empty_buf);
-        let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+        }
         return;
     }
 
@@ -520,7 +539,9 @@ async fn handle_read_request(
             let response: Message = ReadResponse::build(tid, -1, empty_buf);
             counters.increment_io_thread_messages_received();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
-                error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+                error!(
+                    "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
+                );
             }
             return;
         },
