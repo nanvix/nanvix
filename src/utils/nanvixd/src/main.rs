@@ -465,8 +465,12 @@ async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
 
     // Encode timestamp in base64url using RFC 4648 compliant filename-safe characters.
     let tmp_dirname: String = encode_base64_filename(timestamp_micros);
+    #[cfg(unix)]
     let tmp_directory_path: PathBuf =
         PathBuf::from(tmp_directory).join(format!("{NAMED_RESOURCE_PREFIX}:{}", tmp_dirname));
+    #[cfg(windows)]
+    let tmp_directory_path: PathBuf =
+        PathBuf::from(tmp_directory).join(format!("{NAMED_RESOURCE_PREFIX}-{}", tmp_dirname));
 
     // Check if temporary directory already exists (extremely unlikely with timestamp-based naming).
     if tmp_directory_path.exists() {
