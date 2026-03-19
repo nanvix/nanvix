@@ -22,44 +22,54 @@ use ::log::{
     error,
     info,
 };
+#[cfg(target_os = "linux")]
+use ::std::str::FromStr;
 use ::std::{
     convert::TryInto,
     env,
     process::ExitCode,
-    str::FromStr,
 };
+#[cfg(target_os = "linux")]
 use ::sys::ipc::IkcFrame;
+#[cfg(target_os = "linux")]
 use ::syscomm::{
     SocketStream,
     SocketType,
     UnboundSocket,
     WriteAll,
 };
+#[cfg(target_os = "linux")]
 use ::tokio::{
     sync::mpsc,
     task::JoinHandle,
     time::timeout,
 };
+#[cfg(target_os = "linux")]
 use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
     UserVmIdentifier,
 };
+#[cfg(not(target_os = "linux"))]
+use ::uservm::args::UserVmIdentifier;
+#[cfg(target_os = "linux")]
 use ::uservm::{
     CHANNEL_CAPACITY,
     CONTROL_PLANE_CONNECT_TIMEOUT,
     SYSTEM_VM_CONNECT_TIMEOUT,
     UserVm,
     UserVmArgs,
-    args::{
-        self,
-        Args,
-    },
     counters::MessageCounters,
     io_thread::IoThread,
     orchestrator::{
         IoControlCommand,
         IoControlResponse,
+    },
+};
+use ::uservm::{
+    args::{
+        self,
+        Args,
     },
     standalone,
     standalone::StandaloneVmHandle,
@@ -92,12 +102,8 @@ pub async fn main() -> Result<ExitCode> {
     let gdb_port: Option<u16> = args.gdb_port();
 
     // Initialize logger. If this fails, the program will panic.
-    ::syslog::init(
-        args.log_to_file(),
-        DEFAULT_LOG_LEVEL,
-        args.log_directory(),
-        Some(format!("uservm{}", u32::from(user_vm_id))),
-    );
+    let log_suffix: String = format!("uservm{}", u32::from(user_vm_id));
+    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_directory(), Some(log_suffix));
 
     debug!(
         "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
@@ -122,8 +128,17 @@ pub async fn main() -> Result<ExitCode> {
         )
         .await
     } else {
-        run_managed(args, kernel_filename, initrd_filename, initrd_args, ramfs_filename, stderr)
-            .await
+        #[cfg(target_os = "linux")]
+        {
+            run_managed(args, kernel_filename, initrd_filename, initrd_args, ramfs_filename, stderr)
+                .await
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = args;
+            error!("main(): managed mode is not supported on this platform, use -standalone");
+            Err(anyhow::anyhow!("managed mode is not supported on this platform"))
+        }
     }
 }
 
@@ -203,6 +218,7 @@ async fn run_standalone(
 /// control-plane fail or time out, or if the exit status cannot be converted to a process exit
 /// code.
 ///
+#[cfg(target_os = "linux")]
 async fn run_managed(
     args: Args,
     kernel_filename: String,
