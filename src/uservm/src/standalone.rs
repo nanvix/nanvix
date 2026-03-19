@@ -405,7 +405,16 @@ async fn handle_write_request(
         return;
     }
 
-    let written: i32 = i32::try_from(data.len()).unwrap_or(i32::MAX);
+    let written: i32 = match i32::try_from(data.len()) {
+        Ok(n) => n,
+        Err(_) => {
+            error!("standalone io_handler: write size overflows i32 (len={})", data.len());
+            let response: Message = WriteResponse::build(tid, -1);
+            counters.increment_io_thread_messages_received();
+            let _ = vm_stdin_tx.send(IkcFrame::Message(response)).await;
+            return;
+        },
+    };
 
     // Forward to consumer (terminal stdout, HTTP gateway, etc.). Use send().await to apply
     // back-pressure when the channel is full, preventing silent data loss that could cause
