@@ -26,6 +26,7 @@ pub enum SocketStreamWriter {
     /// Underlying TCP write half.
     Tcp(tokio::net::tcp::OwnedWriteHalf),
     /// Underlying Unix write half.
+    #[cfg(unix)]
     Unix(tokio::net::unix::OwnedWriteHalf),
 }
 
@@ -61,6 +62,7 @@ impl SocketStreamWriter {
         // Write bytes.
         let result: Result<usize> = match self {
             SocketStreamWriter::Tcp(stream) => stream.write(buf).await,
+            #[cfg(unix)]
             SocketStreamWriter::Unix(stream) => stream.write(buf).await,
         };
 
@@ -102,6 +104,7 @@ impl SocketStreamWriter {
         while !slices.is_empty() {
             let n: usize = match self {
                 SocketStreamWriter::Tcp(stream) => stream.write_vectored(slices).await,
+                #[cfg(unix)]
                 SocketStreamWriter::Unix(stream) => stream.write_vectored(slices).await,
             }
             .map_err(|error| {
@@ -148,6 +151,7 @@ impl WriteAll for SocketStreamWriter {
         // Write bytes.
         let result: Result<()> = match self {
             SocketStreamWriter::Tcp(stream) => stream.write_all(buf).await,
+            #[cfg(unix)]
             SocketStreamWriter::Unix(stream) => stream.write_all(buf).await,
         };
 
