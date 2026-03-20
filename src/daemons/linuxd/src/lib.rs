@@ -306,22 +306,35 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
         let user_vm_id: UserVmIdentifier = new_msg.id();
+        let ring_shared_path: &str = new_msg.ring_shared_path();
 
         trace!("registered new user VM connection (vm_id={user_vm_id}, addr={user_vm_stream:?})",);
 
-        let shared_ring: Option<Arc<SharedRing>> = if new_msg.ring_shared_path().is_empty() {
+        let shared_ring_path: Option<&str> = if self.in_l2 && !ring_shared_path.is_empty() {
+            warn!(
+                "accept_connections(): ignoring direct ring path for L2 user VM until ivshmem \
+                 replaces the removed virtio-fs transport (vm_id={user_vm_id}, path={ring_shared_path})"
+            );
+            None
+        } else if ring_shared_path.is_empty() {
             None
         } else {
-            Some(Arc::new(SharedRing::open(Path::new(new_msg.ring_shared_path())).map_err(
-                |e| {
+            Some(ring_shared_path)
+        };
+
+        let shared_ring: Option<Arc<SharedRing>> = if let Some(shared_ring_path) = shared_ring_path {
+            match SharedRing::open(Path::new(shared_ring_path)) {
+                Ok(ring) => Some(Arc::new(ring)),
+                Err(error) => {
                     let reason: String = format!(
-                        "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, path={}, error={e:?})",
-                        new_msg.ring_shared_path()
+                        "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, path={shared_ring_path}, error={error:?})"
                     );
                     error!("{reason}");
-                    Error::new(ErrorCode::IoErr, "failed to open shared ring mapping")
+                    return Err(Error::new(ErrorCode::IoErr, "failed to open shared ring mapping"));
                 },
-            )?))
+            }
+        } else {
+            None
         };
 
         // Spawn a background task that reads messages from this user VM and
@@ -625,7 +638,11 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     };
 
                     match event {
-                        UserVmEvent::Transfer { uvm_id, transfer } => {
+                        UserVmEvent::Transfer {
+                            uvm_id,
+                            transfer,
+                            user_data,
+                        } => {
                             let Some(uvm_handle) = user_vm_connections.get(&uvm_id).cloned() else {
                                 warn!(
                                     "run(): received transfer for unknown VM (uvm_id={uvm_id}), ignoring"
@@ -639,6 +656,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                             uvm_id,
                                             uvm_handle,
                                             message,
+                                            user_data,
                                             worker_threads.clone(),
                                         )
                                         .await
@@ -890,7 +908,11 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     }
 
                     if uvm_events_tx
-                        .send(UserVmEvent::Transfer { uvm_id, transfer })
+                        .send(UserVmEvent::Transfer {
+                            uvm_id,
+                            transfer,
+                            user_data: None,
+                        })
                         .await
                         .is_err()
                     {
@@ -939,6 +961,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         uvm_id: UserVmIdentifier,
         uvm_handle: UserVmHandle,
         message: Message,
+        user_data: Option<u64>,
         worker_threads: Arc<Mutex<HashMap<UserVmIdentifier, VecDeque<WorkerThreadHandle>>>>,
     ) -> Result<(), Error> {
         let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
@@ -998,7 +1021,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 .push_back(worker_thread_handle);
         }
 
-        if let Err(error) = channel_tx.send(VenvCommand::Work(message)).await {
+        if let Err(error) = channel_tx.send(VenvCommand::Work { message, user_data }).await {
             error!(
                 "run(): failed to dispatch message to worker thread (tid={source:?}, \
                  error={error:?})"

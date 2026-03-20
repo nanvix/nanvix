@@ -145,6 +145,10 @@ impl UserVm {
             user_vm_args.push(stderr_file.to_string());
         }
 
+        if args.disable_ring_buffer() {
+            user_vm_args.push(::uservm::args::Args::OPT_DISABLE_RING_BUFFER.to_string());
+        }
+
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
                 "taskset".to_string(),

@@ -24,10 +24,7 @@ use ::log::{
     warn,
 };
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::std::{
-    fs::OpenOptions,
-    path::PathBuf,
-};
+use ::std::{fs::OpenOptions, path::PathBuf};
 use ::std::{
     convert::TryInto,
     env,
@@ -93,6 +90,8 @@ pub async fn main() -> Result<ExitCode> {
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
     let standalone: bool = args.standalone();
     let snapshot_path: Option<String> = args.take_snapshot_path();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let disable_ring_buffer: bool = args.disable_ring_buffer();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -133,6 +132,8 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             memory_size,
             stderr,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            disable_ring_buffer,
         )
         .await
     }
@@ -258,6 +259,7 @@ async fn run_managed(
     ramfs_filename: Option<String>,
     memory_size: usize,
     stderr: Option<String>,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))] disable_ring_buffer: bool,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
@@ -270,7 +272,11 @@ async fn run_managed(
     let counters: MessageCounters = MessageCounters::new();
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    let ring_shared_path: PathBuf = prepare_shared_ring_backing(args.user_vm_id())?;
+    let ring_shared_path: Option<PathBuf> = if disable_ring_buffer {
+        None
+    } else {
+        Some(prepare_shared_ring_backing(args.user_vm_id())?)
+    };
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
@@ -332,7 +338,10 @@ async fn run_managed(
                     args.gateway_addr().to_string(),
                     SocketType::from_str(args.gateway_socket_type())?,
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    ring_shared_path.display().to_string(),
+                    ring_shared_path
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_default(),
                     #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
                     String::new(),
                 ) {
@@ -414,7 +423,9 @@ async fn run_managed(
         counters,
         snapshot_path: None,
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        ring_shared_path: Some(ring_shared_path.display().to_string()),
+        ring_shared_path: ring_shared_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;
@@ -427,11 +438,13 @@ async fn run_managed(
     }
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    if let Err(error) = std::fs::remove_file(&ring_shared_path) {
-        warn!(
-            "main(): failed to remove shared ring backing file (path={}, error={error:?})",
-            ring_shared_path.display()
-        );
+    if let Some(ring_shared_path) = ring_shared_path.as_ref() {
+        if let Err(error) = std::fs::remove_file(ring_shared_path) {
+            warn!(
+                "main(): failed to remove shared ring backing file (path={}, error={error:?})",
+                ring_shared_path.display()
+            );
+        }
     }
 
     convert_exit_status(vm_exit_status)
@@ -439,7 +452,11 @@ async fn run_managed(
 
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> {
-    let path: PathBuf = std::env::temp_dir().join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
+    let base_dir: PathBuf = std::env::temp_dir();
+    std::fs::create_dir_all(&base_dir).map_err(|e| {
+        anyhow::anyhow!("failed to create shared ring backing directory {:?}: {e}", base_dir)
+    })?;
+    let path: PathBuf = base_dir.join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
 
     let file = OpenOptions::new()
         .create(true)
@@ -459,7 +476,6 @@ fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> 
 
     Ok(path)
 }
-
 ///
 /// # Description
 ///

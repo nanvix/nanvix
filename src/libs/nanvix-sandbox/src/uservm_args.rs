@@ -50,6 +50,8 @@ pub struct UserVmArgs {
     log_directory: String,
     /// Unique identifier for this User VM instance.
     uservm_id: UserVmIdentifier,
+    /// Disable the direct shared-ring path for this User VM.
+    disable_ring_buffer: bool,
 }
 
 //==================================================================================================
@@ -95,6 +97,7 @@ impl UserVmArgs {
         #[cfg(not(feature = "single-process"))] uservm_binary_path: String,
         log_directory: String,
         uservm_id: UserVmIdentifier,
+        disable_ring_buffer: bool,
     ) -> Self {
         Self {
             control_plane_connect_socket_info,
@@ -110,6 +113,7 @@ impl UserVmArgs {
             uservm_binary_path,
             log_directory,
             uservm_id,
+            disable_ring_buffer,
         }
     }
 
@@ -268,5 +272,10 @@ impl UserVmArgs {
     ///
     pub fn uservm_id(&self) -> UserVmIdentifier {
         self.uservm_id
+    }
+
+    /// Returns whether the direct shared-ring path should be disabled.
+    pub fn disable_ring_buffer(&self) -> bool {
+        self.disable_ring_buffer
     }
 }

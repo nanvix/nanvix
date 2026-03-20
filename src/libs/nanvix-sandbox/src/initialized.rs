@@ -32,6 +32,8 @@ use ::log::{
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
+#[cfg(all(not(feature = "single-process"), feature = "ring-buffer"))]
+use ::std::path::PathBuf;
 use ::syscomm::{
     SocketListener,
     SocketType,
@@ -121,6 +123,10 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         let uservm_id: ::user_vm_api::UserVmIdentifier = self.sandbox_config.uservm_id();
         #[cfg(not(feature = "single-process"))]
         let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
+        #[cfg(feature = "ring-buffer")]
+        let disable_ring_buffer: bool = matches!(self.sandbox_config.l2(), Some(true));
+        #[cfg(not(feature = "ring-buffer"))]
+        let disable_ring_buffer: bool = false;
 
         // Extract gateway socket info (consumes the config to get ownership of TcpPort).
         let gateway_socket_info_with_port: (String, SocketType, Option<TcpPort>) =
@@ -152,6 +158,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     uservm_binary_path,
                     log_directory,
                     uservm_id,
+                    disable_ring_buffer,
                 ),
                 // Pass a mutable reference to the unique control-plane listener socket to accept
                 // one connection from the new user VM.

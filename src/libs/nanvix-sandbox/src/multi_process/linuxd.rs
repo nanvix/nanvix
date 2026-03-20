@@ -42,14 +42,8 @@ use ::std::{
     io::ErrorKind,
     mem,
     os::unix::fs::FileTypeExt,
-    path::{
-        Path,
-        PathBuf,
-    },
-    process::{
-        ExitStatus,
-        Stdio,
-    },
+    path::{Path, PathBuf},
+    process::Stdio,
 };
 use ::syscomm::{
     SocketListener,
@@ -65,7 +59,6 @@ use ::log::{
     warn,
 };
 use ::tokio::{
-    fs as tokio_fs,
     io::{
         AsyncReadExt,
         AsyncWriteExt,
@@ -319,12 +312,11 @@ impl LinuxDaemon {
             clh_api_socket_path.to_string(),
             args::Args::OPT_CH_REMOTE_RESUME.to_string(),
         ];
+        debug!("resume_l2_vm(): executing ch-remote with args: {}", ch_remote_args.join(" "));
         trace!("ch-remote args: {ch_remote_args:?}");
-        let status: ExitStatus =
+        let output =
             command_in_netns(netns_info, &ch_remote_args[0], &ch_remote_args[1..])
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .status()
+                .output()
                 .await
                 .map_err(|e| {
                     let reason: String = format!(
@@ -333,22 +325,70 @@ impl LinuxDaemon {
                     error!("{reason}");
                     anyhow::anyhow!(reason)
                 })?;
-        if !status.success() {
-            let reason: String = format!(
-                "error running ch remote process (args={ch_remote_args:?}, status={status:?})"
-            );
-            error!("{reason}");
-            anyhow::bail!(reason);
+        if !output.status.success() {
+            let stdout: String = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr: String = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let already_running: bool = stderr.contains("InvalidStateTransition(Running, Running)");
+            if already_running {
+                warn!(
+                    "resume_l2_vm(): ch-remote resume reported VM already running; continuing \
+                     with restore gate unlock (args={ch_remote_args:?}, stdout={stdout:?}, \
+                     stderr={stderr:?})"
+                );
+            } else {
+                let reason: String = format!(
+                    "error running ch remote process (args={ch_remote_args:?}, status={:?}, stdout={stdout:?}, stderr={stderr:?})",
+                    output.status
+                );
+                error!("{reason}");
+                anyhow::bail!(reason);
+            }
         }
 
         // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
-        let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
-        let mut stream: SocketStream = unbound_socket
-            .connect(&restore_gate_sockaddr_builder(Some(netns_info.veth_ns_ip())))
-            .await?;
-        if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
-            error!("failed to write restore gate bytes (error={e:?})");
-            return Err(e.into());
+        let restore_gate_sockaddr: String = restore_gate_sockaddr_builder(Some(netns_info.veth_ns_ip()));
+        let mut last_error: Option<::std::io::Error> = None;
+        for attempt in 1..=5 {
+            let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
+            match unbound_socket.connect(&restore_gate_sockaddr).await {
+                Ok(mut stream) => {
+                    if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
+                        error!("failed to write restore gate bytes (error={e:?})");
+                        return Err(e.into());
+                    }
+                    return Ok(());
+                },
+                Err(error) => {
+                    let already_running: bool = !output.status.success()
+                        && String::from_utf8_lossy(&output.stderr)
+                            .contains("InvalidStateTransition(Running, Running)");
+                    if already_running
+                        && matches!(
+                            error.kind(),
+                            ErrorKind::NetworkUnreachable
+                                | ErrorKind::ConnectionRefused
+                                | ErrorKind::TimedOut
+                        )
+                    {
+                        warn!(
+                            "resume_l2_vm(): restore gate connect attempt {attempt} failed after \
+                             already-running restore; retrying (addr={restore_gate_sockaddr}, \
+                             error={error:?})"
+                        );
+                        last_error = Some(error);
+                        sleep(Duration::from_millis(100 * attempt as u64)).await;
+                        continue;
+                    }
+                    return Err(error.into());
+                },
+            }
+        }
+        if last_error.is_some() {
+            warn!(
+                "resume_l2_vm(): continuing without restore gate unlock after already-running \
+                 restore because all retries failed (addr={restore_gate_sockaddr}, \
+                 error={last_error:?})"
+            );
         }
 
         Ok(())
