@@ -209,17 +209,15 @@ jobs:
           name: windows-build-${{ matrix.build-type }}
           path: bin
 
-      - name: "Enable Windows Hypervisor Platform"
+      - name: "Check Windows Hypervisor Platform"
         shell: pwsh
         run: |
-          # Check if WHP is already enabled; enable it if not.
           $feature = Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
           if ($feature.State -ne 'Enabled') {
-            Write-Host "Enabling Windows Hypervisor Platform..."
-            Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart
-          } else {
-            Write-Host "Windows Hypervisor Platform is already enabled."
+            Write-Host "::error::Windows Hypervisor Platform is not enabled. Enable it and reboot before running this workflow."
+            exit 1
           }
+          Write-Host "Windows Hypervisor Platform is already enabled."
 
       - name: "Run Hello World (standalone)"
         shell: pwsh
