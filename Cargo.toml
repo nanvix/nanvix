@@ -180,7 +180,7 @@ vfs = { path = "src/libs/vfs", default-features = false }
 vstd = { version = "=0.0.0-2026-03-15-0111", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.9", default-features = false }
-windows = { version = "0.61", features = ["Win32_System_Hypervisor", "Win32_System_Memory", "Win32_System_Threading"] }
+windows = { version = "0.62", features = ["Win32_System_Hypervisor", "Win32_System_Memory", "Win32_System_Threading"] }
 
 [profile.dev]
 opt-level = 0
