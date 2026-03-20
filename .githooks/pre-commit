@@ -161,6 +161,19 @@ get_release_flag() {
 #===================================================================================================
 
 main() {
+    # The bash pre-commit checks rely on ./z which is Linux-only.  On Windows
+    # (Git Bash / MSYS), skip the hook and remind the user to validate via z.ps1.
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            print_warning "(pre-commit) Skipping pre-commit checks on Windows."
+            print_info "(pre-commit) Run quality checks manually with z.ps1:"
+            print_info "  .\\z.ps1 build -- format-check"
+            print_info "  .\\z.ps1 build -- lint-check"
+            print_info "  .\\z.ps1 build -- spellcheck"
+            exit 0
+            ;;
+    esac
+
     # Check if we are not running inside a Git repository.
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         print_error "(pre-commit) This script must be run inside a Git repository."
