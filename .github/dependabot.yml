@@ -10,28 +10,3 @@ updates:
     open-pull-requests-limit: 20
     pull-request-branch-name:
       separator: "-"
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "03:00"
-    versioning-strategy: increase
-    labels:
-      - "enhancement"
-    open-pull-requests-limit: 20
-    pull-request-branch-name:
-      separator: "-"
-    ignore:
-      - dependency-name: "hyperlight-common"
-      - dependency-name: "hyperlight-host"
-      - dependency-name: "hyperlight-guest"
-      - dependency-name: "fatfs"
-      - dependency-name: "spin"
-      - dependency-name: "talc"
-      - dependency-name: "vstd"
-
-    groups:
-      kvm-stack:
-        patterns:
-          - "kvm-ioctls"
-          - "kvm-bindings"
