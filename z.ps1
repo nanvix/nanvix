@@ -459,7 +459,7 @@ function Invoke-DistClean {
     Write-Info "Removing everything (full clean)..."
     $targetDir = Join-Path $RootDir "target"
     if (Test-Path $targetDir) {
-        cargo clean
+        cargo clean --manifest-path (Join-Path $RootDir 'Cargo.toml')
     }
     if (Test-Path $BinDir) {
         $uvmBin = Join-Path $BinDir "uservm.exe"
