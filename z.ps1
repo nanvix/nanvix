@@ -580,7 +580,10 @@ function Invoke-DistClean {
     $ErrorActionPreference = 'Continue'
 
     Write-Info "Removing everything (full clean)..."
-    cargo clean
+    $targetDir = Join-Path $RootDir "target"
+    if (Test-Path $targetDir) {
+        cargo clean
+    }
     if (Test-Path $BinDir) {
         $uvmBin = Join-Path $BinDir "uservm.exe"
         if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
