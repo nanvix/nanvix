@@ -347,12 +347,11 @@ function Invoke-DockerBuild {
     # venv). If a previous Docker export left a broken reparse point at .venv\lib64
     # on Windows, the output exporter fails with "The file cannot be accessed by
     # the system." Removing it beforehand prevents this.
-    $localVenv = Join-Path $RootDir ".venv"
-    if (Test-Path $localVenv) {
+    if (Test-Path $VenvDir) {
         # Use cmd to remove in case of broken reparse points that PowerShell can't handle.
-        cmd /c "rmdir /s /q `"$localVenv`"" 2>$null
-        if (Test-Path $localVenv) {
-            Remove-Item $localVenv -Recurse -Force -ErrorAction SilentlyContinue
+        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
+        if (Test-Path $VenvDir) {
+            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
