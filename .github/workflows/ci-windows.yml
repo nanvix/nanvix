@@ -111,6 +111,7 @@ jobs:
       - name: "Install Rust Toolchain"
         shell: pwsh
         run: |
+          rustup show
           rustup component add clippy rustfmt
 
       - name: "Check Code Format"
