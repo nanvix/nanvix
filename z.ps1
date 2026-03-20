@@ -446,15 +446,27 @@ function Invoke-Clean {
     $ErrorActionPreference = 'Continue'
 
     Write-Info "Removing build artifacts (quick clean)..."
+
+    # Clean native host packages.
     cargo clean -p uservm 2>$null
     cargo clean -p nanvixd 2>$null
     cargo clean -p nanvix-test 2>$null
-    $uvmBin = Join-Path $BinDir "uservm.exe"
-    if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
-    $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
-    if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
-    $nanvixTestBin = Join-Path $BinDir "nanvix-test.exe"
-    if (Test-Path $nanvixTestBin) { Remove-Item $nanvixTestBin -Force }
+
+    # Remove all guest binaries in bin/
+    if (Test-Path $BinDir) {
+        Get-ChildItem -Path $BinDir -File -Include "*.elf", "*.wasm" -Recurse |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
+    # Remove all guest libraries in lib/.
+    if (Test-Path $LibDir) {
+        Get-ChildItem -Path $LibDir -File -Include "*.a", "*.so" -Recurse |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
+    # Remove system image.
+    if (Test-Path $SysImage) { Remove-Item $SysImage -Force }
+
     Write-Success "Quick clean complete."
 }
 
