@@ -325,16 +325,22 @@ Choose one of the following options to set up your IDE for Nanvix development.
 
 ### Visual Studio Code
 
+Use the host-specific settings template below. The Linux template invokes `./z`, while the
+Windows template invokes `./z.bat` and also routes Rust Analyzer build-script discovery through the
+Windows Docker workflow. Without the Windows override, Rust Analyzer falls back to native `cargo`
+for build-script metadata and guest crates such as `kernel` fail because `gcc`/`ar` are not
+available on the host `PATH`.
+
 **Linux:**
 
 ```bash
 mkdir -p .vscode && cd .vscode
-ln -s ../scripts/setup/vscode/settings.json settings.json
+ln -s ../scripts/setup/vscode/settings-linux.json settings.json
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force
-Copy-Item scripts\setup\vscode\settings.json .vscode\settings.json
+Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
 ```
