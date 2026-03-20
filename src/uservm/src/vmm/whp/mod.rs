@@ -6,6 +6,11 @@
 //==================================================================================================
 
 #![allow(clippy::module_inception)]
+// The WHP backend interfaces with the Windows Hypervisor Platform API, which
+// uses u32/u16 parameters extensively. These casts are intentional and safe.
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::collapsible_match)]
 
 //==================================================================================================
 // Modules

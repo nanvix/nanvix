@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// Enum-to-usize casts are intentional for PmioWidth conversion.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Structures
 //==================================================================================================
