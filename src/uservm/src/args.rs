@@ -64,6 +64,8 @@ pub struct Args {
     control_plane_socket_type: String,
     /// Socket address type of the gateway socket.
     gateway_socket_type: String,
+    /// Optional pre-created path to the shared ring-buffer backing file.
+    ring_shared_path: Option<String>,
     /// Disable the direct shared-ring transport.
     disable_ring_buffer: bool,
     /// Standalone mode: run without system VM, control-plane, or gateway connections.
@@ -113,6 +115,8 @@ impl Args {
     pub const OPT_STANDALONE: &'static str = "-standalone";
     /// Command-line option for snapshot restore path.
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
+    /// Command-line option for a pre-created shared ring-buffer backing file.
+    pub const OPT_RING_SHARED_PATH: &'static str = "-ring-shared-path";
     /// Command-line option to disable the direct shared-ring transport.
     pub const OPT_DISABLE_RING_BUFFER: &'static str = "-disable-ring-buffer";
 
@@ -148,6 +152,7 @@ impl Args {
         let mut system_vm_socket_type: String = String::new();
         let mut control_plane_socket_type: String = String::new();
         let mut gateway_socket_type: String = String::new();
+        let mut ring_shared_path: Option<String> = None;
         let mut disable_ring_buffer: bool = false;
         let mut standalone: bool = false;
         let mut snapshot_path: Option<String> = None;
@@ -283,6 +288,10 @@ impl Args {
                 // Set snapshot path.
                 Self::OPT_SNAPSHOT if i + 1 < args.len() => {
                     snapshot_path = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                Self::OPT_RING_SHARED_PATH if i + 1 < args.len() => {
+                    ring_shared_path = Some(args[i + 1].clone());
                     i += 1;
                 },
                 Self::OPT_DISABLE_RING_BUFFER => {
@@ -431,6 +440,7 @@ impl Args {
             system_vm_socket_type,
             control_plane_socket_type,
             gateway_socket_type,
+            ring_shared_path,
             standalone,
             snapshot_path,
             disable_ring_buffer,
@@ -446,7 +456,7 @@ impl Args {
         eprintln!(
             "Usage: {} [{} <id>] {} <kernel> [{} <size>] [{} <file>] [{} <file>] [{}] [{} \
              <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
-             <args>] [{} <file>] [{} <path>] [{}]",
+             <args>] [{} <file>] [{} <path>] [{} <path>] [{}]",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -462,6 +472,7 @@ impl Args {
             Self::OPT_INITRD_ARGS,
             Self::OPT_RAMFS,
             Self::OPT_SNAPSHOT,
+            Self::OPT_RING_SHARED_PATH,
             Self::OPT_DISABLE_RING_BUFFER,
         );
     }
@@ -697,6 +708,11 @@ impl Args {
     ///
     pub fn take_snapshot_path(&mut self) -> Option<String> {
         self.snapshot_path.take()
+    }
+
+    /// Takes the optional pre-created shared ring-buffer path.
+    pub fn take_ring_shared_path(&mut self) -> Option<String> {
+        self.ring_shared_path.take()
     }
 
     /// Returns whether the direct shared-ring transport should be disabled.

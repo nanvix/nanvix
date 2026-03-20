@@ -92,6 +92,8 @@ pub async fn main() -> Result<ExitCode> {
     let standalone: bool = args.standalone();
     let snapshot_path: Option<String> = args.take_snapshot_path();
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let ring_shared_path_from_launcher: Option<String> = args.take_ring_shared_path();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     let disable_ring_buffer: bool = args.disable_ring_buffer();
 
     // Initialize logger. If this fails, the program will panic.
@@ -133,6 +135,8 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             memory_size,
             stderr,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            ring_shared_path_from_launcher,
             #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
             disable_ring_buffer,
         )
@@ -260,6 +264,8 @@ async fn run_managed(
     ramfs_filename: Option<String>,
     memory_size: usize,
     stderr: Option<String>,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    ring_shared_path_from_launcher: Option<String>,
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))] disable_ring_buffer: bool,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
@@ -273,10 +279,23 @@ async fn run_managed(
     let counters: MessageCounters = MessageCounters::new();
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    let ring_shared_path: Option<PathBuf> = if disable_ring_buffer {
+    struct RingSharedBacking {
+        path: PathBuf,
+        owned_by_uservm: bool,
+    }
+
+    let ring_shared_backing: Option<RingSharedBacking> = if disable_ring_buffer {
         None
+    } else if let Some(path) = ring_shared_path_from_launcher {
+        Some(RingSharedBacking {
+            path: PathBuf::from(path),
+            owned_by_uservm: false,
+        })
     } else {
-        Some(prepare_shared_ring_backing(args.user_vm_id())?)
+        Some(RingSharedBacking {
+            path: prepare_shared_ring_backing(args.user_vm_id())?,
+            owned_by_uservm: true,
+        })
     };
 
     let unbound_socket: UnboundSocket =
@@ -339,8 +358,10 @@ async fn run_managed(
                     args.gateway_addr().to_string(),
                     SocketType::from_str(args.gateway_socket_type())?,
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    match ring_shared_path.as_ref() {
-                        Some(path) => RingTransport::file_path(path.display().to_string())?,
+                    match ring_shared_backing.as_ref() {
+                        Some(backing) => {
+                            RingTransport::file_path(backing.path.display().to_string())?
+                        },
                         None => RingTransport::disabled(),
                     },
                     #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
@@ -424,9 +445,9 @@ async fn run_managed(
         counters,
         snapshot_path: None,
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        ring_shared_path: ring_shared_path
+        ring_shared_path: ring_shared_backing
             .as_ref()
-            .map(|path| path.display().to_string()),
+            .map(|backing| backing.path.display().to_string()),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;
@@ -439,12 +460,14 @@ async fn run_managed(
     }
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    if let Some(ring_shared_path) = ring_shared_path.as_ref() {
-        if let Err(error) = std::fs::remove_file(ring_shared_path) {
-            warn!(
-                "main(): failed to remove shared ring backing file (path={}, error={error:?})",
-                ring_shared_path.display()
-            );
+    if let Some(ring_shared_backing) = ring_shared_backing.as_ref() {
+        if ring_shared_backing.owned_by_uservm {
+            if let Err(error) = std::fs::remove_file(&ring_shared_backing.path) {
+                warn!(
+                    "main(): failed to remove shared ring backing file (path={}, error={error:?})",
+                    ring_shared_backing.path.display()
+                );
+            }
         }
     }
 

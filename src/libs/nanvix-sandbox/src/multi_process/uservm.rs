@@ -28,6 +28,11 @@ use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::{
+    fs::OpenOptions,
+    path::PathBuf,
+};
 use ::std::{
     mem,
     process::{
@@ -68,6 +73,9 @@ pub struct UserVm {
     child: Option<Child>,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
+    /// Optional shared ring backing file owned by the launcher.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    ring_shared_path: Option<PathBuf>,
     /// Optional RAII handle to the network namespace the user VM is spawned in. Even if unused, we
     /// tie its lifecycle to the user VM.
     #[cfg(not(feature = "single-process"))]
@@ -79,6 +87,44 @@ pub struct UserVm {
 //==================================================================================================
 
 impl UserVm {
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    fn prepare_shared_ring_backing(user_vm_id: ::user_vm_api::UserVmIdentifier) -> Result<PathBuf> {
+        let base_dir: PathBuf = std::env::temp_dir();
+        std::fs::create_dir_all(&base_dir).map_err(|e| {
+            anyhow::anyhow!("failed to create shared ring backing directory {:?}: {e}", base_dir)
+        })?;
+        let path: PathBuf = base_dir.join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
+
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path))?;
+
+        file.set_len(::config::microvm::RING_BUFFER_SIZE as u64).map_err(|e| {
+            anyhow::anyhow!(
+                "failed to size shared ring backing file {:?} to {} bytes: {e}",
+                path,
+                ::config::microvm::RING_BUFFER_SIZE
+            )
+        })?;
+
+        Ok(path)
+    }
+
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    fn cleanup_shared_ring_backing(path: &PathBuf) {
+        if let Err(error) = std::fs::remove_file(path) {
+            warn!(
+                "cleanup_shared_ring_backing(): failed to remove shared ring backing file \
+                 (path={}, error={error:?})",
+                path.display()
+            );
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -148,6 +194,16 @@ impl UserVm {
         if args.disable_ring_buffer() {
             user_vm_args.push(::uservm::args::Args::OPT_DISABLE_RING_BUFFER.to_string());
         }
+
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        let ring_shared_path: Option<PathBuf> = if args.disable_ring_buffer() {
+            None
+        } else {
+            let path: PathBuf = Self::prepare_shared_ring_backing(args.uservm_id())?;
+            user_vm_args.push(::uservm::args::Args::OPT_RING_SHARED_PATH.to_string());
+            user_vm_args.push(path.display().to_string());
+            Some(path)
+        };
 
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
@@ -219,6 +275,10 @@ impl UserVm {
                     error!("{reason}");
 
                     Self::send_sigkill_to_child(child);
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    if let Some(path) = ring_shared_path.as_ref() {
+                        Self::cleanup_shared_ring_backing(path);
+                    }
 
                     return Err(anyhow::anyhow!("{reason}"));
                 },
@@ -230,6 +290,10 @@ impl UserVm {
                     error!("{reason}");
 
                     Self::send_sigkill_to_child(child);
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    if let Some(path) = ring_shared_path.as_ref() {
+                        Self::cleanup_shared_ring_backing(path);
+                    }
 
                     return Err(anyhow::anyhow!("{reason}"));
                 },
@@ -239,6 +303,8 @@ impl UserVm {
         Ok(Self {
             child: Some(child),
             control_plane_stream,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            ring_shared_path,
             #[cfg(not(feature = "single-process"))]
             _netns_handle: netns_handle,
         })
@@ -299,6 +365,11 @@ impl UserVm {
                         );
                     }
 
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    if let Some(path) = self.ring_shared_path.take() {
+                        Self::cleanup_shared_ring_backing(&path);
+                    }
+
                     return Some(exit_status);
                 },
                 // If we encounter any errors while waiting for the user VM to gracefully shutdown,
@@ -316,6 +387,11 @@ impl UserVm {
             }
         }
 
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        if let Some(path) = self.ring_shared_path.take() {
+            Self::cleanup_shared_ring_backing(&path);
+        }
+
         None
     }
 
@@ -331,10 +407,20 @@ impl UserVm {
     pub fn is_running(&mut self) -> bool {
         if let Some(child) = &mut self.child {
             match child.try_wait() {
-                Ok(Some(_status)) => false,
+                Ok(Some(_status)) => {
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    if let Some(path) = self.ring_shared_path.take() {
+                        Self::cleanup_shared_ring_backing(&path);
+                    }
+                    false
+                },
                 Ok(None) => true,
                 Err(e) => {
                     warn!("is_running(): failed to query user VM status (error={e:?})");
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    if let Some(path) = self.ring_shared_path.take() {
+                        Self::cleanup_shared_ring_backing(&path);
+                    }
                     false
                 },
             }
