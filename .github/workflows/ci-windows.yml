@@ -111,8 +111,10 @@ jobs:
       - name: "Install Rust Toolchain"
         shell: pwsh
         run: |
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
           rustup show
-          rustup component add clippy rustfmt
+          rustup component add --toolchain $toolchain clippy rustfmt
 
       - name: "Check Code Format"
         shell: pwsh
@@ -148,7 +150,10 @@ jobs:
       - name: "Install Rust Toolchain"
         shell: pwsh
         run: |
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
           rustup show
+          rustup component add --toolchain $toolchain clippy rustfmt
 
       - name: "Download Guest Artifacts"
         uses: actions/download-artifact@v8
