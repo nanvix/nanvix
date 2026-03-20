@@ -23,8 +23,27 @@ Use the corresponding skill when the user request matches the topic:
 - `kernel-development` → kernel internals and kernel-call paths.
 - `library-development` → crates under `src/libs` and related architecture.
 - `test-development` → writing and debugging tests.
-- `troubleshooting` → diagnosis of build/runtime/test failures.
-- `user-app-development` → user-space app implementation and execution.
+- `troubleshooting` → diagnosis of build/runtime/test failures (includes Windows-specific issues).
+- `user-app-development` → user-space app implementation and execution (includes Windows standalone mode).
+
+## Platform Support
+
+Nanvix supports two host platforms:
+
+- **Linux** — Full development workflow: build, run, test, benchmark, and debug.
+  Uses KVM for the microvm backend and QEMU for other machine types.
+- **Windows 11** — Host-side development with the Windows Hypervisor Platform (WHP)
+  backend. Guest components (kernel, user binaries) are cross-compiled inside Docker;
+  the UserVM is built natively. Only standalone UserVM mode is available (no
+  `nanvixd`, HTTP mode, or L2 deployments). Use `z.ps1` instead of `./z`.
+
+When modifying or generating code, keep platform differences in mind:
+
+- Use `z.ps1` for Windows commands and `./z` for Linux commands.
+- Linux-only features: `nanvixd`, HTTP mode, interactive mode, L2 deployments,
+  GDB debugging, benchmarking, network namespaces.
+- Windows-only concerns: WHP enablement, Developer Mode for symlinks, Docker
+  Desktop with Linux containers, `.venv` cleanup before Docker builds.
 
 ## Repository-wide Engineering Rules
 

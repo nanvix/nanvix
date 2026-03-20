@@ -117,6 +117,15 @@ These run on the host system and are compiled with the host Rust build command
 Guest libraries use `GUEST_CARGO_BUILD_CMD` (cross-compiled with `cargo +nanvix-x86`). Host
 libraries use `HOST_CARGO_BUILD_CMD`.
 
+## Windows Compilation
+
+On a Windows development host, guest libraries are cross-compiled inside Docker, so they work
+identically to Linux. Host libraries that use `std` may need conditional compilation
+(`#[cfg(target_os = "...")]`) for platform-specific code paths (e.g., KVM, libc).
+
+> **Note:** There is no Windows CI job yet. Platform-independent crates should be manually
+> verified on Windows when making changes that may affect cross-platform compatibility.
+
 ## Coding Rules (Library-Specific)
 
 - Guest libraries must support `#![no_std]` with optional `std` feature gate.

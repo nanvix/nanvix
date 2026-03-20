@@ -190,3 +190,69 @@ RUST_LOG=debug ./bin/uservm.elf \
 
 Runtime logs are stored under `logs/` with timestamped
 directory names (e.g., `logs/2026_02_24_13_04_54/`).
+
+## Windows-Specific Issues
+
+### WHP Not Enabled
+
+**Symptom**: UserVM fails to start with hypervisor-related errors.
+
+**Fix**:
+
+```powershell
+# Run in an elevated PowerShell prompt.
+Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
+# Restart the machine.
+```
+
+### Docker Build Fails on Windows
+
+**Symptom**: Docker build fails with symlink or file-access errors, or the Docker output exporter
+fails because a previous build left a `.venv` directory with Linux symlinks (`lib64 -> lib`) that
+Windows cannot handle.
+
+**Fix**:
+
+1. Ensure Docker Desktop is running with Linux containers enabled: `docker info`.
+2. Remove stale `.venv` directory (cmd handles broken reparse points more reliably):
+   ```powershell
+   cmd /c "rmdir /s /q .venv"
+   ```
+3. Delete build cache and retry:
+    `Remove-Item .z.cache -ErrorAction SilentlyContinue; .\z.ps1 build -- all`.
+
+> **Note:** The `z.ps1` script removes `.venv` automatically before each Docker build.
+
+### Symlink Errors on Windows Clone
+
+**Symptom**: Build or tool errors because Git checked out symlinks as text files.
+
+**Fix**: Re-clone with Developer Mode enabled and symlinks flag:
+
+```powershell
+git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git
+```
+
+To repair an existing clone (including an optional backup of local changes):
+
+```powershell
+# Optional: back up any local changes before resetting the working tree.
+git status
+# Either commit your work-in-progress, or stash it:
+# git commit -am "WIP backup"
+# git stash -u
+
+git config core.symlinks true
+git checkout -- .
+```
+
+### Cached Build Options Stale (Windows)
+
+**Symptom**: Build uses wrong parameters on Windows.
+
+**Fix**: Delete the cache file and rebuild:
+
+```powershell
+Remove-Item .z.cache -ErrorAction SilentlyContinue
+.\z.ps1 build -- all
+```
