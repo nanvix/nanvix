@@ -144,6 +144,7 @@ nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-feature
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
 nanvix-shim-standalone = { path = "src/libs/nanvix-shim-standalone" }
+nix = { version = "0.29", default-features = false }
 nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
@@ -151,6 +152,8 @@ num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
 oci-spec = "0.7.1"
 profiler = { path = "src/libs/profiler", default-features = false }
+protobuf = "3.2"
+portpicker = "0.1"
 posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
 rand = "0.10.0"
@@ -196,7 +199,11 @@ vfs = { path = "src/libs/vfs", default-features = false }
 vstd = { version = "=0.0.0-2026-03-15-0111", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.9", default-features = false }
-windows = { version = "0.61", features = ["Win32_System_Hypervisor", "Win32_System_Memory", "Win32_System_Threading"] }
+windows = { version = "0.61", features = [
+        "Win32_System_Hypervisor",
+        "Win32_System_Memory",
+        "Win32_System_Threading",
+] }
 
 [profile.dev]
 opt-level = 0

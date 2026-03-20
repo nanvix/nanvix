@@ -17,18 +17,26 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
-tokio = { workspace = true, features = ["sync", "process", "time", "net", "io-util", "rt"] }
+tokio = { workspace = true, features = [
+    "sync",
+    "process",
+    "time",
+    "net",
+    "io-util",
+    "rt",
+    "macros",
+] }
 serde_json = { workspace = true, features = ["std"] }
-tempfile = "3"
-portpicker = "0.1"
+tempfile = { workspace = true }
+portpicker = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process", "mount"] }
+nix = { workspace = true, features = ["signal", "process", "mount"] }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
-tempfile = "3"
-portpicker = "0.1"
+tempfile = { workspace = true }
+portpicker = { workspace = true }
 
 [lints]
 workspace = true

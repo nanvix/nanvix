@@ -20,14 +20,14 @@ containerd-shim-protos = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 oci-spec = { workspace = true }
-protobuf = "3.2"
+protobuf = { workspace = true }
 sha2 = { workspace = true }
 ttrpc = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
-libc = "0.2"
+nix = { workspace = true, features = ["signal", "process"] }
+libc = { workspace = true }
 
 [lints]
 workspace = true
