@@ -46,6 +46,7 @@ use ::tokio::{
 use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
+    RingTransport,
     UserVmIdentifier,
 };
 use ::uservm::{
@@ -338,12 +339,12 @@ async fn run_managed(
                     args.gateway_addr().to_string(),
                     SocketType::from_str(args.gateway_socket_type())?,
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    ring_shared_path
-                        .as_ref()
-                        .map(|path| path.display().to_string())
-                        .unwrap_or_default(),
+                    match ring_shared_path.as_ref() {
+                        Some(path) => RingTransport::file_path(path.display().to_string())?,
+                        None => RingTransport::disabled(),
+                    },
                     #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
-                    String::new(),
+                    RingTransport::disabled(),
                 ) {
                     Ok(message) => message,
                     Err(e) => {

@@ -60,6 +60,7 @@ use ::tokio::{
 };
 use ::user_vm_api::{
     NewUserVm,
+    RingTransport,
     UserVmIdentifier,
     NEW_USER_VM_MESSAGE_LEN,
 };
@@ -214,9 +215,9 @@ impl UserVm {
                             gateway_sockaddr.clone(),
                             SocketType::from_str(&gateway_sockaddr_type)?,
                             #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                            ring_shared_path.display().to_string(),
+                            RingTransport::file_path(ring_shared_path.display().to_string())?,
                             #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
-                            String::new(),
+                            RingTransport::disabled(),
                         ) {
                             Ok(message) => message,
                             Err(e) => {

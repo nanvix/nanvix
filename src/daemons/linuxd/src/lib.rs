@@ -104,6 +104,7 @@ use ::tokio::{
 };
 use ::user_vm_api::{
     self,
+    RingTransportKind,
     UserVmIdentifier,
     NEW_USER_VM_MESSAGE_LEN,
 };
@@ -306,20 +307,30 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
         let user_vm_id: UserVmIdentifier = new_msg.id();
-        let ring_shared_path: &str = new_msg.ring_shared_path();
+        let ring_transport: &user_vm_api::RingTransport = new_msg.ring_transport();
 
         trace!("registered new user VM connection (vm_id={user_vm_id}, addr={user_vm_stream:?})",);
 
-        let shared_ring_path: Option<&str> = if self.in_l2 && !ring_shared_path.is_empty() {
-            warn!(
-                "accept_connections(): ignoring direct ring path for L2 user VM until ivshmem \
-                 replaces the removed virtio-fs transport (vm_id={user_vm_id}, path={ring_shared_path})"
-            );
-            None
-        } else if ring_shared_path.is_empty() {
-            None
-        } else {
-            Some(ring_shared_path)
+        let shared_ring_path: Option<&str> = match ring_transport.kind() {
+            RingTransportKind::Disabled => None,
+            RingTransportKind::FilePath if self.in_l2 => {
+                warn!(
+                    "accept_connections(): ignoring file-backed direct ring path for L2 user VM \
+                     until ivshmem replaces the removed transport (vm_id={user_vm_id}, path={})",
+                    ring_transport.locator()
+                );
+                None
+            },
+            RingTransportKind::FilePath => Some(ring_transport.locator()),
+            RingTransportKind::Ivshmem => {
+                let reason: &'static str =
+                    "ivshmem direct ring transport is not implemented yet";
+                error!(
+                    "accept_connections(): {reason} (vm_id={user_vm_id}, locator={})",
+                    ring_transport.locator()
+                );
+                return Err(Error::new(ErrorCode::OperationNotSupported, reason));
+            },
         };
 
         let shared_ring: Option<Arc<SharedRing>> = if let Some(shared_ring_path) = shared_ring_path {
