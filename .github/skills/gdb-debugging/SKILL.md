@@ -107,6 +107,8 @@ launched from the project directory.
 
 ## Limitations
 
+- **Linux only.** GDB debugging requires the `microvm` machine type with KVM, which is not
+  available on Windows. The WHP backend does not expose a GDB server.
 - **Standalone mode only.** `-gdb-port` requires `DEPLOYMENT_MODE=standalone`.
 - **Physical addresses only.** The kernel uses identity mapping (GVA == GPA).
 - **No hardware breakpoints.** Only software breakpoints (`INT3`).

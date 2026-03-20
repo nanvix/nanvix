@@ -70,6 +70,27 @@ curl --silent \
     -standalone
 ```
 
+### Running on Windows
+
+On Windows, only standalone UserVM mode is available. The UserVM runs natively with the WHP backend:
+
+```powershell
+.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+```
+
+You can also launch a run via `z.ps1`:
+
+```powershell
+# Run with default options.
+.\z.ps1 run
+
+# Run with custom kernel and initrd.
+.\z.ps1 run -- -kernel bin\kernel.elf -initrd bin\hello-rust-nostd.elf
+```
+
+> **Note:** Interactive mode, HTTP mode, and `nanvixd` are Linux-only. On Windows, all guest
+> execution goes through the standalone UserVM.
+
 ## Creating a New Rust Application (no_std)
 
 1. Create directory at `src/user/<name>/`.

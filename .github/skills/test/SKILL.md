@@ -37,6 +37,18 @@ Test configurations are auto-selected based on deployment mode:
 ./z build --with-cached-options -- test
 ```
 
+## Windows
+
+On Windows, unit tests can be run via Docker through `z.ps1`:
+
+```powershell
+.\z.ps1 build -- run-unit-tests
+```
+
+System integration tests (`run-nanvix-tests`) and `nanvixd`-based tests are **Linux-only**.
+The standalone UserVM can be launched on Windows for manual verification, but the automated
+test harness (`nanvix-test`) requires `nanvixd`, which is not available on Windows.
+
 ## Troubleshooting Test Failures
 
 - Ensure the project builds successfully before running tests (see the `build` skill).
