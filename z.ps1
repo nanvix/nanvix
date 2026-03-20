@@ -581,7 +581,7 @@ function Invoke-DistClean {
     $ErrorActionPreference = 'Continue'
 
     Write-Info "Removing everything (full clean)..."
-    cargo clean 2>$null
+    cargo clean
     if (Test-Path $BinDir) {
         $uvmBin = Join-Path $BinDir "uservm.exe"
         if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
@@ -593,7 +593,7 @@ function Invoke-DistClean {
     $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
     if ($dockerAvailable) {
         Write-Info "Pruning Docker build cache..."
-        docker builder prune --force 2>$null
+        docker builder prune --force
     }
 
     Write-Success "Full cleanup complete."
