@@ -31,6 +31,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $RootDir) { $RootDir = Get-Location }
 $BinDir = Join-Path $RootDir "bin"
+Set-Variable -Scope Script -Name DockerfileRelativePath -Value "scripts/setup/Dockerfile.build" -Option Constant
 
 # ==================================================================================================
 # Logging
@@ -63,7 +64,7 @@ Commands
   build       Builds Nanvix.
   clean       Removes build artifacts (quick clean).
   distclean   Removes everything (full clean).
-  setup       Sets up the Nanvix development environment (pulls Docker image).
+  setup       Sets up the development environment and installs Git hooks.
   run         Runs UserVM in standalone mode.
   help        Prints this help message.
 
@@ -232,6 +233,37 @@ function Remove-RestoredSymlinks {
 }
 
 # ==================================================================================================
+# Git Hooks
+# ==================================================================================================
+
+function Install-GitHooks {
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCommand) {
+        Write-Warn "Skipping Git hook installation because git was not found in PATH."
+        return
+    }
+
+    git rev-parse --is-inside-work-tree *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Skipping Git hook installation outside a Git worktree."
+        return
+    }
+
+    Write-Info "Installing Git hooks from .githooks..."
+    git config --local core.hooksPath .githooks
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to configure core.hooksPath."
+        exit 1
+    }
+
+    Write-Success "Git hooks configured to use .githooks."
+}
+
+# ==================================================================================================
 # Docker
 # ==================================================================================================
 
@@ -273,6 +305,117 @@ function Get-DockerImageName {
     return "nanvix/toolchain:$imageTag$suffix"
 }
 
+function Convert-FileToLf {
+    param([string]$FilePath)
+
+    if (-not (Test-Path $FilePath -PathType Leaf)) {
+        return
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+    if (-not ($bytes -contains 13)) {
+        return
+    }
+
+    $normalized = New-Object 'System.Collections.Generic.List[byte]'
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        if ($bytes[$i] -eq 13 -and ($i + 1) -lt $bytes.Length -and $bytes[$i + 1] -eq 10) {
+            continue
+        }
+        $normalized.Add($bytes[$i])
+    }
+
+    if ($normalized.Count -ne $bytes.Length) {
+        [System.IO.File]::WriteAllBytes($FilePath, $normalized.ToArray())
+    }
+}
+
+function New-DockerBuildContext {
+    $tempContextDir = Join-Path ([System.IO.Path]::GetTempPath()) ("nanvix-docker-context-" + [guid]::NewGuid())
+    New-Item -ItemType Directory -Path $tempContextDir -Force | Out-Null
+
+    $excludedDirs = @(
+        ".git",
+        ".github",
+        ".githooks",
+        ".idea",
+        ".vscode",
+        ".cargo",
+        "bin",
+        "doc",
+        "env",
+        "home",
+        "images",
+        "lib",
+        "logs",
+        "mnt",
+        "target",
+        "temp",
+        "test",
+        "tmp",
+        "toolchain",
+        "venv",
+        ".venv"
+    )
+
+    $excludedFiles = @(
+        "*.a",
+        "*.dylib",
+        "*.iso",
+        "*.log",
+        "*.o",
+        "*.so",
+        "*.tar",
+        "*.tar.bz2",
+        "*.tar.gz"
+    )
+
+    $robocopyArgs = @(
+        $RootDir,
+        $tempContextDir,
+        "/E",
+        "/R:1",
+        "/W:1",
+        "/NFL",
+        "/NDL",
+        "/NJH",
+        "/NJS",
+        "/NP",
+        "/XD"
+    ) + $excludedDirs + @("/XF") + $excludedFiles
+
+    & robocopy @robocopyArgs | Out-Null
+    $robocopyExitCode = $LASTEXITCODE
+    if ($robocopyExitCode -gt 7) {
+        Remove-Item $tempContextDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Err "Failed to create temporary Docker build context."
+        exit 1
+    }
+
+    try {
+        $eolLines = git ls-files --eol
+        foreach ($line in $eolLines) {
+            if ($line -notmatch 'attr/.*eol=lf\s+(?<Path>.+)$') {
+                continue
+            }
+
+            $relativePath = $Matches['Path'].Trim()
+            if (-not $relativePath) {
+                continue
+            }
+
+            $contextFilePath = Join-Path $tempContextDir $relativePath
+            Convert-FileToLf -FilePath $contextFilePath
+        }
+    }
+    catch {
+        Remove-Item $tempContextDir -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+
+    return $tempContextDir
+}
+
 function Invoke-DockerBuild {
     param([string]$BuildParams, [bool]$IsRelease = $false, [bool]$UseMinimal = $true)
 
@@ -289,11 +432,13 @@ function Invoke-DockerBuild {
     # Restore Git symlinks as file copies so the Docker build context is complete.
     Restore-GitSymlinks
 
+    $dockerContextPath = $null
+
     Write-Host "  Image: $imageName" -ForegroundColor DarkGray
 
     $sysrootSuffix = if ($IsRelease) { "release" } else { "debug" }
 
-    $dockerfilePath = Join-Path $RootDir "scripts/setup/Dockerfile.build"
+    $dockerfilePath = Join-Path $RootDir $DockerfileRelativePath
     if (-not (Test-Path $dockerfilePath)) {
         Remove-RestoredSymlinks
         Write-Err "Build Dockerfile not found at $dockerfilePath"
@@ -317,6 +462,23 @@ function Invoke-DockerBuild {
         }
     }
 
+    # Create the Docker build context by copying the repository files to a temporary directory,
+    # excluding files that are not needed for the build. This avoids issues with Git symlinks on
+    # Windows and ensures a clean context for Docker. The context is cleaned up after the build.
+    try {
+        $dockerContextPath = New-DockerBuildContext
+    }
+    finally {
+        Remove-RestoredSymlinks
+    }
+
+    $dockerfileContextPath = Join-Path $dockerContextPath $DockerfileRelativePath
+    if (-not (Test-Path $dockerfileContextPath)) {
+        Remove-Item $dockerContextPath -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Err "Build Dockerfile not found in temporary Docker context at $dockerfileContextPath"
+        exit 1
+    }
+
     docker build `
         --build-arg "BASE_IMAGE=$imageName" `
         --build-arg "BUILD_PARAMS=$BuildParams" `
@@ -324,13 +486,15 @@ function Invoke-DockerBuild {
         --build-arg "WORKSPACE_PATH=/mnt" `
         --output "type=local,dest=." `
         --progress=plain `
-        -f $dockerfilePath `
-        $RootDir
+        -f $dockerfileContextPath `
+        $dockerContextPath
 
     $buildExitCode = $LASTEXITCODE
 
-    # Clean up materialized symlink copies.
-    Remove-RestoredSymlinks
+    # Clean up the temporary Docker context directory.
+    if ($null -ne $dockerContextPath -and (Test-Path $dockerContextPath)) {
+        Remove-Item $dockerContextPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     if ($buildExitCode -ne 0) {
         Write-Err "Docker build failed (params: $BuildParams)."
@@ -504,6 +668,7 @@ function Invoke-Setup {
     }
 
     Write-Success "Docker image '$imageName' downloaded successfully."
+    Install-GitHooks
     Write-Success "Setup complete."
 }
 
