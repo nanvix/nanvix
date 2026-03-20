@@ -77,14 +77,14 @@ Build Targets (after --)
   all                     Build everything (guest + uservm).
   uservm                  Build UserVM only (native Windows, microvm backend).
   guest                   Build guest components only (kernel + hello-rust-nostd).
-  format-check            Check code formatting (via Docker).
-  lint-check              Check for linting issues (via Docker).
+  format-check            Check code formatting (native for host crates).
+  lint-check              Check for linting issues (native for host crates).
+  run-unit-tests          Run unit tests (native for host crates).
   format                  Fix code formatting (via Docker).
   lint                    Fix linting issues (via Docker).
   spellcheck              Check spelling (via Docker).
   spellcheck-fix          Fix spelling errors (via Docker).
   check                   Run cargo check (via Docker).
-  run-unit-tests          Run unit tests (via Docker).
   run-nanvix-tests        Run system integration tests (via Docker).
   test                    Run all tests (via Docker).
   verify                  Run Verus formal verification (via Docker).
@@ -763,6 +763,45 @@ function Main {
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
+                    }
+                    "format-check" {
+                        # Native format check for host crates (no Docker required).
+                        Write-Info "Checking code formatting (native)..."
+                        $ErrorActionPreference = 'Continue'
+                        cargo fmt -p uservm -p nanvixd --check
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Format check failed."
+                            exit 1
+                        }
+                        Write-Success "Format check passed."
+                    }
+                    "lint-check" {
+                        # Native lint check for host crates (no Docker required).
+                        Write-Info "Linting host crates (native)..."
+                        $ErrorActionPreference = 'Continue'
+                        $features = "standalone,microvm"
+                        cargo clippy --no-default-features --features $features -p uservm -- -D warnings
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Lint check failed for uservm."
+                            exit 1
+                        }
+                        cargo clippy --no-default-features --features $features -p nanvixd -- -D warnings
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Lint check failed for nanvixd."
+                            exit 1
+                        }
+                        Write-Success "Lint check passed."
+                    }
+                    "run-unit-tests" {
+                        # Native unit tests for host crates (no Docker required).
+                        Write-Info "Running unit tests (native)..."
+                        $ErrorActionPreference = 'Continue'
+                        cargo test --no-default-features --features "microvm" -p uservm
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Unit tests failed for uservm."
+                            exit 1
+                        }
+                        Write-Success "Unit tests passed."
                     }
                     default {
                         # Forward any other target to Docker make (mirrors bash z behavior).
