@@ -597,6 +597,9 @@ function Invoke-DistClean {
     if ($dockerAvailable) {
         Write-Info "Pruning Docker build cache..."
         docker builder prune --force
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "Docker build cache prune failed with exit code $LASTEXITCODE."
+        }
     }
 
     Write-Success "Full cleanup complete."
