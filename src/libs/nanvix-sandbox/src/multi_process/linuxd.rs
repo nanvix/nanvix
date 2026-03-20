@@ -36,6 +36,7 @@ use ::linuxd::{
     config::restore_gate_sockaddr_builder,
 };
 use ::std::{
+    env,
     error::Error as StdError,
     fmt,
     fs,
@@ -169,6 +170,35 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
+    fn l2_ivshmem_args() -> Result<Vec<String>> {
+        const IVSHMEM_PATH_ENV: &str = "NANVIX_L2_IVSHMEM_PATH";
+        const IVSHMEM_SIZE_ENV: &str = "NANVIX_L2_IVSHMEM_SIZE";
+
+        let path: Option<String> = env::var(IVSHMEM_PATH_ENV).ok();
+        let size_raw: Option<String> = env::var(IVSHMEM_SIZE_ENV).ok();
+        match (path, size_raw) {
+            (None, None) => Ok(Vec::new()),
+            (Some(_), None) | (None, Some(_)) => anyhow::bail!(
+                "both {IVSHMEM_PATH_ENV} and {IVSHMEM_SIZE_ENV} must be set to enable L2 ivshmem"
+            ),
+            (Some(path), Some(size_raw)) => {
+                let size: u64 = size_raw.parse().map_err(|e| {
+                    anyhow::anyhow!(
+                        "invalid {IVSHMEM_SIZE_ENV} value {size_raw:?}: {e}"
+                    )
+                })?;
+                if size == 0 {
+                    anyhow::bail!("{IVSHMEM_SIZE_ENV} must be greater than zero");
+                }
+
+                Ok(vec![
+                    "--ivshmem".to_string(),
+                    format!("path={path},size={size}"),
+                ])
+            },
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -539,6 +569,9 @@ impl LinuxDaemon {
                 args.system_vm_socket_info().1.to_str().to_string(),
             ]
         };
+        if args.l2() {
+            linuxd_args.extend(Self::l2_ivshmem_args()?);
+        }
         trace!("linuxd args: {:?}", linuxd_args);
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![

@@ -51,10 +51,14 @@ GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip
 HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
 SNAPSHOT_MAGIC_STRING=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_magic_string")
 
-CLH_API_SOCKET="/tmp/cloud-hypervisor.sock"
-CLH_CONSOLE="/tmp/clh-console"
+CLH_RUNTIME_DIR=$(mktemp -d /tmp/nanvix-clh-snapshot.XXXXXX)
+CLH_API_SOCKET="${CLH_RUNTIME_DIR}/cloud-hypervisor.sock"
+CLH_CONSOLE="${CLH_RUNTIME_DIR}/clh-console"
+IVSHMEM_PATH="${NANVIX_L2_IVSHMEM_PATH:-}"
+IVSHMEM_SIZE="${NANVIX_L2_IVSHMEM_SIZE:-}"
+IVSHMEM_ARGS=()
 
-trap 'rm -rf "${CLH_API_SOCKET}" "${CLH_CONSOLE}"' EXIT
+trap 'rm -rf "${CLH_RUNTIME_DIR}"' EXIT
 
 #===================================================================================================
 # Generate snapshot
@@ -64,9 +68,31 @@ SNAPSHOT_NAME=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "snapshot_name")
 SNAPSHOT_PATH="${IMAGES_DIR}/${SNAPSHOT_NAME}"
 L2_SYSVM_INITRAMFS="${IMAGES_DIR}/l2_sysvm_initramfs.img"
 
+build_ivshmem_args() {
+    if [[ -z "${IVSHMEM_PATH}" && -z "${IVSHMEM_SIZE}" ]]; then
+        return
+    fi
+
+    if [[ -z "${IVSHMEM_PATH}" || -z "${IVSHMEM_SIZE}" ]]; then
+        print_error "Both NANVIX_L2_IVSHMEM_PATH and NANVIX_L2_IVSHMEM_SIZE must be set."
+        exit 1
+    fi
+
+    if ! [[ "${IVSHMEM_SIZE}" =~ ^[0-9]+$ ]] || [[ "${IVSHMEM_SIZE}" == "0" ]]; then
+        print_error "NANVIX_L2_IVSHMEM_SIZE must be a positive integer."
+        exit 1
+    fi
+
+    IVSHMEM_ARGS=(
+        --ivshmem
+        "path=${IVSHMEM_PATH},size=${IVSHMEM_SIZE}"
+    )
+}
+
 boot_clh_vm() {
     rm -f -- "${CLH_API_SOCKET}"
     rm -f -- "${CLH_CONSOLE}"
+    build_ivshmem_args
     # FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix release that
     # includes an updated cloud-hypervisor.
     ${CLOUD_HYPERVISOR_PATH} \
@@ -78,8 +104,9 @@ boot_clh_vm() {
         --serial "off" \
         --cmdline "console=hvc0 rdinit=/init ip=${GUEST_TAP_IP_ADDRESS}::${GUEST_BROADCAST_ADDRESS}:${MASK}::eth0:off" \
         --cpus "boot=2" \
-        --memory "size=512M" \
+        --memory "size=512M,shared=on" \
         --rng "src=/dev/urandom" \
+        "${IVSHMEM_ARGS[@]}" \
         --net "tap=${TAP_NAME},mac=${GUEST_MAC_ADDRESS},ip=${HOST_TAP_IP_ADDRESS},mask=${MASK},num_queues=2,queue_size=256" > /dev/null 2>&1 &
 
     # Return the PID
