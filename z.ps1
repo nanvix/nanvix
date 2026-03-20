@@ -217,7 +217,8 @@ function Remove-RestoredSymlinks {
             $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
             if ($null -eq $item) {
                 Write-Warn "Cannot read attributes for '$filePath'; skipping removal."
-            } elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+            }
+            elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
                 Remove-Item $absPath -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
@@ -607,7 +608,7 @@ function Invoke-Run {
     # Parse run options.
     for ($i = 0; $i -lt $RunArgs.Count; $i++) {
         switch ($RunArgs[$i]) {
-            "-kernel"  {
+            "-kernel" {
                 if ($i + 1 -ge $RunArgs.Count) {
                     Write-Err "Missing value for -kernel. Usage: .\z.ps1 run -- -kernel <path> [-initrd <path>]"
                     exit 1
@@ -615,7 +616,7 @@ function Invoke-Run {
                 $i++
                 $kernel = $RunArgs[$i]
             }
-            "-initrd"  {
+            "-initrd" {
                 if ($i + 1 -ge $RunArgs.Count) {
                     Write-Err "Missing value for -initrd. Usage: .\z.ps1 run -- [-kernel <path>] -initrd <path>"
                     exit 1
@@ -623,7 +624,7 @@ function Invoke-Run {
                 $i++
                 $initrd = $RunArgs[$i]
             }
-            default    { Write-Warn "Unknown run option: $($RunArgs[$i])" }
+            default { Write-Warn "Unknown run option: $($RunArgs[$i])" }
         }
     }
 
@@ -811,7 +812,8 @@ function Main {
                         }
                         if (-not $dockerRunning) {
                             Write-Warn "Skipping spellcheck (Docker not available or not running). Run with Docker to enable."
-                        } else {
+                        }
+                        else {
                             $dockerParams = @("spellcheck") + $makeParams
                             if (-not ($makeParams | Where-Object { $_ -match '^MACHINE=' })) {
                                 $dockerParams += "MACHINE=microvm"
