@@ -474,17 +474,41 @@ function Invoke-DistClean {
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
+    # Distclean depends on clean.
+    Invoke-Clean
+
     Write-Info "Removing everything (full clean)..."
-    $targetDir = Join-Path $RootDir "target"
-    if (Test-Path $targetDir) {
-        cargo clean --manifest-path (Join-Path $RootDir 'Cargo.toml')
+
+    # Remove Cargo.lock.
+    if (Test-Path $CargoLock) { Remove-Item $CargoLock -Force }
+
+    # Remove target/.
+    if (Test-Path $TargetDir) { Remove-Item $TargetDir -Recurse -Force }
+
+    # Remove lib/.
+    if (Test-Path $LibDir) { Remove-Item $LibDir -Recurse -Force }
+
+    # Remove bin/.
+    if (Test-Path $BinDir) { Remove-Item $BinDir -Recurse -Force }
+
+    # Remove .venv/. Use cmd rmdir first because Docker builds on Windows can
+    # leave broken reparse points (e.g., lib64 -> lib) that PowerShell's
+    # Remove-Item cannot handle.
+    if (Test-Path $VenvDir) {
+        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
+        if (Test-Path $VenvDir) {
+            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
-    if (Test-Path $BinDir) {
-        $uvmBin = Join-Path $BinDir "uservm.exe"
-        if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
-        $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
-        if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
+
+    # Remove sysroot-debug/ and sysroot-release/ (SYSROOT_DIR).
+    foreach ($suffix in @("sysroot-debug", "sysroot-release")) {
+        $sysrootDir = Join-Path $RootDir $suffix
+        if (Test-Path $sysrootDir) { Remove-Item $sysrootDir -Recurse -Force }
     }
+
+    # Remove sysroot symlink (SYSROOT_LINK).
+    if (Test-Path $SysrootLink) { Remove-Item $SysrootLink -Force }
 
     # Clean up Docker build cache for Nanvix.
     $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
