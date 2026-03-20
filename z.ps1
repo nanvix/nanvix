@@ -514,7 +514,7 @@ function Build-UserVm {
     $ErrorActionPreference = 'Continue'
 
     $mode = if ($IsRelease) { "release" } else { "debug" }
-    $profile = if ($IsRelease) { "--release" } else { "" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
 
     Write-Info "Building UserVM (microvm backend, $mode mode)..."
 
@@ -522,7 +522,7 @@ function Build-UserVm {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"microvm`" -p uservm $profile"
+    $cmd = "cargo build --no-default-features --features `"microvm`" -p uservm $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
