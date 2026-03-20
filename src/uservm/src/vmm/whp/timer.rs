@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// The WHP timer uses size_of<T>() as u32 for the Windows API.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
