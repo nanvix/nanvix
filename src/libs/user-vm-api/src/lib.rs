@@ -125,6 +125,15 @@ const RING_TRANSPORT_LOCATOR_OFFSET: usize = GATEWAY_SOCKADDR_OFFSET + GATEWAY_S
 pub const NEW_USER_VM_MESSAGE_LEN: usize =
     NEW_USER_VM_HEADER_LEN + GATEWAY_SOCKADDR_MAX_LEN + RING_TRANSPORT_LOCATOR_MAX_LEN;
 
+/// One-byte control frame sent by uservm to linuxd to report new SQ work on a direct ring.
+pub const DIRECT_RING_SQ_DOORBELL_FRAME: u8 = 0x80;
+
+/// One-byte control frame sent by linuxd to uservm to request a guest CQ notification.
+pub const DIRECT_RING_CQ_DOORBELL_FRAME: u8 = 0x81;
+
+/// Auto-discovery locator for an ivshmem-backed direct ring.
+pub const IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO: &str = "auto";
+
 //==================================================================================================
 // Structures
 //==================================================================================================

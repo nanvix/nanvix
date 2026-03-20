@@ -1,7 +1,10 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use crate::vmm::IkcNotifier;
+use crate::{
+    DirectRingSignal,
+    vmm::IkcNotifier,
+};
 use ::log::{
     error,
     trace,
@@ -10,6 +13,7 @@ use ::std::sync::atomic::{
     AtomicU32,
     Ordering,
 };
+use ::tokio::sync::mpsc::UnboundedSender;
 use ::vmm_sys_util::eventfd::EventFd;
 
 fn futex_wait(word: *mut u32, expected: u32) -> Result<(), std::io::Error> {
@@ -105,4 +109,39 @@ pub fn run_cq_signal_thread(signal_word_addr: usize, notifier: IkcNotifier) {
     }
 
     trace!("run_cq_signal_thread(): exiting");
+}
+
+pub fn run_sq_socket_doorbell_thread(
+    evtfd: EventFd,
+    signal_tx: UnboundedSender<DirectRingSignal>,
+) {
+    loop {
+        if let Err(e) = evtfd.read() {
+            error!("run_sq_socket_doorbell_thread(): doorbell eventfd read failed (error={e:?})");
+            break;
+        }
+
+        if signal_tx.send(DirectRingSignal::SqDoorbell).is_err() {
+            error!("run_sq_socket_doorbell_thread(): direct-ring signal channel closed");
+            break;
+        }
+    }
+
+    trace!("run_sq_socket_doorbell_thread(): exiting");
+}
+
+pub fn run_cq_socket_doorbell_thread(
+    doorbell_rx: ::std::sync::mpsc::Receiver<()>,
+    notifier: IkcNotifier,
+) {
+    while doorbell_rx.recv().is_ok() {
+        if let Err(e) = notifier.notify_unconditional() {
+            error!(
+                "run_cq_socket_doorbell_thread(): failed to inject IKC IRQ (error={e:?})"
+            );
+            break;
+        }
+    }
+
+    trace!("run_cq_socket_doorbell_thread(): exiting");
 }

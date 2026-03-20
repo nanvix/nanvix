@@ -12,10 +12,20 @@ use ::nvx_ring::{
     REGION_SIZE,
 };
 use ::std::{
+    fs,
     fs::File,
     os::unix::io::AsRawFd,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
+use ::user_vm_api::IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO;
+
+const IVSHMEM_SYSFS_ROOT: &str = "/sys/bus/pci/devices";
+const IVSHMEM_VENDOR_ID: &str = "0x1af4";
+const IVSHMEM_DEVICE_ID: &str = "0x1110";
+const IVSHMEM_BAR_INDEX: usize = 2;
 
 /// Shared mapping of a user VM ring-buffer backing file.
 pub struct SharedRing {
@@ -49,6 +59,93 @@ impl SharedRing {
             anyhow::bail!(reason)
         }
 
+        Self::mmap(file, &format!("{path:?}"))
+    }
+
+    pub fn open_ivshmem(locator: &str) -> Result<Self> {
+        let resource_path: PathBuf = Self::resolve_ivshmem_resource(locator)?;
+        trace!(
+            "SharedRing::open_ivshmem(): locator={locator}, resource_path={}",
+            resource_path.display()
+        );
+
+        let file: File = File::options()
+            .read(true)
+            .write(true)
+            .open(&resource_path)
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "failed to open ivshmem BAR{} resource {}: {e}",
+                    IVSHMEM_BAR_INDEX,
+                    resource_path.display()
+                )
+            })?;
+
+        Self::mmap(file, &resource_path.display().to_string())
+    }
+
+    fn resolve_ivshmem_resource(locator: &str) -> Result<PathBuf> {
+        if locator == IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO {
+            return Self::find_ivshmem_resource();
+        }
+
+        let Some(pci_address) = locator.strip_prefix("pci=") else {
+            anyhow::bail!(
+                "unsupported ivshmem locator {locator:?}; expected {IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO:?} or pci=<BDF>"
+            );
+        };
+
+        Ok(Path::new(IVSHMEM_SYSFS_ROOT)
+            .join(pci_address)
+            .join(format!("resource{IVSHMEM_BAR_INDEX}")))
+    }
+
+    fn find_ivshmem_resource() -> Result<PathBuf> {
+        let mut matches: Vec<PathBuf> = Vec::new();
+        for entry in fs::read_dir(IVSHMEM_SYSFS_ROOT)
+            .map_err(|e| anyhow::anyhow!("failed to read {IVSHMEM_SYSFS_ROOT}: {e}"))?
+        {
+            let entry = entry.map_err(|e| anyhow::anyhow!("failed to enumerate PCI devices: {e}"))?;
+            let device_path: PathBuf = entry.path();
+
+            let vendor: String = match fs::read_to_string(device_path.join("vendor")) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let device: String = match fs::read_to_string(device_path.join("device")) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if vendor.trim() == IVSHMEM_VENDOR_ID && device.trim() == IVSHMEM_DEVICE_ID {
+                let resource_path: PathBuf = device_path.join(format!("resource{IVSHMEM_BAR_INDEX}"));
+                if resource_path.exists() {
+                    matches.push(resource_path);
+                }
+            }
+        }
+
+        match matches.len() {
+            0 => anyhow::bail!(
+                "failed to auto-discover ivshmem BAR{} resource under {}",
+                IVSHMEM_BAR_INDEX,
+                IVSHMEM_SYSFS_ROOT
+            ),
+            1 => Ok(matches.remove(0)),
+            count => anyhow::bail!(
+                "ivshmem auto-discovery is ambiguous: found {count} matching BAR{} resources",
+                IVSHMEM_BAR_INDEX
+            ),
+        }
+    }
+
+    fn mmap(file: File, source: &str) -> Result<Self> {
+        let file_len: u64 = file
+            .metadata()
+            .ok()
+            .map(|metadata| metadata.len())
+            .unwrap_or_default();
+
         let mapped_ptr: *mut u8 = unsafe {
             ::libc::mmap(
                 ::std::ptr::null_mut(),
@@ -63,11 +160,12 @@ impl SharedRing {
 
         if mapped_ptr.is_null() || mapped_ptr == ::libc::MAP_FAILED.cast::<u8>() {
             let reason: String = format!(
-                "failed to mmap shared ring backing file {:?}: {}",
-                path,
+                "failed to mmap shared ring source {} (metadata_len={}): {}",
+                source,
+                file_len,
                 ::std::io::Error::last_os_error()
             );
-            error!("SharedRing::open(): {reason}");
+            error!("SharedRing::mmap(): {reason}");
             anyhow::bail!(reason)
         }
 

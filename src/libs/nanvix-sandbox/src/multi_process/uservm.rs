@@ -51,6 +51,8 @@ use ::log::{
     trace,
     warn,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::user_vm_api::RingTransportKind;
 use ::tokio::{
     process::{
         Child,
@@ -76,6 +78,9 @@ pub struct UserVm {
     /// Optional shared ring backing file owned by the launcher.
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     ring_shared_path: Option<PathBuf>,
+    /// Whether the launcher should remove the shared ring backing file on cleanup.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    cleanup_ring_shared_path: bool,
     /// Optional RAII handle to the network namespace the user VM is spawned in. Even if unused, we
     /// tie its lifecycle to the user VM.
     #[cfg(not(feature = "single-process"))]
@@ -108,6 +113,50 @@ impl UserVm {
                 "failed to size shared ring backing file {:?} to {} bytes: {e}",
                 path,
                 ::config::microvm::RING_BUFFER_SIZE
+            )
+        })?;
+
+        Ok(path)
+    }
+
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    fn prepare_l2_ivshmem_backing() -> Result<PathBuf> {
+        let path: PathBuf = std::env::var("NANVIX_L2_IVSHMEM_PATH")
+            .map(PathBuf::from)
+            .map_err(|_| anyhow::anyhow!("NANVIX_L2_IVSHMEM_PATH must be set for L2 ivshmem"))?;
+        let size_raw: String = std::env::var("NANVIX_L2_IVSHMEM_SIZE")
+            .map_err(|_| anyhow::anyhow!("NANVIX_L2_IVSHMEM_SIZE must be set for L2 ivshmem"))?;
+        let size: u64 = size_raw
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid NANVIX_L2_IVSHMEM_SIZE value {size_raw:?}: {e}"))?;
+        if size < ::config::microvm::RING_BUFFER_SIZE as u64 {
+            anyhow::bail!(
+                "NANVIX_L2_IVSHMEM_SIZE ({size}) is smaller than ring buffer size ({})",
+                ::config::microvm::RING_BUFFER_SIZE
+            );
+        }
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                anyhow::anyhow!(
+                    "failed to create L2 ivshmem backing directory {:?}: {e}",
+                    parent
+                )
+            })?;
+        }
+
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| anyhow::anyhow!("failed to create L2 ivshmem backing file {:?}: {e}", path))?;
+        file.set_len(size).map_err(|e| {
+            anyhow::anyhow!(
+                "failed to size L2 ivshmem backing file {:?} to {} bytes: {e}",
+                path,
+                size
             )
         })?;
 
@@ -196,14 +245,28 @@ impl UserVm {
         }
 
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        let ring_shared_path: Option<PathBuf> = if args.disable_ring_buffer() {
-            None
-        } else {
-            let path: PathBuf = Self::prepare_shared_ring_backing(args.uservm_id())?;
-            user_vm_args.push(::uservm::args::Args::OPT_RING_SHARED_PATH.to_string());
-            user_vm_args.push(path.display().to_string());
-            Some(path)
-        };
+        let (ring_shared_path, cleanup_ring_shared_path): (Option<PathBuf>, bool) =
+            if args.disable_ring_buffer() {
+                (None, false)
+            } else {
+                let path: PathBuf = match args.ring_transport_kind() {
+                    RingTransportKind::Disabled => unreachable!("disabled ring transport must use disable_ring_buffer"),
+                    RingTransportKind::FilePath => Self::prepare_shared_ring_backing(args.uservm_id())?,
+                    RingTransportKind::Ivshmem => Self::prepare_l2_ivshmem_backing()?,
+                };
+                user_vm_args.push(::uservm::args::Args::OPT_RING_SHARED_PATH.to_string());
+                user_vm_args.push(path.display().to_string());
+                user_vm_args.push(::uservm::args::Args::OPT_RING_TRANSPORT.to_string());
+                user_vm_args.push(match args.ring_transport_kind() {
+                    RingTransportKind::FilePath => "file-path".to_string(),
+                    RingTransportKind::Ivshmem => "ivshmem".to_string(),
+                    RingTransportKind::Disabled => unreachable!(),
+                });
+                (
+                    Some(path),
+                    args.ring_transport_kind() == RingTransportKind::FilePath,
+                )
+            };
 
         if let Some(hwloc) = args.hwloc() {
             let taskset: Vec<String> = vec![
@@ -276,8 +339,10 @@ impl UserVm {
 
                     Self::send_sigkill_to_child(child);
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    if let Some(path) = ring_shared_path.as_ref() {
+                    if cleanup_ring_shared_path {
+                        if let Some(path) = ring_shared_path.as_ref() {
                         Self::cleanup_shared_ring_backing(path);
+                        }
                     }
 
                     return Err(anyhow::anyhow!("{reason}"));
@@ -291,8 +356,10 @@ impl UserVm {
 
                     Self::send_sigkill_to_child(child);
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    if let Some(path) = ring_shared_path.as_ref() {
+                    if cleanup_ring_shared_path {
+                        if let Some(path) = ring_shared_path.as_ref() {
                         Self::cleanup_shared_ring_backing(path);
+                        }
                     }
 
                     return Err(anyhow::anyhow!("{reason}"));
@@ -305,6 +372,8 @@ impl UserVm {
             control_plane_stream,
             #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
             ring_shared_path,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            cleanup_ring_shared_path,
             #[cfg(not(feature = "single-process"))]
             _netns_handle: netns_handle,
         })
@@ -366,8 +435,10 @@ impl UserVm {
                     }
 
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    if let Some(path) = self.ring_shared_path.take() {
+                    if self.cleanup_ring_shared_path {
+                        if let Some(path) = self.ring_shared_path.take() {
                         Self::cleanup_shared_ring_backing(&path);
+                        }
                     }
 
                     return Some(exit_status);
@@ -388,8 +459,10 @@ impl UserVm {
         }
 
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        if let Some(path) = self.ring_shared_path.take() {
+        if self.cleanup_ring_shared_path {
+            if let Some(path) = self.ring_shared_path.take() {
             Self::cleanup_shared_ring_backing(&path);
+            }
         }
 
         None
@@ -409,8 +482,10 @@ impl UserVm {
             match child.try_wait() {
                 Ok(Some(_status)) => {
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    if let Some(path) = self.ring_shared_path.take() {
+                    if self.cleanup_ring_shared_path {
+                        if let Some(path) = self.ring_shared_path.take() {
                         Self::cleanup_shared_ring_backing(&path);
+                        }
                     }
                     false
                 },
@@ -418,8 +493,10 @@ impl UserVm {
                 Err(e) => {
                     warn!("is_running(): failed to query user VM status (error={e:?})");
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    if let Some(path) = self.ring_shared_path.take() {
+                    if self.cleanup_ring_shared_path {
+                        if let Some(path) = self.ring_shared_path.take() {
                         Self::cleanup_shared_ring_backing(&path);
+                        }
                     }
                     false
                 },

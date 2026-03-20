@@ -12,7 +12,10 @@
 //==================================================================================================
 
 use ::syscomm::SocketType;
-use ::user_vm_api::UserVmIdentifier;
+use ::user_vm_api::{
+    RingTransportKind,
+    UserVmIdentifier,
+};
 
 //==================================================================================================
 // Structures
@@ -50,6 +53,8 @@ pub struct UserVmArgs {
     log_directory: String,
     /// Unique identifier for this User VM instance.
     uservm_id: UserVmIdentifier,
+    /// Direct-ring transport kind for this User VM.
+    ring_transport_kind: RingTransportKind,
     /// Disable the direct shared-ring path for this User VM.
     disable_ring_buffer: bool,
 }
@@ -97,6 +102,7 @@ impl UserVmArgs {
         #[cfg(not(feature = "single-process"))] uservm_binary_path: String,
         log_directory: String,
         uservm_id: UserVmIdentifier,
+        ring_transport_kind: RingTransportKind,
         disable_ring_buffer: bool,
     ) -> Self {
         Self {
@@ -113,6 +119,7 @@ impl UserVmArgs {
             uservm_binary_path,
             log_directory,
             uservm_id,
+            ring_transport_kind,
             disable_ring_buffer,
         }
     }
@@ -272,6 +279,10 @@ impl UserVmArgs {
     ///
     pub fn uservm_id(&self) -> UserVmIdentifier {
         self.uservm_id
+    }
+
+    pub fn ring_transport_kind(&self) -> RingTransportKind {
+        self.ring_transport_kind
     }
 
     /// Returns whether the direct shared-ring path should be disabled.

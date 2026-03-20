@@ -21,7 +21,6 @@ use ::log::{
     debug,
     error,
     info,
-    warn,
 };
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 use ::std::{fs::OpenOptions, path::PathBuf};
@@ -39,19 +38,27 @@ use ::syscomm::{
     WriteAll,
 };
 use ::tokio::{
-    sync::mpsc,
+    sync::mpsc::{
+        self,
+        UnboundedReceiver,
+        UnboundedSender,
+        unbounded_channel,
+    },
     task::JoinHandle,
     time::timeout,
 };
 use ::user_vm_api::{
+    IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO,
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
     RingTransport,
+    RingTransportKind,
     UserVmIdentifier,
 };
 use ::uservm::{
     CHANNEL_CAPACITY,
     CONTROL_PLANE_CONNECT_TIMEOUT,
+    DirectRingSignal,
     SYSTEM_VM_CONNECT_TIMEOUT,
     UserVm,
     UserVmArgs,
@@ -65,6 +72,8 @@ use ::uservm::{
         IoControlCommand,
         IoControlResponse,
     },
+    standalone,
+    standalone::StandaloneVmHandle,
 };
 
 //==================================================================================================
@@ -95,6 +104,8 @@ pub async fn main() -> Result<ExitCode> {
     let ring_shared_path_from_launcher: Option<String> = args.take_ring_shared_path();
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     let disable_ring_buffer: bool = args.disable_ring_buffer();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let ring_transport_kind: RingTransportKind = args.ring_transport_kind();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -137,6 +148,8 @@ pub async fn main() -> Result<ExitCode> {
             stderr,
             #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
             ring_shared_path_from_launcher,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            ring_transport_kind,
             #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
             disable_ring_buffer,
         )
@@ -182,52 +195,17 @@ async fn run_standalone(
 ) -> Result<ExitCode> {
     info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
 
-    // Create channels. In standalone mode these are wired directly without an I/O thread.
-    let (vcpu_thread_stdout_tx, mut standalone_data_rx) =
-        mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Nobody sends inbound data in standalone mode. The sender is kept alive so that the memory
-    // thread's receiver does not see an immediate channel close.
-    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator's io_control_rx does not see an immediate channel close.
-    let (_io_cmd_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator can send control responses without a closed-channel error.
-    let (io_control_tx, _io_resp_rx) = mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
-
-    let counters: MessageCounters = MessageCounters::new();
-
-    let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
-        memory_size,
+    let (handle, _io): (StandaloneVmHandle, standalone::StandaloneVmIo) = StandaloneVmHandle::spawn(
+        kernel_filename,
         initrd_filename,
         initrd_args,
         ramfs_filename,
+        memory_size,
         stderr,
-        vcpu_thread_stdout_tx,
-        memory_thread_data_rx,
-        io_control_rx,
-        io_control_tx,
-        kernel_filename,
-        counters,
         snapshot_path,
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        ring_shared_path: None,
-    });
+    );
 
-    // Drain the VM's stdout channel. In standalone mode there is no system VM to forward messages
-    // to, so we simply consume and discard them to prevent the channel from blocking the VM.
-    let drain_handle: JoinHandle<()> = tokio::spawn(async move {
-        while let Some(_msg) = standalone_data_rx.recv().await {}
-        debug!("main(): standalone mode: VM stdout channel closed");
-    });
-
-    let vm_exit_status: Result<u16> = vmm_handle.await?;
-    debug!("main(): uservm completed (exit_status={vm_exit_status:?})");
-
-    // Wait for the drain task to finish.
-    if let Err(error) = drain_handle.await {
-        warn!("main(): standalone drain task failed (error={error:?})");
-    }
-
-    convert_exit_status(vm_exit_status)
+    convert_exit_status(handle.wait().await)
 }
 
 ///
@@ -266,6 +244,8 @@ async fn run_managed(
     stderr: Option<String>,
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     ring_shared_path_from_launcher: Option<String>,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    ring_transport_kind: RingTransportKind,
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))] disable_ring_buffer: bool,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
@@ -296,6 +276,29 @@ async fn run_managed(
             path: prepare_shared_ring_backing(args.user_vm_id())?,
             owned_by_uservm: true,
         })
+    };
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let use_socket_ring_doorbells: bool =
+        !disable_ring_buffer && ring_transport_kind == RingTransportKind::Ivshmem;
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let (direct_ring_signal_tx, direct_ring_signal_rx): (
+        Option<UnboundedSender<DirectRingSignal>>,
+        Option<UnboundedReceiver<DirectRingSignal>>,
+    ) = if use_socket_ring_doorbells {
+        let (tx, rx) = unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let (direct_ring_cq_doorbell_tx, direct_ring_cq_doorbell_rx): (
+        Option<std::sync::mpsc::Sender<()>>,
+        Option<std::sync::mpsc::Receiver<()>>,
+    ) = if use_socket_ring_doorbells {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
     };
 
     let unbound_socket: UnboundSocket =
@@ -359,8 +362,14 @@ async fn run_managed(
                     SocketType::from_str(args.gateway_socket_type())?,
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
                     match ring_shared_backing.as_ref() {
-                        Some(backing) => {
-                            RingTransport::file_path(backing.path.display().to_string())?
+                        Some(backing) => match ring_transport_kind {
+                            RingTransportKind::FilePath => {
+                                RingTransport::file_path(backing.path.display().to_string())?
+                            },
+                            RingTransportKind::Ivshmem => RingTransport::ivshmem(
+                                IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO.to_string(),
+                            )?,
+                            RingTransportKind::Disabled => RingTransport::disabled(),
                         },
                         None => RingTransport::disabled(),
                     },
@@ -420,6 +429,10 @@ async fn run_managed(
         io_thread_control_rx,
         control_plane_stream,
         counters.clone(),
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_signal_rx,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_tx,
     )?;
     debug!("main(): spawned I/O thread (channel_capacity={})", CHANNEL_CAPACITY);
 
@@ -448,6 +461,12 @@ async fn run_managed(
         ring_shared_path: ring_shared_backing
             .as_ref()
             .map(|backing| backing.path.display().to_string()),
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        use_socket_ring_doorbells,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_signal_tx,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_rx,
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

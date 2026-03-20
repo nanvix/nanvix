@@ -11,6 +11,12 @@ use nvx_ring::{
 use std::{
     hint,
     io::ErrorKind,
+    sync::mpsc::{
+        Receiver as SyncReceiver,
+        SyncSender,
+        TrySendError,
+        sync_channel,
+    },
     sync::{
         atomic::{fence, AtomicBool, AtomicU32, Ordering},
         Arc,
@@ -95,16 +101,88 @@ fn set_sq_flags(shared_ring: &SharedRing, flags: SqFlags) -> Result<(), ErrorKin
 }
 
 #[derive(Clone)]
+pub enum SqWakeHandle {
+    SharedFutex(Arc<SharedRing>),
+    Channel(SyncSender<()>),
+}
+
+impl SqWakeHandle {
+    pub fn wake(&self) -> Result<(), ErrorKind> {
+        match self {
+            Self::SharedFutex(shared_ring) => signal(shared_ring.sq_signal_word()),
+            Self::Channel(sender) => match sender.try_send(()) {
+                Ok(()) | Err(TrySendError::Full(())) => Ok(()),
+                Err(TrySendError::Disconnected(())) => Err(ErrorKind::BrokenPipe),
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum CqNotifyHandle {
+    SharedFutex(Arc<SharedRing>),
+    Channel(tokio::sync::mpsc::Sender<()>),
+}
+
+impl CqNotifyHandle {
+    fn notify_guest(&self) -> Result<(), ErrorKind> {
+        match self {
+            Self::SharedFutex(shared_ring) => signal(shared_ring.cq_signal_word()),
+            Self::Channel(sender) => match sender.try_send(()) {
+                Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Full(())) => Ok(()),
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(())) => {
+                    Err(ErrorKind::BrokenPipe)
+                },
+            },
+        }
+    }
+}
+
+enum SqWaitStrategy {
+    SharedFutex {
+        signal_word_addr: usize,
+        observed: u32,
+    },
+    Channel(SyncReceiver<()>),
+}
+
+impl SqWaitStrategy {
+    fn new_shared_futex(shared_ring: &SharedRing) -> Self {
+        let signal_word: *mut u32 = shared_ring.sq_signal_word();
+        let atomic: &AtomicU32 =
+            // SAFETY: the notification word points to a stable shared mapping for the thread lifetime.
+            unsafe { &*(signal_word.cast_const().cast::<AtomicU32>()) };
+        let observed: u32 = atomic.load(Ordering::Acquire);
+        Self::SharedFutex {
+            signal_word_addr: signal_word as usize,
+            observed,
+        }
+    }
+
+    fn wait(&mut self) -> Result<(), ErrorKind> {
+        match self {
+            Self::SharedFutex {
+                signal_word_addr,
+                observed,
+            } => wait_for_signal(*signal_word_addr as *mut u32, observed),
+            Self::Channel(receiver) => receiver.recv().map_err(|_| ErrorKind::BrokenPipe),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct DirectCqWriter {
     shared_ring: Arc<SharedRing>,
     next_slot: Arc<AtomicU32>,
+    cq_notify: CqNotifyHandle,
 }
 
 impl DirectCqWriter {
-    pub fn new(shared_ring: Arc<SharedRing>) -> Self {
+    pub fn new(shared_ring: Arc<SharedRing>, cq_notify: CqNotifyHandle) -> Self {
         Self {
             shared_ring,
             next_slot: Arc::new(AtomicU32::new(0)),
+            cq_notify,
         }
     }
 
@@ -170,7 +248,7 @@ impl DirectCqWriter {
 
         let was_empty: bool = cq_head == cq_tail;
         if was_empty && CqFlags(cq_flags_raw) == CqFlags::NOTIFY_ME {
-            signal(self.shared_ring.cq_signal_word())?;
+            self.cq_notify.notify_guest()?;
         }
 
         Ok(())
@@ -366,13 +444,8 @@ fn run_sq_worker(
     stop: Arc<AtomicBool>,
     events_tx: Sender<UserVmEvent>,
     cq_writer: Arc<DirectCqWriter>,
+    mut wait_strategy: SqWaitStrategy,
 ) {
-    let signal_word: *mut u32 = shared_ring.sq_signal_word();
-    let atomic: &AtomicU32 =
-        // SAFETY: the notification word points to a stable shared mapping for the thread lifetime.
-        unsafe { &*(signal_word.cast_const().cast::<AtomicU32>()) };
-    let mut observed: u32 = atomic.load(Ordering::Acquire);
-
     if let Err(kind) =
         drain_sq_with_adaptive_polling(
             uvm_id,
@@ -387,7 +460,7 @@ fn run_sq_worker(
     }
 
     while !stop.load(Ordering::Acquire) {
-        if let Err(kind) = wait_for_signal(signal_word, &mut observed) {
+        if let Err(kind) = wait_strategy.wait() {
             let _ = events_tx.blocking_send(UserVmEvent::ConnectionError { uvm_id, kind });
             break;
         }
@@ -415,14 +488,20 @@ pub fn spawn_sq_worker(
     stop: Arc<AtomicBool>,
     events_tx: Sender<UserVmEvent>,
     cq_writer: Arc<DirectCqWriter>,
-) -> Result<(), std::io::Error> {
+    use_socket_doorbell: bool,
+) -> Result<SqWakeHandle, std::io::Error> {
     let thread_name: String = format!("ring-sq-{uvm_id}");
+    let (wait_strategy, wake_handle): (SqWaitStrategy, SqWakeHandle) = if use_socket_doorbell {
+        let (sender, receiver) = sync_channel::<()>(1);
+        (SqWaitStrategy::Channel(receiver), SqWakeHandle::Channel(sender))
+    } else {
+        (
+            SqWaitStrategy::new_shared_futex(shared_ring.as_ref()),
+            SqWakeHandle::SharedFutex(shared_ring.clone()),
+        )
+    };
     thread::Builder::new().name(thread_name).spawn(move || {
-        run_sq_worker(uvm_id, shared_ring, stop, events_tx, cq_writer);
+        run_sq_worker(uvm_id, shared_ring, stop, events_tx, cq_writer, wait_strategy);
     })?;
-    Ok(())
-}
-
-pub fn wake_sq_waiter(shared_ring: &SharedRing) -> Result<(), ErrorKind> {
-    signal(shared_ring.sq_signal_word())
+    Ok(wake_handle)
 }
