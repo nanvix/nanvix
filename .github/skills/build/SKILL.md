@@ -12,6 +12,19 @@ covers all build-system operations exposed through the `z` utility.
 
 - Development environment set up per `doc/setup.md`.
 - Either a local cross-compilation toolchain (`toolchain/`) or Docker installed.
+- **Windows 11:** Docker Desktop (Linux containers), Windows Hypervisor Platform enabled,
+  Developer Mode enabled, and Rust toolchain installed. See `doc/setup.md` for details.
+
+## Windows Setup Summary
+
+Before building on Windows, ensure:
+
+1. **Windows Hypervisor Platform** is enabled (`Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All`, then reboot).
+2. **Developer Mode** is on (Settings > Privacy & Security > For developers).
+3. **Docker Desktop** is installed and configured for Linux containers.
+4. **Rust toolchain** is installed via `winget install Rustlang.Rustup`.
+5. Repository was cloned with `git clone -c core.symlinks=true`.
+6. Docker toolchain image is pulled: `./z.ps1 setup`.
 
 ## Building
 
@@ -76,6 +89,37 @@ Example with custom parameters:
 ./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
 ```
 
+### Building on Windows (using `z.ps1`)
+
+On Windows 11, the `z.ps1` PowerShell script provides the same CLI interface. Guest components are
+cross-compiled inside Docker; the UserVM is built natively with the microvm backend (WHP on
+Windows).
+
+```powershell
+# Build everything (guest via Docker + UserVM natively).
+.\z.ps1 build -- all
+
+# Build only the UserVM (native Windows build).
+.\z.ps1 build -- uservm
+
+# Build only guest components (kernel + hello-rust-nostd, via Docker).
+.\z.ps1 build -- guest
+
+# Release build.
+.\z.ps1 build -- all RELEASE=yes
+
+# Use the full (non-minimal) Docker image.
+.\z.ps1 build --with-docker -- all
+```
+
+Any unrecognized target is forwarded to `make` via Docker, just like on Linux:
+
+```powershell
+.\z.ps1 build -- kernel
+.\z.ps1 build -- format-check
+.\z.ps1 build -- lint-check
+```
+
 ## Code Quality
 
 ### Formatting
@@ -128,6 +172,13 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 ./z distclean    # Remove all generated files.
 ```
 
+### Cleaning on Windows
+
+```powershell
+.\z.ps1 clean        # Quick clean (UserVM artifacts + cache).
+.\z.ps1 distclean    # Full clean (cargo clean + all artifacts).
+```
+
 ## CI/CD Pipeline
 
 ```bash
@@ -138,9 +189,39 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 The pipeline covers: spell checking, formatting, linting, building, and testing across multiple
 machine and deployment configurations.
 
+## IDE Setup (Optional)
+
+### Visual Studio Code
+
+Use the host-specific settings template. The Linux template invokes `./z`, while the Windows
+template routes Rust Analyzer build-script discovery through the Windows Docker workflow so that
+guest crates build correctly.
+
+**Linux:**
+
+```bash
+mkdir -p .vscode && cd .vscode
+ln -s ../scripts/setup/vscode/settings-linux.json settings.json
+```
+
+**Windows (PowerShell):**
+
+```powershell
+New-Item -ItemType Directory -Path .vscode -Force
+Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
+```
+
+> **Note:** Without the Windows override, Rust Analyzer falls back to native `cargo` for
+> build-script metadata and guest crates fail because `gcc`/`ar` are not on the host `PATH`.
+
 ## Troubleshooting Build Issues
 
 - If builds fail with toolchain errors, verify `toolchain/` symlink points to a valid toolchain.
 - If Docker builds fail, ensure Docker is running and the image is available.
 - Use `./z help` for usage information.
 - Cached build options are stored in `.z.cache` — delete this file to reset.
+- **Windows:** Use `.\z.ps1 help` for Windows-specific usage information.
+- **Windows:** If Docker builds fail with symlink errors, `z.ps1` automatically restores Git
+  symlinks as file copies. Ensure Docker Desktop is running with Linux containers enabled.
+- **Windows:** If the UserVM build fails, verify that the Windows Hypervisor Platform feature is
+  enabled (`Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform`).

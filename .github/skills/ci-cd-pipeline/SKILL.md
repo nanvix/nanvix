@@ -85,6 +85,11 @@ Matrix coverage in GitHub Actions:
   and `multi-process` (excluding `qemu-pc + single-process`).
 - `ci-l2`: separate L2 jobs for `microvm` and `hyperlight`.
 
+> **Note:** There is no Windows CI job yet. Windows builds must be verified manually.
+> Once a `ci-windows` job is added, it should validate that platform-independent library crates
+> compile and pass Clippy on Windows, and eventually build and test the UserVM with the WHP
+> backend.
+
 ## Release Process
 
 ```bash
