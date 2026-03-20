@@ -93,7 +93,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
         export SCCACHE_GHA_CACHE_FROM="${SCCACHE_GHA_CACHE_FROM}"; \
     fi && \
     SCCACHE_DIR=/root/.cache/sccache CONTRIB_SRC_DIR=/opt/contrib-src \
-    make TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS} && \
+    make -j"$(nproc)" TOOLCHAIN_DIR=/opt/nanvix ${SCCACHE_ARG} ${BUILD_PARAMS} && \
     if [ -x /usr/local/bin/sccache ]; then \
         echo "=== sccache statistics ===" && \
         /usr/local/bin/sccache --show-stats; \
