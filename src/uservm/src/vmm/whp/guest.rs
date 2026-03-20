@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// The WHP guest uses pointer-to-usize casts for address arithmetic.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================

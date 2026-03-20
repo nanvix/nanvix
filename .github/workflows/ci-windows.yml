@@ -1,0 +1,300 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix Windows CI"
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    types:
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "ready_for_review"
+    branches:
+      - "dev"
+
+  merge_group:
+    types:
+      - "checks_requested"
+
+  push:
+    branches:
+      - "dev"
+
+# Cancel previous running actions for the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
+
+jobs:
+  # ==========================================================================================
+  # Stage 1: Guest Cross-Compilation (Linux/Docker) + Windows Source Checks
+  # ==========================================================================================
+
+  # Guest components (kernel, hello-rust-nostd) require a Linux cross-compilation
+  # toolchain that is only available inside Docker. GitHub-hosted Windows runners
+  # do not support Linux containers, so this job runs on ubuntu-24.04 and uploads
+  # the resulting ELF binaries for downstream Windows jobs.
+  guest-build:
+    name: "Guest Build (Linux/Docker)"
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    if: |
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'merge_group' || (
+          (
+            github.event_name != 'push' ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Setup Docker Toolchain"
+        uses: ./.github/actions/docker-setup
+
+      - name: "Build Guest Components"
+        shell: bash
+        run: |
+          ./z build --with-minimal-docker -- \
+            all-guest-staticlibs all-kernel all-guest-binaries \
+            MACHINE=microvm \
+            DEPLOYMENT_MODE=standalone \
+            TARGET=x86
+
+      - name: "Upload Guest Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-guest-build
+          retention-days: 1
+          path: |
+            bin/kernel.elf
+            bin/hello-rust-nostd.elf
+
+  # Run format and lint checks natively on Windows for host crates. These do
+  # not require Docker and run in parallel with the guest-build job.
+  checks:
+    name: "Source Checks (Windows)"
+    timeout-minutes: 30
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    if: |
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'merge_group' || (
+          (
+            github.event_name != 'push' ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Install Rust Toolchain"
+        shell: pwsh
+        run: |
+          rustup component add clippy rustfmt
+
+      - name: "Check Code Format"
+        shell: pwsh
+        run: |
+          .\z.ps1 build -- format-check
+
+      - name: "Lint"
+        shell: pwsh
+        run: |
+          .\z.ps1 build -- lint-check
+
+  # ==========================================================================================
+  # Stage 2: Build & Unit Test (Windows)
+  # ==========================================================================================
+
+  # Build UserVM natively on Windows and run unit tests. Guest artifacts from
+  # the Linux job are downloaded so they can be bundled for the smoke test.
+  ci-build:
+    name: "Build (${{ matrix.build-type }})"
+    needs: [checks, guest-build]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [debug, release]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Install Rust Toolchain"
+        shell: pwsh
+        run: |
+          rustup show
+
+      - name: "Download Guest Artifacts"
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-guest-build
+          path: bin
+
+      - name: "Build UserVM"
+        shell: pwsh
+        env:
+          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
+        run: |
+          if ($env:RELEASE_FLAG) {
+            .\z.ps1 build -- uservm $env:RELEASE_FLAG
+          } else {
+            .\z.ps1 build -- uservm
+          }
+
+      - name: "Unit Tests"
+        shell: pwsh
+        run: |
+          .\z.ps1 build -- run-unit-tests
+
+      - name: "Upload Build Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-build-${{ matrix.build-type }}
+          retention-days: 1
+          path: |
+            bin/uservm.exe
+            bin/kernel.elf
+            bin/hello-rust-nostd.elf
+
+  # ==========================================================================================
+  # Stage 3: Smoke Test (Windows/WHP)
+  # ==========================================================================================
+
+  # Run UserVM in standalone mode with the hello-rust-nostd guest to verify
+  # end-to-end boot on Windows Hypervisor Platform.
+  smoke-test:
+    name: "Smoke Test (${{ matrix.build-type }})"
+    needs: [ci-build]
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [debug, release]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Download Build Artifacts"
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-build-${{ matrix.build-type }}
+          path: bin
+
+      - name: "Enable Windows Hypervisor Platform"
+        shell: pwsh
+        run: |
+          # Check if WHP is already enabled; enable it if not.
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
+          if ($feature.State -ne 'Enabled') {
+            Write-Host "Enabling Windows Hypervisor Platform..."
+            Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart
+          } else {
+            Write-Host "Windows Hypervisor Platform is already enabled."
+          }
+
+      - name: "Run Hello World (standalone)"
+        shell: pwsh
+        run: |
+          $TIMEOUT_SECONDS = 120
+          $MAGIC_STRING = "Hello, world from Rust!"
+
+          Write-Host "Starting UserVM (standalone, timeout=${TIMEOUT_SECONDS}s)..."
+
+          # Start uservm as a background process and capture output.
+          $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+          $pinfo.FileName = "bin\uservm.exe"
+          $pinfo.Arguments = "-kernel bin\kernel.elf -initrd bin\hello-rust-nostd.elf -standalone"
+          $pinfo.RedirectStandardOutput = $true
+          $pinfo.RedirectStandardError = $true
+          $pinfo.UseShellExecute = $false
+          $pinfo.CreateNoWindow = $true
+
+          $process = New-Object System.Diagnostics.Process
+          $process.StartInfo = $pinfo
+
+          # Collect output asynchronously.
+          $stdout = New-Object System.Text.StringBuilder
+          $stderr = New-Object System.Text.StringBuilder
+          $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+            if ($null -ne $EventArgs.Data) {
+              [void]$Event.MessageData.AppendLine($EventArgs.Data)
+              Write-Host $EventArgs.Data
+            }
+          } -MessageData $stdout
+          $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+            if ($null -ne $EventArgs.Data) {
+              [void]$Event.MessageData.AppendLine($EventArgs.Data)
+              Write-Host $EventArgs.Data
+            }
+          } -MessageData $stderr
+
+          $process.Start() | Out-Null
+          $process.BeginOutputReadLine()
+          $process.BeginErrorReadLine()
+
+          $exited = $process.WaitForExit($TIMEOUT_SECONDS * 1000)
+
+          # Give event handlers a moment to flush remaining data.
+          Start-Sleep -Milliseconds 500
+
+          Unregister-Event -SourceIdentifier $outputEvent.Name
+          Unregister-Event -SourceIdentifier $errorEvent.Name
+
+          $allOutput = $stdout.ToString() + $stderr.ToString()
+
+          if (-not $exited) {
+            $process.Kill()
+            Write-Host "::error::Smoke test timed out after ${TIMEOUT_SECONDS}s."
+            Write-Host "--- Captured output ---"
+            Write-Host $allOutput
+            exit 1
+          }
+
+          $exitCode = $process.ExitCode
+          Write-Host "UserVM exited with code $exitCode"
+
+          if ("${{ matrix.build-type }}" -eq "release") {
+            # Release builds suppress debug output; just verify clean exit.
+            if ($exitCode -ne 0) {
+              Write-Host "::error::Smoke test failed: UserVM exited with code $exitCode."
+              exit 1
+            }
+          } else {
+            # Debug builds should print the magic string.
+            if ($allOutput -match [regex]::Escape($MAGIC_STRING)) {
+              Write-Host "Smoke test passed: found '$MAGIC_STRING' in output."
+            } else {
+              Write-Host "::error::Smoke test failed: magic string '$MAGIC_STRING' not found in output."
+              Write-Host "--- Captured output ---"
+              Write-Host $allOutput
+              exit 1
+            }
+          }
