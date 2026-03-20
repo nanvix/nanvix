@@ -1,0 +1,10 @@
+schemaVersion: 0.0.1
+isProduction: false
+accountableOwners:
+  directOwners:
+  - esaurez@microsoft.com
+  - ppenna@microsoft.com
+routing:
+  defaultAreaPath:
+    org: msresearch
+    path: "Serverless-Efficiency\\Research"

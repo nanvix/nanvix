@@ -421,7 +421,7 @@ all-nanvix: \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
@@ -468,7 +468,7 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -623,7 +623,7 @@ rust-lint-check: \
 	rust-lint-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
+rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test rust-lint-check-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -640,7 +640,7 @@ rust-lint: \
 	rust-lint-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
+rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test rust-lint-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -684,7 +684,7 @@ rust-format: \
 	format-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
+rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test format-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -701,7 +701,7 @@ rust-format-check: \
 	format-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
+rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test format-check-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -760,7 +760,7 @@ check: \
 	check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test check-nanvix-shim
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -827,7 +827,7 @@ endif
 run-unit-tests: all-nanvix test-guest-rlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-run-unit-tests: test-host-rlibs
+run-unit-tests: test-host-rlibs test-nanvix-shim
 endif
 
 # Determine the test configuration file based on deployment mode.
@@ -925,3 +925,9 @@ include build/make/generic-host-binaries.mk
 #===================================================================================================
 
 include build/make/uservm.mk
+
+#===================================================================================================
+# Build Rules for Nanvix Shim
+#===================================================================================================
+
+include build/make/nanvix-shim.mk

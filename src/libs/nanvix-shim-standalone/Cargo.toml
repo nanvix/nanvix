@@ -1,0 +1,42 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-shim-standalone"
+description = "Standalone execution mode for the Nanvix containerd shim"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license-file.workspace = true
+
+[dependencies]
+nanvix-oci = { workspace = true }
+nanvix-shim-core = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = [
+    "sync",
+    "process",
+    "time",
+    "net",
+    "io-util",
+    "rt",
+    "macros",
+] }
+serde_json = { workspace = true, features = ["std"] }
+tempfile = { workspace = true }
+portpicker = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal", "process", "mount"] }
+
+[dev-dependencies]
+serde_json = { workspace = true, features = ["std"] }
+tempfile = { workspace = true }
+portpicker = { workspace = true }
+
+[lints]
+workspace = true
