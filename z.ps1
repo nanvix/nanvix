@@ -779,13 +779,12 @@ function Main {
                         # Native lint check for host crates (no Docker required).
                         Write-Info "Linting host crates (native)..."
                         $ErrorActionPreference = 'Continue'
-                        $features = "standalone,microvm"
-                        cargo clippy --no-default-features --features $features -p uservm -- -D warnings
+                        cargo clippy --no-default-features --features "microvm" -p uservm -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for uservm."
                             exit 1
                         }
-                        cargo clippy --no-default-features --features $features -p nanvixd -- -D warnings
+                        cargo clippy --no-default-features --features "standalone,microvm" -p nanvixd -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for nanvixd."
                             exit 1
