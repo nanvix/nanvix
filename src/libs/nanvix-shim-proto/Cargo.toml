@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-shim-proto"
+description = "Shimv2 protocol layer for the Nanvix containerd shim (ttrpc Task + Sandbox services)"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license-file.workspace = true
+
+[dependencies]
+nanvix-oci = { workspace = true }
+nanvix-shim-core = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+containerd-shim-protos = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+oci-spec = { workspace = true }
+protobuf = { workspace = true }
+sha2 = { workspace = true }
+ttrpc = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal", "process"] }
+libc = { workspace = true }
+
+[lints]
+workspace = true

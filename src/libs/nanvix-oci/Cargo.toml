@@ -1,0 +1,22 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-oci"
+description = "OCI annotation constants and parsing for Nanvix container images"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license-file.workspace = true
+
+[dependencies]
+oci-spec = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

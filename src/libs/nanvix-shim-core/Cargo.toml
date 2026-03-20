@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix-shim-core"
+description = "Core abstractions for the Nanvix containerd shim (ExecutionMode trait, config, state)"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license-file.workspace = true
+
+[dependencies]
+nanvix-oci = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+toml = { workspace = true, features = ["parse"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
