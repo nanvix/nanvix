@@ -243,13 +243,13 @@ jobs:
           # Collect output asynchronously.
           $stdout = New-Object System.Text.StringBuilder
           $stderr = New-Object System.Text.StringBuilder
-          $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+          $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -SourceIdentifier 'UserVM-StdOut' -Action {
             if ($null -ne $EventArgs.Data) {
               [void]$Event.MessageData.AppendLine($EventArgs.Data)
               Write-Host $EventArgs.Data
             }
           } -MessageData $stdout
-          $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+          $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -SourceIdentifier 'UserVM-StdErr' -Action {
             if ($null -ne $EventArgs.Data) {
               [void]$Event.MessageData.AppendLine($EventArgs.Data)
               Write-Host $EventArgs.Data
@@ -265,8 +265,10 @@ jobs:
           # Give event handlers a moment to flush remaining data.
           Start-Sleep -Milliseconds 500
 
-          Unregister-Event -SourceIdentifier $outputEvent.Name
-          Unregister-Event -SourceIdentifier $errorEvent.Name
+          Unregister-Event -SourceIdentifier 'UserVM-StdOut'
+          Unregister-Event -SourceIdentifier 'UserVM-StdErr'
+          Remove-Job -Id $outputEvent.Id -Force
+          Remove-Job -Id $errorEvent.Id -Force
 
           $allOutput = $stdout.ToString() + $stderr.ToString()
 
