@@ -31,6 +31,12 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $RootDir) { $RootDir = Get-Location }
 $BinDir = Join-Path $RootDir "bin"
+$LibDir = Join-Path $RootDir "lib"
+$TargetDir = Join-Path $RootDir "target"
+$CargoLock = Join-Path $RootDir "Cargo.lock"
+$VenvDir = Join-Path $RootDir ".venv"
+$SysImage = Join-Path $RootDir "nanvix.img"
+$SysrootLink = Join-Path $RootDir "sysroot"
 Set-Variable -Scope Script -Name DockerfileRelativePath -Value "scripts/setup/Dockerfile.build" -Option Constant
 
 # ==================================================================================================
