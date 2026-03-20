@@ -135,6 +135,16 @@ function Restore-GitSymlinks {
 
         $absPath = Join-Path $RootDir $filePath
 
+        # If Git already checked out a native symlink, leave it alone. Docker can
+        # consume the real symlink directly and overwriting it races with tools
+        # like rust-analyzer that may have the path open.
+        if (Test-Path $absPath) {
+            $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
+            if ($null -ne $item -and (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+                continue
+            }
+        }
+
         # Read the raw symlink target from the blob object.
         # For mode 120000, the blob content is the relative target path.
         # NOTE: Do NOT use 'git show HEAD:<path>' - it follows symlinks
@@ -203,7 +213,12 @@ function Remove-RestoredSymlinks {
         if (-not $filePath) { continue }
         $absPath = Join-Path $RootDir $filePath
         if (Test-Path $absPath) {
-            Remove-Item $absPath -Recurse -Force -ErrorAction SilentlyContinue
+            $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
+            if ($null -eq $item) {
+                Write-Warn "Cannot read attributes for '$filePath'; skipping removal."
+            } elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+                Remove-Item $absPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
         $symlinkPaths += $filePath
     }
