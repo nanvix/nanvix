@@ -14,7 +14,9 @@
 //==================================================================================================
 
 // Lints
-#![forbid(clippy::unwrap_used)]
+// NOTE: `deny` instead of `forbid` so that the WHP module (Windows only) can
+// `#[allow]` these lints where the Windows Hypervisor Platform API requires casts.
+#![deny(clippy::unwrap_used)]
 #![forbid(clippy::cast_possible_wrap)]
 #![forbid(clippy::cast_precision_loss)]
 #![forbid(clippy::char_lit_as_u8)]
@@ -28,7 +30,7 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
-#![forbid(clippy::cast_possible_truncation)]
+#![deny(clippy::cast_possible_truncation)]
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 

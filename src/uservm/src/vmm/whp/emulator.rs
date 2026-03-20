@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// The WHP emulator uses u32/u16 casts when interfacing with the Windows API.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================

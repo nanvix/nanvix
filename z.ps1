@@ -78,8 +78,8 @@ Build Targets (after --)
   uservm                  Build UserVM only (native Windows, microvm backend).
   guest                   Build guest components only (kernel + hello-rust-nostd).
   format-check            Check code formatting (native for host crates).
-  lint-check              Check for linting issues (native for host crates).
-  run-unit-tests          Run unit tests (native for host crates).
+  lint-check              Check for linting issues (native for uservm).
+  run-unit-tests          Run unit tests (native for uservm).
   format                  Fix code formatting (via Docker).
   lint                    Fix linting issues (via Docker).
   spellcheck              Check spelling (via Docker).
@@ -776,17 +776,14 @@ function Main {
                         Write-Success "Format check passed."
                     }
                     "lint-check" {
-                        # Native lint check for host crates (no Docker required).
+                        # Native lint check for host crates that compile on Windows
+                        # (no Docker required). nanvixd depends on nanvix-http which
+                        # uses Unix-specific APIs, so only uservm is linted natively.
                         Write-Info "Linting host crates (native)..."
                         $ErrorActionPreference = 'Continue'
                         cargo clippy --no-default-features --features "microvm" -p uservm -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for uservm."
-                            exit 1
-                        }
-                        cargo clippy --no-default-features --features "standalone,microvm" -p nanvixd -- -D warnings
-                        if ($LASTEXITCODE -ne 0) {
-                            Write-Err "Lint check failed for nanvixd."
                             exit 1
                         }
                         Write-Success "Lint check passed."
@@ -801,6 +798,27 @@ function Main {
                             exit 1
                         }
                         Write-Success "Unit tests passed."
+                    }
+                    "spellcheck" {
+                        # Spellcheck requires pyspelling which is only available inside
+                        # Docker. When Docker is not available or not running, skip gracefully.
+                        $ErrorActionPreference = 'Continue'
+                        $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+                        $dockerRunning = $false
+                        if ($dockerCmd) {
+                            docker info >$null 2>&1
+                            $dockerRunning = ($LASTEXITCODE -eq 0)
+                        }
+                        if (-not $dockerRunning) {
+                            Write-Warn "Skipping spellcheck (Docker not available or not running). Run with Docker to enable."
+                        } else {
+                            $dockerParams = @("spellcheck") + $makeParams
+                            if (-not ($makeParams | Where-Object { $_ -match '^MACHINE=' })) {
+                                $dockerParams += "MACHINE=microvm"
+                            }
+                            Write-Info "Running spellcheck via Docker..."
+                            Invoke-DockerBuild -BuildParams ($dockerParams -join ' ') -IsRelease $isRelease -UseMinimal $useMinimalDocker
+                        }
                     }
                     default {
                         # Forward any other target to Docker make (mirrors bash z behavior).

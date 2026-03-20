@@ -1,6 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// The WHP vCPU uses u32 casts for Windows API parameters.
+#![allow(clippy::cast_possible_truncation)]
+
 //==================================================================================================
 // Modules
 //==================================================================================================
