@@ -206,9 +206,15 @@ impl StandaloneMode {
     }
 
     /// Wait for nanvixd HTTP server to become ready.
+    ///
+    /// Races the TCP readiness probe against the daemon exit channel so that
+    /// an early daemon crash is reported immediately instead of waiting for the
+    /// full timeout.
     async fn wait_for_server(&self, addr: &str) -> anyhow::Result<()> {
         let deadline =
             tokio::time::Instant::now() + std::time::Duration::from_secs(SERVER_READY_TIMEOUT_SECS);
+
+        let mut exit_rx = self.exit_rx.lock().await.clone();
 
         loop {
             if tokio::time::Instant::now() > deadline {
@@ -219,13 +225,33 @@ impl StandaloneMode {
                 );
             }
 
-            match tokio::net::TcpStream::connect(addr).await {
-                Ok(_) => {
-                    log::info!("[{}] nanvixd HTTP server is ready at {}", self.id, addr);
-                    return Ok(());
+            tokio::select! {
+                result = tokio::net::TcpStream::connect(addr) => {
+                    match result {
+                        Ok(_) => {
+                            log::info!("[{}] nanvixd HTTP server is ready at {}", self.id, addr);
+                            return Ok(());
+                        },
+                        Err(_) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        },
+                    }
                 },
-                Err(_) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                changed = exit_rx.changed() => {
+                    if changed.is_ok() {
+                        if let Some(code) = *exit_rx.borrow() {
+                            anyhow::bail!(
+                                "nanvixd daemon exited (code={}) before HTTP server became ready at {}",
+                                code,
+                                addr
+                            );
+                        }
+                    } else {
+                        anyhow::bail!(
+                            "nanvixd exit channel closed before HTTP server became ready at {}",
+                            addr
+                        );
+                    }
                 },
             }
         }
@@ -320,6 +346,12 @@ impl ExecutionMode for StandaloneMode {
 
         let mut cmd = tokio::process::Command::new(&self.config.kernel_path);
         cmd.arg("-http-addr").arg(&http_addr);
+
+        // Derive the binary directory from the kernel_path so nanvixd can locate
+        // kernel.elf regardless of the working directory.
+        if let Some(bin_dir) = self.config.kernel_path.parent() {
+            cmd.arg("-bin-dir").arg(bin_dir);
+        }
 
         if let Some(ref ramfs) = ramfs_image {
             cmd.arg("-ramfs").arg(ramfs);
@@ -468,8 +500,12 @@ impl ExecutionMode for StandaloneMode {
                 AsyncWriteExt,
             };
             let request: String = format!(
-                "POST / HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\n                 X-NVX-Message-Type: KILL\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                addr_clone, kill_body.len(), kill_body
+                "POST / HTTP/1.1\r\nHost: {}\r\nContent-Type: \
+                 application/json\r\nX-NVX-Message-Type: KILL\r\nContent-Length: \
+                 {}\r\nConnection: close\r\n\r\n{}",
+                addr_clone,
+                kill_body.len(),
+                kill_body
             );
 
             match tokio::net::TcpStream::connect(&addr_clone).await {
