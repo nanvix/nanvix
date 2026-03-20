@@ -170,7 +170,30 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
-    fn l2_ivshmem_args() -> Result<Vec<String>> {
+    fn ensure_clh_supports_ivshmem(cloud_hypervisor_path: &str) -> Result<()> {
+        let help_output = ::std::process::Command::new(cloud_hypervisor_path)
+            .arg("--help")
+            .output()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "failed to inspect cloud-hypervisor at {:?} for ivshmem support: {e}",
+                    cloud_hypervisor_path
+                )
+            })?;
+
+        let stdout: String = String::from_utf8_lossy(&help_output.stdout).into_owned();
+        let stderr: String = String::from_utf8_lossy(&help_output.stderr).into_owned();
+        if stdout.contains("--ivshmem") || stderr.contains("--ivshmem") {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "cloud-hypervisor at {:?} does not support --ivshmem; update the toolchain before enabling L2 ivshmem",
+            cloud_hypervisor_path
+        )
+    }
+
+    fn l2_ivshmem_args(cloud_hypervisor_path: &str) -> Result<Vec<String>> {
         const IVSHMEM_PATH_ENV: &str = "NANVIX_L2_IVSHMEM_PATH";
         const IVSHMEM_SIZE_ENV: &str = "NANVIX_L2_IVSHMEM_SIZE";
 
@@ -190,6 +213,8 @@ impl LinuxDaemon {
                 if size == 0 {
                     anyhow::bail!("{IVSHMEM_SIZE_ENV} must be greater than zero");
                 }
+
+                Self::ensure_clh_supports_ivshmem(cloud_hypervisor_path)?;
 
                 Ok(vec![
                     "--ivshmem".to_string(),
@@ -528,6 +553,14 @@ impl LinuxDaemon {
         );
 
         let clh_api_socket_path: String = get_clh_api_socket_path(args.tmp_directory());
+        let cloud_hypervisor_path: Option<String> = if args.l2() {
+            Some(format!(
+                "{}/cloud-hypervisor",
+                get_clh_bin_dir(args.toolchain_binary_directory())?
+            ))
+        } else {
+            None
+        };
         let mut linuxd_args: Vec<String> = if args.l2() {
             match ::std::fs::remove_file(&clh_api_socket_path) {
                 Ok(()) => {},
@@ -540,7 +573,7 @@ impl LinuxDaemon {
             };
 
             vec![
-                format!("{}/cloud-hypervisor", get_clh_bin_dir(args.toolchain_binary_directory())?),
+                cloud_hypervisor_path.clone().expect("L2 launch must resolve cloud-hypervisor path"),
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
                 // FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix
@@ -570,7 +603,11 @@ impl LinuxDaemon {
             ]
         };
         if args.l2() {
-            linuxd_args.extend(Self::l2_ivshmem_args()?);
+            linuxd_args.extend(Self::l2_ivshmem_args(
+                cloud_hypervisor_path
+                    .as_deref()
+                    .expect("L2 launch must resolve cloud-hypervisor path"),
+            )?);
         }
         trace!("linuxd args: {:?}", linuxd_args);
         if let Some(hwloc) = args.hwloc() {

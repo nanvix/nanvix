@@ -83,6 +83,14 @@ build_ivshmem_args() {
         exit 1
     fi
 
+    if ! "${CLOUD_HYPERVISOR_PATH}" --help 2>&1 | grep -q -- '--ivshmem'; then
+        print_error "cloud-hypervisor at ${CLOUD_HYPERVISOR_PATH} does not support --ivshmem."
+        exit 1
+    fi
+
+    mkdir -p -- "$(dirname -- "${IVSHMEM_PATH}")"
+    truncate -s "${IVSHMEM_SIZE}" "${IVSHMEM_PATH}"
+
     IVSHMEM_ARGS=(
         --ivshmem
         "path=${IVSHMEM_PATH},size=${IVSHMEM_SIZE}"
