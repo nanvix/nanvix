@@ -588,6 +588,14 @@ function Invoke-DistClean {
         $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
         if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
     }
+
+    # Clean up Docker build cache for Nanvix.
+    $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
+    if ($dockerAvailable) {
+        Write-Info "Pruning Docker build cache..."
+        docker builder prune --force 2>$null
+    }
+
     Write-Success "Full cleanup complete."
 }
 
