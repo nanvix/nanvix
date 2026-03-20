@@ -15,7 +15,7 @@ updates:
     schedule:
       interval: "daily"
       time: "03:00"
-    versioning-strategy: auto
+    versioning-strategy: increase
     labels:
       - "enhancement"
     open-pull-requests-limit: 20
@@ -26,6 +26,9 @@ updates:
       - dependency-name: "hyperlight-host"
       - dependency-name: "hyperlight-guest"
       - dependency-name: "fatfs"
+      - dependency-name: "spin"
+      - dependency-name: "talc"
+      - dependency-name: "vstd"
 
     groups:
       kvm-stack:
