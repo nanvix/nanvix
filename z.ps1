@@ -425,7 +425,33 @@ function Build-UserVm {
 function Build-Guest {
     param([bool]$IsRelease, [bool]$UseMinimal = $true, [string[]]$ExtraMakeParams = @())
 
+    # Prevent cleanup errors from aborting the build (consistent with other functions).
+    $ErrorActionPreference = 'Continue'
+
     Write-Info "Building guest components (Docker)..."
+
+    # Remove guest artifacts from previous Docker exports. Docker's
+    # --output type=local is additive: it writes new files but never deletes
+    # files that no longer exist in the output. Without this cleanup, stale
+    # guest binaries (e.g., a removed .elf) persist across builds.
+    # This cleanup is safe here because Build-Guest always does a full guest
+    # rebuild (all-guest-staticlibs all-kernel all-guest-binaries). It must
+    # NOT be placed in Invoke-DockerBuild, which is also called for partial
+    # targets (e.g., kernel, format-check) that would not regenerate all files.
+    foreach ($dir in @($BinDir, $LibDir)) {
+        if (-not (Test-Path $dir)) { continue }
+        Get-ChildItem -Path $dir -File -Include "*.elf", "*.wasm", "*.a", "*.so", "*.img" -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Remove the sysroot directory matching the current build profile so that
+    # stale sysroot artifacts do not survive across Docker exports.
+    $sysrootSuffix = if ($IsRelease) { "release" } else { "debug" }
+    $sysrootDir = Join-Path $RootDir "sysroot-$sysrootSuffix"
+    if (Test-Path $sysrootDir) {
+        Remove-Item $sysrootDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     $releaseFlag = if ($IsRelease) { "RELEASE=yes" } else { "" }
     $buildParams = "all-guest-staticlibs all-kernel all-guest-binaries $releaseFlag MACHINE=microvm DEPLOYMENT_MODE=standalone"
     if ($ExtraMakeParams.Count -gt 0) {
