@@ -11,7 +11,7 @@ two mutually exclusive modes:
 - **Interactive Mode**: runs a single application, waits for it to exit, and forwards its exit code.
 - **HTTP Mode**: starts a REST server that spawns and kills applications on demand.
 
-On Windows, the supported host workflow is standalone UserVM execution; see
+On Windows, `nanvixd` supports standalone interactive mode only (no HTTP mode); see
 [`Running on Windows`](#running-on-windows).
 
 ## Quick Start
@@ -26,10 +26,10 @@ Run a hello-world application and see its output on the terminal:
 
 ### Windows
 
-On Windows, you can run the UserVM in standalone mode directly:
+On Windows, run a guest application via `nanvixd` in standalone interactive mode:
 
 ```powershell
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
 ## Table of Contents
@@ -304,40 +304,47 @@ RUST_LOG=debug ./bin/uservm.elf -kernel ./bin/kernel.elf \
 
 ## Running on Windows
 
-On Windows, the UserVM is built natively with the WHP (Windows Hypervisor Platform) backend and
-can be run in **standalone mode** using `z.ps1`. Interactive and HTTP modes via `nanvixd` are not
-available on Windows.
+On Windows, `nanvixd` supports **standalone interactive mode** only (no HTTP mode). Both
+`nanvixd` and the UserVM are built natively with the WHP (Windows Hypervisor Platform) backend.
 
 ### Using `z.ps1 run`
 
-The simplest way to run the UserVM on Windows:
+The simplest way to run on Windows:
 
 ```powershell
 .\z.ps1 run
 ```
 
-This uses default paths (`bin/kernel.elf` and `bin/hello-rust-nostd.elf`). You can override them:
+This launches `nanvixd.exe` with the default guest binary (`bin/hello-rust-nostd.elf`). You can
+override it:
 
 ```powershell
-.\z.ps1 run -- -kernel bin\kernel.elf -initrd bin\hello-rust-nostd.elf
+.\z.ps1 run -- -program bin\hello-rust-nostd.elf
 ```
 
-| Option             | Default                       | Description                |
-| ------------------ | ----------------------------- | -------------------------- |
-| `-kernel <path>`   | `bin/kernel.elf`              | Path to the kernel binary. |
-| `-initrd <path>`   | `bin/hello-rust-nostd.elf`    | Path to the guest binary.  |
+| Option              | Default                       | Description                |
+| ------------------- | ----------------------------- | -------------------------- |
+| `-program <path>`   | `bin/hello-rust-nostd.elf`    | Path to the guest binary.  |
 
-### Running the UserVM Directly
+### Running nanvixd Directly
 
-You can also invoke `uservm.exe` directly:
+You can also invoke `nanvixd.exe` directly:
 
 ```powershell
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
 Enable verbose logging with the `RUST_LOG` environment variable:
 
 ```powershell
 $env:RUST_LOG = "debug"
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
+```
+
+### Expert Mode: Standalone UserVM (Windows)
+
+For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
+
+```powershell
 .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
 ```
