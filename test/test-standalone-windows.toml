@@ -9,13 +9,19 @@
 # NOTE: The following tests are disabled due to pre-existing VMM/guest kernel
 # issues on the WHP (microvm) backend, unrelated to the nanvix-test harness:
 #
-#   - thread-rust.elf, stress-rust.elf, thread-c.elf:
-#       Hang indefinitely (no stdout output, timeout after 5 min). Threading
-#       paths trigger a timing sensitivity in the WHP VMM that prevents the
-#       guest from completing.
+#   - stress-rust.elf:
+#       Heavy scheduling/IPC workload exceeds WHP throughput in debug-mode
+#       kernels. In release-mode kernels the test may pass but is not yet
+#       validated for reliability.
 #
 #   - dlfcn-c.elf, dlfcn-pie-c.elf:
 #       Require standalone-rootfs.img which is not built on Windows.
+#
+# NOTE: thread-c.elf requires a release-mode kernel build to complete within
+# the default timeout. The test performs ~8000 sched_yield calls across
+# multiple threads; debug-mode kernels are ~58x slower per context switch
+# on WHP due to unoptimized code running inside the guest VM.
+# Build with: .\z.ps1 build -- all-kernel RELEASE=yes LOG_LEVEL=warn
 
 [runner]
 nanvixd_binary_path = "./bin/nanvixd.exe"
@@ -133,4 +139,9 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/thread-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/thread-c.elf"
 expected_output = "ok"
