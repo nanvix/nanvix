@@ -41,8 +41,13 @@ pub struct MicroVmArgs {
     pub output: Box<StdoutFn>,
     #[cfg(feature = "hyperlight")]
     pub bulk_output: Box<BulkStdoutFn>,
+    #[cfg(feature = "hyperlight")]
+    pub bulk_input: Box<BulkStdinFn>,
+    #[cfg(not(feature = "hyperlight"))]
     pub stderr: Box<StderrFn>,
-    /// Optional path to a file used to capture the guest's stderr stream (hyperlight only).
+    /// Optional file path for guest stderr redirection (hyperlight only).
+    /// When set, process stderr is redirected to this file via `dup2` so that
+    /// `DebugPrint` VM-exit output reaches the custom destination.
     #[cfg(feature = "hyperlight")]
     pub stderr_path: Option<String>,
     /// When true, skip kernel/initrd/ramfs loading and vCPU reset because the VM state will be
