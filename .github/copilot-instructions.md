@@ -34,13 +34,13 @@ Nanvix supports two host platforms:
   Uses KVM for the microvm backend and QEMU for other machine types.
 - **Windows 11** — Host-side development with the Windows Hypervisor Platform (WHP)
   backend. Guest components (kernel, user binaries) are cross-compiled inside Docker;
-  the UserVM is built natively. Only standalone UserVM mode is available (no
-  `nanvixd`, HTTP mode, or L2 deployments). Use `z.ps1` instead of `./z`.
+  the UserVM is built natively. Only standalone interactive mode is available
+  (no HTTP mode or L2 deployments). Use `z.ps1` instead of `./z`.
 
 When modifying or generating code, keep platform differences in mind:
 
 - Use `z.ps1` for Windows commands and `./z` for Linux commands.
-- Linux-only features: `nanvixd`, HTTP mode, interactive mode, L2 deployments,
+- Linux-only features: HTTP mode, L2 deployments,
   GDB debugging, benchmarking, network namespaces.
 - Windows-only concerns: WHP enablement, Developer Mode for symlinks, Docker
   Desktop with Linux containers, `.venv` cleanup before Docker builds.

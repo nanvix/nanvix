@@ -15,7 +15,7 @@ anyhow = { workspace = true }
 config = { workspace = true }
 hwloc = { workspace = true }
 linuxd = { workspace = true, optional = true }
-nanvix-http = { workspace = true }
+nanvix-http = { workspace = true, optional = true }
 nanvix-registry = { workspace = true }
 nanvix-sandbox = { workspace = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
@@ -26,31 +26,34 @@ syscomm = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 uservm = { workspace = true, optional = true }
 
+[target.'cfg(unix)'.dependencies]
+nanvix-http = { workspace = true }
+
 [features]
 default = ["microvm", "multi-process"]
 internal-api = ["sys", "syscall", "uservm"]
 single-process = [
     "linuxd",
-    "nanvix-http/single-process",
+    "nanvix-http?/single-process",
     "nanvix-sandbox/single-process",
     "nanvix-terminal/single-process",
 ]
 multi-process = [
     "nanvix-sandbox-cache",
-    "nanvix-http/multi-process",
+    "nanvix-http?/multi-process",
     "nanvix-sandbox/multi-process",
     "nanvix-sandbox-cache/multi-process",
     "nanvix-terminal/multi-process",
 ]
 standalone = [
-    "nanvix-http/standalone",
+    "nanvix-http?/standalone",
     "nanvix-sandbox/standalone",
     "nanvix-terminal/standalone",
 ]
-gdb = ["nanvix-http/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
+gdb = ["nanvix-http?/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
 hyperlight = [
     "config/hyperlight",
-    "nanvix-http/hyperlight",
+    "nanvix-http?/hyperlight",
     "nanvix-sandbox/hyperlight",
     "nanvix-sandbox-cache?/hyperlight",
     "nanvix-terminal/hyperlight",
@@ -58,7 +61,7 @@ hyperlight = [
 ]
 microvm = [
     "config/microvm",
-    "nanvix-http/microvm",
+    "nanvix-http?/microvm",
     "nanvix-sandbox/microvm",
     "nanvix-sandbox-cache?/microvm",
     "nanvix-terminal/microvm",

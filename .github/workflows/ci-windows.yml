@@ -130,8 +130,9 @@ jobs:
   # Stage 2: Build & Unit Test (Windows)
   # ==========================================================================================
 
-  # Build UserVM natively on Windows and run unit tests. Guest artifacts from
-  # the Linux job are downloaded so they can be bundled for the smoke test.
+  # Build host binaries (nanvixd, UserVM) natively on Windows and run unit
+  # tests. Guest artifacts from the Linux job are downloaded so they can be
+  # bundled for the smoke test.
   ci-build:
     name: "Build (${{ matrix.build-type }})"
     needs: [checks, guest-build]
@@ -172,6 +173,17 @@ jobs:
             .\z.ps1 build -- uservm
           }
 
+      - name: "Build Nanvixd"
+        shell: pwsh
+        env:
+          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
+        run: |
+          if ($env:RELEASE_FLAG) {
+            .\z.ps1 build -- nanvixd $env:RELEASE_FLAG
+          } else {
+            .\z.ps1 build -- nanvixd
+          }
+
       - name: "Unit Tests"
         shell: pwsh
         run: |
@@ -183,6 +195,7 @@ jobs:
           name: windows-build-${{ matrix.build-type }}
           retention-days: 1
           path: |
+            bin/nanvixd.exe
             bin/uservm.exe
             bin/kernel.elf
             bin/hello-rust-nostd.elf
@@ -191,8 +204,8 @@ jobs:
   # Stage 3: Smoke Test (Windows/WHP)
   # ==========================================================================================
 
-  # Run UserVM in standalone mode with the hello-rust-nostd guest to verify
-  # end-to-end boot on Windows Hypervisor Platform.
+  # Run nanvixd in standalone interactive mode with the hello-rust-nostd guest
+  # to verify end-to-end boot on Windows Hypervisor Platform.
   smoke-test:
     name: "Smoke Test (${{ matrix.build-type }})"
     needs: [ci-build]
@@ -230,12 +243,12 @@ jobs:
           $TIMEOUT_SECONDS = 120
           $MAGIC_STRING = "Hello, world from Rust!"
 
-          Write-Host "Starting UserVM (standalone, timeout=${TIMEOUT_SECONDS}s)..."
+          Write-Host "Starting nanvixd (standalone, timeout=${TIMEOUT_SECONDS}s)..."
 
-          # Start uservm as a background process and capture output.
+          # Start nanvixd as a background process and capture output.
           $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-          $pinfo.FileName = "bin\uservm.exe"
-          $pinfo.Arguments = "-kernel bin\kernel.elf -initrd bin\hello-rust-nostd.elf -standalone"
+          $pinfo.FileName = "bin\nanvixd.exe"
+          $pinfo.Arguments = "-- bin\hello-rust-nostd.elf"
           $pinfo.RedirectStandardOutput = $true
           $pinfo.RedirectStandardError = $true
           $pinfo.UseShellExecute = $false
@@ -247,13 +260,13 @@ jobs:
           # Collect output asynchronously.
           $stdout = New-Object System.Text.StringBuilder
           $stderr = New-Object System.Text.StringBuilder
-          $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -SourceIdentifier 'UserVM-StdOut' -Action {
+          $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -SourceIdentifier 'Nanvixd-StdOut' -Action {
             if ($null -ne $EventArgs.Data) {
               [void]$Event.MessageData.AppendLine($EventArgs.Data)
               Write-Host $EventArgs.Data
             }
           } -MessageData $stdout
-          $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -SourceIdentifier 'UserVM-StdErr' -Action {
+          $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -SourceIdentifier 'Nanvixd-StdErr' -Action {
             if ($null -ne $EventArgs.Data) {
               [void]$Event.MessageData.AppendLine($EventArgs.Data)
               Write-Host $EventArgs.Data
@@ -269,8 +282,8 @@ jobs:
           # Give event handlers a moment to flush remaining data.
           Start-Sleep -Milliseconds 500
 
-          Unregister-Event -SourceIdentifier 'UserVM-StdOut'
-          Unregister-Event -SourceIdentifier 'UserVM-StdErr'
+          Unregister-Event -SourceIdentifier 'Nanvixd-StdOut'
+          Unregister-Event -SourceIdentifier 'Nanvixd-StdErr'
           Remove-Job -Id $outputEvent.Id -Force
           Remove-Job -Id $errorEvent.Id -Force
 
@@ -285,12 +298,12 @@ jobs:
           }
 
           $exitCode = $process.ExitCode
-          Write-Host "UserVM exited with code $exitCode"
+          Write-Host "nanvixd exited with code $exitCode"
 
           if ("${{ matrix.build-type }}" -eq "release") {
             # Release builds suppress debug output; just verify clean exit.
             if ($exitCode -ne 0) {
-              Write-Host "::error::Smoke test failed: UserVM exited with code $exitCode."
+              Write-Host "::error::Smoke test failed: nanvixd exited with code $exitCode."
               exit 1
             }
           } else {

@@ -46,6 +46,7 @@ use ::std::{
 #[derive(Debug, Clone)]
 pub struct Args {
     /// Optional HTTP server socket address (host:port). If present, enables HTTP mode.
+    #[cfg(unix)]
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
@@ -90,6 +91,7 @@ impl Args {
     /// Command-line flag that prints usage information.
     pub const OPT_HELP: &'static str = "-help";
     /// Command-line option that sets the HTTP socket address.
+    #[cfg(unix)]
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
@@ -144,6 +146,7 @@ impl Args {
     /// the parsing issue or validation failure.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
+        #[cfg(unix)]
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
         let mut toolchain_binary_directory: String =
@@ -194,6 +197,7 @@ impl Args {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("wrong usage"));
                 },
+                #[cfg(unix)]
                 Self::OPT_HTTP_SOCKADDR => {
                     i += 1;
                     http_sockaddr = Some(args[i].clone());
@@ -321,10 +325,12 @@ impl Args {
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
+        #[cfg(unix)]
         let http_mode: bool = http_sockaddr.is_some();
         let interactive_mode: bool = program_name.is_some();
 
         // Ensure exactly one mode is active.
+        #[cfg(unix)]
         if http_mode && interactive_mode {
             anyhow::bail!(
                 "cannot use both HTTP mode ({}) and interactive mode ({}) simultaneously",
@@ -333,6 +339,7 @@ impl Args {
             );
         }
 
+        #[cfg(unix)]
         if !http_mode && !interactive_mode {
             anyhow::bail!(
                 "must specify either HTTP mode ({} <sockaddr>) or interactive mode ({} <program> \
@@ -342,7 +349,18 @@ impl Args {
             );
         }
 
+        // On Windows, only interactive mode is supported.
+        #[cfg(windows)]
+        if !interactive_mode {
+            anyhow::bail!(
+                "must specify interactive mode ({} <program> [<args>...]) (HTTP mode is not \
+                 supported on Windows)",
+                Self::OPT_SEPARATOR
+            );
+        }
+
         Ok(Self {
+            #[cfg(unix)]
             http_sockaddr,
             binary_directory,
             toolchain_binary_directory,
@@ -374,13 +392,18 @@ impl Args {
     /// - `program_name`: Name of the program executable.
     ///
     pub fn usage(program_name: &str) {
+        #[cfg(unix)]
+        let http_usage: String = format!(
+            "\nUsage (HTTP mode):\n  {program_name} {} <sockaddr> [OPTIONS]\n",
+            Self::OPT_HTTP_SOCKADDR,
+        );
+        #[cfg(windows)]
+        let http_usage: &str = "";
+
         println!(
             "\
 Nanvix Daemon - System-level service and VM orchestration daemon for Nanvix OS.
-
-Usage (HTTP mode):
-  {program_name} {http_addr} <sockaddr> [OPTIONS]
-
+{http_usage}
 Usage (Interactive mode):
   {program_name} [OPTIONS] {separator} <program> [<args>...]
 
@@ -407,8 +430,8 @@ Options:
   {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
              {DEFAULT_TMP_DIRECTORY}).{gdb_port_line}
 ",
+            http_usage = http_usage,
             program_name = program_name,
-            http_addr = Self::OPT_HTTP_SOCKADDR,
             separator = Self::OPT_SEPARATOR,
             console_file = Self::OPT_CONSOLE_FILE,
             ramfs_filename = Self::OPT_RAMFS_FILENAME,
@@ -442,6 +465,7 @@ Options:
     ///
     /// The HTTP socket address if present; `None` otherwise.
     ///
+    #[cfg(unix)]
     pub fn http_sockaddr(&self) -> Option<&str> {
         self.http_sockaddr.as_deref()
     }
