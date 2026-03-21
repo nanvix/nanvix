@@ -31,6 +31,12 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $RootDir) { $RootDir = Get-Location }
 $BinDir = Join-Path $RootDir "bin"
+$LibDir = Join-Path $RootDir "lib"
+$TargetDir = Join-Path $RootDir "target"
+$CargoLock = Join-Path $RootDir "Cargo.lock"
+$VenvDir = Join-Path $RootDir ".venv"
+$SysImage = Join-Path $RootDir "nanvix.img"
+$SysrootLink = Join-Path $RootDir "sysroot"
 Set-Variable -Scope Script -Name DockerfileRelativePath -Value "scripts/setup/Dockerfile.build" -Option Constant
 
 # ==================================================================================================
@@ -217,7 +223,8 @@ function Remove-RestoredSymlinks {
             $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
             if ($null -eq $item) {
                 Write-Warn "Cannot read attributes for '$filePath'; skipping removal."
-            } elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+            }
+            elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
                 Remove-Item $absPath -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
@@ -305,117 +312,6 @@ function Get-DockerImageName {
     return "nanvix/toolchain:$imageTag$suffix"
 }
 
-function Convert-FileToLf {
-    param([string]$FilePath)
-
-    if (-not (Test-Path $FilePath -PathType Leaf)) {
-        return
-    }
-
-    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
-    if (-not ($bytes -contains 13)) {
-        return
-    }
-
-    $normalized = New-Object 'System.Collections.Generic.List[byte]'
-    for ($i = 0; $i -lt $bytes.Length; $i++) {
-        if ($bytes[$i] -eq 13 -and ($i + 1) -lt $bytes.Length -and $bytes[$i + 1] -eq 10) {
-            continue
-        }
-        $normalized.Add($bytes[$i])
-    }
-
-    if ($normalized.Count -ne $bytes.Length) {
-        [System.IO.File]::WriteAllBytes($FilePath, $normalized.ToArray())
-    }
-}
-
-function New-DockerBuildContext {
-    $tempContextDir = Join-Path ([System.IO.Path]::GetTempPath()) ("nanvix-docker-context-" + [guid]::NewGuid())
-    New-Item -ItemType Directory -Path $tempContextDir -Force | Out-Null
-
-    $excludedDirs = @(
-        ".git",
-        ".github",
-        ".githooks",
-        ".idea",
-        ".vscode",
-        ".cargo",
-        "bin",
-        "doc",
-        "env",
-        "home",
-        "images",
-        "lib",
-        "logs",
-        "mnt",
-        "target",
-        "temp",
-        "test",
-        "tmp",
-        "toolchain",
-        "venv",
-        ".venv"
-    )
-
-    $excludedFiles = @(
-        "*.a",
-        "*.dylib",
-        "*.iso",
-        "*.log",
-        "*.o",
-        "*.so",
-        "*.tar",
-        "*.tar.bz2",
-        "*.tar.gz"
-    )
-
-    $robocopyArgs = @(
-        $RootDir,
-        $tempContextDir,
-        "/E",
-        "/R:1",
-        "/W:1",
-        "/NFL",
-        "/NDL",
-        "/NJH",
-        "/NJS",
-        "/NP",
-        "/XD"
-    ) + $excludedDirs + @("/XF") + $excludedFiles
-
-    & robocopy @robocopyArgs | Out-Null
-    $robocopyExitCode = $LASTEXITCODE
-    if ($robocopyExitCode -gt 7) {
-        Remove-Item $tempContextDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Err "Failed to create temporary Docker build context."
-        exit 1
-    }
-
-    try {
-        $eolLines = git ls-files --eol
-        foreach ($line in $eolLines) {
-            if ($line -notmatch 'attr/.*eol=lf\s+(?<Path>.+)$') {
-                continue
-            }
-
-            $relativePath = $Matches['Path'].Trim()
-            if (-not $relativePath) {
-                continue
-            }
-
-            $contextFilePath = Join-Path $tempContextDir $relativePath
-            Convert-FileToLf -FilePath $contextFilePath
-        }
-    }
-    catch {
-        Remove-Item $tempContextDir -Recurse -Force -ErrorAction SilentlyContinue
-        throw
-    }
-
-    return $tempContextDir
-}
-
 function Invoke-DockerBuild {
     param([string]$BuildParams, [bool]$IsRelease = $false, [bool]$UseMinimal = $true)
 
@@ -431,8 +327,6 @@ function Invoke-DockerBuild {
 
     # Restore Git symlinks as file copies so the Docker build context is complete.
     Restore-GitSymlinks
-
-    $dockerContextPath = $null
 
     Write-Host "  Image: $imageName" -ForegroundColor DarkGray
 
@@ -453,47 +347,35 @@ function Invoke-DockerBuild {
     # venv). If a previous Docker export left a broken reparse point at .venv\lib64
     # on Windows, the output exporter fails with "The file cannot be accessed by
     # the system." Removing it beforehand prevents this.
-    $localVenv = Join-Path $RootDir ".venv"
-    if (Test-Path $localVenv) {
+    if (Test-Path $VenvDir) {
         # Use cmd to remove in case of broken reparse points that PowerShell can't handle.
-        cmd /c "rmdir /s /q `"$localVenv`"" 2>$null
-        if (Test-Path $localVenv) {
-            Remove-Item $localVenv -Recurse -Force -ErrorAction SilentlyContinue
+        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
+        if (Test-Path $VenvDir) {
+            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
-    # Create the Docker build context by copying the repository files to a temporary directory,
-    # excluding files that are not needed for the build. This avoids issues with Git symlinks on
-    # Windows and ensures a clean context for Docker. The context is cleaned up after the build.
+    # Use the repository directory directly as the Docker build context.
+    # The .dockerignore file handles exclusions (mirroring the old robocopy filter).
+    # Restore-GitSymlinks (called above) already materialized symlinks in-place,
+    # so the context is complete. Symlinks are restored after the build via the
+    # finally block below.
+    $buildExitCode = 1
     try {
-        $dockerContextPath = New-DockerBuildContext
+        docker build `
+            --build-arg "BASE_IMAGE=$imageName" `
+            --build-arg "BUILD_PARAMS=$BuildParams" `
+            --build-arg "SYSROOT_SUFFIX=$sysrootSuffix" `
+            --build-arg "WORKSPACE_PATH=/mnt" `
+            --output "type=local,dest=." `
+            --progress=plain `
+            -f $dockerfilePath `
+            $RootDir
+
+        $buildExitCode = $LASTEXITCODE
     }
     finally {
         Remove-RestoredSymlinks
-    }
-
-    $dockerfileContextPath = Join-Path $dockerContextPath $DockerfileRelativePath
-    if (-not (Test-Path $dockerfileContextPath)) {
-        Remove-Item $dockerContextPath -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Err "Build Dockerfile not found in temporary Docker context at $dockerfileContextPath"
-        exit 1
-    }
-
-    docker build `
-        --build-arg "BASE_IMAGE=$imageName" `
-        --build-arg "BUILD_PARAMS=$BuildParams" `
-        --build-arg "SYSROOT_SUFFIX=$sysrootSuffix" `
-        --build-arg "WORKSPACE_PATH=/mnt" `
-        --output "type=local,dest=." `
-        --progress=plain `
-        -f $dockerfileContextPath `
-        $dockerContextPath
-
-    $buildExitCode = $LASTEXITCODE
-
-    # Clean up the temporary Docker context directory.
-    if ($null -ne $dockerContextPath -and (Test-Path $dockerContextPath)) {
-        Remove-Item $dockerContextPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     if ($buildExitCode -ne 0) {
@@ -513,7 +395,7 @@ function Build-UserVm {
     $ErrorActionPreference = 'Continue'
 
     $mode = if ($IsRelease) { "release" } else { "debug" }
-    $profile = if ($IsRelease) { "--release" } else { "" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
 
     Write-Info "Building UserVM (microvm backend, $mode mode)..."
 
@@ -521,7 +403,7 @@ function Build-UserVm {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"microvm`" -p uservm $profile"
+    $cmd = "cargo build --no-default-features --features `"microvm`" -p uservm $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -563,15 +445,27 @@ function Invoke-Clean {
     $ErrorActionPreference = 'Continue'
 
     Write-Info "Removing build artifacts (quick clean)..."
+
+    # Clean native host packages.
     cargo clean -p uservm 2>$null
     cargo clean -p nanvixd 2>$null
     cargo clean -p nanvix-test 2>$null
-    $uvmBin = Join-Path $BinDir "uservm.exe"
-    if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
-    $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
-    if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
-    $nanvixTestBin = Join-Path $BinDir "nanvix-test.exe"
-    if (Test-Path $nanvixTestBin) { Remove-Item $nanvixTestBin -Force }
+
+    # Remove all guest binaries in bin/
+    if (Test-Path $BinDir) {
+        Get-ChildItem -Path $BinDir -File -Include "*.elf", "*.wasm" -Recurse |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
+    # Remove all guest libraries in lib/.
+    if (Test-Path $LibDir) {
+        Get-ChildItem -Path $LibDir -File -Include "*.a", "*.so" -Recurse |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
+    # Remove system image.
+    if (Test-Path $SysImage) { Remove-Item $SysImage -Force }
+
     Write-Success "Quick clean complete."
 }
 
@@ -579,14 +473,52 @@ function Invoke-DistClean {
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
+    # Distclean depends on clean.
+    Invoke-Clean
+
     Write-Info "Removing everything (full clean)..."
-    cargo clean 2>$null
-    if (Test-Path $BinDir) {
-        $uvmBin = Join-Path $BinDir "uservm.exe"
-        if (Test-Path $uvmBin) { Remove-Item $uvmBin -Force }
-        $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
-        if (Test-Path $nanvixdBin) { Remove-Item $nanvixdBin -Force }
+
+    # Remove Cargo.lock.
+    if (Test-Path $CargoLock) { Remove-Item $CargoLock -Force }
+
+    # Remove target/.
+    if (Test-Path $TargetDir) { Remove-Item $TargetDir -Recurse -Force }
+
+    # Remove lib/.
+    if (Test-Path $LibDir) { Remove-Item $LibDir -Recurse -Force }
+
+    # Remove bin/.
+    if (Test-Path $BinDir) { Remove-Item $BinDir -Recurse -Force }
+
+    # Remove .venv/. Use cmd rmdir first because Docker builds on Windows can
+    # leave broken reparse points (e.g., lib64 -> lib) that PowerShell's
+    # Remove-Item cannot handle.
+    if (Test-Path $VenvDir) {
+        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
+        if (Test-Path $VenvDir) {
+            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
+
+    # Remove sysroot-debug/ and sysroot-release/ (SYSROOT_DIR).
+    foreach ($suffix in @("sysroot-debug", "sysroot-release")) {
+        $sysrootDir = Join-Path $RootDir $suffix
+        if (Test-Path $sysrootDir) { Remove-Item $sysrootDir -Recurse -Force }
+    }
+
+    # Remove sysroot symlink (SYSROOT_LINK).
+    if (Test-Path $SysrootLink) { Remove-Item $SysrootLink -Force }
+
+    # Clean up Docker build cache for Nanvix.
+    $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
+    if ($dockerAvailable) {
+        Write-Info "Pruning Docker build cache..."
+        docker builder prune --force
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "Docker build cache prune failed with exit code $LASTEXITCODE."
+        }
+    }
+
     Write-Success "Full cleanup complete."
 }
 
@@ -607,7 +539,7 @@ function Invoke-Run {
     # Parse run options.
     for ($i = 0; $i -lt $RunArgs.Count; $i++) {
         switch ($RunArgs[$i]) {
-            "-kernel"  {
+            "-kernel" {
                 if ($i + 1 -ge $RunArgs.Count) {
                     Write-Err "Missing value for -kernel. Usage: .\z.ps1 run -- -kernel <path> [-initrd <path>]"
                     exit 1
@@ -615,7 +547,7 @@ function Invoke-Run {
                 $i++
                 $kernel = $RunArgs[$i]
             }
-            "-initrd"  {
+            "-initrd" {
                 if ($i + 1 -ge $RunArgs.Count) {
                     Write-Err "Missing value for -initrd. Usage: .\z.ps1 run -- [-kernel <path>] -initrd <path>"
                     exit 1
@@ -623,7 +555,7 @@ function Invoke-Run {
                 $i++
                 $initrd = $RunArgs[$i]
             }
-            default    { Write-Warn "Unknown run option: $($RunArgs[$i])" }
+            default { Write-Warn "Unknown run option: $($RunArgs[$i])" }
         }
     }
 
@@ -811,7 +743,8 @@ function Main {
                         }
                         if (-not $dockerRunning) {
                             Write-Warn "Skipping spellcheck (Docker not available or not running). Run with Docker to enable."
-                        } else {
+                        }
+                        else {
                             $dockerParams = @("spellcheck") + $makeParams
                             if (-not ($makeParams | Where-Object { $_ -match '^MACHINE=' })) {
                                 $dockerParams += "MACHINE=microvm"
