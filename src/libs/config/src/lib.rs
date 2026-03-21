@@ -242,6 +242,13 @@ pub mod microvm {
     /// Default VMM snapshot command. Triggers a guest-initiated VM snapshot.
     pub const DEFAULT_VMM_SNAPSHOT_CMD: u16 = 0x4000;
 
+    /// VMM idle command. The guest writes this to `DEFAULT_VMM_PORT` instead
+    /// of executing HLT, causing a VM exit. On WHP with LAPIC emulation,
+    /// `WHvRequestInterrupt` does not wake a halted vCPU; this paravirtualized
+    /// idle port gives the VMM a chance to re-enter so pending interrupts are
+    /// delivered on the next `WHvRunVirtualProcessor` call.
+    pub const DEFAULT_VMM_IDLE_CMD: u16 = 0x5000;
+
     /// Default base address for MicroVM control registers.
     pub const DEFAULT_MICROVM_CTRL_BASE: usize = 0x00000000;
 

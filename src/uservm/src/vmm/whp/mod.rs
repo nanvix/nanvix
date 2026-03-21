@@ -95,9 +95,6 @@ pub const INTERRUPT_SIGNAL: i32 = 0;
 /// Signal used to kill the vCPU thread (unused on Windows, but required by orchestrator).
 pub const KILL_SIGNAL: i32 = 0;
 
-/// IDT vector for IRQ 9 (IKC): PIC2 base (0x28) + (IRQ 9 - 8) = 0x29.
-const IKC_VECTOR: u32 = 0x29;
-
 //==================================================================================================
 // IKC Notifier
 //==================================================================================================
@@ -362,20 +359,15 @@ impl Vmm {
         // (odd = writing) then +1 (even = stable).
         let mut pvclock_version: u32 = 2;
 
-        // The timer runs on a background thread and injects interrupts via
-        // WHvRequestInterrupt (through the WHP LAPIC emulator). This is safe
-        // because the LAPIC emulator serializes interrupt delivery internally.
-        //
-        // The clock-refresh thread (WHvCancelRunVirtualProcessor) has been
-        // removed: that API triggered an intermittent ACCESS_VIOLATION
-        // (0xC0000005) at winhvplatform.dll+0x12f1d. Pvclock updates happen
-        // on each VMM loop iteration instead.
+        // Set Windows multimedia timer resolution to 1ms for accurate
+        // thread::sleep in the idle handler.
+        unsafe { crate::vmm::whp::timer::timeBeginPeriod(1) };
 
-        // Start the timer with the compile-time constant period.
-        self.timer
-            .lock()
-            .unwrap()
-            .start(::config::microvm::TIMER_PERIOD_US);
+        // Timer thread: DISABLED. WHvRequestInterrupt from the timer
+        // thread causes ACCESS_VIOLATION (0xC0000005) during idle cycles
+        // and deadlocks after the first idle re-entry. Timer interrupts
+        // are not needed: the kernel's check_alarm() reads pvclock time
+        // (updated by the VMM loop) and fires alarms when time passes.
 
         let result = loop {
             // Check shutdown flag.
@@ -405,20 +397,13 @@ impl Vmm {
                 loop_start.elapsed().as_nanos() as u64,
             );
 
-            // Check for pending IKC notification and inject via PendingInterruption.
-            if self.ikc_notifier.take_pending() {
-                let mut locked_vcpu = self.vcpu.blocking_lock();
-                if locked_vcpu.is_online() {
-                    let rflags = locked_vcpu.get_rflags().unwrap_or(0);
-                    if rflags & vcpu::RFLAGS_INTERRUPT_ENABLE != 0 {
-                        let _ = locked_vcpu.inject_pending_interruption(IKC_VECTOR);
-                    } else {
-                        locked_vcpu.set_deliverability_notifications(true);
-                        // Re-set pending so we try again on InterruptWindow.
-                        self.ikc_notifier.pending.store(true, Ordering::Release);
-                    }
-                }
-            }
+            // Consume pending IKC notifications silently. On WHP with LAPIC
+            // emulation (XApic mode), both inject_pending_interruption and
+            // WHvRequestInterrupt trigger ACCESS_VIOLATION (0xC0000005) or
+            // deadlock. The IKC interrupt is only a wake-up hint — the guest
+            // kernel already polls IKC messages on every kcall iteration via
+            // poll_ikc_messages(), so no interrupt injection is needed.
+            let _ = self.ikc_notifier.take_pending();
 
             let exit_context = {
                 let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
@@ -442,7 +427,7 @@ impl Vmm {
                     last_progress_time = std::time::Instant::now();
 
                     // Fast-path: handle legacy hardware ports inline.
-                    if let PmioAccess::PmioOut(port, _data, _width) = access {
+                    if let PmioAccess::PmioOut(port, data, _width) = access {
                         // PIC, PIT, speaker, IMCR, CMOS, serial: no-op.
                         match *port {
                             0x20
@@ -459,6 +444,29 @@ impl Vmm {
                                 continue;
                             },
                             _ => {},
+                        }
+
+                        // Paravirtualized idle: the guest kernel writes the
+                        // IDLE command to the VMM port instead of HLT. Sleep
+                        // for one timer period so pvclock advances, then
+                        // re-enter. No interrupt injection is needed — the
+                        // kernel's scheduler calls check_alarm(clock::now())
+                        // on each iteration, and clock::now() reads pvclock
+                        // which the VMM loop updates before every vCPU entry.
+                        //
+                        // WHvRequestInterrupt and PendingInterruption both
+                        // trigger WHP bugs (deadlock and ACCESS_VIOLATION
+                        // respectively) when LAPIC emulation is enabled, so
+                        // this pvclock-only approach avoids all WHP
+                        // concurrency issues.
+                        if *port == ::config::microvm::DEFAULT_VMM_PORT {
+                            let cmd = (*data >> 16) as u16;
+                            if cmd == ::config::microvm::DEFAULT_VMM_IDLE_CMD {
+                                std::thread::sleep(std::time::Duration::from_micros(
+                                    ::config::microvm::TIMER_PERIOD_US,
+                                ));
+                                continue;
+                            }
                         }
                     }
                     if let PmioAccess::PmioIn(port, _data) = access {
@@ -526,14 +534,16 @@ impl Vmm {
                     continue;
                 },
 
-                // InterruptWindow: IF just became 1. This may fire if
-                // DeliverabilityNotifications was set (e.g., for IKC).
+                // InterruptWindow: IF just became 1. On WHP with LAPIC
+                // emulation, inject_pending_interruption is unsafe (triggers
+                // ACCESS_VIOLATION), so we just clear the notification and
+                // consume any pending IKC flag. The guest kernel polls IKC
+                // messages on every kcall iteration, so no injection needed.
                 VirtualProcessorExitReasonRef::InterruptWindow => {
-                    let mut locked_vcpu = self.vcpu.blocking_lock();
-                    locked_vcpu.set_deliverability_notifications(false);
-                    if self.ikc_notifier.take_pending() && locked_vcpu.is_online() {
-                        let _ = locked_vcpu.inject_pending_interruption(IKC_VECTOR);
-                    }
+                    self.vcpu
+                        .blocking_lock()
+                        .set_deliverability_notifications(false);
+                    let _ = self.ikc_notifier.take_pending();
                     continue;
                 },
 
@@ -558,8 +568,8 @@ impl Vmm {
             }
         };
 
-        // Stop the timer background thread before returning.
-        self.timer.lock().unwrap().stop();
+        // Restore Windows multimedia timer resolution.
+        unsafe { crate::vmm::whp::timer::timeEndPeriod(1) };
 
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
         result

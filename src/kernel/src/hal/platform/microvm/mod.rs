@@ -114,7 +114,15 @@ pub(super) unsafe fn enable_interrupts() {
 /// It is safe to call this function only when the CPU is able to receive interrupts.
 ///
 pub(super) unsafe fn wait_for_interrupt() {
-    ::arch::cpu::halt();
+    // Paravirtualized idle: write the IDLE command to the VMM port. This
+    // causes a VM exit, giving the host VMM a chance to re-enter the guest
+    // so that pending timer interrupts are delivered. On WHP with LAPIC
+    // emulation, WHvRequestInterrupt does NOT unhalt a vCPU from HLT, so
+    // using HLT here would deadlock whenever the guest goes idle.
+    ::arch::io::out32(
+        ::config::microvm::DEFAULT_VMM_PORT,
+        (::config::microvm::DEFAULT_VMM_IDLE_CMD as u32) << 16,
+    );
 }
 
 ///

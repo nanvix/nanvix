@@ -9,7 +9,7 @@
 # NOTE: The following tests are disabled due to pre-existing VMM/guest kernel
 # issues on the WHP (microvm) backend, unrelated to the nanvix-test harness:
 #
-#   - thread-rust.elf, stress-rust.elf, thread-c.elf, misc-c.elf:
+#   - thread-rust.elf, stress-rust.elf, thread-c.elf:
 #       Hang indefinitely (no stdout output, timeout after 5 min). Threading
 #       paths trigger a timing sensitivity in the WHP VMM that prevents the
 #       guest from completing.
@@ -122,4 +122,15 @@ expected_output = "hello"
 [[tests]]
 executor = "terminal"
 program = "./bin/memory-c.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/misc-c.elf"
+program_args = ";NANVIX_TEST=1"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/thread-rust.elf"
 expected_output = "ok"
