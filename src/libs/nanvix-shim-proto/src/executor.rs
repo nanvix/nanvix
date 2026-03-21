@@ -26,6 +26,11 @@ use crate::{
     sys,
     task_service::NanvixTaskService,
 };
+use containerd_shim_protos::{
+    sandbox_async,
+    shim_async,
+    ttrpc,
+};
 use nanvix_shim_core::{
     execution::ExecutionMode,
     registry::ModeRegistry,
@@ -187,11 +192,6 @@ impl ShimExecutor {
         &self,
         mode: Arc<dyn ExecutionMode>,
     ) -> anyhow::Result<ttrpc::asynchronous::Server> {
-        use containerd_shim_protos::{
-            sandbox_async,
-            shim_async,
-        };
-
         if self.args.socket.is_empty() {
             anyhow::bail!("no socket address provided");
         }
@@ -214,13 +214,13 @@ impl ShimExecutor {
         };
 
         // Register Task service.
-        let task_svc: Arc<Box<dyn shim_async::Task + Send + Sync>> =
-            Arc::new(Box::new(NanvixTaskService::new(mode.clone())));
+        let task_svc: Arc<dyn shim_async::Task + Send + Sync> =
+            Arc::new(NanvixTaskService::new(mode.clone()));
         let server = server.register_service(shim_async::create_task(task_svc));
 
         // Register Sandbox service.
-        let sandbox_svc: Arc<Box<dyn sandbox_async::Sandbox + Send + Sync>> =
-            Arc::new(Box::new(NanvixSandboxService::new(mode)));
+        let sandbox_svc: Arc<dyn sandbox_async::Sandbox + Send + Sync> =
+            Arc::new(NanvixSandboxService::new(mode));
         let server = server.register_service(sandbox_async::create_sandbox(sandbox_svc));
 
         Ok(server)

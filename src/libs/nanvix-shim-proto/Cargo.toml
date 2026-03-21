@@ -22,7 +22,6 @@ env_logger = { workspace = true }
 oci-spec = { workspace = true }
 protobuf = { workspace = true }
 sha2 = { workspace = true }
-ttrpc = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
 
 [target.'cfg(unix)'.dependencies]
