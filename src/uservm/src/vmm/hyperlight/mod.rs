@@ -15,18 +15,14 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::arch::mem::PAGE_SIZE;
 use ::core::convert::TryFrom;
 use ::hyperlight_host::{
     GuestBinary,
+    GuestCounter,
     HyperlightError,
     MultiUseSandbox,
     UninitializedSandbox,
-    mem::{
-        memory_region::MemoryRegionFlags,
-        mgr::SandboxMemoryManager,
-        shared_mem::ExclusiveSharedMemory,
-    },
+    mem::memory_region::MemoryRegionFlags,
     sandbox::{
         SandboxConfiguration,
         uninitialized::{
@@ -75,6 +71,9 @@ pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 /// See issue #1010 for more context on this workaround.
 pub const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(100);
 
+/// Label used for the RAMFS file mapping in the PEB.
+const RAMFS_LABEL: &str = "ramfs";
+
 //==================================================================================================
 // Types
 //==================================================================================================
@@ -87,6 +86,10 @@ pub type StdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
 /// DataChunkHeader, and this function reads the actual data from guest shared memory at the GPA
 /// stored in the header.
 pub type BulkStdoutFn = dyn FnMut(Vec<u8>) -> Result<i32, HyperlightError> + Send;
+
+/// Input function for chunked bulk reads (VmbusBulkRead host function). Each call returns
+/// the next chunk of pending bulk data (up to MAX_CHUNK bytes), or an empty Vec when done.
+pub type BulkStdinFn = dyn FnMut() -> Result<Vec<u8>, HyperlightError> + Send;
 
 pub type StderrFn = dyn Write + Send;
 
@@ -148,7 +151,7 @@ impl Drop for StderrRedirect {
 //==================================================================================================
 
 pub struct VirtualMemory {
-    manager: SandboxMemoryManager<ExclusiveSharedMemory>,
+    counter: GuestCounter,
 }
 
 //==================================================================================================
@@ -156,64 +159,20 @@ pub struct VirtualMemory {
 //==================================================================================================
 
 impl VirtualMemory {
+    /// Writes a sequence of bytes into guest memory at the given address.
     ///
-    /// # Description
-    ///
-    /// Writes a byte slice into guest memory at the given guest physical address.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: Guest physical address (identity-mapped to shared memory offset).
-    /// - `data`: Byte slice to write.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Upon failure, an error is returned instead.
-    ///
-    pub fn write_bytes(&mut self, addr: u64, data: &[u8]) -> ::anyhow::Result<()> {
-        let offset: usize = usize::try_from(addr).map_err(|e| {
-            let reason: String = format!("write_bytes address overflow at {addr:#x}: {e}");
-            error!("{reason}");
-            anyhow::anyhow!(reason)
-        })?;
-        self.manager
-            .get_shared_mem_mut()
-            .copy_from_slice(data, offset)
-            .map_err(|e| {
-                let reason: String = format!("write_bytes failed at {addr:#x}: {e}");
-                error!("{reason}");
-                anyhow::anyhow!(reason)
-            })
+    /// TODO (#1731): implement using upstream hyperlight host shared-memory API.
+    pub fn write_bytes(&mut self, _addr: u64, _data: &[u8]) -> ::anyhow::Result<()> {
+        error!("write_bytes(): not implemented for hyperlight VMM");
+        Err(anyhow::anyhow!("write_bytes not implemented for hyperlight VMM"))
     }
 
+    /// Reads a sequence of bytes from guest memory at the given address.
     ///
-    /// # Description
-    ///
-    /// Reads bytes from guest memory at the given guest physical address.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: Guest physical address (identity-mapped to shared memory offset).
-    /// - `data`: Destination buffer to read into.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, empty is returned. Upon failure, an error is returned instead.
-    ///
-    pub fn read_bytes(&mut self, addr: u64, data: &mut [u8]) -> ::anyhow::Result<()> {
-        let offset: usize = usize::try_from(addr).map_err(|e| {
-            let reason: String = format!("read_bytes address overflow at {addr:#x}: {e}");
-            error!("{reason}");
-            anyhow::anyhow!(reason)
-        })?;
-        self.manager
-            .get_shared_mem_mut()
-            .copy_to_slice(data, offset)
-            .map_err(|e| {
-                let reason: String = format!("read_bytes failed at {addr:#x}: {e}");
-                error!("{reason}");
-                anyhow::anyhow!(reason)
-            })
+    /// TODO (#1731): implement using upstream hyperlight host shared-memory API.
+    pub fn read_bytes(&mut self, _addr: u64, _data: &mut [u8]) -> ::anyhow::Result<()> {
+        error!("read_bytes(): not implemented for hyperlight VMM");
+        Err(anyhow::anyhow!("read_bytes not implemented for hyperlight VMM"))
     }
 }
 
@@ -238,11 +197,8 @@ struct InnerVmm {
 
 impl Vmm {
     pub fn new(args: MicroVmArgs) -> Result<Self> {
-        let guest: Guest = Guest::default();
+        let guest: Guest = Guest;
 
-        // Required values for heap and stack sizes to be used by the kernel.
-        let heap_size: usize = config::kernel::KPOOL_SIZE;
-        let stack_size: usize = ::config::hyperlight::STACK_SIZE;
         let memory_size: usize = ::config::kernel::MEMORY_SIZE;
 
         let guest_env: GuestEnvironment = if let Some(initrd_filename) = &args.initrd_filename {
@@ -254,75 +210,6 @@ impl Vmm {
                     // Detect whether this is a multibinary NVMB image or a single ELF.
                     let is_multibinary: bool = initrd_size >= ::multibin::MAGIC.len()
                         && bytes[..::multibin::MAGIC.len()] == ::multibin::MAGIC;
-
-                    // Read kernel file to compute memory footprint.
-                    let kernel_bytes: Vec<u8> =
-                        std::fs::read(&args.kernel_filename).map_err(|e| {
-                            let reason: String = format!("failed to read kernel file: {}", e);
-                            error!("new(): {}", reason);
-                            anyhow::anyhow!(reason)
-                        })?;
-
-                    let kernel_footprint: crate::elf::MemoryFootprint =
-                        crate::elf::memory_footprint(&kernel_bytes).map_err(|e| {
-                            let reason: String =
-                                format!("failed to compute kernel memory footprint: {}", e);
-                            error!("new(): {}", reason);
-                            anyhow::anyhow!(reason)
-                        })?;
-                    let kernel_end: usize = kernel_footprint.end();
-                    let kernel_mem_size: usize = kernel_footprint.size();
-
-                    // Fixed hyperlight structures placed after the kernel image:
-                    // PEB, host function definitions, and I/O buffers.
-                    let structures_size: usize = ::config::hyperlight::PEB_SIZE
-                        + ::config::hyperlight::HOST_FUNCTION_DEFINITIONS_SIZE
-                        + ::config::hyperlight::INPUT_DATA_BUFFER_SIZE
-                        + ::config::hyperlight::OUTPUT_DATA_BUFFER_SIZE;
-
-                    // Compute heap padding: the gap between the end of structures and the kernel
-                    // heap.  KPOOL_BASE is where the kernel heap starts and must be page-table
-                    // aligned.
-                    let structures_end: usize =
-                        kernel_end.checked_add(structures_size).ok_or_else(|| {
-                            let reason: &str = "structures overflow kernel end";
-                            error!("new(): {reason} (kernel_end={kernel_end:#010x})");
-                            anyhow::anyhow!(reason)
-                        })?;
-
-                    if structures_end > ::config::memory_layout::KPOOL_BASE_RAW {
-                        let reason: &str = "heap base overlaps with fixed structures";
-                        error!(
-                            "new(): {reason} (structures_end={structures_end:#010x}, \
-                             kpool_base={:#010x})",
-                            ::config::memory_layout::KPOOL_BASE_RAW
-                        );
-                        return Err(anyhow::anyhow!(reason));
-                    }
-
-                    let heap_padding: usize =
-                        ::config::memory_layout::KPOOL_BASE_RAW - structures_end;
-
-                    debug!(
-                        "new(): kernel_end={kernel_end:#010x}, \
-                         structures_size={structures_size:#x}, \
-                         structures_end={structures_end:#010x}, heap_padding={heap_padding:#x}"
-                    );
-
-                    // Total reserved memory includes fixed structures plus heap padding.
-                    let reserved_memory: usize =
-                        structures_size.checked_add(heap_padding).ok_or_else(|| {
-                            let reason: &str = "reserved memory calculation overflow";
-                            error!("new(): {reason}");
-                            anyhow::anyhow!(reason)
-                        })?;
-
-                    let heap_and_stack: usize =
-                        heap_size.checked_add(stack_size).ok_or_else(|| {
-                            let reason: &str = "heap and stack size calculation overflow";
-                            error!("new(): {reason}");
-                            anyhow::anyhow!(reason)
-                        })?;
 
                     // Build the init_data blob based on the initrd format.
                     let init_data_bytes: Vec<u8> = if is_multibinary {
@@ -357,47 +244,9 @@ impl Vmm {
                         padded
                     };
 
-                    let required_memory: usize = kernel_mem_size
-                        .checked_add(init_data_bytes.len())
-                        .and_then(|value| value.checked_add(heap_and_stack))
-                        .and_then(|value| value.checked_add(reserved_memory))
-                        .ok_or_else(|| {
-                            let reason: &str = "required memory calculation overflow";
-                            error!("new(): {reason}");
-                            anyhow::anyhow!(reason)
-                        })?;
-
-                    // Check if required memory exceeds memory size.
-                    if memory_size <= required_memory {
-                        let reason: &str = "not enough memory";
-                        error!(
-                            "new(): {reason} ({required_memory} bytes required, {memory_size} \
-                             bytes total)"
-                        );
-                        return Err(anyhow::anyhow!(reason));
-                    }
-
-                    // Round up to page boundary for KVM compatibility.
-                    // FIXME (#1307): fix calculation for required_memory.
-                    let padding_size: usize =
-                        (memory_size - required_memory + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-
-                    debug!(
-                        "initrd init_data: {} bytes, extra memory: {} bytes",
-                        init_data_bytes.len(),
-                        padding_size
-                    );
-
                     // Box the data to extend its lifetime.
                     let boxed_data: Box<[u8]> = init_data_bytes.into_boxed_slice();
                     let data_ref: &'static [u8] = Box::leak(boxed_data);
-
-                    let extra_memory: u64 = padding_size.try_into().map_err(|_| {
-                        let reason: String =
-                            format!("padding size {} exceeds supported range", padding_size);
-                        error!("initrd(): {}", reason);
-                        anyhow::anyhow!(reason)
-                    })?;
 
                     GuestEnvironment {
                         guest_binary: GuestBinary::FilePath(args.kernel_filename.to_string()),
@@ -407,7 +256,6 @@ impl Vmm {
                                 | MemoryRegionFlags::WRITE
                                 | MemoryRegionFlags::EXECUTE,
                         }),
-                        extra_memory: Some(extra_memory),
                     }
                 },
                 Err(err) => {
@@ -420,27 +268,66 @@ impl Vmm {
             GuestEnvironment::new(GuestBinary::FilePath(args.kernel_filename.to_string()), None)
         };
 
+        // The hyperlight heap covers everything from after the I/O buffers to the end of the
+        // usable guest physical memory. With `executable_heap` enabled, it is RWX so the kernel
+        // can execute code from the heap (used for process loading).
+        //
+        // The heap must be large enough to cover:
+        //   - Padding from structures_end to KPOOL_BASE
+        //   - KPOOL_SIZE (the kernel pool)
+        //   - Any remaining memory up to memory_size
+        //
+        // We compute heap_size as: memory_size - HYPERLIGHT_BASE_ADDRESS - overhead
+        // where overhead accounts for the kernel code, PEB, and I/O buffers that precede the heap.
+        // Since we don't know the exact kernel code size here (hyperlight computes it internally),
+        // we use memory_size as an upper bound. Hyperlight will allocate only what's needed.
         let mut config: SandboxConfiguration = SandboxConfiguration::default();
-        let heap_size_u64: u64 = u64::try_from(heap_size).map_err(|_| {
-            let reason: String = format!("heap size {} exceeds supported range", heap_size);
-            error!("hyperlight::new(): {}", reason);
-            anyhow::anyhow!(reason)
-        })?;
-        config.set_heap_size(heap_size_u64);
 
-        let stack_size_u64: u64 = u64::try_from(stack_size).map_err(|_| {
-            let reason: String = format!("stack size {} exceeds supported range", stack_size);
-            error!("hyperlight::new(): {}", reason);
-            anyhow::anyhow!(reason)
-        })?;
-        config.set_stack_size(stack_size_u64);
+        // Set heap large enough to cover from after kernel structures through end of memory.
+        // The actual heap start depends on the kernel loaded size, PEB, and I/O buffers.
+        // We request enough heap so that the heap region extends well beyond KPOOL_BASE + KPOOL_SIZE.
+        let heap_size: usize = memory_size;
+        config.set_heap_size(heap_size as u64);
 
         // Creates Hyperlight sandbox.
-        let mut sandbox: UninitializedSandbox = UninitializedSandbox::new(guest_env, Some(config))?;
-        let manager: SandboxMemoryManager<ExclusiveSharedMemory> = sandbox.mgr.clone();
-        let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory {
-            manager: manager.clone(),
-        }));
+        let mut sandbox: UninitializedSandbox = UninitializedSandbox::new(guest_env, Some(config))
+            .map_err(|e| {
+                error!("failed to create UninitializedSandbox: {e:?}");
+                anyhow::anyhow!("{e:?}")
+            })?;
+
+        // Map RAMFS file into sandbox memory if provided.
+        // The file is mapped copy-on-write at the first GPA after the sandbox's
+        // shared memory slot. With nanvix-unstable, BASE_ADDRESS is 0x0 so the
+        // shared memory occupies GPA [0, shared_mem_size). The file mapping
+        // metadata is automatically written to the PEB during evolve(), so the
+        // guest kernel can discover and identity-map the RAMFS region during boot.
+        if let Some(ramfs_filename) = &args.ramfs_filename {
+            let ramfs_path: &Path = Path::new(ramfs_filename);
+            let ramfs_gpa: u64 = sandbox.shared_mem_size() as u64;
+            let ramfs_size: u64 = sandbox
+                .map_file_cow(ramfs_path, ramfs_gpa, Some(RAMFS_LABEL))
+                .map_err(|e| {
+                    error!("failed to map ramfs file: {e:?}");
+                    anyhow::anyhow!("failed to map ramfs file: {e:?}")
+                })?;
+            debug!(
+                "ramfs: mapped {:?} ({} bytes) at GPA {:#010x}",
+                ramfs_path, ramfs_size, ramfs_gpa
+            );
+        }
+
+        // Create a guest counter backed by a fixed offset in scratch memory.
+        // The counter holds its own Arc clones of the mapping handle and RwLock,
+        // so it remains valid across evolve() and for the sandbox's entire lifetime.
+        let counter: GuestCounter = sandbox
+            .guest_counter()
+            .map_err(|e| {
+                error!("failed to get guest counter: {e:?}");
+                anyhow::anyhow!("{e:?}")
+            })?;
+
+        let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory { counter }));
 
         let guest: Arc<Mutex<Guest>> = Arc::new(Mutex::new(guest));
 
@@ -467,10 +354,30 @@ impl Vmm {
             bulk_output_fn(data).unwrap_or(-1)
         })?;
 
+        // Create a closure for VmbusBulkRead that returns chunks of pending bulk data.
+        let mut bulk_input_fn: Box<BulkStdinFn> = args.bulk_input;
+        sandbox.register("VmbusBulkRead", move || -> Vec<u8> {
+            match bulk_input_fn() {
+                Ok(data) => data,
+                Err(e) => {
+                    error!("VmbusBulkRead: {e:?}");
+                    Vec::new()
+                },
+            }
+        })?;
+
         // Create a closure for VmbusRead that matches the expected signature
         // NOTE: input function is FnMut, so we must keep it mutable when captured.
         let mut input_fn: Box<StdinFn> = args.input;
-        sandbox.register("VmbusRead", move || -> Vec<u8> { input_fn().unwrap_or_default() })?;
+        sandbox.register("VmbusRead", move || -> Vec<u8> {
+            match input_fn() {
+                Ok(data) => data,
+                Err(e) => {
+                    error!("VmbusRead: {e:?}");
+                    Vec::new()
+                },
+            }
+        })?;
 
         Ok(Self {
             vmem,
@@ -538,32 +445,72 @@ impl Vmm {
         }
 
         // Parse result.
+        // NOTE: The kernel uses abort_with_code() for all exit codes (including 0) rather
+        // than halt() to avoid a race condition with SIGKILL. See issue #1010.
+        // During evolve(), GuestAborted is wrapped in HyperlightVmError(Initialize(...))
+        // so we must extract it from the nested error chain.
         match result {
             Ok(_multiuse_sandbox) => {
-                // Successful completion via halt().
                 debug!("run(): vmm exited normally");
                 Ok(0)
             },
-            Err(error) => {
-                // Extract numeric exit code from GuestAborted error.
-                // NOTE: The kernel uses abort_with_code() for all exit codes (including 0) rather
-                // than halt() to avoid a race condition with SIGKILL. See issue #1010.
-                match error {
-                    HyperlightError::GuestAborted(code, ref message) => {
-                        if message.is_empty() {
-                            debug!("run(): guest exited (code={code})");
-                        } else {
-                            debug!("run(): guest exited (code={code}, message={message})");
-                        }
-                        Ok(code as u16)
-                    },
-                    _ => {
-                        error!("run(): vmm aborted (error={error:?})");
-                        Ok(ErrorCode::ConnectionReset.into())
-                    },
-                }
+            Err(error) => match Self::extract_guest_abort(&error) {
+                Some((code, message)) => {
+                    if message.is_empty() {
+                        debug!("run(): guest exited (code={code})");
+                    } else {
+                        debug!("run(): guest exited (code={code}, message={message})");
+                    }
+                    Ok(code as u16)
+                },
+                None => {
+                    error!("run(): vmm aborted (error={error:?})");
+                    Ok(ErrorCode::ConnectionReset.into())
+                },
             },
         }
+    }
+
+    /// Extracts the guest exit code from a nested `GuestAborted` error.
+    ///
+    /// The kernel always exits via `abort_with_code()`, which during `evolve()` is wrapped as:
+    /// `HyperlightVmError(Initialize(Run(HandleIo(Outb(GuestAborted { code, message })))))`.
+    /// Since the nested error types are `pub(crate)` in hyperlight, we match the top-level
+    /// `GuestAborted` variant directly and fall back to parsing the `Debug` representation.
+    fn extract_guest_abort(error: &HyperlightError) -> Option<(u8, String)> {
+        // Direct match for top-level GuestAborted (used by DispatchGuestCall path).
+        if let HyperlightError::GuestAborted(code, message) = error {
+            return Some((*code, message.clone()));
+        }
+
+        // For Initialize path, parse the Debug representation.
+        // Format: ...GuestAborted { code: N, message: "..." }...
+        let debug_str = format!("{error:?}");
+        Self::parse_guest_aborted_from_debug(&debug_str)
+    }
+
+    /// Parses a `GuestAborted { code: N, message: "..." }` fragment from a `Debug` string.
+    fn parse_guest_aborted_from_debug(debug_str: &str) -> Option<(u8, String)> {
+        const CODE_PREFIX: &str = "code: ";
+        const MESSAGE_PREFIX: &str = "message: \"";
+
+        let rest = &debug_str[debug_str.find("GuestAborted")?..];
+        let code_str = &rest[rest.find(CODE_PREFIX)? + CODE_PREFIX.len()..];
+        let code_end = code_str.find([',', ' ', '}'])?;
+        let code = code_str[..code_end].parse::<u8>().ok()?;
+
+        let message = rest
+            .find(MESSAGE_PREFIX)
+            .map(|pos| {
+                let msg_str = &rest[pos + MESSAGE_PREFIX.len()..];
+                msg_str
+                    .find('"')
+                    .map(|end| msg_str[..end].to_string())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        Some((code, message))
     }
 
     ///
@@ -655,5 +602,45 @@ impl Vmm {
         };
 
         Ok([&[args_len], &args_bytes[..]].concat())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Vmm;
+
+    #[test]
+    fn parse_guest_aborted_typical() {
+        let input = r#"HyperlightVmError(Initialize(Run(HandleIo(Outb(GuestAborted { code: 42, message: "kernel panic" })))))"#;
+        let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, Some((42, "kernel panic".to_string())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_empty_message() {
+        let input = r#"GuestAborted { code: 1, message: "" }"#;
+        let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, Some((1, String::new())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_no_message_field() {
+        let input = "GuestAborted { code: 7 }";
+        let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, Some((7, String::new())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_missing() {
+        let input = "SomeOtherError { reason: \"something\" }";
+        let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn parse_guest_aborted_invalid_code() {
+        let input = r#"GuestAborted { code: 999, message: "overflow" }"#;
+        let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, None); // 999 doesn't fit u8
     }
 }
