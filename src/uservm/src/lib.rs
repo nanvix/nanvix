@@ -117,6 +117,11 @@ use ::sys::ipc::{
     MessageSender,
     MessageType,
 };
+#[cfg(feature = "hyperlight")]
+use ::sys::pm::{
+    ProcessIdentifier,
+    ThreadIdentifier,
+};
 use ::tokio::{
     sync::{
         Mutex,
@@ -239,6 +244,7 @@ impl UserVm {
             Receiver<VcpuControlResponse>,
         ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
+        #[cfg(not(feature = "hyperlight"))]
         let vmm_stderr_fn: Box<dyn Write + Send> = match get_stderr_writer(args.stderr.clone()) {
             Ok(vmm_stderr_fn) => vmm_stderr_fn,
             Err(e) => {
@@ -259,10 +265,10 @@ impl UserVm {
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
 
         // Input function used for emulating I/O port reads.
-        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+        #[cfg(not(feature = "hyperlight"))]
         let ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool> =
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+        #[cfg(not(feature = "hyperlight"))]
         let vmm_stdin_fn: Box<StdinFn> =
             build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
 
@@ -274,15 +280,32 @@ impl UserVm {
         let vmm_bulk_stdout_fn: Box<crate::vmm::BulkStdoutFn> =
             bulk_output_fn(bulk_stdout_tx, handles.clone());
 
+        // Shared buffer for pending bulk read data (VmbusBulkRead host function).
         #[cfg(feature = "hyperlight")]
-        let vmm_stdin_fn: Box<StdinFn> =
-            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), handles.clone());
+        let pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        #[cfg(feature = "hyperlight")]
+        let vmm_stdin_fn: Box<StdinFn> = build_input_fn(
+            vcpu_thread_stdin_rx,
+            args.counters.clone(),
+            handles.clone(),
+            pending_bulk_data.clone(),
+        );
+
+        // Bulk input function for hyperlight VmbusBulkRead host function.
+        #[cfg(feature = "hyperlight")]
+        let vmm_bulk_stdin_fn: Box<crate::vmm::BulkStdinFn> =
+            build_bulk_input_fn(pending_bulk_data.clone());
 
         let microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
             #[cfg(feature = "hyperlight")]
             bulk_output: vmm_bulk_stdout_fn,
+            #[cfg(feature = "hyperlight")]
+            bulk_input: vmm_bulk_stdin_fn,
+            #[cfg(not(feature = "hyperlight"))]
             stderr: vmm_stderr_fn,
             #[cfg(feature = "hyperlight")]
             stderr_path: args.stderr.clone(),
@@ -323,7 +346,7 @@ impl UserVm {
             add_credit_fn(
                 guest.clone(),
                 vmem.clone(),
-                #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+                #[cfg(not(feature = "hyperlight"))]
                 microvm.ikc_notifier(),
             ),
             args.counters.clone(),
@@ -431,12 +454,12 @@ fn resume_microvm(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> 
 fn add_credit_fn(
     guest: Arc<Mutex<Guest>>,
     vmem: Arc<Mutex<VirtualMemory>>,
-    #[cfg(all(feature = "microvm", not(feature = "hyperlight")))] notifier: crate::vmm::IkcNotifier,
+    #[cfg(not(feature = "hyperlight"))] notifier: crate::vmm::IkcNotifier,
 ) -> Box<AddCreditFn> {
     Box::new(move || {
         let guest: Arc<Mutex<Guest>> = guest.clone();
         let vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
-        #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+        #[cfg(not(feature = "hyperlight"))]
         let notifier: crate::vmm::IkcNotifier = notifier.clone();
         Box::pin(async move {
             // Scope the locks so they are released before the IRQ injection.
@@ -445,10 +468,10 @@ fn add_credit_fn(
                 let mut vmem = vmem.lock().await;
                 guest.add_credit(&mut vmem)?;
             }
-            // Inject an edge-triggered IRQ to wake the guest from HLT immediately, rather than
-            // waiting for the next PIT timer tick.  This is lock-free — the notifier uses a
-            // duplicated VM fd (KVM) or cancels the vCPU (WHP).
-            #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+            // Inject an edge-triggered IRQ to wake the guest from HLT
+            // immediately, rather than waiting for the next PIT timer tick.
+            // This is lock-free — the notifier uses a duplicated VM fd.
+            #[cfg(not(feature = "hyperlight"))]
             notifier.notify()?;
             Ok(())
         })
@@ -510,7 +533,7 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
 ///
-#[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+#[cfg(not(feature = "hyperlight"))]
 pub fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
@@ -634,6 +657,7 @@ pub fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
     handles: UserVmHandles,
+    pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>>,
 ) -> Box<StdinFn> {
     let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
         on_input_function_called(&counters);
@@ -677,15 +701,10 @@ pub fn build_input_fn(
                 Ok(msg.to_bytes().to_vec())
             },
             Some(IkcFrame::Bulk(mut bulk)) => {
-                // Handle data chunk transfer: write data directly into guest memory at the address
-                // specified by the pull request header, then return a PullResponse
-                // notification message to the kernel.
-                //
-                // NOTE: this creates a temporal coupling with the kernel's main
-                // loop. The returned PullResponse message must be consumed by the
-                // kernel before the next IKC message arrives on the same buffer.
-                // On a single-core guest this is guaranteed because the kernel
-                // processes messages sequentially.
+                // Handle data chunk transfer: store the bulk payload in the shared
+                // pending_bulk_data buffer and return only the PullResponse notification
+                // message (64 bytes). The kernel will then call VmbusBulkRead in a loop
+                // to retrieve the bulk data in small chunks that fit in the slab allocator.
                 on_message_received_from_memory_thread(&counters);
 
                 // Label: uservm::lib::vm_input::vmexit()
@@ -706,34 +725,38 @@ pub fn build_input_fn(
                 let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
                 let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
 
-                let dest_addr: u64 = bulk.header().data_addr() as u64;
                 let actual_len: usize = bulk.data().len();
-                trace!("input(): writing {actual_len} bulk bytes to guest at {dest_addr:#x}");
-                // Label: uservm::lib::vm_input::vm_write_bytes()
-                profiler::timestamp_message!(bulk.data_mut(), 0);
-                locked_vmem
-                    .write_bytes(dest_addr, bulk.data())
-                    .map_err(|e| {
-                        let reason: String = format!(
-                            "failed to write bulk data to guest at {dest_addr:#x} ({actual_len} \
-                             bytes): {e}"
-                        );
+                trace!("input(): storing {actual_len} bulk bytes for VmbusBulkRead");
+
+                // Extract header fields before consuming the bulk data.
+                let source_pid: ProcessIdentifier = bulk.header().source_pid();
+                let source_tid: ThreadIdentifier = bulk.header().source_tid();
+                let dest_pid: ProcessIdentifier = bulk.header().destination_pid();
+                let dest_tid: ThreadIdentifier = bulk.header().destination_tid();
+                let data_addr: u32 = bulk.header().data_addr();
+
+                // Store the bulk data in the shared buffer for VmbusBulkRead to consume.
+                {
+                    let mut buf = pending_bulk_data.lock().map_err(|e| {
+                        let reason: String = format!("failed to lock pending_bulk_data: {e}");
                         error!("input(): {reason}");
                         hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
                     })?;
+                    *buf = bulk.into_data();
+                }
 
-                // Construct a PullResponse notification message.
+                // Construct a PullResponse notification message (fits in Slab128).
                 let actual_len_u32: u32 = u32::try_from(actual_len).map_err(|e| {
                     let reason: String = format!("bulk data length exceeds u32: {e}");
                     error!("input(): {reason}");
                     hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
                 })?;
                 let completion_header: DataChunkHeader = DataChunkHeader::new(
-                    bulk.header().source_pid(),
-                    bulk.header().source_tid(),
-                    bulk.header().destination_pid(),
-                    bulk.header().destination_tid(),
-                    bulk.header().data_addr(),
+                    source_pid,
+                    source_tid,
+                    dest_pid,
+                    dest_tid,
+                    data_addr,
                     actual_len_u32,
                 );
                 let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
@@ -762,6 +785,39 @@ pub fn build_input_fn(
     Box::new(input)
 }
 
+/// Builds a bulk input callback for the hyperlight `VmbusBulkRead` host function.
+///
+/// Each call drains up to `MAX_CHUNK` bytes from the shared pending bulk data buffer.
+/// Returns an empty `Vec` when all data has been consumed, signalling the kernel to stop.
+#[cfg(feature = "hyperlight")]
+fn build_bulk_input_fn(
+    pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>>,
+) -> Box<crate::vmm::BulkStdinFn> {
+    /// Maximum chunk size returned per VmbusBulkRead call. Must stay under the kernel's
+    /// 512-byte slab ceiling after FlatBuffer serialization overhead (~100 bytes).
+    /// FIXME (#1779): relying on the 512-byte slab tier is fragile — consider targeting 256-byte.
+    const MAX_CHUNK: usize = 400;
+
+    let bulk_input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
+        let mut buf = pending_bulk_data.lock().map_err(|e| {
+            let reason: String = format!("failed to lock pending_bulk_data: {e}");
+            error!("build_bulk_input_fn(): {reason}");
+            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
+        })?;
+
+        if buf.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let chunk_len: usize = buf.len().min(MAX_CHUNK);
+        let chunk: Vec<u8> = buf.drain(..chunk_len).collect();
+        trace!("VmbusBulkRead: returning {} bytes ({} remaining)", chunk_len, buf.len());
+        Ok(chunk)
+    };
+
+    Box::new(bulk_input)
+}
+
 ///
 /// # Description
 ///
@@ -781,7 +837,7 @@ pub fn build_input_fn(
 ///
 pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
     // Output function used for emulating I/O port writes.
-    #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
+    #[cfg(not(feature = "hyperlight"))]
     let output =
         move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
             use std::mem;
@@ -933,10 +989,10 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
 #[cfg(feature = "hyperlight")]
 pub fn bulk_output_fn(
     queue: Sender<IkcFrame>,
-    handles: UserVmHandles,
+    _handles: UserVmHandles,
 ) -> Box<crate::vmm::BulkStdoutFn> {
     let output = move |data: Vec<u8>| -> Result<i32, hyperlight_host::HyperlightError> {
-        // Parse the DataChunkHeader from the received data.
+        // The kernel sends header + payload combined (via __phys_memcpy).
         if data.len() < DataChunkHeader::SIZE {
             let reason: String = format!(
                 "bulk output data too short: expected at least {} bytes, got {}",
@@ -956,30 +1012,25 @@ pub fn bulk_output_fn(
                 hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
             })?;
 
-        // Read the actual bulk payload from guest shared memory at the GPA in the header.
-        let data_addr: u64 = header.data_addr() as u64;
-        let data_len: usize = header.data_len() as usize;
-
-        let vmem_arc: Arc<Mutex<VirtualMemory>> = handles.get_vmem_handle().ok_or_else(|| {
-            let reason: &str = "vmem handle not set in UserVmHandles";
+        // Extract the inline payload that follows the header, validating its length
+        // against the header's data_len field.
+        let expected_len: usize = header.data_len() as usize;
+        let actual_len: usize = data.len() - DataChunkHeader::SIZE;
+        if actual_len < expected_len {
+            let reason: String = format!(
+                "bulk output payload truncated: header expects {} bytes, got {}",
+                expected_len, actual_len
+            );
             error!("bulk_output(): {reason}");
-            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-        })?;
-        let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
-
-        let mut payload_data: Vec<u8> = vec![0u8; data_len];
-        locked_vmem
-            .read_bytes(data_addr, &mut payload_data)
-            .map_err(|e| {
-                let reason: String =
-                    format!("failed to read bulk data from guest at {data_addr:#x}: {e}");
-                error!("bulk_output(): {reason}");
-                hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-            })?;
+            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
+        }
+        let mut payload_data: Vec<u8> =
+            data[DataChunkHeader::SIZE..DataChunkHeader::SIZE + expected_len].to_vec();
 
         // Label: uservm::lib::vm_output::send()
         profiler::timestamp_message!(&mut payload_data, 0);
 
+        let data_len: usize = payload_data.len();
         let bulk: DataChunk = DataChunk::new(header, payload_data);
 
         trace!("bulk_output(): forwarding data chunk transfer ({data_len} bytes)");
