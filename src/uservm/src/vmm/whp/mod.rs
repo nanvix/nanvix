@@ -351,8 +351,6 @@ impl Vmm {
         SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
 
         let loop_start = std::time::Instant::now();
-        // Track guest instruction execution to detect hangs.
-        let mut last_progress_time: std::time::Instant = std::time::Instant::now();
 
         // Pvclock: VMM-driven system_time updates.
         // Version starts at 2 (set by setup_pvclock). Each update does +1
@@ -363,28 +361,53 @@ impl Vmm {
         // thread::sleep in the idle handler.
         unsafe { crate::vmm::whp::timer::timeBeginPeriod(1) };
 
-        // Timer thread: DISABLED. WHvRequestInterrupt from the timer
-        // thread causes ACCESS_VIOLATION (0xC0000005) during idle cycles
-        // and deadlocks after the first idle re-entry. Timer interrupts
-        // are not needed: the kernel's check_alarm() reads pvclock time
-        // (updated by the VMM loop) and fires alarms when time passes.
+        // Start a pvclock-refresh thread that periodically cancels the vCPU.
+        //
+        // Guest kcalls use `int 0x80` (handled internally by the guest IDT),
+        // which does NOT cause a VM exit. During kcall-intensive workloads
+        // (e.g., many `sched_yield` calls in thread tests), the vCPU can run
+        // for seconds without exiting, starving the VMM loop of iterations.
+        // This means pvclock never advances and scheduler admission-times
+        // become stale.
+        //
+        // The refresh thread calls `WHvCancelRunVirtualProcessor` every 10ms,
+        // forcing the vCPU to exit with `Interrupted` reason. The VMM loop
+        // then updates pvclock and re-enters. This is safe because:
+        //  - No LAPIC interrupt injection is involved (avoids WHvRequestInterrupt bugs).
+        //  - The VMM loop already handles the `Interrupted` exit by continuing.
+        let cancel_stop = Arc::new(AtomicBool::new(false));
+        let cancel_stop_clone = cancel_stop.clone();
+        let cancel_partition = self.partition_handle;
+        let cancel_thread = std::thread::spawn(move || {
+            let period = std::time::Duration::from_millis(10);
+            while !cancel_stop_clone.load(Ordering::Relaxed) {
+                std::thread::sleep(period);
+                if cancel_stop_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+                // SAFETY: `cancel_partition` is a valid WHP partition handle that
+                // outlives this thread (the Vmm struct owns it). vCPU index 0 is
+                // always valid for single-vCPU partitions. This call is safe to
+                // invoke from any thread without holding the vCPU Mutex.
+                let result = unsafe {
+                    windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+                        cancel_partition,
+                        0,
+                        0,
+                    )
+                };
+                if let Err(e) = result {
+                    error!("WHvCancelRunVirtualProcessor failed: {e:?}");
+                    break;
+                }
+            }
+        });
 
         let result = loop {
             // Check shutdown flag.
             if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
                 let exit_status: u16 = 0;
                 warn!("VMM exit: SHUTDOWN flag (elapsed={:?})", loop_start.elapsed());
-                Handle::current().block_on(self.handle_shutdown(exit_status));
-                break Ok(exit_status);
-            }
-
-            // Watchdog: if no I/O port activity for 120 seconds, the guest is
-            // likely stuck (e.g., a panic handler spin loop). Terminate with an
-            // error. Active even before the timer starts to catch boot hangs.
-            const WATCHDOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-            if last_progress_time.elapsed() > WATCHDOG_TIMEOUT {
-                error!("VMM watchdog: no guest I/O for {:?}, terminating", WATCHDOG_TIMEOUT);
-                let exit_status: u16 = ErrorCode::OperationTimedOut.into();
                 Handle::current().block_on(self.handle_shutdown(exit_status));
                 break Ok(exit_status);
             }
@@ -423,9 +446,6 @@ impl Vmm {
             match exit_context.reason_ref() {
                 // The guest requested to access an I/O port.
                 VirtualProcessorExitReasonRef::PmioAccess(access) => {
-                    // Any PMIO exit indicates guest progress.
-                    last_progress_time = std::time::Instant::now();
-
                     // Fast-path: handle legacy hardware ports inline.
                     if let PmioAccess::PmioOut(port, data, _width) = access {
                         // PIC, PIT, speaker, IMCR, CMOS, serial: no-op.
@@ -567,6 +587,10 @@ impl Vmm {
                 },
             }
         };
+
+        // Stop the pvclock-refresh thread.
+        cancel_stop.store(true, Ordering::Relaxed);
+        let _ = cancel_thread.join();
 
         // Restore Windows multimedia timer resolution.
         unsafe { crate::vmm::whp::timer::timeEndPeriod(1) };
