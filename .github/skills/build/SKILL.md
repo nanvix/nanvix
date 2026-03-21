@@ -92,15 +92,18 @@ Example with custom parameters:
 ### Building on Windows (using `z.ps1`)
 
 On Windows 11, the `z.ps1` PowerShell script provides the same CLI interface. Guest components are
-cross-compiled inside Docker; the UserVM is built natively with the microvm backend (WHP on
-Windows).
+cross-compiled inside Docker; host binaries (`nanvixd`, `uservm`) are built natively with the
+microvm backend (WHP on Windows).
 
 ```powershell
-# Build everything (guest via Docker + UserVM natively).
+# Build everything (guest via Docker + host binaries natively).
 .\z.ps1 build -- all
 
 # Build only the UserVM (native Windows build).
 .\z.ps1 build -- uservm
+
+# Build only nanvixd (native Windows build).
+.\z.ps1 build -- nanvixd
 
 # Build only guest components (kernel + hello-rust-nostd, via Docker).
 .\z.ps1 build -- guest
