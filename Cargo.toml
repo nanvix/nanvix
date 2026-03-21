@@ -101,7 +101,7 @@ clap = { version = "4.6.0", default-features = false, features = [
 ] }
 compiler_builtins = "0.1.160"
 config = { path = "src/libs/config", default-features = false }
-containerd-shim-protos = { version = "0.8.0", features = ["async", "sandbox"] }
+containerd-shim-protos = { version = "0.10.0", features = ["async", "sandbox"] }
 control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
@@ -144,15 +144,15 @@ nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-feature
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
 nanvix-shim-standalone = { path = "src/libs/nanvix-shim-standalone" }
-nix = { version = "0.29", default-features = false }
+nix = { version = "0.31", default-features = false }
 nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
-oci-spec = "0.7.1"
+oci-spec = "0.9.0"
 profiler = { path = "src/libs/profiler", default-features = false }
-protobuf = "3.2"
+protobuf = "3.7"
 portpicker = "0.1"
 posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
@@ -190,7 +190,7 @@ toml = { version = "1.0.7", default-features = false, features = [
         "parse",
         "serde",
 ] }
-ttrpc = { version = "0.8.6", features = ["async"] }
+ttrpc = { version = "0.9.0", features = ["async"] }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
 uuid = { version = "1.22.0", default-features = false }
