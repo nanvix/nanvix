@@ -1376,12 +1376,23 @@ impl ProcessManager {
                 .expect("there should always be a process ready to run")
                 .earliest_admission_time(),
         );
+        let mut selected_is_kernel: bool = self
+            .ready
+            .front()
+            .map_or(false, |p| p.state().pid() == ProcessIdentifier::KERNEL);
 
-        // Select process with the earliest admission time.
+        // Select process with the earliest admission time. When multiple
+        // processes share the same admission time, prefer non-kernel processes
+        // to reduce address-space switches (CR3 reloads), which are expensive
+        // on hardware-virtualized platforms such as WHP.
         for (i, process) in self.ready.iter().enumerate() {
             let process_admission_time: SystemTime = process.earliest_admission_time();
-            if process_admission_time < selected.1 {
+            let is_kernel: bool = process.state().pid() == ProcessIdentifier::KERNEL;
+            if process_admission_time < selected.1
+                || (process_admission_time == selected.1 && selected_is_kernel && !is_kernel)
+            {
                 selected = (i, process_admission_time);
+                selected_is_kernel = is_kernel;
             }
         }
 

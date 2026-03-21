@@ -556,9 +556,15 @@ __context_switch:
     push CONTEXT_EFLAGS(%edx)
     popfl
 
-    /* Restore address space.*/
+    /* Restore address space — skip reload when CR3 is unchanged to avoid
+     * expensive TLB / SLAT invalidation on hardware-virtualized platforms
+     * (e.g. WHP). */
+    movl %cr3, %eax
+    cmpl %eax, CONTEXT_CR3(%edx)
+    je .Lskip_cr3
     movl CONTEXT_CR3(%edx), %eax
     movl %eax, %cr3
+.Lskip_cr3:
 
     /* Update ESP0 on TSS. */
     movl CONTEXT_ESP0(%edx), %eax
