@@ -470,6 +470,41 @@ function Build-Nanvixd {
     }
 }
 
+function Build-NanvixTest {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+
+    Write-Info "Building nanvix-test (standalone + microvm, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $cmd = "cargo build --no-default-features --features `"standalone,microvm`" -p nanvix-test $buildProfile"
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to build nanvix-test."
+        exit 1
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "nanvix-test.exe"
+    $dst = Join-Path $BinDir "nanvix-test.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "nanvix-test binary not found at $src"
+        exit 1
+    }
+}
+
 # ==================================================================================================
 # Clean
 # ==================================================================================================
@@ -714,12 +749,16 @@ function Main {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease
                         Build-Nanvixd -IsRelease $isRelease
+                        Build-NanvixTest -IsRelease $isRelease
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease
                     }
                     "nanvixd" {
                         Build-Nanvixd -IsRelease $isRelease
+                    }
+                    "nanvix-test" {
+                        Build-NanvixTest -IsRelease $isRelease
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams

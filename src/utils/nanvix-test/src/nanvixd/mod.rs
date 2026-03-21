@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+#[cfg(unix)]
 mod http;
 mod terminal;
 
@@ -12,15 +13,14 @@ mod terminal;
 // Imports
 //==================================================================================================
 
-pub use self::{
-    http::{
-        NanvixdHttp,
-        NanvixdHttpArgs,
-    },
-    terminal::{
-        NanvixdTerminal,
-        NanvixdTerminalArgs,
-    },
+#[cfg(unix)]
+pub use self::http::{
+    NanvixdHttp,
+    NanvixdHttpArgs,
+};
+pub use self::terminal::{
+    NanvixdTerminal,
+    NanvixdTerminalArgs,
 };
 use crate::{
     config::RunnerConfig,
@@ -28,6 +28,7 @@ use crate::{
     warn_with_policy,
 };
 use ::anyhow::Result;
+#[cfg(unix)]
 use ::libc;
 use ::log::{
     debug,
@@ -184,6 +185,7 @@ impl Nanvixd {
     ///
     /// Returns `Ok(())` if the signal is delivered; returns an error when delivery fails.
     ///
+    #[cfg(unix)]
     fn signal(&self, signal: libc::c_int) -> Result<()> {
         let context: String = self.context_label().to_string();
         trace!("signal(): signal={signal}, context={context}");
@@ -362,6 +364,9 @@ impl Drop for Nanvixd {
     /// Cleans up the Nanvix Daemon process by attempting a graceful shutdown via SIGINT,
     /// followed by a forced shutdown via SIGKILL if the former fails.
     ///
+    /// On Windows, the process is terminated directly via `start_kill()` (TerminateProcess)
+    /// because Unix signals are not available.
+    ///
     /// # Return Value
     ///
     /// Returns `()`; logs errors when cleanup attempts fail.
@@ -410,59 +415,95 @@ impl Drop for Nanvixd {
             },
         }
 
-        // Send SIGINT for graceful shutdown and check for errors.
-        let sigint_sent: bool = match self.signal(libc::SIGINT) {
-            Err(error) => {
+        #[cfg(unix)]
+        {
+            // Send SIGINT for graceful shutdown and check for errors.
+            let sigint_sent: bool = match self.signal(libc::SIGINT) {
+                Err(error) => {
+                    error!(
+                        "drop(): failed to send SIGINT to nanvixd (context={context}, \
+                         error={error})"
+                    );
+                    false
+                },
+                Ok(()) => true,
+            };
+
+            // Try to wait for graceful shutdown.
+            match self.try_wait_exit(wait_duration, max_attempts) {
+                Err(error) => {
+                    error!("drop(): SIGINT wait failed (error={error})");
+                },
+                Ok(exited) => {
+                    if exited {
+                        debug!("drop(): nanvixd exited gracefully after SIGINT");
+                        return;
+                    }
+                    if sigint_sent {
+                        warn_with_policy!(
+                            "drop(): nanvixd did not exit after SIGINT, sending SIGKILL \
+                             (context={context})"
+                        );
+                    } else {
+                        warn_with_policy!(
+                            "drop(): nanvixd still running and SIGINT could not be delivered, \
+                             sending SIGKILL (context={context})"
+                        );
+                    }
+                },
+            }
+
+            // Send SIGKILL for forced shutdown and check for errors.
+            if let Err(error) = self.signal(libc::SIGKILL) {
                 error!(
-                    "drop(): failed to send SIGINT to nanvixd (context={context}, error={error})"
+                    "drop(): failed to send SIGKILL to nanvixd (context={context}, error={error})"
                 );
-                false
-            },
-            Ok(()) => true,
-        };
+                return;
+            }
 
-        // Try to wait for graceful shutdown.
-        match self.try_wait_exit(wait_duration, max_attempts) {
-            Err(error) => {
-                error!("drop(): SIGINT wait failed (error={error})");
-            },
-            Ok(exited) => {
-                if exited {
-                    debug!("drop(): nanvixd exited gracefully after SIGINT");
-                    return;
-                }
-                if sigint_sent {
-                    warn_with_policy!(
-                        "drop(): nanvixd did not exit after SIGINT, sending SIGKILL \
-                         (context={context})"
-                    );
-                } else {
-                    warn_with_policy!(
-                        "drop(): nanvixd still running and SIGINT could not be delivered, sending \
-                         SIGKILL (context={context})"
-                    );
-                }
-            },
+            // Try to wait for forced shutdown.
+            match self.try_wait_exit(wait_duration, max_attempts) {
+                Err(error) => {
+                    error!("drop(): SIGKILL wait failed (error={error})");
+                },
+                Ok(exited) => {
+                    if exited {
+                        debug!("drop(): nanvixd exited after SIGKILL (context={context})");
+                    } else {
+                        error!("drop(): nanvixd failed to exit after SIGKILL (context={context})");
+                    }
+                },
+            }
         }
 
-        // Send SIGKILL for forced shutdown and check for errors.
-        if let Err(error) = self.signal(libc::SIGKILL) {
-            error!("drop(): failed to send SIGKILL to nanvixd (context={context}, error={error})");
-            return;
-        }
+        #[cfg(not(unix))]
+        {
+            // On non-Unix platforms, terminate the process forcefully. This calls
+            // TerminateProcess on Windows, which is the closest equivalent to SIGKILL.
+            debug!("drop(): terminating nanvixd process (context={context})");
+            if let Err(error) = self.cmd.start_kill() {
+                error!(
+                    "drop(): failed to terminate nanvixd (context={context}, error={error})"
+                );
+                return;
+            }
 
-        // Try to wait for forced shutdown.
-        match self.try_wait_exit(wait_duration, max_attempts) {
-            Err(error) => {
-                error!("drop(): SIGKILL wait failed (error={error})");
-            },
-            Ok(exited) => {
-                if exited {
-                    debug!("drop(): nanvixd exited after SIGKILL (context={context})");
-                } else {
-                    error!("drop(): nanvixd failed to exit after SIGKILL (context={context})");
-                }
-            },
+            match self.try_wait_exit(wait_duration, max_attempts) {
+                Err(error) => {
+                    error!(
+                        "drop(): wait after terminate failed (context={context}, error={error})"
+                    );
+                },
+                Ok(exited) => {
+                    if exited {
+                        debug!("drop(): nanvixd terminated successfully (context={context})");
+                    } else {
+                        error!(
+                            "drop(): nanvixd failed to exit after terminate (context={context})"
+                        );
+                    }
+                },
+            }
         }
     }
 }
