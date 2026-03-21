@@ -10,9 +10,11 @@ NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
-# In standalone mode, nanvixd needs mkramfs to produce the rootfs image.
+# In standalone mode, nanvixd needs mkramfs to produce the rootfs image
+# and guest binaries (which build shared libraries like libmul.so that
+# are bundled into the standalone rootfs).
 ifeq ($(DEPLOYMENT_MODE),standalone)
-all-nanvixd: all-host-binaries-mkramfs
+all-nanvixd: all-host-binaries-mkramfs all-guest-binaries
 endif
 
 all-nanvixd: init
