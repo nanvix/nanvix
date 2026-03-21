@@ -31,6 +31,7 @@ sysalloc = { workspace = true }
 default = ["staticlib"]
 staticlib = []
 standalone = ["dep:vfs"]
+hyperlight = []
 rustc-dep-of-std = [
     "alloc",
     "core",
