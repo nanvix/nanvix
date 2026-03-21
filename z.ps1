@@ -436,6 +436,41 @@ function Build-Guest {
     Write-Info "Guest components built successfully."
 }
 
+function Build-Nanvixd {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+
+    Write-Info "Building nanvixd (standalone + microvm, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $cmd = "cargo build --no-default-features --features `"standalone,microvm`" -p nanvixd $buildProfile"
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to build nanvixd."
+        exit 1
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "nanvixd.exe"
+    $dst = Join-Path $BinDir "nanvixd.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "nanvixd binary not found at $src"
+        exit 1
+    }
+}
+
 # ==================================================================================================
 # Clean
 # ==================================================================================================
@@ -689,9 +724,13 @@ function Main {
                     "all" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease
+                        Build-Nanvixd -IsRelease $isRelease
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease
+                    }
+                    "nanvixd" {
+                        Build-Nanvixd -IsRelease $isRelease
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
