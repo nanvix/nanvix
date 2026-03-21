@@ -124,9 +124,9 @@ executable (and required companion binaries), not just the Verus source tree.
 ## Building Nanvix on Windows
 
 On Windows, the `z.ps1` PowerShell script provides the same interface as the Linux `z` utility.
-Guest components (kernel, user binaries) are cross-compiled inside Docker, while the UserVM is
-built natively using the Windows Hypervisor Platform (WHP) backend. The WHP backend is
-automatically selected when building with the `microvm` feature on Windows.
+Guest components (kernel, user binaries) are cross-compiled inside Docker, while host binaries
+(`nanvixd`, `uservm`) are built natively using the Windows Hypervisor Platform (WHP) backend.
+The WHP backend is automatically selected when building with the `microvm` feature on Windows.
 
 > ℹ️ Ensure you have completed the [Windows setup](setup.md#windows-setup) before proceeding.
 
@@ -143,6 +143,9 @@ Build all components:
 ```powershell
 # Build only the UserVM.
 .\z.ps1 build -- uservm
+
+# Build only nanvixd.
+.\z.ps1 build -- nanvixd
 
 # Build only guest components.
 .\z.ps1 build -- guest

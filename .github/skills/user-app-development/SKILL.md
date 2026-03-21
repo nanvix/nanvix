@@ -72,10 +72,12 @@ curl --silent \
 
 ### Running on Windows
 
-On Windows, only standalone UserVM mode is available. The UserVM runs natively with the WHP backend:
+On Windows, `nanvixd` supports standalone interactive mode (no HTTP mode). Both `nanvixd` and the
+UserVM are built natively with the WHP backend:
 
 ```powershell
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+# Run via nanvixd (recommended).
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
 You can also launch a run via `z.ps1`:
@@ -84,12 +86,18 @@ You can also launch a run via `z.ps1`:
 # Run with default options.
 .\z.ps1 run
 
-# Run with custom kernel and initrd.
-.\z.ps1 run -- -kernel bin\kernel.elf -initrd bin\hello-rust-nostd.elf
+# Run with a custom guest binary.
+.\z.ps1 run -- -program bin\hello-rust-nostd.elf
 ```
 
-> **Note:** Interactive mode, HTTP mode, and `nanvixd` are Linux-only. On Windows, all guest
-> execution goes through the standalone UserVM.
+For low-level debugging, the standalone UserVM is still available:
+
+```powershell
+.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+```
+
+> **Note:** HTTP mode is Linux-only. On Windows, only standalone interactive mode
+> via `nanvixd` is supported.
 
 ## Creating a New Rust Application (no_std)
 

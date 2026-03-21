@@ -71,7 +71,7 @@ Commands
   clean       Removes build artifacts (quick clean).
   distclean   Removes everything (full clean).
   setup       Sets up the development environment and installs Git hooks.
-  run         Runs UserVM in standalone mode.
+  run         Runs nanvixd in standalone mode.
   help        Prints this help message.
 
 Options
@@ -97,8 +97,7 @@ Build Targets (after --)
   <any-make-target>       Any other target is forwarded to make via Docker.
 
 Run Options (after --)
-  -kernel <path>          Path to kernel binary (default: bin/kernel.elf).
-  -initrd <path>          Path to guest binary (default: bin/hello-rust-nostd.elf).
+  -program <path>         Path to guest binary (default: bin/hello-rust-nostd.elf).
 
 Build Parameters (after --)
   RELEASE=yes             Enable release mode.
@@ -436,6 +435,41 @@ function Build-Guest {
     Write-Info "Guest components built successfully."
 }
 
+function Build-Nanvixd {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+
+    Write-Info "Building nanvixd (standalone + microvm, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $cmd = "cargo build --no-default-features --features `"standalone,microvm`" -p nanvixd $buildProfile"
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to build nanvixd."
+        exit 1
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "nanvixd.exe"
+    $dst = Join-Path $BinDir "nanvixd.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "nanvixd binary not found at $src"
+        exit 1
+    }
+}
+
 # ==================================================================================================
 # Clean
 # ==================================================================================================
@@ -532,46 +566,36 @@ function Invoke-Run {
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
-    # Default values.
-    $kernel = Join-Path $BinDir "kernel.elf"
-    $initrd = Join-Path $BinDir "hello-rust-nostd.elf"
+    # Default value.
+    $program = Join-Path $BinDir "hello-rust-nostd.elf"
 
     # Parse run options.
     for ($i = 0; $i -lt $RunArgs.Count; $i++) {
         switch ($RunArgs[$i]) {
-            "-kernel" {
+            "-program" {
                 if ($i + 1 -ge $RunArgs.Count) {
-                    Write-Err "Missing value for -kernel. Usage: .\z.ps1 run -- -kernel <path> [-initrd <path>]"
+                    Write-Err "Missing value for -program. Usage: .\z.ps1 run -- -program <path>"
                     exit 1
                 }
                 $i++
-                $kernel = $RunArgs[$i]
-            }
-            "-initrd" {
-                if ($i + 1 -ge $RunArgs.Count) {
-                    Write-Err "Missing value for -initrd. Usage: .\z.ps1 run -- [-kernel <path>] -initrd <path>"
-                    exit 1
-                }
-                $i++
-                $initrd = $RunArgs[$i]
+                $program = $RunArgs[$i]
             }
             default { Write-Warn "Unknown run option: $($RunArgs[$i])" }
         }
     }
 
-    $uvmBin = Join-Path $BinDir "uservm.exe"
-    if (-not (Test-Path $uvmBin)) {
-        Write-Err "UserVM binary not found at $uvmBin. Build it first with: .\z.ps1 build -- uservm"
+    $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
+    if (-not (Test-Path $nanvixdBin)) {
+        Write-Err "nanvixd binary not found at $nanvixdBin. Build it first with: .\z.ps1 build -- nanvixd"
         exit 1
     }
 
-    Write-Info "Running UserVM in standalone mode..."
-    Write-Host "  Kernel: $kernel" -ForegroundColor DarkGray
-    Write-Host "  Initrd: $initrd" -ForegroundColor DarkGray
+    Write-Info "Running nanvixd in standalone mode..."
+    Write-Host "  Program: $program" -ForegroundColor DarkGray
 
-    & $uvmBin -kernel $kernel -initrd $initrd -standalone
+    & $nanvixdBin -- $program
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "UserVM exited with code $LASTEXITCODE."
+        Write-Err "nanvixd exited with code $LASTEXITCODE."
         exit $LASTEXITCODE
     }
 }
@@ -689,9 +713,13 @@ function Main {
                     "all" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease
+                        Build-Nanvixd -IsRelease $isRelease
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease
+                    }
+                    "nanvixd" {
+                        Build-Nanvixd -IsRelease $isRelease
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams

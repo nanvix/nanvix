@@ -22,7 +22,9 @@
 
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(feature = "standalone")]
+#[cfg(unix)]
+use ::nanvix::http::HttpServer;
+#[cfg(all(unix, feature = "standalone"))]
 use ::nanvix::http::StandaloneConfig;
 #[cfg(feature = "multi-process")]
 use ::nanvix::sandbox_cache::SandboxCacheConfig;
@@ -36,7 +38,6 @@ use ::nanvix::{
         kernel::MEMORY_SIZE,
         system::DEFAULT_MACHINE_NAME,
     },
-    http::HttpServer,
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
     terminal::Terminal,
@@ -201,7 +202,7 @@ async fn async_main() -> Result<ExitCode> {
         })?,
     );
 
-    #[cfg(feature = "standalone")]
+    #[cfg(all(unix, feature = "standalone"))]
     let config: StandaloneConfig = StandaloneConfig::new(
         kernel_binary_path.clone(),
         args.ramfs_filename().map(|s| s.to_string()),
@@ -281,6 +282,7 @@ async fn async_main() -> Result<ExitCode> {
         return Ok(ExitCode::from(clamped_exit_code));
     }
 
+    #[cfg(unix)]
     {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
@@ -297,6 +299,13 @@ async fn async_main() -> Result<ExitCode> {
         }
 
         Ok(ExitCode::SUCCESS)
+    }
+
+    #[cfg(windows)]
+    {
+        let reason: &str = "HTTP mode is not supported on Windows";
+        error!("{reason}");
+        anyhow::bail!(reason);
     }
 }
 
