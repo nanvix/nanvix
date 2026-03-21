@@ -21,4 +21,10 @@ pub mod hyperlight {
     pub const OUTPUT_DATA_BUFFER_SIZE: usize = {{OUTPUT_DATA_BUFFER_SIZE}};
     /// Size of a stack (in bytes).
     pub const STACK_SIZE: usize = {{STACK_SIZE}};
+    /// I/O port for configuring the paravirtual timer.
+    /// Must match `OutBAction::PvTimerConfig` (107) from hyperlight-common.
+    pub const PV_TIMER_PORT: u16 = 107;
+    /// Timer period in microseconds, derived from the kernel timer frequency.
+    pub const TIMER_PERIOD_US: u32 =
+        crate::constants::MICROSECONDS_PER_SECOND / crate::kernel::TIMER_FREQ;
 }

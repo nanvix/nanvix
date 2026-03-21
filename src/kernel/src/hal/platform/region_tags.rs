@@ -17,8 +17,8 @@ pub const IOAPIC_MMIO_TAG: MmioTag = MmioTag::new(*b"IOAPIC  ");
 /// Tag used to identify the Local APIC MMIO region.
 pub const LAPIC_MMIO_TAG: MmioTag = MmioTag::new(*b"LAPIC   ");
 
-/// Tag used to identify the MicroVM RAMFS MMIO region.
-#[cfg(feature = "microvm")]
+/// Tag used to identify the RAMFS MMIO region.
+#[cfg(any(feature = "microvm", feature = "hyperlight"))]
 pub const RAMFS_MMIO_TAG: MmioTag = MmioTag::new(*b"RAMFS   ");
 
 /// Tag used to identify the legacy VGA-compatible video MMIO window.
