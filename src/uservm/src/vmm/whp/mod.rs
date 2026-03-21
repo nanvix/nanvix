@@ -77,7 +77,6 @@ use ::tokio::{
 
 pub use vmem::VirtualMemory;
 
-//==================================================================================================
 // Re-exports
 //==================================================================================================
 
@@ -104,52 +103,35 @@ const IKC_VECTOR: u32 = 0x29;
 //==================================================================================================
 
 /// Notifier that signals the VMM loop to inject an IKC interrupt after the host writes credits.
+///
+/// With LAPIC emulation disabled, the VMM loop polls this flag on each
+/// iteration (including Halt exits). No concurrent WHP API calls are
+/// made — `notify()` only sets an atomic flag.
 #[derive(Clone)]
 pub struct IkcNotifier {
     pending: Arc<AtomicBool>,
-    /// Set to true after the VMM has shut down. Prevents `WHvCancelRunVirtualProcessor` calls
-    /// on a partition whose vCPU is no longer running, which can trigger STATUS_ACCESS_VIOLATION
-    /// on Windows.
+    /// Set to true after the VMM has shut down.
     shutdown: Arc<AtomicBool>,
-    partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-    vp_index: u32,
 }
 
-// SAFETY: WHV_PARTITION_HANDLE is a raw handle that is safe to send between threads.
-unsafe impl Send for IkcNotifier {}
-unsafe impl Sync for IkcNotifier {}
-
 impl IkcNotifier {
-    fn new(
-        partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-        vp_index: u32,
-    ) -> Self {
+    fn new() -> Self {
         Self {
             pending: Arc::new(AtomicBool::new(false)),
             shutdown: Arc::new(AtomicBool::new(false)),
-            partition,
-            vp_index,
         }
     }
 
-    /// Signals that an IKC message is available. Cancels the vCPU to wake it.
+    /// Signals that an IKC message is available.
     ///
-    /// After the VMM has called [`mark_shutdown`](Self::mark_shutdown), this method becomes a
-    /// no-op to avoid calling WHP APIs on a partition whose vCPU has been powered off.
+    /// Sets an atomic flag that the VMM loop checks on each iteration.
+    /// No WHP API calls are made — the VMM loop picks up the pending
+    /// flag on the next HLT or PMIO exit.
     pub fn notify(&self) -> Result<()> {
         if self.shutdown.load(Ordering::Acquire) {
             return Ok(());
         }
-        if self.pending.swap(true, Ordering::AcqRel) {
-            return Ok(());
-        }
-        unsafe {
-            let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
-                self.partition,
-                self.vp_index,
-                0,
-            );
-        }
+        self.pending.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -313,7 +295,7 @@ impl Vmm {
         let timer: Arc<std::sync::Mutex<timer::Timer>> =
             Arc::new(std::sync::Mutex::new(timer::Timer::new(partition_handle)));
 
-        let ikc_notifier = IkcNotifier::new(partition_handle, 0);
+        let ikc_notifier = IkcNotifier::new();
 
         let emulator: Emulator =
             Emulator::new(guest.clone(), vmem.clone(), args.input, args.output, args.stderr)?;
@@ -339,9 +321,11 @@ impl Vmm {
             let thread_id: u64 =
                 unsafe { windows::Win32::System::Threading::GetCurrentThreadId() as u64 };
             Handle::current().block_on(self.send_tid(thread_id))?;
+
             warn!("VMM spawn_blocking: calling run()");
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run()));
             warn!("VMM spawn_blocking: run() returned (is_ok={})", result.is_ok());
+
             match result {
                 Ok(inner) => inner,
                 Err(panic_info) => {
@@ -378,32 +362,14 @@ impl Vmm {
         // (odd = writing) then +1 (even = stable).
         let mut pvclock_version: u32 = 2;
 
-        // Spawn a background clock-refresh thread that periodically cancels
-        // the vCPU to force VMM loop re-entry for pvclock updates. Without
-        // this, before the PV timer starts (early boot) or if the timer is
-        // stopped, the vCPU can execute guest code indefinitely and the
-        // pvclock system_time field stays frozen.
-        let clock_refresh_stop = Arc::new(AtomicBool::new(false));
-        let clock_refresh_thread = {
-            let stop = clock_refresh_stop.clone();
-            let partition = self.partition_handle;
-            std::thread::spawn(move || {
-                // Set Windows timer resolution to 1 ms for accurate sleep.
-                unsafe { super::timer::timeBeginPeriod(1) };
-                while !stop.load(Ordering::Relaxed) {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                    if stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    unsafe {
-                        let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
-                            partition, 0, 0,
-                        );
-                    }
-                }
-                unsafe { super::timer::timeEndPeriod(1) };
-            })
-        };
+        // The timer runs on a background thread and injects interrupts via
+        // WHvRequestInterrupt (through the WHP LAPIC emulator). This is safe
+        // because the LAPIC emulator serializes interrupt delivery internally.
+        //
+        // The clock-refresh thread (WHvCancelRunVirtualProcessor) has been
+        // removed: that API triggered an intermittent ACCESS_VIOLATION
+        // (0xC0000005) at winhvplatform.dll+0x12f1d. Pvclock updates happen
+        // on each VMM loop iteration instead.
 
         // Start the timer with the compile-time constant period.
         self.timer
@@ -518,11 +484,17 @@ impl Vmm {
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
 
-                    let exit_status: Option<u16> = self
+                    let exit_status: Option<u16> = match self
                         .inner
                         .blocking_lock()
                         .emulator
-                        .handle_pmio_access(access)?;
+                        .handle_pmio_access(access)
+                    {
+                        Ok(status) => status,
+                        Err(e) => {
+                            break Err(e);
+                        },
+                    };
                     if let Some(exit_status) = exit_status {
                         if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
@@ -532,23 +504,24 @@ impl Vmm {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
                             break Ok(exit_status);
                         } else {
-                            Handle::current().block_on(self.handle_pause())?;
+                            if let Err(e) = Handle::current().block_on(self.handle_pause()) {
+                                break Err(e);
+                            }
                             trace!("VMM resumed");
                         }
                     }
                 },
 
-                // HLT: the guest is waiting for an interrupt. The LAPIC
-                // emulator holds the vCPU until WHvRequestInterrupt from
-                // the timer thread (or IKC) wakes it. If HLT exits to
-                // the VMM (e.g., no LAPIC emulation), just re-enter.
+                // HLT: with LAPIC emulation enabled, HLT is handled
+                // internally by the LAPIC and shouldn't cause VM exits.
+                // If it does, just re-enter.
                 VirtualProcessorExitReasonRef::Halt => {
                     continue;
                 },
 
-                // The vCPU was canceled (CancelRunVP from clock-refresh
-                // thread). Brings the VMM loop back for pvclock updates,
-                // IKC delivery, and shutdown checks.
+                // The vCPU was canceled (WHvCancelRunVP) or woken by
+                // WHvRequestInterrupt from the timer thread. Re-enter
+                // after pvclock update (handled at top of loop).
                 VirtualProcessorExitReasonRef::Interrupted => {
                     continue;
                 },
@@ -573,17 +546,20 @@ impl Vmm {
                 // Guest accessed an unmapped guest physical address.
                 // Lazily map a zeroed page so the instruction succeeds on retry.
                 VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
-                    self.vmem
+                    if let Err(e) = self
+                        .vmem
                         .blocking_lock()
-                        .map_mmio_page(&self.inner.blocking_lock()._partition, gpa)?;
+                        .map_mmio_page(&self.inner.blocking_lock()._partition, gpa)
+                    {
+                        break Err(e);
+                    }
                     continue;
                 },
             }
         };
 
-        // Stop the clock-refresh thread before returning.
-        clock_refresh_stop.store(true, Ordering::Relaxed);
-        let _ = clock_refresh_thread.join();
+        // Stop the timer background thread before returning.
+        self.timer.lock().unwrap().stop();
 
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
         result
@@ -687,7 +663,7 @@ impl Vmm {
         // STATUS_ACCESS_VIOLATION crashes when the vCPU is no longer running.
         self.ikc_notifier.mark_shutdown();
 
-        // Stop the timer thread before shutting down.
+        // Stop the timer before shutting down.
         self.timer.lock().unwrap().stop();
 
         // Power-off vCPU.

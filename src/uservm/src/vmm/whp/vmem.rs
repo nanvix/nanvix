@@ -12,6 +12,7 @@ use ::log::{
     trace,
 };
 use ::std::{
+    collections::HashSet,
     fs::File,
     io::{
         Read,
@@ -57,6 +58,9 @@ pub struct VirtualMemory {
     size: usize,
     /// Pointers to lazily-mapped MMIO dummy pages (freed on drop).
     mmio_pages: Vec<*mut u8>,
+    /// Set of page-aligned GPAs that have already been lazily mapped,
+    /// preventing duplicate `WHvMapGpaRange` calls for the same page.
+    mapped_gpas: HashSet<u64>,
 }
 
 ///
@@ -125,6 +129,7 @@ impl VirtualMemory {
             ptr,
             size,
             mmio_pages: Vec::new(),
+            mapped_gpas: HashSet::new(),
         };
 
         // Map the memory into the WHP partition at guest physical address 0.
@@ -169,6 +174,12 @@ impl VirtualMemory {
     pub fn map_mmio_page(&mut self, partition: &WhpPartition, gpa: u64) -> Result<()> {
         let page_gpa: u64 = gpa & !(PAGE_SIZE as u64 - 1);
 
+        // Skip if this page has already been lazily mapped.
+        if !self.mapped_gpas.insert(page_gpa) {
+            trace!("map_mmio_page(): GPA {page_gpa:#010x} already mapped, skipping");
+            return Ok(());
+        }
+
         // Allocate a zeroed host page.
         let page_ptr: *mut u8 = unsafe {
             VirtualAlloc(Some(ptr::null()), PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
@@ -208,6 +219,8 @@ impl VirtualMemory {
         };
 
         if let Err(e) = result {
+            // Remove from tracked set so a retry can attempt the mapping again.
+            self.mapped_gpas.remove(&page_gpa);
             // Free the page on mapping failure.
             unsafe {
                 let _ = VirtualFree(page_ptr.cast(), 0, MEM_RELEASE);

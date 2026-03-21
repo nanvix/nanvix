@@ -6,20 +6,13 @@
 #
 # Usage: nanvix-test.exe test/test-standalone-windows.toml
 #
-# NOTE: The following tests are disabled due to pre-existing guest kernel issues
-# unrelated to the nanvix-test harness (tracked separately):
-#
-#   - echo-c.elf, echo-cpp.elf, echo-rust-nostd.elf:
-#       Intermittent nanvixd ACCESS_VIOLATION (0xC0000005) caused by the hyperlight
-#       platform not registering IOAPIC/LAPIC MMIO regions in the IoMemoryAllocator
-#       (src/kernel/src/hal/platform/hyperlight/mod.rs:375-382). The guest kernel's
-#       MMIO allocator rejects unregistered regions, and the resulting fault crashes
-#       nanvixd on WHP. Failure rate ~10%.
+# NOTE: The following tests are disabled due to pre-existing VMM/guest kernel
+# issues on the WHP (microvm) backend, unrelated to the nanvix-test harness:
 #
 #   - thread-rust.elf, stress-rust.elf, thread-c.elf, misc-c.elf, memory-c.elf:
-#       Same root cause as above but hit deterministically because threading/condvar
-#       paths trigger more interrupt activity during early kernel boot, escalating the
-#       MMIO registration gap into a consistent condvar/timer failure (exit code 116).
+#       Consistent failures (exit code 116) — condvar/timer errors during guest
+#       kernel boot. Threading paths amplify a timing sensitivity in the WHP VMM
+#       that makes the crash deterministic rather than intermittent.
 #
 #   - dlfcn-c.elf, dlfcn-pie-c.elf:
 #       Require standalone-rootfs.img which is not built on Windows.
@@ -107,3 +100,21 @@ expected_output = "Hello, world from C++!"
 executor = "terminal"
 program = "./bin/arch-rust.elf"
 expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-c.elf"
+input = '["hello"]'
+expected_output = "hello"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-cpp.elf"
+input = '["hello"]'
+expected_output = "hello"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-rust-nostd.elf"
+input = '["hello"]'
+expected_output = "hello"
