@@ -583,6 +583,47 @@ function Invoke-DistClean {
 }
 
 # ==================================================================================================
+# Host Binary Freshness
+# ==================================================================================================
+
+# During development, developers often run 'cargo build' directly for faster
+# iteration. Cargo outputs to target/{debug,release}/ but z.ps1 run executes
+# from bin/. This function detects when target/ has a newer host binary than
+# bin/ and copies it, preventing stale artifact issues.
+function Sync-HostBinaries {
+    if (-not (Test-Path $BinDir)) { return }
+
+    # Host binaries that are natively built on Windows and copied to bin/.
+    $hostBinaries = @("nanvixd.exe", "uservm.exe")
+
+    foreach ($binary in $hostBinaries) {
+        $dst = Join-Path $BinDir $binary
+        if (-not (Test-Path $dst)) { continue }
+        $dstTime = (Get-Item $dst).LastWriteTime
+
+        # Check both debug and release profiles for a newer build.
+        foreach ($mode in @("debug", "release")) {
+            $src = Join-Path $TargetDir (Join-Path $mode $binary)
+            if (-not (Test-Path $src)) { continue }
+            $srcTime = (Get-Item $src).LastWriteTime
+            if ($srcTime -le $dstTime) { continue }
+
+            $delta = [int]($srcTime - $dstTime).TotalSeconds
+            Write-Warn ("Stale binary: bin\$binary is ${delta}s behind" +
+                " target\$mode\$binary. Syncing...")
+            try {
+                Copy-Item $src $dst -Force -ErrorAction Stop
+                Write-Success "Updated bin\$binary from target\$mode."
+            }
+            catch {
+                Write-Err ("Failed to update bin\$binary from target\$mode: " + $_.Exception.Message)
+            }
+            break
+        }
+    }
+}
+
+# ==================================================================================================
 # Run
 # ==================================================================================================
 
@@ -609,6 +650,10 @@ function Invoke-Run {
             default { Write-Warn "Unknown run option: $($RunArgs[$i])" }
         }
     }
+
+    # Sync host binaries from target/ to bin/ in case the developer built
+    # directly with 'cargo build' instead of 'z.ps1 build'.
+    Sync-HostBinaries
 
     $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
     if (-not (Test-Path $nanvixdBin)) {
