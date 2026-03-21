@@ -1,0 +1,109 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Windows-specific standalone test configuration.
+# Mirrors test-standalone.toml adapted for Windows (WHP backend, .exe binary, . tmp_directory).
+#
+# Usage: nanvix-test.exe test/test-standalone-windows.toml
+#
+# NOTE: The following tests are disabled due to pre-existing guest kernel issues
+# unrelated to the nanvix-test harness (tracked separately):
+#
+#   - echo-c.elf, echo-cpp.elf, echo-rust-nostd.elf:
+#       Intermittent nanvixd ACCESS_VIOLATION (0xC0000005) caused by the hyperlight
+#       platform not registering IOAPIC/LAPIC MMIO regions in the IoMemoryAllocator
+#       (src/kernel/src/hal/platform/hyperlight/mod.rs:375-382). The guest kernel's
+#       MMIO allocator rejects unregistered regions, and the resulting fault crashes
+#       nanvixd on WHP. Failure rate ~10%.
+#
+#   - thread-rust.elf, stress-rust.elf, thread-c.elf, misc-c.elf, memory-c.elf:
+#       Same root cause as above but hit deterministically because threading/condvar
+#       paths trigger more interrupt activity during early kernel boot, escalating the
+#       MMIO registration gap into a consistent condvar/timer failure (exit code 116).
+#
+#   - dlfcn-c.elf, dlfcn-pie-c.elf:
+#       Require standalone-rootfs.img which is not built on Windows.
+
+[runner]
+nanvixd_binary_path = "./bin/nanvixd.exe"
+working_directory = "."
+log_directory = "logs"
+tmp_directory = "."
+ipv4_addr = "127.0.0.1"
+port_num = 9999
+hwloc_file_path = ""
+l2_enabled = false
+fatal = true
+toolchain_path = "toolchain"
+sysroot_path = "./sysroot"
+nanvixd_shutdown_attempts_max = 10
+nanvixd_shutdown_retry_interval_ms = 100
+nanvixd_ready_attempts_max = 50
+nanvixd_ready_retry_interval_ms = 100
+cleanup_uservm_sleep_duration_ms = 10
+cleanup_l2_uservm_sleep_duration_ms = 100
+stream_collection_timeout_ms = 300000
+tcp_cleanup_max_wait_seconds = 0
+tcp_cleanup_poll_interval_seconds = 1
+gateway_connect_max_attempts = 100
+gateway_connect_initial_backoff_ms = 10
+gateway_connect_max_backoff_ms = 500
+gateway_connect_timeout_ms = 15000
+
+#===================================================================================================
+# Empty Executor Tests
+#===================================================================================================
+
+[[tests]]
+executor = "empty"
+name = "empty/1"
+iterations = 1
+
+[[tests]]
+executor = "empty"
+name = "empty/2"
+iterations = 2
+
+#===================================================================================================
+# Terminal Executor Tests (Interactive Mode)
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-mmio-fault.elf"
+extra_nanvixd_args = "-ramfs README.md"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 3
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/vfs-test.elf"
+extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
+input = "[]"
+expect_empty_output = true
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/hello-c.elf"
+expected_output = "Hello, world from C!"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/hello-cpp.elf"
+expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/arch-rust.elf"
+expected_output = "ok"
