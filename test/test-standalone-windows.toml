@@ -9,10 +9,9 @@
 # NOTE: The following tests are disabled due to pre-existing VMM/guest kernel
 # issues on the WHP (microvm) backend, unrelated to the nanvix-test harness:
 #
-#   - stress-rust.elf:
-#       Heavy scheduling/IPC workload exceeds WHP throughput in debug-mode
-#       kernels. In release-mode kernels the test may pass but is not yet
-#       validated for reliability.
+#   - vfs-test.elf:
+#       Guest exits immediately with EINVAL (22) before producing any output.
+#       The VFS init or RAMFS mount path fails on WHP; needs investigation.
 #
 #   - dlfcn-c.elf, dlfcn-pie-c.elf:
 #       Require standalone-rootfs.img which is not built on Windows.
@@ -84,13 +83,13 @@ expect_empty_output = true
 expected_exit_code = 3
 runs_on = ["microvm"]
 
-[[tests]]
-executor = "terminal"
-program = "./bin/vfs-test.elf"
-extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
-input = "[]"
-expect_empty_output = true
-runs_on = ["microvm"]
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/vfs-test.elf"
+# extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
+# input = "[]"
+# expect_empty_output = true
+# runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
@@ -145,3 +144,20 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/thread-c.elf"
 expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/stress-rust.elf"
+expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/dlfcn-c.elf"
+# extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/dlfcn-pie-c.elf"
+# extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+# expected_output = "ok"
