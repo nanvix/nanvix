@@ -819,7 +819,9 @@ function Main {
             }
         }
         else {
-            $buildParams += $arg
+            if ($arg -ne '') {
+                $buildParams += $arg
+            }
         }
     }
 
