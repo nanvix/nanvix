@@ -80,8 +80,9 @@ Options
   --with-minimal-docker   Use the minimal Docker toolchain image (default).
 
 Build Targets (after --)
-  all                     Build everything (guest + uservm).
+  all                     Build everything (guest + host).
   uservm                  Build UserVM only (native Windows, microvm backend).
+  mkramfs                 Build mkramfs only (native Windows).
   guest                   Build guest components only (kernel + hello-rust-nostd).
   format-check            Check code formatting (native for host crates).
   lint-check              Check for linting issues (native for uservm).
@@ -435,6 +436,41 @@ function Build-Guest {
     Write-Info "Guest components built successfully."
 }
 
+function Build-Mkramfs {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+
+    Write-Info "Building mkramfs (native, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $cmd = "cargo build -p mkramfs $buildProfile"
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to build mkramfs."
+        exit 1
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "mkramfs.exe"
+    $dst = Join-Path $BinDir "mkramfs.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "mkramfs binary not found at $src"
+        exit 1
+    }
+}
+
 function Build-Nanvixd {
     param([bool]$IsRelease)
 
@@ -646,12 +682,12 @@ function Main {
     $remaining = @()
     if ($args.Count -gt 1) { $remaining = $args[1..($args.Count - 1)] }
 
-    # If the first argument looks like a build target (not a known command),
-    # treat it as an implicit "build <target>" for convenience.
+    # Reject unknown commands early to avoid running setup or build steps with invalid parameters.
     $knownCommands = @("build", "clean", "distclean", "setup", "run", "help")
     if ($command -notin $knownCommands) {
-        $remaining = @($command) + $remaining
-        $command = "build"
+        Write-Err "Unknown command: $command"
+        Show-Help
+        exit 1
     }
 
     # Parse options and positional arguments.
@@ -718,6 +754,9 @@ function Main {
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease
                     }
+                    "mkramfs" {
+                        Build-Mkramfs -IsRelease $isRelease
+                    }
                     "nanvixd" {
                         Build-Nanvixd -IsRelease $isRelease
                     }
@@ -728,7 +767,7 @@ function Main {
                         # Native format check for host crates (no Docker required).
                         Write-Info "Checking code formatting (native)..."
                         $ErrorActionPreference = 'Continue'
-                        cargo fmt -p uservm -p nanvixd --check
+                        cargo fmt -p uservm -p nanvixd -p mkramfs --check
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Format check failed."
                             exit 1
@@ -736,14 +775,17 @@ function Main {
                         Write-Success "Format check passed."
                     }
                     "lint-check" {
-                        # Native lint check for host crates that compile on Windows
-                        # (no Docker required). nanvixd depends on nanvix-http which
-                        # uses Unix-specific APIs, so only uservm is linted natively.
+                        # Native lint check for host crates that compile on Windows.
                         Write-Info "Linting host crates (native)..."
                         $ErrorActionPreference = 'Continue'
                         cargo clippy --no-default-features --features "microvm" -p uservm -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for uservm."
+                            exit 1
+                        }
+                        cargo clippy -p mkramfs -- -D warnings
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Lint check failed for mkramfs."
                             exit 1
                         }
                         Write-Success "Lint check passed."
