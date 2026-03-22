@@ -39,6 +39,12 @@ microvm = [
     "nanvix-sandbox?/microvm",
     "nanvix-sandbox-cache?/microvm",
 ]
+whp = [
+    "config?/whp",
+    "uservm?/whp",
+    "nanvix-sandbox?/whp",
+    "nanvix-sandbox-cache?/whp",
+]
 
 [lints]
 workspace = true
