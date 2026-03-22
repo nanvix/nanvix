@@ -273,6 +273,7 @@ impl NanvixTestConfig {
 /// # Description
 ///
 /// Configuration required to spawn a Nanvix Daemon instance.
+#[allow(dead_code)]
 pub struct RunnerConfig {
     /// Path to the Nanvix Daemon executable that should be launched.
     pub nanvixd_binary_path: String,
@@ -536,6 +537,7 @@ impl RunnerConfig {
     ///
     /// Returns a socket address string formatted as `addr:port`.
     ///
+    #[cfg(unix)]
     pub fn http_endpoint(&self) -> String {
         format!("{}:{}", self.ipv4_addr, self.port_num)
     }
