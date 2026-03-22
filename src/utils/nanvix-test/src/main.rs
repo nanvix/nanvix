@@ -34,7 +34,9 @@ mod environment;
 mod executor;
 mod log_layout;
 mod nanvixd;
+#[cfg(unix)]
 mod port;
+#[cfg(unix)]
 mod uservm;
 mod warning;
 
@@ -64,7 +66,6 @@ use crate::{
         ExecutorName,
         WorkloadSpec,
         empty::empty,
-        http::test_with_http_executor,
         terminal::test_with_terminal_executor,
     },
     log_layout::{
@@ -72,6 +73,8 @@ use crate::{
         initialize_run_timestamp,
     },
 };
+#[cfg(unix)]
+use crate::executor::http::test_with_http_executor;
 use ::anyhow::Result;
 use ::globset::GlobSet;
 use ::log::{
@@ -91,6 +94,7 @@ use ::std::{
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "error";
 /// Default tenant identifier used when creating test sandboxes.
+#[cfg(unix)]
 pub(crate) const DEFAULT_TENANT_ID: &str = "nanvix-test";
 
 //==================================================================================================
@@ -318,6 +322,7 @@ async fn run() -> Result<()> {
                 let context: String = format!("empty executor completed (label={})", executor);
                 warning::fail_if_triggered(context.as_str())?;
             },
+            #[cfg(unix)]
             (ExecutorName::Http, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -359,9 +364,17 @@ async fn run() -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
+            #[cfg(unix)]
             (ExecutorName::Http, None) => {
                 let reason: String =
                     "tests entries with http executor must define the 'program' field".to_string();
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            #[cfg(not(unix))]
+            (ExecutorName::Http, _) => {
+                let reason: String =
+                    "HTTP executor is not supported on this platform".to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
