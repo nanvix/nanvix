@@ -646,12 +646,12 @@ function Main {
     $remaining = @()
     if ($args.Count -gt 1) { $remaining = $args[1..($args.Count - 1)] }
 
-    # If the first argument looks like a build target (not a known command),
-    # treat it as an implicit "build <target>" for convenience.
+    # Reject unknown commands early to avoid running setup or build steps with invalid parameters.
     $knownCommands = @("build", "clean", "distclean", "setup", "run", "help")
     if ($command -notin $knownCommands) {
-        $remaining = @($command) + $remaining
-        $command = "build"
+        Write-Err "Unknown command: $command"
+        Show-Help
+        exit 1
     }
 
     # Parse options and positional arguments.
