@@ -29,6 +29,7 @@ standalone = ["nanvix/standalone"]
 gdb = ["nanvix/gdb"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
+whp = ["nanvix/whp"]
 
 [lints]
 workspace = true

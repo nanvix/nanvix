@@ -103,6 +103,7 @@ Run Options (after --)
 Build Parameters (after --)
   RELEASE=yes             Enable release mode.
   MACHINE=microvm         Target machine (default: microvm).
+  WHP=yes                 Enable WHP-specific guest kernel code for microvm builds.
   LOG_LEVEL=warn          Log level (default: warn).
 
 Prerequisites
@@ -384,6 +385,25 @@ function Invoke-DockerBuild {
     }
 }
 
+function Add-GuestMachineDefaults {
+    param([string[]]$MakeParams = @())
+
+    $resolvedParams = @($MakeParams)
+
+    if (-not ($resolvedParams | Where-Object { $_ -match '^MACHINE=' })) {
+        $resolvedParams += "MACHINE=microvm"
+    }
+
+    $machineParam = $resolvedParams | Where-Object { $_ -match '^MACHINE=' } | Select-Object -Last 1
+    $machine = if ($machineParam) { $machineParam -replace '^MACHINE=', '' } else { 'microvm' }
+
+    if ($machine -eq 'microvm' -and -not ($resolvedParams | Where-Object { $_ -match '^WHP=' })) {
+        $resolvedParams += "WHP=yes"
+    }
+
+    return , $resolvedParams
+}
+
 # ==================================================================================================
 # Build Functions
 # ==================================================================================================
@@ -403,7 +423,7 @@ function Build-UserVm {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"microvm`" -p uservm $buildProfile"
+    $cmd = "cargo build --no-default-features --features `"microvm,whp`" -p uservm $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -428,11 +448,15 @@ function Build-Guest {
 
     Write-Info "Building guest components (Docker)..."
     $releaseFlag = if ($IsRelease) { "RELEASE=yes" } else { "" }
-    $buildParams = "all-guest-staticlibs all-kernel all-guest-binaries $releaseFlag MACHINE=microvm DEPLOYMENT_MODE=standalone"
-    if ($ExtraMakeParams.Count -gt 0) {
-        $buildParams += " " + ($ExtraMakeParams -join ' ')
+    $buildParams = @("all-guest-staticlibs", "all-kernel", "all-guest-binaries", "DEPLOYMENT_MODE=standalone")
+    if ($releaseFlag) {
+        $buildParams += $releaseFlag
     }
-    Invoke-DockerBuild -BuildParams $buildParams -IsRelease $IsRelease -UseMinimal $UseMinimal
+    if ($ExtraMakeParams.Count -gt 0) {
+        $buildParams += $ExtraMakeParams
+    }
+    $buildParams = Add-GuestMachineDefaults -MakeParams $buildParams
+    Invoke-DockerBuild -BuildParams ($buildParams -join ' ') -IsRelease $IsRelease -UseMinimal $UseMinimal
     Write-Info "Guest components built successfully."
 }
 
@@ -486,7 +510,7 @@ function Build-Nanvixd {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"standalone,microvm`" -p nanvixd $buildProfile"
+    $cmd = "cargo build --no-default-features --features `"standalone,microvm,whp`" -p nanvixd $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -778,7 +802,7 @@ function Main {
                         # Native lint check for host crates that compile on Windows.
                         Write-Info "Linting host crates (native)..."
                         $ErrorActionPreference = 'Continue'
-                        cargo clippy --no-default-features --features "microvm" -p uservm -- -D warnings
+                        cargo clippy --no-default-features --features "microvm,whp" -p uservm -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for uservm."
                             exit 1
@@ -794,7 +818,7 @@ function Main {
                         # Native unit tests for host crates (no Docker required).
                         Write-Info "Running unit tests (native)..."
                         $ErrorActionPreference = 'Continue'
-                        cargo test --no-default-features --features "microvm" -p uservm
+                        cargo test --no-default-features --features "microvm,whp" -p uservm
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Unit tests failed for uservm."
                             exit 1
@@ -815,21 +839,15 @@ function Main {
                             Write-Warn "Skipping spellcheck (Docker not available or not running). Run with Docker to enable."
                         }
                         else {
-                            $dockerParams = @("spellcheck") + $makeParams
-                            if (-not ($makeParams | Where-Object { $_ -match '^MACHINE=' })) {
-                                $dockerParams += "MACHINE=microvm"
-                            }
+                            $dockerParams = Add-GuestMachineDefaults `
+                                -MakeParams (@("spellcheck") + $makeParams)
                             Write-Info "Running spellcheck via Docker..."
                             Invoke-DockerBuild -BuildParams ($dockerParams -join ' ') -IsRelease $isRelease -UseMinimal $useMinimalDocker
                         }
                     }
                     default {
                         # Forward any other target to Docker make (mirrors bash z behavior).
-                        $dockerParams = @($target) + $makeParams
-                        # Add default MACHINE if not specified by the user.
-                        if (-not ($makeParams | Where-Object { $_ -match '^MACHINE=' })) {
-                            $dockerParams += "MACHINE=microvm"
-                        }
+                        $dockerParams = Add-GuestMachineDefaults -MakeParams (@($target) + $makeParams)
                         Write-Info "Forwarding '$target' to Docker..."
                         Invoke-DockerBuild -BuildParams ($dockerParams -join ' ') -IsRelease $isRelease -UseMinimal $useMinimalDocker
                     }
