@@ -212,15 +212,15 @@ windows = { version = "0.62", features = [
 ] }
 
 [profile.dev]
-opt-level = 0
-debug = true
+opt-level = 3
+debug = 2
 strip = false
 debug-assertions = true
 overflow-checks = true
 lto = false
 panic = 'unwind'
 incremental = true
-codegen-units = 256
+codegen-units = 1
 rpath = false
 
 [profile.release]

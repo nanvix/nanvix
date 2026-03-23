@@ -7,8 +7,26 @@ your development environment, please refer to the [setup.md](setup.md) document.
 This document guides you through building Nanvix. You can either use the `z` utility script for a
 simplified build process or do it manually.
 
+## Build Profiles
+
+Nanvix provides two build profiles controlled by the `RELEASE` variable:
+
+| Setting | Debug (`RELEASE=no`, default) | Release (`RELEASE=yes`) |
+|---|---|---|
+| Rust `opt-level` | `3` | `3` |
+| Rust `codegen-units` | `1` | `1` |
+| Rust debug info | Full (`debuginfo = 2`) | None (stripped) |
+| Rust `debug-assertions` | Enabled | Disabled |
+| C/C++ optimization | `-O3 -g` | `-O3` |
+| Default `LOG_LEVEL` | `trace` | `warn` |
+
+Both profiles generate optimized code. The debug profile additionally emits debug symbols (so that
+GDB and other debuggers remain fully usable) and defaults to trace-level logging for verbose output
+during development.
+
 ## Table of Contents
 
+- [Build Profiles](#build-profiles)
 - [Building Nanvix on Linux](#building-nanvix-on-linux)
   - [Building Nanvix with `z` (Preferred Method)](#building-nanvix-with-z-preferred-method)
   - [Building Nanvix Manually](#building-nanvix-manually)
