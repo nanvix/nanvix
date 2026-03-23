@@ -67,9 +67,9 @@ the syscall transport itself.
 
 ### What It Does **Not** Measure
 
-- The bounded guest-to-host SQ polling window that landed after the latest rerun,
-  or any future Tier 3 full polling. The published numbers below predate that
-  submission-side optimization.
+- The published numbers below predate the bounded guest-to-host SQ polling window that landed after
+  the latest rerun, and they also do not include future Tier 2 adaptive polling,
+  guest-to-host doorbell suppression, or Tier 3 full polling.
 - A single end-to-end zero-copy host-to-guest receive path. The fixed-buffer rerun removes the
   older bulk payload bounce on the ring path, and the new batched receive completion removes the
   old per-segment CQ/control overhead, but the guest still must copy bytes from the shared fixed
@@ -336,8 +336,9 @@ the batched completion arrives.
 - These payload improvements are consistent with removing the `uservm` SQ-drain/CQ-write hot path
   from the active transport path, amortizing one logical transfer across up to `16` shared fixed
   buffers, and collapsing receive-side completion traffic to one logical CQ event per
-  `readv()` / `preadv()` result. The later bounded guest-to-host SQ polling window is not
-  reflected in these published numbers; full fallback removal is still pending.
+  `readv()` / `preadv()` result. The published numbers still predate the later bounded
+  guest-to-host SQ polling window, and Tier 2 adaptive polling, guest-to-host doorbell
+  suppression, and full fallback removal are still pending.
 - The fixed-size benchmark is still sensitive to host noise, but the warm-up + pinned-core rerun
   brought the absolute RTTs back much closer to the earlier sub-millisecond baseline.
 - The smallest payload points can still show shared-environment noise, so the interleaved medians

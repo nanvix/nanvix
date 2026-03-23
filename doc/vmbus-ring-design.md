@@ -656,9 +656,9 @@ Interpretation:
 - These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
   active transport path, amortizing one logical transfer across up to `16` shared fixed buffers,
   and collapsing receive-side completion traffic to one logical CQ event per `readv()` / `preadv()`
-  result. The later bounded guest-to-host SQ polling window is expected to help further on bursty
-  submission-heavy traffic, but it is not reflected in the published numbers below; full fallback
-  elimination is still pending.
+  result. The published numbers still predate the later bounded guest-to-host SQ polling window,
+  and adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
+  still pending.
 
 ## Key Design Decisions
 
