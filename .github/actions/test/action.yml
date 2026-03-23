@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Test"
-description: "Run integration tests for all machine types"
+description: "Run integration tests"
 
 inputs:
   release:
@@ -16,7 +16,7 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
-    default: "qemu-pc"
+    default: "microvm"
   deployment-type:
     description: "Deployment type"
     required: true
@@ -44,8 +44,7 @@ runs:
         ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
         ${{ steps.deployment.outputs.make-flags }}
 
-  - name: "Integration Tests (${{ inputs.machine-type }}, microvm/hyperlight)"
-    if: ${{ inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight' }}
+  - name: "Integration Tests (${{ inputs.machine-type }})"
     shell: bash
     run: |
       ./z build \
@@ -58,34 +57,3 @@ runs:
         VERBOSE=yes \
         ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
         ${{ steps.deployment.outputs.make-flags }}
-
-  - name: "Integration Tests (${{ inputs.machine-type }}, qemu)"
-    if: ${{ inputs.machine-type != 'microvm' && inputs.machine-type != 'hyperlight' }}
-    shell: bash
-    env:
-      MACHINE_TYPE: ${{ inputs.machine-type }}
-      LOG_LEVEL: ${{ inputs.log-level }}
-      RELEASE_FLAG: ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
-      MAKE_FLAGS: ${{ steps.deployment.outputs.make-flags }}
-    run: |
-      set -Eeuo pipefail
-
-      MAGIC_STRING="hello, world!"
-      TIMEOUT=600
-
-      # Build the ISO from the locally built artifacts.
-      make image \
-        "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
-        "LOG_LEVEL=${LOG_LEVEL}" \
-        ${RELEASE_FLAG} \
-        ${MAKE_FLAGS}
-
-      # Run QEMU via the shared script with magic-string monitoring.
-      if ! bash scripts/run-qemu.sh x86 "${MACHINE_TYPE}" nanvix.iso --no-debug "${TIMEOUT}" \
-        --wait-for-string "${MAGIC_STRING}"; then
-        echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-        exit 1
-      fi
-
-      echo "Integration test passed."

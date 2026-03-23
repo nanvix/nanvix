@@ -106,8 +106,8 @@ jobs:
   #
   # Lint is config-dependent (features differ per machine-type + deployment-type)
   # but does NOT depend on build-type (debug vs release). Run lint once per
-  # unique (machine-type, deployment-type) pair (5 jobs) instead of once per
-  # build matrix entry (10 jobs).
+  # unique (machine-type, deployment-type) pair (6 jobs) instead of once per
+  # build matrix entry (12 jobs).
   lint:
     name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
     needs: [precheck]
@@ -115,13 +115,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [qemu-pc, microvm, hyperlight]
+        machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
-        exclude:
-          - machine-type: qemu-pc
-            deployment-type: standalone
-          - machine-type: qemu-pc
-            deployment-type: single-process
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -164,13 +159,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [qemu-pc, microvm, hyperlight]
+        machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
-        exclude:
-          - machine-type: qemu-pc
-            deployment-type: standalone
-          - machine-type: qemu-pc
-            deployment-type: single-process
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -249,16 +239,12 @@ jobs:
       fail-fast: false
       matrix:
         build-type: [debug, release]
-        machine-type: [qemu-pc, microvm, hyperlight]
+        machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
         # Build all memory sizes only on dev pushes (for release archives);
         # PRs and merge-queue runs build 128 MB only to reduce CI load.
         memory-size: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && fromJSON('[128, 256, 512, 1024]') || fromJSON('[128]') }}
         exclude:
-          - machine-type: qemu-pc
-            deployment-type: standalone
-          - machine-type: qemu-pc
-            deployment-type: single-process
           # Debug builds only run at the default memory size (128 MB).
           - build-type: debug
             memory-size: 256
@@ -359,13 +345,8 @@ jobs:
       fail-fast: false
       matrix:
         build-type: [debug, release]
-        machine-type: [qemu-pc, microvm, hyperlight]
+        machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
-        exclude:
-          - machine-type: qemu-pc
-            deployment-type: standalone
-          - machine-type: qemu-pc
-            deployment-type: single-process
     runs-on:
       group: Test
     permissions:
@@ -908,14 +889,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        machine-type: [qemu-pc, microvm, hyperlight]
+        machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
         memory-size: [128, 256, 512, 1024]
-        exclude:
-          - machine-type: qemu-pc
-            deployment-type: standalone
-          - machine-type: qemu-pc
-            deployment-type: single-process
     runs-on: ubuntu-24.04
     permissions:
       contents: read

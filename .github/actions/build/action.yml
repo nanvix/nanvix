@@ -16,7 +16,7 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
-    default: "qemu-pc"
+    default: "microvm"
   deployment-type:
     description: "Deployment type"
     required: true
