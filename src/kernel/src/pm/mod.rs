@@ -5,7 +5,7 @@
 // Modules
 //==================================================================================================
 
-mod clock;
+pub(crate) mod clock;
 mod kcall;
 mod process;
 pub mod sync;

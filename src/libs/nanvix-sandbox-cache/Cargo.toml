@@ -24,6 +24,7 @@ default = ["microvm", "multi-process"]
 multi-process = ["nanvix-sandbox/multi-process"]
 hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
 microvm = ["config/microvm", "nanvix-sandbox/microvm"]
+whp = ["config/whp", "nanvix-sandbox/whp"]
 
 [lints]
 workspace = true

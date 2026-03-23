@@ -23,6 +23,7 @@ default = []
 std = []
 hyperlight = []
 microvm = []
+whp = []
 pc = []
 rustc-dep-of-std = [
     "core",

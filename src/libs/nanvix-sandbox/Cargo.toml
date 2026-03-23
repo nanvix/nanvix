@@ -39,6 +39,7 @@ standalone = []
 gdb = ["uservm/gdb"]
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
+whp = ["config/whp", "uservm/whp"]
 
 [lints]
 workspace = true

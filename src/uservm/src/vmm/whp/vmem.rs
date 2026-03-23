@@ -37,10 +37,6 @@ use windows::Win32::System::{
     },
 };
 
-/// Page size in bytes (4 KiB, matching the x86 architecture).
-#[allow(dead_code)]
-const PAGE_SIZE: usize = 4096;
-
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -55,8 +51,6 @@ pub struct VirtualMemory {
     ptr: *mut u8,
     /// Size of the virtual memory.
     size: usize,
-    /// Pointers to lazily-mapped MMIO dummy pages (freed on drop).
-    mmio_pages: Vec<*mut u8>,
 }
 
 ///
@@ -121,11 +115,7 @@ impl VirtualMemory {
         }
 
         // Create the VirtualMemory instance (destructor will free memory on error).
-        let vmem: Self = Self {
-            ptr,
-            size,
-            mmio_pages: Vec::new(),
-        };
+        let vmem: Self = Self { ptr, size };
 
         // Map the memory into the WHP partition at guest physical address 0.
         unsafe {
@@ -153,73 +143,6 @@ impl VirtualMemory {
 
     pub fn get_size(&self) -> usize {
         self.size
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Lazily maps a zeroed page at the given guest physical address. This allows guest accesses
-    /// to unmapped MMIO regions to succeed (reads return zero, writes are discarded).
-    ///
-    /// # Parameters
-    ///
-    /// - `partition`: WHP partition that hosts the virtual machine.
-    /// - `gpa`: Guest physical address that caused the memory-access exit.
-    ///
-    pub fn map_mmio_page(&mut self, partition: &WhpPartition, gpa: u64) -> Result<()> {
-        let page_gpa: u64 = gpa & !(PAGE_SIZE as u64 - 1);
-
-        // Allocate a zeroed host page.
-        let page_ptr: *mut u8 = unsafe {
-            VirtualAlloc(Some(ptr::null()), PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
-                .cast::<u8>()
-        };
-        if page_ptr.is_null() {
-            anyhow::bail!("map_mmio_page(): failed to allocate MMIO page for GPA {page_gpa:#010x}");
-        }
-
-        // If this is the LAPIC register page (0xFEE00000), pre-populate it
-        // with valid register values so the kernel's LAPIC init code
-        // succeeds without LAPIC emulation.
-        const LAPIC_BASE: u64 = 0xFEE0_0000;
-        if page_gpa == LAPIC_BASE {
-            trace!("map_mmio_page(): populating LAPIC page at GPA {page_gpa:#010x}");
-            let page_slice = unsafe { std::slice::from_raw_parts_mut(page_ptr, PAGE_SIZE) };
-            let write_u32 = |s: &mut [u8], off: usize, val: u32| {
-                s[off..off + 4].copy_from_slice(&val.to_le_bytes());
-            };
-            // APIC ID: 0 (processor 0).
-            write_u32(page_slice, 0x20, 0);
-            // APIC Version: 0x50014 (version 0x14, max LVT entries 5).
-            write_u32(page_slice, 0x30, 0x0005_0014);
-            // SVR: 0xFF (APIC disabled, spurious vector 0xFF — kernel default).
-            write_u32(page_slice, 0xF0, 0xFF);
-        }
-
-        // Map the page into the WHP partition.
-        let result = unsafe {
-            WHvMapGpaRange(
-                partition.handle(),
-                page_ptr as *const std::ffi::c_void,
-                page_gpa,
-                PAGE_SIZE as u64,
-                WHV_MAP_GPA_RANGE_FLAGS(7), // Read | Write | Execute.
-            )
-        };
-
-        if let Err(e) = result {
-            // Free the page on mapping failure.
-            unsafe {
-                let _ = VirtualFree(page_ptr.cast(), 0, MEM_RELEASE);
-            }
-            anyhow::bail!(
-                "map_mmio_page(): failed to map MMIO page at GPA {page_gpa:#010x} (error={e:?})"
-            );
-        }
-
-        trace!("map_mmio_page(): mapped zeroed page at GPA {page_gpa:#010x}");
-        self.mmio_pages.push(page_ptr);
-        Ok(())
     }
 
     ///
@@ -422,14 +345,6 @@ impl VirtualMemory {
 
 impl Drop for VirtualMemory {
     fn drop(&mut self) {
-        // Free MMIO dummy pages first.
-        for page_ptr in self.mmio_pages.drain(..) {
-            unsafe {
-                if VirtualFree(page_ptr.cast(), 0, MEM_RELEASE).is_err() {
-                    error!("VirtualFree() failed for MMIO page");
-                }
-            }
-        }
         unsafe {
             if VirtualFree(self.ptr.cast(), 0, MEM_RELEASE).is_err() {
                 error!("VirtualFree() failed");
