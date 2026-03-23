@@ -445,6 +445,10 @@ pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
     let mut slot: spin::MutexGuard<'_, Option<VfsEntry>> = FD_TABLE.lock(fd)?;
     let entry: &mut VfsEntry = slot.as_mut().ok_or(Fat32Error::InvalidFd)?;
 
+    if entry.handle.is_dir() {
+        return Err(Fat32Error::NotAFile);
+    }
+
     let size: u64 = entry.handle.size()?;
     if entry.virtual_pos as u64 >= size {
         return Ok(0);
@@ -527,8 +531,8 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
 /// - Timestamps set to a fixed epoch value (FAT has no sub-second precision).
 /// - Permissions: owner read+write for files, owner rwx for directories.
 fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: bool) {
-    // Fixed epoch timestamp: 2020-01-01T00:00:00Z (1577836800).
-    const FIXED_EPOCH: i64 = 1_577_836_800;
+    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
+    const FIXED_EPOCH: i64 = 1_704_067_200;
 
     buf.st_size = size as off_t;
     buf.st_nlink = if is_dir { 2 } else { 1 };
