@@ -33,6 +33,7 @@ default = ["microvm"]
 # into the sandbox.
 single-process = []
 multi-process = []
+standalone = []
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
 ring-buffer = ["uservm/ring-buffer"]

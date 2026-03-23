@@ -35,6 +35,13 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 pub const READER_TASK_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 
+///
+/// # Description
+///
+/// Timeout for joining worker threads when closing a user VM connection.
+///
+pub const WORKER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

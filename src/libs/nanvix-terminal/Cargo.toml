@@ -12,32 +12,17 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-config = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
-nanvix-sandbox = { workspace = true, optional = true }
-nanvix-sandbox-cache = { workspace = true, optional = true }
+nanvix-sandbox-cache = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
-uservm = { workspace = true, optional = true }
 
 [features]
-default = ["microvm", "multi-process"]
-single-process = ["nanvix-sandbox", "nanvix-sandbox/single-process"]
-multi-process = ["nanvix-sandbox-cache", "nanvix-sandbox-cache/multi-process"]
-standalone = ["config", "uservm"]
-hyperlight = [
-    "config?/hyperlight",
-    "uservm?/hyperlight",
-    "nanvix-sandbox?/hyperlight",
-    "nanvix-sandbox-cache?/hyperlight",
-]
-microvm = [
-    "config?/microvm",
-    "uservm?/microvm",
-    "nanvix-sandbox?/microvm",
-    "nanvix-sandbox-cache?/microvm",
-]
+default = ["microvm"]
+single-process = ["nanvix-sandbox-cache/single-process"]
+hyperlight = ["nanvix-sandbox-cache/hyperlight"]
+microvm = ["nanvix-sandbox-cache/microvm"]
 ring-buffer = ["nanvix-sandbox-cache/ring-buffer"]
 
 [lints]
