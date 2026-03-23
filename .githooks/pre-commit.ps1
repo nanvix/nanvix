@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$MachineTypes = @("qemu-pc", "microvm", "hyperlight")
+$MachineTypes = @("microvm", "hyperlight")
 $DeploymentTypes = @("standalone", "single-process", "multi-process")
 
 function Write-Info {
@@ -19,22 +19,6 @@ function Write-Success {
 function Write-Err {
     param([string]$Msg)
     Write-Host "[ERROR] $Msg" -ForegroundColor Red
-}
-
-function Test-ExcludedConfiguration {
-    param(
-        [string]$Machine,
-        [string]$Deployment
-    )
-
-    if ($Machine -eq "qemu-pc" -and $Deployment -eq "standalone") {
-        return $true
-    }
-    if ($Machine -eq "qemu-pc" -and $Deployment -eq "single-process") {
-        return $true
-    }
-
-    return $false
 }
 
 function Get-DeploymentFlag {
@@ -129,17 +113,11 @@ try {
     $buildType = "debug"
     $releaseFlag = Get-ReleaseFlag -BuildType $buildType
 
-    Write-Info "(pre-commit) Running pre-commit checks for configured CI matrix configurations..."
+    Write-Info "(pre-commit) Running pre-commit checks for all CI configurations..."
 
     foreach ($machine in $MachineTypes) {
         foreach ($deployment in $DeploymentTypes) {
             $totalConfigs += 1
-
-            if (Test-ExcludedConfiguration -Machine $machine -Deployment $deployment) {
-                Write-Info "(pre-commit) Skipping excluded configuration: $buildType, $machine, $deployment."
-                continue
-            }
-
             $checkedConfigs += 1
             $deploymentFlag = Get-DeploymentFlag -Deployment $deployment
 
