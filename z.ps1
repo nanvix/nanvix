@@ -37,7 +37,51 @@ $CargoLock = Join-Path $RootDir "Cargo.lock"
 $VenvDir = Join-Path $RootDir ".venv"
 $SysImage = Join-Path $RootDir "nanvix.img"
 $SysrootLink = Join-Path $RootDir "sysroot"
+$ZCacheFile = Join-Path $RootDir ".z.cache"
 Set-Variable -Scope Script -Name DockerfileRelativePath -Value "scripts/setup/Dockerfile.build" -Option Constant
+
+# ==================================================================================================
+# Build Option Cache
+# ==================================================================================================
+
+function Write-ZCache {
+    param([string[]]$Options)
+    [System.IO.File]::WriteAllLines($ZCacheFile, $Options)
+}
+
+function Read-ZCache {
+    if (-not (Test-Path $ZCacheFile)) {
+        Write-Warn "No cached options found. Run a build first."
+        return @()
+    }
+    $lines = @(Get-Content -Path $ZCacheFile -Encoding UTF8 | Where-Object { $_.Trim() -ne "" })
+    if ($lines.Count -eq 0) {
+        Write-Warn "Cache file is empty."
+        return @()
+    }
+    # Extract only docker mode flags (stop at -- separator), matching Linux read_cache.
+    $result = @()
+    foreach ($line in $lines) {
+        if ($line -eq "--") { break }
+        switch ($line) {
+            "--with-docker" { $result += $line }
+            "--with-minimal-docker" { $result += $line }
+        }
+    }
+    return $result
+}
+
+# Remove a directory junction (or plain directory) without following into the target.
+function Remove-Junction {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return }
+    $item = Get-Item $Path -Force -ErrorAction SilentlyContinue
+    if ($null -ne $item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        cmd /c "rmdir `"$Path`"" 2>$null
+    } else {
+        Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ==================================================================================================
 # Logging
@@ -80,6 +124,7 @@ Options
   --release               Build in release mode.
   --with-docker           Use the full Docker toolchain image.
   --with-minimal-docker   Use the minimal Docker toolchain image (default).
+  --with-cached-options   Replay Docker build mode from the last successful build.
 
 Build Targets (after --)
   all                     Build everything (guest + host).
@@ -321,6 +366,31 @@ function Get-DockerImageName {
     return "nanvix/toolchain:$imageTag$suffix"
 }
 
+function Get-SccacheArgs {
+    $result = @()
+    if ($env:SCCACHE_GHA_ENABLED) {
+        $result += "--build-arg"
+        $result += "SCCACHE_GHA_ENABLED=$env:SCCACHE_GHA_ENABLED"
+    }
+    if ($env:SCCACHE_GHA_CACHE_TO) {
+        $result += "--build-arg"
+        $result += "SCCACHE_GHA_CACHE_TO=$env:SCCACHE_GHA_CACHE_TO"
+    }
+    if ($env:SCCACHE_GHA_CACHE_FROM) {
+        $result += "--build-arg"
+        $result += "SCCACHE_GHA_CACHE_FROM=$env:SCCACHE_GHA_CACHE_FROM"
+    }
+    if ($env:ACTIONS_RESULTS_URL) {
+        $result += "--secret"
+        $result += "id=actions_results_url,env=ACTIONS_RESULTS_URL"
+    }
+    if ($env:ACTIONS_RUNTIME_TOKEN) {
+        $result += "--secret"
+        $result += "id=actions_runtime_token,env=ACTIONS_RUNTIME_TOKEN"
+    }
+    return $result
+}
+
 function Invoke-DockerBuild {
     param([string]$BuildParams, [bool]$IsRelease = $false, [bool]$UseMinimal = $true)
 
@@ -351,6 +421,8 @@ function Invoke-DockerBuild {
     $env:DOCKER_BUILDKIT = "1"
     Write-Host "  docker build (params: $BuildParams)" -ForegroundColor DarkGray
 
+    $ghaSccacheArgs = Get-SccacheArgs
+
     # Remove the local .venv directory if it exists. Docker builds may create a
     # .venv inside the container with a lib64 -> lib symlink (standard Linux Python
     # venv). If a previous Docker export left a broken reparse point at .venv\lib64
@@ -369,18 +441,24 @@ function Invoke-DockerBuild {
     # Restore-GitSymlinks (called above) already materialized symlinks in-place,
     # so the context is complete. Symlinks are restored after the build via the
     # finally block below.
+    $dockerArgs = @(
+        "build",
+        "--build-arg", "BASE_IMAGE=$imageName",
+        "--build-arg", "BUILD_PARAMS=$BuildParams",
+        "--build-arg", "SYSROOT_SUFFIX=$sysrootSuffix",
+        "--build-arg", "WORKSPACE_PATH=/mnt",
+        "--output", "type=local,dest=.",
+        "--progress=plain",
+        "-f", $dockerfilePath
+    )
+    if ($ghaSccacheArgs.Count -gt 0) {
+        $dockerArgs += $ghaSccacheArgs
+    }
+    $dockerArgs += $RootDir
+
     $buildExitCode = 1
     try {
-        docker build `
-            --build-arg "BASE_IMAGE=$imageName" `
-            --build-arg "BUILD_PARAMS=$BuildParams" `
-            --build-arg "SYSROOT_SUFFIX=$sysrootSuffix" `
-            --build-arg "WORKSPACE_PATH=/mnt" `
-            --output "type=local,dest=." `
-            --progress=plain `
-            -f $dockerfilePath `
-            $RootDir
-
+        & docker @dockerArgs
         $buildExitCode = $LASTEXITCODE
     }
     finally {
@@ -485,7 +563,7 @@ function Build-Guest {
     # targets (e.g., kernel, format-check) that would not regenerate all files.
     foreach ($dir in @($BinDir, $LibDir)) {
         if (-not (Test-Path $dir)) { continue }
-        Get-ChildItem -Path $dir -File -Include "*.elf", "*.wasm", "*.a", "*.so", "*.img" -Recurse -ErrorAction SilentlyContinue |
+        Get-ChildItem -Path (Join-Path $dir '*') -File -Include "*.elf", "*.wasm", "*.a", "*.so", "*.img" -Recurse -ErrorAction SilentlyContinue |
             ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
     }
 
@@ -507,6 +585,15 @@ function Build-Guest {
     }
     $buildParams = Add-GuestMachineDefaults -MakeParams $buildParams
     Invoke-DockerBuild -BuildParams ($buildParams -join ' ') -IsRelease $IsRelease -UseMinimal $UseMinimal
+
+    # Create sysroot junction after Docker build (parity with Linux ln -sfn).
+    $sysrootTarget = Join-Path $RootDir "sysroot-$sysrootSuffix"
+    if (Test-Path $sysrootTarget) {
+        Remove-Junction -Path $SysrootLink
+        New-Item -ItemType Junction -Path $SysrootLink -Target $sysrootTarget | Out-Null
+        Write-Info "Sysroot junction: sysroot -> sysroot-$sysrootSuffix"
+    }
+
     Write-Info "Guest components built successfully."
 }
 
@@ -685,18 +772,25 @@ function Invoke-Clean {
 
     # Remove all guest binaries in bin/
     if (Test-Path $BinDir) {
-        Get-ChildItem -Path $BinDir -File -Include "*.elf", "*.wasm" -Recurse |
+        Get-ChildItem -Path (Join-Path $BinDir '*') -File -Include "*.elf", "*.wasm" -Recurse |
         Remove-Item -Force -ErrorAction SilentlyContinue
     }
 
     # Remove all guest libraries in lib/.
     if (Test-Path $LibDir) {
-        Get-ChildItem -Path $LibDir -File -Include "*.a", "*.so" -Recurse |
+        Get-ChildItem -Path (Join-Path $LibDir '*') -File -Include "*.a", "*.so" -Recurse |
         Remove-Item -Force -ErrorAction SilentlyContinue
     }
 
     # Remove system image.
     if (Test-Path $SysImage) { Remove-Item $SysImage -Force }
+
+    # Remove sysroot junction (without following into the target directory).
+    Remove-Junction -Path $SysrootLink
+
+    # Remove images directory.
+    $imagesDir = Join-Path $RootDir "images"
+    if (Test-Path $imagesDir) { Remove-Item $imagesDir -Recurse -Force }
 
     Write-Success "Quick clean complete."
 }
@@ -709,6 +803,15 @@ function Invoke-DistClean {
     Invoke-Clean
 
     Write-Info "Removing everything (full clean)..."
+
+    # Clean all Rust build artifacts.
+    $cargoAvailable = Get-Command cargo -ErrorAction SilentlyContinue
+    if ($cargoAvailable) {
+        cargo clean 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "cargo clean failed with exit code $LASTEXITCODE."
+        }
+    }
 
     # Remove Cargo.lock.
     if (Test-Path $CargoLock) { Remove-Item $CargoLock -Force }
@@ -738,8 +841,10 @@ function Invoke-DistClean {
         if (Test-Path $sysrootDir) { Remove-Item $sysrootDir -Recurse -Force }
     }
 
-    # Remove sysroot symlink (SYSROOT_LINK).
-    if (Test-Path $SysrootLink) { Remove-Item $SysrootLink -Force }
+    # Sysroot junction and images/ already removed by Invoke-Clean above.
+
+    # Remove build option cache.
+    if (Test-Path $ZCacheFile) { Remove-Item $ZCacheFile -Force }
 
     # Clean up Docker build cache for Nanvix.
     $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
@@ -985,15 +1090,20 @@ function Main {
     # Parse options and positional arguments.
     $isRelease = $false
     $useMinimalDocker = $true
+    $useCachedOptions = $false
+    $dockerModeOptionSet = $false
     $buildParams = @()
 
+    $pastSeparator = $false
+
     foreach ($arg in $remaining) {
-        if ($arg -eq "--") { continue }
-        if ($arg.StartsWith("--")) {
+        if ($arg -eq "--") { $pastSeparator = $true; continue }
+        if (-not $pastSeparator -and $arg.StartsWith("--")) {
             switch ($arg) {
                 "--release" { $isRelease = $true }
-                "--with-docker" { $useMinimalDocker = $false }
-                "--with-minimal-docker" { $useMinimalDocker = $true }
+                "--with-docker" { $useMinimalDocker = $false; $dockerModeOptionSet = $true }
+                "--with-minimal-docker" { $useMinimalDocker = $true; $dockerModeOptionSet = $true }
+                "--with-cached-options" { $useCachedOptions = $true }
                 default {
                     Write-Err "Unknown option: $arg"
                     exit 1
@@ -1003,6 +1113,18 @@ function Main {
         else {
             if ($arg -ne '') {
                 $buildParams += $arg
+            }
+        }
+    }
+
+    # Apply cached options only when no docker mode flag was explicitly set on
+    # the command line. This matches Linux z behavior: explicit flags always win.
+    if ($useCachedOptions -and -not $dockerModeOptionSet) {
+        $cached = Read-ZCache
+        foreach ($opt in $cached) {
+            switch ($opt) {
+                "--with-docker" { $useMinimalDocker = $false }
+                "--with-minimal-docker" { $useMinimalDocker = $true }
             }
         }
     }
@@ -1218,6 +1340,20 @@ function Main {
 
             Write-Host ""
             Write-Success "Build complete."
+
+            # Cache build options for --with-cached-options.
+            # Write the full command line (matching Linux write_cache behavior).
+            $cacheOpts = @("build")
+            if ($isRelease) { $cacheOpts += "--release" }
+            if ($useMinimalDocker) { $cacheOpts += "--with-minimal-docker" } else { $cacheOpts += "--with-docker" }
+            $cacheOpts += "--"
+            $cacheOpts += $buildParams
+            try {
+                Write-ZCache -Options $cacheOpts
+            }
+            catch {
+                Write-Warn "Failed to write .z.cache: $($_.Exception.Message)"
+            }
         }
 
         "clean" {
