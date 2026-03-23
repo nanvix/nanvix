@@ -470,7 +470,7 @@ impl VirtualMemory {
             anyhow::bail!(reason)
         }
 
-        if base.saturating_add(length) > self.size {
+        if base.saturating_add(length) > self.mapping.size() {
             let reason: String =
                 format!("mapping exceeds guest memory (base={base:#010x}, length={length})");
             error!("map_shared_file_region(): {reason}");
@@ -499,7 +499,7 @@ impl VirtualMemory {
         // SAFETY: `base` and `length` were validated above and point into the current KVM userspace
         // mapping. MAP_FIXED atomically replaces only that guest-memory slice with a shared
         // file-backed mapping.
-        let dst: *mut libc::c_void = unsafe { self.ptr.add(base).cast::<libc::c_void>() };
+        let dst: *mut libc::c_void = unsafe { self.mapping.ptr().add(base).cast::<libc::c_void>() };
         let mapped_ptr: *mut libc::c_void = unsafe {
             libc::mmap(
                 dst,

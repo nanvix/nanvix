@@ -50,6 +50,7 @@ pub mod pal;
 pub mod ring_drain;
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 pub mod ring_signal;
+pub mod standalone;
 pub mod vmm;
 
 //==================================================================================================

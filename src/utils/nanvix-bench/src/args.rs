@@ -74,8 +74,8 @@ Options:
   {netns_pool_size} <size>            Netns pool prefill size for nanvixd (default: \
              {default_netns_pool_size}; 0 enables lazy initialization).
   {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
-   {sudo}                              Launch `nanvixd` through `sudo`; required for L2 benchmarks \
-             on setups where netns operations need privilege.
+             {sudo}                              Launch `nanvixd` through `sudo`; required for L2 \
+             benchmarks on setups where netns operations need privilege.
    {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
              etc.).
   {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
@@ -114,7 +114,6 @@ Examples:
         let mut num_concurrent_vms: Option<usize> = None;
         let mut netns_pool_size: Option<usize> = None;
         let mut sudo: bool = false;
-        let mut netns_pool_size: Option<usize> = None;
         let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
         let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
@@ -244,7 +243,6 @@ Examples:
                     num_concurrent_vms,
                     netns_pool_size,
                     sudo,
-                    netns_pool_size,
                     toolchain_bin_dir,
                     tmp_dir,
                 })

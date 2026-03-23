@@ -1678,10 +1678,6 @@ async fn main() -> Result<()> {
             .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
             .build()?,
         nanvixd_use_sudo: args.sudo(),
-        nanvixd_client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
-            .build()?,
-        nanvixd_use_sudo: args.sudo(),
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
         nanvixd_netns_pool_size: args.netns_pool_size(),
         nanvixd_tmp_dir: args.tmp_dir(),

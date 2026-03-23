@@ -15,6 +15,7 @@ use crate::{
     config::{
         get_clh_api_socket_path,
         get_clh_bin_dir,
+        get_clh_snapshot_path,
         CONTROL_PLANE_ACCEPT_TIMEOUT,
         SHUTDOWN_TIMEOUT,
     },
@@ -588,7 +589,14 @@ impl LinuxDaemon {
             None
         };
         let l2_snapshot_path: Option<String> = if args.l2() {
-            Some(get_clh_snapshot_path(args.l2_snapshot_path())?)
+            let snapshot_dir: &SnapshotDirHandle = snapshot_dir_handle.as_ref().ok_or_else(|| {
+                let reason: &str = "missing per-instance snapshot directory for L2 restore";
+                error!("spawn(): {reason}");
+                anyhow::anyhow!("{reason}")
+            })?;
+            Some(get_clh_snapshot_path(
+                &snapshot_dir.path().to_string_lossy(),
+            )?)
         } else {
             None
         };

@@ -11,13 +11,13 @@
 // Imports
 //==================================================================================================
 
+#[cfg(not(any(feature = "single-process", feature = "standalone")))]
+use crate::netns::NetnsHandle;
 #[cfg(not(feature = "standalone"))]
 use crate::{
     config::GATEWAY_CONNECT_TIMEOUT,
     linuxd::LinuxDaemon,
 };
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use crate::netns::NetnsHandle;
 use crate::{
     tcp_port::TcpPort,
     uservm::UserVm,
@@ -324,11 +324,7 @@ async fn wait_for_gateway_connection(
         }
     }
 
-    debug!(
-        "gateway socket file appeared after {:?} (path={:?})",
-        now.elapsed(),
-        &gateway_sockaddr
-    );
+    debug!("gateway socket file appeared after {:?} (path={:?})", now.elapsed(), &gateway_sockaddr);
 
     Ok(())
 }
