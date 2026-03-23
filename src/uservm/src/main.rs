@@ -22,13 +22,16 @@ use ::log::{
     error,
     info,
 };
-#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::std::{fs::OpenOptions, path::PathBuf};
 use ::std::{
     convert::TryInto,
     env,
     process::ExitCode,
     str::FromStr,
+};
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::{
+    fs::OpenOptions,
+    path::PathBuf,
 };
 use ::sys::ipc::IkcFrame;
 use ::syscomm::{
@@ -37,28 +40,33 @@ use ::syscomm::{
     UnboundSocket,
     WriteAll,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::{
+    UnboundedReceiver,
+    UnboundedSender,
+    unbounded_channel,
+};
 use ::tokio::{
-    sync::mpsc::{
-        self,
-        UnboundedReceiver,
-        UnboundedSender,
-        unbounded_channel,
-    },
+    sync::mpsc,
     task::JoinHandle,
     time::timeout,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 use ::user_vm_api::{
     IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO,
+    RingTransportKind,
+};
+use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
     RingTransport,
-    RingTransportKind,
     UserVmIdentifier,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::uservm::DirectRingSignal;
 use ::uservm::{
     CHANNEL_CAPACITY,
     CONTROL_PLANE_CONNECT_TIMEOUT,
-    DirectRingSignal,
     SYSTEM_VM_CONNECT_TIMEOUT,
     UserVm,
     UserVmArgs,
@@ -264,6 +272,7 @@ async fn run_managed(
         owned_by_uservm: bool,
     }
 
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     let ring_shared_backing: Option<RingSharedBacking> = if disable_ring_buffer {
         None
     } else if let Some(path) = ring_shared_path_from_launcher {
@@ -507,15 +516,18 @@ fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> 
         .read(true)
         .write(true)
         .open(&path)
-        .map_err(|e| anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path))?;
+        .map_err(|e| {
+            anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path)
+        })?;
 
-    file.set_len(::config::microvm::RING_BUFFER_SIZE as u64).map_err(|e| {
-        anyhow::anyhow!(
-            "failed to size shared ring backing file {:?} to {} bytes: {e}",
-            path,
-            ::config::microvm::RING_BUFFER_SIZE
-        )
-    })?;
+    file.set_len(::config::microvm::RING_BUFFER_SIZE as u64)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "failed to size shared ring backing file {:?} to {} bytes: {e}",
+                path,
+                ::config::microvm::RING_BUFFER_SIZE
+            )
+        })?;
 
     Ok(path)
 }

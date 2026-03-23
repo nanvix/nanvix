@@ -102,15 +102,16 @@ use ::nvx_ring::{
     HOST_CQ_SIGNAL_OFFSET,
     HOST_SQ_SIGNAL_OFFSET,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::path::Path;
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::sync::mpsc::Receiver as StdReceiver;
 use ::std::{
     fs::File,
     io::Write,
-    sync::mpsc::Receiver as StdReceiver,
     sync::Arc,
     time::Duration,
 };
-#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::std::path::Path;
 use ::sys::ipc::{
     DataChunk,
     DataChunkHeader,
@@ -120,6 +121,8 @@ use ::sys::ipc::{
     MessageSender,
     MessageType,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::UnboundedSender;
 use ::tokio::{
     sync::{
         Mutex,
@@ -128,7 +131,6 @@ use ::tokio::{
         mpsc::{
             Receiver,
             Sender,
-            UnboundedSender,
         },
     },
     task::JoinHandle,
@@ -333,7 +335,8 @@ impl UserVm {
                 ::config::microvm::RING_BUFFER_SIZE,
             )?;
             trace!(
-                "spawn(): mapped shared ring backing file into guest memory (path={ring_shared_path})"
+                "spawn(): mapped shared ring backing file into guest memory \
+                 (path={ring_shared_path})"
             );
         }
 
@@ -341,7 +344,7 @@ impl UserVm {
         // CQ completions into guest IRQ injections.
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
         if args.ring_shared_path.is_some() {
-            let doorbell_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd();
+            let doorbell_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd()?;
             let cq_notifier = microvm.ikc_notifier();
 
             if args.use_socket_ring_doorbells {
@@ -358,7 +361,10 @@ impl UserVm {
                 std::thread::Builder::new()
                     .name("ring-sq-signal".into())
                     .spawn(move || {
-                        crate::ring_signal::run_sq_socket_doorbell_thread(doorbell_evtfd, signal_tx);
+                        crate::ring_signal::run_sq_socket_doorbell_thread(
+                            doorbell_evtfd,
+                            signal_tx,
+                        );
                     })
                     .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
                 std::thread::Builder::new()
@@ -374,7 +380,11 @@ impl UserVm {
                 let ring_base_ptr: *mut u8 = {
                     let locked_vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
                     // SAFETY: the shared ring mapping is established above at `RING_BUFFER_GPA`.
-                    unsafe { locked_vmem.get_raw_ptr().add(::config::microvm::RING_BUFFER_GPA) }
+                    unsafe {
+                        locked_vmem
+                            .get_raw_ptr()
+                            .add(::config::microvm::RING_BUFFER_GPA)
+                    }
                 };
                 let sq_signal_word: *mut u32 =
                     // SAFETY: the signal words live inside the mapped ring control area.
@@ -387,7 +397,10 @@ impl UserVm {
                 std::thread::Builder::new()
                     .name("ring-sq-signal".into())
                     .spawn(move || {
-                        crate::ring_signal::run_sq_signal_thread(doorbell_evtfd, sq_signal_word_addr);
+                        crate::ring_signal::run_sq_signal_thread(
+                            doorbell_evtfd,
+                            sq_signal_word_addr,
+                        );
                     })
                     .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
                 std::thread::Builder::new()
@@ -409,10 +422,8 @@ impl UserVm {
 
         // Create the CQ writer for the memory thread (ring buffer response path).
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        let cq_writer: Option<crate::cq_writer::CqWriter> = Some(crate::cq_writer::CqWriter::new(
-            vmem.clone(),
-            microvm.ikc_notifier(),
-        ));
+        let cq_writer: Option<crate::cq_writer::CqWriter> =
+            Some(crate::cq_writer::CqWriter::new(vmem.clone(), microvm.ikc_notifier()));
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
@@ -717,7 +728,8 @@ pub fn build_input_fn(
                     },
                     IkcFrame::Fixed(fixed) => {
                         let reason: String = format!(
-                            "fixed-buffer completion reached legacy stdin path (buffer_id={}, len={})",
+                            "fixed-buffer completion reached legacy stdin path (buffer_id={}, \
+                             len={})",
                             fixed.buffer_id(),
                             fixed.data_len()
                         );
@@ -867,9 +879,7 @@ pub fn build_input_fn(
                     fixed.data_len()
                 );
                 error!("input(): {reason}");
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
-                    reason,
-                )))
+                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
             },
 
             // Channel has disconnected.

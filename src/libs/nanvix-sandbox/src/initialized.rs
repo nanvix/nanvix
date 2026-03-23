@@ -40,7 +40,6 @@ use ::syscomm::{
     SocketType,
     UnboundSocket,
 };
-use ::user_vm_api::RingTransportKind;
 use ::tokio::{
     sync::{
         Mutex,
@@ -48,6 +47,7 @@ use ::tokio::{
     },
     time::Instant,
 };
+use ::user_vm_api::RingTransportKind;
 
 //==================================================================================================
 // Structures
@@ -133,18 +133,18 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
         #[cfg(feature = "ring-buffer")]
-        let ring_transport_kind: RingTransportKind = if matches!(self.sandbox_config.l2(), Some(true))
-        {
-            if std::env::var_os("NANVIX_L2_IVSHMEM_PATH").is_some()
-                && std::env::var_os("NANVIX_L2_IVSHMEM_SIZE").is_some()
-            {
-                RingTransportKind::Ivshmem
+        let ring_transport_kind: RingTransportKind =
+            if matches!(self.sandbox_config.l2(), Some(true)) {
+                if std::env::var_os("NANVIX_L2_IVSHMEM_PATH").is_some()
+                    && std::env::var_os("NANVIX_L2_IVSHMEM_SIZE").is_some()
+                {
+                    RingTransportKind::Ivshmem
+                } else {
+                    RingTransportKind::Disabled
+                }
             } else {
-                RingTransportKind::Disabled
-            }
-        } else {
-            RingTransportKind::FilePath
-        };
+                RingTransportKind::FilePath
+            };
         #[cfg(feature = "ring-buffer")]
         let disable_ring_buffer: bool = ring_transport_kind == RingTransportKind::Disabled;
         #[cfg(not(feature = "ring-buffer"))]

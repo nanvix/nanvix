@@ -57,15 +57,23 @@ the syscall transport itself.
   (`microvm ring-buffer`).
 - Historical fixed-size RTT rows for the original ring path, the CQ-interrupt-suppressed path, and
   the current direct-`linuxd` SQ/CQ path.
-- The payload benchmark program now emits `write()`, `read()`, `pwrite()`, and `pread()`
-  size sweeps through `65536` bytes; the tables below summarize the latest full rerun.
+- The current ring receive path includes the batched fixed-buffer completion optimization for
+  `read()` / `pread()`: one host `readv()` / `preadv()` still fills the shared fixed buffers, but
+  completion traffic is collapsed to one logical CQ event per syscall.
+- The payload benchmark program now emits sequential `write()` / `read()` size sweeps through
+  `65536` bytes and positioned `pwrite()` / `pread()` size sweeps through `131072` bytes. The
+  tables below still summarize the latest full rerun, which stopped at `65536` bytes for all four
+  operations.
 
 ### What It Does **Not** Measure
 
-- Tier 2 adaptive polling or Tier 3 full polling. Those paths are not implemented yet.
-- A single end-to-end zero-copy host syscall path. The fixed-buffer rerun removes the older bulk
-  payload bounce on the ring path, but the host still pays for linuxd syscall execution and CQ
-  completion handling.
+- The bounded guest-to-host SQ polling window that landed after the latest rerun,
+  or any future Tier 3 full polling. The published numbers below predate that
+  submission-side optimization.
+- A single end-to-end zero-copy host-to-guest receive path. The fixed-buffer rerun removes the
+  older bulk payload bounce on the ring path, and the new batched receive completion removes the
+  old per-segment CQ/control overhead, but the guest still must copy bytes from the shared fixed
+  buffers back into the caller's buffer to preserve ownership semantics.
 - Calibrated wall-clock nanoseconds. The benchmark converts TSC cycles to nanoseconds assuming an
   approximately 2 GHz guest TSC, so ratios between variants are more trustworthy than the absolute
   nanosecond values.
@@ -176,16 +184,35 @@ For tighter fixed-size RTT reruns, do one warm-up run per transport before the m
 pin `nanvixd.elf` (and its children) to a lightly loaded CPU with `taskset -c <cpu> ...`. The
 latest direct-linuxd RTT row below uses that warm-up + pinned-core procedure.
 
+### Batched Read Completion (`read()` / `pread()`)
+
+The multi-page fixed-buffer path already let `linuxd` issue one host `readv()` / `preadv()` per
+logical syscall, but the original receive path still posted one fixed-buffer completion per 4 KiB
+segment. That meant extra CQ writes, guest CQ polls, state lookups, and wakeups even though the
+host syscall itself was already batched.
+
+The current protocol keeps the final shared-buffer-to-user-buffer copy, because that copy is still
+required to preserve ownership of the caller's bytes. What changed is the completion traffic:
+`linuxd` now reports one logical completion with the total transferred length, and the guest kernel
+walks the stored segment list locally to copy the bytes back in order and wake the blocked caller
+once. On the direct ring path this is encoded as `CqeFlags::BUFFER | CqeFlags::BATCH`; the framed
+fallback uses `FixedBufferFlags::COMPLETION_BATCH`.
+
+The trade-off is slightly more protocol/state complexity and a larger framed fixed-buffer
+descriptor, but the receive side no longer pays per-segment completion overhead on the hot path.
+
 The concrete parameters used in the payload sweeps were:
 
 - Payload backend: `/dev/zero` via the `syscall-bench-payload.tmp` symlink.
 - Payload sweeps: `write()`, `read()`, `pwrite()`, and `pread()`.
-- Payload sizes: `32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536`
-  bytes.
+- Sequential `write()` / `read()` sizes:
+  `32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536` bytes.
+- Positioned `pwrite()` / `pread()` sizes:
+  `32, 64, 128, 256, 512, 1024, 1536, 2048, 4096, 8192, 16384, 32768, 65536, 131072` bytes.
 - Warmup iterations per size: `4`.
 - Measured iterations per size:
   - `32` iterations for sizes up to and including `4096` bytes.
-  - `16` iterations for `8192`, `16384`, `32768`, and `65536` bytes.
+  - `16` iterations for `8192`, `16384`, `32768`, `65536`, and `131072` bytes.
 - Trials per transport for payload sweeps: `3`.
 - Trials per transport for the fixed `fcntl(F_GETFL)` RTT benchmark: `5`.
 
@@ -198,7 +225,7 @@ the original ring path, the CQ-interrupt-suppressed hybrid path, and the newer d
 |---------|---------------|-------------|---------------|-------|
 | Before CQ interrupt suppression | `454885 ns` | `621284 ns` | `1.366x` | Ring path injected a guest IRQ for every CQE. |
 | After CQ interrupt suppression | `391014 ns` | `424155 ns` | `1.085x` | Current Tier 1 ring path; host only injects when the CQ transitions from empty to non-empty while `CQ_NOTIFY_ME` is armed. |
-| Direct linuxd SQ/CQ path | `241275 ns` | `113058 ns` | `0.469x` | Fresh 5-trial interleaved rerun with one warm-up run per transport and a pinned `nanvixd` core. `linuxd` drains SQEs and posts hot-path CQEs directly. |
+| Direct linuxd SQ/CQ path | `241275 ns` | `118293 ns` | `0.490x` | Fresh 5-trial interleaved rerun with one warm-up run per transport and a pinned `nanvixd` core. `linuxd` drains SQEs and posts hot-path CQEs directly. |
 
 ### Payload Sweep Results (`write()`)
 
@@ -209,41 +236,41 @@ average latency with `/dev/zero` as the linuxd-side backend.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.747 ms` | `0.391 ms` | `0.523x` |
-| 64 | `1.042 ms` | `0.380 ms` | `0.364x` |
-| 128 | `0.619 ms` | `0.435 ms` | `0.703x` |
-| 256 | `0.620 ms` | `0.461 ms` | `0.745x` |
-| 512 | `0.775 ms` | `0.477 ms` | `0.615x` |
-| 1024 | `0.534 ms` | `0.393 ms` | `0.735x` |
-| 1536 | `0.511 ms` | `0.351 ms` | `0.687x` |
-| 2048 | `0.603 ms` | `0.346 ms` | `0.573x` |
-| 4096 | `1.533 ms` | `0.394 ms` | `0.257x` |
-| 8192 | `1.920 ms` | `0.404 ms` | `0.210x` |
-| 16384 | `4.001 ms` | `0.360 ms` | `0.090x` |
-| 32768 | `5.519 ms` | `0.374 ms` | `0.068x` |
-| 65536 | `12.461 ms` | `0.541 ms` | `0.043x` |
+| 32 | `0.622 ms` | `0.391 ms` | `0.628x` |
+| 64 | `0.573 ms` | `0.347 ms` | `0.607x` |
+| 128 | `0.567 ms` | `0.459 ms` | `0.809x` |
+| 256 | `0.611 ms` | `0.441 ms` | `0.722x` |
+| 512 | `0.530 ms` | `0.477 ms` | `0.900x` |
+| 1024 | `0.500 ms` | `0.402 ms` | `0.803x` |
+| 1536 | `0.485 ms` | `0.384 ms` | `0.791x` |
+| 2048 | `0.539 ms` | `0.346 ms` | `0.641x` |
+| 4096 | `1.206 ms` | `0.350 ms` | `0.290x` |
+| 8192 | `1.684 ms` | `0.330 ms` | `0.196x` |
+| 16384 | `2.759 ms` | `0.358 ms` | `0.130x` |
+| 32768 | `4.830 ms` | `0.383 ms` | `0.079x` |
+| 65536 | `10.157 ms` | `0.613 ms` | `0.060x` |
 
 ### Payload Sweep Results (`read()`)
 
 Sequential `read()` uses the same multi-page descriptor flow in the opposite direction: `linuxd`
 fills the shared fixed buffers with one `readv()`, then the guest scatters those bytes back into
-the caller's user pages as the CQEs arrive.
+the caller's user pages after one batched completion arrives for the whole logical transfer.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.725 ms` | `0.413 ms` | `0.569x` |
-| 64 | `1.027 ms` | `0.362 ms` | `0.352x` |
-| 128 | `1.199 ms` | `0.348 ms` | `0.290x` |
-| 256 | `0.676 ms` | `0.394 ms` | `0.582x` |
-| 512 | `0.776 ms` | `0.350 ms` | `0.450x` |
-| 1024 | `0.827 ms` | `0.413 ms` | `0.500x` |
-| 1536 | `0.870 ms` | `0.349 ms` | `0.401x` |
-| 2048 | `0.706 ms` | `0.431 ms` | `0.611x` |
-| 4096 | `1.462 ms` | `0.438 ms` | `0.300x` |
-| 8192 | `2.267 ms` | `0.339 ms` | `0.150x` |
-| 16384 | `4.510 ms` | `0.945 ms` | `0.209x` |
-| 32768 | `8.081 ms` | `2.436 ms` | `0.301x` |
-| 65536 | `13.943 ms` | `5.459 ms` | `0.392x` |
+| 32 | `0.577 ms` | `0.336 ms` | `0.583x` |
+| 64 | `0.544 ms` | `0.386 ms` | `0.709x` |
+| 128 | `0.635 ms` | `0.352 ms` | `0.555x` |
+| 256 | `0.542 ms` | `0.359 ms` | `0.662x` |
+| 512 | `0.559 ms` | `0.352 ms` | `0.630x` |
+| 1024 | `0.593 ms` | `0.341 ms` | `0.575x` |
+| 1536 | `0.545 ms` | `0.389 ms` | `0.713x` |
+| 2048 | `0.648 ms` | `0.352 ms` | `0.543x` |
+| 4096 | `1.359 ms` | `0.331 ms` | `0.244x` |
+| 8192 | `1.709 ms` | `0.339 ms` | `0.199x` |
+| 16384 | `2.896 ms` | `0.395 ms` | `0.136x` |
+| 32768 | `5.527 ms` | `0.378 ms` | `0.068x` |
+| 65536 | `11.944 ms` | `0.551 ms` | `0.046x` |
 
 ### Payload Sweep Results (`pwrite()`)
 
@@ -252,41 +279,41 @@ The positioned write benchmark uses the same shared fixed-buffer scheme, but dri
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.721 ms` | `0.434 ms` | `0.602x` |
-| 64 | `0.697 ms` | `0.366 ms` | `0.525x` |
-| 128 | `0.692 ms` | `0.338 ms` | `0.488x` |
-| 256 | `0.826 ms` | `0.367 ms` | `0.444x` |
-| 512 | `0.924 ms` | `0.405 ms` | `0.439x` |
-| 1024 | `0.719 ms` | `0.498 ms` | `0.693x` |
-| 1536 | `0.691 ms` | `0.501 ms` | `0.726x` |
-| 2048 | `0.754 ms` | `0.388 ms` | `0.515x` |
-| 4096 | `1.459 ms` | `0.428 ms` | `0.294x` |
-| 8192 | `1.982 ms` | `0.390 ms` | `0.197x` |
-| 16384 | `3.239 ms` | `0.426 ms` | `0.131x` |
-| 32768 | `4.978 ms` | `0.356 ms` | `0.071x` |
-| 65536 | `10.424 ms` | `0.606 ms` | `0.058x` |
+| 32 | `0.632 ms` | `0.331 ms` | `0.524x` |
+| 64 | `0.616 ms` | `0.366 ms` | `0.594x` |
+| 128 | `0.603 ms` | `0.338 ms` | `0.560x` |
+| 256 | `0.741 ms` | `0.369 ms` | `0.497x` |
+| 512 | `0.666 ms` | `0.375 ms` | `0.563x` |
+| 1024 | `0.719 ms` | `0.269 ms` | `0.374x` |
+| 1536 | `0.691 ms` | `0.404 ms` | `0.585x` |
+| 2048 | `0.754 ms` | `0.401 ms` | `0.532x` |
+| 4096 | `1.459 ms` | `0.358 ms` | `0.245x` |
+| 8192 | `1.982 ms` | `0.463 ms` | `0.234x` |
+| 16384 | `3.231 ms` | `0.426 ms` | `0.132x` |
+| 32768 | `4.978 ms` | `0.388 ms` | `0.078x` |
+| 65536 | `10.424 ms` | `0.592 ms` | `0.057x` |
 
 ### Payload Sweep Results (`pread()`)
 
 `pread()` uses the same fixed-buffer scheme in the opposite direction: `linuxd` copies directly
 into the shared ring buffer via `preadv()`, and the guest copies back into the caller's buffer when
-the CQEs arrive.
+the batched completion arrives.
 
 | Size (bytes) | Legacy Median | Ring Median | Ring / Legacy |
 |--------------|---------------|-------------|---------------|
-| 32 | `0.671 ms` | `0.431 ms` | `0.643x` |
-| 64 | `0.642 ms` | `0.461 ms` | `0.718x` |
-| 128 | `0.617 ms` | `0.413 ms` | `0.668x` |
-| 256 | `0.634 ms` | `0.508 ms` | `0.802x` |
-| 512 | `0.647 ms` | `0.472 ms` | `0.729x` |
-| 1024 | `0.637 ms` | `0.479 ms` | `0.752x` |
-| 1536 | `0.625 ms` | `0.605 ms` | `0.968x` |
-| 2048 | `0.725 ms` | `0.425 ms` | `0.586x` |
-| 4096 | `1.711 ms` | `0.349 ms` | `0.204x` |
-| 8192 | `1.922 ms` | `0.447 ms` | `0.233x` |
-| 16384 | `6.165 ms` | `0.895 ms` | `0.145x` |
-| 32768 | `5.832 ms` | `2.466 ms` | `0.423x` |
-| 65536 | `10.020 ms` | `5.339 ms` | `0.533x` |
+| 32 | `0.558 ms` | `0.365 ms` | `0.655x` |
+| 64 | `0.607 ms` | `0.461 ms` | `0.759x` |
+| 128 | `0.561 ms` | `0.366 ms` | `0.653x` |
+| 256 | `0.564 ms` | `0.463 ms` | `0.821x` |
+| 512 | `0.556 ms` | `0.428 ms` | `0.770x` |
+| 1024 | `0.576 ms` | `0.395 ms` | `0.686x` |
+| 1536 | `0.607 ms` | `0.377 ms` | `0.622x` |
+| 2048 | `0.567 ms` | `0.425 ms` | `0.748x` |
+| 4096 | `1.155 ms` | `0.349 ms` | `0.302x` |
+| 8192 | `1.814 ms` | `0.391 ms` | `0.216x` |
+| 16384 | `2.789 ms` | `0.519 ms` | `0.186x` |
+| 32768 | `5.404 ms` | `1.025 ms` | `0.190x` |
+| 65536 | `9.983 ms` | `1.346 ms` | `0.135x` |
 
 ### Interpretation
 
@@ -294,22 +321,23 @@ the CQEs arrive.
   moved from `1.366x` slower than legacy to `1.085x` slower on a fresh 5-trial rerun.
 - The direct-linuxd RTT rerun then pushed the fixed-size benchmark past parity: on the latest
   warm-up + pinned-core 5-trial interleaved run, `fcntl(F_GETFL)` improved from `0.241 ms` legacy
-  to `0.113 ms` ring (`0.469x` ring / legacy).
+  to `0.118 ms` ring (`0.490x` ring / legacy).
 - The `/dev/zero` backend removes host ext4/page-cache work from the payload sweep, so these
   numbers are a better measure of syscall + transport overhead than the earlier regular-file runs.
 - Ring now beats legacy at every measured size for all four operations (`write()`, `read()`,
-  `pwrite()`, and `pread()`) through the new `65536`-byte cap.
+  `pwrite()`, and `pread()`) through the published `65536`-byte cap of the current rerun.
 - The send-side operations benefit the most from the multi-buffer direct path: at `65536` bytes,
-  `write()` drops from `12.461 ms` to `0.541 ms`, and `pwrite()` drops from `10.424 ms` to
-  `0.606 ms`.
-- The receive-side operations also improve substantially above one page, but the gains are smaller
-  because the host-to-guest path still pays for CQ completion handling and guest scatter-back into
-  the caller's buffer. At `65536` bytes, `read()` improves from `13.943 ms` to `5.459 ms`, and
-  `pread()` improves from `10.020 ms` to `5.339 ms`.
+  `write()` drops from `10.157 ms` to `0.613 ms`, and `pwrite()` drops from `10.424 ms` to
+  `0.592 ms`.
+- The receive-side operations now improve much more strongly because the host-to-guest path no
+  longer pays per-segment CQ completion overhead. The final guest copy back into the caller's
+  buffer remains, but at `65536` bytes `read()` still improves from `11.944 ms` to `0.551 ms`, and
+  `pread()` improves from `9.983 ms` to `1.346 ms`.
 - These payload improvements are consistent with removing the `uservm` SQ-drain/CQ-write hot path
-  from the active transport path and amortizing one logical transfer across up to `16` shared fixed
-  buffers. Tier 2 adaptive polling, guest-to-host doorbell suppression, and full fallback removal
-  are still pending.
+  from the active transport path, amortizing one logical transfer across up to `16` shared fixed
+  buffers, and collapsing receive-side completion traffic to one logical CQ event per
+  `readv()` / `preadv()` result. The later bounded guest-to-host SQ polling window is not
+  reflected in these published numbers; full fallback removal is still pending.
 - The fixed-size benchmark is still sensitive to host noise, but the warm-up + pinned-core rerun
   brought the absolute RTTs back much closer to the earlier sub-millisecond baseline.
 - The smallest payload points can still show shared-environment noise, so the interleaved medians

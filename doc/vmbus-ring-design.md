@@ -33,7 +33,8 @@ compatibility fallback for responses that still need `IkcFrame::Bulk`.
   and continues to execute syscalls on the existing worker-thread path.
 - For hot-path completions, `linuxd` writes CQEs directly into the shared ring:
   regular `Message` responses go into CQ data slots, and fixed-buffer read
-  completions use `CqeFlags::BUFFER`.
+  completions use `CqeFlags::BUFFER`; batched receive completions additionally
+  set `CqeFlags::BATCH`.
 - `uservm` watches a second shared notification word and injects an interrupt
   only when `linuxd` asks for it after posting a CQE while the guest has armed
   `CQ_NOTIFY_ME`.
@@ -126,9 +127,10 @@ use owned `IkcFrame::Bulk` responses.
 ## Core Idea: Three Notification Tiers
 
 The three tiers below describe the original notification strategy target. The
-current implementation uses the Tier 1 eventfd wakeup path plus CQ interrupt
-suppression. It does not yet implement the Tier 2 spin window, the Tier 3
-dedicated poll thread, or full guest-to-host doorbell suppression.
+current implementation uses the Tier 1 eventfd wakeup path, CQ interrupt
+suppression, and a bounded Tier 2-style SQ polling window on the direct-linuxd
+path. It does not yet implement the Tier 3 dedicated poll thread or a true
+zero-notification steady state.
 
 ### Tier 1 — Eventfd Doorbell (default, zero idle CPU)
 
@@ -149,9 +151,11 @@ Guest kernel                         linuxd
 
 **Status today**: implemented as an ioeventfd-backed wakeup into `uservm`, which
 then wakes a `linuxd` SQ worker through a shared-memory futex word. `linuxd`
-drains the SQ directly once woken.
-**Cost today**: one doorbell/eventfd wakeup per batch, plus up to one guest
-interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
+drains the SQ directly once woken and may keep a short bounded SQ poll window
+open before parking again.
+**Cost today**: one initial doorbell/eventfd wakeup to enter a burst, suppressed
+follow-on guest doorbells while the SQ poll window stays open, plus up to one
+guest interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
 **CPU when idle**: zero — both sides sleep on epoll/HLT.
 
 KVM ioeventfd is still the crucial primitive here: the guest writes to a PIO
@@ -159,9 +163,9 @@ port and KVM signals an eventfd **in-kernel**. In the current implementation,
 that eventfd wakes `uservm`, which then wakes `linuxd` through the shared SQ
 notification word.
 
-### Tier 2 — Adaptive Polling (design target, not yet implemented)
+### Tier 2 — Adaptive Polling (implemented as a bounded SQ poll window)
 
-When linuxd sees sustained SQ traffic, it enters a short polling window:
+After linuxd drains a batch, it enters a short polling window:
 
 ```
 linuxd after processing a batch:
@@ -175,13 +179,13 @@ linuxd after processing a batch:
     // no new work → fall back to epoll (Tier 1)
 ```
 
-**Status today**: not implemented. `RING_POLL_SPIN_ITERS` exists as a config
-knob, but the active drain path still blocks on the doorbell eventfd after each
-drain instead of entering this loop.
-**Target cost**: no additional doorbells while the polling window is open.
-**Target CPU when idle**: returns to zero after the polling window expires.
-This is exactly how io_uring SQPOLL works — it polls for a configurable
-idle period, then parks.
+**Status today**: implemented on the direct-linuxd SQ worker. After draining a
+batch, `linuxd` clears `SQ_NEED_WAKEUP`, spins for up to
+`RING_POLL_SPIN_ITERS`, and resets the spin budget whenever more SQEs arrive.
+When the window expires it re-arms `SQ_NEED_WAKEUP`, re-checks the SQ once to
+avoid a lost wakeup race, and only then parks again.
+**Current cost**: no additional guest doorbells while the polling window is
+open, but idle CPU remains bounded by the short spin window.
 
 ### Tier 3 — Dedicated Poll Thread (design target, not yet implemented)
 
@@ -206,7 +210,8 @@ poll the SQ continuously. Same as vhost-user. Enabled by flag, never default.
              Tier 1 (eventfd)
 ```
 
-Current behavior remains in Tier 1.
+Current behavior uses Tier 1 wakeups plus this bounded Tier 2 poll window on
+the direct-linuxd path.
 
 ---
 
@@ -277,10 +282,9 @@ struct CQEntry {
 
 ## Doorbell Suppression (Key CPU Optimization)
 
-This section describes the original notification-suppression goal. Today the
-host-to-guest side is implemented, but the guest-to-host side is still
-incomplete. The active drain path does not yet clear/set `SQ_NEED_WAKEUP`, so
-the guest still rings the doorbell for each batch.
+This section describes the active notification-suppression scheme. Today the
+host-to-guest side is implemented, and the direct-linuxd path also suppresses
+guest-to-host doorbells while its bounded SQ polling window is open.
 
 ### Guest → Host: Suppress Doorbell
 
@@ -321,9 +325,10 @@ fn notify_guest(ctrl: &RingControl, kvm_fd: &KvmFd) {
 ```
 
 **Current effect**: CQ interrupts are suppressed when the guest is already
-polling. Not yet implemented: guest-to-host doorbell suppression, Tier 2
-adaptive polling, and the zero-notification steady state described by the
-original design.
+polling, and the direct-linuxd SQ worker suppresses guest doorbells while it is
+still polling for follow-on SQEs. Not yet implemented: the Tier 3 dedicated
+poll thread and the zero-notification steady state described by the original
+design.
 
 ---
 
@@ -453,18 +458,29 @@ now the configured logical transfer cap rather than a single 4 KiB buffer.
     - `pwrite()` path: build a host `iovec[]` that points at the shared fixed
       buffers and call `pwritev()`.
     - `pread()` path: build the same `iovec[]` and call `preadv()`.
-6. **Preserve existing guest-visible completion semantics**:
+6. **Batch receive-side completions while preserving guest-visible ownership semantics**:
     - For writes, keep the normal `WriteResponse` message as the visible
-     completion.
-    - For reads, post one fixed-buffer CQE per completed shared buffer and use
-      `CqeFlags::MORE` on all but the final CQE so the guest can accumulate the
-      copied bytes and wake the blocked `pull()` caller only after the last
-      segment arrives. The normal `ReadResponse` message still follows so the
-      syscall layer keeps its existing validation path.
+      completion.
+    - For reads, let `linuxd` complete one host `readv()` / `preadv()` across
+      the full ordered fixed-buffer list, then post one logical fixed-buffer
+      completion carrying the total transferred length instead of one CQE per
+      segment.
+    - On the direct ring path this completion is encoded as
+      `CqeFlags::BUFFER | CqeFlags::BATCH`; on the framed fallback path the
+      `FixedBufferTransfer` carries `COMPLETION_BATCH`.
+    - The guest still copies bytes from the shared fixed buffers back into the
+      caller's user buffer in segment order and wakes the blocked `pull()`
+      caller only once after the whole logical transfer completes. The final
+      copy is still required to preserve user-buffer ownership semantics.
 7. **Keep legacy guest binaries safe by feature-gating the larger chunk size**
    in the syscall crate. Ring-enabled guest builds raise the per-request chunk
    limit to `64 KiB`; legacy guest builds continue to split at page
    boundaries.
+
+The trade-off is that the protocol now carries a bit more completion metadata
+and the guest receive path must retain the segment list until the final
+completion arrives, but the hot path removes per-segment CQ writes, guest CQ
+polls, state lookups, and wakeups.
 
 ### Transfer-size rule of thumb
 
@@ -524,12 +540,12 @@ It is not a summary of current measured behavior.
 7. Write hot-path CQEs directly from `linuxd`, while keeping old socket/bulk
    handling as compatibility fallback.
 
-### Phase 2: Adaptive polling (partially implemented; CQ suppression only)
+### Phase 2: Adaptive polling (implemented as bounded SQ polling + CQ suppression)
 
-8. Add spin loop to the drain loop with configurable idle timeout. Not
-   implemented.
-9. Add doorbell suppression flags. Partially implemented: the flags exist, but
-   the active drain path does not yet manage `SQ_NEED_WAKEUP`.
+8. Add spin loop to the drain loop with configurable idle timeout. Implemented
+   on the direct-linuxd SQ worker.
+9. Add doorbell suppression flags. Implemented on the direct-linuxd path with a
+   bounded SQ polling window that clears/re-arms `SQ_NEED_WAKEUP`.
 10. Add interrupt suppression flags + CQ polling in guest kernel. Implemented.
 
 ### Phase 3: Fixed-buffer data path (implemented)
@@ -546,7 +562,7 @@ It is not a summary of current measured behavior.
 
 ---
 
-## Current Status and Measured Results (2026-03-09 / 2026-03-10)
+## Current Status and Measured Results (2026-03-09 / 2026-03-11)
 
 Detailed methodology and the full result tables live in `doc/benchmark.md`.
 
@@ -554,7 +570,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
   fallback:
   - `linuxd` directly drains `IkcMessage` SQEs and `BulkData` SQEs marked with
     `FIXED_BUF`.
-  - `linuxd` directly writes CQEs for regular `Message` responses and
+  - `linuxd` directly writes CQEs for regular `Message` responses and batched
     fixed-buffer read completions.
   - `uservm` still owns the KVM-facing doorbell eventfd and guest IRQ
     injection, translating both through shared notification words.
@@ -572,6 +588,10 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
   the fixed-buffer multi-page design: the ring shared region carries
   pre-registered payload buffers and the active path uses fixed-buffer
   descriptors instead of bouncing payload bytes through the older bulk path.
+- The receive side now batches each logical fixed-buffer `read()` / `pread()`
+  completion into one CQ event after the host `readv()` / `preadv()` finishes.
+  The guest still performs the final fixed-buffer-to-user copy, but it now
+  walks the stored segment list locally and wakes the blocked caller once.
 - The fixed-buffer path is runtime-validated end-to-end, and the canonical
   `/dev/zero` payload sweep has been rerun against fresh legacy and ring
   artifact trees.
@@ -583,8 +603,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
 - Because the benchmark was rerun in a shared development environment, the
   absolute RTT numbers vary between historical runs; the interleaved medians and
   ring/legacy ratios are the more stable signal.
-- Not yet implemented: Tier 2 adaptive polling, Tier 3 dedicated polling,
-  active guest-to-host doorbell suppression, inline SQE payloads, direct
+- Not yet implemented: Tier 3 dedicated polling, inline SQE payloads, direct
   handling of the `Write`/`Read`/`Open`/`Close`/`Stat` SQE opcodes, and full
   elimination of the socket fallback for compatibility `IkcFrame::Bulk`
   responses.
@@ -603,8 +622,8 @@ Using `fcntl(F_GETFL)` as a linuxd-backed round trip:
   - ring / legacy = `1.085x`
 - After direct linuxd SQ/CQ bypass:
   - legacy median = `241275 ns`
-  - ring median = `113058 ns`
-  - ring / legacy = `0.469x`
+  - ring median = `118293 ns`
+  - ring / legacy = `0.490x`
 
 ### Payload Sweeps
 
@@ -617,27 +636,29 @@ Selected ring / legacy ratios from the current 3-trial median rerun:
 
 | Operation | 4096 B | 8192 B | 16384 B | 32768 B | 65536 B |
 |-----------|--------|--------|---------|---------|---------|
-| `write()` | `0.257x` | `0.210x` | `0.090x` | `0.068x` | `0.043x` |
-| `read()` | `0.300x` | `0.150x` | `0.209x` | `0.301x` | `0.392x` |
-| `pwrite()` | `0.294x` | `0.197x` | `0.131x` | `0.071x` | `0.058x` |
-| `pread()` | `0.204x` | `0.233x` | `0.145x` | `0.423x` | `0.533x` |
+| `write()` | `0.290x` | `0.196x` | `0.130x` | `0.079x` | `0.060x` |
+| `read()` | `0.244x` | `0.199x` | `0.136x` | `0.068x` | `0.046x` |
+| `pwrite()` | `0.245x` | `0.234x` | `0.132x` | `0.078x` | `0.057x` |
+| `pread()` | `0.302x` | `0.216x` | `0.186x` | `0.190x` | `0.135x` |
 
 Interpretation:
 
 - With `/dev/zero` backing the payload path, the direct-linuxd ring path now beats legacy at every
   measured size for all four operations.
-- The strongest gains are on the send side: at `65536` bytes, `write()` drops from `12.461 ms` to
-  `0.541 ms`, and `pwrite()` drops from `10.424 ms` to `0.606 ms`.
-- The receive side also improves materially above one page, though the gains are smaller because
-  the guest still pays to scatter data back into user space after CQ completion. At `65536` bytes,
-  `read()` improves from `13.943 ms` to `5.459 ms`, and `pread()` improves from `10.020 ms` to
-  `5.339 ms`.
+- The strongest gains are still on the send side: at `65536` bytes, `write()` drops from
+  `10.157 ms` to `0.613 ms`, and `pwrite()` drops from `10.424 ms` to `0.592 ms`.
+- The new batched read-completion protocol materially improves the receive side too by removing the
+  old per-segment CQ/control overhead while keeping the unavoidable final copy back into user
+  space. At `65536` bytes, `read()` drops from `11.944 ms` to `0.551 ms`, and `pread()` drops from
+  `9.983 ms` to `1.346 ms`.
 - The fixed-size RTT rerun also now shows a cleaner absolute result after warm-up and core pinning:
-  `0.241 ms` legacy vs `0.113 ms` ring for `fcntl(F_GETFL)`.
+  `0.241 ms` legacy vs `0.118 ms` ring for `fcntl(F_GETFL)`.
 - These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
-  active transport path and amortizing one logical transfer across up to `16` shared fixed
-  buffers. Adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
-  still pending.
+  active transport path, amortizing one logical transfer across up to `16` shared fixed buffers,
+  and collapsing receive-side completion traffic to one logical CQ event per `readv()` / `preadv()`
+  result. The later bounded guest-to-host SQ polling window is expected to help further on bursty
+  submission-heavy traffic, but it is not reflected in the published numbers below; full fallback
+  elimination is still pending.
 
 ## Key Design Decisions
 

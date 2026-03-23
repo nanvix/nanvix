@@ -126,7 +126,21 @@ build_tool() {
         return 1
     }
 
-    ./z build || {
+    local -a z_env=()
+    if [[ -n "${target_arch}" ]]; then
+        z_env+=("Z_TARGET=${target_arch}")
+    fi
+
+    # shellcheck disable=SC2086
+    env "${z_env[@]}" ./z configure ${configure_args} || {
+        print_error "Failed to configure tool in '${tool_path}'."
+        popd || {
+            print_error "Failed to change directory back from '${tool_path}'."
+        }
+        return 1
+    }
+
+    env "${z_env[@]}" ./z build || {
         print_error "Failed to build tool in '${tool_path}'."
         popd || {
             print_error "Failed to change directory back from '${tool_path}'."
@@ -134,7 +148,7 @@ build_tool() {
         return 1
     }
 
-    ./z install || {
+    env "${z_env[@]}" ./z install || {
         print_error "Failed to install tool in '${tool_path}'."
         popd || {
             print_error "Failed to change directory back from '${tool_path}'."

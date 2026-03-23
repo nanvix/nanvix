@@ -1,57 +1,95 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use crate::{shared_ring::SharedRing, user_vm_event::UserVmEvent};
-use log::{debug, error, trace, warn};
+use crate::{
+    shared_ring::SharedRing,
+    user_vm_event::UserVmEvent,
+};
+use log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 use nvx_ring::{
-    CqEntry, CqFlags, CqeFlags, SqEntry, SqFlags, SqeOpcode, CQ_OFFSET, CTRL_CQ_FLAGS,
-    CTRL_CQ_HEAD, CTRL_CQ_MASK, CTRL_CQ_TAIL, CTRL_SQ_FLAGS, CTRL_SQ_HEAD, CTRL_SQ_MASK,
-    CTRL_SQ_TAIL, DATA_OFFSET, DATA_SLOT_COUNT, DATA_SLOT_SIZE, SQ_OFFSET,
+    CqEntry,
+    CqFlags,
+    CqeFlags,
+    SqEntry,
+    SqFlags,
+    SqeOpcode,
+    CQ_OFFSET,
+    CTRL_CQ_FLAGS,
+    CTRL_CQ_HEAD,
+    CTRL_CQ_MASK,
+    CTRL_CQ_TAIL,
+    CTRL_SQ_FLAGS,
+    CTRL_SQ_HEAD,
+    CTRL_SQ_MASK,
+    CTRL_SQ_TAIL,
+    DATA_OFFSET,
+    DATA_SLOT_COUNT,
+    DATA_SLOT_SIZE,
+    SQ_OFFSET,
 };
 use std::{
     hint,
     io::ErrorKind,
-    sync::mpsc::{
-        Receiver as SyncReceiver,
-        SyncSender,
-        TrySendError,
-        sync_channel,
-    },
     sync::{
-        atomic::{fence, AtomicBool, AtomicU32, Ordering},
+        atomic::{
+            fence,
+            AtomicBool,
+            AtomicU32,
+            Ordering,
+        },
+        mpsc::{
+            sync_channel,
+            Receiver as SyncReceiver,
+            SyncSender,
+            TrySendError,
+        },
         Arc,
     },
     thread,
 };
 use sys::{
-    ipc::{FixedBufferTransfer, IkcFrame, Message},
-    pm::{ProcessIdentifier, ThreadIdentifier},
+    ipc::{
+        FixedBufferTransfer,
+        IkcFrame,
+        Message,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use tokio::sync::mpsc::Sender;
 use user_vm_api::UserVmIdentifier;
 
-fn futex_wait(word: *mut u32, expected: u32) -> Result<(), ErrorKind> {
-    loop {
-        // SAFETY: `word` points to a u32 in a shared anonymous/file-backed mapping that stays live
-        // while the waiting thread runs.
-        let ret: libc::c_long = unsafe {
-            libc::syscall(
-                libc::SYS_futex,
-                word,
-                libc::FUTEX_WAIT,
-                expected,
-                core::ptr::null::<libc::timespec>(),
-            )
-        };
-        if ret == 0 {
-            return Ok(());
-        }
+// Must stay in sync with `config::microvm::RING_POLL_SPIN_ITERS`, but direct-ring workers also
+// build in configs where the `config` crate's `microvm` feature is disabled.
+const RING_POLL_SPIN_ITERS: u32 = 1024;
 
-        let err: std::io::Error = std::io::Error::last_os_error();
-        match err.raw_os_error() {
-            Some(libc::EAGAIN) | Some(libc::EINTR) => return Ok(()),
-            _ => return Err(err.kind()),
-        }
+fn futex_wait(word: *mut u32, expected: u32) -> Result<(), ErrorKind> {
+    // SAFETY: `word` points to a u32 in a shared anonymous/file-backed mapping that stays live
+    // while the waiting thread runs.
+    let ret: libc::c_long = unsafe {
+        libc::syscall(
+            libc::SYS_futex,
+            word,
+            libc::FUTEX_WAIT,
+            expected,
+            core::ptr::null::<libc::timespec>(),
+        )
+    };
+    if ret == 0 {
+        return Ok(());
+    }
+
+    let err: std::io::Error = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(libc::EAGAIN) | Some(libc::EINTR) => Ok(()),
+        _ => Err(err.kind()),
     }
 }
 
@@ -310,7 +348,7 @@ fn drain_sq(
                     debug!("drain_sq(): dispatcher dropped receiver for VM {uvm_id}");
                     return Ok(drained);
                 }
-            }
+            },
             Some(SqeOpcode::BulkData) if sqe.is_fixed_buf() => {
                 let transfer: FixedBufferTransfer = FixedBufferTransfer::new(
                     ProcessIdentifier::from(parse_inline_i32(&sqe, 0)),
@@ -331,7 +369,7 @@ fn drain_sq(
                     debug!("drain_sq(): dispatcher dropped receiver for VM {uvm_id}");
                     return Ok(drained);
                 }
-            }
+            },
             Some(SqeOpcode::BulkData) => {
                 error!(
                     "drain_sq(): encountered non-fixed bulk SQE on direct ring path \
@@ -339,16 +377,16 @@ fn drain_sq(
                     sqe.addr, sqe.len
                 );
                 return Err(ErrorKind::InvalidData);
-            }
+            },
             Some(SqeOpcode::Nop) => {
                 cq_writer.write_nop(sqe.user_data)?;
-            }
+            },
             Some(other) => {
                 warn!("drain_sq(): unsupported SQE opcode {other:?} on direct ring path");
-            }
+            },
             None => {
                 warn!("drain_sq(): unknown SQE opcode {:#06x}", sqe.opcode);
-            }
+            },
         }
 
         current_head = current_head.wrapping_add(1);
@@ -372,7 +410,7 @@ fn drain_sq_with_adaptive_polling(
     events_tx: &Sender<UserVmEvent>,
     cq_writer: &DirectCqWriter,
 ) -> Result<(), ErrorKind> {
-    let poll_spin_iters: u32 = ::config::microvm::RING_POLL_SPIN_ITERS;
+    let poll_spin_iters: u32 = RING_POLL_SPIN_ITERS;
     let mut poll_budget: u32 = 0;
     let mut sq_wakeup_suppressed: bool = false;
 
@@ -385,8 +423,8 @@ fn drain_sq_with_adaptive_polling(
 
             if !sq_wakeup_suppressed {
                 trace!(
-                    "drain_sq_with_adaptive_polling(): entering SQ poll window \
-                     (uvm_id={uvm_id}, spins={poll_spin_iters})"
+                    "drain_sq_with_adaptive_polling(): entering SQ poll window (uvm_id={uvm_id}, \
+                     spins={poll_spin_iters})"
                 );
                 set_sq_flags(shared_ring, SqFlags::NONE)?;
                 sq_wakeup_suppressed = true;
@@ -404,10 +442,7 @@ fn drain_sq_with_adaptive_polling(
         }
 
         if poll_budget == 0 {
-            trace!(
-                "drain_sq_with_adaptive_polling(): re-arming SQ wakeup \
-                 (uvm_id={uvm_id})"
-            );
+            trace!("drain_sq_with_adaptive_polling(): re-arming SQ wakeup (uvm_id={uvm_id})");
             set_sq_flags(shared_ring, SqFlags::NEED_WAKEUP)?;
             fence(Ordering::SeqCst);
 
@@ -447,13 +482,7 @@ fn run_sq_worker(
     mut wait_strategy: SqWaitStrategy,
 ) {
     if let Err(kind) =
-        drain_sq_with_adaptive_polling(
-            uvm_id,
-            &shared_ring,
-            stop.as_ref(),
-            &events_tx,
-            &cq_writer,
-        )
+        drain_sq_with_adaptive_polling(uvm_id, &shared_ring, stop.as_ref(), &events_tx, &cq_writer)
     {
         let _ = events_tx.blocking_send(UserVmEvent::ConnectionError { uvm_id, kind });
         return;

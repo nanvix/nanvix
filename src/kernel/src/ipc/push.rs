@@ -87,7 +87,12 @@ pub fn push(
 
     trace!(
         "tid={:?}, pid={:?}, dst_tid={:?}, dst_pid={:?}, buffer={:#x}, len={}",
-        caller_tid, caller_pid, destination_tid, destination_pid, buffer_raw, transfer_len
+        caller_tid,
+        caller_pid,
+        destination_tid,
+        destination_pid,
+        buffer_raw,
+        transfer_len
     );
 
     // When the destination is the kernel (linuxd), use the vmbus for data chunk transfer instead of the

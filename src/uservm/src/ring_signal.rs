@@ -111,10 +111,7 @@ pub fn run_cq_signal_thread(signal_word_addr: usize, notifier: IkcNotifier) {
     trace!("run_cq_signal_thread(): exiting");
 }
 
-pub fn run_sq_socket_doorbell_thread(
-    evtfd: EventFd,
-    signal_tx: UnboundedSender<DirectRingSignal>,
-) {
+pub fn run_sq_socket_doorbell_thread(evtfd: EventFd, signal_tx: UnboundedSender<DirectRingSignal>) {
     loop {
         if let Err(e) = evtfd.read() {
             error!("run_sq_socket_doorbell_thread(): doorbell eventfd read failed (error={e:?})");
@@ -136,9 +133,7 @@ pub fn run_cq_socket_doorbell_thread(
 ) {
     while doorbell_rx.recv().is_ok() {
         if let Err(e) = notifier.notify_unconditional() {
-            error!(
-                "run_cq_socket_doorbell_thread(): failed to inject IKC IRQ (error={e:?})"
-            );
+            error!("run_cq_socket_doorbell_thread(): failed to inject IKC IRQ (error={e:?})");
             break;
         }
     }

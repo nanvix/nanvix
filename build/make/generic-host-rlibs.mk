@@ -8,6 +8,7 @@ USERVM_DEPENDENT_RLIBS := nanvix nanvix-sandbox nanvix-http nanvix-terminal nanv
 MACHINE_FEATURES :=
 MACHINE_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 MACHINE_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
+MACHINE_FEATURES += $(if $(filter yes,$(RING_BUFFER)),ring-buffer,)
 MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))
 MACHINE_CARGO_FEATURES := $(if $(MACHINE_FEATURES),--features "$(MACHINE_FEATURES)",)
 HOST_RLIBS_CARGO_FEATURES = $(if $(filter $(1),$(USERVM_DEPENDENT_RLIBS)),$(MACHINE_CARGO_FEATURES),)

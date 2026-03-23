@@ -23,17 +23,17 @@ use ::log::{
     warn,
 };
 use ::nvx_ring::{
-    CqEntry,
-    SqEntry,
-    SqeOpcode,
+    CQ_OFFSET,
     CTRL_CQ_MASK,
     CTRL_CQ_TAIL,
     CTRL_SQ_FLAGS,
     CTRL_SQ_HEAD,
     CTRL_SQ_MASK,
     CTRL_SQ_TAIL,
-    CQ_OFFSET,
+    CqEntry,
     SQ_OFFSET,
+    SqEntry,
+    SqeOpcode,
 };
 use ::std::{
     io::Write,
@@ -181,44 +181,42 @@ impl Emulator {
                 let mut sqe_bytes: [u8; 64] = [0u8; 64];
                 vmem.read_bytes(sq_base + (idx as u64) * sqe_size, &mut sqe_bytes)?;
                 // SAFETY: SqEntry is repr(C), 64 bytes, plain data.
-                unsafe { core::ptr::read(sqe_bytes.as_ptr() as *const SqEntry) }
+                unsafe { core::ptr::read(sqe_bytes.as_ptr().cast::<SqEntry>()) }
             };
 
             match SqeOpcode::from_u16(sqe.opcode) {
                 Some(SqeOpcode::IkcMessage) => {
                     // Read the IKC message from guest memory at sqe.addr and forward
                     // via the legacy stdout callback.
-                    let envelope: VmBusMessage =
-                        VmBusMessage::new(sqe.len, true, sqe.addr as u32);
+                    let envelope_gpa: u32 = u32::try_from(sqe.addr)
+                        .map_err(|e| anyhow::anyhow!("IKC message GPA does not fit in u32: {e}"))?;
+                    let envelope: VmBusMessage = VmBusMessage::new(sqe.len, true, envelope_gpa);
                     (self.stdout_fn)(&self.vmem, &envelope)?;
                 },
                 Some(SqeOpcode::BulkData) => {
                     // Extract PID/TID metadata from inline_data and write a
                     // DataChunkHeader to a scratch area in guest memory so the
                     // legacy stdout callback can read it.
-                    let spid: i32 = i32::from_le_bytes(
-                        sqe.inline_data[0..4].try_into().unwrap_or([0; 4]),
-                    );
-                    let stid: i32 = i32::from_le_bytes(
-                        sqe.inline_data[4..8].try_into().unwrap_or([0; 4]),
-                    );
-                    let dpid: i32 = i32::from_le_bytes(
-                        sqe.inline_data[8..12].try_into().unwrap_or([0; 4]),
-                    );
-                    let dtid: i32 = i32::from_le_bytes(
-                        sqe.inline_data[12..16].try_into().unwrap_or([0; 4]),
-                    );
+                    let spid: i32 =
+                        i32::from_le_bytes(sqe.inline_data[0..4].try_into().unwrap_or([0; 4]));
+                    let stid: i32 =
+                        i32::from_le_bytes(sqe.inline_data[4..8].try_into().unwrap_or([0; 4]));
+                    let dpid: i32 =
+                        i32::from_le_bytes(sqe.inline_data[8..12].try_into().unwrap_or([0; 4]));
+                    let dtid: i32 =
+                        i32::from_le_bytes(sqe.inline_data[12..16].try_into().unwrap_or([0; 4]));
                     let header: DataChunkHeader = DataChunkHeader::new(
                         spid.into(),
                         stid.into(),
                         dpid.into(),
                         dtid.into(),
-                        sqe.addr as u32,
+                        u32::try_from(sqe.addr).map_err(|e| {
+                            anyhow::anyhow!("bulk-data GPA does not fit in u32: {e}")
+                        })?,
                         sqe.len,
                     );
                     // Write header to scratch area at end of ring buffer region.
-                    let scratch_gpa: u64 =
-                        ring_base + (::nvx_ring::REGION_SIZE as u64) - 64;
+                    let scratch_gpa: u64 = ring_base + (::nvx_ring::REGION_SIZE as u64) - 64;
                     let header_bytes: [u8; core::mem::size_of::<DataChunkHeader>()] =
                         // SAFETY: DataChunkHeader is repr(C), plain data.
                         unsafe { core::mem::transmute(header) };
@@ -226,8 +224,10 @@ impl Emulator {
                         let mut vmem = self.vmem.blocking_lock();
                         vmem.write_bytes(scratch_gpa, &header_bytes)?;
                     }
+                    let scratch_gpa_u32: u32 = u32::try_from(scratch_gpa)
+                        .map_err(|e| anyhow::anyhow!("scratch GPA does not fit in u32: {e}"))?;
                     let bulk_envelope: VmBusMessage =
-                        VmBusMessage::new(sqe.len, false, scratch_gpa as u32);
+                        VmBusMessage::new(sqe.len, false, scratch_gpa_u32);
                     (self.stdout_fn)(&self.vmem, &bulk_envelope)?;
                 },
                 Some(SqeOpcode::Nop) => {
@@ -235,10 +235,7 @@ impl Emulator {
                     self.post_cqe(ring_base, CqEntry::new(sqe.user_data, 0))?;
                 },
                 _ => {
-                    warn!(
-                        "drain_ring_buffer(): unknown SQE opcode {:#06x}, skipping",
-                        sqe.opcode
-                    );
+                    warn!("drain_ring_buffer(): unknown SQE opcode {:#06x}, skipping", sqe.opcode);
                 },
             }
 
@@ -366,10 +363,7 @@ impl Emulator {
                 // set so the guest always rings the doorbell.
                 ::config::microvm::RING_DOORBELL_PORT => {
                     let drained: u32 = self.drain_ring_buffer()?;
-                    trace!(
-                        "handle_pmio_access(): ring doorbell, drained {} SQEs",
-                        drained
-                    );
+                    trace!("handle_pmio_access(): ring doorbell, drained {} SQEs", drained);
                 },
                 // Write to the virtual machine monitor port.
                 ::config::microvm::DEFAULT_VMM_PORT => {

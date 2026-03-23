@@ -19,13 +19,13 @@ use crate::{
         WORKER_THREAD_JOIN_TIMEOUT,
     },
     direct_ring::{
+        spawn_sq_worker,
         CqNotifyHandle,
         DirectCqWriter,
-        spawn_sq_worker,
     },
     message::RequestAssembler,
-    syscalls::SyscallTable,
     shared_ring::SharedRing,
+    syscalls::SyscallTable,
     user_vm_event::UserVmEvent,
     user_vm_handle::{
         DirectRingHandles,
@@ -62,8 +62,8 @@ use ::std::{
     path::Path,
     str::FromStr,
     sync::{
-        Arc,
         atomic::AtomicBool,
+        Arc,
     },
 };
 use ::sys::{
@@ -109,10 +109,10 @@ use ::tokio::{
 };
 use ::user_vm_api::{
     self,
-    DIRECT_RING_CQ_DOORBELL_FRAME,
-    DIRECT_RING_SQ_DOORBELL_FRAME,
     RingTransportKind,
     UserVmIdentifier,
+    DIRECT_RING_CQ_DOORBELL_FRAME,
+    DIRECT_RING_SQ_DOORBELL_FRAME,
     NEW_USER_VM_MESSAGE_LEN,
 };
 
@@ -330,28 +330,35 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
             RingTransportKind::FilePath if self.in_l2 => {
                 warn!(
                     "accept_connections(): ignoring file-backed direct ring path for L2 user VM \
-                      until ivshmem replaces the removed transport (vm_id={user_vm_id}, path={})",
+                     until ivshmem replaces the removed transport (vm_id={user_vm_id}, path={})",
                     ring_transport.locator()
                 );
                 None
             },
-            RingTransportKind::FilePath => match SharedRing::open(Path::new(ring_transport.locator())) {
-                Ok(ring) => Some(Arc::new(ring)),
-                Err(error) => {
-                    let reason: String = format!(
-                        "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, path={}, error={error:?})",
-                        ring_transport.locator(),
-                    );
-                    error!("{reason}");
-                    return Err(Error::new(ErrorCode::IoErr, "failed to open shared ring mapping"));
-                },
+            RingTransportKind::FilePath => {
+                match SharedRing::open(Path::new(ring_transport.locator())) {
+                    Ok(ring) => Some(Arc::new(ring)),
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, \
+                             path={}, error={error:?})",
+                            ring_transport.locator(),
+                        );
+                        error!("{reason}");
+                        return Err(Error::new(
+                            ErrorCode::IoErr,
+                            "failed to open shared ring mapping",
+                        ));
+                    },
+                }
             },
             RingTransportKind::Ivshmem => {
                 match SharedRing::open_ivshmem(ring_transport.locator()) {
                     Ok(ring) => Some(Arc::new(ring)),
                     Err(error) => {
                         let reason: String = format!(
-                            "failed to open ivshmem direct ring mapping for user VM (vm_id={user_vm_id}, locator={}, error={error:?})",
+                            "failed to open ivshmem direct ring mapping for user VM \
+                             (vm_id={user_vm_id}, locator={}, error={error:?})",
                             ring_transport.locator(),
                         );
                         error!("{reason}");
@@ -401,7 +408,9 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
 
         // Gateway listener for this user VM.
-        let direct_cq_writer: Option<Arc<DirectCqWriter>> = if let Some(shared_ring) = shared_ring.as_ref() {
+        let direct_cq_writer: Option<Arc<DirectCqWriter>> = if let Some(shared_ring) =
+            shared_ring.as_ref()
+        {
             let cq_notify: CqNotifyHandle = if use_socket_ring_doorbells {
                 let (cq_doorbell_tx, mut cq_doorbell_rx): (Sender<()>, Receiver<()>) = channel(1);
                 let user_vm_writer: Arc<Mutex<SocketStreamWriter>> = user_vm_writer.clone();
@@ -429,28 +438,29 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         } else {
             None
         };
-        let direct_ring_stop: Option<Arc<AtomicBool>> =
-            shared_ring.as_ref().map(|_| Arc::new(AtomicBool::new(false)));
+        let direct_ring_stop: Option<Arc<AtomicBool>> = shared_ring
+            .as_ref()
+            .map(|_| Arc::new(AtomicBool::new(false)));
         let mut direct_ring_wakeup = None;
 
-        if let (Some(shared_ring), Some(stop), Some(cq_writer)) = (
-            shared_ring.clone(),
-            direct_ring_stop.clone(),
-            direct_cq_writer.clone(),
-        ) {
-            direct_ring_wakeup = Some(spawn_sq_worker(
-                user_vm_id,
-                shared_ring,
-                stop,
-                user_vm_event_tx,
-                cq_writer,
-                use_socket_ring_doorbells,
-            )
-            .map_err(|e| {
-                let reason: &'static str = "failed to spawn direct ring SQ worker";
-                error!("{reason} (vm_id={user_vm_id}, error={e:?})");
-                Error::new(ErrorCode::IoErr, reason)
-            })?);
+        if let (Some(shared_ring), Some(stop), Some(cq_writer)) =
+            (shared_ring.clone(), direct_ring_stop.clone(), direct_cq_writer.clone())
+        {
+            direct_ring_wakeup = Some(
+                spawn_sq_worker(
+                    user_vm_id,
+                    shared_ring,
+                    stop,
+                    user_vm_event_tx,
+                    cq_writer,
+                    use_socket_ring_doorbells,
+                )
+                .map_err(|e| {
+                    let reason: &'static str = "failed to spawn direct ring SQ worker";
+                    error!("{reason} (vm_id={user_vm_id}, error={e:?})");
+                    Error::new(ErrorCode::IoErr, reason)
+                })?,
+            );
         }
 
         let user_vm_handle: UserVmHandle = UserVmHandle::new(
@@ -949,17 +959,15 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     .await
                     .map_err(|e| e.kind())?;
 
-                let transfer: FixedBufferTransfer =
-                    FixedBufferTransfer::try_from_bytes(buf).map_err(|e| {
+                let transfer: FixedBufferTransfer = FixedBufferTransfer::try_from_bytes(buf)
+                    .map_err(|e| {
                         error!("recv(): failed to parse fixed-buffer transfer (error={e:?})");
                         ErrorKind::InvalidData
                     })?;
 
                 Ok(UserVmInbound::Transfer(IkcFrame::Fixed(transfer)))
             },
-            DIRECT_RING_SQ_DOORBELL_FRAME => {
-                Ok(UserVmInbound::SqDoorbell)
-            },
+            DIRECT_RING_SQ_DOORBELL_FRAME => Ok(UserVmInbound::SqDoorbell),
             unknown => {
                 error!("recv(): unknown frame type (type={unknown:#04x})");
                 Err(ErrorKind::InvalidData)
@@ -1011,7 +1019,8 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                         },
                         IkcFrame::Fixed(fixed) => {
                             trace!(
-                                "uservm.id={uvm_id}, fixed.source_pid={:?}, fixed.destination_pid={:?}, fixed.buffer_id={}, fixed.data_len={}",
+                                "uservm.id={uvm_id}, fixed.source_pid={:?}, \
+                                 fixed.destination_pid={:?}, fixed.buffer_id={}, fixed.data_len={}",
                                 fixed.source_pid(),
                                 fixed.destination_pid(),
                                 fixed.buffer_id(),
@@ -1037,15 +1046,17 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     }
                 },
                 Ok(UserVmInbound::SqDoorbell) => {
-                    trace!("user_vm_reader_loop(): received direct-ring SQ doorbell (uvm_id={uvm_id})");
+                    trace!(
+                        "user_vm_reader_loop(): received direct-ring SQ doorbell (uvm_id={uvm_id})"
+                    );
                     if uvm_events_tx
                         .send(UserVmEvent::SqDoorbell { uvm_id })
                         .await
                         .is_err()
                     {
                         debug!(
-                            "user_vm_reader_loop(): dispatcher dropped receiver while relaying \
-                             SQ doorbell (uvm_id={uvm_id})"
+                            "user_vm_reader_loop(): dispatcher dropped receiver while relaying SQ \
+                             doorbell (uvm_id={uvm_id})"
                         );
                         break;
                     }
@@ -1148,7 +1159,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 .push_back(worker_thread_handle);
         }
 
-        if let Err(error) = channel_tx.send(VenvCommand::Work { message, user_data }).await {
+        if let Err(error) = channel_tx
+            .send(VenvCommand::Work { message, user_data })
+            .await
+        {
             error!(
                 "run(): failed to dispatch message to worker thread (tid={source:?}, \
                  error={error:?})"

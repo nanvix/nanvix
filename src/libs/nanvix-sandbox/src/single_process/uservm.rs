@@ -30,11 +30,14 @@ use ::log::{
     trace,
     warn,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 use ::std::{
     fs::OpenOptions,
+    path::PathBuf,
+};
+use ::std::{
     mem,
     os::unix::process::ExitStatusExt,
-    path::PathBuf,
     process::{
         ExitCode,
         ExitStatus,

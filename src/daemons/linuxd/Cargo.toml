@@ -39,6 +39,8 @@ user-vm-api = { workspace = true }
 
 [features]
 default = []
+hyperlight = ["config/hyperlight"]
+microvm = ["config/microvm"]
 timestamp-messages = ["profiler/timestamp-messages"]
 
 [lints]

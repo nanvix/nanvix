@@ -19,7 +19,7 @@ use ::std::{
 ///
 /// Port where linuxd, when deployed inside an L2 VM, will block waiting for a snapshot to happen.
 ///
-const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
+pub const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
 
 ///
 /// # Description

@@ -37,20 +37,20 @@ use ::syscomm::{
     SocketStreamWriter,
     WriteAll,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::UnboundedReceiver;
 use ::tokio::{
     select,
     sync::mpsc::{
         Receiver,
         Sender,
-        UnboundedReceiver,
     },
     task::JoinHandle,
     time::Instant,
 };
-use ::user_vm_api::{
-    DIRECT_RING_CQ_DOORBELL_FRAME,
-    DIRECT_RING_SQ_DOORBELL_FRAME,
-};
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::user_vm_api::DIRECT_RING_CQ_DOORBELL_FRAME;
+use ::user_vm_api::DIRECT_RING_SQ_DOORBELL_FRAME;
 
 //==================================================================================================
 // Implementations
@@ -178,8 +178,9 @@ impl IoThread {
         control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
         counters: MessageCounters,
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        direct_ring_signal_rx: Option<UnboundedReceiver<DirectRingSignal>>,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))] direct_ring_signal_rx: Option<
+            UnboundedReceiver<DirectRingSignal>,
+        >,
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
         direct_ring_cq_doorbell_tx: Option<std::sync::mpsc::Sender<()>>,
     ) -> Result<JoinHandle<Result<()>>> {
@@ -230,8 +231,9 @@ impl IoThread {
         mut control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
         counters: MessageCounters,
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        mut direct_ring_signal_rx: Option<UnboundedReceiver<DirectRingSignal>>,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))] mut direct_ring_signal_rx: Option<
+            UnboundedReceiver<DirectRingSignal>,
+        >,
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
         direct_ring_cq_doorbell_tx: Option<std::sync::mpsc::Sender<()>>,
     ) -> Result<()> {

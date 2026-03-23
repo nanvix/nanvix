@@ -26,6 +26,9 @@ const IVSHMEM_SYSFS_ROOT: &str = "/sys/bus/pci/devices";
 const IVSHMEM_VENDOR_ID: &str = "0x1af4";
 const IVSHMEM_DEVICE_ID: &str = "0x1110";
 const IVSHMEM_BAR_INDEX: usize = 2;
+// Must stay in sync with `config::microvm::RING_BUFFER_GPA`, but linuxd's shared-ring helpers also
+// compile in configs where the `config` crate's `microvm` feature is disabled.
+const RING_BUFFER_GPA: u64 = 0x0100_0000;
 
 /// Shared mapping of a user VM ring-buffer backing file.
 pub struct SharedRing {
@@ -44,16 +47,21 @@ impl SharedRing {
             .read(true)
             .write(true)
             .open(path)
-            .map_err(|e| anyhow::anyhow!("failed to open shared ring backing file {:?}: {e}", path))?;
+            .map_err(|e| {
+                anyhow::anyhow!("failed to open shared ring backing file {:?}: {e}", path)
+            })?;
 
         let file_len: u64 = file
             .metadata()
-            .map_err(|e| anyhow::anyhow!("failed to stat shared ring backing file {:?}: {e}", path))?
+            .map_err(|e| {
+                anyhow::anyhow!("failed to stat shared ring backing file {:?}: {e}", path)
+            })?
             .len();
         let required: u64 = REGION_SIZE as u64;
         if file_len < required {
             let reason: String = format!(
-                "shared ring backing file too small: expected at least {required} bytes, got {file_len}"
+                "shared ring backing file too small: expected at least {required} bytes, got \
+                 {file_len}"
             );
             error!("SharedRing::open(): {reason}");
             anyhow::bail!(reason)
@@ -91,7 +99,8 @@ impl SharedRing {
 
         let Some(pci_address) = locator.strip_prefix("pci=") else {
             anyhow::bail!(
-                "unsupported ivshmem locator {locator:?}; expected {IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO:?} or pci=<BDF>"
+                "unsupported ivshmem locator {locator:?}; expected \
+                 {IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO:?} or pci=<BDF>"
             );
         };
 
@@ -105,7 +114,8 @@ impl SharedRing {
         for entry in fs::read_dir(IVSHMEM_SYSFS_ROOT)
             .map_err(|e| anyhow::anyhow!("failed to read {IVSHMEM_SYSFS_ROOT}: {e}"))?
         {
-            let entry = entry.map_err(|e| anyhow::anyhow!("failed to enumerate PCI devices: {e}"))?;
+            let entry =
+                entry.map_err(|e| anyhow::anyhow!("failed to enumerate PCI devices: {e}"))?;
             let device_path: PathBuf = entry.path();
 
             let vendor: String = match fs::read_to_string(device_path.join("vendor")) {
@@ -118,7 +128,8 @@ impl SharedRing {
             };
 
             if vendor.trim() == IVSHMEM_VENDOR_ID && device.trim() == IVSHMEM_DEVICE_ID {
-                let resource_path: PathBuf = device_path.join(format!("resource{IVSHMEM_BAR_INDEX}"));
+                let resource_path: PathBuf =
+                    device_path.join(format!("resource{IVSHMEM_BAR_INDEX}"));
                 if resource_path.exists() {
                     matches.push(resource_path);
                 }
@@ -176,15 +187,15 @@ impl SharedRing {
     }
 
     pub fn ring_ptr_from_gpa(&self, gpa: u64, len: usize) -> Result<*mut u8> {
-        let base_gpa: u64 = ::config::microvm::RING_BUFFER_GPA as u64;
         let region_len: u64 = REGION_SIZE as u64;
-        if gpa < base_gpa {
-            let reason: String = format!("ring GPA below base (gpa={gpa:#x}, base={base_gpa:#x})");
+        if gpa < RING_BUFFER_GPA {
+            let reason: String =
+                format!("ring GPA below base (gpa={gpa:#x}, base={RING_BUFFER_GPA:#x})");
             error!("SharedRing::ring_ptr_from_gpa(): {reason}");
             anyhow::bail!(reason)
         }
 
-        let offset_u64: u64 = gpa - base_gpa;
+        let offset_u64: u64 = gpa - RING_BUFFER_GPA;
         let end_u64: u64 = offset_u64
             .checked_add(u64::try_from(len).map_err(|e| anyhow::anyhow!("length too large: {e}"))?)
             .ok_or_else(|| anyhow::anyhow!("ring GPA range overflow"))?;
@@ -281,11 +292,13 @@ impl SharedRing {
             anyhow::bail!(reason)
         }
 
-        let offset: usize = ::nvx_ring::FIXED_BUF_OFFSET + buffer_index * ::nvx_ring::FIXED_BUF_SIZE;
+        let offset: usize =
+            ::nvx_ring::FIXED_BUF_OFFSET + buffer_index * ::nvx_ring::FIXED_BUF_SIZE;
         let end: usize = offset + ::nvx_ring::FIXED_BUF_SIZE;
         if end > self.len {
             let reason: String = format!(
-                "fixed buffer range exceeds mapping (buffer_id={buffer_id}, offset={offset}, end={end}, len={})",
+                "fixed buffer range exceeds mapping (buffer_id={buffer_id}, offset={offset}, \
+                 end={end}, len={})",
                 self.len
             );
             error!("SharedRing::fixed_buffer_ptr(): {reason}");

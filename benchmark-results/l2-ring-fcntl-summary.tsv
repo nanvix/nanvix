@@ -1,0 +1,2 @@
+metric	variant	iterations	avg_cycles	ns_per_call
+fcntl(F_GETFL)	ring-l2	100	7784997	3892498

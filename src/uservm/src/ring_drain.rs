@@ -14,17 +14,17 @@ use ::log::{
     warn,
 };
 use ::nvx_ring::{
-    CqEntry,
-    SqEntry,
-    SqeOpcode,
+    CQ_OFFSET,
     CTRL_CQ_MASK,
     CTRL_CQ_TAIL,
     CTRL_SQ_FLAGS,
     CTRL_SQ_HEAD,
     CTRL_SQ_MASK,
     CTRL_SQ_TAIL,
-    CQ_OFFSET,
+    CqEntry,
     SQ_OFFSET,
+    SqEntry,
+    SqeOpcode,
 };
 use ::std::sync::Arc;
 use ::sys::{
@@ -175,7 +175,8 @@ fn drain_sq(vmem: &Arc<Mutex<VirtualMemory>>, stdout_tx: &Sender<IkcFrame>) -> R
                         Ok(id) => id,
                         Err(_) => {
                             warn!(
-                                "ring_drain: fixed-buffer SQE id does not fit in u32 ({:#x}), skipping",
+                                "ring_drain: fixed-buffer SQE id does not fit in u32 ({:#x}), \
+                                 skipping",
                                 sqe.addr
                             );
                             current_head = current_head.wrapping_add(1);

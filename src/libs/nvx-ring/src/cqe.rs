@@ -15,6 +15,8 @@ impl CqeFlags {
     pub const MORE: Self = Self(1 << 0);
     /// The `buffer_id` field contains a valid pre-registered buffer index.
     pub const BUFFER: Self = Self(1 << 1);
+    /// This CQE completes the entire logical fixed-buffer transfer in one shot.
+    pub const BATCH: Self = Self(1 << 2);
 }
 
 /// A single completion queue entry.

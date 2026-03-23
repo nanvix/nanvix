@@ -25,7 +25,7 @@ pub struct sigset_t {
 
 #[repr(C)]
 pub struct sigaction_t {
-    pub sa_handler: extern "C" fn(usize),
+    pub sa_handler: usize,
     pub sa_mask: sigset_t,
     pub sa_flags: usize,
 }

@@ -28,6 +28,7 @@ pub use system::{
 #[cfg(feature = "std")]
 pub use transfer::{
     DataChunk,
+    FixedBufferFlags,
     FixedBufferTransfer,
     IkcFrame,
 };

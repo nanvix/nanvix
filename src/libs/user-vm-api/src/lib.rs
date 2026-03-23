@@ -402,16 +402,14 @@ impl NewUserVm {
             .iter()
             .position(|byte| *byte == 0)
             .unwrap_or(raw_locator.len());
-        let ring_transport_locator: String =
-            String::from_utf8(raw_locator[..locator_len].to_vec()).map_err(|_| {
+        let ring_transport_locator: String = String::from_utf8(raw_locator[..locator_len].to_vec())
+            .map_err(|_| {
                 let reason: &str = "invalid UTF-8 in ring_transport_locator";
                 error!("NewUserVm::try_from_bytes(): {reason}");
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
-        let ring_transport: RingTransport = RingTransport::new(
-            ring_transport_kind,
-            ring_transport_locator,
-        )?;
+        let ring_transport: RingTransport =
+            RingTransport::new(ring_transport_kind, ring_transport_locator)?;
 
         Self::new(
             UserVmIdentifier::new(user_vm_id),
@@ -431,42 +429,42 @@ mod tests {
         UserVmIdentifier,
         NEW_USER_VM_MESSAGE_LEN,
     };
+    use ::std::io::Result;
     use ::syscomm::SocketType;
 
     #[test]
-    fn new_user_vm_round_trips_disabled_ring_transport() {
+    fn new_user_vm_round_trips_disabled_ring_transport() -> Result<()> {
         let message: NewUserVm = NewUserVm::new(
             UserVmIdentifier::new(7),
             "127.0.0.1:1234".to_string(),
             SocketType::Tcp,
             RingTransport::disabled(),
-        )
-        .expect("message should encode");
+        )?;
 
         let encoded: [u8; NEW_USER_VM_MESSAGE_LEN] = message.to_bytes();
-        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded).expect("message should decode");
+        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded)?;
 
         assert_eq!(decoded.id(), UserVmIdentifier::new(7));
         assert_eq!(decoded.gateway_sockaddr(), "127.0.0.1:1234");
         assert_eq!(decoded.ring_transport().kind(), RingTransportKind::Disabled);
         assert_eq!(decoded.ring_transport().locator(), "");
+        Ok(())
     }
 
     #[test]
-    fn new_user_vm_round_trips_ivshmem_ring_transport() {
+    fn new_user_vm_round_trips_ivshmem_ring_transport() -> Result<()> {
         let message: NewUserVm = NewUserVm::new(
             UserVmIdentifier::new(11),
             "gateway.sock".to_string(),
             SocketType::Unix,
-            RingTransport::ivshmem("device=nanvix-ring0".to_string())
-                .expect("transport should encode"),
-        )
-        .expect("message should encode");
+            RingTransport::ivshmem("device=nanvix-ring0".to_string())?,
+        )?;
 
         let encoded: [u8; NEW_USER_VM_MESSAGE_LEN] = message.to_bytes();
-        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded).expect("message should decode");
+        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded)?;
 
         assert_eq!(decoded.ring_transport().kind(), RingTransportKind::Ivshmem);
         assert_eq!(decoded.ring_transport().locator(), "device=nanvix-ring0");
+        Ok(())
     }
 }

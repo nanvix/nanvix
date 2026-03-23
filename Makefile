@@ -29,8 +29,17 @@ export TIMESTAMP_MSG ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
-# L2 VM deployment?
-export L2_VM ?= no
+# Deployment mode: standalone, single-process, multi-process, l2
+export DEPLOYMENT_MODE ?= multi-process
+
+# Validate DEPLOYMENT_MODE.
+VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2
+ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
+$(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
+endif
+
+# Enable shared-memory ring transport where supported?
+export RING_BUFFER ?= no
 
 # Single-process deployment?
 export SINGLE_PROCESS ?= no
@@ -38,12 +47,16 @@ export SINGLE_PROCESS ?= no
 # Enable in-memory FAT32 filesystem?
 export MEMFS ?= no
 
-# Enable standalone mode (no linuxd, routes I/O to debug/memfs)?
-export STANDALONE ?= no
+# Standalone mode implies memfs.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+override MEMFS := yes
+endif
 
-# Standalone mode implies single-process deployment (no separate linuxd binary).
-ifeq ($(STANDALONE),yes)
-override SINGLE_PROCESS := yes
+# Validate that MEMFS is only enabled in standalone mode.
+ifeq ($(MEMFS),yes)
+ifneq ($(DEPLOYMENT_MODE),standalone)
+$(error MEMFS=yes requires DEPLOYMENT_MODE=standalone (current: $(DEPLOYMENT_MODE)))
+endif
 endif
 
 # Log Level
@@ -58,7 +71,7 @@ export WASMD_SOCKADDR ?= 127.0.0.1:8585
 
 # Default System Image
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-export IMAGE ?= $(BINARIES_DIR)/noop-rust-nostd.elf
+export IMAGE ?= nanvix.img
 else
 export IMAGE ?= nanvix.iso
 endif
@@ -115,7 +128,7 @@ endif
 # Release Artifact Configuration
 #===================================================================================================
 
-RELEASE_DEPLOYMENT_MODE := $(if $(filter yes,$(SINGLE_PROCESS)),single_process,multi_process)
+RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
 RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL).tar.bz2
@@ -127,20 +140,16 @@ RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MOD
 # File format for executables.
 export EXEC_FORMAT := elf
 # Libraries
-ifeq ($(TARGET),x86_64)
-export LIBC := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libc.a
-export LIBM := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libm.a
-export LIBCXX := $(TOOLCHAIN_DIR)/x86_64-nanvix/lib/libstdc++.a
-else
 export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
 export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
 export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
-endif
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
+MKIMAGE := $(BINARIES_DIR)/mkimage.elf
+MKRAMFS := $(BINARIES_DIR)/mkramfs.elf
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
 
@@ -170,13 +179,8 @@ export NANVIX_MACHINE := $(MACHINE)
 #===================================================================================================
 
 # Tools
-ifeq ($(TARGET),x86_64)
-export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/x86_64-nanvix-gcc
-export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/x86_64-nanvix-g++
-else
 export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
 export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
-endif
 
 # SCCACHE integration for C/C++ compilation (optional)
 # Wrap every compiler entrypoint exactly once so both host and cross builds
@@ -197,11 +201,7 @@ endif
 
 # C Compiler Options
 export NANVIX_CFLAGS := -std=c17
-ifeq ($(TARGET),x86_64)
-export NANVIX_CFLAGS += -m64 -march=x86-64
-else
 export NANVIX_CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-endif
 export NANVIX_CFLAGS += -Wall -Wextra -Werror
 export NANVIX_CFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
 export NANVIX_CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
@@ -214,11 +214,7 @@ export NANVIX_CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
 
 # C++ Compiler Options
 export NANVIX_CXXFLAGS := -std=c++17
-ifeq ($(TARGET),x86_64)
-export NANVIX_CXXFLAGS += -m64 -march=x86-64
-else
 export NANVIX_CXXFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-endif
 export NANVIX_CXXFLAGS += -Wall -Wextra -Werror
 export NANVIX_CXXFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
 export NANVIX_CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
@@ -244,6 +240,12 @@ export NANVIX_CFLAGS += -g
 export NANVIX_CXXFLAGS += -O0
 export NANVIX_CFLAGS += -D__DEBUG
 export NANVIX_CXXFLAGS += -D__DEBUG
+endif
+
+# Standalone mode define for C/C++ tests.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+export NANVIX_CFLAGS += -D__NANVIX_STANDALONE__
+export NANVIX_CXXFLAGS += -D__NANVIX_STANDALONE__
 endif
 
 #===================================================================================================
@@ -360,15 +362,15 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap config elf error fat32 type-safe pr
 ALL_GUEST_DAEMONS := memd procd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel linux-app arch-rust vfs-test
+ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-ALL_HOST_RUST_LIBS := control-plane-api hwloc profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
-ALL_HOST_UTILS := echo-client strace
+ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
+ALL_HOST_UTILS := echo-client mkimage mkramfs strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 else
@@ -506,7 +508,9 @@ install: all-nanvix
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
-ifneq ($(SINGLE_PROCESS),yes)
+	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
+	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
+ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
@@ -554,14 +558,14 @@ help:
 	@echo "  run      Run system in release mode"
 	@echo ""
 	@echo "Build Parameters (override with VAR=value, see Parameter Values section below)"
-	@echo "  L2_VM            Enable L2 VM deployment (default: $(L2_VM))"
+	@echo "  DEPLOYMENT_MODE  Deployment mode (default: $(DEPLOYMENT_MODE))"
 	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
 	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
 	@echo "  MAKE_NO_PRINT    Suppress directory printing in recursive make (default: $(MAKE_NO_PRINT))"
 	@echo "  PROFILER         Enable MicroVM profiler (default: $(PROFILER))"
 	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
+	@echo "  RING_BUFFER      Enable shared-memory ring transport (default: $(RING_BUFFER))"
 	@echo "  SCCACHE          Path to compilation cache binary (default: auto-detected from PATH) [impacts build time]"
-	@echo "  SINGLE_PROCESS   Enable single-process deployment (default: $(SINGLE_PROCESS))"
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
@@ -569,12 +573,14 @@ help:
 	@echo "  VERUS_DIR        Path to Verus installation (default: $(VERUS_DIR))"
 	@echo ""
 	@echo "Parameter Values"
+	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
 	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
-	@echo "  TARGET          x86, x86_64"
+	@echo "  TARGET          x86"
 	@echo "  RELEASE         yes, no"
-	@echo "  LOG_LEVEL       trace, debug, info, warn, error"
+	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"
 	@echo "  L2_VM           yes, no"
+	@echo "  RING_BUFFER     yes, no"
 	@echo "  MAKE_NO_PRINT   yes, no"
 
 # Verifies all Verus-annotated crates.
@@ -761,13 +767,17 @@ endif
 
 # Runs system in release mode.
 run: image
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+else
 	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
 endif
 
 # Runs system in debug mode.
 debug: image
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+else
 	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
 endif
 
@@ -777,7 +787,12 @@ endif
 
 # Builds the system image.
 image: all-nanvix
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	$(MKIMAGE) -o $(IMAGE) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
+else
 	$(MKDIR_CMD) $(IMAGE_DIR)/boot/grub
 	$(CP_CMD) $(GRUB_CFG_SCRIPT) $(IMAGE_DIR)/boot/grub/
 	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
@@ -785,7 +800,9 @@ ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 endif
 
 image-clean:
-ifeq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+	$(RM_CMD) $(IMAGE)
+else
 	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
 	$(RM_CMD) $(IMAGE)
 endif
@@ -807,21 +824,15 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 run-unit-tests: test-host-rlibs
 endif
 
-# Determine the test configuration file based on deployment mode and architecture.
-ifeq ($(SINGLE_PROCESS),yes)
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-single_process-x86_64.toml
-else
+# Determine the test configuration file based on deployment mode.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+NANVIX_TEST_CONFIG := test/test-standalone.toml
+else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
 NANVIX_TEST_CONFIG := test/test-single_process.toml
-endif
-else ifeq ($(L2_VM),yes)
+else ifeq ($(DEPLOYMENT_MODE),l2)
 NANVIX_TEST_CONFIG := test/test-l2.toml
 else
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-multi_process-x86_64.toml
-else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
-endif
 endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf
