@@ -78,6 +78,7 @@ qemu-isapc = ["arch/qemu-isapc", "pc"]
 
 # Platform Features
 smp = []
+whp = ["config/whp"]
 bios = []
 cmos = []
 mboot = []

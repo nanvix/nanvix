@@ -10,7 +10,6 @@
 
 use ::log::trace;
 use ::std::{
-    mem,
     sync::{
         Arc,
         atomic::{
@@ -25,9 +24,8 @@ use ::std::{
     time::Duration,
 };
 use windows::Win32::System::Hypervisor::{
-    WHV_INTERRUPT_CONTROL,
     WHV_PARTITION_HANDLE,
-    WHvRequestInterrupt,
+    WHvCancelRunVirtualProcessor,
 };
 
 // Windows Multimedia timer functions for high-resolution sleep.
@@ -44,23 +42,17 @@ unsafe extern "system" {
 ///
 /// # Description
 ///
-/// A host-side timer that periodically injects a timer interrupt into
-/// the guest vCPU via `WHvRequestInterrupt`. This replaces the earlier
-/// two-stage mechanism (cancel vCPU + inject at idle port exit) with
-/// direct LAPIC-level interrupt injection from the timer thread.
+/// A host-side timer that periodically cancels the vCPU to force VMM
+/// loop re-entry for pvclock updates. This does **not** inject a guest
+/// interrupt — the LAPIC periodic timer (configured by the kernel at
+/// 1 kHz) handles all timer interrupts inside the WHP LAPIC emulator.
 ///
-/// The timer thread fires at the guest-requested period and injects
-/// IRQ0 (vector 0x20) as a Fixed, Edge-triggered interrupt through
-/// `WHvRequestInterrupt`. The WHP LAPIC emulator handles IF checks,
-/// IRR/ISR management, and HLT wake-up — so the guest can use a
-/// standard `sti; hlt` idle loop.
-///
-/// A separate clock-refresh thread in the VMM module handles periodic
-/// `WHvCancelRunVirtualProcessor` calls for pvclock updates, IKC
-/// delivery, and shutdown checks.
+/// The timer thread fires at a low frequency (100 Hz) and calls
+/// `WHvCancelRunVirtualProcessor` to cause a `Canceled` exit. The VMM
+/// loop uses these exits to update `system_time` on the pvclock page.
 ///
 pub struct Timer {
-    /// WHP partition handle (for `WHvRequestInterrupt`).
+    /// WHP partition handle (for `WHvCancelRunVirtualProcessor`).
     partition: WHV_PARTITION_HANDLE,
     /// Flag used to signal the timer thread to stop.
     stop: Arc<AtomicBool>,
@@ -89,9 +81,8 @@ impl Timer {
 
     /// Starts the timer thread with the given period in microseconds.
     ///
-    /// Each tick: `WHvRequestInterrupt` injects vector 0x20 (IRQ0)
-    /// as a Fixed, Edge-triggered interrupt via the WHP LAPIC. This
-    /// wakes the vCPU from HLT and delivers the interrupt when IF=1.
+    /// Each tick calls `WHvCancelRunVirtualProcessor` to force a VM exit
+    /// so the VMM loop can update pvclock. No guest interrupt is injected.
     pub fn start(&mut self, period_us: u64) {
         if self.thread.is_some() {
             return;
@@ -108,27 +99,15 @@ impl Timer {
             // Set Windows timer resolution to 1ms for accurate sleep.
             unsafe { timeBeginPeriod(1) };
 
-            // Build the interrupt control structure for Fixed, Edge-triggered,
-            // Physical destination mode, vector 0x20, destination 0 (BSP).
-            // Bitfield layout: bits 0-7 = InterruptType (Fixed=0),
-            // bit 8 = DestinationMode (Physical=0), bit 9 = TriggerMode (Edge=0).
-            let interrupt: WHV_INTERRUPT_CONTROL = WHV_INTERRUPT_CONTROL {
-                _bitfield: 0, // Fixed=0, Physical=0, Edge=0.
-                Destination: 0,
-                Vector: super::lapic::TIMER_VECTOR,
-            };
-            let interrupt_size: u32 = mem::size_of::<WHV_INTERRUPT_CONTROL>() as u32;
-
             while !stop.load(Ordering::Relaxed) {
                 thread::sleep(period);
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
                 // SAFETY: `partition` is a valid WHP partition handle that outlives
-                // the timer thread (the Vmm struct owns both). `interrupt` is a valid
-                // WHV_INTERRUPT_CONTROL on the stack with correct size.
+                // the timer thread (the Vmm struct owns both).
                 unsafe {
-                    let _ = WHvRequestInterrupt(partition, &interrupt, interrupt_size);
+                    let _ = WHvCancelRunVirtualProcessor(partition, 0, 0);
                 }
             }
 

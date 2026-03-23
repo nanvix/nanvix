@@ -95,7 +95,7 @@ mod kpanic;
 mod mm;
 #[cfg(any(feature = "microvm", feature = "hyperlight"))]
 mod multibin;
-mod pm;
+pub(crate) mod pm;
 #[cfg(feature = "stdio")]
 mod stdio;
 mod uart;
