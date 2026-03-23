@@ -53,6 +53,9 @@ use ::sys::error::{
     ErrorCode,
 };
 
+#[cfg(feature = "whp")]
+use crate::hal::platform::region_tags::LAPIC_MMIO_TAG;
+
 #[cfg(feature = "pit")]
 use crate::hal::platform::pit::Pit;
 
@@ -489,6 +492,22 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(pvclock_region);
+
+    // Register the LAPIC MMIO page only for the WHP microvm backend.
+    // The guest uses this page to enable LAPIC software delivery and to
+    // acknowledge interrupts through the WHP LAPIC emulator.
+    #[cfg(feature = "whp")]
+    {
+        let lapic_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new(
+            "lapic-registers",
+            PageAligned::from_raw_value(::config::microvm::DEFAULT_LAPIC_BASE)?,
+            mem::PAGE_SIZE,
+            MemoryRegionType::Mmio,
+            AccessPermission::RDWR,
+        )?;
+        ioaddresses.register(LAPIC_MMIO_TAG, lapic_region.clone())?;
+        mmio_regions.push_back(lapic_region);
+    }
 
     log_control_registers();
     register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
