@@ -99,56 +99,157 @@ pub const KILL_SIGNAL: i32 = 0;
 /// IDT vector for IRQ 9 (IKC): PIC2 base (0x28) + (IRQ 9 - 8) = 0x29.
 const IKC_VECTOR: u32 = 0x29;
 
+/// PIT oscillator frequency in Hz (1.193181 MHz).
+const PIT_FREQ_HZ: u64 = 1_193_181;
+
+//==================================================================================================
+// PIT Channel 2 Emulation
+//==================================================================================================
+
+/// Minimal emulation of PIT channel 2 one-shot mode for LAPIC timer
+/// calibration. Tracks channel 2 programming via port I/O and provides
+/// the OUT2 status bit (bit 5 of port 0x61) based on elapsed host time.
+struct PitCh2State {
+    /// Whether channel 2 is in one-shot mode (mode 0).
+    active: bool,
+    /// Reload value for the countdown.
+    reload: u16,
+    /// Next byte expected: false = low byte, true = high byte.
+    expect_hi: bool,
+    /// Speaker gate enabled (bit 0 of port 0x61).
+    gate_enabled: bool,
+    /// Host timestamp when the countdown started.
+    start_time: Option<std::time::Instant>,
+}
+
+impl PitCh2State {
+    fn new() -> Self {
+        Self {
+            active: false,
+            reload: 0,
+            expect_hi: false,
+            gate_enabled: false,
+            start_time: None,
+        }
+    }
+
+    /// Handles a write to port 0x43 (PIT control register).
+    fn handle_ctrl_write(&mut self, byte: u8) {
+        let channel: u8 = (byte >> 6) & 0x03;
+        if channel != 2 {
+            return;
+        }
+        // Mode 0 = interrupt on terminal count (one-shot).
+        let mode: u8 = (byte >> 1) & 0x07;
+        self.active = mode == 0;
+        self.reload = 0;
+        self.expect_hi = false;
+        self.start_time = None;
+    }
+
+    /// Handles a write to port 0x42 (PIT channel 2 data register).
+    fn handle_data_write(&mut self, byte: u8) {
+        if !self.active {
+            return;
+        }
+        if !self.expect_hi {
+            self.reload = (self.reload & 0xFF00) | (byte as u16);
+            self.expect_hi = true;
+        } else {
+            self.reload = (self.reload & 0x00FF) | ((byte as u16) << 8);
+            self.expect_hi = false;
+            if self.gate_enabled {
+                self.start_time = Some(std::time::Instant::now());
+            }
+        }
+    }
+
+    /// Handles a write to port 0x61 (speaker/gate control).
+    fn handle_speaker_write(&mut self, byte: u8) {
+        self.gate_enabled = (byte & 0x01) != 0;
+        if self.gate_enabled && self.active && self.reload > 0 && self.start_time.is_none() {
+            self.start_time = Some(std::time::Instant::now());
+        }
+    }
+
+    /// Reads port 0x61 (speaker status). Returns bit 5 (OUT2) set when
+    /// the PIT channel 2 countdown has expired.
+    fn read_speaker(&self) -> u8 {
+        let mut result: u8 = if self.gate_enabled { 0x01 } else { 0x00 };
+        if let Some(start) = self.start_time {
+            let duration_ns: u64 = (self.reload as u64) * 1_000_000_000 / PIT_FREQ_HZ;
+            if start.elapsed().as_nanos() as u64 >= duration_ns {
+                result |= 0x20;
+            }
+        }
+        result
+    }
+}
+
 //==================================================================================================
 // IKC Notifier
 //==================================================================================================
 
 /// Notifier that signals the VMM loop to inject an IKC interrupt after the host writes credits.
+///
+/// Delivers the IKC vector via `WHvRequestInterrupt` through the WHP
+/// LAPIC emulator. This wakes the vCPU from HLT and delivers the
+/// interrupt when IF=1.
 #[derive(Clone)]
 pub struct IkcNotifier {
     pending: Arc<AtomicBool>,
-    /// Set to true after the VMM has shut down. Prevents `WHvCancelRunVirtualProcessor` calls
-    /// on a partition whose vCPU is no longer running, which can trigger STATUS_ACCESS_VIOLATION
-    /// on Windows.
+    /// Set to true after the VMM has shut down.
     shutdown: Arc<AtomicBool>,
+    /// WHP partition handle for `WHvRequestInterrupt`.
     partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-    vp_index: u32,
 }
 
-// SAFETY: WHV_PARTITION_HANDLE is a raw handle that is safe to send between threads.
+// SAFETY: WHV_PARTITION_HANDLE is an opaque OS handle that can be used from
+// any thread. The IkcNotifier struct has no thread-affine state.
 unsafe impl Send for IkcNotifier {}
 unsafe impl Sync for IkcNotifier {}
 
 impl IkcNotifier {
-    fn new(
-        partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-        vp_index: u32,
-    ) -> Self {
+    fn new(partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE) -> Self {
         Self {
             pending: Arc::new(AtomicBool::new(false)),
             shutdown: Arc::new(AtomicBool::new(false)),
             partition,
-            vp_index,
         }
     }
 
-    /// Signals that an IKC message is available. Cancels the vCPU to wake it.
+    /// Signals that an IKC message is available.
     ///
-    /// After the VMM has called [`mark_shutdown`](Self::mark_shutdown), this method becomes a
-    /// no-op to avoid calling WHP APIs on a partition whose vCPU has been powered off.
+    /// Delivers the IKC vector (0x29) via `WHvRequestInterrupt` through
+    /// the LAPIC emulator. This wakes the vCPU from HLT.
     pub fn notify(&self) -> Result<()> {
         if self.shutdown.load(Ordering::Acquire) {
             return Ok(());
         }
+        // Only request an interrupt on the transition from not-pending to pending.
         if self.pending.swap(true, Ordering::AcqRel) {
             return Ok(());
         }
-        unsafe {
-            let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+
+        let interrupt = windows::Win32::System::Hypervisor::WHV_INTERRUPT_CONTROL {
+            _bitfield: 0, // Fixed, Physical, Edge.
+            Destination: 0,
+            Vector: IKC_VECTOR,
+        };
+        // SAFETY: partition handle outlives the notifier.
+        let hr = unsafe {
+            windows::Win32::System::Hypervisor::WHvRequestInterrupt(
                 self.partition,
-                self.vp_index,
-                0,
-            );
+                &interrupt,
+                ::std::mem::size_of::<windows::Win32::System::Hypervisor::WHV_INTERRUPT_CONTROL>()
+                    as u32,
+            )
+        };
+        if let Err(e) = hr {
+            // Interrupt was not delivered; clear pending so callers can retry.
+            self.pending.store(false, Ordering::Release);
+            log::error!("WHvRequestInterrupt failed for IKC: {e:?}");
+            anyhow::bail!("WHvRequestInterrupt failed for IKC: {e:?}");
         }
         Ok(())
     }
@@ -191,13 +292,16 @@ pub struct Vmm {
     vmem: Arc<Mutex<VirtualMemory>>,
     /// Virtual processor of the virtual machine.
     vcpu: Arc<Mutex<VirtualProcessor>>,
-    /// Host-side timer for periodic interrupt injection.
-    timer: Arc<std::sync::Mutex<timer::Timer>>,
     /// IKC notifier for waking the guest when credits are added.
     ikc_notifier: IkcNotifier,
-    /// Partition handle (for future interrupt injection use).
-    #[allow(dead_code)]
+    /// Partition handle (for PIT emulation and future interrupt injection).
     partition_handle: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
+    /// Low-frequency host timer for pvclock updates. Calls
+    /// `WHvCancelRunVirtualProcessor` at 100Hz to force VM exits so the
+    /// VMM loop can update `system_time`. The LAPIC periodic timer
+    /// handles actual 1kHz scheduling inside the WHP emulator (zero
+    /// VM exits for timer delivery).
+    timer: Arc<std::sync::Mutex<timer::Timer>>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
 }
@@ -308,12 +412,12 @@ impl Vmm {
         };
 
         let partition_handle = partition.handle();
-        let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(vmem));
-        let vcpu: Arc<Mutex<VirtualProcessor>> = Arc::new(Mutex::new(vcpu));
         let timer: Arc<std::sync::Mutex<timer::Timer>> =
             Arc::new(std::sync::Mutex::new(timer::Timer::new(partition_handle)));
+        let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(vmem));
+        let vcpu: Arc<Mutex<VirtualProcessor>> = Arc::new(Mutex::new(vcpu));
 
-        let ikc_notifier = IkcNotifier::new(partition_handle, 0);
+        let ikc_notifier: IkcNotifier = IkcNotifier::new(partition_handle);
 
         let emulator: Emulator =
             Emulator::new(guest.clone(), vmem.clone(), args.input, args.output, args.stderr)?;
@@ -322,9 +426,9 @@ impl Vmm {
             guest,
             vmem,
             vcpu,
-            timer,
             ikc_notifier,
             partition_handle,
+            timer,
             inner: Arc::new(Mutex::new(InteriorWhpHandle {
                 _partition: partition,
                 emulator,
@@ -370,46 +474,38 @@ impl Vmm {
         SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
 
         let loop_start = std::time::Instant::now();
-        // Track guest instruction execution to detect hangs.
-        let mut last_progress_time: std::time::Instant = std::time::Instant::now();
+
+        // Throttle pvclock updates to once per millisecond instead of every
+        // VMM loop iteration. This avoids unnecessary mutex acquisition and
+        // memory writes on fast-path exits (HLT, Interrupted, legacy PMIO).
+        let mut last_pvclock_update = std::time::Instant::now();
+        const PVCLOCK_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1);
 
         // Pvclock: VMM-driven system_time updates.
         // Version starts at 2 (set by setup_pvclock). Each update does +1
         // (odd = writing) then +1 (even = stable).
         let mut pvclock_version: u32 = 2;
 
-        // Spawn a background clock-refresh thread that periodically cancels
-        // the vCPU to force VMM loop re-entry for pvclock updates. Without
-        // this, before the PV timer starts (early boot) or if the timer is
-        // stopped, the vCPU can execute guest code indefinitely and the
-        // pvclock system_time field stays frozen.
-        let clock_refresh_stop = Arc::new(AtomicBool::new(false));
-        let clock_refresh_thread = {
-            let stop = clock_refresh_stop.clone();
-            let partition = self.partition_handle;
-            std::thread::spawn(move || {
-                // Set Windows timer resolution to 1 ms for accurate sleep.
-                unsafe { super::timer::timeBeginPeriod(1) };
-                while !stop.load(Ordering::Relaxed) {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                    if stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    unsafe {
-                        let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
-                            partition, 0, 0,
-                        );
-                    }
-                }
-                unsafe { super::timer::timeEndPeriod(1) };
-            })
-        };
+        // The LAPIC periodic timer runs entirely inside the WHP LAPIC
+        // emulator, configured by the guest kernel during boot via
+        // PIT-based calibration (1kHz, zero VM exits for delivery).
+        //
+        // Pvclock updates are driven by a host timer. The guest
+        // interpolates between updates using LAPIC timer tick counts
+        // (1 kHz) for ~1 ms accuracy with zero VM exits per time read.
+        //
+        // A low-frequency host timer (100Hz) calls
+        // WHvCancelRunVirtualProcessor to force VM exits so the VMM
+        // loop can update system_time on the pvclock page. Without these
+        // periodic exits, pvclock would freeze during CPU-bound guest
+        // execution (no I/O = no VM exits), causing condvar/sleep
+        // timeouts to malfunction.
+        self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
 
-        // Start the timer with the compile-time constant period.
-        self.timer
-            .lock()
-            .unwrap()
-            .start(::config::microvm::TIMER_PERIOD_US);
+        // PIT channel 2 state for LAPIC timer calibration. The guest
+        // programs PIT ch2 in one-shot mode and polls port 0x61 bit 5
+        // to detect when the countdown expires.
+        let mut pit_ch2: PitCh2State = PitCh2State::new();
 
         let result = loop {
             // Check shutdown flag.
@@ -420,39 +516,21 @@ impl Vmm {
                 break Ok(exit_status);
             }
 
-            // Watchdog: if no I/O port activity for 120 seconds, the guest is
-            // likely stuck (e.g., a panic handler spin loop). Terminate with an
-            // error. Active even before the timer starts to catch boot hangs.
-            const WATCHDOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-            if last_progress_time.elapsed() > WATCHDOG_TIMEOUT {
-                error!("VMM watchdog: no guest I/O for {:?}, terminating", WATCHDOG_TIMEOUT);
-                let exit_status: u16 = ErrorCode::OperationTimedOut.into();
-                Handle::current().block_on(self.handle_shutdown(exit_status));
-                break Ok(exit_status);
+            // Update pvclock at most once per millisecond to avoid
+            // excessive mutex acquisition and memory writes on fast-path
+            // exits. The guest kernel tolerates stale system_time values
+            // within a few milliseconds.
+            if last_pvclock_update.elapsed() >= PVCLOCK_UPDATE_INTERVAL {
+                Self::update_pvclock(
+                    &mut self.vmem.blocking_lock(),
+                    &mut pvclock_version,
+                    loop_start.elapsed().as_nanos() as u64,
+                );
+                last_pvclock_update = std::time::Instant::now();
             }
 
-            // Update pvclock before every vCPU entry so the guest always
-            // reads a fresh wall-clock value from the pvclock page.
-            Self::update_pvclock(
-                &mut self.vmem.blocking_lock(),
-                &mut pvclock_version,
-                loop_start.elapsed().as_nanos() as u64,
-            );
-
-            // Check for pending IKC notification and inject via PendingInterruption.
-            if self.ikc_notifier.take_pending() {
-                let mut locked_vcpu = self.vcpu.blocking_lock();
-                if locked_vcpu.is_online() {
-                    let rflags = locked_vcpu.get_rflags().unwrap_or(0);
-                    if rflags & vcpu::RFLAGS_INTERRUPT_ENABLE != 0 {
-                        let _ = locked_vcpu.inject_pending_interruption(IKC_VECTOR);
-                    } else {
-                        locked_vcpu.set_deliverability_notifications(true);
-                        // Re-set pending so we try again on InterruptWindow.
-                        self.ikc_notifier.pending.store(true, Ordering::Release);
-                    }
-                }
-            }
+            // Consume pending IKC notification.  to prevent re-delivery on the next loop iteration.
+            let _ = self.ikc_notifier.take_pending();
 
             let exit_context = {
                 let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
@@ -472,21 +550,33 @@ impl Vmm {
             match exit_context.reason_ref() {
                 // The guest requested to access an I/O port.
                 VirtualProcessorExitReasonRef::PmioAccess(access) => {
-                    // Any PMIO exit indicates guest progress.
-                    last_progress_time = std::time::Instant::now();
-
                     // Fast-path: handle legacy hardware ports inline.
-                    if let PmioAccess::PmioOut(port, _data, _width) = access {
-                        // PIC, PIT, speaker, IMCR, CMOS, serial: no-op.
+                    if let PmioAccess::PmioOut(port, data, _width) = access {
                         match *port {
+                            // PIT control register: track channel 2 programming.
+                            0x43 => {
+                                pit_ch2.handle_ctrl_write(*data as u8);
+                                continue;
+                            },
+                            // PIT channel 2 data register.
+                            0x42 => {
+                                pit_ch2.handle_data_write(*data as u8);
+                                continue;
+                            },
+                            // Speaker/gate control: track gate enable.
+                            0x61 => {
+                                pit_ch2.handle_speaker_write(*data as u8);
+                                continue;
+                            },
+                            // PIC, PIT ch0/ch1, IMCR, CMOS, serial: no-op.
                             0x20
                             | 0x21
                             | 0xA0
                             | 0xA1
                             | 0x22
                             | 0x23
-                            | 0x40..=0x43
-                            | 0x61
+                            | 0x40
+                            | 0x41
                             | 0x70
                             | 0x71
                             | 0x3F8..=0x3FF => {
@@ -497,6 +587,13 @@ impl Vmm {
                     }
                     if let PmioAccess::PmioIn(port, _data) = access {
                         match *port {
+                            // PIT channel 2 output: return gate/OUT2 status.
+                            0x61 => {
+                                let value: u8 = pit_ch2.read_speaker();
+                                Self::set_guest_rax(self.partition_handle, value as u64);
+                                continue;
+                            },
+                            // Other legacy ports: return zero.
                             0x20
                             | 0x21
                             | 0x22
@@ -504,12 +601,12 @@ impl Vmm {
                             | 0xA0
                             | 0xA1
                             | 0x40..=0x43
-                            | 0x61
                             | 0x70
                             | 0x71
                             | 0x3F8..=0x3FF
                             | 0xCF8
                             | 0xCFC..=0xCFF => {
+                                Self::set_guest_rax(self.partition_handle, 0);
                                 continue;
                             },
                             _ => {},
@@ -518,11 +615,18 @@ impl Vmm {
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
 
-                    let exit_status: Option<u16> = self
+                    let exit_status: Option<u16> = match self
                         .inner
                         .blocking_lock()
                         .emulator
-                        .handle_pmio_access(access)?;
+                        .handle_pmio_access(access)
+                    {
+                        Ok(status) => status,
+                        Err(e) => {
+                            error!("VMM exit: PMIO access error (error={e:?})",);
+                            break Err(e);
+                        },
+                    };
                     if let Some(exit_status) = exit_status {
                         if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
@@ -532,35 +636,32 @@ impl Vmm {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
                             break Ok(exit_status);
                         } else {
-                            Handle::current().block_on(self.handle_pause())?;
+                            if let Err(e) = Handle::current().block_on(self.handle_pause()) {
+                                error!("VMM exit: pause error (error={e:?})");
+                                break Err(e);
+                            }
                             trace!("VMM resumed");
                         }
                     }
                 },
 
-                // HLT: the guest is waiting for an interrupt. The LAPIC
-                // emulator holds the vCPU until WHvRequestInterrupt from
-                // the timer thread (or IKC) wakes it. If HLT exits to
-                // the VMM (e.g., no LAPIC emulation), just re-enter.
+                // HLT: with LAPIC emulation enabled, HLT is handled internally by the LAPIC and
+                // shouldn't cause VM exits.  If it does, log and re-enter the vCPU loop.
                 VirtualProcessorExitReasonRef::Halt => {
+                    warn!("VMM exit: HLT");
                     continue;
                 },
 
-                // The vCPU was canceled (CancelRunVP from clock-refresh
-                // thread). Brings the VMM loop back for pvclock updates,
-                // IKC delivery, and shutdown checks.
+                // The vCPU was canceled (WHvCancelRunVP from the host
+                // timer thread). Re-enter after pvclock update
+                // (handled at top of loop).
                 VirtualProcessorExitReasonRef::Interrupted => {
                     continue;
                 },
 
-                // InterruptWindow: IF just became 1. This may fire if
-                // DeliverabilityNotifications was set (e.g., for IKC).
+                // InterruptWindow: IF just became 1. With LAPIC-based
+                // delivery, interrupts are handled by the LAPIC emulator.
                 VirtualProcessorExitReasonRef::InterruptWindow => {
-                    let mut locked_vcpu = self.vcpu.blocking_lock();
-                    locked_vcpu.set_deliverability_notifications(false);
-                    if self.ikc_notifier.take_pending() && locked_vcpu.is_online() {
-                        let _ = locked_vcpu.inject_pending_interruption(IKC_VECTOR);
-                    }
                     continue;
                 },
 
@@ -570,21 +671,25 @@ impl Vmm {
                     break Ok(ErrorCode::IllegalByteSequence.into());
                 },
 
-                // Guest accessed an unmapped guest physical address.
-                // Lazily map a zeroed page so the instruction succeeds on retry.
+                // Guest accessed a memory-mapped address.
                 VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
-                    self.vmem
-                        .blocking_lock()
-                        .map_mmio_page(&self.inner.blocking_lock()._partition, gpa)?;
-                    continue;
+                    // Check if access falls within the LAPIC page.
+                    let page_gpa: u64 = gpa & !(::arch::mem::PAGE_SIZE as u64 - 1);
+                    if page_gpa == ::config::microvm::DEFAULT_LAPIC_BASE as u64 {
+                        trace!("VMM MMIO exit: LAPIC access at GPA {gpa:#010x}, retrying");
+                        continue;
+                    }
+
+                    // All other MMIO accesses are unexpected. Terminate execution.
+                    error!("VMM MMIO exit: unexpected GPA {gpa:#010x}, aborting");
+                    let exit_status: u16 = ErrorCode::BadAddress.into();
+                    Handle::current().block_on(self.handle_shutdown(exit_status));
+                    break Ok(exit_status);
                 },
             }
         };
 
-        // Stop the clock-refresh thread before returning.
-        clock_refresh_stop.store(true, Ordering::Relaxed);
-        let _ = clock_refresh_thread.join();
-
+        self.timer.lock().unwrap().stop();
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
         result
     }
@@ -687,9 +792,6 @@ impl Vmm {
         // STATUS_ACCESS_VIOLATION crashes when the vCPU is no longer running.
         self.ikc_notifier.mark_shutdown();
 
-        // Stop the timer thread before shutting down.
-        self.timer.lock().unwrap().stop();
-
         // Power-off vCPU.
         self.vcpu.lock().await.poweroff(exit_status);
 
@@ -708,6 +810,33 @@ impl Vmm {
             Err(error) => {
                 warn!("handle_shutdown(): failed to notify orchestrator thread (error={error:?})");
             },
+        }
+    }
+
+    /// Sets the guest vCPU's RAX register. Used to return data for
+    /// emulated PmioIn instructions (RIP is already advanced by the
+    /// vCPU exit handler).
+    fn set_guest_rax(
+        partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
+        value: u64,
+    ) {
+        use windows::Win32::System::Hypervisor::{
+            WHV_REGISTER_NAME,
+            WHV_REGISTER_VALUE,
+            WHvSetVirtualProcessorRegisters,
+        };
+        const WHV_X64_REGISTER_RAX: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0);
+        let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RAX];
+        let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { std::mem::zeroed() }];
+        reg_values[0].Reg64 = value;
+        unsafe {
+            let _ = WHvSetVirtualProcessorRegisters(
+                partition,
+                0,
+                reg_names.as_ptr(),
+                1,
+                reg_values.as_ptr(),
+            );
         }
     }
 

@@ -274,6 +274,10 @@ pub mod microvm {
     /// Offset within the pvclock page for the boot time in nanoseconds since
     /// the Unix epoch (u64). The VMM writes this value during VM initialization.
     pub const PVCLOCK_BOOT_TIME_NS_OFFSET: usize = 0x20;
+
+    /// Base address of the local APIC MMIO register page.
+    #[cfg(feature = "whp")]
+    pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
 }
 
 #[cfg(feature = "pc")]
