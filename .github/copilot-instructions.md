@@ -31,7 +31,7 @@ Use the corresponding skill when the user request matches the topic:
 Nanvix supports two host platforms:
 
 - **Linux** — Full development workflow: build, run, test, benchmark, and debug.
-  Uses KVM for the microvm backend and QEMU for other machine types.
+  Uses KVM for the microvm backend.
 - **Windows 11** — Host-side development with the Windows Hypervisor Platform (WHP)
   backend. Guest components (kernel, user binaries) are cross-compiled inside Docker;
   the UserVM is built natively. Only standalone interactive mode is available

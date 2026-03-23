@@ -35,14 +35,13 @@ The pipeline runs these steps in order:
 
 ### Machine-Dependent Steps
 
-`scripts/pipeline.sh` currently executes machine-dependent
-steps only for `microvm` and `hyperlight` (qemu variants are
-excluded in `is_excluded()`).
+`scripts/pipeline.sh` executes machine-dependent
+steps for `microvm` and `hyperlight`.
 
-| Machine       | Build Types    | Deployment Types     |
-|---------------|----------------|----------------------|
-| `microvm`     | debug, release | single, multi, l2    |
-| `hyperlight`  | debug, release | single, multi, l2    |
+| Machine       | Build Types    | Deployment Types              |
+|---------------|----------------|-------------------------------|
+| `microvm`     | debug, release | standalone, single, multi, l2 |
+| `hyperlight`  | debug, release | single, multi, l2             |
 
 ### Build Parameter Mapping
 
@@ -81,8 +80,9 @@ pull requests and pushes to `dev`.
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`, `ci-test`: `qemu-pc`, `microvm`, `hyperlight` with `single-process`
-  and `multi-process` (excluding `qemu-pc + single-process`).
+- `lint`, `verify`, `ci-build`: `microvm` and `hyperlight` with `standalone`,
+  `single-process`, and `multi-process`.
+- `ci-test`: same matrix, excluding `hyperlight + standalone`.
 - `ci-l2`: separate L2 jobs for `microvm` and `hyperlight`.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)

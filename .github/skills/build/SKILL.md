@@ -58,9 +58,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 
 | Parameter        | Values                   | Default         |
 |------------------|--------------------------|-----------------|
-| `MACHINE`        | `microvm`, `hyperlight`, | `microvm`       |
-|                  | `qemu-pc`, `qemu-isapc`, |                 |
-|                  | `qemu-baremetal`         |                 |
+| `MACHINE`        | `microvm`, `hyperlight`  | `microvm`       |
 | `TARGET`         | `x86`                    | `x86`           |
 | `RELEASE`        | `yes`, `no`              | `no`            |
 | `LOG_LEVEL`      | `trace`, `debug`,        | `warn`          |
