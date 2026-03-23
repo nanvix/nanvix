@@ -49,11 +49,7 @@ export WASM_BINARY_ARGS ?= ""
 export WASMD_SOCKADDR ?= 127.0.0.1:8585
 
 # Default System Image
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 export IMAGE ?= nanvix.img
-else
-export IMAGE ?= nanvix.iso
-endif
 
 # Enable WHP backend?
 export WHP ?= no
@@ -76,7 +72,6 @@ export ROOT_DIR      := $(CURDIR)
 export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
-export IMAGE_DIR     := $(ROOT_DIR)/image
 export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
@@ -140,9 +135,6 @@ MKIMAGE := $(BINARIES_DIR)/mkimage.elf
 MKRAMFS := $(BINARIES_DIR)/mkramfs.elf
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
-
-# Scripts
-GRUB_CFG_SCRIPT := $(BUILD_DIR)/iso/boot/grub/grub.cfg
 
 #===================================================================================================
 # Nanvix Variables
@@ -319,7 +311,6 @@ export RM_CMD := rm -f
 export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
 export CP_CMD := cp -f --preserve
-export GRUB_CMD := grub-mkrescue
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
 
@@ -360,17 +351,10 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
 ALL_HOST_UTILS := echo-client mkimage mkramfs strace
 ALL_HOST_DAEMONS := linuxd
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
-else
-ALL_HOST_RUST_LIBS :=
-ALL_HOST_UTILS :=
-ALL_HOST_DAEMONS :=
-ALL_HOST_BINARIES :=
-endif
 
 #===================================================================================================
 # Sysroot Symlink Management
@@ -574,7 +558,7 @@ help:
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
-	@echo "  MACHINE         hyperlight, microvm, qemu-pc, qemu-isapc, qemu-baremetal"
+	@echo "  MACHINE         hyperlight, microvm"
 	@echo "  TARGET          x86"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
@@ -776,19 +760,11 @@ endif
 
 # Runs system in release mode.
 run: image
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
-else
-	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --no-debug $(TIMEOUT)
-endif
 
 # Runs system in debug mode.
 debug: image
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
-else
-	bash $(SCRIPTS_DIR)/run-qemu.sh $(TARGET) $(MACHINE) $(IMAGE) --debug $(TIMEOUT)
-endif
 
 #===================================================================================================
 # Build Rules for System Image
@@ -796,25 +772,13 @@ endif
 
 # Builds the system image.
 image: all-nanvix
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(MKIMAGE) -o $(IMAGE) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
 		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
-else
-	$(MKDIR_CMD) $(IMAGE_DIR)/boot/grub
-	$(CP_CMD) $(GRUB_CFG_SCRIPT) $(IMAGE_DIR)/boot/grub/
-	$(CP_CMD) $(BINARIES_DIR)/*.$(EXEC_FORMAT) $(IMAGE_DIR)/
-	$(GRUB_CMD) $(IMAGE_DIR) -o $(IMAGE)
-endif
 
 image-clean:
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 	$(RM_CMD) $(IMAGE)
-else
-	$(RM_CMD) $(IMAGE_DIR)/*.$(EXEC_FORMAT)
-	$(RM_CMD) $(IMAGE)
-endif
 
 #===================================================================================================
 # Build Rules for Running Tests
