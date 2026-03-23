@@ -61,26 +61,6 @@ microvm = [
     "pit",
     "xapic",
 ]
-pc = [
-    "putb",
-    "bios",
-    "cmos",
-    "mboot",
-    "pit",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "xapic",
-]
-qemu-pc = ["pc"]
-qemu-pc-smp = ["qemu-pc", "smp"]
-qemu-baremetal = ["pc"]
-qemu-baremetal-smp = ["qemu-baremetal", "smp"]
-qemu-isapc = ["pc"]
-
 # Architecture Features
 acpi = []
 cpuid = []
@@ -91,10 +71,6 @@ pic = []
 xapic = []
 
 # Platform Features
-smp = []
-bios = []
-cmos = []
-mboot = []
 pit = []
 putb = []
 puts = []
