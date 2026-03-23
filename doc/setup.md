@@ -161,16 +161,6 @@ ln -T -s $HOME/toolchain toolchain           # Create symbolic link for toolchai
 > **Note:** The toolchain directory must be located outside the repository root.
 > Use `./z setup --toolchain-dir <path>` to specify a valid location.
 
-#### Step 3: Build QEMU (Optional)
-
-To run Nanvix on QEMU, you need to build it:
-
-```bash
-# Ensure you are in the project's root directory.
-export TARGET=x86                # Set the target architecture (e.g., x86).
-./scripts/setup/qemu.sh $TARGET  # Build QEMU.
-```
-
 ### Option 2: Use a Pre-Built Docker Image
 
 This is the easiest and fastest way to get started:

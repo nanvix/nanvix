@@ -38,9 +38,6 @@ feature flags:
 
 - `microvm` (default) — Lightweight VM for KVM.
 - `hyperlight` — Hyperlight-based VM.
-- `qemu-pc` — QEMU PC machine.
-- `qemu-isapc` — QEMU ISA PC machine.
-- `qemu-baremetal` — Bare-metal QEMU.
 
 ### Virtual Memory Layout
 
