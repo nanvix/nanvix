@@ -8,7 +8,7 @@
 use crate::{
     direct_ring::{
         DirectCqWriter,
-        wake_sq_waiter,
+        SqWakeHandle,
     },
     shared_ring::SharedRing,
 };
@@ -18,11 +18,11 @@ use ::log::{
     trace,
 };
 use ::std::sync::{
-    Arc,
     atomic::{
         AtomicBool,
         Ordering,
     },
+    Arc,
 };
 use ::syscomm::{
     SocketListener,
@@ -45,6 +45,15 @@ use ::tokio::{
 //==================================================================================================
 
 /// State associated with a user VM connected to this linuxd instance.
+#[derive(Clone, Default)]
+pub struct DirectRingHandles {
+    pub shared_ring: Option<Arc<SharedRing>>,
+    pub direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    pub direct_ring_wakeup: Option<SqWakeHandle>,
+    pub direct_ring_stop: Option<Arc<AtomicBool>>,
+}
+
+/// State associated with a user VM connected to this linuxd instance.
 #[derive(Clone)]
 pub struct UserVmHandle {
     /// Writer half used by worker threads to send responses without contending with the reader.
@@ -65,32 +74,33 @@ pub struct UserVmHandle {
     shared_ring: Option<Arc<SharedRing>>,
     /// Optional direct CQ writer for ring-backed responses.
     direct_cq_writer: Option<Arc<DirectCqWriter>>,
+    /// Wakeup handle for the direct ring SQ worker.
+    direct_ring_wakeup: Option<SqWakeHandle>,
     /// Shutdown flag for the direct ring SQ worker.
     direct_ring_stop: Option<Arc<AtomicBool>>,
 }
 
 impl UserVmHandle {
     pub fn new(
-        user_vm_writer: SocketStreamWriter,
+        user_vm_writer: Arc<Mutex<SocketStreamWriter>>,
         gateway_sockaddr: &str,
         gateway_socket_type: &SocketType,
         user_vm_reader_handle: JoinHandle<Result<()>>,
-        shared_ring: Option<Arc<SharedRing>>,
-        direct_cq_writer: Option<Arc<DirectCqWriter>>,
-        direct_ring_stop: Option<Arc<AtomicBool>>,
+        direct_ring: DirectRingHandles,
     ) -> Self {
         trace!("new(): gateway_sockaddr={}", gateway_sockaddr);
         Self {
-            user_vm_writer: Arc::new(Mutex::new(user_vm_writer)),
+            user_vm_writer,
             gateway_sockaddr: gateway_sockaddr.to_string(),
             gateway_socket_type: *gateway_socket_type,
             gateway_reader: Arc::new(Mutex::new(None)),
             gateway_writer: Arc::new(Mutex::new(None)),
             gateway_listener: Arc::new(Mutex::new(None)),
             user_vm_reader_handle: Arc::new(Mutex::new(Some(user_vm_reader_handle))),
-            shared_ring,
-            direct_cq_writer,
-            direct_ring_stop,
+            shared_ring: direct_ring.shared_ring,
+            direct_cq_writer: direct_ring.direct_cq_writer,
+            direct_ring_wakeup: direct_ring.direct_ring_wakeup,
+            direct_ring_stop: direct_ring.direct_ring_stop,
         }
     }
 
@@ -107,15 +117,19 @@ impl UserVmHandle {
         self.direct_cq_writer.clone()
     }
 
+    pub fn wake_direct_ring_worker(&self) {
+        if let Some(wakeup) = &self.direct_ring_wakeup {
+            if let Err(e) = wakeup.wake() {
+                error!("wake_direct_ring_worker(): failed waking SQ worker (error={e:?})");
+            }
+        }
+    }
+
     pub fn stop_direct_ring_worker(&self) {
         if let Some(stop) = &self.direct_ring_stop {
             stop.store(true, Ordering::Release);
         }
-        if let Some(shared_ring) = &self.shared_ring {
-            if let Err(e) = wake_sq_waiter(shared_ring) {
-                error!("stop_direct_ring_worker(): failed waking SQ worker (error={e:?})");
-            }
-        }
+        self.wake_direct_ring_worker();
     }
 
     /// Lazily establish (or reuse) the gateway connection and return its split reader & writer.
@@ -143,7 +157,6 @@ impl UserVmHandle {
         };
 
         // Slow path: need to establish the gateway connection.
-
         let mut gateway_listener_slot: MutexGuard<'_, Option<SocketListener>> =
             self.gateway_listener.lock().await;
 
@@ -163,7 +176,7 @@ impl UserVmHandle {
 
         trace!("Listening for gateway connection on: {}", self.gateway_sockaddr);
 
-        // Accept throw-away connection from Nanvixd.
+        // Accept throw-away connection from nanvixd.
         {
             let _: SocketStream = match gateway_listener.accept().await {
                 Ok(stream) => stream,

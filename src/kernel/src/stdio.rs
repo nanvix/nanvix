@@ -11,20 +11,20 @@ use crate::{
     PERF_IKC_MESSAGES_RECEIVED,
     PERF_IKC_MESSAGES_SENT,
 };
-use ::core::{
+use core::{
     mem,
     sync::atomic::Ordering,
 };
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::nvx_ring::{
+use nvx_ring::{
     CqeFlags,
     SqeFlags,
 };
 #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
-use ::sys::ipc::DataChunkHeader;
+use sys::ipc::DataChunkHeader;
 #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
-use ::sys::ipc::VmBusMessage;
-use ::sys::{
+use sys::ipc::VmBusMessage;
+use sys::{
     error::{
         Error,
         ErrorCode,
@@ -176,6 +176,7 @@ pub fn read() -> Result<Option<Message>, Error> {
                     cqe.buffer_id,
                     cqe.result as usize,
                     (cqe.flags & CqeFlags::MORE.0) != 0,
+                    (cqe.flags & CqeFlags::BATCH.0) != 0,
                 ) {
                     warn!(
                         "read(): fixed-buffer completion had no matching pending pull \

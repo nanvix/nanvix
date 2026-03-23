@@ -19,9 +19,11 @@ rand = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = ["microvm"]
+default = ["microvm", "multi-process"]
+multi-process = ["nanvix-sandbox/multi-process"]
 hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
 microvm = ["config/microvm", "nanvix-sandbox/microvm"]
+ring-buffer = ["nanvix-sandbox/ring-buffer"]
 single-process = ["nanvix-sandbox/single-process"]
 
 [lints]

@@ -48,6 +48,11 @@ microvm = [
     "nanvix-sandbox-cache/microvm",
     "nanvix-terminal/microvm",
 ]
+ring-buffer = [
+    "uservm/ring-buffer",
+    "nanvix-sandbox-cache/ring-buffer",
+    "nanvix-terminal/ring-buffer",
+]
 
 [lints]
 workspace = true

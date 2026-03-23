@@ -19,7 +19,7 @@ use ::std::{
 ///
 /// Port where linuxd, when deployed inside an L2 VM, will block waiting for a snapshot to happen.
 ///
-const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
+pub const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
 
 ///
 /// # Description
@@ -34,6 +34,13 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Timeout for joining the reader task when closing a user VM connection.
 ///
 pub const READER_TASK_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
+
+///
+/// # Description
+///
+/// Timeout for joining worker threads when closing a user VM connection.
+///
+pub const WORKER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 
 //==================================================================================================
 // Standalone Functions

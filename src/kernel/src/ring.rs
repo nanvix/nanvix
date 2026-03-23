@@ -8,27 +8,27 @@
 
 use ::alloc::collections::BTreeMap;
 use ::core::sync::atomic::{
+    fence,
     AtomicU32,
     Ordering,
-    fence,
 };
 use ::nvx_ring::{
+    CqEntry,
+    CqFlags,
+    RingControl,
+    SqEntry,
+    SqFlags,
     CONTROL_OFFSET,
     CQ_OFFSET,
     CQ_SIZE,
-    CqEntry,
-    CqFlags,
     DATA_OFFSET,
     DATA_SLOT_COUNT,
     DATA_SLOT_SIZE,
     FIXED_BUF_COUNT,
     FIXED_BUF_OFFSET,
     FIXED_BUF_SIZE,
-    RingControl,
     SQ_OFFSET,
     SQ_SIZE,
-    SqEntry,
-    SqFlags,
 };
 use ::sys::{
     error::{

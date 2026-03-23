@@ -450,11 +450,13 @@ impl VirtualMemory {
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    pub fn map_shared_file_region(&mut self, path: &Path, base: usize, length: usize) -> Result<()> {
-        trace!(
-            "map_shared_file_region(): path={:?}, base={:#010x}, length={length}",
-            path, base
-        );
+    pub fn map_shared_file_region(
+        &mut self,
+        path: &Path,
+        base: usize,
+        length: usize,
+    ) -> Result<()> {
+        trace!("map_shared_file_region(): path={:?}, base={:#010x}, length={length}", path, base);
 
         if (base & (PAGE_SIZE - 1)) != 0 {
             let reason: String = format!("mapping base is not page-aligned (base={base:#010x})");

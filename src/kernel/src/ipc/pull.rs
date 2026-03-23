@@ -93,7 +93,12 @@ pub fn pull(
 
     trace!(
         "tid={:?}, pid={:?}, src_tid={:?}, src_pid={:?}, buffer={:#x}, len={}",
-        caller_tid, caller_pid, sender_tid, sender_pid, buffer_raw, transfer_len
+        caller_tid,
+        caller_pid,
+        sender_tid,
+        sender_pid,
+        buffer_raw,
+        transfer_len
     );
 
     // When the source is the kernel (linuxd), use the vmbus for data chunk transfer instead of the

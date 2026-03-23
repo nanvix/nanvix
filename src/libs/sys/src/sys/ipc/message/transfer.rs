@@ -5,13 +5,15 @@
 // Imports
 //==================================================================================================
 
-use crate::ipc::{
-    DataChunkHeader,
-    Message,
-};
-use crate::pm::{
-    ProcessIdentifier,
-    ThreadIdentifier,
+use crate::{
+    ipc::{
+        DataChunkHeader,
+        Message,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -39,6 +41,19 @@ pub struct DataChunk {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct FixedBufferFlags(pub u32);
+
+impl FixedBufferFlags {
+    pub const NONE: Self = Self(0);
+    pub const COMPLETION_BATCH: Self = Self(1 << 0);
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct FixedBufferTransfer {
     source_pid: i32,
@@ -47,9 +62,10 @@ pub struct FixedBufferTransfer {
     destination_tid: i32,
     buffer_id: u32,
     data_len: u32,
+    flags: u32,
 }
 
-const _: () = assert!(core::mem::size_of::<FixedBufferTransfer>() == 24);
+const _: () = assert!(core::mem::size_of::<FixedBufferTransfer>() == 28);
 
 //==================================================================================================
 // Implementations
@@ -173,6 +189,26 @@ impl FixedBufferTransfer {
         buffer_id: u32,
         data_len: u32,
     ) -> Self {
+        Self::new_with_flags(
+            source_pid,
+            source_tid,
+            destination_pid,
+            destination_tid,
+            buffer_id,
+            data_len,
+            FixedBufferFlags::NONE,
+        )
+    }
+
+    pub fn new_with_flags(
+        source_pid: ProcessIdentifier,
+        source_tid: ThreadIdentifier,
+        destination_pid: ProcessIdentifier,
+        destination_tid: ThreadIdentifier,
+        buffer_id: u32,
+        data_len: u32,
+        flags: FixedBufferFlags,
+    ) -> Self {
         Self {
             source_pid: source_pid.into(),
             source_tid: source_tid.into(),
@@ -180,6 +216,7 @@ impl FixedBufferTransfer {
             destination_tid: destination_tid.into(),
             buffer_id,
             data_len,
+            flags: flags.0,
         }
     }
 
@@ -205,6 +242,14 @@ impl FixedBufferTransfer {
 
     pub fn data_len(&self) -> u32 {
         self.data_len
+    }
+
+    pub fn flags(&self) -> FixedBufferFlags {
+        FixedBufferFlags(self.flags)
+    }
+
+    pub fn is_completion_batch(&self) -> bool {
+        self.flags().contains(FixedBufferFlags::COMPLETION_BATCH)
     }
 
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {

@@ -30,6 +30,7 @@ timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
+ring-buffer = ["nanvix/ring-buffer", "nanvixd/ring-buffer"]
 
 [lints]
 workspace = true

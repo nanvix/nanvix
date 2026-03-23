@@ -21,18 +21,17 @@ use ::log::{
     debug,
     error,
     info,
-    warn,
-};
-#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::std::{
-    fs::OpenOptions,
-    path::PathBuf,
 };
 use ::std::{
     convert::TryInto,
     env,
     process::ExitCode,
     str::FromStr,
+};
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::{
+    fs::OpenOptions,
+    path::PathBuf,
 };
 use ::sys::ipc::IkcFrame;
 use ::syscomm::{
@@ -41,16 +40,30 @@ use ::syscomm::{
     UnboundSocket,
     WriteAll,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::{
+    UnboundedReceiver,
+    UnboundedSender,
+    unbounded_channel,
+};
 use ::tokio::{
     sync::mpsc,
     task::JoinHandle,
     time::timeout,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::user_vm_api::{
+    IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO,
+    RingTransportKind,
+};
 use ::user_vm_api::{
     NEW_USER_VM_MESSAGE_LEN,
     NewUserVm,
+    RingTransport,
     UserVmIdentifier,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::uservm::DirectRingSignal;
 use ::uservm::{
     CHANNEL_CAPACITY,
     CONTROL_PLANE_CONNECT_TIMEOUT,
@@ -67,6 +80,8 @@ use ::uservm::{
         IoControlCommand,
         IoControlResponse,
     },
+    standalone,
+    standalone::StandaloneVmHandle,
 };
 
 //==================================================================================================
@@ -93,6 +108,12 @@ pub async fn main() -> Result<ExitCode> {
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
     let standalone: bool = args.standalone();
     let snapshot_path: Option<String> = args.take_snapshot_path();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let ring_shared_path_from_launcher: Option<String> = args.take_ring_shared_path();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let disable_ring_buffer: bool = args.disable_ring_buffer();
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let ring_transport_kind: RingTransportKind = args.ring_transport_kind();
 
     // Initialize logger. If this fails, the program will panic.
     ::syslog::init(
@@ -133,6 +154,12 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             memory_size,
             stderr,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            ring_shared_path_from_launcher,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            ring_transport_kind,
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            disable_ring_buffer,
         )
         .await
     }
@@ -176,52 +203,17 @@ async fn run_standalone(
 ) -> Result<ExitCode> {
     info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
 
-    // Create channels. In standalone mode these are wired directly without an I/O thread.
-    let (vcpu_thread_stdout_tx, mut standalone_data_rx) =
-        mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Nobody sends inbound data in standalone mode. The sender is kept alive so that the memory
-    // thread's receiver does not see an immediate channel close.
-    let (_inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator's io_control_rx does not see an immediate channel close.
-    let (_io_cmd_tx, io_control_rx) = mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
-    // Kept alive so the orchestrator can send control responses without a closed-channel error.
-    let (io_control_tx, _io_resp_rx) = mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
-
-    let counters: MessageCounters = MessageCounters::new();
-
-    let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
-        memory_size,
+    let (handle, _io): (StandaloneVmHandle, standalone::StandaloneVmIo) = StandaloneVmHandle::spawn(
+        kernel_filename,
         initrd_filename,
         initrd_args,
         ramfs_filename,
+        memory_size,
         stderr,
-        vcpu_thread_stdout_tx,
-        memory_thread_data_rx,
-        io_control_rx,
-        io_control_tx,
-        kernel_filename,
-        counters,
         snapshot_path,
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        ring_shared_path: None,
-    });
+    );
 
-    // Drain the VM's stdout channel. In standalone mode there is no system VM to forward messages
-    // to, so we simply consume and discard them to prevent the channel from blocking the VM.
-    let drain_handle: JoinHandle<()> = tokio::spawn(async move {
-        while let Some(_msg) = standalone_data_rx.recv().await {}
-        debug!("main(): standalone mode: VM stdout channel closed");
-    });
-
-    let vm_exit_status: Result<u16> = vmm_handle.await?;
-    debug!("main(): uservm completed (exit_status={vm_exit_status:?})");
-
-    // Wait for the drain task to finish.
-    if let Err(error) = drain_handle.await {
-        warn!("main(): standalone drain task failed (error={error:?})");
-    }
-
-    convert_exit_status(vm_exit_status)
+    convert_exit_status(handle.wait().await)
 }
 
 ///
@@ -258,6 +250,11 @@ async fn run_managed(
     ramfs_filename: Option<String>,
     memory_size: usize,
     stderr: Option<String>,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    ring_shared_path_from_launcher: Option<String>,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    ring_transport_kind: RingTransportKind,
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))] disable_ring_buffer: bool,
 ) -> Result<ExitCode> {
     // Only the I/O thread channels are required here; the VMM creates its own internally.
     let (vcpu_thread_stdout_tx, io_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
@@ -270,7 +267,48 @@ async fn run_managed(
     let counters: MessageCounters = MessageCounters::new();
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    let ring_shared_path: PathBuf = prepare_shared_ring_backing(args.user_vm_id())?;
+    struct RingSharedBacking {
+        path: PathBuf,
+        owned_by_uservm: bool,
+    }
+
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let ring_shared_backing: Option<RingSharedBacking> = if disable_ring_buffer {
+        None
+    } else if let Some(path) = ring_shared_path_from_launcher {
+        Some(RingSharedBacking {
+            path: PathBuf::from(path),
+            owned_by_uservm: false,
+        })
+    } else {
+        Some(RingSharedBacking {
+            path: prepare_shared_ring_backing(args.user_vm_id())?,
+            owned_by_uservm: true,
+        })
+    };
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let use_socket_ring_doorbells: bool =
+        !disable_ring_buffer && ring_transport_kind == RingTransportKind::Ivshmem;
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let (direct_ring_signal_tx, direct_ring_signal_rx): (
+        Option<UnboundedSender<DirectRingSignal>>,
+        Option<UnboundedReceiver<DirectRingSignal>>,
+    ) = if use_socket_ring_doorbells {
+        let (tx, rx) = unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    let (direct_ring_cq_doorbell_tx, direct_ring_cq_doorbell_rx): (
+        Option<std::sync::mpsc::Sender<()>>,
+        Option<std::sync::mpsc::Receiver<()>>,
+    ) = if use_socket_ring_doorbells {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
 
     let unbound_socket: UnboundSocket =
         UnboundSocket::new(SocketType::from_str(args.control_plane_socket_type())?);
@@ -332,9 +370,20 @@ async fn run_managed(
                     args.gateway_addr().to_string(),
                     SocketType::from_str(args.gateway_socket_type())?,
                     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-                    ring_shared_path.display().to_string(),
+                    match ring_shared_backing.as_ref() {
+                        Some(backing) => match ring_transport_kind {
+                            RingTransportKind::FilePath => {
+                                RingTransport::file_path(backing.path.display().to_string())?
+                            },
+                            RingTransportKind::Ivshmem => RingTransport::ivshmem(
+                                IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO.to_string(),
+                            )?,
+                            RingTransportKind::Disabled => RingTransport::disabled(),
+                        },
+                        None => RingTransport::disabled(),
+                    },
                     #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
-                    String::new(),
+                    RingTransport::disabled(),
                 ) {
                     Ok(message) => message,
                     Err(e) => {
@@ -389,6 +438,10 @@ async fn run_managed(
         io_thread_control_rx,
         control_plane_stream,
         counters.clone(),
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_signal_rx,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_tx,
     )?;
     debug!("main(): spawned I/O thread (channel_capacity={})", CHANNEL_CAPACITY);
 
@@ -414,7 +467,15 @@ async fn run_managed(
         counters,
         snapshot_path: None,
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        ring_shared_path: Some(ring_shared_path.display().to_string()),
+        ring_shared_path: ring_shared_backing
+            .as_ref()
+            .map(|backing| backing.path.display().to_string()),
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        use_socket_ring_doorbells,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_signal_tx,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_rx,
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;
@@ -427,11 +488,15 @@ async fn run_managed(
     }
 
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-    if let Err(error) = std::fs::remove_file(&ring_shared_path) {
-        warn!(
-            "main(): failed to remove shared ring backing file (path={}, error={error:?})",
-            ring_shared_path.display()
-        );
+    if let Some(ring_shared_backing) = ring_shared_backing.as_ref() {
+        if ring_shared_backing.owned_by_uservm {
+            if let Err(error) = std::fs::remove_file(&ring_shared_backing.path) {
+                warn!(
+                    "main(): failed to remove shared ring backing file (path={}, error={error:?})",
+                    ring_shared_backing.path.display()
+                );
+            }
+        }
     }
 
     convert_exit_status(vm_exit_status)
@@ -439,7 +504,11 @@ async fn run_managed(
 
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> {
-    let path: PathBuf = std::env::temp_dir().join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
+    let base_dir: PathBuf = std::env::temp_dir();
+    std::fs::create_dir_all(&base_dir).map_err(|e| {
+        anyhow::anyhow!("failed to create shared ring backing directory {:?}: {e}", base_dir)
+    })?;
+    let path: PathBuf = base_dir.join(format!("nanvix-ring-{}.shm", u32::from(user_vm_id)));
 
     let file = OpenOptions::new()
         .create(true)
@@ -447,19 +516,21 @@ fn prepare_shared_ring_backing(user_vm_id: UserVmIdentifier) -> Result<PathBuf> 
         .read(true)
         .write(true)
         .open(&path)
-        .map_err(|e| anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path))?;
+        .map_err(|e| {
+            anyhow::anyhow!("failed to create shared ring backing file {:?}: {e}", path)
+        })?;
 
-    file.set_len(::config::microvm::RING_BUFFER_SIZE as u64).map_err(|e| {
-        anyhow::anyhow!(
-            "failed to size shared ring backing file {:?} to {} bytes: {e}",
-            path,
-            ::config::microvm::RING_BUFFER_SIZE
-        )
-    })?;
+    file.set_len(::config::microvm::RING_BUFFER_SIZE as u64)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "failed to size shared ring backing file {:?} to {} bytes: {e}",
+                path,
+                ::config::microvm::RING_BUFFER_SIZE
+            )
+        })?;
 
     Ok(path)
 }
-
 ///
 /// # Description
 ///

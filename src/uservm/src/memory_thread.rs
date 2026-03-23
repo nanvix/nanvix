@@ -89,8 +89,9 @@ impl MemoryThread {
         control_tx: Sender<MemoryControlResponse>,
         add_credit: Box<AddCreditFn>,
         counters: MessageCounters,
-        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        cq_writer: Option<crate::cq_writer::CqWriter>,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))] cq_writer: Option<
+            crate::cq_writer::CqWriter,
+        >,
     ) -> Self {
         Self {
             data_rx,
@@ -304,6 +305,8 @@ mod tests {
             control_tx,
             add_credit_box,
             counters.clone(),
+            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+            None,
         )
         .spawn();
         (handle, counters)

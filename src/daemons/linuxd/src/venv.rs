@@ -45,7 +45,10 @@ pub type GlobalThreadIdentifier = u64;
 /// Commands that we can send to a worker thread in a virtual environment.
 ///
 pub enum VenvCommand {
-    Work(Message),
+    Work {
+        message: Message,
+        user_data: Option<u64>,
+    },
     /// Bulk data received from a user VM for the worker thread.
     BulkData(::sys::ipc::DataChunk),
     /// Fixed-buffer descriptor received from a user VM for the worker thread.

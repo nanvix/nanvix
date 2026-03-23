@@ -32,8 +32,11 @@ default = ["microvm"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into the sandbox.
 single-process = []
+multi-process = []
+standalone = []
 hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
+ring-buffer = ["uservm/ring-buffer"]
 
 [lints]
 workspace = true

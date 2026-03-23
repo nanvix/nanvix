@@ -21,11 +21,13 @@ SRC_DIR="${PREFIX}/src"
 BIN_DIR="${PREFIX}/bin"
 SHARE_DIR="${PREFIX}/share/cloud-hypervisor"
 L2_SYSTEM_VM_KERNEL="${SHARE_DIR}/l2_sysvm_vmlinux.bin"
+REPO_ROOT_DIR="$(git rev-parse --show-toplevel)"
+RUST_TOOLCHAIN_FILE="${REPO_ROOT_DIR}/rust-toolchain"
 
 # Cloud-hypervisor variables.
 CLOUD_HYPERVISOR_HOME="${SRC_DIR}/cloud-hypervisor"
 CLOUD_HYPERVISOR_REPOSITORY="https://github.com/nanvix/cloud-hypervisor"
-CLOUD_HYPERVISOR_COMMIT="4681d5eba0e63fb010bf4ca962eb3c9f163d3288"
+CLOUD_HYPERVISOR_COMMIT="7ba59b1330a569cabfea3355e40b83142a6f54fb"
 
 # Cloud-hypervisor linuxd kernel.
 CLOUD_HYPERVISOR_LINUX_HOME="${SRC_DIR}/cloud-hypervisor-linux"
@@ -35,6 +37,28 @@ CLOUD_HYPERVISOR_LINUX_TAG="ch-6.12.8"
 #===================================================================================================
 # Build
 #===================================================================================================
+
+get_repo_rust_toolchain() {
+    python3 - "${RUST_TOOLCHAIN_FILE}" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.exists():
+    sys.exit(0)
+
+text = path.read_text().strip()
+if not text:
+    sys.exit(0)
+
+if text.startswith('['):
+    import tomllib
+    data = tomllib.loads(text)
+    print(data.get('toolchain', {}).get('channel', ''))
+else:
+    print(text.splitlines()[0].strip())
+PY
+}
 
 build_clh() {
     mkdir -p ${SRC_DIR}
@@ -49,7 +73,13 @@ build_clh() {
         git reset --hard ${CLOUD_HYPERVISOR_COMMIT}
     fi
 
-    cargo build --release
+    local repo_rust_toolchain=""
+    repo_rust_toolchain="$(get_repo_rust_toolchain)"
+    if [[ -n "${repo_rust_toolchain}" ]] && command -v rustup >/dev/null 2>&1; then
+        cargo +"${repo_rust_toolchain}" build --release --features ivshmem
+    else
+        cargo build --release --features ivshmem
+    fi
 
     # Copy built binaries.
     mkdir -p ${BIN_DIR}

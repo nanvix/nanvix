@@ -73,8 +73,29 @@ pub struct NewUserVm {
     gateway_sockaddr: String,
     /// Type of gateway socket to connect to.
     gateway_socket_type: SocketType,
-    /// Path to the shared ring-buffer backing file for this user VM.
-    ring_shared_path: String,
+    /// Direct-ring transport information for this user VM.
+    ring_transport: RingTransport,
+}
+
+/// Kind of direct-ring transport attached to a user VM registration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RingTransportKind {
+    /// No direct shared-ring transport.
+    Disabled = 0,
+    /// Shared ring backed by a host file path.
+    FilePath = 1,
+    /// Shared ring backed by an ivshmem locator.
+    Ivshmem = 2,
+}
+
+/// Transport information for the direct shared-ring path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RingTransport {
+    /// Transport kind.
+    kind: RingTransportKind,
+    /// Transport locator interpreted according to `kind`.
+    locator: String,
 }
 
 //==================================================================================================
@@ -90,16 +111,28 @@ const GATEWAY_SOCKADDR_MAX_LEN: usize =
 
 const USER_VM_IDENTIFIER_LEN: usize = ::std::mem::size_of::<u32>();
 const SOCKET_TYPE_LEN: usize = ::std::mem::size_of::<u8>();
+const RING_TRANSPORT_KIND_LEN: usize = ::std::mem::size_of::<u8>();
 const SOCKET_TYPE_OFFSET: usize = USER_VM_IDENTIFIER_LEN;
-const RING_SHARED_PATH_MAX_LEN: usize = 256;
+const RING_TRANSPORT_KIND_OFFSET: usize = SOCKET_TYPE_OFFSET + SOCKET_TYPE_LEN;
+const RING_TRANSPORT_LOCATOR_MAX_LEN: usize = 256;
 
-const NEW_USER_VM_HEADER_LEN: usize = USER_VM_IDENTIFIER_LEN + SOCKET_TYPE_LEN;
+const NEW_USER_VM_HEADER_LEN: usize =
+    USER_VM_IDENTIFIER_LEN + SOCKET_TYPE_LEN + RING_TRANSPORT_KIND_LEN;
 
 const GATEWAY_SOCKADDR_OFFSET: usize = NEW_USER_VM_HEADER_LEN;
-const RING_SHARED_PATH_OFFSET: usize = GATEWAY_SOCKADDR_OFFSET + GATEWAY_SOCKADDR_MAX_LEN;
+const RING_TRANSPORT_LOCATOR_OFFSET: usize = GATEWAY_SOCKADDR_OFFSET + GATEWAY_SOCKADDR_MAX_LEN;
 
 pub const NEW_USER_VM_MESSAGE_LEN: usize =
-    NEW_USER_VM_HEADER_LEN + GATEWAY_SOCKADDR_MAX_LEN + RING_SHARED_PATH_MAX_LEN;
+    NEW_USER_VM_HEADER_LEN + GATEWAY_SOCKADDR_MAX_LEN + RING_TRANSPORT_LOCATOR_MAX_LEN;
+
+/// One-byte control frame sent by uservm to linuxd to report new SQ work on a direct ring.
+pub const DIRECT_RING_SQ_DOORBELL_FRAME: u8 = 0x80;
+
+/// One-byte control frame sent by linuxd to uservm to request a guest CQ notification.
+pub const DIRECT_RING_CQ_DOORBELL_FRAME: u8 = 0x81;
+
+/// Auto-discovery locator for an ivshmem-backed direct ring.
+pub const IVSHMEM_RING_TRANSPORT_LOCATOR_AUTO: &str = "auto";
 
 //==================================================================================================
 // Structures
@@ -136,6 +169,79 @@ impl UserVmIdentifier {
     }
 }
 
+impl TryFrom<u8> for RingTransportKind {
+    type Error = io::Error;
+
+    fn try_from(value: u8) -> Result<Self> {
+        match value {
+            0 => Ok(Self::Disabled),
+            1 => Ok(Self::FilePath),
+            2 => Ok(Self::Ivshmem),
+            _ => {
+                let reason: &str = "invalid value for ring_transport_kind";
+                error!("RingTransportKind::try_from(): {reason} (value={value})");
+                Err(io::Error::new(io::ErrorKind::InvalidInput, reason))
+            },
+        }
+    }
+}
+
+impl From<RingTransportKind> for u8 {
+    fn from(kind: RingTransportKind) -> Self {
+        kind as u8
+    }
+}
+
+impl RingTransport {
+    fn new(kind: RingTransportKind, locator: String) -> Result<Self> {
+        if locator.len() > RING_TRANSPORT_LOCATOR_MAX_LEN {
+            let reason: String = format!(
+                "ring transport locator too long (max: {}, got: {})",
+                RING_TRANSPORT_LOCATOR_MAX_LEN,
+                locator.len()
+            );
+            error!("RingTransport::new(): {reason}");
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
+        }
+
+        if kind == RingTransportKind::Disabled && !locator.is_empty() {
+            let reason: &str = "disabled ring transport cannot carry a locator";
+            error!("RingTransport::new(): {reason}");
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
+        }
+
+        Ok(Self { kind, locator })
+    }
+
+    /// Creates a disabled transport descriptor.
+    pub fn disabled() -> Self {
+        Self {
+            kind: RingTransportKind::Disabled,
+            locator: String::new(),
+        }
+    }
+
+    /// Creates a file-backed transport descriptor.
+    pub fn file_path(path: String) -> Result<Self> {
+        Self::new(RingTransportKind::FilePath, path)
+    }
+
+    /// Creates an ivshmem-backed transport descriptor.
+    pub fn ivshmem(locator: String) -> Result<Self> {
+        Self::new(RingTransportKind::Ivshmem, locator)
+    }
+
+    /// Returns the transport kind.
+    pub fn kind(&self) -> RingTransportKind {
+        self.kind
+    }
+
+    /// Returns the transport locator.
+    pub fn locator(&self) -> &str {
+        self.locator.as_ref()
+    }
+}
+
 impl NewUserVm {
     ///
     /// # Description
@@ -156,7 +262,7 @@ impl NewUserVm {
         user_vm_id: UserVmIdentifier,
         gateway_sockaddr: String,
         gateway_socket_type: SocketType,
-        ring_shared_path: String,
+        ring_transport: RingTransport,
     ) -> Result<Self> {
         // Check if the socket address length is invalid.
         let sockaddr_len: usize = gateway_sockaddr.len();
@@ -182,21 +288,11 @@ impl NewUserVm {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
         }
 
-        if ring_shared_path.len() > RING_SHARED_PATH_MAX_LEN {
-            let reason: String = format!(
-                "ring shared path too long (max: {}, got: {})",
-                RING_SHARED_PATH_MAX_LEN,
-                ring_shared_path.len()
-            );
-            error!("NewUserVm::new(): {reason}");
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, reason));
-        }
-
         Ok(Self {
             user_vm_id,
             gateway_sockaddr,
             gateway_socket_type,
-            ring_shared_path,
+            ring_transport,
         })
     }
 
@@ -239,8 +335,8 @@ impl NewUserVm {
         &self.gateway_socket_type
     }
 
-    pub fn ring_shared_path(&self) -> &str {
-        self.ring_shared_path.as_ref()
+    pub fn ring_transport(&self) -> &RingTransport {
+        &self.ring_transport
     }
 
     pub fn to_bytes(&self) -> [u8; NEW_USER_VM_MESSAGE_LEN] {
@@ -250,14 +346,16 @@ impl NewUserVm {
         encoded[..USER_VM_IDENTIFIER_LEN].copy_from_slice(&id_bytes);
 
         encoded[SOCKET_TYPE_OFFSET] = self.gateway_socket_type.into();
+        encoded[RING_TRANSPORT_KIND_OFFSET] = self.ring_transport.kind.into();
 
         let sockaddr_bytes: &[u8] = self.gateway_sockaddr.as_bytes();
         encoded[GATEWAY_SOCKADDR_OFFSET..GATEWAY_SOCKADDR_OFFSET + sockaddr_bytes.len()]
             .copy_from_slice(sockaddr_bytes);
 
-        let ring_path_bytes: &[u8] = self.ring_shared_path.as_bytes();
-        encoded[RING_SHARED_PATH_OFFSET..RING_SHARED_PATH_OFFSET + ring_path_bytes.len()]
-            .copy_from_slice(ring_path_bytes);
+        let ring_transport_locator_bytes: &[u8] = self.ring_transport.locator.as_bytes();
+        encoded[RING_TRANSPORT_LOCATOR_OFFSET
+            ..RING_TRANSPORT_LOCATOR_OFFSET + ring_transport_locator_bytes.len()]
+            .copy_from_slice(ring_transport_locator_bytes);
 
         encoded
     }
@@ -278,6 +376,9 @@ impl NewUserVm {
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
 
+        let ring_transport_kind: RingTransportKind =
+            RingTransportKind::try_from(encoded[RING_TRANSPORT_KIND_OFFSET])?;
+
         let sockaddr_start: usize = GATEWAY_SOCKADDR_OFFSET;
         let sockaddr_end: usize = sockaddr_start + GATEWAY_SOCKADDR_MAX_LEN;
         let raw_sockaddr: &[u8] = &encoded[sockaddr_start..sockaddr_end];
@@ -293,26 +394,77 @@ impl NewUserVm {
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
 
-        let ring_path_start: usize = RING_SHARED_PATH_OFFSET;
-        let ring_path_end: usize = ring_path_start + RING_SHARED_PATH_MAX_LEN;
-        let raw_ring_path: &[u8] = &encoded[ring_path_start..ring_path_end];
+        let locator_start: usize = RING_TRANSPORT_LOCATOR_OFFSET;
+        let locator_end: usize = locator_start + RING_TRANSPORT_LOCATOR_MAX_LEN;
+        let raw_locator: &[u8] = &encoded[locator_start..locator_end];
 
-        let ring_path_len: usize = raw_ring_path
+        let locator_len: usize = raw_locator
             .iter()
             .position(|byte| *byte == 0)
-            .unwrap_or(raw_ring_path.len());
-        let ring_shared_path: String =
-            String::from_utf8(raw_ring_path[..ring_path_len].to_vec()).map_err(|_| {
-                let reason: &str = "invalid UTF-8 in ring_shared_path";
+            .unwrap_or(raw_locator.len());
+        let ring_transport_locator: String = String::from_utf8(raw_locator[..locator_len].to_vec())
+            .map_err(|_| {
+                let reason: &str = "invalid UTF-8 in ring_transport_locator";
                 error!("NewUserVm::try_from_bytes(): {reason}");
                 io::Error::new(io::ErrorKind::InvalidInput, reason)
             })?;
+        let ring_transport: RingTransport =
+            RingTransport::new(ring_transport_kind, ring_transport_locator)?;
 
         Self::new(
             UserVmIdentifier::new(user_vm_id),
             gateway_sockaddr,
             gateway_socket_type,
-            ring_shared_path,
+            ring_transport,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        NewUserVm,
+        RingTransport,
+        RingTransportKind,
+        UserVmIdentifier,
+        NEW_USER_VM_MESSAGE_LEN,
+    };
+    use ::std::io::Result;
+    use ::syscomm::SocketType;
+
+    #[test]
+    fn new_user_vm_round_trips_disabled_ring_transport() -> Result<()> {
+        let message: NewUserVm = NewUserVm::new(
+            UserVmIdentifier::new(7),
+            "127.0.0.1:1234".to_string(),
+            SocketType::Tcp,
+            RingTransport::disabled(),
+        )?;
+
+        let encoded: [u8; NEW_USER_VM_MESSAGE_LEN] = message.to_bytes();
+        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded)?;
+
+        assert_eq!(decoded.id(), UserVmIdentifier::new(7));
+        assert_eq!(decoded.gateway_sockaddr(), "127.0.0.1:1234");
+        assert_eq!(decoded.ring_transport().kind(), RingTransportKind::Disabled);
+        assert_eq!(decoded.ring_transport().locator(), "");
+        Ok(())
+    }
+
+    #[test]
+    fn new_user_vm_round_trips_ivshmem_ring_transport() -> Result<()> {
+        let message: NewUserVm = NewUserVm::new(
+            UserVmIdentifier::new(11),
+            "gateway.sock".to_string(),
+            SocketType::Unix,
+            RingTransport::ivshmem("device=nanvix-ring0".to_string())?,
+        )?;
+
+        let encoded: [u8; NEW_USER_VM_MESSAGE_LEN] = message.to_bytes();
+        let decoded: NewUserVm = NewUserVm::try_from_bytes(&encoded)?;
+
+        assert_eq!(decoded.ring_transport().kind(), RingTransportKind::Ivshmem);
+        assert_eq!(decoded.ring_transport().locator(), "device=nanvix-ring0");
+        Ok(())
     }
 }

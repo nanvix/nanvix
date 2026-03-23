@@ -23,7 +23,11 @@ use crate::{
         NetnsHandle,
         NetnsInfo,
     },
-    netns_exec::command_in_netns,
+    netns_exec::{
+        command_in_netns,
+        restore_vm_in_netns,
+        write_tcp_in_netns,
+    },
     LinuxDaemonArgs,
 };
 use ::anyhow::Result;
@@ -33,36 +37,28 @@ use ::control_plane_api::{
 };
 use ::linuxd::{
     args,
-    config::restore_gate_sockaddr_builder,
-};
-use ::std::{
-    error::Error as StdError,
-    fmt,
-    fs,
-    io::ErrorKind,
-    mem,
-    os::unix::fs::FileTypeExt,
-    path::{
-        Path,
-        PathBuf,
-    },
-    process::{
-        ExitStatus,
-        Stdio,
-    },
-};
-use ::syscomm::{
-    SocketListener,
-    SocketStream,
-    SocketType,
-    UnboundSocket,
-    WriteAll,
+    config::DEFAULT_RESTORE_GATE_PORT,
 };
 use ::log::{
     debug,
     error,
     trace,
     warn,
+};
+use ::std::{
+    env,
+    error::Error as StdError,
+    fmt,
+    fs,
+    io::ErrorKind,
+    os::unix::fs::FileTypeExt,
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+use ::syscomm::{
+    SocketListener,
+    SocketStream,
+    WriteAll,
 };
 use ::tokio::{
     fs as tokio_fs,
@@ -87,6 +83,8 @@ use ::tokio::{
 /// Single-byte that we send to unlock a linuxd instance restored from a snapshot. Anything that
 /// triggers a readable event in the receiving socket should work.
 const RESTORE_GATE_BYTES: [u8; 1] = [0];
+/// IPv4 mask used by the L2 system VM TAP device.
+const L2_TAP_MASK: &str = "255.255.255.0";
 
 //==================================================================================================
 // WaitForSocketError
@@ -159,7 +157,6 @@ struct LinuxDaemonInner {
     control_plane_stream: SocketStream,
 }
 
-///
 /// # Description
 ///
 /// Handle to a running Linux Daemon instance spawned as a separate process.
@@ -176,6 +173,57 @@ pub struct LinuxDaemon {
 //==================================================================================================
 
 impl LinuxDaemon {
+    fn ensure_clh_supports_ivshmem(cloud_hypervisor_path: &str) -> Result<()> {
+        let help_output = ::std::process::Command::new(cloud_hypervisor_path)
+            .arg("--help")
+            .output()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "failed to inspect cloud-hypervisor at {:?} for ivshmem support: {e}",
+                    cloud_hypervisor_path
+                )
+            })?;
+
+        let stdout: String = String::from_utf8_lossy(&help_output.stdout).into_owned();
+        let stderr: String = String::from_utf8_lossy(&help_output.stderr).into_owned();
+        if stdout.contains("--ivshmem") || stderr.contains("--ivshmem") {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "cloud-hypervisor at {:?} does not support --ivshmem; update the toolchain before enabling L2 ivshmem",
+            cloud_hypervisor_path
+        )
+    }
+
+    fn validate_l2_ivshmem_env(cloud_hypervisor_path: &str) -> Result<()> {
+        const IVSHMEM_PATH_ENV: &str = "NANVIX_L2_IVSHMEM_PATH";
+        const IVSHMEM_SIZE_ENV: &str = "NANVIX_L2_IVSHMEM_SIZE";
+
+        let path: Option<String> = env::var(IVSHMEM_PATH_ENV).ok();
+        let size_raw: Option<String> = env::var(IVSHMEM_SIZE_ENV).ok();
+        match (path, size_raw) {
+            (None, None) => Ok(()),
+            (Some(_), None) | (None, Some(_)) => anyhow::bail!(
+                "both {IVSHMEM_PATH_ENV} and {IVSHMEM_SIZE_ENV} must be set to enable L2 ivshmem"
+            ),
+            (Some(_path), Some(size_raw)) => {
+                let size: u64 = size_raw.parse().map_err(|e| {
+                    anyhow::anyhow!(
+                        "invalid {IVSHMEM_SIZE_ENV} value {size_raw:?}: {e}"
+                    )
+                })?;
+                if size == 0 {
+                    anyhow::bail!("{IVSHMEM_SIZE_ENV} must be greater than zero");
+                }
+
+                Self::ensure_clh_supports_ivshmem(cloud_hypervisor_path)?;
+
+                Ok(())
+            },
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -247,40 +295,44 @@ impl LinuxDaemon {
     ///
     /// # Description
     ///
-    /// Helper method to resume linuxd from a snapshot.
+    /// Helper method to restore linuxd from a snapshot.
     ///
-    /// We need to do two steps after we restore linuxd's state from a snapshot (in an L2 VM).
-    /// First we need to actually resume the VM's execution using cloud-hypervisor's API socket.
-    /// Then we need to "unlock" linuxd from a pre-snapshot gate that we use to control exactly
-    /// when the VM is snapshotted. Linuxd in an L2 VM executes in a separate network namespace, so
-    /// we need to keep that in mind during restore.
+    /// We need to do two steps after starting a plain API-enabled cloud-hypervisor process for an
+    /// L2 VM restore. First, we create the persistent TAP device expected by the tap-backed
+    /// snapshot config and then drive the API restore flow from inside the tenant network
+    /// namespace. Then we "unlock" linuxd from a pre-snapshot gate that we use to control exactly
+    /// when the VM is snapshotted.
     ///
     /// # Parameters
     ///
     /// - `netns_info`: Information about the L2 VM's network namespace.
     /// - `ch_remote_path`: Path to the ch-remote binary.
     /// - `clh_api_socket_path`: Path to the cloud-hypervisor API socket.
+    /// - `snapshot_path`: Path to the L2 snapshot directory.
     /// - `clh_stderr_log_path`: Destination file where CLH stderr is captured.
     ///
     /// # Returns
     ///
     /// On success, an empty tuple is returned. On failure, an error is returned instead.
     ///
-    async fn resume_l2_vm(
+    async fn restore_l2_vm(
         netns_info: &NetnsInfo,
         ch_remote_path: &str,
         clh_api_socket_path: &str,
+        snapshot_path: &str,
         clh_stderr_log_path: &Path,
     ) -> Result<()> {
-        // Timeout between the ch-remote resume operation and the API socket becoming available.
-        const CLH_RESUME_TIMEOUT: Duration = Duration::from_secs(5);
+        // Timeout between the initial cloud-hypervisor spawn and the API socket becoming available.
+        const CLH_RESTORE_TIMEOUT: Duration = Duration::from_secs(5);
         const CLH_SOCKET_MAX_ATTEMPTS: usize = 5;
         const CLH_SOCKET_BACKOFF_MS: u64 = 250;
+        const RESTORE_GATE_MAX_ATTEMPTS: usize = 10;
+        const RESTORE_GATE_BACKOFF_MS: u64 = 250;
 
-        // Wait for CLH socket to be ready with retries to mask slow boots.
+        // Wait for the Cloud Hypervisor API socket with retries to mask slow starts.
         let mut attempt: usize = 0;
         loop {
-            match Self::wait_for_unix_socket(clh_api_socket_path, CLH_RESUME_TIMEOUT).await {
+            match Self::wait_for_unix_socket(clh_api_socket_path, CLH_RESTORE_TIMEOUT).await {
                 Ok(()) => break,
                 Err(WaitForSocketError::TimedOut { ref path }) => {
                     attempt += 1;
@@ -295,7 +347,7 @@ impl LinuxDaemon {
                     }
 
                     warn!(
-                        "resume_l2_vm(): attempt {attempt} timed out while waiting for socket \
+                        "restore_l2_vm(): attempt {attempt} timed out while waiting for socket \
                          (path={path:?}), retrying..."
                     );
                     let backoff_ms: u64 = CLH_SOCKET_BACKOFF_MS * attempt as u64;
@@ -306,25 +358,54 @@ impl LinuxDaemon {
                         "error waiting for socket readiness (error={e}, stderr_log={})",
                         clh_stderr_log_path.display()
                     );
-                    error!("resume_l2_vm(): {reason}");
+                    error!("restore_l2_vm(): {reason}");
                     anyhow::bail!(reason);
                 },
             }
         }
 
-        // Resume the L2 VM inside the network namespace.
+        // Restore the VM through the supported API flow from inside the tenant network namespace.
+        let output = restore_vm_in_netns(
+            netns_info,
+            ch_remote_path,
+            clh_api_socket_path,
+            snapshot_path,
+            ::config::linuxd::TAP_NAME,
+            ::config::linuxd::HOST_TAP_IP_ADDRESS,
+            L2_TAP_MASK,
+        )
+        .await
+        .map_err(|e| {
+            let reason: String = format!(
+                "error running ch-remote restore in netns (snapshot={snapshot_path:?}, error={e:?})"
+            );
+            error!("restore_l2_vm(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        if !output.status.success() {
+            let stdout: String = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr: String = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let reason: String = format!(
+                "error running ch-remote restore (status={:?}, stdout={stdout:?}, stderr={stderr:?})",
+                output.status
+            );
+            error!("restore_l2_vm(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // Cloud Hypervisor restores the snapshot into the paused state, so resume it explicitly
+        // before trying to reach guest linuxd's post-snapshot gate.
         let ch_remote_args: Vec<String> = vec![
             ch_remote_path.to_string(),
             args::Args::OPT_CLH_API_SOCKET.to_string(),
             clh_api_socket_path.to_string(),
             args::Args::OPT_CH_REMOTE_RESUME.to_string(),
         ];
+        debug!("resume_l2_vm(): executing ch-remote with args: {}", ch_remote_args.join(" "));
         trace!("ch-remote args: {ch_remote_args:?}");
-        let status: ExitStatus =
+        let output =
             command_in_netns(netns_info, &ch_remote_args[0], &ch_remote_args[1..])
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .status()
+                .output()
                 .await
                 .map_err(|e| {
                     let reason: String = format!(
@@ -333,22 +414,55 @@ impl LinuxDaemon {
                     error!("{reason}");
                     anyhow::anyhow!(reason)
                 })?;
-        if !status.success() {
+        if !output.status.success() {
+            let stdout: String = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr: String = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let reason: String = format!(
-                "error running ch remote process (args={ch_remote_args:?}, status={status:?})"
+                "error running ch-remote resume (args={ch_remote_args:?}, status={:?}, stdout={stdout:?}, stderr={stderr:?})",
+                output.status
             );
-            error!("{reason}");
+            error!("restore_l2_vm(): {reason}");
             anyhow::bail!(reason);
         }
 
-        // After receiving the HTTP reply, unlock the post-snapshot gate by sending a single byte.
-        let unbound_socket: UnboundSocket = UnboundSocket::new(SocketType::Tcp);
-        let mut stream: SocketStream = unbound_socket
-            .connect(&restore_gate_sockaddr_builder(Some(netns_info.veth_ns_ip())))
-            .await?;
-        if let Err(e) = stream.write_all(&RESTORE_GATE_BYTES).await {
-            error!("failed to write restore gate bytes (error={e:?})");
-            return Err(e.into());
+        // After restoring the guest, enter the tenant network namespace and connect to the restored
+        // linuxd gate through the guest TAP address. Doing this from inside the netns avoids
+        // depending on the outer host's DNAT path while the restore is still settling.
+        let restore_gate_sockaddr: String =
+            format!("{}:{DEFAULT_RESTORE_GATE_PORT}", ::config::linuxd::GUEST_TAP_IP_ADDRESS);
+        let mut last_error: Option<::std::io::Error> = None;
+        for attempt in 1..=RESTORE_GATE_MAX_ATTEMPTS {
+            match write_tcp_in_netns(netns_info, &restore_gate_sockaddr, &RESTORE_GATE_BYTES).await {
+                Ok(()) => {
+                    return Ok(());
+                },
+                Err(error) => {
+                    if matches!(
+                        error.kind(),
+                        ErrorKind::NetworkUnreachable
+                            | ErrorKind::HostUnreachable
+                            | ErrorKind::ConnectionRefused
+                            | ErrorKind::TimedOut
+                    ) {
+                        warn!(
+                            "restore_l2_vm(): restore gate connect attempt {attempt} failed; \
+                             retrying (addr={restore_gate_sockaddr}, error={error:?})"
+                        );
+                        last_error = Some(error);
+                        sleep(Duration::from_millis(RESTORE_GATE_BACKOFF_MS * attempt as u64)).await;
+                        continue;
+                    }
+                    return Err(error.into());
+                },
+            }
+        }
+        if let Some(error) = last_error {
+            let reason: String = format!(
+                "restore_l2_vm(): failed to unlock restore gate after restore \
+                 (addr={restore_gate_sockaddr}, error={error:?})"
+            );
+            error!("{reason}");
+            anyhow::bail!(reason);
         }
 
         Ok(())
@@ -451,14 +565,32 @@ impl LinuxDaemon {
         netns_handle: Option<NetnsHandle>,
     ) -> Result<Self> {
         debug!(
-            "spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
+            "spawn(): spawning linux daemon (control-plane={:?}, user-vm={:?}, l2={})",
             args.control_plane_connect_socket_info(),
             args.system_vm_socket_info(),
             args.l2()
         );
 
         let clh_api_socket_path: String = get_clh_api_socket_path(args.tmp_directory());
+        let cloud_hypervisor_path: Option<String> = if args.l2() {
+            Some(format!(
+                "{}/cloud-hypervisor",
+                get_clh_bin_dir(args.toolchain_binary_directory())?
+            ))
+        } else {
+            None
+        };
+        let l2_snapshot_path: Option<String> = if args.l2() {
+            Some(get_clh_snapshot_path(args.l2_snapshot_path())?)
+        } else {
+            None
+        };
         let mut linuxd_args: Vec<String> = if args.l2() {
+            Self::validate_l2_ivshmem_env(
+                cloud_hypervisor_path
+                    .as_deref()
+                    .expect("L2 launch must resolve cloud-hypervisor path"),
+            )?;
             match ::std::fs::remove_file(&clh_api_socket_path) {
                 Ok(()) => {},
                 Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
@@ -470,15 +602,13 @@ impl LinuxDaemon {
             };
 
             vec![
-                format!("{}/cloud-hypervisor", get_clh_bin_dir(args.toolchain_binary_directory())?),
+                cloud_hypervisor_path.clone().expect("L2 launch must resolve cloud-hypervisor path"),
                 args::Args::OPT_CLH_API_SOCKET.to_string(),
                 clh_api_socket_path.clone(),
                 // FIXME(#1156): re-enable --seccomp true (default) when we cut a new Nanvix
                 // release.
                 args::Args::OPT_CLH_SECCOMP.to_string(),
                 "false".to_string(),
-                args::Args::OPT_CLH_RESTORE.to_string(),
-                format!("source_url=file://{}", get_clh_snapshot_path(args.l2_snapshot_path())?),
             ]
         } else {
             vec![
@@ -508,6 +638,7 @@ impl LinuxDaemon {
             ];
             linuxd_args.splice(0..0, taskset);
         }
+        debug!("spawn(): spawning linuxd with args: {}", linuxd_args.join(" "));
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
         let child: Child = if let Some(netns_handle) = &netns_handle {
@@ -540,15 +671,18 @@ impl LinuxDaemon {
 
             let ch_remote_path: String =
                 format!("{}/ch-remote", get_clh_bin_dir(args.toolchain_binary_directory())?);
-            if let Err(e) = Self::resume_l2_vm(
+            if let Err(e) = Self::restore_l2_vm(
                 &netns_handle.netns_info()?,
                 &ch_remote_path,
                 &clh_api_socket_path,
+                l2_snapshot_path
+                    .as_deref()
+                    .expect("L2 restore must resolve snapshot path"),
                 &clh_stderr_log_path,
             )
             .await
             {
-                let reason: String = format!("error resuming L2 VM (error={e:?})");
+                let reason: String = format!("error restoring L2 VM (error={e:?})");
                 error!("spawn(): {reason}");
 
                 // Use a SIGKILL because the process is already faulty.
@@ -640,10 +774,10 @@ impl LinuxDaemon {
         };
 
         // Prepare shutdown message.
-        let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
+        let msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] = {
             let msg: NanvixdControlMessage = NanvixdControlMessage::new(NanvixdCommand::Shutdown);
-            let mut msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] =
-                [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+            let mut msg_bytes: [u8; NanvixdControlMessage::WIRE_SIZE] =
+                [0u8; NanvixdControlMessage::WIRE_SIZE];
             msg.to_bytes(&mut msg_bytes);
             msg_bytes
         };

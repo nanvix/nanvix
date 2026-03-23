@@ -16,16 +16,21 @@ use crate::{
         restore_gate_sockaddr_builder,
         CONTROL_PLANE_CONNECT_TIMEOUT,
         READER_TASK_JOIN_TIMEOUT,
+        WORKER_THREAD_JOIN_TIMEOUT,
     },
     direct_ring::{
-        DirectCqWriter,
         spawn_sq_worker,
+        CqNotifyHandle,
+        DirectCqWriter,
     },
     message::RequestAssembler,
-    syscalls::SyscallTable,
     shared_ring::SharedRing,
+    syscalls::SyscallTable,
     user_vm_event::UserVmEvent,
-    user_vm_handle::UserVmHandle,
+    user_vm_handle::{
+        DirectRingHandles,
+        UserVmHandle,
+    },
     venv::{
         VenvCommand,
         VirtualEnviromentDirectory,
@@ -57,8 +62,8 @@ use ::std::{
     path::Path,
     str::FromStr,
     sync::{
-        Arc,
         atomic::AtomicBool,
+        Arc,
     },
 };
 use ::sys::{
@@ -104,7 +109,10 @@ use ::tokio::{
 };
 use ::user_vm_api::{
     self,
+    RingTransportKind,
     UserVmIdentifier,
+    DIRECT_RING_CQ_DOORBELL_FRAME,
+    DIRECT_RING_SQ_DOORBELL_FRAME,
     NEW_USER_VM_MESSAGE_LEN,
 };
 
@@ -131,6 +139,11 @@ mod worker_thread;
 pub mod args;
 pub mod config;
 pub mod syscalls;
+
+enum UserVmInbound {
+    Transfer(IkcFrame),
+    SqDoorbell,
+}
 
 //==================================================================================================
 // Constants
@@ -289,6 +302,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         &self,
         mut user_vm_stream: SocketStream,
         user_vm_event_tx: Sender<UserVmEvent>,
+        _control_plane_writer: Arc<Mutex<SocketStreamWriter>>,
     ) -> Result<(UserVmIdentifier, UserVmHandle), Error> {
         trace!("accepted connection from user VM (addr={user_vm_stream:?})",);
 
@@ -306,28 +320,62 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
         let user_vm_id: UserVmIdentifier = new_msg.id();
+        let ring_transport: &user_vm_api::RingTransport = new_msg.ring_transport();
 
         trace!("registered new user VM connection (vm_id={user_vm_id}, addr={user_vm_stream:?})",);
 
-        let shared_ring: Option<Arc<SharedRing>> = if new_msg.ring_shared_path().is_empty() {
-            None
-        } else {
-            Some(Arc::new(SharedRing::open(Path::new(new_msg.ring_shared_path())).map_err(
-                |e| {
-                    let reason: String = format!(
-                        "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, path={}, error={e:?})",
-                        new_msg.ring_shared_path()
-                    );
-                    error!("{reason}");
-                    Error::new(ErrorCode::IoErr, "failed to open shared ring mapping")
-                },
-            )?))
+        let use_socket_ring_doorbells: bool = ring_transport.kind() == RingTransportKind::Ivshmem;
+        let shared_ring: Option<Arc<SharedRing>> = match ring_transport.kind() {
+            RingTransportKind::Disabled => None,
+            RingTransportKind::FilePath if self.in_l2 => {
+                warn!(
+                    "accept_connections(): ignoring file-backed direct ring path for L2 user VM \
+                     until ivshmem replaces the removed transport (vm_id={user_vm_id}, path={})",
+                    ring_transport.locator()
+                );
+                None
+            },
+            RingTransportKind::FilePath => {
+                match SharedRing::open(Path::new(ring_transport.locator())) {
+                    Ok(ring) => Some(Arc::new(ring)),
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to open shared ring mapping for user VM (vm_id={user_vm_id}, \
+                             path={}, error={error:?})",
+                            ring_transport.locator(),
+                        );
+                        error!("{reason}");
+                        return Err(Error::new(
+                            ErrorCode::IoErr,
+                            "failed to open shared ring mapping",
+                        ));
+                    },
+                }
+            },
+            RingTransportKind::Ivshmem => {
+                match SharedRing::open_ivshmem(ring_transport.locator()) {
+                    Ok(ring) => Some(Arc::new(ring)),
+                    Err(error) => {
+                        let reason: String = format!(
+                            "failed to open ivshmem direct ring mapping for user VM \
+                             (vm_id={user_vm_id}, locator={}, error={error:?})",
+                            ring_transport.locator(),
+                        );
+                        error!("{reason}");
+                        return Err(Error::new(
+                            ErrorCode::IoErr,
+                            "failed to open ivshmem shared ring mapping",
+                        ));
+                    },
+                }
+            },
         };
 
         // Spawn a background task that reads messages from this user VM and
         // enqueues them to the main reception channel monitored in this loop.
         let (user_vm_reader, user_vm_writer): (SocketStreamReader, SocketStreamWriter) =
             user_vm_stream.split();
+        let user_vm_writer: Arc<Mutex<SocketStreamWriter>> = Arc::new(Mutex::new(user_vm_writer));
         let user_vm_reader_handle: JoinHandle<Result<()>> = tokio::spawn(
             Self::user_vm_reader_loop(user_vm_id, user_vm_reader, user_vm_event_tx.clone()),
         );
@@ -360,28 +408,59 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
 
         // Gateway listener for this user VM.
-        let direct_cq_writer: Option<Arc<DirectCqWriter>> =
-            shared_ring.as_ref().map(|ring| Arc::new(DirectCqWriter::new(ring.clone())));
-        let direct_ring_stop: Option<Arc<AtomicBool>> =
-            shared_ring.as_ref().map(|_| Arc::new(AtomicBool::new(false)));
+        let direct_cq_writer: Option<Arc<DirectCqWriter>> = if let Some(shared_ring) =
+            shared_ring.as_ref()
+        {
+            let cq_notify: CqNotifyHandle = if use_socket_ring_doorbells {
+                let (cq_doorbell_tx, mut cq_doorbell_rx): (Sender<()>, Receiver<()>) = channel(1);
+                let user_vm_writer: Arc<Mutex<SocketStreamWriter>> = user_vm_writer.clone();
+                tokio::spawn(async move {
+                    while cq_doorbell_rx.recv().await.is_some() {
+                        let mut writer_guard: MutexGuard<'_, SocketStreamWriter> =
+                            user_vm_writer.lock().await;
+                        if let Err(error) = writer_guard
+                            .write_all(&[DIRECT_RING_CQ_DOORBELL_FRAME])
+                            .await
+                        {
+                            error!(
+                                "accept_connections(): failed to send direct-ring CQ doorbell \
+                                 (uvm_id={user_vm_id}, error={error:?})"
+                            );
+                            break;
+                        }
+                    }
+                });
+                CqNotifyHandle::Channel(cq_doorbell_tx)
+            } else {
+                CqNotifyHandle::SharedFutex(shared_ring.clone())
+            };
+            Some(Arc::new(DirectCqWriter::new(shared_ring.clone(), cq_notify)))
+        } else {
+            None
+        };
+        let direct_ring_stop: Option<Arc<AtomicBool>> = shared_ring
+            .as_ref()
+            .map(|_| Arc::new(AtomicBool::new(false)));
+        let mut direct_ring_wakeup = None;
 
-        if let (Some(shared_ring), Some(stop), Some(cq_writer)) = (
-            shared_ring.clone(),
-            direct_ring_stop.clone(),
-            direct_cq_writer.clone(),
-        ) {
-            spawn_sq_worker(
-                user_vm_id,
-                shared_ring,
-                stop,
-                user_vm_event_tx,
-                cq_writer,
-            )
-            .map_err(|e| {
-                let reason: &'static str = "failed to spawn direct ring SQ worker";
-                error!("{reason} (vm_id={user_vm_id}, error={e:?})");
-                Error::new(ErrorCode::IoErr, reason)
-            })?;
+        if let (Some(shared_ring), Some(stop), Some(cq_writer)) =
+            (shared_ring.clone(), direct_ring_stop.clone(), direct_cq_writer.clone())
+        {
+            direct_ring_wakeup = Some(
+                spawn_sq_worker(
+                    user_vm_id,
+                    shared_ring,
+                    stop,
+                    user_vm_event_tx,
+                    cq_writer,
+                    use_socket_ring_doorbells,
+                )
+                .map_err(|e| {
+                    let reason: &'static str = "failed to spawn direct ring SQ worker";
+                    error!("{reason} (vm_id={user_vm_id}, error={e:?})");
+                    Error::new(ErrorCode::IoErr, reason)
+                })?,
+            );
         }
 
         let user_vm_handle: UserVmHandle = UserVmHandle::new(
@@ -389,9 +468,12 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
             &gateway_sockaddr,
             new_msg.gateway_socket_type(),
             user_vm_reader_handle,
-            shared_ring,
-            direct_cq_writer,
-            direct_ring_stop,
+            DirectRingHandles {
+                shared_ring,
+                direct_cq_writer,
+                direct_ring_wakeup,
+                direct_ring_stop,
+            },
         );
 
         {
@@ -464,7 +546,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         // Send a shutdown message to all worker threads associated
         // with this user VM.
         if let Some(mut worker_threads) = worker_threads {
-            for worker_thread in worker_threads.drain(..) {
+            for mut worker_thread in worker_threads.drain(..) {
                 trace!("sending interrupt to worker thread (thread_id={:?})", worker_thread.id);
 
                 // Each worker thread may be in one of three states:
@@ -493,14 +575,46 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                         worker_thread.id
                     );
                 }
-                if let Err(e) = worker_thread.handle.await {
-                    error!(
-                        "error joining worker thread (thread_id={:?}, error={e:?})",
-                        worker_thread.id
-                    );
+                match timeout(WORKER_THREAD_JOIN_TIMEOUT, &mut worker_thread.handle).await {
+                    Ok(Ok(())) => {
+                        trace!(
+                            "close_connection(): successfully joined worker thread \
+                             (thread_id={:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            "error joining worker thread (thread_id={:?}, error={e:?})",
+                            worker_thread.id
+                        );
+                    },
+                    Err(_elapsed) => {
+                        warn!(
+                            "close_connection(): timeout waiting for worker thread, aborting it \
+                             (thread_id={:?})",
+                            worker_thread.id
+                        );
+                        worker_thread.handle.abort();
+                    },
                 }
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Spawns asynchronous cleanup for a user VM connection so the main event loop is not blocked
+    /// by teardown of reader/worker tasks.
+    ///
+    fn spawn_connection_cleanup(
+        user_vm_handle: Option<UserVmHandle>,
+        worker_threads: Option<VecDeque<WorkerThreadHandle>>,
+    ) {
+        tokio::spawn(async move {
+            Self::close_connection(user_vm_handle, worker_threads).await;
+        });
     }
 
     fn log_and_error(code: ErrorCode, msg: &'static str) -> Error {
@@ -540,16 +654,25 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         self.trap_if_pending_snapshot().await.map_err(|_| {
             Self::log_and_error(ErrorCode::IoErr, "error conditionally trapping on snapshot gate")
         })?;
-        let mut control_plane_stream: SocketStream = self.accept_control_plane_connection().await?;
+        let control_plane_stream: SocketStream = self.accept_control_plane_connection().await?;
 
-        let mut control_plane_buffer: [u8; ::std::mem::size_of::<NanvixdControlMessage>()] =
-            [0u8; ::std::mem::size_of::<NanvixdControlMessage>()];
+        // Split the control-plane stream so that the reader stays in the main loop and the writer
+        // can be shared with gateway priming tasks to send GatewayReady notifications.
+        let (mut control_plane_reader, control_plane_writer): (
+            SocketStreamReader,
+            SocketStreamWriter,
+        ) = control_plane_stream.split();
+        let control_plane_writer: Arc<Mutex<SocketStreamWriter>> =
+            Arc::new(Mutex::new(control_plane_writer));
+
+        let mut control_plane_buffer: [u8; NanvixdControlMessage::WIRE_SIZE] =
+            [0u8; NanvixdControlMessage::WIRE_SIZE];
         let mut control_plane_buffer_filled: usize = 0;
 
         'main_loop: loop {
             tokio::select! {
 
-                result = control_plane_stream.read(&mut control_plane_buffer[control_plane_buffer_filled..]) => {
+                result = control_plane_reader.read(&mut control_plane_buffer[control_plane_buffer_filled..]) => {
                     match result {
                         Ok(0) => {
                             // Control-plane disconnected.
@@ -603,7 +726,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     match result {
                         Ok(user_vm_stream) => {
                             let (user_vm_id, user_vm_handle): (UserVmIdentifier, UserVmHandle) =
-                                self.accept_connections(user_vm_stream, user_vm_event_tx.clone()).await?;
+                                self.accept_connections(user_vm_stream, user_vm_event_tx.clone(), control_plane_writer.clone()).await?;
                             user_vm_connections.insert(user_vm_id, user_vm_handle.clone());
                         },
                         Err(e) => {
@@ -625,7 +748,21 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     };
 
                     match event {
-                        UserVmEvent::Transfer { uvm_id, transfer } => {
+                        UserVmEvent::SqDoorbell { uvm_id } => {
+                            let Some(uvm_handle) = user_vm_connections.get(&uvm_id).cloned() else {
+                                warn!(
+                                    "run(): received direct-ring SQ doorbell for unknown VM \
+                                     (uvm_id={uvm_id}), ignoring"
+                                );
+                                continue 'main_loop;
+                            };
+                            uvm_handle.wake_direct_ring_worker();
+                        },
+                        UserVmEvent::Transfer {
+                            uvm_id,
+                            transfer,
+                            user_data,
+                        } => {
                             let Some(uvm_handle) = user_vm_connections.get(&uvm_id).cloned() else {
                                 warn!(
                                     "run(): received transfer for unknown VM (uvm_id={uvm_id}), ignoring"
@@ -639,6 +776,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                             uvm_id,
                                             uvm_handle,
                                             message,
+                                            user_data,
                                             worker_threads.clone(),
                                         )
                                         .await
@@ -647,10 +785,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                                         error!("run(): {reason} (uvm_id={uvm_id}, error={e:?})");
 
                                         // Shutdown faulty user VM.
-                                        Self::close_connection(
+                                        Self::spawn_connection_cleanup(
                                             user_vm_connections.remove(&uvm_id),
                                             worker_threads.lock().await.remove(&uvm_id),
-                                        ).await;
+                                        );
 
                                         continue 'main_loop;
                                     }
@@ -740,10 +878,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                             debug!("run(): harvesting connection to user VM (uvm_id={uvm_id}, reason={kind_str})");
 
                             // Shutdown finished user VM.
-                            Self::close_connection(
+                            Self::spawn_connection_cleanup(
                                 user_vm_connections.remove(&uvm_id),
                                 worker_threads.lock().await.remove(&uvm_id),
-                            ).await;
+                            );
                         },
                     }
                 },
@@ -760,7 +898,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     /// Read a transfer (message or bulk) from the user VM stream. The stream uses a framing
     /// protocol: a single frame-type byte precedes each frame.
     ///
-    async fn recv(uvm_reader: &mut SocketStreamReader) -> Result<IkcFrame, ErrorKind> {
+    async fn recv(uvm_reader: &mut SocketStreamReader) -> Result<UserVmInbound, ErrorKind> {
         // Read the frame type byte. An EOF here means the connection was closed cleanly.
         let mut frame_type: [u8; 1] = [0u8; 1];
         match uvm_reader.read_exact(&mut frame_type).await {
@@ -788,7 +926,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     },
                 };
 
-                Ok(IkcFrame::Message(message))
+                Ok(UserVmInbound::Transfer(IkcFrame::Message(message)))
             },
             // Data chunk transfer.
             IkcFrame::DATA_CHUNK_FRAME => {
@@ -812,7 +950,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     ErrorKind::InvalidData
                 })?;
 
-                Ok(IkcFrame::Bulk(bulk))
+                Ok(UserVmInbound::Transfer(IkcFrame::Bulk(bulk)))
             },
             IkcFrame::FIXED_BUFFER_FRAME => {
                 let mut buf: [u8; FixedBufferTransfer::SIZE] = [0u8; FixedBufferTransfer::SIZE];
@@ -821,14 +959,15 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     .await
                     .map_err(|e| e.kind())?;
 
-                let transfer: FixedBufferTransfer =
-                    FixedBufferTransfer::try_from_bytes(buf).map_err(|e| {
+                let transfer: FixedBufferTransfer = FixedBufferTransfer::try_from_bytes(buf)
+                    .map_err(|e| {
                         error!("recv(): failed to parse fixed-buffer transfer (error={e:?})");
                         ErrorKind::InvalidData
                     })?;
 
-                Ok(IkcFrame::Fixed(transfer))
+                Ok(UserVmInbound::Transfer(IkcFrame::Fixed(transfer)))
             },
+            DIRECT_RING_SQ_DOORBELL_FRAME => Ok(UserVmInbound::SqDoorbell),
             unknown => {
                 error!("recv(): unknown frame type (type={unknown:#04x})");
                 Err(ErrorKind::InvalidData)
@@ -858,7 +997,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 
         loop {
             match Self::recv(&mut uvm_reader).await {
-                Ok(transfer) => {
+                Ok(UserVmInbound::Transfer(transfer)) => {
                     match &transfer {
                         IkcFrame::Message(message) => {
                             trace!(
@@ -880,7 +1019,8 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                         },
                         IkcFrame::Fixed(fixed) => {
                             trace!(
-                                "uservm.id={uvm_id}, fixed.source_pid={:?}, fixed.destination_pid={:?}, fixed.buffer_id={}, fixed.data_len={}",
+                                "uservm.id={uvm_id}, fixed.source_pid={:?}, \
+                                 fixed.destination_pid={:?}, fixed.buffer_id={}, fixed.data_len={}",
                                 fixed.source_pid(),
                                 fixed.destination_pid(),
                                 fixed.buffer_id(),
@@ -890,13 +1030,33 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                     }
 
                     if uvm_events_tx
-                        .send(UserVmEvent::Transfer { uvm_id, transfer })
+                        .send(UserVmEvent::Transfer {
+                            uvm_id,
+                            transfer,
+                            user_data: None,
+                        })
                         .await
                         .is_err()
                     {
                         // If the receiver side is gone, just exit.
                         debug!(
                             "user_vm_reader_loop(): dispatcher dropped receiver (uvm_id={uvm_id})"
+                        );
+                        break;
+                    }
+                },
+                Ok(UserVmInbound::SqDoorbell) => {
+                    trace!(
+                        "user_vm_reader_loop(): received direct-ring SQ doorbell (uvm_id={uvm_id})"
+                    );
+                    if uvm_events_tx
+                        .send(UserVmEvent::SqDoorbell { uvm_id })
+                        .await
+                        .is_err()
+                    {
+                        debug!(
+                            "user_vm_reader_loop(): dispatcher dropped receiver while relaying SQ \
+                             doorbell (uvm_id={uvm_id})"
                         );
                         break;
                     }
@@ -939,6 +1099,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         uvm_id: UserVmIdentifier,
         uvm_handle: UserVmHandle,
         message: Message,
+        user_data: Option<u64>,
         worker_threads: Arc<Mutex<HashMap<UserVmIdentifier, VecDeque<WorkerThreadHandle>>>>,
     ) -> Result<(), Error> {
         let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
@@ -998,7 +1159,10 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
                 .push_back(worker_thread_handle);
         }
 
-        if let Err(error) = channel_tx.send(VenvCommand::Work(message)).await {
+        if let Err(error) = channel_tx
+            .send(VenvCommand::Work { message, user_data })
+            .await
+        {
             error!(
                 "run(): failed to dispatch message to worker thread (tid={source:?}, \
                  error={error:?})"

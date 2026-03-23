@@ -6,13 +6,13 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
     safe::RawFileDescriptor,
     unistd::message::{
         PositionedWriteRequest,
         WriteResponse,
     },
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
 };
 use ::sys::{
     error::{

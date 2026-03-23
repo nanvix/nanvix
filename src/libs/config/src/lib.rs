@@ -250,9 +250,10 @@ pub mod microvm {
     /// I/O port used as the ring buffer doorbell (guest writes to wake host).
     pub const RING_DOORBELL_PORT: u16 = 0xeb;
 
-    /// Number of spin iterations for adaptive polling (Tier 2) before parking.
-    /// After draining a batch of SQEs, the VMM spins this many iterations checking
-    /// for more entries before setting `SQ_NEED_WAKEUP` and returning to KVM.
+    /// Number of spin iterations for bounded SQ adaptive polling before parking.
+    /// After draining a batch of SQEs, the direct linuxd SQ worker spins this
+    /// many iterations checking for more entries before re-arming
+    /// `SQ_NEED_WAKEUP` and parking again.
     pub const RING_POLL_SPIN_ITERS: u32 = 1024;
 }
 

@@ -151,9 +151,6 @@ pub(crate) fn get_clh_bin_dir(toolchain_bin_dir: &str) -> Result<String> {
     Ok(format!("{}", clh_bin_dir_path.display()))
 }
 
-///
-/// # Description
-///
 /// Gets the absolute path for cloud-hypervisor's snapshot directory.
 ///
 /// # Returns

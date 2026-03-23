@@ -34,12 +34,12 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::libc::{
-    SIGUSR1,
     c_int,
     pthread_kill,
     pthread_self,
     sigaction,
     sigemptyset,
+    SIGUSR1,
 };
 use ::log::{
     debug,
@@ -52,12 +52,12 @@ use ::std::{
     mem,
     ptr,
     sync::{
-        Arc,
         atomic::{
             AtomicBool,
             AtomicUsize,
             Ordering,
         },
+        Arc,
     },
     thread::{
         self,
@@ -71,6 +71,7 @@ use ::sys::{
         ErrorCode,
     },
     ipc::{
+        FixedBufferFlags,
         FixedBufferTransfer,
         IkcFrame,
         Message,
@@ -89,9 +90,6 @@ use ::sysapi::{
     },
 };
 use ::syscall::{
-    LINUXD,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
     dirent::message::GetDirectoryEntriesRequest,
     fcntl::message::{
         FileAdvisoryInformationRequest,
@@ -155,6 +153,9 @@ use ::syscall::{
         WriteRequest,
         WriteResponse,
     },
+    LinuxDaemonMessage,
+    LinuxDaemonMessageHeader,
+    LINUXD,
 };
 use ::syscomm::{
     SocketStreamReader,
@@ -164,12 +165,12 @@ use ::syscomm::{
 use ::tokio::{
     runtime::Handle,
     sync::{
-        Mutex,
-        MutexGuard,
         mpsc::{
             Receiver,
             Sender,
         },
+        Mutex,
+        MutexGuard,
     },
     task::{
         self,
@@ -217,6 +218,15 @@ pub struct WorkerThreadHandle {
     pub handle: JoinHandle<()>,
     // Handle to send shutdown messages to message queue.
     pub cmd_tx: Sender<VenvCommand>,
+}
+
+#[derive(Clone)]
+struct WorkerIoContext {
+    gateway_reader: Arc<Mutex<SocketStreamReader>>,
+    gateway_writer: Arc<Mutex<SocketStreamWriter>>,
+    uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+    shared_ring: Option<Arc<SharedRing>>,
+    direct_cq_writer: Option<Arc<DirectCqWriter>>,
 }
 
 //==================================================================================================
@@ -429,10 +439,17 @@ impl WorkerThreadHandle {
                     return;
                 },
             };
+        let io_context: WorkerIoContext = WorkerIoContext {
+            gateway_reader,
+            gateway_writer,
+            uvm_stream: uvm_stream.clone(),
+            shared_ring,
+            direct_cq_writer,
+        };
 
         loop {
-            let message: Message = match channel_rx.blocking_recv() {
-                Some(VenvCommand::Work(message)) => message,
+            let (message, user_data): (Message, Option<u64>) = match channel_rx.blocking_recv() {
+                Some(VenvCommand::Work { message, user_data }) => (message, user_data),
                 Some(VenvCommand::BulkData(_)) => {
                     // Bulk data without a preceding Work message is unexpected; skip it.
                     warn!(
@@ -506,14 +523,10 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::PositionedWriteRequest => {
                                     match Self::handle_special_messages(
                                         &syscall_table,
-                                        gateway_reader.clone(),
-                                        gateway_writer.clone(),
+                                        &io_context,
                                         source,
                                         message,
                                         &mut channel_rx,
-                                        uvm_stream.clone(),
-                                        shared_ring.clone(),
-                                        direct_cq_writer.clone(),
                                     ) {
                                         Ok(response) => response,
                                         Err(WorkerThreadError::Interrupted) => break,
@@ -583,8 +596,8 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryRequest
                                 | LinuxDaemonMessageHeader::GetDirectoryEntriesRequest => {
                                     match Self::handle_long_response_messages(
-                                        uvm_stream.clone(),
-                                        direct_cq_writer.clone(),
+                                        io_context.uvm_stream.clone(),
+                                        io_context.direct_cq_writer.clone(),
                                         &syscall_table,
                                         source,
                                         message,
@@ -620,8 +633,8 @@ impl WorkerThreadHandle {
                                 | LinuxDaemonMessageHeader::UnlinkAtRequestPart
                                 | LinuxDaemonMessageHeader::PollRequestPart => {
                                     match Self::handle_long_request_messages(
-                                        uvm_stream.clone(),
-                                        direct_cq_writer.clone(),
+                                        io_context.uvm_stream.clone(),
+                                        io_context.direct_cq_writer.clone(),
                                         assembler.clone(),
                                         &syscall_table,
                                         source,
@@ -643,9 +656,10 @@ impl WorkerThreadHandle {
                                 _ => (Self::do_error(source, ErrorCode::InvalidMessage), false),
                             };
                             match Self::send_message_response(
-                                uvm_stream.clone(),
-                                direct_cq_writer.clone(),
+                                io_context.uvm_stream.clone(),
+                                io_context.direct_cq_writer.clone(),
                                 message,
+                                user_data,
                                 force_socket,
                             ) {
                                 Ok(()) => {},
@@ -654,11 +668,11 @@ impl WorkerThreadHandle {
                                     break;
                                 },
                                 Err(e) => {
-                                    // send only ever raises BrokenPipe errors.
-                                    unreachable!(
-                                        "handle_message: worker thread received unrecognized \
-                                         error (error={e:?})"
+                                    error!(
+                                        "handle_message(): failed to send response, stopping \
+                                         worker thread (error={e:?})"
                                     );
+                                    break;
                                 },
                             };
                         },
@@ -673,14 +687,10 @@ impl WorkerThreadHandle {
 
     fn handle_special_messages<T>(
         syscall_table: &SyscallTable<T>,
-        gateway_reader: Arc<Mutex<SocketStreamReader>>,
-        gateway_writer: Arc<Mutex<SocketStreamWriter>>,
+        io_context: &WorkerIoContext,
         source: ThreadIdentifier,
         message: LinuxDaemonMessage,
         channel_rx: &mut Receiver<VenvCommand>,
-        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        shared_ring: Option<Arc<SharedRing>>,
-        direct_cq_writer: Option<Arc<DirectCqWriter>>,
     ) -> Result<(Message, bool), WorkerThreadError> {
         match message.header {
             LinuxDaemonMessageHeader::CloseRequest => {
@@ -690,26 +700,17 @@ impl WorkerThreadHandle {
             },
             LinuxDaemonMessageHeader::ReadRequest => {
                 let request: ReadRequest = ReadRequest::from_bytes(message.payload);
-                Self::handle_read_request(
-                    syscall_table,
-                    gateway_reader,
-                    source,
-                    request,
-                    channel_rx,
-                    uvm_stream,
-                    shared_ring,
-                    direct_cq_writer,
-                )
+                Self::handle_read_request(syscall_table, io_context, source, request, channel_rx)
             },
             LinuxDaemonMessageHeader::WriteRequest => {
                 let request: WriteRequest = WriteRequest::from_bytes(message.payload);
                 Self::handle_write_request(
                     syscall_table,
-                    gateway_writer,
+                    io_context.gateway_writer.clone(),
                     source,
                     request,
                     channel_rx,
-                    shared_ring,
+                    io_context.shared_ring.clone(),
                 )
                 .map(|message| (message, false))
             },
@@ -718,12 +719,10 @@ impl WorkerThreadHandle {
                     PositionedReadRequest::from_bytes(message.payload);
                 Self::handle_positioned_read_request(
                     syscall_table,
+                    io_context,
                     source,
                     request,
                     channel_rx,
-                    uvm_stream,
-                    shared_ring,
-                    direct_cq_writer,
                 )
             },
             LinuxDaemonMessageHeader::PositionedWriteRequest => {
@@ -734,7 +733,7 @@ impl WorkerThreadHandle {
                     source,
                     request,
                     channel_rx,
-                    shared_ring,
+                    io_context.shared_ring.clone(),
                 )
                 .map(|message| (message, false))
             },
@@ -1111,13 +1110,23 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         direct_cq_writer: Option<Arc<DirectCqWriter>>,
         message: Message,
+        user_data: Option<u64>,
         force_socket: bool,
     ) -> Result<(), std::io::Error> {
         if !force_socket {
-            if let Some(direct_cq_writer) = direct_cq_writer {
-                return direct_cq_writer.write_message(&message).map_err(|kind| {
-                    std::io::Error::new(kind, "failed to write direct CQ message")
-                });
+            if let (Some(direct_cq_writer), Some(user_data)) = (direct_cq_writer, user_data) {
+                match direct_cq_writer.write_message(user_data, &message) {
+                    Ok(()) => return Ok(()),
+                    Err(ErrorKind::BrokenPipe) => {
+                        warn!(
+                            "send_message_response(): direct CQ notify path is unavailable; \
+                             falling back to socket response"
+                        );
+                    },
+                    Err(kind) => {
+                        return Err(std::io::Error::new(kind, "failed to write direct CQ message"));
+                    },
+                }
             }
         }
 
@@ -1128,14 +1137,23 @@ impl WorkerThreadHandle {
         uvm_stream: Arc<Mutex<SocketStreamWriter>>,
         direct_cq_writer: Option<Arc<DirectCqWriter>>,
         transfer: &FixedBufferTransfer,
-        more: bool,
     ) -> Result<(), std::io::Error> {
         if let Some(direct_cq_writer) = direct_cq_writer {
-            return direct_cq_writer
-                .write_fixed(transfer, more)
-                .map_err(|kind| {
-                    std::io::Error::new(kind, "failed to write direct CQ fixed transfer")
-                });
+            match direct_cq_writer.write_fixed(transfer) {
+                Ok(()) => return Ok(()),
+                Err(ErrorKind::BrokenPipe) => {
+                    warn!(
+                        "send_fixed_response(): direct CQ notify path is unavailable; falling \
+                         back to socket fixed-buffer response"
+                    );
+                },
+                Err(kind) => {
+                    return Err(std::io::Error::new(
+                        kind,
+                        "failed to write direct CQ fixed transfer",
+                    ));
+                },
+            }
         }
 
         Handle::current().block_on(Self::send_fixed(uvm_stream, transfer))
@@ -1150,44 +1168,22 @@ impl WorkerThreadHandle {
         let Some((first_transfer, _)) = transfers.first() else {
             return Ok(());
         };
-
-        if bytes_transferred == 0 {
-            let response: FixedBufferTransfer = FixedBufferTransfer::new(
-                first_transfer.source_pid(),
-                first_transfer.source_tid(),
-                first_transfer.destination_pid(),
-                first_transfer.destination_tid(),
-                first_transfer.buffer_id(),
-                0,
-            );
-            return Self::send_fixed_response(uvm_stream, direct_cq_writer, &response, false);
-        }
-
-        let mut remaining: usize = bytes_transferred;
-        for (transfer, _) in transfers {
-            if remaining == 0 {
-                break;
-            }
-
-            let seg_len: usize = core::cmp::min(remaining, transfer.data_len() as usize);
-            remaining -= seg_len;
-            let response: FixedBufferTransfer = FixedBufferTransfer::new(
-                transfer.source_pid(),
-                transfer.source_tid(),
-                transfer.destination_pid(),
-                transfer.destination_tid(),
-                transfer.buffer_id(),
-                seg_len as u32,
-            );
-            Self::send_fixed_response(
-                uvm_stream.clone(),
-                direct_cq_writer.clone(),
-                &response,
-                remaining != 0,
-            )?;
-        }
-
-        Ok(())
+        let response_len: u32 = u32::try_from(bytes_transferred).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "fixed-buffer completion length exceeds u32",
+            )
+        })?;
+        let response: FixedBufferTransfer = FixedBufferTransfer::new_with_flags(
+            first_transfer.source_pid(),
+            first_transfer.source_tid(),
+            first_transfer.destination_pid(),
+            first_transfer.destination_tid(),
+            first_transfer.buffer_id(),
+            response_len,
+            FixedBufferFlags::COMPLETION_BATCH,
+        );
+        Self::send_fixed_response(uvm_stream, direct_cq_writer, &response)
     }
 
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
@@ -1264,7 +1260,7 @@ impl WorkerThreadHandle {
                                 );
                                 return Err(WorkerThreadError::Interrupted);
                             },
-                            Ok(VenvCommand::Work(_)) => {
+                            Ok(VenvCommand::Work { .. }) => {
                                 error!(
                                     "handle_write_request(): expected fixed-buffer segment, got \
                                      IKC message"
@@ -1318,7 +1314,7 @@ impl WorkerThreadHandle {
                 debug!("handle_write_request(): received shutdown while waiting for bulk data");
                 return Err(WorkerThreadError::Interrupted);
             },
-            Ok(VenvCommand::Work(_)) => {
+            Ok(VenvCommand::Work { .. }) => {
                 error!("handle_write_request(): expected bulk data, got IKC message");
                 return Ok(build_error(source, ErrorCode::InvalidMessage));
             },
@@ -1466,13 +1462,10 @@ impl WorkerThreadHandle {
 
     fn handle_read_request<T>(
         syscall_table: &SyscallTable<T>,
-        gateway_reader: Arc<Mutex<SocketStreamReader>>,
+        io_context: &WorkerIoContext,
         source: ThreadIdentifier,
         request: ReadRequest,
         channel_rx: &mut Receiver<VenvCommand>,
-        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        shared_ring: Option<Arc<SharedRing>>,
-        direct_cq_writer: Option<Arc<DirectCqWriter>>,
     ) -> Result<(Message, bool), WorkerThreadError> {
         trace!("handle_read_request(): source={source:?}, request={request:?}");
 
@@ -1484,7 +1477,7 @@ impl WorkerThreadHandle {
         let pull_target: PullTarget = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => PullTarget::Bulk(*bulk.header()),
             Ok(VenvCommand::FixedBuffer(first_fixed)) => {
-                let Some(shared_ring) = shared_ring else {
+                let Some(shared_ring) = io_context.shared_ring.as_ref() else {
                     error!(
                         "handle_read_request(): received fixed-buffer transfer without shared \
                          ring mapping"
@@ -1508,7 +1501,7 @@ impl WorkerThreadHandle {
                                 );
                                 return Err(WorkerThreadError::Interrupted);
                             },
-                            Ok(VenvCommand::Work(_)) => {
+                            Ok(VenvCommand::Work { .. }) => {
                                 error!(
                                     "handle_read_request(): expected fixed-buffer segment, got \
                                      IKC message"
@@ -1561,7 +1554,7 @@ impl WorkerThreadHandle {
                 debug!("handle_read_request(): received shutdown while waiting for bulk data");
                 return Err(WorkerThreadError::Interrupted);
             },
-            Ok(VenvCommand::Work(_)) => {
+            Ok(VenvCommand::Work { .. }) => {
                 error!("handle_read_request(): expected bulk data, got IKC message");
                 return Ok((build_error(source, ErrorCode::InvalidMessage), true));
             },
@@ -1591,7 +1584,7 @@ impl WorkerThreadHandle {
                         data.unwrap_or_default(),
                     );
                     Handle::current()
-                        .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
+                        .block_on(Self::send_bulk(io_context.uvm_stream.clone(), &bulk))
                         .map_err(|e| {
                             if e.kind() == ErrorKind::BrokenPipe {
                                 debug!("handle_read_request(): UVM stream closed (broken pipe)");
@@ -1606,8 +1599,8 @@ impl WorkerThreadHandle {
                         })
                 },
                 PullTarget::Fixed(transfers) => Self::send_fixed_responses(
-                    uvm_stream.clone(),
-                    direct_cq_writer.clone(),
+                    io_context.uvm_stream.clone(),
+                    io_context.direct_cq_writer.clone(),
                     transfers,
                     len as usize,
                 )
@@ -1628,7 +1621,7 @@ impl WorkerThreadHandle {
 
         if request.fd == STDIN_FILENO {
             let mut locked_gateway_reader: MutexGuard<'_, SocketStreamReader> =
-                gateway_reader.blocking_lock();
+                io_context.gateway_reader.blocking_lock();
 
             match &pull_target {
                 PullTarget::Fixed(transfers) => {
@@ -1921,7 +1914,7 @@ impl WorkerThreadHandle {
                                 );
                                 return Err(WorkerThreadError::Interrupted);
                             },
-                            Ok(VenvCommand::Work(_)) => {
+                            Ok(VenvCommand::Work { .. }) => {
                                 error!(
                                     "handle_positioned_write_request(): expected fixed-buffer \
                                      segment, got IKC message"
@@ -1984,7 +1977,7 @@ impl WorkerThreadHandle {
                 );
                 return Err(WorkerThreadError::Interrupted);
             },
-            Ok(VenvCommand::Work(_)) => {
+            Ok(VenvCommand::Work { .. }) => {
                 error!("handle_positioned_write_request(): expected bulk data, got IKC message");
                 return Ok(build_error(source, ErrorCode::InvalidMessage));
             },
@@ -2074,12 +2067,10 @@ impl WorkerThreadHandle {
 
     fn handle_positioned_read_request<T>(
         syscall_table: &SyscallTable<T>,
+        io_context: &WorkerIoContext,
         source: ThreadIdentifier,
         request: PositionedReadRequest,
         channel_rx: &mut Receiver<VenvCommand>,
-        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
-        shared_ring: Option<Arc<SharedRing>>,
-        direct_cq_writer: Option<Arc<DirectCqWriter>>,
     ) -> Result<(Message, bool), WorkerThreadError> {
         trace!("handle_positioned_read_request(): source={source:?}, request={request:?}");
 
@@ -2091,7 +2082,7 @@ impl WorkerThreadHandle {
         let pull_target: PullTarget = match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT) {
             Ok(VenvCommand::BulkData(bulk)) => PullTarget::Bulk(*bulk.header()),
             Ok(VenvCommand::FixedBuffer(first_fixed)) => {
-                let Some(shared_ring) = shared_ring else {
+                let Some(shared_ring) = io_context.shared_ring.as_ref() else {
                     error!(
                         "handle_positioned_read_request(): received fixed-buffer transfer without \
                          shared ring mapping"
@@ -2115,7 +2106,7 @@ impl WorkerThreadHandle {
                                 );
                                 return Err(WorkerThreadError::Interrupted);
                             },
-                            Ok(VenvCommand::Work(_)) => {
+                            Ok(VenvCommand::Work { .. }) => {
                                 error!(
                                     "handle_positioned_read_request(): expected fixed-buffer \
                                      segment, got IKC message"
@@ -2178,7 +2169,7 @@ impl WorkerThreadHandle {
                 );
                 return Err(WorkerThreadError::Interrupted);
             },
-            Ok(VenvCommand::Work(_)) => {
+            Ok(VenvCommand::Work { .. }) => {
                 error!("handle_positioned_read_request(): expected BulkData, got IKC message");
                 return Ok((build_error(source, ErrorCode::InvalidMessage), true));
             },
@@ -2209,7 +2200,7 @@ impl WorkerThreadHandle {
                         data.unwrap_or_default(),
                     );
                     Handle::current()
-                        .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
+                        .block_on(Self::send_bulk(io_context.uvm_stream.clone(), &bulk))
                         .map_err(|e| {
                             if e.kind() == ErrorKind::BrokenPipe {
                                 debug!(
@@ -2227,8 +2218,8 @@ impl WorkerThreadHandle {
                         })
                 },
                 PullTarget::Fixed(transfers) => Self::send_fixed_responses(
-                    uvm_stream.clone(),
-                    direct_cq_writer.clone(),
+                    io_context.uvm_stream.clone(),
+                    io_context.direct_cq_writer.clone(),
                     transfers,
                     len as usize,
                 )
@@ -2404,6 +2395,7 @@ impl WorkerThreadHandle {
                 uvm_stream.clone(),
                 direct_cq_writer.clone(),
                 message,
+                None,
                 false,
             ) {
                 error!("failed to send message (error={e:?})");
@@ -2425,6 +2417,7 @@ impl WorkerThreadHandle {
                 uvm_stream.clone(),
                 direct_cq_writer.clone(),
                 message,
+                None,
                 false,
             ) {
                 error!("failed to send message (error={e:?})");
@@ -2450,6 +2443,7 @@ impl WorkerThreadHandle {
                 uvm_stream.clone(),
                 direct_cq_writer.clone(),
                 message,
+                None,
                 false,
             ) {
                 error!("failed to send message (error={e:?})");
@@ -2493,6 +2487,7 @@ impl WorkerThreadHandle {
                                 uvm_stream.clone(),
                                 direct_cq_writer.clone(),
                                 message,
+                                None,
                                 false,
                             ) {
                                 error!("failed to send message (error={e:?})");
@@ -2508,6 +2503,7 @@ impl WorkerThreadHandle {
                             uvm_stream.clone(),
                             direct_cq_writer.clone(),
                             Self::do_error(source, ErrorCode::IoErr),
+                            None,
                             false,
                         ) {
                             error!("failed to send error message (error={e:?})");
@@ -2525,6 +2521,7 @@ impl WorkerThreadHandle {
                     uvm_stream.clone(),
                     direct_cq_writer,
                     Self::do_error(source, ErrorCode::IoErr),
+                    None,
                     false,
                 ) {
                     error!("failed to send error message (error={e:?})");

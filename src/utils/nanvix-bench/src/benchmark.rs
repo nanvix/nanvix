@@ -115,6 +115,7 @@ pub struct Benchmark {
     pub workspace_root: PathBuf,
     pub nanvixd: Option<Child>,
     pub nanvixd_client: reqwest::Client,
+    pub nanvixd_use_sudo: bool,
     pub nanvixd_toolchain_bin_dir: String,
     pub nanvixd_tmp_dir: String,
     pub user_vm_id: Option<String>,

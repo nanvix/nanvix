@@ -50,6 +50,7 @@ pub mod pal;
 pub mod ring_drain;
 #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
 pub mod ring_signal;
+pub mod standalone;
 pub mod vmm;
 
 //==================================================================================================
@@ -102,14 +103,16 @@ use ::nvx_ring::{
     HOST_CQ_SIGNAL_OFFSET,
     HOST_SQ_SIGNAL_OFFSET,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::path::Path;
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::std::sync::mpsc::Receiver as StdReceiver;
 use ::std::{
     fs::File,
     io::Write,
     sync::Arc,
     time::Duration,
 };
-#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-use ::std::path::Path;
 use ::sys::ipc::{
     DataChunk,
     DataChunkHeader,
@@ -119,6 +122,8 @@ use ::sys::ipc::{
     MessageSender,
     MessageType,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::UnboundedSender;
 use ::tokio::{
     sync::{
         Mutex,
@@ -157,6 +162,11 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 pub const CHANNEL_CAPACITY: usize = 1024;
 
+#[derive(Clone, Copy, Debug)]
+pub enum DirectRingSignal {
+    SqDoorbell,
+}
+
 //==================================================================================================
 // UserVmArgs
 //==================================================================================================
@@ -190,6 +200,15 @@ pub struct UserVmArgs {
     /// Optional path to the shared ring-buffer backing file used for fixed-buffer transfers.
     #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
     pub ring_shared_path: Option<String>,
+    /// Whether direct-ring notifications should flow over the uservm/linuxd socket.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    pub use_socket_ring_doorbells: bool,
+    /// Sender used by ring helper threads to request outbound direct-ring control frames.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    pub direct_ring_signal_tx: Option<UnboundedSender<DirectRingSignal>>,
+    /// Receiver used by ring helper threads to consume inbound CQ notification requests.
+    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+    pub direct_ring_cq_doorbell_rx: Option<StdReceiver<()>>,
 }
 
 //==================================================================================================
@@ -317,7 +336,8 @@ impl UserVm {
                 ::config::microvm::RING_BUFFER_SIZE,
             )?;
             trace!(
-                "spawn(): mapped shared ring backing file into guest memory (path={ring_shared_path})"
+                "spawn(): mapped shared ring backing file into guest memory \
+                 (path={ring_shared_path})"
             );
         }
 
@@ -325,34 +345,72 @@ impl UserVm {
         // CQ completions into guest IRQ injections.
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
         if args.ring_shared_path.is_some() {
-            let ring_base_ptr: *mut u8 = {
-                let locked_vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
-                // SAFETY: the shared ring mapping is established above at `RING_BUFFER_GPA`.
-                unsafe { locked_vmem.get_raw_ptr().add(::config::microvm::RING_BUFFER_GPA) }
-            };
-            let sq_signal_word: *mut u32 =
-                // SAFETY: the signal words live inside the mapped ring control area.
-                unsafe { ring_base_ptr.add(HOST_SQ_SIGNAL_OFFSET).cast::<u32>() };
-            let cq_signal_word: *mut u32 =
-                // SAFETY: the signal words live inside the mapped ring control area.
-                unsafe { ring_base_ptr.add(HOST_CQ_SIGNAL_OFFSET).cast::<u32>() };
-            let sq_signal_word_addr: usize = sq_signal_word as usize;
-            let cq_signal_word_addr: usize = cq_signal_word as usize;
-            let doorbell_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd();
+            let doorbell_evtfd: vmm_sys_util::eventfd::EventFd = microvm.doorbell_eventfd()?;
             let cq_notifier = microvm.ikc_notifier();
 
-            std::thread::Builder::new()
-                .name("ring-sq-signal".into())
-                .spawn(move || {
-                    crate::ring_signal::run_sq_signal_thread(doorbell_evtfd, sq_signal_word_addr);
-                })
-                .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
-            std::thread::Builder::new()
-                .name("ring-cq-signal".into())
-                .spawn(move || {
-                    crate::ring_signal::run_cq_signal_thread(cq_signal_word_addr, cq_notifier);
-                })
-                .map_err(|e| anyhow::anyhow!("failed to spawn ring CQ signal thread: {e}"))?;
+            if args.use_socket_ring_doorbells {
+                let signal_tx = args.direct_ring_signal_tx.clone().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "missing direct-ring signal sender for socket doorbell transport"
+                    )
+                })?;
+                let cq_doorbell_rx = args.direct_ring_cq_doorbell_rx.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "missing direct-ring CQ doorbell receiver for socket doorbell transport"
+                    )
+                })?;
+                std::thread::Builder::new()
+                    .name("ring-sq-signal".into())
+                    .spawn(move || {
+                        crate::ring_signal::run_sq_socket_doorbell_thread(
+                            doorbell_evtfd,
+                            signal_tx,
+                        );
+                    })
+                    .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
+                std::thread::Builder::new()
+                    .name("ring-cq-signal".into())
+                    .spawn(move || {
+                        crate::ring_signal::run_cq_socket_doorbell_thread(
+                            cq_doorbell_rx,
+                            cq_notifier,
+                        );
+                    })
+                    .map_err(|e| anyhow::anyhow!("failed to spawn ring CQ signal thread: {e}"))?;
+            } else {
+                let ring_base_ptr: *mut u8 = {
+                    let locked_vmem: MutexGuard<'_, VirtualMemory> = vmem.lock().await;
+                    // SAFETY: the shared ring mapping is established above at `RING_BUFFER_GPA`.
+                    unsafe {
+                        locked_vmem
+                            .get_raw_ptr()
+                            .add(::config::microvm::RING_BUFFER_GPA)
+                    }
+                };
+                let sq_signal_word: *mut u32 =
+                    // SAFETY: the signal words live inside the mapped ring control area.
+                    unsafe { ring_base_ptr.add(HOST_SQ_SIGNAL_OFFSET).cast::<u32>() };
+                let cq_signal_word: *mut u32 =
+                    // SAFETY: the signal words live inside the mapped ring control area.
+                    unsafe { ring_base_ptr.add(HOST_CQ_SIGNAL_OFFSET).cast::<u32>() };
+                let sq_signal_word_addr: usize = sq_signal_word as usize;
+                let cq_signal_word_addr: usize = cq_signal_word as usize;
+                std::thread::Builder::new()
+                    .name("ring-sq-signal".into())
+                    .spawn(move || {
+                        crate::ring_signal::run_sq_signal_thread(
+                            doorbell_evtfd,
+                            sq_signal_word_addr,
+                        );
+                    })
+                    .map_err(|e| anyhow::anyhow!("failed to spawn ring SQ signal thread: {e}"))?;
+                std::thread::Builder::new()
+                    .name("ring-cq-signal".into())
+                    .spawn(move || {
+                        crate::ring_signal::run_cq_signal_thread(cq_signal_word_addr, cq_notifier);
+                    })
+                    .map_err(|e| anyhow::anyhow!("failed to spawn ring CQ signal thread: {e}"))?;
+            }
             trace!("spawn(): direct ring signal threads started");
         }
 
@@ -365,10 +423,8 @@ impl UserVm {
 
         // Create the CQ writer for the memory thread (ring buffer response path).
         #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
-        let cq_writer: Option<crate::cq_writer::CqWriter> = Some(crate::cq_writer::CqWriter::new(
-            vmem.clone(),
-            microvm.ikc_notifier(),
-        ));
+        let cq_writer: Option<crate::cq_writer::CqWriter> =
+            Some(crate::cq_writer::CqWriter::new(vmem.clone(), microvm.ikc_notifier()));
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
@@ -673,7 +729,8 @@ pub fn build_input_fn(
                     },
                     IkcFrame::Fixed(fixed) => {
                         let reason: String = format!(
-                            "fixed-buffer completion reached legacy stdin path (buffer_id={}, len={})",
+                            "fixed-buffer completion reached legacy stdin path (buffer_id={}, \
+                             len={})",
                             fixed.buffer_id(),
                             fixed.data_len()
                         );
@@ -823,9 +880,7 @@ pub fn build_input_fn(
                     fixed.data_len()
                 );
                 error!("input(): {reason}");
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
-                    reason,
-                )))
+                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
             },
 
             // Channel has disconnected.

@@ -40,8 +40,10 @@ use ::log::{
     warn,
 };
 use ::std::{
+    env,
     fmt,
     net::Ipv4Addr,
+    os::unix::process::CommandExt,
     process::Command,
     sync::{
         Arc,
@@ -75,6 +77,32 @@ const BASE_VETH_IP: &str = "10.200.0.0";
 /// Mask that we assign to host-side VETH pair.
 ///
 const VETH_IP_MASK: &str = "/31";
+
+///
+/// # Description
+///
+/// Environment variable that controls whether privileged netns setup commands should be wrapped in
+/// `sudo`.
+///
+const NETNS_USE_SUDO_ENV: &str = "NANVIX_NETNS_USE_SUDO";
+const LINUX_CAPABILITY_VERSION_3: u32 = 0x2008_0522;
+const CAP_NET_ADMIN: u32 = 12;
+const CAP_SYS_ADMIN: u32 = 21;
+const PRIVILEGED_CAPABILITIES: &[u32] = &[CAP_NET_ADMIN, CAP_SYS_ADMIN];
+
+#[repr(C)]
+struct UserCapHeader {
+    version: u32,
+    pid: libc::c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct UserCapData {
+    effective: u32,
+    permitted: u32,
+    inheritable: u32,
+}
 
 //==================================================================================================
 // Structures
@@ -644,14 +672,16 @@ impl NetnsPoolInner {
         state.next_id += 1;
 
         let info: NetnsInfo = self.build_info_for_id(id)?;
-        init_namespace(&info).map_err(|e| {
+        if let Err(e) = init_namespace(&info) {
+            delete_namespace(&info);
+
             let reason: String = format!(
                 "allocate_impl(): failed to initialize namespace (ns_name={}, error={e:?})",
                 info.ns_name()
             );
             error!("{reason}");
-            anyhow::anyhow!(reason)
-        })?;
+            anyhow::bail!(reason);
+        }
 
         let entry: NetnsEntry = NetnsEntry {
             info,
@@ -844,6 +874,89 @@ fn run_cmd(cmd: &mut Command) -> Result<()> {
 ///
 /// # Description
 ///
+/// Builds a command for a privileged helper program. By default we preserve the existing behavior
+/// of invoking the helper through `sudo`. When `NANVIX_NETNS_USE_SUDO=no`, we execute the helper
+/// directly so a capability-endowed `nanvixd` can drive the setup without an interactive password
+/// prompt.
+///
+fn privileged_command(program: &str) -> Command {
+    let use_sudo: bool = !matches!(
+        env::var(NETNS_USE_SUDO_ENV).ok().as_deref(),
+        Some("0" | "false" | "False" | "FALSE" | "no" | "No" | "NO")
+    );
+
+    if use_sudo {
+        let mut command: Command = Command::new("sudo");
+        command.arg(program);
+        command
+    } else {
+        let mut command: Command = Command::new(program);
+        // Preserve the required caps across exec so helper binaries such as `ip` and `iptables`
+        // can still perform privileged netns operations when `nanvixd` itself was launched via
+        // file capabilities instead of `sudo`.
+        unsafe {
+            command.pre_exec(|| configure_ambient_capabilities());
+        }
+        command
+    }
+}
+
+///
+/// # Description
+///
+/// Raises the inheritable and ambient capability sets in the child process right before `execve()`.
+/// This keeps `CAP_NET_ADMIN` and `CAP_SYS_ADMIN` available to helper binaries such as `ip` and
+/// `iptables` when `nanvixd` runs with file capabilities instead of `sudo`.
+///
+unsafe fn configure_ambient_capabilities() -> ::std::io::Result<()> {
+    let mut header: UserCapHeader = UserCapHeader {
+        version: LINUX_CAPABILITY_VERSION_3,
+        pid: 0,
+    };
+    let mut data: [UserCapData; 2] = [
+        UserCapData {
+            effective: 0,
+            permitted: 0,
+            inheritable: 0,
+        },
+        UserCapData {
+            effective: 0,
+            permitted: 0,
+            inheritable: 0,
+        },
+    ];
+
+    if libc::syscall(libc::SYS_capget, &mut header, data.as_mut_ptr()) == -1 {
+        return Err(::std::io::Error::last_os_error());
+    }
+
+    for &cap in PRIVILEGED_CAPABILITIES {
+        let idx: usize = (cap / 32) as usize;
+        let mask: u32 = 1u32 << (cap % 32);
+        if (data[idx].permitted & mask) == 0 {
+            return Err(::std::io::Error::from_raw_os_error(libc::EPERM));
+        }
+        data[idx].inheritable |= mask;
+    }
+
+    if libc::syscall(libc::SYS_capset, &mut header, data.as_mut_ptr()) == -1 {
+        return Err(::std::io::Error::last_os_error());
+    }
+
+    for &cap in PRIVILEGED_CAPABILITIES {
+        if libc::prctl(libc::PR_CAP_AMBIENT, libc::PR_CAP_AMBIENT_RAISE, cap as libc::c_ulong, 0, 0)
+            == -1
+        {
+            return Err(::std::io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
+}
+
+///
+/// # Description
+///
 /// Initializes a new network namespace. The steps are as follows:
 ///     1. Create the network namespace.
 ///     2. Create the veth pair in the root namespace.
@@ -872,8 +985,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
 
     // 1. Create the network namespace.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("add")
             .arg(&info.ns_name),
@@ -881,8 +993,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
 
     // 2. Create the veth pair in the root namespace.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("link")
             .arg("add")
             .arg(&info.veth_host_name)
@@ -895,8 +1006,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
 
     // 3. Move the namespace side of the veth into the netns.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("link")
             .arg("set")
             .arg(&info.veth_ns_name)
@@ -907,8 +1017,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     // 4. Assign IP to host side, bring it up.
     let host_cidr: String = format!("{}{VETH_IP_MASK}", info.veth_host_ip);
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("addr")
             .arg("add")
             .arg(&host_cidr)
@@ -916,8 +1025,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
             .arg(&info.veth_host_name),
     )?;
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("link")
             .arg("set")
             .arg(&info.veth_host_name)
@@ -927,8 +1035,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     // 5. Inside the netns: assign IP to veth_ns, bring veth_ns and lo up.
     let ns_cidr: String = format!("{}{VETH_IP_MASK}", info.veth_ns_ip);
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(&info.ns_name)
@@ -941,8 +1048,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     )?;
 
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(&info.ns_name)
@@ -954,8 +1060,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     )?;
 
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(&info.ns_name)
@@ -968,8 +1073,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
 
     // 6. Enable IP forwarding in namespace.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(info.ns_name())
@@ -982,8 +1086,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     // 7. Forward traffic from the host to the NS VETH pair to the guest TAP IP in the L2 VM by
     //    replacing the destination IP address.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(info.ns_name())
@@ -1005,8 +1108,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     // To prevent conntrack confusion, add a MASQUERADE rule that changes the source IP,
     // post-routing, to the IP of the TAP device.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(info.ns_name())
@@ -1029,8 +1131,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     //    device, to the root namespace side of the VETH pair. We do so by replacing the
     //    destination IP address.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(info.ns_name())
@@ -1052,8 +1153,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
     // To prevent conntrack confusion, add a MASQUERADE rule that changes the source IP,
     // post-routing, from the IP of the TAP device to the netns-side of the VETH pair.
     run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("exec")
             .arg(info.ns_name())
@@ -1112,8 +1212,7 @@ fn cleanup_namespace(_info: &NetnsInfo) -> Result<(), String> {
 fn delete_namespace(info: &NetnsInfo) {
     // Best-effort: delete the host-side veth if it still exists.
     if let Err(e) = run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("link")
             .arg("del")
             .arg(&info.veth_host_name),
@@ -1126,8 +1225,7 @@ fn delete_namespace(info: &NetnsInfo) {
 
     // Delete the network namespace itself.
     if let Err(e) = run_cmd(
-        Command::new("sudo")
-            .arg("ip")
+        privileged_command("ip")
             .arg("netns")
             .arg("del")
             .arg(&info.ns_name),

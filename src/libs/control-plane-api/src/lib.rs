@@ -78,6 +78,9 @@ pub struct NanvixdControlMessage {
 //==================================================================================================
 
 impl NanvixdControlMessage {
+    /// Size of the wire representation of a control-plane message.
+    pub const WIRE_SIZE: usize = mem::size_of::<Self>();
+
     ///
     /// # Description
     ///

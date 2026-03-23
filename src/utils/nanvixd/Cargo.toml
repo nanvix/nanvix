@@ -26,6 +26,7 @@ default = ["microvm"]
 single-process = ["nanvix/single-process"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
+ring-buffer = ["nanvix/ring-buffer"]
 
 [lints]
 workspace = true

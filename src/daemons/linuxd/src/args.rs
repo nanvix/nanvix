@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-use ::anyhow::Result;
-use ::syscomm::SocketType;
-use ::syslog::DEFAULT_LOG_DIRECTORY;
+use anyhow::Result;
+use syscomm::SocketType;
+use syslog::DEFAULT_LOG_DIRECTORY;
 
 //==================================================================================================
 // Structures
@@ -68,6 +68,21 @@ impl Args {
     /// Command-line option to indicate the seccomp option.
     #[allow(dead_code)]
     pub const OPT_CLH_SECCOMP: &'static str = "--seccomp";
+    /// Command-line option to indicate the console backend.
+    #[allow(dead_code)]
+    pub const OPT_CLH_CONSOLE: &'static str = "--console";
+    /// Command-line option to indicate the serial backend.
+    #[allow(dead_code)]
+    pub const OPT_CLH_SERIAL: &'static str = "--serial";
+    /// Command-line option to indicate the guest kernel image.
+    #[allow(dead_code)]
+    pub const OPT_CLH_KERNEL: &'static str = "--kernel";
+    /// Command-line option to indicate the guest network device.
+    #[allow(dead_code)]
+    pub const OPT_CLH_NET: &'static str = "--net";
+    /// Command-line option to indicate the restore operation to ch-remote.
+    #[allow(dead_code)]
+    pub const OPT_CH_REMOTE_RESTORE: &'static str = "restore";
     /// Command-line option to indicate the resume operation to ch-remote.
     #[allow(dead_code)]
     pub const OPT_CH_REMOTE_RESUME: &'static str = "resume";

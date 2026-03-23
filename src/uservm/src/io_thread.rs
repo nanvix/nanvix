@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    DirectRingSignal,
     counters::MessageCounters,
     orchestrator::{
         IoControlCommand,
@@ -36,6 +37,8 @@ use ::syscomm::{
     SocketStreamWriter,
     WriteAll,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::tokio::sync::mpsc::UnboundedReceiver;
 use ::tokio::{
     select,
     sync::mpsc::{
@@ -45,6 +48,9 @@ use ::tokio::{
     task::JoinHandle,
     time::Instant,
 };
+#[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+use ::user_vm_api::DIRECT_RING_CQ_DOORBELL_FRAME;
+use ::user_vm_api::DIRECT_RING_SQ_DOORBELL_FRAME;
 
 //==================================================================================================
 // Implementations
@@ -172,6 +178,11 @@ impl IoThread {
         control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
         counters: MessageCounters,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))] direct_ring_signal_rx: Option<
+            UnboundedReceiver<DirectRingSignal>,
+        >,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_tx: Option<std::sync::mpsc::Sender<()>>,
     ) -> Result<JoinHandle<Result<()>>> {
         trace!("spawn()");
         let handle: JoinHandle<Result<()>> = tokio::spawn(async move {
@@ -183,6 +194,10 @@ impl IoThread {
                 control_rx,
                 control_plane_stream,
                 counters,
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                direct_ring_signal_rx,
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                direct_ring_cq_doorbell_tx,
             )
             .await
         });
@@ -216,6 +231,11 @@ impl IoThread {
         mut control_rx: Receiver<IoControlResponse>,
         control_plane_stream: SocketStream,
         counters: MessageCounters,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))] mut direct_ring_signal_rx: Option<
+            UnboundedReceiver<DirectRingSignal>,
+        >,
+        #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+        direct_ring_cq_doorbell_tx: Option<std::sync::mpsc::Sender<()>>,
     ) -> Result<()> {
         let start_instant: Instant = Instant::now();
         let mut frame_type_buf: [u8; 1] = [0u8; 1];
@@ -302,6 +322,25 @@ impl IoThread {
                                                 inbound_state = InboundState::FixedBuffer;
                                                 fixed_buf_len = 0;
                                                 fixed_buf.fill(0);
+                                            },
+                                            #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                                            DIRECT_RING_CQ_DOORBELL_FRAME => {
+                                                if let Some(sender) = direct_ring_cq_doorbell_tx.as_ref() {
+                                                    if sender.send(()).is_err() {
+                                                        let reason: String = String::from(
+                                                            "direct-ring CQ doorbell receiver closed"
+                                                        );
+                                                        error!("{reason}");
+                                                        break Err(anyhow::Error::msg(reason));
+                                                    }
+                                                } else {
+                                                    let reason: String = String::from(
+                                                        "received direct-ring CQ doorbell without a registered receiver"
+                                                    );
+                                                    error!("{reason}");
+                                                    break Err(anyhow::Error::msg(reason));
+                                                }
+                                                inbound_state = InboundState::FrameType;
                                             },
                                             unknown => {
                                                 let reason: String = format!(
@@ -409,7 +448,33 @@ impl IoThread {
                             break Ok(());
                         },
                     }
-                }
+                },
+
+                result = async {
+                    #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                    {
+                        match direct_ring_signal_rx.as_mut() {
+                            Some(receiver) => receiver.recv().await,
+                            None => std::future::pending::<Option<DirectRingSignal>>().await,
+                        }
+                    }
+                    #[cfg(not(all(feature = "microvm", feature = "ring-buffer")))]
+                    {
+                        std::future::pending::<Option<DirectRingSignal>>().await
+                    }
+                } => {
+                    if let Some(DirectRingSignal::SqDoorbell) = result {
+                        system_vm_tx
+                            .write_all(&[DIRECT_RING_SQ_DOORBELL_FRAME])
+                            .await
+                            .map_err(|e| {
+                                let reason: String =
+                                    format!("failed writing direct-ring SQ doorbell: {e}");
+                                error!("{reason}");
+                                anyhow::Error::msg(reason)
+                            })?;
+                    }
+                },
 
                 result = control_plane_rx.read(&mut control_plane_buf[control_plane_buf_len..]) => {
                     match result {
@@ -622,6 +687,10 @@ mod tests {
                 ctrl_resp_rx,
                 cp_stream,
                 counters,
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                None,
+                #[cfg(all(feature = "microvm", feature = "ring-buffer"))]
+                None,
             )
             .expect("spawn io thread");
 

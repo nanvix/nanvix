@@ -20,9 +20,10 @@ user-vm-api = { workspace = true }
 
 [features]
 default = ["microvm"]
+single-process = ["nanvix-sandbox-cache/single-process"]
 hyperlight = ["nanvix-sandbox-cache/hyperlight"]
 microvm = ["nanvix-sandbox-cache/microvm"]
-single-process = ["nanvix-sandbox-cache/single-process"]
+ring-buffer = ["nanvix-sandbox-cache/ring-buffer"]
 
 [lints]
 workspace = true

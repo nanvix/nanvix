@@ -12,14 +12,14 @@ use ::log::{
     trace,
 };
 use ::nvx_ring::{
-    CqFlags,
-    CqEntry,
-    CqeFlags,
+    CQ_OFFSET,
     CTRL_CQ_FLAGS,
     CTRL_CQ_HEAD,
     CTRL_CQ_MASK,
     CTRL_CQ_TAIL,
-    CQ_OFFSET,
+    CqEntry,
+    CqFlags,
+    CqeFlags,
     DATA_OFFSET,
     DATA_SLOT_SIZE,
 };
@@ -139,8 +139,12 @@ impl CqWriter {
             },
             IkcFrame::Fixed(fixed) => {
                 let source_tid_raw: i32 = fixed.source_tid().into();
-                let mut cqe: CqEntry = CqEntry::new(source_tid_raw as u64, i64::from(fixed.data_len()));
+                let mut cqe: CqEntry =
+                    CqEntry::new(source_tid_raw as u64, i64::from(fixed.data_len()));
                 cqe.flags = CqeFlags::BUFFER.0;
+                if fixed.is_completion_batch() {
+                    cqe.flags |= CqeFlags::BATCH.0;
+                }
                 cqe.buffer_id = fixed.buffer_id();
                 cqe
             },
@@ -150,8 +154,7 @@ impl CqWriter {
 
         // Post the CQE.
         {
-            let mut vmem: ::tokio::sync::MutexGuard<'_, VirtualMemory> =
-                self.vmem.lock().await;
+            let mut vmem: ::tokio::sync::MutexGuard<'_, VirtualMemory> = self.vmem.lock().await;
             let cq_base: u64 = ring_base + CQ_OFFSET as u64;
 
             let mut buf4: [u8; 4] = [0u8; 4];

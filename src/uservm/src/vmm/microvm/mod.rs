@@ -427,13 +427,14 @@ impl Vmm {
         // Register an ioeventfd for the ring buffer doorbell port so guest PIO writes
         // to this port are handled by KVM internally (no VM exit). A separate drain
         // thread will block on this eventfd and process SQEs from the ring buffer.
-        let doorbell_eventfd: EventFd = EventFd::new(0).map_err(|e| {
-            anyhow::anyhow!("failed to create doorbell eventfd: {e}")
-        })?;
+        let doorbell_eventfd: EventFd = EventFd::new(0)
+            .map_err(|e| anyhow::anyhow!("failed to create doorbell eventfd: {e}"))?;
         let doorbell_port: u64 = ::config::microvm::RING_DOORBELL_PORT as u64;
         vm.register_ioevent(&doorbell_eventfd, &IoEventAddress::Pio(doorbell_port), NoDatamatch)
             .map_err(|e| {
-                anyhow::anyhow!("failed to register ioeventfd for doorbell port {doorbell_port:#x}: {e}")
+                anyhow::anyhow!(
+                    "failed to register ioeventfd for doorbell port {doorbell_port:#x}: {e}"
+                )
             })?;
         trace!("new(): registered ioeventfd for doorbell port {doorbell_port:#x}");
 
@@ -606,10 +607,10 @@ impl Vmm {
     }
 
     /// Returns a clone of the doorbell [`EventFd`] for spawning the ring drain thread.
-    pub fn doorbell_eventfd(&self) -> EventFd {
+    pub fn doorbell_eventfd(&self) -> Result<EventFd> {
         self.doorbell_eventfd
             .try_clone()
-            .unwrap_or_else(|e| panic!("failed to clone doorbell eventfd: {e}"))
+            .map_err(|e| anyhow::anyhow!("failed to clone doorbell eventfd: {e}"))
     }
 
     ///

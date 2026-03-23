@@ -10,6 +10,7 @@
 use crate::{
     hal::{
         arch::x86::mem::mmu::{
+            self,
             page_directory::{
                 PageDirectory,
                 PageDirectoryStorage,
@@ -24,6 +25,7 @@ use crate::{
             PageAligned,
             PageTableAddress,
             PageTableAligned,
+            PhysicalAddress,
             VirtualAddress,
         },
     },
@@ -53,11 +55,6 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-};
-#[cfg(not(target_arch = "x86_64"))]
-use crate::hal::{
-    arch::x86::mem::mmu,
-    mem::PhysicalAddress,
 };
 
 //==================================================================================================
@@ -147,9 +144,6 @@ pub struct Vmem {
     private_kernel_pages: LinkedList<KernelPage>,
     /// List of user page tables.
     user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    /// Physical address of the per-process PML4 (x86_64 only).
-    #[cfg(target_arch = "x86_64")]
-    pml4_paddr: u64,
 }
 
 impl Vmem {
@@ -188,9 +182,7 @@ impl Vmem {
             private_kernel_pages: LinkedList::new(),
             user_page_tables: LinkedList::new(),
             #[cfg(target_arch = "x86_64")]
-            pml4_paddr: unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::alloc_process_pml4()
-            },
+            pml4_paddr: unsafe { crate::hal::arch::x86::mem::mmu::hwpt::alloc_process_pml4() },
         })
     }
 
@@ -224,34 +216,19 @@ impl Vmem {
             private_kernel_pages: LinkedList::new(),
             user_page_tables: LinkedList::new(),
             #[cfg(target_arch = "x86_64")]
-            pml4_paddr: unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::alloc_process_pml4()
-            },
+            pml4_paddr: unsafe { crate::hal::arch::x86::mem::mmu::hwpt::alloc_process_pml4() },
         })
     }
 
     pub fn load(&self) -> Result<(), Error> {
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            core::arch::asm!("mov cr3, {}", in(reg) self.pml4_paddr, options(nostack));
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-            unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
-        }
+        let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
+        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
         Ok(())
     }
 
     /// Returns a reference to the underlying page directory.
     pub fn pgdir(&self) -> &PageDirectory {
         &self.pgdir
-    }
-
-    /// Returns the physical address of the per-process PML4 (x86_64 only).
-    #[cfg(target_arch = "x86_64")]
-    pub fn pml4_paddr(&self) -> u64 {
-        self.pml4_paddr
     }
 
     ///
@@ -396,16 +373,6 @@ impl Vmem {
 
         // Map the page to the target virtual address space.
         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
-
-        // On x86_64, map into the per-process hardware page tables.
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            crate::hal::arch::x86::mem::mmu::hwpt::map_for_process(
-                self.pml4_paddr,
-                vaddr.into_raw_value(),
-                uframe.address(),
-            );
-        }
 
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
@@ -624,7 +591,7 @@ impl Vmem {
     /// failure, an error is returned instead.
     ///
     #[cfg(feature = "stdio")]
-    #[cfg_attr(all(feature = "microvm", feature = "ring-buffer", target_arch = "x86_64"), allow(dead_code))]
+    #[cfg_attr(all(feature = "microvm", feature = "ring-buffer"), allow(dead_code))]
     pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
         let page_aligned: PageAligned<VirtualAddress> =
             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
@@ -706,29 +673,18 @@ impl Vmem {
                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
 
-                // Validate the frame exists.
-                let _src_frame: FrameAddress = self.find_user_frame(vaddr)?;
+                let src_frame: FrameAddress = self.find_user_frame(vaddr)?;
 
                 if !dry_run {
-                    #[cfg(target_arch = "x86_64")]
-                    unsafe {
-                        // Switch CR3 to access user pages via their virtual addresses.
-                        let old_cr3: u64;
-                        core::arch::asm!("mov {}, cr3", out(reg) old_cr3, options(nostack, nomem));
-                        core::arch::asm!("mov cr3, {}", in(reg) self.pml4_paddr, options(nostack));
-                        core::ptr::copy_nonoverlapping(
-                            src.into_raw_value() as *const u8,
-                            dst.into_raw_value() as *mut u8,
-                            copy_size,
-                        );
-                        core::arch::asm!("mov cr3, {}", in(reg) old_cr3, options(nostack));
-                    }
-
-                    #[cfg(not(target_arch = "x86_64"))]
+                    // Copy memory from user space to kernel space.
+                    // SAFETY: The following conditions are guaranteed:
+                    // - `dst.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
+                    // - `src_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
+                    // - Both regions are non-overlapping and accessible for the operation.
                     unsafe {
                         __phys_memcpy(
                             dst.into_raw_value() as *mut u8,
-                            (_src_frame.into_raw_value() + offset) as *const u8,
+                            (src_frame.into_raw_value() + offset) as *const u8,
                             copy_size,
                         )
                     };
@@ -864,60 +820,44 @@ impl Vmem {
 
             // Only perform the following operations if not in dry-run mode.
             if !dry_run {
-                #[cfg(target_arch = "x86_64")]
-                unsafe {
-                    // Switch CR3 and clear CR0.WP to write to user pages (may be read-only).
-                    let old_cr3: u64;
-                    let old_cr0: u64;
-                    core::arch::asm!("mov {}, cr3", out(reg) old_cr3, options(nostack, nomem));
-                    core::arch::asm!("mov {}, cr0", out(reg) old_cr0, options(nostack, nomem));
-                    let new_cr0: u64 = old_cr0 & !(1u64 << 16);
-                    core::arch::asm!("mov cr0, {}", in(reg) new_cr0, options(nostack));
-                    core::arch::asm!("mov cr3, {}", in(reg) self.pml4_paddr, options(nostack));
-                    core::ptr::copy_nonoverlapping(
-                        src.into_raw_value() as *const u8,
-                        dst.into_raw_value() as *mut u8,
-                        copy_size,
-                    );
-                    core::arch::asm!("mov cr3, {}", in(reg) old_cr3, options(nostack));
-                    core::arch::asm!("mov cr0, {}", in(reg) old_cr0, options(nostack));
-                }
-
-                #[cfg(not(target_arch = "x86_64"))]
-                {
-                    let dst_frame: FrameAddress = match self.find_user_frame(vaddr) {
-                        Ok(frame) => frame,
-                        Err(error) => {
-                            let reason: &str = "failed to find user frame";
-                            panic!(
-                                "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
-                                 dst={dst:?}, src={src:?}, size={size:?})"
-                            );
-                        },
-                    };
-
-                    let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
-                    if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
-                        let reason: &str =
-                            "destination memory region does not lie within physical memory";
+                let dst_frame: FrameAddress = match self.find_user_frame(vaddr) {
+                    Ok(frame) => frame,
+                    Err(error) => {
+                        let reason: &str = "failed to find user frame";
                         panic!(
-                            "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, \
-                             src={src:?}, size={size:?})"
+                            "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
+                             dst={dst:?}, src={src:?}, size={size:?})"
                         );
-                    }
+                    },
+                };
 
-                    unsafe {
-                        let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
-                        let src: *const u8 = src.into_raw_value() as *const u8;
-                        let phys_memcpy_fn: unsafe extern "C" fn(*mut u8, *const u8, usize) =
-                            if copy_size.is_multiple_of(::core::mem::size_of::<u32>()) {
-                                __phys_memcpy32
-                            } else {
-                                __phys_memcpy
-                            };
-                        phys_memcpy_fn(dst, src, copy_size)
-                    };
+                let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
+                // Check if [dst_phys_addr_raw, dst_phys_addr_raw + copy_size) does not lie within physical memory.
+                if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
+                    let reason: &str =
+                        "destination memory region does not lie within physical memory";
+                    panic!(
+                        "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, src={src:?}, \
+                         size={size:?})"
+                    );
                 }
+
+                // Copy memory from kernel space to user space.
+                // SAFETY: The following conditions are guaranteed:
+                // - `dst_frame.into_raw_value() + offset` is a valid user-space address for `copy_size` bytes.
+                // - `src.into_raw_value()` is a valid kernel-space address for `copy_size` bytes.
+                // - Both regions lie in physical memory.
+                unsafe {
+                    let dst: *mut u8 = (dst_frame.into_raw_value() + offset) as *mut u8;
+                    let src: *const u8 = src.into_raw_value() as *const u8;
+                    let phys_memcpy_fn: unsafe extern "C" fn(*mut u8, *const u8, usize) =
+                        if copy_size.is_multiple_of(::core::mem::size_of::<u32>()) {
+                            __phys_memcpy32
+                        } else {
+                            __phys_memcpy
+                        };
+                    phys_memcpy_fn(dst, src, copy_size)
+                };
             }
 
             size -= copy_size;
@@ -1088,39 +1028,15 @@ impl Vmem {
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            // On x86_64, switch CR3 to this process's PML4 and access via virtual address.
-            // Clear CR0.WP to allow supervisor writes to read-only pages.
-            unsafe {
-                let old_cr3: u64;
-                let old_cr0: u64;
-                core::arch::asm!("mov {}, cr3", out(reg) old_cr3, options(nostack, nomem));
-                core::arch::asm!("mov {}, cr0", out(reg) old_cr0, options(nostack, nomem));
-                let new_cr0: u64 = old_cr0 & !(1u64 << 16); // Clear WP bit.
-                core::arch::asm!("mov cr0, {}", in(reg) new_cr0, options(nostack));
-                core::arch::asm!("mov cr3, {}", in(reg) self.pml4_paddr, options(nostack));
+        // Get corresponding user page.
+        let uframe: FrameAddress = self.find_user_frame(dst)?;
+        let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+        let base: *mut u8 = dst.into_raw_value() as *mut u8;
 
-                let base: *mut u8 = dst.into_raw_value() as *mut u8;
-                core::ptr::write_bytes(base, value as u8, mem::PAGE_SIZE);
-
-                core::arch::asm!("mov cr3, {}", in(reg) old_cr3, options(nostack));
-                core::arch::asm!("mov cr0, {}", in(reg) old_cr0, options(nostack));
-            }
-        }
-
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            // Get corresponding user page.
-            let uframe: FrameAddress = self.find_user_frame(dst)?;
-            let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
-            let base: *mut u8 = dst.into_raw_value() as *mut u8;
-
-            // Safety: `base` points to a valid memory location and `mem::PAGE_SIZE` bytes are
-            // writable.
-            unsafe {
-                __phys_memset(base, value as u8, mem::PAGE_SIZE);
-            }
+        // Safety: `base` points to a valid memory location and `mem::PAGE_SIZE` bytes are
+        // writable.
+        unsafe {
+            __phys_memset(base, value as u8, mem::PAGE_SIZE);
         }
 
         Ok(())
@@ -1147,10 +1063,6 @@ impl Vmem {
             error!("{reason}");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
-
-        // Copy PML4 address before borrowing self (avoids borrow conflict).
-        #[cfg(target_arch = "x86_64")]
-        let pml4: u64 = self.pml4_paddr;
 
         // Find the corresponding frame address.
         let frame_address: FrameAddress = self.find_user_frame(vaddr)?;
@@ -1194,15 +1106,6 @@ impl Vmem {
 
             // Unmap the page from the target virtual address space.
             page_table.unmap(page_address)?;
-
-            // On x86_64, also clear the per-process hardware page table entry.
-            #[cfg(target_arch = "x86_64")]
-            unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::unmap_for_process(
-                    pml4,
-                    vaddr.into_raw_value(),
-                );
-            }
 
             (pgtable_vaddr, page_table.nmapped() == 0)
         };
@@ -1273,11 +1176,36 @@ impl Vmem {
         Ok(())
     }
 
-    // Changes access permissions on a kernel page.
+    ///
+    /// # Description
+    ///
+    /// Changes access permissions on a kernel page. When `dry_run` is `true`, validates that the
+    /// operation would succeed without modifying any page table entries.
+    ///
+    /// # Parameters
+    ///
+    /// - `vaddr`: Virtual address of the target kernel page.
+    /// - `access`: New access permissions for the page.
+    /// - `dry_run`: If `true`, only validates the operation without applying changes.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this function returns empty. Upon failure, this function returns
+    /// an error that indicates the reason for the failure.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    /// - [`ErrorCode::BadAddress`]: The provided address does not lie in kernel space.
+    /// - [`ErrorCode::TryAgain`]: Failed to read the page directory entry.
+    /// - [`ErrorCode::NoSuchEntry`]: The corresponding page table is not present.
+    /// - [`ErrorCode::NoSuchEntry`]: The page table entry was not found (dry run only).
+    ///
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
+        dry_run: bool,
     ) -> Result<(), Error> {
         trace!("{vaddr:?}");
 
@@ -1315,25 +1243,13 @@ impl Vmem {
 
         let page_address: PageAddress = PageAddress::new(vaddr);
 
-        // Change access permissions on the page.
-        page_table
-            .borrow_mut()
-            .1
-            .ctrl(false, page_address, access)?;
-
-        // On x86_64, also update the hardware page tables. The software bookkeeping tables are
-        // not used by the CPU; the VMM-provided 4-level page tables are. For kernel-space MMIO
-        // regions (identity-mapped: VA == PA), we must split the 2 MiB supervisor-only PD entry
-        // into 4 KiB entries and set the User bit so Ring 3 can access the page.
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            let raw_vaddr: usize = vaddr.into_raw_value();
-            crate::hal::arch::x86::mem::mmu::hwpt::map(
-                raw_vaddr,
-                raw_vaddr,
-                true,
-                access.is_writable(),
-            );
+        if dry_run {
+            page_table.borrow().1.lookup(page_address)?;
+        } else {
+            page_table
+                .borrow_mut()
+                .1
+                .ctrl(false, page_address, access)?;
         }
 
         Ok(())

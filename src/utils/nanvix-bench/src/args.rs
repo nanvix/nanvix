@@ -19,6 +19,8 @@ pub struct Args {
     hwloc_file: Option<String>,
     iterations: usize,
     num_concurrent_vms: Option<usize>,
+    netns_pool_size: Option<usize>,
+    sudo: bool,
     toolchain_bin_dir: String,
     tmp_dir: String,
 }
@@ -33,6 +35,9 @@ impl Args {
     const OPT_HWLOC: &'static str = "-hwloc";
     const OPT_ITERATIONS: &'static str = "-iterations";
     const OPT_NUM_CONCURRENT_VMS: &'static str = "-num-concurrent-vms";
+    const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
+    const DEFAULT_NETNS_POOL_SIZE: usize = ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE;
+    const OPT_SUDO: &'static str = "-sudo";
     const OPT_TOOLCHAIN_BIN_DIR: &'static str = "-toolchain-bin-dir";
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
@@ -64,9 +69,14 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
-  {num_concurrent_vms} <num>          Number of concurrent VMs to run (mandatory for concurrent \
+   {num_concurrent_vms} <num>          Number of concurrent VMs to run (mandatory for concurrent \
              benchmarks).
+  {netns_pool_size} <size>            Netns pool prefill size for nanvixd (default: \
+             {default_netns_pool_size}; 0 enables lazy initialization).
   {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
+             {sudo}                              Launch `nanvixd` through `sudo`; required for L2 \
+             benchmarks on setups where netns operations need privilege.
+   {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
              etc.).
   {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
              {DEFAULT_TMP_DIRECTORY}).
@@ -87,6 +97,9 @@ Examples:
             hwloc = Self::OPT_HWLOC,
             iterations = Self::OPT_ITERATIONS,
             num_concurrent_vms = Self::OPT_NUM_CONCURRENT_VMS,
+            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
+            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
+            sudo = Self::OPT_SUDO,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIR,
             tmp_dir = Self::OPT_TMP_DIR,
             DEFAULT_TMP_DIRECTORY = DEFAULT_TMP_DIRECTORY,
@@ -99,6 +112,8 @@ Examples:
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
         let mut num_concurrent_vms: Option<usize> = None;
+        let mut netns_pool_size: Option<usize> = None;
+        let mut sudo: bool = false;
         let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
         let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
@@ -144,6 +159,20 @@ Examples:
                         ));
                     }
                     num_concurrent_vms = Some(args[i].parse::<usize>()?);
+                },
+                Self::OPT_NETNS_POOL_SIZE => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_NETNS_POOL_SIZE
+                        ));
+                    }
+                    netns_pool_size = Some(args[i].parse::<usize>()?);
+                },
+                Self::OPT_SUDO => {
+                    sudo = true;
                 },
                 Self::OPT_TOOLCHAIN_BIN_DIR => {
                     i += 1;
@@ -212,6 +241,8 @@ Examples:
                     hwloc_file,
                     iterations,
                     num_concurrent_vms,
+                    netns_pool_size,
+                    sudo,
                     toolchain_bin_dir,
                     tmp_dir,
                 })
@@ -241,6 +272,14 @@ Examples:
 
     pub fn toolchain_bin_dir(&self) -> String {
         self.toolchain_bin_dir.clone()
+    }
+
+    pub fn netns_pool_size(&self) -> Option<usize> {
+        self.netns_pool_size
+    }
+
+    pub fn sudo(&self) -> bool {
+        self.sudo
     }
 
     pub fn tmp_dir(&self) -> String {

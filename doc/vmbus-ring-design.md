@@ -127,9 +127,10 @@ use owned `IkcFrame::Bulk` responses.
 ## Core Idea: Three Notification Tiers
 
 The three tiers below describe the original notification strategy target. The
-current implementation uses the Tier 1 eventfd wakeup path plus CQ interrupt
-suppression. It does not yet implement the Tier 2 spin window, the Tier 3
-dedicated poll thread, or full guest-to-host doorbell suppression.
+current implementation uses the Tier 1 eventfd wakeup path, CQ interrupt
+suppression, and a bounded Tier 2-style SQ polling window on the direct-linuxd
+path. It does not yet implement the Tier 3 dedicated poll thread or a true
+zero-notification steady state.
 
 ### Tier 1 — Eventfd Doorbell (default, zero idle CPU)
 
@@ -150,9 +151,11 @@ Guest kernel                         linuxd
 
 **Status today**: implemented as an ioeventfd-backed wakeup into `uservm`, which
 then wakes a `linuxd` SQ worker through a shared-memory futex word. `linuxd`
-drains the SQ directly once woken.
-**Cost today**: one doorbell/eventfd wakeup per batch, plus up to one guest
-interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
+drains the SQ directly once woken and may keep a short bounded SQ poll window
+open before parking again.
+**Cost today**: one initial doorbell/eventfd wakeup to enter a burst, suppressed
+follow-on guest doorbells while the SQ poll window stays open, plus up to one
+guest interrupt injection per batch when the guest has armed `CQ_NOTIFY_ME`.
 **CPU when idle**: zero — both sides sleep on epoll/HLT.
 
 KVM ioeventfd is still the crucial primitive here: the guest writes to a PIO
@@ -160,9 +163,9 @@ port and KVM signals an eventfd **in-kernel**. In the current implementation,
 that eventfd wakes `uservm`, which then wakes `linuxd` through the shared SQ
 notification word.
 
-### Tier 2 — Adaptive Polling (design target, not yet implemented)
+### Tier 2 — Adaptive Polling (implemented as a bounded SQ poll window)
 
-When linuxd sees sustained SQ traffic, it enters a short polling window:
+After linuxd drains a batch, it enters a short polling window:
 
 ```
 linuxd after processing a batch:
@@ -176,13 +179,13 @@ linuxd after processing a batch:
     // no new work → fall back to epoll (Tier 1)
 ```
 
-**Status today**: not implemented. `RING_POLL_SPIN_ITERS` exists as a config
-knob, but the active drain path still blocks on the doorbell eventfd after each
-drain instead of entering this loop.
-**Target cost**: no additional doorbells while the polling window is open.
-**Target CPU when idle**: returns to zero after the polling window expires.
-This is exactly how io_uring SQPOLL works — it polls for a configurable
-idle period, then parks.
+**Status today**: implemented on the direct-linuxd SQ worker. After draining a
+batch, `linuxd` clears `SQ_NEED_WAKEUP`, spins for up to
+`RING_POLL_SPIN_ITERS`, and resets the spin budget whenever more SQEs arrive.
+When the window expires it re-arms `SQ_NEED_WAKEUP`, re-checks the SQ once to
+avoid a lost wakeup race, and only then parks again.
+**Current cost**: no additional guest doorbells while the polling window is
+open, but idle CPU remains bounded by the short spin window.
 
 ### Tier 3 — Dedicated Poll Thread (design target, not yet implemented)
 
@@ -207,7 +210,8 @@ poll the SQ continuously. Same as vhost-user. Enabled by flag, never default.
              Tier 1 (eventfd)
 ```
 
-Current behavior remains in Tier 1.
+Current behavior uses Tier 1 wakeups plus this bounded Tier 2 poll window on
+the direct-linuxd path.
 
 ---
 
@@ -278,10 +282,9 @@ struct CQEntry {
 
 ## Doorbell Suppression (Key CPU Optimization)
 
-This section describes the original notification-suppression goal. Today the
-host-to-guest side is implemented, but the guest-to-host side is still
-incomplete. The active drain path does not yet clear/set `SQ_NEED_WAKEUP`, so
-the guest still rings the doorbell for each batch.
+This section describes the active notification-suppression scheme. Today the
+host-to-guest side is implemented, and the direct-linuxd path also suppresses
+guest-to-host doorbells while its bounded SQ polling window is open.
 
 ### Guest → Host: Suppress Doorbell
 
@@ -322,9 +325,10 @@ fn notify_guest(ctrl: &RingControl, kvm_fd: &KvmFd) {
 ```
 
 **Current effect**: CQ interrupts are suppressed when the guest is already
-polling. Not yet implemented: guest-to-host doorbell suppression, Tier 2
-adaptive polling, and the zero-notification steady state described by the
-original design.
+polling, and the direct-linuxd SQ worker suppresses guest doorbells while it is
+still polling for follow-on SQEs. Not yet implemented: the Tier 3 dedicated
+poll thread and the zero-notification steady state described by the original
+design.
 
 ---
 
@@ -536,12 +540,12 @@ It is not a summary of current measured behavior.
 7. Write hot-path CQEs directly from `linuxd`, while keeping old socket/bulk
    handling as compatibility fallback.
 
-### Phase 2: Adaptive polling (partially implemented; CQ suppression only)
+### Phase 2: Adaptive polling (implemented as bounded SQ polling + CQ suppression)
 
-8. Add spin loop to the drain loop with configurable idle timeout. Not
-   implemented.
-9. Add doorbell suppression flags. Partially implemented: the flags exist, but
-   the active drain path does not yet manage `SQ_NEED_WAKEUP`.
+8. Add spin loop to the drain loop with configurable idle timeout. Implemented
+   on the direct-linuxd SQ worker.
+9. Add doorbell suppression flags. Implemented on the direct-linuxd path with a
+   bounded SQ polling window that clears/re-arms `SQ_NEED_WAKEUP`.
 10. Add interrupt suppression flags + CQ polling in guest kernel. Implemented.
 
 ### Phase 3: Fixed-buffer data path (implemented)
@@ -599,8 +603,7 @@ Detailed methodology and the full result tables live in `doc/benchmark.md`.
 - Because the benchmark was rerun in a shared development environment, the
   absolute RTT numbers vary between historical runs; the interleaved medians and
   ring/legacy ratios are the more stable signal.
-- Not yet implemented: Tier 2 adaptive polling, Tier 3 dedicated polling,
-  active guest-to-host doorbell suppression, inline SQE payloads, direct
+- Not yet implemented: Tier 3 dedicated polling, inline SQE payloads, direct
   handling of the `Write`/`Read`/`Open`/`Close`/`Stat` SQE opcodes, and full
   elimination of the socket fallback for compatibility `IkcFrame::Bulk`
   responses.
@@ -653,7 +656,8 @@ Interpretation:
 - These gains are consistent with removing the `uservm` SQ-drain / CQ-write hot path from the
   active transport path, amortizing one logical transfer across up to `16` shared fixed buffers,
   and collapsing receive-side completion traffic to one logical CQ event per `readv()` / `preadv()`
-  result. Adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
+  result. The published numbers still predate the later bounded guest-to-host SQ polling window,
+  and adaptive polling, guest-to-host doorbell suppression, and full fallback elimination are
   still pending.
 
 ## Key Design Decisions

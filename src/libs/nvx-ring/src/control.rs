@@ -14,6 +14,8 @@ use core::sync::atomic::{
 pub struct SqFlags(pub u32);
 
 impl SqFlags {
+    /// Host is actively draining or polling the SQ, so the guest may skip the doorbell.
+    pub const NONE: Self = Self(0);
     /// Host has parked on epoll and needs a doorbell PIO write to wake up.
     pub const NEED_WAKEUP: Self = Self(1 << 0);
 }

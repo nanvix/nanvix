@@ -94,10 +94,13 @@ build_initramfs() {
     chmod +x "$INITRAMFS_DIR/bin/linuxd.elf"
 cat >/tmp/init <<EOF
 #!/bin/sh
+set -eu
 
 echo "[init] Nanvix L2 System VM init wrapper started!"
 
 # Set-up any resources that linuxd needs when running in the L2-VM.
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
 
 # We must bind to the same IP, as it is the only one available in the guest.
 echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
@@ -116,7 +119,7 @@ EOF
 
     print_info "Creating initramfs..."
     cd "${INITRAMFS_DIR}"
-    find . | sudo cpio -H newc -o | gzip -9 > "$INITRAMFS_IMAGE"
+    find . | cpio -H newc -o | gzip -9 > "$INITRAMFS_IMAGE"
     cd -
 
     print_success "initramfs stored in: ${INITRAMFS_IMAGE}"
