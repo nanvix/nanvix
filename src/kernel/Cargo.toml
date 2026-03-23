@@ -59,29 +59,10 @@ microvm = [
     "dep:multibin",
     "config/microvm",
 ]
-pc = [
-    "arch/pc",
-    "putb",
-    "bios",
-    "cmos",
-    "mboot",
-    "pit",
-    "warn",
-    "dep:config",
-    "config/pc",
-]
-qemu-pc = ["arch/qemu-pc", "pc"]
-qemu-pc-smp = ["arch/qemu-pc-smp", "qemu-pc", "smp"]
-qemu-baremetal = ["arch/qemu-baremetal", "pc"]
-qemu-baremetal-smp = ["arch/qemu-baremetal-smp", "qemu-baremetal", "smp"]
-qemu-isapc = ["arch/qemu-isapc", "pc"]
-
 # Platform Features
-smp = []
+
 whp = ["config/whp"]
-bios = []
-cmos = []
-mboot = []
+smp = []
 pit = []
 putb = []
 puts = []

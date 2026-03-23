@@ -19,10 +19,10 @@ use ::sys::error::Error;
 ///
 #[repr(C)]
 pub struct KernelArguments {
-    /// Magic value multiboot.
-    mboot_magic: u32,
-    /// Address of multiboot information.
-    mboot_info: usize,
+    /// Boot magic value.
+    boot_magic: u32,
+    /// Address of boot information structure.
+    boot_info: usize,
 }
 
 // `KernelArguments` must be 8 bytes long. This must match low-level startup code.
@@ -37,15 +37,8 @@ pub struct KernelArguments {
 
 impl KernelArguments {
     /// Parses kernel arguments.
-    #[cfg(feature = "mboot")]
     pub fn parse(&self) -> Result<BootInfo, Error> {
-        crate::hal::platform::mboot::parse(self.mboot_magic, self.mboot_info)
-    }
-
-    /// Parses kernel arguments.
-    #[cfg(not(feature = "mboot"))]
-    pub fn parse(&self) -> Result<BootInfo, Error> {
-        crate::hal::platform::parse_bootinfo(self.mboot_magic, self.mboot_info)
+        crate::hal::platform::parse_bootinfo(self.boot_magic, self.boot_info)
     }
 }
 
@@ -57,8 +50,8 @@ impl core::fmt::Debug for KernelArguments {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(
             f,
-            "kernel_arguments {{ mboot_magic: {:#010x}, mboot_info: {:#010x} }}",
-            self.mboot_magic, self.mboot_info
+            "kernel_arguments {{ boot_magic: {:#010x}, boot_info: {:#010x} }}",
+            self.boot_magic, self.boot_info
         )
     }
 }
