@@ -20,11 +20,3 @@ pub const LAPIC_MMIO_TAG: MmioTag = MmioTag::new(*b"LAPIC   ");
 /// Tag used to identify the RAMFS MMIO region.
 #[cfg(any(feature = "microvm", feature = "hyperlight"))]
 pub const RAMFS_MMIO_TAG: MmioTag = MmioTag::new(*b"RAMFS   ");
-
-/// Tag used to identify the legacy VGA-compatible video MMIO window.
-#[cfg(any(
-    feature = "qemu-pc",
-    feature = "qemu-isapc",
-    feature = "qemu-baremetal"
-))]
-pub const VIDEO_MMIO_TAG: MmioTag = MmioTag::new(*b"VIDEO   ");

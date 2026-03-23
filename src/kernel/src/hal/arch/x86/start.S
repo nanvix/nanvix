@@ -18,21 +18,6 @@
 
 #include "asm_defs.h"
 
-/* Multiboot2 magic constant */
-#define MBOOT2_HEADER_MAGIC 0xe85250d6
-
-/* Multiboot2 architecture ID. */
-#define MBOOT2_ARCHITECTURE_I386 0
-
-/* Multiboot2 header tag types. */
-#define MBOOT2_HEADER_TAG_END 0
-
-/* Check if compiling for a PC platform */
-#ifdef __pc__
-/* Enable multiboot header. */
-#define __multiboot__
-#endif
-
 /*============================================================================*
  * Imported Symbols                                                           *
  *============================================================================*/
@@ -50,31 +35,6 @@
 .section .bootstrap,"ax",@progbits
 
 /*----------------------------------------------------------------------------*
- * mboot_header                                                           *
- *----------------------------------------------------------------------------*/
-
-/* Check if multiboot header must be enabled. */
-#if defined(__multiboot__)
-
-/*
- *  Multiboot2 header.
- */
-.align 8
-mboot_header:
-        .long MBOOT2_HEADER_MAGIC             /* Magic number. */
-        .long MBOOT2_ARCHITECTURE_I386        /* Architecture  */
-        .long mboot_header_end - mboot_header /* Header Length */
-        /*  Checksum */
-        .long -(MBOOT2_HEADER_MAGIC + MBOOT2_ARCHITECTURE_I386 + (mboot_header_end - mboot_header))
-        framebuffer_tag_end:
-        .short MBOOT2_HEADER_TAG_END
-        .short 0
-        .long 8
-mboot_header_end:
-
-#endif
-
-/*----------------------------------------------------------------------------*
  * _do_start()                                                                *
  *----------------------------------------------------------------------------*/
 
@@ -82,10 +42,6 @@ mboot_header_end:
  * Entry point.
  */
 .align 4
-#if defined(__multiboot__)
-.globl _do_start
-_do_start:
-#else
 .globl _do_start2
 _do_start2:
     mov $0x10, %dx
@@ -94,14 +50,11 @@ _do_start2:
     mov %dx, %fs
     mov %dx, %gs
     mov %dx, %ss
-#endif
 
     /*
-     * EAX and EBX registers store boot information.
-     *
-     * Multiboot:
+     * EAX and EBX registers store boot information:
      *  - EAX: Magic value.
-     *  - EBX: Address of multiboot2 structure.
+     *  - EBX: Address of boot information structure.
      */
 
     /*

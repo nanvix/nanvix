@@ -5,13 +5,6 @@
 // Modules
 //==================================================================================================
 
-#[cfg(any(
-    feature = "qemu-pc",
-    feature = "qemu-isapc",
-    feature = "qemu-baremetal"
-))]
-mod pc;
-
 #[cfg(feature = "hyperlight")]
 pub(crate) mod hyperlight;
 #[cfg(feature = "microvm")]
@@ -26,25 +19,11 @@ pub mod pit;
 // Exports
 //==================================================================================================
 
-#[cfg(any(
-    feature = "qemu-pc",
-    feature = "qemu-isapc",
-    feature = "qemu-baremetal"
-))]
-pub use pc::*;
-
 #[cfg(feature = "microvm")]
 pub use microvm::*;
 
 #[cfg(feature = "hyperlight")]
 pub use hyperlight::*;
-
-#[cfg(any(
-    feature = "qemu-pc",
-    feature = "qemu-isapc",
-    feature = "qemu-baremetal"
-))]
-use pc::do_shutdown;
 
 #[cfg(feature = "microvm")]
 use microvm::do_shutdown;
