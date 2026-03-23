@@ -60,44 +60,13 @@ source "${IMPORT_DIR}/logging.sh"
 # Global Variables
 #===================================================================================================
 
-# Configuration matrix matching CI (self-hosted-ci.yml).
-declare -a MACHINE_TYPES=("qemu-pc" "microvm" "hyperlight")
+# Configuration matrix matching CI (ci.yml).
+declare -a MACHINE_TYPES=("microvm" "hyperlight")
 declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
 
 #===================================================================================================
 # Functions
 #===================================================================================================
-
-#
-# DESCRIPTION
-#   Checks if a configuration should be excluded based on CI matrix rules.
-#
-# ARGUMENTS
-#   $1 - Machine type.
-#   $2 - Deployment type.
-#
-# RETURNS
-#   0 if excluded, 1 if included.
-#
-# USAGE EXAMPLE
-#   if is_excluded "qemu-pc" "single-process"; then
-#       echo "Configuration is excluded."
-#   fi
-#
-is_excluded() {
-    local machine="${1}"
-    local deployment="${2}"
-
-    # Exclusion rules from self-hosted-ci.yml.
-    if [[ "${machine}" == "qemu-pc" && "${deployment}" == "standalone" ]]; then
-        return 0
-    fi
-    if [[ "${machine}" == "qemu-pc" && "${deployment}" == "single-process" ]]; then
-        return 0
-    fi
-
-    return 1
-}
 
 #
 # DESCRIPTION
@@ -204,13 +173,6 @@ main() {
     for machine in "${MACHINE_TYPES[@]}"; do
         for deployment in "${DEPLOYMENT_TYPES[@]}"; do
             total_configs=$((total_configs + 1))
-
-            # Skip excluded configurations.
-            if is_excluded "${machine}" "${deployment}"; then
-                print_info "(pre-commit) Skipping excluded configuration: ${build_type}, ${machine}, ${deployment}."
-                continue
-            fi
-
             checked_configs=$((checked_configs + 1))
 
             # Get configuration flags.
