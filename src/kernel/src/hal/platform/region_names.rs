@@ -30,5 +30,5 @@ pub const LAPIC_REGION_NAME: &str = "local_apic";
 pub const VIDEO_MMIO_REGION_NAME: &str = "video display memory";
 
 /// Name used for the RAMFS MMIO region.
-#[cfg(feature = "microvm")]
+#[cfg(any(feature = "microvm", feature = "hyperlight"))]
 pub const RAMFS_REGION_NAME: &str = "ramfs";

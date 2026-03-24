@@ -61,7 +61,7 @@ program = "./bin/vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
 input = "[]"
 expect_empty_output = true
-runs_on = ["microvm"]
+expected_exit_code = 0
 
 [[tests]]
 executor = "http"
@@ -185,7 +185,7 @@ program = "./bin/vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
 input = "[]"
 expect_empty_output = true
-runs_on = ["microvm"]
+expected_exit_code = 0
 
 [[tests]]
 executor = "terminal"

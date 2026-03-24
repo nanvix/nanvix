@@ -22,6 +22,7 @@ use crate::{
         io::{
             IoMemoryAllocator,
             IoPortAllocator,
+            MmioTag,
         },
         mem::{
             MemoryRegion,
@@ -33,6 +34,8 @@ use crate::{
             bootinfo::BootInfo,
             madt::MadtInfo,
             peb::ProcessEnvironmentBlock,
+            region_names::RAMFS_REGION_NAME,
+            region_tags::RAMFS_MMIO_TAG,
         },
     },
     kmod::KernelModule,
@@ -49,13 +52,18 @@ use ::arch::{
     mem::PAGE_ALIGNMENT,
 };
 use ::config::hyperlight::{
-    HOST_FUNCTION_DEFINITIONS_SIZE,
     INITRD_SIZE_BYTES,
     INPUT_DATA_BUFFER_SIZE,
     OUTPUT_DATA_BUFFER_SIZE,
     PEB_SIZE,
 };
-use ::hyperlight_common::mem::HyperlightPEB;
+use ::hyperlight_common::{
+    layout::MAX_GVA,
+    mem::{
+        FileMappingInfo,
+        HyperlightPEB,
+    },
+};
 use ::sys::{
     config::memory_layout,
     error::{
@@ -180,34 +188,49 @@ pub unsafe fn puts(message: &str) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
     use crate::PERF_VMBUS_WRITE;
-    use ::sys::ipc::{
-        DataChunkHeader,
-        VmBusMessage,
-    };
+    use ::sys::ipc::VmBusMessage;
 
     PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    // Read the vmbus message from the given address.
     let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
 
     if vmbus_msg.is_ikc() {
-        // IKC message: read the message bytes from the address stored in the vmbus message and
-        // send them to the host via the VmbusWrite host function (unchanged protocol).
         let message_data: &[u8] = core::slice::from_raw_parts(
             vmbus_msg.message_addr() as *const u8,
             vmbus_msg.size() as usize,
         );
         let _ = ProcessEnvironmentBlock::vmbus_write(message_data);
     } else {
-        // Data chunk transfer: vmbus_msg.message_addr() points to a DataChunkHeader on the stack.
-        // Send only the header bytes (24 bytes) to the host via VmbusBulkWrite. The host
-        // function reads the actual bulk payload directly from guest shared memory using the
-        // GPA stored in header.data_addr(). This avoids allocating a large buffer on the
-        // kernel heap.
-        let header: DataChunkHeader =
-            core::ptr::read_unaligned(vmbus_msg.message_addr() as *const DataChunkHeader);
-        let header_bytes: [u8; DataChunkHeader::SIZE] = header.to_bytes();
-        let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&header_bytes);
+        // Bulk: read header, then copy payload from the user GPA using
+        // __phys_memcpy (paging-disabled physical copy) because the GPA
+        // points to a user frame that is not identity-mapped in the
+        // kernel's page tables.
+        // FIXME (#1730): replace __phys_memcpy workaround with proper paging support.
+        let header: ::sys::ipc::DataChunkHeader = core::ptr::read_unaligned(
+            vmbus_msg.message_addr() as *const ::sys::ipc::DataChunkHeader,
+        );
+        let header_bytes: [u8; ::sys::ipc::DataChunkHeader::SIZE] = header.to_bytes();
+
+        let data_gpa: usize = header.data_addr() as usize;
+        let data_len: usize = header.data_len() as usize;
+
+        extern "C" {
+            fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
+        }
+
+        // Send header + payload in a single VmbusBulkWrite call.
+        // The host-side bulk_output_fn expects [DataChunkHeader][payload] combined.
+        let total_len: usize = ::sys::ipc::DataChunkHeader::SIZE + data_len;
+        let mut buf: alloc::vec::Vec<u8> = alloc::vec![0u8; total_len];
+        buf[..::sys::ipc::DataChunkHeader::SIZE].copy_from_slice(&header_bytes);
+
+        if data_len > 0 {
+            let payload_dst: *mut u8 =
+                unsafe { buf.as_mut_ptr().add(::sys::ipc::DataChunkHeader::SIZE) };
+            __phys_memcpy(payload_dst, data_gpa as *const u8, data_len);
+        }
+
+        let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&buf);
     }
 }
 
@@ -215,6 +238,12 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 /// # Description
 ///
 /// Places a read request to the platform's standard input device.
+///
+/// If the VmbusRead response is a PullResponse message (containing a [`DataChunkHeader`]),
+/// the bulk data payload is fetched in small chunks via the `VmbusBulkRead` host function
+/// and copied directly into guest physical memory at the GPA encoded in the header.
+/// Each chunk is kept under 400 bytes to fit within the kernel's 512-byte slab allocator
+/// after FlatBuffer serialization overhead.
 ///
 /// # Parameters
 ///
@@ -237,14 +266,68 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
     // Read the vmbus message from the given address.
     let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
 
-    // Write received message bytes to the address stored in the vmbus message.
+    // Read the response from the host (just the IPC message, no bulk data concatenated).
     let bytes: Result<alloc::vec::Vec<u8>, _> = ProcessEnvironmentBlock::vmbus_read();
     if let Ok(bytes) = bytes {
-        let dest: &mut [u8] = core::slice::from_raw_parts_mut(
-            vmbus_msg.message_addr() as *mut u8,
-            vmbus_msg.size() as usize,
-        );
-        dest.copy_from_slice(&bytes);
+        let msg_size: usize = vmbus_msg.size() as usize;
+        let copy_len: usize = bytes.len().min(msg_size);
+        if copy_len > 0 {
+            let dest: &mut [u8] =
+                core::slice::from_raw_parts_mut(vmbus_msg.message_addr() as *mut u8, copy_len);
+            dest.copy_from_slice(&bytes[..copy_len]);
+        }
+
+        // Check if this is a PullResponse that has bulk data to fetch.
+        // Parse the DataChunkHeader from the message payload to determine the destination GPA
+        // and total data length, then read the data in chunks via VmbusBulkRead.
+        // FIXME (#1730): replace __phys_memcpy workaround with proper paging support.
+        extern "C" {
+            fn __phys_memcpy(dst: *mut u8, src: *const u8, size: usize);
+        }
+
+        let header_offset: usize = ::sys::ipc::Message::HEADER_SIZE;
+        if msg_size >= header_offset + ::sys::ipc::DataChunkHeader::SIZE && bytes.len() >= msg_size
+        {
+            let mut header_bytes: [u8; ::sys::ipc::DataChunkHeader::SIZE] =
+                [0u8; ::sys::ipc::DataChunkHeader::SIZE];
+            header_bytes.copy_from_slice(
+                &bytes[header_offset..header_offset + ::sys::ipc::DataChunkHeader::SIZE],
+            );
+            if let Ok(header) = ::sys::ipc::DataChunkHeader::try_from_bytes(header_bytes) {
+                let dest_gpa: usize = header.data_addr() as usize;
+                let total_len: usize = header.data_len() as usize;
+
+                if total_len > 0 {
+                    let mut offset: usize = 0;
+                    while offset < total_len {
+                        match ProcessEnvironmentBlock::vmbus_bulk_read() {
+                            Ok(chunk) => {
+                                if chunk.is_empty() {
+                                    break;
+                                }
+                                let chunk_len: usize = chunk.len();
+                                trace!(
+                                    "vmbus_read(): bulk chunk {} bytes to GPA {:#x}+{:#x}",
+                                    chunk_len,
+                                    dest_gpa,
+                                    offset
+                                );
+                                __phys_memcpy(
+                                    (dest_gpa + offset) as *mut u8,
+                                    chunk.as_ptr(),
+                                    chunk_len,
+                                );
+                                offset += chunk_len;
+                            },
+                            Err(e) => {
+                                error!("vmbus_read(): VmbusBulkRead failed: {:?}", e);
+                                break;
+                            },
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -303,7 +386,6 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
 
     unsafe {
         ProcessEnvironmentBlock::init(peb_ptr)?;
-        ProcessEnvironmentBlock::set_guest_function_dispatch_ptr(0xdeadbeef)?;
     };
 
     let mut kernel_modules: LinkedList<KernelModule> = LinkedList::new();
@@ -398,6 +480,12 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
     ioports.register_read_write(::arch::cpu::pit::PIT_DATA)?;
 
+    // Configure the PV timer: writing the period (in microseconds) to the
+    // PvTimerConfig port tells the hypervisor to inject periodic timer interrupts at that rate.
+    ioports.register_read_write(::config::hyperlight::PV_TIMER_PORT)?;
+    let mut pv_timer_port = ioports.allocate_read_write(::config::hyperlight::PV_TIMER_PORT)?;
+    pv_timer_port.write32(::config::hyperlight::TIMER_PERIOD_US);
+
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
 }
 
@@ -405,7 +493,7 @@ pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     memory_regions: &mut LinkedList<MemoryRegion<VirtualAddress>>,
-    _mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+    mmio_regions: &mut LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
@@ -431,30 +519,13 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
-    // Register host function definitions.
-    let host_function_definitions_base: usize =
-        peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
-            let reason: &str = "host function definitions base address overflow";
-            error!("init(): {}", reason);
-            Error::new(ErrorCode::OutOfMemory, reason)
-        })?;
-    let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "host function definitions",
-        VirtualAddress::from_raw_value(host_function_definitions_base),
-        HOST_FUNCTION_DEFINITIONS_SIZE,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(host_function_definitions);
-
     // Register input data buffer.
-    let input_data_base: usize = host_function_definitions_base
-        .checked_add(HOST_FUNCTION_DEFINITIONS_SIZE)
-        .ok_or_else(|| {
-            let reason: &str = "input data buffer base address overflow";
-            error!("init(): {}", reason);
-            Error::new(ErrorCode::OutOfMemory, reason)
-        })?;
+    // Register input data buffer (directly after PEB in v0.13.0+).
+    let input_data_base: usize = peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
+        let reason: &str = "input data buffer base address overflow";
+        error!("init(): {}", reason);
+        Error::new(ErrorCode::OutOfMemory, reason)
+    })?;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
         VirtualAddress::from_raw_value(input_data_base),
@@ -551,6 +622,82 @@ pub fn init(
         AccessPermission::RDONLY,
     )?;
     memory_regions.push_back(guest_user_stack);
+
+    // Register RAMFS region as MMIO for identity mapping, if present.
+    // The host writes file mapping metadata into the PEB's file_mappings array
+    // during evolve(). We scan the entries for the "ramfs" label and, if found,
+    // register an MMIO region so the kernel's page tables will identity-map the
+    // file-backed memory.
+    {
+        let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
+        let count: usize = unsafe { (*peb_ptr).file_mappings.size } as usize;
+        let array_ptr: *const FileMappingInfo =
+            unsafe { (*peb_ptr).file_mappings.ptr } as *const FileMappingInfo;
+
+        if count > 0 && !array_ptr.is_null() {
+            for i in 0..count {
+                let entry: &FileMappingInfo = unsafe { &*array_ptr.add(i) };
+
+                // Only register entries whose label matches "ramfs".
+                let label_len: usize = entry
+                    .label
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(entry.label.len());
+                let label: &str = core::str::from_utf8(&entry.label[..label_len]).unwrap_or("");
+                if label != "ramfs" {
+                    continue;
+                }
+
+                let ramfs_base: usize = entry.guest_addr as usize;
+                let ramfs_size: usize = entry.size as usize;
+
+                if ramfs_base != 0 && ramfs_size != 0 {
+                    info!(
+                        "file mapping [{}]: base={:#010x}, size={:#x}",
+                        i, ramfs_base, ramfs_size
+                    );
+                    let ramfs_region: TruncatedMemoryRegion<VirtualAddress> =
+                        TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
+                            RAMFS_REGION_NAME,
+                            VirtualAddress::from_raw_value(ramfs_base),
+                            ramfs_size,
+                            MemoryRegionType::Mmio,
+                            AccessPermission::RDWR,
+                        )?)?;
+                    ioaddresses.register(RAMFS_MMIO_TAG, ramfs_region.clone())?;
+                    mmio_regions.push_back(ramfs_region);
+                }
+            }
+        }
+    }
+
+    // Register scratch I/O buffers as MMIO regions for identity mapping.
+    // The hyperlight-guest library accesses I/O buffers at scratch GVAs (read from PEB).
+    // When the kernel enables its own paging, these high addresses are unmapped unless
+    // we explicitly register them as MMIO regions for identity mapping.
+    let peb_ptr: *const HyperlightPEB = peb_base as *const HyperlightPEB;
+    let input_gva = unsafe { (*peb_ptr).input_stack.ptr } as usize;
+
+    if input_gva >= config::kernel::MEMORY_SIZE {
+        // Extend the scratch I/O region to cover all the way up to (but not including)
+        // the last page of the address space. This includes the I/O buffers AND the
+        // bookkeeping area (scratch size, allocator, exception stack, guest counter).
+        // We stop one page short of MAX_GVA because the last page (frame 0xfffff)
+        // exceeds FrameNumber::MAX and cannot be booked by the frame allocator.
+        let scratch_end: usize = MAX_GVA - mem::PAGE_SIZE;
+        let scratch_io_size = scratch_end - input_gva + 1;
+        let scratch_io_region: TruncatedMemoryRegion<VirtualAddress> =
+            TruncatedMemoryRegion::from_memory_region(MemoryRegion::new(
+                "scratch io",
+                VirtualAddress::from_raw_value(input_gva),
+                scratch_io_size,
+                MemoryRegionType::Mmio,
+                AccessPermission::RDWR,
+            )?)?;
+        ioaddresses.register(MmioTag::from_name("SCRATCHIO"), scratch_io_region.clone())?;
+        mmio_regions.push_back(scratch_io_region);
+    }
 
     Ok(Platform {
         arch: x86::init(ioports, ioaddresses, madt)?,
