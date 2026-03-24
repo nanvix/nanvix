@@ -275,13 +275,11 @@ pub async fn test_with_terminal_executor(
             return Err(::anyhow::anyhow!(reason));
         }
 
-        // Validate exit code if expected_exit_code is specified and validation is not skipped.
+        // Validate exit code unless skip_exit_code_validation() is set.
         // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
         // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
-        if !workload.skip_exit_code_validation()
-            && let Some(expected) = workload.expected_exit_code()
-            && exit_code != expected
-        {
+        if !workload.skip_exit_code_validation() && exit_code != workload.expected_exit_code() {
+            let expected: i32 = workload.expected_exit_code();
             let reason: String = format!(
                 "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
                 expected,
@@ -293,12 +291,14 @@ pub async fn test_with_terminal_executor(
             return Err(::anyhow::anyhow!(reason));
         }
 
-        // When wait_exit_code succeeds on hyperlight, still validate the exit code.
+        // When wait_exit_code succeeds on hyperlight, still validate the exit code
+        // — but only if the test explicitly declared an expected exit code.
         if workload.skip_exit_code_validation()
             && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
-            && let Some(expected) = workload.expected_exit_code()
-            && exit_code != expected
+            && workload.has_explicit_expected_exit_code()
+            && exit_code != workload.expected_exit_code()
         {
+            let expected: i32 = workload.expected_exit_code();
             let reason: String = format!(
                 "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
                 expected,
