@@ -97,7 +97,12 @@ impl Slab {
         }
 
         // Check if the block size is valid.
-        if block_size == 0 || block_size >= i32::MAX as usize || block_size > len {
+        const U8_BITS: usize = u8::BITS as usize;
+        if block_size == 0
+            || block_size >= i32::MAX as usize
+            || block_size > (usize::MAX - 1) / U8_BITS
+            || block_size > len
+        {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
         }
 
@@ -119,7 +124,6 @@ impl Slab {
         // `num_index_blocks` blocks contain. The right-hand side of this inequality
         // is the number of blocks that aren't index blocks. So, a bitmap occupying
         // `num_index_blocks` blocks can address all the blocks outside of that bitmap.
-        const U8_BITS: usize = u8::BITS as usize;
         let divisor: usize = block_size * U8_BITS + 1;
         let num_index_blocks: usize = (total_num_blocks / divisor)
             + if total_num_blocks.is_multiple_of(divisor) {
