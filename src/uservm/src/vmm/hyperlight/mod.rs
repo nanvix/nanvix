@@ -320,12 +320,10 @@ impl Vmm {
         // Create a guest counter backed by a fixed offset in scratch memory.
         // The counter holds its own Arc clones of the mapping handle and RwLock,
         // so it remains valid across evolve() and for the sandbox's entire lifetime.
-        let counter: GuestCounter = sandbox
-            .guest_counter()
-            .map_err(|e| {
-                error!("failed to get guest counter: {e:?}");
-                anyhow::anyhow!("{e:?}")
-            })?;
+        let counter: GuestCounter = sandbox.guest_counter().map_err(|e| {
+            error!("failed to get guest counter: {e:?}");
+            anyhow::anyhow!("{e:?}")
+        })?;
 
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(VirtualMemory { counter }));
 
