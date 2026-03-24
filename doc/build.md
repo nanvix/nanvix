@@ -2,7 +2,7 @@
 
 > ℹ️ The instructions in this document assume that you have a system with the
 development environment already set up. For more information on how to set up
-your development environment, please refer to the [setup.md](setup.md) document.
+your development environment, please refer to the [setup](setup.md) guide.
 
 This document guides you through building Nanvix. You can either use the `z` utility script for a
 simplified build process or do it manually.
@@ -22,7 +22,7 @@ simplified build process or do it manually.
 
 ## Building Nanvix on Linux
 
-> ℹ️ Ensure you have completed the [Linux setup](setup.md#linux-setup) before proceeding.
+> ℹ️ Ensure you have completed the [Linux setup](setup-linux.md) before proceeding.
 
 ### Building Nanvix with `z` (Preferred Method)
 
@@ -128,7 +128,7 @@ Guest components (kernel, user binaries) are cross-compiled inside Docker, while
 (`nanvixd`, `uservm`) are built natively using the Windows Hypervisor Platform (WHP) backend.
 The WHP backend is automatically selected when building with the `microvm` feature on Windows.
 
-> ℹ️ Ensure you have completed the [Windows setup](setup.md#windows-setup) before proceeding.
+> ℹ️ Ensure you have completed the [Windows setup](setup-windows.md) before proceeding.
 
 ### Building Everything
 
