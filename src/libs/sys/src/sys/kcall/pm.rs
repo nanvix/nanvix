@@ -185,8 +185,8 @@ pub fn terminate(pid: ProcessIdentifier) -> Result<(), Error> {
         # avoids routing through a Rust intermediate function whose compiler-
         # generated prologue may not preserve 16-byte alignment (the Nanvix Rust
         # target disables SSE, so LLVM omits alignment-preserving prologues).
-        # The callee func may be compiled by GCC with SSE enabled and may
-        # therefore require 16-byte-aligned stack frames (e.g., movaps).
+        # The callee func may require 16-byte-aligned stack frames (e.g.,
+        # movaps) when SSE instructions are present.
         #
 
         # Save func and arg into callee-saved registers.

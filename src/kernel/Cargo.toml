@@ -32,8 +32,6 @@ static_assert = { workspace = true }
 
 [build-dependencies]
 build-utils = { workspace = true }
-cc = { workspace = true }
-cfg-if = { workspace = true }
 
 [features]
 default = ["microvm"]
