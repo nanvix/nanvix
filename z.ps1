@@ -104,7 +104,7 @@ Build Parameters (after --)
   RELEASE=yes             Enable release mode.
   MACHINE=microvm         Target machine (default: microvm).
   WHP=yes                 Enable WHP-specific guest kernel code for microvm builds.
-  LOG_LEVEL=warn          Log level (default: warn).
+  LOG_LEVEL=<level>       Log level (default: trace for debug, warn for release).
 
 Prerequisites
   - Docker Desktop for Windows (with Linux containers enabled).
