@@ -105,7 +105,7 @@ containerd-shim-protos = { version = "0.10.0", features = ["async", "sandbox"] }
 control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
-env_logger = "0.11.9"
+env_logger = "0.11.10"
 error = { path = "src/libs/error", default-features = false }
 fat32 = { path = "src/libs/fat32", default-features = false }
 # fatfs: pinned to a git revision because the crate is not published on
@@ -192,7 +192,7 @@ tempfile = "3"
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 thiserror = "2"
 tokio = { version = "1.50.0", default-features = false }
-toml = { version = "1.0.7", default-features = false, features = [
+toml = { version = "1.1.0", default-features = false, features = [
         "parse",
         "serde",
 ] }
