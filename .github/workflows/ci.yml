@@ -366,8 +366,6 @@ jobs:
             deployment-type: standalone
           - machine-type: qemu-pc
             deployment-type: single-process
-          - machine-type: hyperlight
-            deployment-type: standalone
     runs-on:
       group: Test
     permissions:
@@ -566,18 +564,8 @@ jobs:
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown echo-breakdown-l2"
             echo-iterations: "1000"
-          - machine-type: hyperlight
-            # NOTE: L2 benchmarks (cold-start-l2, concurrent-l2, warm-start-l2) are
-            # excluded until validated on CI runners. warm-start-vmm is excluded
-            # because the low-level VMM benchmark crashes (SIGKILL) on the Hyperlight
-            # VMM.
-            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent round-trip-latency warm-start"
-            standard-iterations: "100"
-            # NOTE: echo-breakdown is excluded for Hyperlight because the Hyperlight
-            # data path has fewer timestamp instrumentation points than expected
-            # (2 vs 10).
-            echo-benchmarks: ""
-            echo-iterations: ""
+          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
+          # round-trip-latency failure is investigated.
     runs-on:
       group: Benchmark
     permissions:
@@ -710,7 +698,7 @@ jobs:
         uses: ./.github/actions/benchmark-report
         with:
           benchmarks: "boot-time,cold-start,cold-start-l2,cold-start-uvm,concurrent,concurrent-l2,echo-breakdown,echo-breakdown-l2,round-trip-latency,snapshot-restore,warm-start,warm-start-l2,warm-start-vmm"
-          machine-types: "microvm,hyperlight"
+          machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
           runner-label: "self-hosted"
@@ -759,18 +747,8 @@ jobs:
             standard-iterations: "100"
             echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
-          - machine-type: hyperlight
-            # NOTE: concurrent is excluded because spawning 100 Hyperlight VMs
-            # exceeds the ~7 GB RAM available on GitHub-hosted runners.
-            # warm-start-vmm is excluded because the low-level VMM benchmark
-            # crashes (SIGKILL) on the Hyperlight VMM.
-            standard-benchmarks: "boot-time cold-start cold-start-uvm round-trip-latency warm-start"
-            standard-iterations: "100"
-            # NOTE: echo-breakdown is excluded for Hyperlight because the
-            # Hyperlight data path has fewer timestamp instrumentation points
-            # than expected (2 vs 10).
-            echo-benchmarks: ""
-            echo-iterations: ""
+          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
+          # round-trip-latency failure is investigated.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -884,7 +862,7 @@ jobs:
         uses: ./.github/actions/benchmark-report
         with:
           benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-trip-latency,snapshot-restore,warm-start,warm-start-vmm"
-          machine-types: "microvm,hyperlight"
+          machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/github"
           runner-label: "github-hosted"

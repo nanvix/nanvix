@@ -17,8 +17,10 @@ STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-ru
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
 # listed in STANDALONE_GUEST_BINARIES also get the 'standalone' cargo feature.
+# When MACHINE=hyperlight, standalone guest binaries also get the 'hyperlight' feature.
 _STANDALONE_FEATURE := standalone
-_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE))
+_HYPERLIGHT_FEATURE := $(if $(filter hyperlight,$(MACHINE)),hyperlight)
+_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE) $(_HYPERLIGHT_FEATURE))
 _pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
 
 # Returns package-specific cargo features, falling back to generic features.
@@ -61,7 +63,7 @@ _GUEST_BINS_COMMON := $(filter-out test-kernel,$(ALL_GUEST_BINARIES))
 ifeq ($(DEPLOYMENT_MODE),standalone)
 _GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
 _GUEST_BINS_REGULAR := $(filter-out $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
-_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE))
+_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE) $(_HYPERLIGHT_FEATURE))
 _GUEST_BINS_STANDALONE_CARGO_FEATURES := $(if $(_GUEST_BINS_STANDALONE_FEATURES),--features "$(_GUEST_BINS_STANDALONE_FEATURES)")
 else
 _GUEST_BINS_REGULAR := $(_GUEST_BINS_COMMON)

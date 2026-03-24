@@ -57,24 +57,6 @@ impl ProcessEnvironmentBlock {
         }
     }
 
-    /// Sets the guest function dispatch pointer.
-    ///
-    /// # Safety
-    /// This function is unsafe because it dereferences a raw pointer.
-    pub unsafe fn set_guest_function_dispatch_ptr(ptr: u64) -> Result<(), Error> {
-        match GUEST_HANDLE.peb() {
-            Some(peb_ptr) => {
-                (*peb_ptr).guest_function_dispatch_ptr = ptr;
-                Ok(())
-            },
-            None => {
-                let reason: &'static str = "set_guest_function_dispatch_ptr: peb not initialized";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::NoSuchDevice, reason))
-            },
-        }
-    }
-
     ///
     /// # Description
     ///
@@ -99,20 +81,16 @@ impl ProcessEnvironmentBlock {
     /// # Safety
     /// This function is unsafe because it dereferences a raw pointer.
     pub unsafe fn get_credits() -> Result<u64, Error> {
-        match GUEST_HANDLE.peb() {
-            Some(peb_ptr) => {
-                // Credits_value is updated asynchronously by the host;
-                // so we use a volatile read to avoid reading stale data.
-                Ok(::core::ptr::read_volatile::<u64>(::core::ptr::addr_of!(
-                    (*peb_ptr).credits_value
-                )))
-            },
-            None => {
-                let reason: &'static str = "get_credits: peb not initialized";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::NoSuchDevice, reason))
-            },
-        }
+        // Credits are stored at a fixed offset from the top of scratch memory.
+        // The host writes here via GuestCounter; we read via volatile read.
+        // GVA = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET + 1
+        use ::hyperlight_common::layout::{
+            MAX_GVA,
+            SCRATCH_TOP_GUEST_COUNTER_OFFSET,
+        };
+        let credits_gva: usize = MAX_GVA - SCRATCH_TOP_GUEST_COUNTER_OFFSET as usize + 1;
+        let credits_ptr: *const u64 = credits_gva as *const u64;
+        Ok(::core::ptr::read_volatile(credits_ptr))
     }
 
     /// Writes a message to the guest's standard output.
@@ -136,28 +114,21 @@ impl ProcessEnvironmentBlock {
         }
     }
 
-    /// Writes a data chunk transfer header to the host via the `VmbusBulkWrite` host function. The
-    /// host function reads the actual bulk payload directly from guest shared memory at the GPA
-    /// stored in the header's `data_addr` field.
-    ///
-    /// # Parameters
-    ///
-    /// - `header`: Serialized [`DataChunkHeader`] bytes.
+    /// Writes bulk data (header + payload) via the VmbusBulkWrite host function.
     ///
     /// # Safety
-    ///
     /// This function is unsafe because it uses a static mutable variable.
-    pub unsafe fn vmbus_bulk_write(header: &[u8]) -> Result<(), Error> {
+    pub unsafe fn vmbus_bulk_write(data: &[u8]) -> Result<(), Error> {
         let failure_reason: &'static str = "vmbus_bulk_write: failed to write data";
         let count: i32 = GUEST_HANDLE
             .call_host_function::<i32>(
                 "VmbusBulkWrite",
-                Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(header))])),
+                Some(Vec::from(&[ParameterValue::VecBytes(Vec::from(data))])),
                 ReturnType::Int,
             )
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))?;
 
-        if count < 0 {
+        if count != data.len() as i32 {
             Err(Error::new(ErrorCode::IoErr, failure_reason))
         } else {
             Ok(())
@@ -172,6 +143,19 @@ impl ProcessEnvironmentBlock {
         let failure_reason: &'static str = "vmbus_read: failed to read data";
         GUEST_HANDLE
             .call_host_function::<Vec<u8>>("VmbusRead", None, ReturnType::VecBytes)
+            .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))
+    }
+
+    /// Reads the next chunk of bulk data from the host via the VmbusBulkRead host function.
+    ///
+    /// Returns an empty Vec when all bulk data has been consumed.
+    ///
+    /// # Safety
+    /// This function is unsafe because it uses a static mutable variable.
+    pub unsafe fn vmbus_bulk_read() -> Result<Vec<u8>, Error> {
+        let failure_reason: &'static str = "vmbus_bulk_read: failed to read data";
+        GUEST_HANDLE
+            .call_host_function::<Vec<u8>>("VmbusBulkRead", None, ReturnType::VecBytes)
             .map_err(|_| Error::new(ErrorCode::IoErr, failure_reason))
     }
 }
