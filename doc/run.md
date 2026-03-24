@@ -1,7 +1,7 @@
 # Running Nanvix
 
-> **Prerequisite:** You must build Nanvix before running it. See [build.md](build.md) for
-> instructions.
+> **Prerequisite:** You must build Nanvix before running it. See [build-linux.md](build-linux.md)
+for > instructions.
 
 ## Overview
 
