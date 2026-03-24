@@ -39,7 +39,11 @@ $(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPL
 endif
 
 # Log Level
+ifeq ($(RELEASE),yes)
 export LOG_LEVEL ?= warn
+else
+export LOG_LEVEL ?= trace
+endif
 
 # Wasm binary to embed in the WASM Daemon
 export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
@@ -215,9 +219,10 @@ export NANVIX_CXXFLAGS += -O3
 export NANVIX_CFLAGS += -D__RELEASE
 export NANVIX_CXXFLAGS += -D__RELEASE
 else
-export NANVIX_CFLAGS += -O0
+export NANVIX_CFLAGS += -O3
 export NANVIX_CFLAGS += -g
-export NANVIX_CXXFLAGS += -O0
+export NANVIX_CXXFLAGS += -O3
+export NANVIX_CXXFLAGS += -g
 export NANVIX_CFLAGS += -D__DEBUG
 export NANVIX_CXXFLAGS += -D__DEBUG
 endif
