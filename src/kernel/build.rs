@@ -279,7 +279,7 @@ fn main() {
         }
     }
 
-    // Check for microvm feature
+    // Check for machine type feature.
     cfg_if::cfg_if! {
         if #[cfg(feature = "microvm")] {
             cflags.push("-D__microvm__".to_string());
@@ -288,7 +288,7 @@ fn main() {
             cflags.push("-D__hyperlight__".to_string());
         }
         else {
-            cflags.push("-D__pc__".to_string());
+            compile_error!("unsupported machine type: enable either 'microvm' or 'hyperlight'");
         }
     }
 

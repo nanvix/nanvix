@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Integration Test"
-description: "Run integration tests for microvm/hyperlight or qemu-pc machine types"
+description: "Run integration tests for microvm/hyperlight machine types"
 
 inputs:
   build-type:
@@ -18,10 +18,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-  # For microvm/hyperlight: smoke test that boots nanvixd and checks for the
-  # kernel magic string, verifying the multibin initrd (procd, testd, memd).
-  - name: "Smoke Test (microvm/hyperlight)"
-    if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+  # Smoke test that boots nanvixd and checks for the kernel magic string,
+  # verifying the multibin initrd (procd, testd, memd).
+  - name: "Smoke Test (${{ inputs.machine-type }})"
     shell: bash
     env:
       RUST_LOG: debug
@@ -59,9 +58,8 @@ runs:
 
       echo "Smoke test passed."
 
-  # For microvm/hyperlight: run test binary directly from downloaded artifacts.
-  - name: "Integration Test (microvm/hyperlight)"
-    if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+  # Run test binary directly from downloaded artifacts.
+  - name: "Integration Test (${{ inputs.machine-type }})"
     shell: bash
     env:
       RUST_LOG: info
@@ -82,37 +80,3 @@ runs:
 
       echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
       ./bin/nanvix-test.elf "${TEST_CONFIG}"
-
-  # For qemu-pc: create an ISO from the pre-built artifacts and run QEMU directly.
-  - name: "Integration Test (qemu-pc)"
-    if: inputs.machine-type == 'qemu-pc'
-    shell: bash
-    run: |
-      set -Eeuo pipefail
-
-      MAGIC_STRING="hello, world!"
-      TIMEOUT=600
-
-      # Build the ISO image from pre-built artifacts.
-      mkdir -p image/boot/grub
-      cp build/iso/boot/grub/grub.cfg image/boot/grub/
-      cp bin/*.elf image/
-      grub-mkrescue image -o nanvix.iso
-
-      if [[ "${{ inputs.build-type }}" == "release" ]]; then
-        # In release builds, CI sets LOG_LEVEL=error, which suppresses the debug-level
-        # magic string. Validate success by requiring QEMU to exit cleanly before timeout.
-        if ! bash scripts/run-qemu.sh x86 qemu-pc nanvix.iso --no-debug "${TIMEOUT}"; then
-          echo "::error::Integration test failed: QEMU did not exit cleanly within ${TIMEOUT}s."
-          exit 1
-        fi
-      else
-        # In debug builds, assert successful execution by waiting for kernel magic string.
-        if ! bash scripts/run-qemu.sh x86 qemu-pc nanvix.iso --no-debug "${TIMEOUT}" \
-          --wait-for-string "${MAGIC_STRING}"; then
-          echo "::error::Integration test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-          exit 1
-        fi
-      fi
-
-      echo "Integration test passed."
