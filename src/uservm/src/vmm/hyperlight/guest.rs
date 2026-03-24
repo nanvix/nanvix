@@ -40,12 +40,10 @@ impl Guest {
     /// On success, this function returns an empty tuple. Otherwise, it returns an error.
     ///
     pub fn add_credit(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
-        vmem.counter
-            .increment()
-            .map_err(|e| {
-                error!("add_credit(): failed to increment counter: {e:?}");
-                anyhow::anyhow!("{e:?}")
-            })
+        vmem.counter.increment().map_err(|e| {
+            error!("add_credit(): failed to increment counter: {e:?}");
+            anyhow::anyhow!("{e:?}")
+        })
     }
 
     ///
@@ -62,12 +60,10 @@ impl Guest {
     /// On success, this function returns an empty tuple. Otherwise, it returns an error.
     ///
     pub fn consume_credit(&mut self, vmem: &mut VirtualMemory) -> Result<()> {
-        vmem.counter
-            .decrement()
-            .map_err(|e| {
-                error!("consume_credit(): failed to decrement counter: {e:?}");
-                anyhow::anyhow!("{e:?}")
-            })
+        vmem.counter.decrement().map_err(|e| {
+            error!("consume_credit(): failed to decrement counter: {e:?}");
+            anyhow::anyhow!("{e:?}")
+        })
     }
 
     ///
