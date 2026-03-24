@@ -151,7 +151,7 @@ without Developer Mode enabled, Git checks out symlinks as small text files. The
 attempts to restore these as file copies before Docker builds, but issues may arise if the
 restoration fails.
 
-**Fix:** Re-clone with symlinks enabled (requires [Developer Mode](setup.md#2-enable-developer-mode)):
+**Fix:** Re-clone with symlinks enabled (requires [Developer Mode](setup-windows.md#2-enable-developer-mode)):
 
 ```powershell
 git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git
