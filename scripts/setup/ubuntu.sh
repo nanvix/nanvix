@@ -55,8 +55,6 @@ apt-get install -y        \
     ninja-build           \
     pkg-config            \
     python3-venv          \
-    qemu-kvm              \
-    qemu-system-x86       \
     shellcheck            \
     texinfo               \
     unzip                 \

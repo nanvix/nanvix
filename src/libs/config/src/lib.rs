@@ -32,9 +32,6 @@ pub mod system {
         if #[cfg(feature = "microvm")] {
             /// Default machine name.
             pub const DEFAULT_MACHINE_NAME: &str = "microvm";
-        } else if #[cfg(feature = "pc")] {
-            /// Default machine name.
-            pub const DEFAULT_MACHINE_NAME: &str = "pc";
         } else if #[cfg(feature = "hyperlight")] {
             /// Default machine name.
             pub const DEFAULT_MACHINE_NAME: &str = "hyperlight";
@@ -53,19 +50,10 @@ pub mod system {
 //==================================================================================================
 
 pub mod platform {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "pc")] {
-            /// Number of extra boot page tables for memory-mapped I/O regions above physical
-            /// memory. On PC platforms, the LAPIC and IOAPIC are above physical memory and share
-            /// a single 4 MB page table block.
-            pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 1;
-        } else {
-            /// Number of extra boot page tables for memory-mapped I/O regions above physical
-            /// memory. On microvm and hyperlight, all MMIO is within physical memory, so no
-            /// extra page tables are needed.
-            pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 0;
-        }
-    }
+    /// Number of extra boot page tables for memory-mapped I/O regions above physical
+    /// memory. On microvm and hyperlight, all MMIO is within physical memory, so no
+    /// extra page tables are needed.
+    pub const NUM_MMIO_BOOT_PAGE_TABLES: usize = 0;
 }
 
 //==================================================================================================
@@ -278,18 +266,6 @@ pub mod microvm {
     /// Base address of the local APIC MMIO register page.
     #[cfg(feature = "whp")]
     pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
-}
-
-#[cfg(feature = "pc")]
-pub mod pc {
-    /// I/O port that is connected to the standard output of the virtual machine.
-    pub const DEFAULT_STDOUT_PORT: u16 = 0xe9;
-
-    /// I/O port that enables the guest to invoke functionalities of the virtual machine monitor.
-    pub const DEFAULT_VMM_PORT: u16 = 0x604;
-
-    /// Default VMM shutdown command
-    pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
 }
 
 // Hyperlight build-time constants are generated from hyperlight_config.toml.
