@@ -495,6 +495,55 @@ function Build-Mkramfs {
     }
 }
 
+function New-StandaloneRootfsImage {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+
+    # Ensure mkramfs is built before generating the rootfs image.
+    Build-Mkramfs -IsRelease $IsRelease
+
+    $mkramfs = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "mkramfs.exe"
+
+    $seedDir = Join-Path $BinDir "standalone-rootfs-seed"
+    $seedLibDir = Join-Path $seedDir "lib"
+    $seedSrcDir = Join-Path $seedDir "src"
+    $outputImg = Join-Path $BinDir "standalone-rootfs.img"
+
+    Write-Info "Generating standalone-rootfs.img..."
+
+    # Create seed directory structure.
+    New-Item -ItemType Directory -Path $seedLibDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $seedSrcDir -Force | Out-Null
+
+    # Populate seed with README and shared libraries.
+    Copy-Item (Join-Path $RootDir "README.md") $seedDir -Force
+
+    $libmul = Join-Path $LibDir "libmul.so"
+    if (Test-Path $libmul) {
+        Copy-Item $libmul $seedLibDir -Force
+    }
+
+    $libmulPie = Join-Path $LibDir "libmul-pie.so"
+    if (Test-Path $libmulPie) {
+        Copy-Item $libmulPie $seedLibDir -Force
+    }
+
+    # Generate the FAT32 rootfs image.
+    $cmd = "& `"$mkramfs`" -o `"$outputImg`" `"$seedDir`""
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to generate standalone-rootfs.img."
+        exit 1
+    }
+
+    Write-Info "Output: $outputImg"
+}
+
 function Build-Nanvixd {
     param([bool]$IsRelease)
 
@@ -526,6 +575,43 @@ function Build-Nanvixd {
     }
     else {
         Write-Err "nanvixd binary not found at $src"
+        exit 1
+    }
+}
+
+function Build-NanvixTest {
+    param([bool]$IsRelease)
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+
+    New-StandaloneRootfsImage -IsRelease $IsRelease
+
+    Write-Info "Building nanvix-test (standalone + microvm, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    $cmd = "cargo build --no-default-features --features `"standalone,microvm,whp`" -p nanvix-test $buildProfile"
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to build nanvix-test."
+        exit 1
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "nanvix-test.exe"
+    $dst = Join-Path $BinDir "nanvix-test.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "nanvix-test binary not found at $src"
         exit 1
     }
 }
@@ -774,6 +860,7 @@ function Main {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease
                         Build-Nanvixd -IsRelease $isRelease
+                        Build-NanvixTest -IsRelease $isRelease
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease
@@ -781,8 +868,14 @@ function Main {
                     "mkramfs" {
                         Build-Mkramfs -IsRelease $isRelease
                     }
+                    "standalone-rootfs" {
+                        New-StandaloneRootfsImage -IsRelease $isRelease
+                    }
                     "nanvixd" {
                         Build-Nanvixd -IsRelease $isRelease
+                    }
+                    "nanvix-test" {
+                        Build-NanvixTest -IsRelease $isRelease
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
