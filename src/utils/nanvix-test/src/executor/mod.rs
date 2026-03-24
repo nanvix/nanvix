@@ -188,14 +188,30 @@ impl<'a> WorkloadSpec<'a> {
     ///
     /// # Description
     ///
-    /// Retrieves the optional expected exit code that the workload must produce.
+    /// Retrieves the expected exit code that the workload must produce.
     ///
     /// # Return Value
     ///
-    /// Returns the expected exit code when specified; otherwise returns `None`.
+    /// Returns the expected exit code when specified; defaults to `0` (success) when not set.
     ///
-    pub const fn expected_exit_code(&self) -> Option<i32> {
-        self.expected_exit_code
+    pub const fn expected_exit_code(&self) -> i32 {
+        match self.expected_exit_code {
+            Some(code) => code,
+            None => 0,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns `true` when the test explicitly declared an expected exit code.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` if `expected_exit_code` was set in the test configuration; otherwise `false`.
+    ///
+    pub const fn has_explicit_expected_exit_code(&self) -> bool {
+        self.expected_exit_code.is_some()
     }
 
     ///
@@ -280,21 +296,21 @@ mod tests {
     fn workload_spec_expected_exit_code_some() {
         let spec: WorkloadSpec =
             WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), false);
-        assert_eq!(spec.expected_exit_code(), Some(0));
+        assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_none() {
         let spec: WorkloadSpec =
             WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
-        assert_eq!(spec.expected_exit_code(), None);
+        assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_nonzero() {
         let spec: WorkloadSpec =
             WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13), false);
-        assert_eq!(spec.expected_exit_code(), Some(13));
+        assert_eq!(spec.expected_exit_code(), 13);
     }
 
     #[test]
@@ -302,13 +318,27 @@ mod tests {
         let spec: WorkloadSpec =
             WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), true);
         assert!(spec.skip_exit_code_validation());
-        assert_eq!(spec.expected_exit_code(), Some(0));
+        assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_negative() {
         let spec: WorkloadSpec =
             WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1), false);
-        assert_eq!(spec.expected_exit_code(), Some(-1));
+        assert_eq!(spec.expected_exit_code(), -1);
+    }
+
+    #[test]
+    fn workload_spec_has_explicit_expected_exit_code_some() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(0), false);
+        assert!(spec.has_explicit_expected_exit_code());
+    }
+
+    #[test]
+    fn workload_spec_has_explicit_expected_exit_code_none() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
+        assert!(!spec.has_explicit_expected_exit_code());
     }
 }
