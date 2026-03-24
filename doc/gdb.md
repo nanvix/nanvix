@@ -1,7 +1,7 @@
 # GDB Remote Debugging
 
-> **Prerequisite:** Build Nanvix in standalone mode before debugging. See [build.md](build.md) for
-> instructions.
+> **Prerequisite:** Build Nanvix in standalone mode before debugging. See
+> [build-linux.md](build-linux.md) for instructions.
 
 The microvm machine type exposes a GDB Remote Serial Protocol (RSP) server over TCP for
 interactively debugging the Nanvix guest kernel.
