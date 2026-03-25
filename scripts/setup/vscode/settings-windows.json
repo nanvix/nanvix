@@ -3,12 +3,21 @@
 // How to use:
 // 1. Create a folder named '.vscode' in the root of your Nanvix workspace.
 // 2. Copy this file into the '.vscode' folder as 'settings.json'.
-// 3. Ensure Docker Desktop is running before relying on Rust Analyzer diagnostics for guest crates.
+// 3. For fast host-only Rust checks (uservm, nanvixd, nanvix-test, mkramfs), run:
+//      z.ps1 build -- check
+//    This matches the Rust Analyzer configuration below and runs natively without Docker.
+// 4. To check guest/kernel crates inside Docker, use the dedicated targets, for example:
+//      z.ps1 build -- check-kernel
+//      z.ps1 build -- check-guest-binaries
 //
 // Notes:
-// - Rust Analyzer must route both check-on-save and build-script discovery through './z.bat'.
-//   A native 'cargo check' on Windows cannot build guest crates because the required guest GCC/binutils
-//   live inside Docker rather than on the host PATH.
+// - Rust Analyzer routes check-on-save and build-script discovery through './z.bat build -- check'.
+//   The 'check' target is intentionally host-only and runs natively on crates such as uservm,
+//   nanvixd, nanvix-test, and mkramfs without Docker, avoiding the infinite rebuild loop that
+//   occurred when 'check' was forwarded to Docker (symlink mutations + file output triggered
+//   rust-analyzer to re-check endlessly).
+//   Guest and kernel crates are checked via Docker-only targets like 'check-kernel' and
+//   'check-guest-binaries'; invoke them manually with 'z.ps1 build -- <target>' when needed.
 // - 'C_Cpp.default.compilerPath' is intentionally omitted here because the guest cross-toolchain is not
 //   installed natively on Windows by default.
 {
@@ -26,6 +35,9 @@
         "**/__pycache__/**": true,
         "**/.git/**": true,
         "**/.hg/**": true,
+        "bin/**": true,
+        "images/**": true,
+        "lib/**": true,
         "sysroot-*/**": true,
         "target/**": true
     },
@@ -52,13 +64,15 @@
         "./z.bat",
         "build",
         "--",
-        "check"
+        "check",
+        "MESSAGE_FORMAT=json"
     ],
     "rust-analyzer.check.overrideCommand": [
         "./z.bat",
         "build",
         "--",
-        "check"
+        "check",
+        "MESSAGE_FORMAT=json"
     ],
     "rust-analyzer.cargo.features": [
         "standalone"

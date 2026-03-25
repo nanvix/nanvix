@@ -81,7 +81,8 @@ Available build parameters:
 |-------------------|--------------|----------------------------------------------------|
 | `DEPLOYMENT_MODE` | `standalone` | `standalone`                                       |
 | `LOG_LEVEL`       | `warn`       | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
-| `MACHINE`         | `microvm`    | `microvm`                                          |
+| `MACHINE`         | `microvm`    | `microvm`, `hyperlight`                            |
+| `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`             |
 | `RELEASE`         | `no`         | `yes`, `no`                                        |
 | `TARGET`          | `x86`        | `x86`                                              |
 | `TIMEOUT`         | `600`        | Execution timeout in seconds                       |
@@ -89,6 +90,9 @@ Available build parameters:
 ## Code Quality Checks
 
 ```powershell
+# Run cargo check on host crates (native, no Docker).
+.\z.ps1 build -- check
+
 # Check formatting.
 .\z.ps1 build -- format-check
 
