@@ -50,4 +50,22 @@ pub fn test() {
     // The following tests depend on `creat()`, `close()`, unlink()`, `write()`, `read()` and
     // `lseek()`.
     file::pwrite_pread::test();
+
+    // TODO: Add unsafe test mirrors for the following C test files:
+    // - chmod.c, fchmod.c, fchmodat.c (permission changes)
+    // - chown.c, fchown.c, fchownat.c, lchown.c (ownership changes)
+    // - link.c, linkat.c (hard links)
+    // - symlinkat.c, readlink.c, readlinkat.c (symbolic links)
+    // - renameat.c (file renaming)
+    // - unlinkat.c (file removal via unlinkat)
+    // - access.c, faccessat.c (access permission checks)
+    // - mkdir.c, mkdirat.c (directory creation)
+    // - futimens.c, utimensat.c (timestamp updates)
+    // - fdatasync.c (data synchronization)
+    // - ftruncate.c (file truncation)
+    // - poll.c (I/O multiplexing via poll)
+    // - select.c (I/O multiplexing via select)
+    // - readv.c, writev.c, preadv.c, pwritev.c (vectored I/O — no wrappers yet)
+    // - utime.c, utimes.c (legacy timestamp updates — no wrappers yet)
+    // - lchmod.c (change symlink permissions — no wrapper yet)
 }
