@@ -58,6 +58,7 @@ pub type CreateSnapshotFn =
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + 'static;
 pub type LoadSnapshotFn =
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + 'static;
+pub type ShutdownVcpuFn = dyn Fn() + Send + 'static;
 
 //==================================================================================================
 // Structure
@@ -95,6 +96,9 @@ pub struct Orchestrator {
     _create_snapshot: Box<CreateSnapshotFn>,
     /// Callback function to load a snapshot.
     load_snapshot: Box<LoadSnapshotFn>,
+    /// Callback function to request vCPU shutdown (sets shared flag and cancels the vCPU run).
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    shutdown_vcpu: Box<ShutdownVcpuFn>,
 }
 
 //==================================================================================================
@@ -209,6 +213,7 @@ impl Orchestrator {
         resume_microvm: Box<ResumeFn>,
         create_snapshot: Box<CreateSnapshotFn>,
         load_snapshot: Box<LoadSnapshotFn>,
+        shutdown_vcpu: Box<ShutdownVcpuFn>,
     ) -> Self {
         Self {
             state: State::PreBoot,
@@ -223,6 +228,7 @@ impl Orchestrator {
             resume_microvm,
             _create_snapshot: create_snapshot,
             load_snapshot,
+            shutdown_vcpu,
         }
     }
 
@@ -257,13 +263,10 @@ impl Orchestrator {
                             let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
                             unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
                         }
-                        // TODO: on Windows, implement forceful vCPU termination.
-                        // The WHP backend currently relies on cooperative shutdown
-                        // (guest writes to the VMM exit port), so if the guest hangs
-                        // this timeout path is a no-op. A possible approach is to
-                        // pass a cancellation callback into the orchestrator that
-                        // calls `WHvCancelRunVirtualProcessor` and sets the SHUTDOWN
-                        // flag, similar to the existing `pause_microvm` callback.
+                        #[cfg(target_os = "windows")]
+                        {
+                            (self.shutdown_vcpu)();
+                        }
                         break;
                     },
                 }
@@ -521,9 +524,8 @@ impl Orchestrator {
                         }
                         #[cfg(target_os = "windows")]
                         {
-                            // Forceful termination is not yet implemented; cooperative shutdown
-                            // via guest abort_with_code() is relied upon instead. See issue #1010.
-                            debug!("try_receive_from_io_thread(): cooperative shutdown for vcpu thread id: {} (issue #1010)", self.vcpu_tid);
+                            debug!("try_receive_from_io_thread(): requesting vCPU shutdown (tid={})", self.vcpu_tid);
+                            (self.shutdown_vcpu)();
                         }
                         self.state = State::ShuttingDown;
                         Ok(Continue(()))
@@ -538,12 +540,8 @@ impl Orchestrator {
                         }
                         #[cfg(target_os = "windows")]
                         {
-                            // TODO: Set shared shutdown flag so the WHP run loop exits on next
-                            // iteration.  Then cancel the blocking WHvRunVirtualProcessor call.
-                            // Currently not possible because:
-                            //   1. SHUTDOWN is thread-local, not accessible from the orchestrator
-                            //   2. The orchestrator doesn't hold the WHP partition handle
-                            // A cancellation callback (like pause_microvm) would solve both.
+                            debug!("try_receive_from_io_thread(): requesting vCPU shutdown (tid={})", self.vcpu_tid);
+                            (self.shutdown_vcpu)();
                         }
 
                         // Transition to shutting down state.
@@ -811,6 +809,7 @@ mod tests {
                     })
                 })
             },
+            Box::new(|| {}),
         );
 
         Harness {

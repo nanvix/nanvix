@@ -610,6 +610,9 @@ impl Vmm {
         Err(anyhow::anyhow!(reason))
     }
 
+    /// No-op on the Hyperlight backend. Shutdown is handled via cooperative guest exit.
+    pub fn request_shutdown(&self) {}
+
     ///
     /// # Description
     ///
