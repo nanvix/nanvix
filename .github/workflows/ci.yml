@@ -1194,14 +1194,64 @@ jobs:
           path: ${{ steps.release-archive.outputs.archive-path }}
           overwrite: true
 
-  # Publish the latest release to GitHub.
-  publish-latest:
-    name: "Publish Latest Release"
-    needs: [release-archive]
+  # Package Windows standalone binaries into a release archive (.zip).
+  # Windows only supports standalone deployment mode.
+  windows-release-archive:
+    name: "Windows Release Archive"
+    needs: [windows-integration-test, ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
-      needs.release-archive.result == 'success'
+      needs.ci-test.result == 'success' &&
+      needs.ci-l2.result == 'success' &&
+      needs.benchmark-finalize.result == 'success' &&
+      needs.benchmark-ci-finalize.result == 'success'
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Download Windows Build Artifacts"
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-build-release
+          path: windows-bin
+
+      - name: "Package Windows Release Archive"
+        id: package
+        shell: bash
+        run: |
+          commit_id="${GITHUB_SHA}"
+          archive_name="nanvix-windows-standalone-release-128mb-${commit_id}.zip"
+
+          # Create the zip archive from the downloaded Windows binaries.
+          cd windows-bin
+          zip -r "../${archive_name}" .
+          cd ..
+
+          echo "Packaged Windows release archive: ${archive_name}"
+          ls -lh "${archive_name}"
+          echo "archive-path=${archive_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: "Upload Release Artifact"
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows-standalone-128mb
+          path: ${{ steps.package.outputs.archive-path }}
+          overwrite: true
+
+  # Publish the latest release to GitHub.
+  publish-latest:
+    name: "Publish Latest Release"
+    needs: [release-archive, windows-release-archive]
+    if: |
+      github.repository == 'nanvix/nanvix' &&
+      github.ref == 'refs/heads/dev' &&
+      needs.release-archive.result == 'success' &&
+      needs.windows-release-archive.result == 'success'
     runs-on:
       group: Test
     permissions:
