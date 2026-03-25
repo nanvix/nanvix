@@ -513,9 +513,18 @@ impl Orchestrator {
                         // before sending SIGKILL. See issue #1010 for context.
                         debug!("try_receive_from_io_thread(): waiting {:?} before killing vcpu thread", crate::vmm::SHUTDOWN_GRACE_PERIOD);
                         ::std::thread::sleep(crate::vmm::SHUTDOWN_GRACE_PERIOD);
-                        debug!("try_receive_from_io_thread(): killing vcpu thread id: {}", self.vcpu_tid);
-                        let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                        unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        #[cfg(target_os = "linux")]
+                        {
+                            debug!("try_receive_from_io_thread(): killing vcpu thread id: {}", self.vcpu_tid);
+                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
+                            unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            // Forceful termination is not yet implemented; cooperative shutdown
+                            // via guest abort_with_code() is relied upon instead. See issue #1010.
+                            debug!("try_receive_from_io_thread(): cooperative shutdown for vcpu thread id: {} (issue #1010)", self.vcpu_tid);
+                        }
                         self.state = State::ShuttingDown;
                         Ok(Continue(()))
                     } else {
