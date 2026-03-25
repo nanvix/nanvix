@@ -160,6 +160,36 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/misc-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/memory-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/network-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/dlfcn-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/c-bindings-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/wasmd.elf"
 input = '["hello world!"]'
 expected_output = "Hello, world!"
@@ -278,4 +308,29 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/arch-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/misc-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/memory-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/network-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/dlfcn-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/c-bindings-rust.elf"
 expected_output = "ok"
