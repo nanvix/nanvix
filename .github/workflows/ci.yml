@@ -1244,7 +1244,14 @@ jobs:
   # Windows only supports standalone deployment mode.
   windows-release-archive:
     name: "Windows Release Archive"
-    needs: [windows-integration-test, ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize]
+    needs:
+      [
+        windows-integration-test,
+        ci-test,
+        ci-l2,
+        benchmark-finalize,
+        benchmark-ci-finalize,
+      ]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
@@ -1263,8 +1270,9 @@ jobs:
       - name: "Download Windows Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-release
+          pattern: windows-build-*-release
           path: windows-bin
+          merge-multiple: true
 
       - name: "Package Windows Release Archive"
         id: package
