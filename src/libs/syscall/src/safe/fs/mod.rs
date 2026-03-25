@@ -40,6 +40,7 @@ use crate::{
 };
 use ::alloc::{
     string::String,
+    vec,
     vec::Vec,
 };
 use ::sys::error::{
@@ -357,7 +358,7 @@ pub fn open(
 /// an error.
 ///
 pub fn readlink(path: &FileSystemPath) -> Result<FileSystemPath, Error> {
-    let mut buf: Vec<u8> = Vec::with_capacity(PATH_MAX);
+    let mut buf: Vec<u8> = vec![0u8; PATH_MAX];
 
     let num_bytes_read: c_ssize_t = unistd::readlink(path.as_str(), &mut buf)?;
 
@@ -366,7 +367,17 @@ pub fn readlink(path: &FileSystemPath) -> Result<FileSystemPath, Error> {
         Err(_) => return Err(Error::new(ErrorCode::TooBig, "path too long")),
     };
 
-    FileSystemPath::try_from_bytes(&buf[..num_bytes_read])
+    // readlink() indicates truncation by returning a byte count equal to the buffer length.
+    if num_bytes_read == buf.len() {
+        return Err(Error::new(ErrorCode::TooBig, "readlink: path too long (truncated)"));
+    }
+
+    // readlink() does not NUL-terminate, so convert from raw UTF-8 bytes.
+    let target: &str = core::str::from_utf8(&buf[..num_bytes_read]).map_err(|_| {
+        Error::new(ErrorCode::InvalidArgument, "readlink: invalid UTF-8 in target path")
+    })?;
+
+    FileSystemPath::new(target)
 }
 
 ///
