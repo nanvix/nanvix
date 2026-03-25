@@ -267,15 +267,6 @@ impl IkcNotifier {
 }
 
 //==================================================================================================
-// Thread-Local Variables
-//==================================================================================================
-
-thread_local! {
-    /// Shutdown flag, set to true when the vCPU thread should stop running.
-    static SHUTDOWN: AtomicBool = const { AtomicBool::new(false) };
-}
-
-//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -302,6 +293,9 @@ pub struct Vmm {
     /// handles actual 1kHz scheduling inside the WHP emulator (zero
     /// VM exits for timer delivery).
     timer: Arc<std::sync::Mutex<timer::Timer>>,
+    /// Shared shutdown flag. When set to `true` from any thread, the VMM
+    /// run loop will break on the next iteration.
+    shutdown_flag: Arc<AtomicBool>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
 }
@@ -418,6 +412,7 @@ impl Vmm {
         let vcpu: Arc<Mutex<VirtualProcessor>> = Arc::new(Mutex::new(vcpu));
 
         let ikc_notifier: IkcNotifier = IkcNotifier::new(partition_handle);
+        let shutdown_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         let emulator: Emulator =
             Emulator::new(guest.clone(), vmem.clone(), args.input, args.output, args.stderr)?;
@@ -429,6 +424,7 @@ impl Vmm {
             ikc_notifier,
             partition_handle,
             timer,
+            shutdown_flag,
             inner: Arc::new(Mutex::new(InteriorWhpHandle {
                 _partition: partition,
                 emulator,
@@ -471,7 +467,7 @@ impl Vmm {
         trace!("run()");
 
         // Reset shutdown flag from any previous runs.
-        SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
+        self.shutdown_flag.store(false, Ordering::SeqCst);
 
         let loop_start = std::time::Instant::now();
 
@@ -509,7 +505,7 @@ impl Vmm {
 
         let result = loop {
             // Check shutdown flag.
-            if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
+            if self.shutdown_flag.load(Ordering::SeqCst) {
                 let exit_status: u16 = 0;
                 warn!("VMM exit: SHUTDOWN flag (elapsed={:?})", loop_start.elapsed());
                 Handle::current().block_on(self.handle_shutdown(exit_status));
@@ -735,6 +731,29 @@ impl Vmm {
     pub async fn load_snapshot(&self, _filepath: String) -> Result<()> {
         warn!("load_snapshot(): snapshots are not supported on WHP backend");
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Requests a graceful shutdown of the vCPU run loop from any thread.
+    /// Sets the shared shutdown flag and cancels the current
+    /// `WHvRunVirtualProcessor` call so the VMM loop can observe the flag
+    /// on its next iteration.
+    ///
+    pub fn request_shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        // SAFETY: `partition_handle` is a valid WHP partition handle that outlives this call.
+        unsafe {
+            let hr = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+                self.partition_handle,
+                0,
+                0,
+            );
+            if hr.is_err() {
+                warn!("WHvCancelRunVirtualProcessor(0) failed during request_shutdown(): {hr:?}");
+            }
+        }
     }
 
     ///
