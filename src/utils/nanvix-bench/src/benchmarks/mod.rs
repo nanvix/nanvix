@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 mod system;
 mod vmm;
 

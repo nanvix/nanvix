@@ -86,10 +86,12 @@ impl Args {
             );
         }
 
-        benchmarks.push_str(
-            "\
+        if cfg!(not(windows)) {
+            benchmarks.push_str(
+                "\
   snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
-        );
+            );
+        }
 
         if cfg!(any(feature = "multi-process", feature = "single-process")) {
             benchmarks.push_str(

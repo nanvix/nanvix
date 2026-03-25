@@ -41,7 +41,9 @@ When modifying or generating code, keep platform differences in mind:
 
 - Use `z.ps1` for Windows commands and `./z` for Linux commands.
 - Linux-only features: HTTP mode, L2 deployments,
-  GDB debugging, benchmarking, network namespaces.
+  GDB debugging, network namespaces.
+- Windows-supported features: standalone interactive mode, benchmarking
+  (`boot-time`, `warm-start-vmm`).
 - Windows-only concerns: WHP enablement, Developer Mode for symlinks, Docker
   Desktop with Linux containers, `.venv` cleanup before Docker builds.
 
