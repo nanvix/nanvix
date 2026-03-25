@@ -195,8 +195,8 @@ machine and deployment configurations.
 ### Visual Studio Code
 
 Use the host-specific settings template. The Linux template invokes `./z`, while the Windows
-template routes Rust Analyzer build-script discovery through the Windows Docker workflow so that
-guest crates build correctly.
+template routes Rust Analyzer through `./z.bat build -- check`, which runs native `cargo check`
+on host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`) without Docker.
 
 **Linux:**
 
@@ -212,8 +212,9 @@ New-Item -ItemType Directory -Path .vscode -Force
 Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
 ```
 
-> **Note:** Without the Windows override, Rust Analyzer falls back to native `cargo` for
-> build-script metadata and guest crates fail because `gcc`/`ar` are not on the host `PATH`.
+> **Note:** The `check` target in `z.ps1` only checks host crates natively. Guest and kernel
+> crates require the Docker-based cross-toolchain and are not checked by Rust Analyzer. Run
+> `.\z.ps1 build -- check-kernel check-guest-binaries` via Docker for a full cross-target check.
 
 ## Troubleshooting Build Issues
 
