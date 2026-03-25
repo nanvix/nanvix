@@ -57,6 +57,7 @@ extra_nanvixd_args = "-ramfs README.md"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
+runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
@@ -139,9 +140,11 @@ executor = "terminal"
 program = "./bin/dlfcn-c.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
 program = "./bin/dlfcn-pie-c.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+runs_on = ["microvm"]

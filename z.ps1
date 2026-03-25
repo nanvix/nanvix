@@ -7,8 +7,8 @@
 
 .DESCRIPTION
     Windows counterpart of the './z' bash script. Mirrors the same CLI interface.
-    Builds the UserVM natively on Windows with the microvm backend, and builds guest
-    components (kernel, hello-rust-nostd) via Docker.
+    Builds the UserVM natively on Windows with the microvm or hyperlight backend,
+    and builds guest components (kernel, hello-rust-nostd) via Docker.
 
 .EXAMPLE
     .\z.ps1 help
@@ -81,7 +81,7 @@ Options
 
 Build Targets (after --)
   all                     Build everything (guest + host).
-  uservm                  Build UserVM only (native Windows, microvm backend).
+  uservm                  Build UserVM only (native Windows).
   mkramfs                 Build mkramfs only (native Windows).
   guest                   Build guest components only (kernel + hello-rust-nostd).
   format-check            Check code formatting (native for host crates).
@@ -102,7 +102,7 @@ Run Options (after --)
 
 Build Parameters (after --)
   RELEASE=yes             Enable release mode.
-  MACHINE=microvm         Target machine (default: microvm).
+  MACHINE=microvm         Target machine: microvm (default) or hyperlight.
   WHP=yes                 Enable WHP-specific guest kernel code for microvm builds.
   LOG_LEVEL=<level>       Log level (default: trace for debug, warn for release).
 
@@ -408,22 +408,38 @@ function Add-GuestMachineDefaults {
 # Build Functions
 # ==================================================================================================
 
+function Get-NativeCargoFeatures {
+    param([string]$Machine = "microvm")
+    $normalized = $Machine.Trim().ToLowerInvariant()
+    if ($normalized -eq "hyperlight") {
+        return "hyperlight"
+    }
+    elseif ($normalized -eq "microvm") {
+        return "microvm,whp"
+    }
+    else {
+        Write-Err "Unsupported machine type '$Machine'. Supported values are: microvm, hyperlight."
+        exit 1
+    }
+}
+
 function Build-UserVm {
-    param([bool]$IsRelease)
+    param([bool]$IsRelease, [string]$Machine = "microvm")
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
     $mode = if ($IsRelease) { "release" } else { "debug" }
     $buildProfile = if ($IsRelease) { "--release" } else { "" }
+    $features = Get-NativeCargoFeatures -Machine $Machine
 
-    Write-Info "Building UserVM (microvm backend, $mode mode)..."
+    Write-Info "Building UserVM ($Machine backend, $mode mode)..."
 
     if (-not (Test-Path $BinDir)) {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"microvm,whp`" -p uservm $buildProfile"
+    $cmd = "cargo build --no-default-features --features `"$features`" -p uservm $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -545,21 +561,22 @@ function New-StandaloneRootfsImage {
 }
 
 function Build-Nanvixd {
-    param([bool]$IsRelease)
+    param([bool]$IsRelease, [string]$Machine = "microvm")
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
     $mode = if ($IsRelease) { "release" } else { "debug" }
     $buildProfile = if ($IsRelease) { "--release" } else { "" }
+    $features = Get-NativeCargoFeatures -Machine $Machine
 
-    Write-Info "Building nanvixd (standalone + microvm, $mode mode)..."
+    Write-Info "Building nanvixd (standalone + $Machine, $mode mode)..."
 
     if (-not (Test-Path $BinDir)) {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"standalone,microvm,whp`" -p nanvixd $buildProfile"
+    $cmd = "cargo build --no-default-features --features `"standalone,$features`" -p nanvixd $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -580,23 +597,24 @@ function Build-Nanvixd {
 }
 
 function Build-NanvixTest {
-    param([bool]$IsRelease)
+    param([bool]$IsRelease, [string]$Machine = "microvm")
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
     $mode = if ($IsRelease) { "release" } else { "debug" }
     $buildProfile = if ($IsRelease) { "--release" } else { "" }
+    $features = Get-NativeCargoFeatures -Machine $Machine
 
     New-StandaloneRootfsImage -IsRelease $IsRelease
 
-    Write-Info "Building nanvix-test (standalone + microvm, $mode mode)..."
+    Write-Info "Building nanvix-test (standalone + $Machine, $mode mode)..."
 
     if (-not (Test-Path $BinDir)) {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    $cmd = "cargo build --no-default-features --features `"standalone,microvm,whp`" -p nanvix-test $buildProfile"
+    $cmd = "cargo build --no-default-features --features `"standalone,$features`" -p nanvix-test $buildProfile"
     Write-Host "  $cmd" -ForegroundColor DarkGray
     Invoke-Expression $cmd
     if ($LASTEXITCODE -ne 0) {
@@ -856,16 +874,20 @@ function Main {
                 }
             }
 
+            # Extract MACHINE parameter for native builds.
+            $machineParam = $makeParams | Where-Object { $_ -match '^MACHINE=' } | Select-Object -Last 1
+            $machine = if ($machineParam) { $machineParam -replace '^MACHINE=', '' } else { 'microvm' }
+
             foreach ($target in $targets) {
                 switch ($target) {
                     "all" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
-                        Build-UserVm -IsRelease $isRelease
-                        Build-Nanvixd -IsRelease $isRelease
-                        Build-NanvixTest -IsRelease $isRelease
+                        Build-UserVm -IsRelease $isRelease -Machine $machine
+                        Build-Nanvixd -IsRelease $isRelease -Machine $machine
+                        Build-NanvixTest -IsRelease $isRelease -Machine $machine
                     }
                     "uservm" {
-                        Build-UserVm -IsRelease $isRelease
+                        Build-UserVm -IsRelease $isRelease -Machine $machine
                     }
                     "mkramfs" {
                         Build-Mkramfs -IsRelease $isRelease
@@ -874,10 +896,10 @@ function Main {
                         New-StandaloneRootfsImage -IsRelease $isRelease
                     }
                     "nanvixd" {
-                        Build-Nanvixd -IsRelease $isRelease
+                        Build-Nanvixd -IsRelease $isRelease -Machine $machine
                     }
                     "nanvix-test" {
-                        Build-NanvixTest -IsRelease $isRelease
+                        Build-NanvixTest -IsRelease $isRelease -Machine $machine
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
@@ -895,9 +917,10 @@ function Main {
                     }
                     "lint-check" {
                         # Native lint check for host crates that compile on Windows.
-                        Write-Info "Linting host crates (native)..."
+                        $features = Get-NativeCargoFeatures -Machine $machine
+                        Write-Info "Linting host crates (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
-                        cargo clippy --no-default-features --features "microvm,whp" -p uservm -- -D warnings
+                        cargo clippy --no-default-features --features "$features" -p uservm -- -D warnings
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Lint check failed for uservm."
                             exit 1
@@ -911,9 +934,10 @@ function Main {
                     }
                     "run-unit-tests" {
                         # Native unit tests for host crates (no Docker required).
-                        Write-Info "Running unit tests (native)..."
+                        $features = Get-NativeCargoFeatures -Machine $machine
+                        Write-Info "Running unit tests (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
-                        cargo test --no-default-features --features "microvm,whp" -p uservm
+                        cargo test --no-default-features --features "$features" -p uservm
                         if ($LASTEXITCODE -ne 0) {
                             Write-Err "Unit tests failed for uservm."
                             exit 1
