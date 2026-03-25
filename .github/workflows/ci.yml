@@ -1327,6 +1327,70 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
 
+  # Open a GitHub issue when any job in the release pipeline fails on dev.
+  notify-release-failure:
+    name: "Notify Release Failure"
+    needs:
+      [
+        checks,
+        lint,
+        verify,
+        ci-build,
+        ci-test,
+        ci-l2,
+        benchmark,
+        benchmark-finalize,
+        benchmark-ci,
+        benchmark-ci-finalize,
+        release-archive,
+        windows-release-archive,
+        publish-latest,
+        windows-guest-build,
+        windows-format-check,
+        windows-lint-check,
+        windows-ci-build,
+      ]
+    if: |
+      always() &&
+      github.repository == 'nanvix/nanvix' &&
+      github.ref == 'refs/heads/dev' &&
+      contains(needs.*.result, 'failure')
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: "Collect Failed Jobs"
+        id: failed
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failed_jobs=$(echo "${NEEDS_JSON}" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd ', ')
+          echo "list=${failed_jobs}" >> "${GITHUB_OUTPUT}"
+
+      - name: "Create Issue"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "CI/CD pipeline failure on dev (Run #${{ github.run_number }})" \
+            --label "devops:ci" \
+            --assignee "ppenna" \
+            --type "Bug" \
+            --body "## CI/CD Release Pipeline Failure
+
+          The CI/CD pipeline failed on a push to \`dev\`.
+
+          **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Commit:** [\`${GITHUB_SHA::8}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA})
+          **Triggered by:** @${{ github.actor }}
+          **Failed jobs:** ${{ steps.failed.outputs.list }}
+
+          Please investigate the failed jobs linked above and resolve the issue."
+
   # Create a minor release tag on merge commits to dev.
   # This job runs independently of the CI pipeline because the pipeline skips
   # merge commits while this job specifically targets them.
