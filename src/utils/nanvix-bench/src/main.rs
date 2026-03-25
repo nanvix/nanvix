@@ -77,14 +77,17 @@ const NANVIXD_HTTP_TIMEOUT_SECS: u64 = 60;
 fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
     let has_multi = cfg!(feature = "multi-process");
     let has_single = cfg!(feature = "single-process");
+    let has_standalone = cfg!(feature = "standalone");
     let has_l2 = cfg!(feature = "l2");
     let has_timestamp = cfg!(feature = "timestamp-messages");
 
-    // System-level benchmarks (those using nanvixd) need multi-process or single-process.
+    // System-level benchmarks (those using nanvixd) need multi-process, single-process, or
+    // standalone.
     if flavour.needs_nanvixd() {
-        if !has_multi && !has_single {
+        if !has_multi && !has_single && !has_standalone {
             anyhow::bail!(
-                "benchmark '{flavour}' requires compilation with multi-process or single-process"
+                "benchmark '{flavour}' requires compilation with multi-process, single-process, \
+                 or standalone"
             );
         }
 
@@ -96,6 +99,18 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
         // concurrent (non-L2) needs multi-process specifically.
         if matches!(flavour, BenchmarkFlavour::Concurrent) && !has_multi {
             anyhow::bail!("benchmark '{flavour}' requires compilation with multi-process");
+        }
+
+        // In standalone mode, only ColdStart is supported (no HTTP-based benchmarks).
+        if has_standalone
+            && !has_multi
+            && !has_single
+            && !matches!(flavour, BenchmarkFlavour::ColdStart)
+        {
+            anyhow::bail!(
+                "benchmark '{flavour}' is not supported in standalone mode (only cold-start is \
+                 available)"
+            );
         }
     }
 
@@ -195,7 +210,19 @@ async fn main() -> Result<()> {
     let deployment: LinuxdDeployment = benchmark.flavour.deployment();
     let result: Result<(), anyhow::Error> = match &benchmark.flavour {
         BenchmarkFlavour::BootTime => benchmark.run_boot_time().await,
-        BenchmarkFlavour::ColdStart | BenchmarkFlavour::ColdStartL2 => {
+        BenchmarkFlavour::ColdStart => {
+            #[cfg(feature = "standalone")]
+            {
+                benchmark.run_cold_start_standalone().await
+            }
+            #[cfg(not(feature = "standalone"))]
+            {
+                benchmark
+                    .run_cold_start(&deployment, &UserVmDeployment::OneToOne)
+                    .await
+            }
+        },
+        BenchmarkFlavour::ColdStartL2 => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
                 benchmark
@@ -204,7 +231,7 @@ async fn main() -> Result<()> {
             }
             #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
             {
-                anyhow::bail!("cold-start requires multi-process or single-process")
+                anyhow::bail!("cold-start-l2 requires multi-process or single-process")
             }
         },
         BenchmarkFlavour::ColdStartUvm => {

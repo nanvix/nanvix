@@ -101,6 +101,9 @@ it supports standalone-mode benchmarks. See [benchmark.md](benchmark.md) for ful
 # Build with release settings.
 .\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
 
+# Run the cold-start benchmark.
+.\z.ps1 bench -- -benchmark cold-start -iterations 10
+
 # Run the boot-time benchmark.
 .\z.ps1 bench -- -benchmark boot-time -iterations 100
 
