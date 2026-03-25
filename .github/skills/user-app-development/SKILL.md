@@ -12,8 +12,6 @@ Nanvix.  User applications are programs that run inside the Nanvix guest environ
 
 | Application        | Path                         | Lang       | Runtime    |
 |--------------------|------------------------------|------------|------------|
-| `hello-c`          | `src/user/hello-c/`          | C          | Newlib     |
-| `hello-cpp`        | `src/user/hello-cpp/`        | C++        | Libstdc++  |
 | `hello-rust-nostd` | `src/user/hello-rust-nostd/` | Rust       | Bare-metal |
 | `hello-js`         | `src/user/hello-js/`         | JavaScript | QuickJS    |
 | `hello-python`     | `src/user/hello-python/`     | Python     | Python 3   |
@@ -33,12 +31,12 @@ Nanvix.  User applications are programs that run inside the Nanvix guest environ
 # Pass arguments to the application.
 ./bin/nanvixd.elf \
     -console-file /dev/stdout \
-    -- ./bin/echo-c.elf arg1 arg2
+    -- ./bin/echo-rust-nostd.elf arg1 arg2
 
 # Pass arguments and environment variables.
 ./bin/nanvixd.elf \
     -console-file /dev/stdout \
-    -- ./bin/echo-c.elf \
+    -- ./bin/echo-rust-nostd.elf \
     "arg1 arg2;VAR1=foo VAR2=bar"
 ```
 
@@ -56,7 +54,7 @@ curl --silent \
     --request POST \
     --data '{"tenant_id":"foo",
              "app_name":"bar",
-             "program":"./bin/hello-c.elf",
+             "program":"./bin/hello-rust-nostd.elf",
              "program_args":""}' \
     http://${NANVIX_HTTP_ADDR}
 ```

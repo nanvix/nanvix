@@ -99,6 +99,10 @@ fn main() {
         .unwrap_or_else(|_| panic!("LIBRARIES_DIR not set — required to place libmul.so"));
     let lib_dir = Path::new(&libraries_dir);
 
+    // Ensure the output directory exists (it may not in a fresh CI checkout).
+    std::fs::create_dir_all(lib_dir)
+        .unwrap_or_else(|e| panic!("failed to create {}: {e}", lib_dir.display()));
+
     // libmul.so — standard shared library (non-PIE).
     build_shared_lib(nanvix_cc, &[], &[], &lib_dir.join("libmul.so"), &mul_c);
 

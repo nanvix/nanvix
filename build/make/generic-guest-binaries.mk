@@ -93,9 +93,6 @@ endif
 	@for pkg in $(ALL_GUEST_BINARIES); do \
 		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
 	done
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks all
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/user all
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests all
 
 check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
@@ -117,9 +114,6 @@ format-check-guest-binaries:
 	$(GUEST_CARGO_FMT_CMD) $(_GUEST_BINS_FMT_PKGS) --check
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/benchmarks clean
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/user clean
-	$(MAKE_QUIET) -C $(SOURCES_DIR)/tests clean
 
 # Batched lint: group guest binaries by feature set (same as check).
 rust-lint-guest-binaries:
