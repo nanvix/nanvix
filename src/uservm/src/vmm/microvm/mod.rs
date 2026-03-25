@@ -947,6 +947,9 @@ impl Vmm {
         Ok(())
     }
 
+    /// No-op on the KVM/microvm backend. Shutdown is handled via `pthread_kill`.
+    pub fn request_shutdown(&self) {}
+
     //==============================================================================================
     // Diagnostic Dump Helpers
     //==============================================================================================

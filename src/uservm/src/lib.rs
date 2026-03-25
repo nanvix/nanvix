@@ -85,6 +85,7 @@ use crate::{
         Orchestrator,
         PauseFn,
         ResumeFn,
+        ShutdownVcpuFn,
         VcpuControlCommand,
         VcpuControlResponse,
     },
@@ -384,6 +385,7 @@ impl UserVm {
             resume_microvm(guest.clone(), vmem.clone()),
             create_snapshot_fn(microvm.clone(), filename.clone()),
             load_snapshot_fn(microvm.clone(), filename.clone()),
+            shutdown_vcpu_fn(microvm.clone()),
         );
 
         let orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
@@ -448,6 +450,12 @@ fn resume_microvm(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> 
             let mut vmem: MutexGuard<VirtualMemory> = vmem.lock().await;
             guest.resume_vm(&mut vmem)
         })
+    })
+}
+
+fn shutdown_vcpu_fn(vmm: Vmm) -> Box<ShutdownVcpuFn> {
+    Box::new(move || {
+        vmm.request_shutdown();
     })
 }
 
