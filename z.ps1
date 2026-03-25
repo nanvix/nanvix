@@ -91,7 +91,8 @@ Build Targets (after --)
   lint                    Fix linting issues (via Docker).
   spellcheck              Check spelling (via Docker).
   spellcheck-fix          Fix spelling errors (via Docker).
-  check                   Run cargo check (via Docker).
+  check                   Run cargo check on host crates (native, no Docker).
+  check-uservm            Run cargo check on uservm only (native, no Docker).
   run-nanvix-tests        Run system integration tests (via Docker).
   test                    Run all tests (via Docker).
   verify                  Run Verus formal verification (via Docker).
@@ -943,6 +944,36 @@ function Main {
                             exit 1
                         }
                         Write-Success "Unit tests passed."
+                    }
+                    "check-uservm" {
+                        # Native cargo check for uservm only (no Docker required).
+                        $features = Get-NativeCargoFeatures -Machine $machine
+                        Write-Info "Checking uservm (native, $machine backend)..."
+                        $ErrorActionPreference = 'Continue'
+
+                        $fmtParam = $makeParams | Where-Object { $_ -match '^MESSAGE_FORMAT=' } | Select-Object -Last 1
+                        $msgFmt = @()
+                        if ($fmtParam) {
+                            $fmt = ($fmtParam -replace '^MESSAGE_FORMAT=', '').Trim()
+                            $allowedFormats = @('json', 'json-diagnostic-rendered-ansi')
+                            if ([string]::IsNullOrWhiteSpace($fmt)) {
+                                Write-Err "Invalid MESSAGE_FORMAT: value is empty. Allowed values: $($allowedFormats -join ', ')."
+                                exit 1
+                            }
+                            if ($allowedFormats -notcontains $fmt) {
+                                Write-Err "Invalid MESSAGE_FORMAT: '$fmt'. Allowed values: $($allowedFormats -join ', ')."
+                                exit 1
+                            }
+                            $msgFmt = @("--message-format=$fmt")
+                        }
+
+                        cargo check --no-default-features --features "$features" -p uservm @msgFmt
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Check failed for uservm."
+                            exit 1
+                        }
+
+                        Write-Success "Check passed (uservm)."
                     }
                     "check" {
                         # Native cargo check for host crates (no Docker required).
