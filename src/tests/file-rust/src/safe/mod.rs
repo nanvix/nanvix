@@ -20,6 +20,7 @@ pub fn test() {
     fs::get_file_attributes::test();
     fs::open_close::test();
     fs::opendir_closedir::test();
+    fs::stat::test();
 
     // The following tests depend on `FileSystem::get_current_directory()`.
     fs::change_current_directory::test();
@@ -48,4 +49,19 @@ pub fn test() {
     // The following tests depend on `FileSystem::create_regular_file()`, `RegularFile::drop()`,
     // `FileSystem::remove_file()`, `RegularFile::write()` and `RegularFile::read()`.
     file::seek::test();
+
+    // The following tests depend on `FileSystem::create_regular_file()`, `RegularFile::drop()`,
+    // `FileSystem::remove_file()`, `FileSystem::get_file_attributes()`,
+    // `RegularFile::write()` and `RegularFile::read()`.
+    file::chmod::test();
+    file::datasync::test();
+    file::timestamps::test();
+
+    // The following tests depend on `FileSystem::get_file_attributes()` and
+    // `FileSystem::remove_file()`.
+    fs::chmod::test();
+    fs::link::test();
+    fs::symlink::test();
+    fs::rename::test();
+    fs::mkdir::test();
 }
