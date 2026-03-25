@@ -20,6 +20,7 @@ Run a guest application via `nanvixd` in standalone interactive mode:
 - [Running nanvixd Directly](#running-nanvixd-directly)
 - [Logging](#logging)
 - [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)
+- [Benchmarking](#benchmarking)
 
 ---
 
@@ -87,4 +88,22 @@ For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
 
 ```powershell
 .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+```
+
+## Benchmarking
+
+Nanvix ships with `nanvix-bench`, a benchmarking tool that measures system performance. On Windows,
+it supports standalone-mode benchmarks. See [benchmark.md](benchmark.md) for full details.
+
+### Quick Start
+
+```powershell
+# Build with release settings.
+.\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
+
+# Run the boot-time benchmark.
+.\z.ps1 bench -- -benchmark boot-time -iterations 100
+
+# See all options.
+.\bin\nanvix-bench.exe -help
 ```

@@ -103,6 +103,9 @@ microvm backend (WHP on Windows).
 # Build only nanvixd (native Windows build).
 .\z.ps1 build -- nanvixd
 
+# Build only nanvix-bench (native Windows build).
+.\z.ps1 build -- nanvix-bench
+
 # Build only guest components (kernel + hello-rust-nostd, via Docker).
 .\z.ps1 build -- guest
 

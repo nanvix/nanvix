@@ -41,3 +41,36 @@ most importantly, if you are pinning cores, make sure to also pass the path to y
 
 > ℹ️ **Note:** All benchmarks require compiling Nanvix with `RELEASE=yes` and `LOG_LEVEL=panic`.
 > ℹ️ **Note:** If you are running the benchmarks with a high number of iterations, consider setting high system limits in the process spawning `nanvix-bench.elf` (i.e. `ulimit -u` and `ulimit -n`).
+
+## Benchmarking on Windows
+
+On Windows, `nanvix-bench` supports a subset of benchmarks in standalone mode.
+
+### Building for Benchmarks on Windows
+
+```powershell
+.\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
+```
+
+This builds all components including `nanvix-bench.exe` with the standalone and WHP features.
+
+### Available Benchmarks on Windows
+
+| Benchmark         | Description                                            |
+|-------------------|--------------------------------------------------------|
+| `boot-time`       | Start a user VM (no nanvixd)                           |
+| `warm-start-vmm`  | Raw round-trip latency inside the user VM              |
+
+### Running Benchmarks on Windows
+
+```powershell
+# Using z.ps1.
+.\z.ps1 bench -- -benchmark boot-time -iterations 100
+
+# Or directly.
+.\bin\nanvix-bench.exe -benchmark boot-time -iterations 100
+.\bin\nanvix-bench.exe -help
+```
+
+> ℹ️ **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`, `concurrent`, L2
+> variants, and `echo-breakdown`) are Linux-only.

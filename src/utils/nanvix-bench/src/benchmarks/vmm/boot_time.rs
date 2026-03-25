@@ -83,7 +83,7 @@ impl Benchmark {
                 initrd_filename: Some(initrd_filename),
                 initrd_args: None,
                 ramfs_filename: None,
-                stderr: Some("/dev/null".to_string()),
+                stderr: Some(if cfg!(windows) { "NUL" } else { "/dev/null" }.to_string()),
                 vcpu_thread_stdout_tx,
                 memory_thread_data_rx,
                 io_control_rx,

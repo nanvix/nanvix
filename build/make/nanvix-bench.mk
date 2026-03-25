@@ -8,6 +8,7 @@ NANVIX_BENCH_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-p
 NANVIX_BENCH_FEATURES += $(if $(filter l2,$(DEPLOYMENT_MODE)),l2,)
 NANVIX_BENCH_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_BENCH_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
+NANVIX_BENCH_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_BENCH_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 NANVIX_BENCH_FEATURES := $(strip $(NANVIX_BENCH_FEATURES))
 NANVIX_BENCH_CARGO_FEATURES := $(if $(NANVIX_BENCH_FEATURES),--features "$(NANVIX_BENCH_FEATURES)")
