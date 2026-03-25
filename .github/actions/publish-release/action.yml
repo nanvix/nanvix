@@ -222,6 +222,9 @@ runs:
           // (server stored the asset but returned an error) by deleting the
           // existing asset before retrying.
           async function uploadAssetWithRetry(releaseId, name, data, retries = 3) {
+            const contentType = name.endsWith('.zip')
+              ? 'application/zip'
+              : 'application/x-bzip2';
             for (let attempt = 1; attempt <= retries; attempt++) {
               try {
                 await github.rest.repos.uploadReleaseAsset({
@@ -231,7 +234,7 @@ runs:
                   name,
                   data,
                   headers: {
-                    'content-type': 'application/x-bzip2',
+                    'content-type': contentType,
                     'content-length': data.length,
                   },
                 });
@@ -252,8 +255,8 @@ runs:
             }
           }
 
-          // Upload release artifacts.
-          const globber = await glob.create('release-artifacts/**/*.tar.bz2');
+          // Upload release artifacts (Linux .tar.bz2 and Windows .zip).
+          const globber = await glob.create('release-artifacts/**/*.tar.bz2\nrelease-artifacts/**/*.zip');
           const files = await globber.glob();
           core.info(`Found ${files.length} artifact(s) to upload.`);
 
