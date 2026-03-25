@@ -944,6 +944,55 @@ function Main {
                         }
                         Write-Success "Unit tests passed."
                     }
+                    "check" {
+                        # Native cargo check for host crates (no Docker required).
+                        # This avoids the infinite rebuild loop caused by Docker's
+                        # symlink manipulation and file output when used with
+                        # rust-analyzer. Pass MESSAGE_FORMAT=json for RA integration.
+                        $features = Get-NativeCargoFeatures -Machine $machine
+                        Write-Info "Checking host crates (native, $machine backend)..."
+                        $ErrorActionPreference = 'Continue'
+
+                        # Detect MESSAGE_FORMAT parameter (used by rust-analyzer).
+                        $fmtParam = $makeParams | Where-Object { $_ -match '^MESSAGE_FORMAT=' } | Select-Object -Last 1
+                        $msgFmt = @()
+                        if ($fmtParam) {
+                            $fmt = ($fmtParam -replace '^MESSAGE_FORMAT=', '').Trim()
+                            $allowedFormats = @('json', 'json-diagnostic-rendered-ansi')
+                            if ([string]::IsNullOrWhiteSpace($fmt)) {
+                                Write-Err "Invalid MESSAGE_FORMAT: value is empty. Allowed values: $($allowedFormats -join ', ')."
+                                exit 1
+                            }
+                            if ($allowedFormats -notcontains $fmt) {
+                                Write-Err "Invalid MESSAGE_FORMAT: '$fmt'. Allowed values: $($allowedFormats -join ', ')."
+                                exit 1
+                            }
+                            $msgFmt = @("--message-format=$fmt")
+                        }
+
+                        # Check uservm (machine features, no standalone).
+                        cargo check --no-default-features --features "$features" -p uservm @msgFmt
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Check failed for uservm."
+                            exit 1
+                        }
+
+                        # Check mkramfs (no features).
+                        cargo check -p mkramfs @msgFmt
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Check failed for mkramfs."
+                            exit 1
+                        }
+
+                        # Check nanvixd and nanvix-test (standalone + machine features).
+                        cargo check --no-default-features --features "standalone,$features" -p nanvixd -p nanvix-test @msgFmt
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Check failed for nanvixd/nanvix-test."
+                            exit 1
+                        }
+
+                        Write-Success "Check passed."
+                    }
                     "spellcheck" {
                         # Spellcheck requires pyspelling which is only available inside
                         # Docker. When Docker is not available or not running, skip gracefully.
