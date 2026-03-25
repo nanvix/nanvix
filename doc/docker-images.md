@@ -9,7 +9,7 @@ This guide shows how to build and run OCI container images for Nanvix workloads.
 
 - Docker installed (see [setup](setup.md))
 - Nanvix built — application binaries (`.elf`) available (see [build](build-linux.md))
-- The shim installed and configured (see [run.md](run.md))
+- The shim installed and configured (see [run-linux.md](run-linux.md))
 
 ## Obtaining Application Binaries
 
