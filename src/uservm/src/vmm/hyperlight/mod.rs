@@ -31,17 +31,22 @@ use ::hyperlight_host::{
         },
     },
 };
+#[cfg(target_os = "windows")]
+use ::log::warn;
 use ::log::{
     debug,
     error,
 };
+#[cfg(target_os = "linux")]
 use ::std::{
     fs::File,
-    io::Write,
     os::{
         raw::c_int,
         unix::io::AsRawFd,
     },
+};
+use ::std::{
+    io::Write,
     path::Path,
     sync::Arc,
     time::Duration,
@@ -61,9 +66,11 @@ use ::tokio::{
 //==================================================================================================
 
 /// Signal used to interrupt the vCPU thread.
+#[cfg(target_os = "linux")]
 pub const INTERRUPT_SIGNAL: c_int = libc::SIGUSR1;
 
 /// Signal used to kill the vCPU thread.
+#[cfg(target_os = "linux")]
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
 
 /// Grace period before sending SIGKILL to the vCPU thread during shutdown.
@@ -98,10 +105,12 @@ pub type StderrFn = dyn Write + Send;
 //==================================================================================================
 
 /// RAII guard that redirects process stderr to a file and restores the original fd on drop.
+#[cfg(target_os = "linux")]
 struct StderrRedirect {
     saved_fd: c_int,
 }
 
+#[cfg(target_os = "linux")]
 impl StderrRedirect {
     /// Redirects process stderr to `path`, returning a guard that restores it on drop.
     fn new(path: &str) -> Result<Self> {
@@ -136,6 +145,7 @@ impl StderrRedirect {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for StderrRedirect {
     fn drop(&mut self) {
         // SAFETY: saved_fd was obtained from dup() in new() and has not been closed.
@@ -143,6 +153,24 @@ impl Drop for StderrRedirect {
             libc::dup2(self.saved_fd, libc::STDERR_FILENO);
             libc::close(self.saved_fd);
         }
+    }
+}
+
+/// No-op stderr redirect on Windows — hyperlight DebugPrint output goes to default stderr.
+#[cfg(target_os = "windows")]
+struct StderrRedirect;
+
+#[cfg(target_os = "windows")]
+impl StderrRedirect {
+    fn new(path: &str) -> Result<Self> {
+        if !path.is_empty() {
+            warn!(
+                "stderr redirection to '{}' is not supported on Windows; output goes to default \
+                 stderr",
+                path
+            );
+        }
+        Ok(Self)
     }
 }
 
@@ -390,8 +418,12 @@ impl Vmm {
 
     pub fn spawn(mut self) -> tokio::task::JoinHandle<Result<u16>> {
         task::spawn_blocking(move || {
-            let pthread_id: libc::pthread_t = unsafe { libc::pthread_self() };
-            Handle::current().block_on(self.send_tid(pthread_id))?;
+            #[cfg(target_os = "linux")]
+            let thread_id: u64 = unsafe { libc::pthread_self() } as u64;
+            #[cfg(target_os = "windows")]
+            let thread_id: u64 =
+                unsafe { windows::Win32::System::Threading::GetCurrentThreadId() as u64 };
+            Handle::current().block_on(self.send_tid(thread_id))?;
             self.run()
         })
     }
@@ -462,7 +494,7 @@ impl Vmm {
                     Ok(code as u16)
                 },
                 None => {
-                    error!("run(): vmm aborted (error={error:?})");
+                    error!("run(): vmm aborted (debug={error:?}, display={error})");
                     Ok(ErrorCode::ConnectionReset.into())
                 },
             },
@@ -484,7 +516,14 @@ impl Vmm {
         // For Initialize path, parse the Debug representation.
         // Format: ...GuestAborted { code: N, message: "..." }...
         let debug_str = format!("{error:?}");
-        Self::parse_guest_aborted_from_debug(&debug_str)
+        if let Some(result) = Self::parse_guest_aborted_from_debug(&debug_str) {
+            return Some(result);
+        }
+
+        // Fallback: parse the Display representation.
+        // Format: ...Guest aborted: error code N, message: ...
+        let display_str = format!("{error}");
+        Self::parse_guest_aborted_from_display(&display_str)
     }
 
     /// Parses a `GuestAborted { code: N, message: "..." }` fragment from a `Debug` string.
@@ -511,6 +550,22 @@ impl Vmm {
         Some((code, message))
     }
 
+    /// Parses a `Guest aborted: error code N, message: M` fragment from a `Display` string.
+    fn parse_guest_aborted_from_display(display_str: &str) -> Option<(u8, String)> {
+        const PREFIX: &str = "Guest aborted: error code ";
+
+        let rest = &display_str[display_str.find(PREFIX)? + PREFIX.len()..];
+        let code_end = rest.find(',')?;
+        let code = rest[..code_end].trim().parse::<u8>().ok()?;
+
+        let message = rest
+            .find("message: ")
+            .map(|pos| rest[pos + "message: ".len()..].trim().to_string())
+            .unwrap_or_default();
+
+        Some((code, message))
+    }
+
     ///
     /// # Description
     ///
@@ -524,7 +579,7 @@ impl Vmm {
     ///
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
-    async fn send_tid(&self, tid: libc::pthread_t) -> Result<()> {
+    async fn send_tid(&self, tid: u64) -> Result<()> {
         Ok(self
             .inner
             .lock()
@@ -639,6 +694,41 @@ mod tests {
     fn parse_guest_aborted_invalid_code() {
         let input = r#"GuestAborted { code: 999, message: "overflow" }"#;
         let result = Vmm::parse_guest_aborted_from_debug(input);
+        assert_eq!(result, None); // 999 doesn't fit u8
+    }
+
+    #[test]
+    fn parse_guest_aborted_from_display_typical() {
+        let input = "Guest aborted: error code 13, message: kernel exited";
+        let result = Vmm::parse_guest_aborted_from_display(input);
+        assert_eq!(result, Some((13, "kernel exited".to_string())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_from_display_empty_message() {
+        let input = "Guest aborted: error code 1, message: ";
+        let result = Vmm::parse_guest_aborted_from_display(input);
+        assert_eq!(result, Some((1, String::new())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_from_display_nested() {
+        let input = "initialize sandbox: Guest aborted: error code 42, message: test panic";
+        let result = Vmm::parse_guest_aborted_from_display(input);
+        assert_eq!(result, Some((42, "test panic".to_string())));
+    }
+
+    #[test]
+    fn parse_guest_aborted_from_display_missing() {
+        let input = "some unrelated error occurred";
+        let result = Vmm::parse_guest_aborted_from_display(input);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn parse_guest_aborted_from_display_invalid_code() {
+        let input = "Guest aborted: error code 999, message: overflow";
+        let result = Vmm::parse_guest_aborted_from_display(input);
         assert_eq!(result, None); // 999 doesn't fit u8
     }
 }
