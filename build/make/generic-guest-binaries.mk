@@ -11,6 +11,12 @@ TEST_KERNEL_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 TEST_KERNEL_FEATURES := $(strip $(TEST_KERNEL_FEATURES))
 TEST_KERNEL_CARGO_FEATURES := $(if $(TEST_KERNEL_FEATURES),--features "$(TEST_KERNEL_FEATURES)")
 
+# Package-specific features for misc-rust program.
+MISC_RUST_FEATURES := $(GUEST_BINARY_FEATURES)
+MISC_RUST_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
+MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
+MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
+
 # Guest binaries that support standalone deployment mode.
 STANDALONE_GUEST_BINARIES := file-rust linux-app thread-rust stress-rust arch-rust
 
@@ -24,7 +30,7 @@ _standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filte
 _pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
 
 # Returns package-specific cargo features, falling back to generic features.
-GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))"))
+GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter misc-rust,$(1)),$(MISC_RUST_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))")))
 
 # Per-package rules retained for direct invocation (e.g., make all-guest-binaries-<pkg>).
 define GUEST_BINARY_RULES
