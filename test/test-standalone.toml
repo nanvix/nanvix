@@ -65,33 +65,9 @@ expected_exit_code = 0
 
 [[tests]]
 executor = "http"
-program = "./bin/echo-c.elf"
-input = "hello world!"
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/echo-cpp.elf"
-input = '["hello world!"]'
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
 program = "./bin/echo-rust-nostd.elf"
 input = '["hello world!"]'
 expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/hello-c.elf"
-input = "[]"
-expected_output = "Hello, world from C!"
-
-[[tests]]
-executor = "http"
-program = "./bin/hello-cpp.elf"
-input = "[]"
-expected_output = "Hello, world from C++!"
 
 [[tests]]
 executor = "http"
@@ -107,25 +83,6 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
-program = "./bin/thread-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/misc-c.elf"
-program_args = ";NANVIX_TEST=1"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/memory-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
 program = "./bin/arch-rust.elf"
 input = "[]"
 expected_output = "ok"
@@ -133,27 +90,6 @@ expected_output = "ok"
 [[tests]]
 executor = "http"
 program = "./bin/linux-app.elf"
-extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/dlfcn-c.elf"
-extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/dlfcn-pie-c.elf"
-extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/file-c.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 input = "[]"
 expected_output = "ok"
@@ -189,31 +125,9 @@ expected_exit_code = 0
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-c.elf"
-input = "hello world"
-expected_output = "hello world"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/echo-cpp.elf"
-input = "hello world"
-expected_output = "hello world"
-
-[[tests]]
-executor = "terminal"
 program = "./bin/echo-rust-nostd.elf"
 input = "hello world"
 expected_output = "hello world"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/hello-c.elf"
-expected_output = "Hello, world from C!"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/hello-cpp.elf"
-expected_output = "Hello, world from C++!"
 
 [[tests]]
 executor = "terminal"
@@ -227,33 +141,11 @@ expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/thread-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/misc-c.elf"
-program_args = ";NANVIX_TEST=1"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/memory-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
 program = "./bin/arch-rust.elf"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/dlfcn-c.elf"
-extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/dlfcn-pie-c.elf"
+program = "./bin/linux-app.elf"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"

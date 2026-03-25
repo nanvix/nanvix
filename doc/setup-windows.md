@@ -120,7 +120,7 @@ Choose one of the following options to set up your IDE for Nanvix development.
 Use the host-specific settings template below. The Windows template invokes `./z.bat` and also
 routes Rust Analyzer build-script discovery through the Windows Docker workflow. Without the
 Windows override, Rust Analyzer falls back to native `cargo` for build-script metadata and guest
-crates such as `kernel` fail because `gcc`/`ar` are not available on the host `PATH`.
+crates such as `kernel` fail because cross-compilation tools are not available on the host `PATH`.
 
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force

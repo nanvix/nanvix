@@ -58,33 +58,9 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
-program = "./bin/echo-c.elf"
-input = "hello world!"
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/echo-cpp.elf"
-input = '["hello world!"]'
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
 program = "./bin/echo-rust-nostd.elf"
 input = '["hello world!"]'
 expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/hello-c.elf"
-input = "[]"
-expected_output = "Hello, world from C!"
-
-[[tests]]
-executor = "http"
-program = "./bin/hello-cpp.elf"
-input = "[]"
-expected_output = "Hello, world from C++!"
 
 [[tests]]
 executor = "http"
@@ -94,31 +70,30 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
-program = "./bin/thread-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/network-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/misc-c.elf"
-program_args = ";NANVIX_TEST=1"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/memory-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
 program = "./bin/arch-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/memory-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/misc-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/network-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/thread-rust.elf"
 input = "[]"
 expected_output = "ok"

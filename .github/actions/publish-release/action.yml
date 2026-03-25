@@ -321,7 +321,7 @@ runs:
           exit 0
         fi
 
-        repos=("bzip2" "cymem" "kiwi" "libexpat" "libffi" "murmurhash" "numpy" "openblas" "openssl" "preshed" "quickjs" "rusty_v8" "sqlite" "srsly" "zlib")
+        repos=("bzip2" "cymem" "kiwi" "libexpat" "libffi" "murmurhash" "numpy" "openblas" "openssl" "posix-tests" "preshed" "quickjs" "rusty_v8" "sqlite" "srsly" "zlib")
         failed=0
 
         for repo in "${repos[@]}"; do
