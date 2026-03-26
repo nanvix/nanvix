@@ -60,6 +60,7 @@ Utility for building Nanvix on Windows.
 Usage:
   .\z.ps1 COMMAND [OPTIONS] [-- BUILD_TARGET BUILD_PARAMETERS]
   .\z.ps1 build [-- BUILD_TARGET BUILD_PARAMETERS]
+  .\z.ps1 test [-- TEST_PARAMETERS]
   .\z.ps1 clean
   .\z.ps1 distclean
   .\z.ps1 setup
@@ -68,6 +69,7 @@ Usage:
 
 Commands
   build       Builds Nanvix.
+  test        Runs standalone integration tests on Windows.
   clean       Removes build artifacts (quick clean).
   distclean   Removes everything (full clean).
   setup       Sets up the development environment and installs Git hooks.
@@ -106,6 +108,11 @@ Build Parameters (after --)
   MACHINE=microvm         Target machine: microvm (default) or hyperlight.
   WHP=yes                 Enable WHP-specific guest kernel code for microvm builds.
   LOG_LEVEL=<level>       Log level (default: trace for debug, warn for release).
+
+Test Parameters (after --)
+  RELEASE=yes             Build nanvix-test in release mode if auto-build is needed.
+  MACHINE=microvm         Build nanvix-test for microvm (default) or hyperlight.
+  LOG_LEVEL=<level>       Set RUST_LOG for test execution.
 
 Prerequisites
   - Docker Desktop for Windows (with Linux containers enabled).
@@ -765,6 +772,91 @@ function Invoke-Run {
     }
 }
 
+function Invoke-Test {
+    param([bool]$IsRelease, [string[]]$TestArgs = @())
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $machine = "microvm"
+    $logLevel = ""
+
+    foreach ($arg in $TestArgs) {
+        if ($arg -match '^MACHINE=') {
+            $machine = ($arg -replace '^MACHINE=', '').Trim()
+        }
+        elseif ($arg -match '^LOG_LEVEL=') {
+            $logLevel = ($arg -replace '^LOG_LEVEL=', '').Trim()
+        }
+        elseif ($arg -eq "RELEASE=yes") {
+            continue
+        }
+        elseif ($arg -match '=') {
+            Write-Warn "Ignoring unsupported test parameter: $arg"
+        }
+        else {
+            Write-Warn "Ignoring unsupported test argument: $arg"
+        }
+    }
+
+    # Validate machine type early using the same rules as native builds.
+    Get-NativeCargoFeatures -Machine $machine | Out-Null
+
+    $nanvixTestBin = Join-Path $BinDir "nanvix-test.exe"
+    if (-not (Test-Path $nanvixTestBin)) {
+        Write-Info "nanvix-test binary not found. Building it now..."
+        Build-NanvixTest -IsRelease $IsRelease -Machine $machine
+    }
+
+    # Ensure the Windows standalone tests' daemon binary is available.
+    $nanvixdBin = Join-Path $BinDir "nanvixd.exe"
+    if (-not (Test-Path $nanvixdBin)) {
+        Write-Err "Required daemon binary not found at $nanvixdBin."
+        Write-Err "Build the UserVM and guest artifacts before running tests:"
+        Write-Host "  .\z.ps1 build -- uservm" -ForegroundColor DarkGray
+        Write-Host "  .\z.ps1 build -- guest" -ForegroundColor DarkGray
+        exit 1
+    }
+
+    $testConfig = Join-Path $RootDir "test\test-standalone-windows.toml"
+    if (-not (Test-Path $testConfig)) {
+        Write-Err "Test configuration not found at $testConfig"
+        exit 1
+    }
+
+    # Preserve existing RUST_LOG value (or absence) so we can restore it after the test run.
+    $hadRustLog = Test-Path Env:RUST_LOG
+    $priorRustLog = $null
+    if ($hadRustLog) {
+        $priorRustLog = $env:RUST_LOG
+    }
+
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($logLevel)) {
+            $env:RUST_LOG = $logLevel
+        }
+
+        Write-Info "Running standalone integration tests on Windows..."
+        Write-Host "  $nanvixTestBin $testConfig" -ForegroundColor DarkGray
+
+        & $nanvixTestBin $testConfig
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "Tests failed with exit code $LASTEXITCODE."
+            exit $LASTEXITCODE
+        }
+
+        Write-Success "Tests passed."
+    }
+    finally {
+        if ($hadRustLog) {
+            $env:RUST_LOG = $priorRustLog
+        }
+        else {
+            Remove-Item Env:RUST_LOG -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # ==================================================================================================
 # Setup
 # ==================================================================================================
@@ -812,7 +904,7 @@ function Main {
     if ($args.Count -gt 1) { $remaining = $args[1..($args.Count - 1)] }
 
     # Reject unknown commands early to avoid running setup or build steps with invalid parameters.
-    $knownCommands = @("build", "clean", "distclean", "setup", "run", "help")
+    $knownCommands = @("build", "test", "clean", "distclean", "setup", "run", "help")
     if ($command -notin $knownCommands) {
         Write-Err "Unknown command: $command"
         Show-Help
@@ -1071,6 +1163,10 @@ function Main {
 
         "setup" {
             Invoke-Setup -UseMinimal $useMinimalDocker
+        }
+
+        "test" {
+            Invoke-Test -IsRelease $isRelease -TestArgs $buildParams
         }
 
         "help" {
