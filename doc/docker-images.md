@@ -28,7 +28,6 @@ directory of the Nanvix source tree:
 ls $NANVIX_DIR/bin/*.elf
 # hello-rust-nostd.elf  — "Hello, world!" (no std, no filesystem)
 # vfs-test.elf          — VFS test (requires ramfs)
-# echo-c.elf            — Echo server (C)
 ```
 
 ### Cross-compiling your own application
@@ -39,9 +38,6 @@ Use the Nanvix cross-compiler toolchain:
 # Rust (no_std)
 cargo +nanvix-x86 build --target i686-unknown-nanvix --release
 cp target/i686-unknown-nanvix/release/myapp myapp.elf
-
-# C
-i686-nanvix-gcc -o myapp.elf main.c
 ```
 
 See the [Nanvix documentation](https://github.com/nanvix/nanvix) for toolchain details.

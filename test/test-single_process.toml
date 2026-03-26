@@ -57,55 +57,13 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
-program = "./bin/echo-c.elf"
-input = "hello world!"
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/echo-cpp.elf"
-input = '["hello world!"]'
-expected_output = "hello world!"
-
-[[tests]]
-executor = "http"
 program = "./bin/echo-rust-nostd.elf"
 input = '["hello world!"]'
 expected_output = "hello world!"
 
 [[tests]]
 executor = "http"
-program = "./bin/hello-c.elf"
-input = "[]"
-expected_output = "Hello, world from C!"
-
-[[tests]]
-executor = "http"
-program = "./bin/hello-cpp.elf"
-input = "[]"
-expected_output = "Hello, world from C++!"
-
-[[tests]]
-executor = "http"
 program = "./bin/linux-app.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/dlfcn-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/dlfcn-pie-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/file-c.elf"
 input = "[]"
 expected_output = "ok"
 
@@ -124,31 +82,6 @@ expected_output = "ok"
 [[tests]]
 executor = "http"
 program = "./bin/stress-rust.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/thread-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/network-c.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/misc-c.elf"
-program_args = ";NANVIX_TEST=1"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/memory-c.elf"
 input = "[]"
 expected_output = "ok"
 
@@ -223,50 +156,13 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-c.elf"
-input = "hello world"
-expected_output = "hello world"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/echo-cpp.elf"
-input = "hello world"
-expected_output = "hello world"
-
-[[tests]]
-executor = "terminal"
 program = "./bin/echo-rust-nostd.elf"
 input = "hello world"
 expected_output = "hello world"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/hello-c.elf"
-expected_output = "Hello, world from C!"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/hello-cpp.elf"
-expected_output = "Hello, world from C++!"
-
-[[tests]]
-executor = "terminal"
 program = "./bin/linux-app.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/dlfcn-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/dlfcn-pie-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/file-c.elf"
 expected_output = "ok"
 
 [[tests]]
@@ -282,27 +178,6 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/stress-rust.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/thread-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/network-c.elf"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/misc-c.elf"
-program_args = ";NANVIX_TEST=1"
-expected_output = "ok"
-
-[[tests]]
-executor = "terminal"
-program = "./bin/memory-c.elf"
 expected_output = "ok"
 
 [[tests]]

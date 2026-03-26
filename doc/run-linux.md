@@ -86,7 +86,7 @@ print it to the terminal instead:
 Everything after `--` is forwarded to the application as arguments:
 
 ```bash
-./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf arg1 arg2
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf arg1 arg2
 ```
 
 Arguments and environment variables are packed into a single string separated by `;`. Everything
@@ -96,10 +96,10 @@ string when neither is needed. To pass only environment variables, start the str
 
 ```bash
 # Arguments and environment variables.
-./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf "arg1 arg2;VAR1=foo VAR2=bar"
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf "arg1 arg2;VAR1=foo VAR2=bar"
 
 # Environment variables only.
-./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-c.elf ";VAR1=foo"
+./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/echo-rust-nostd.elf ";VAR1=foo"
 ```
 
 ## HTTP Mode
@@ -126,7 +126,7 @@ NANVIX_HTTP_ADDR=127.0.0.1:8080
 NEW_JSON=$(jq -n \
     --arg tenant_id "foo" \
     --arg app_name "bar" \
-    --arg program "./bin/hello-c.elf" \
+    --arg program "./bin/hello-rust-nostd.elf" \
     --arg program_args "" \
     '{tenant_id: $tenant_id, app_name: $app_name, program: $program, program_args: $program_args}'
 )

@@ -53,7 +53,7 @@ You can also invoke `nanvixd.exe` directly:
 Everything after `--` is forwarded to the application as arguments:
 
 ```powershell
-.\bin\nanvixd.exe -- .\bin\echo-c.elf arg1 arg2
+.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf arg1 arg2
 ```
 
 Arguments and environment variables are packed into a single string separated by `;`. Everything
@@ -63,10 +63,10 @@ string when neither is needed. To pass only environment variables, start the str
 
 ```powershell
 # Arguments and environment variables.
-.\bin\nanvixd.exe -- .\bin\echo-c.elf "arg1 arg2;VAR1=foo VAR2=bar"
+.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf "arg1 arg2;VAR1=foo VAR2=bar"
 
 # Environment variables only.
-.\bin\nanvixd.exe -- .\bin\echo-c.elf ";VAR1=foo"
+.\bin\nanvixd.exe -- .\bin\echo-rust-nostd.elf ";VAR1=foo"
 ```
 
 ## Logging
