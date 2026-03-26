@@ -48,11 +48,18 @@ impl Args {
   boot-time              Measure raw user VM boot latency.\n",
         );
 
-        // System-level benchmarks require multi-process or single-process.
+        // System-level benchmarks require multi-process, single-process, or standalone.
+        if cfg!(any(feature = "multi-process", feature = "single-process", feature = "standalone"))
+        {
+            benchmarks.push_str(
+                "\
+  cold-start             Measure start-up latency from client's perspective.\n",
+            );
+        }
+
         if cfg!(any(feature = "multi-process", feature = "single-process")) {
             benchmarks.push_str(
                 "\
-  cold-start             Measure start-up latency from client's perspective.
   cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
   round-trip-latency     Measure latency (warm-start) as we increase the payload size.\n",
             );
@@ -86,10 +93,12 @@ impl Args {
             );
         }
 
-        benchmarks.push_str(
-            "\
+        if cfg!(not(windows)) {
+            benchmarks.push_str(
+                "\
   snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
-        );
+            );
+        }
 
         if cfg!(any(feature = "multi-process", feature = "single-process")) {
             benchmarks.push_str(

@@ -50,6 +50,9 @@ To build Nanvix using with default build parameters, run:
 # Build only nanvixd.
 .\z.ps1 build -- nanvixd
 
+# Build only nanvix-bench.
+.\z.ps1 build -- nanvix-bench
+
 # Build only the UserVM.
 .\z.ps1 build -- uservm
 

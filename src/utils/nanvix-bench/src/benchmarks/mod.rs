@@ -5,8 +5,12 @@
 // Modules
 //==================================================================================================
 
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 mod system;
 mod vmm;
+
+#[cfg(feature = "standalone")]
+mod standalone;
 
 //==================================================================================================
 // Constants

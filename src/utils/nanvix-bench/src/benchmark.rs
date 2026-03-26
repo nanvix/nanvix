@@ -6,13 +6,14 @@
 //==================================================================================================
 
 use ::nanvix::hwloc::HwLoc;
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
+use ::std::process::Child;
 use ::std::{
     fmt,
     path::{
         Path,
         PathBuf,
     },
-    process::Child,
     str::FromStr,
 };
 
@@ -50,6 +51,7 @@ impl BenchmarkFlavour {
     }
 
     /// Returns the linuxd deployment mode for this benchmark.
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub fn deployment(&self) -> LinuxdDeployment {
         if self.is_l2() {
             LinuxdDeployment::L2Vm
@@ -138,11 +140,17 @@ pub struct Benchmark {
     pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
     pub workspace_root: PathBuf,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd: Option<Child>,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_client: reqwest::Client,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_toolchain_bin_dir: String,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_netns_pool_size: Option<usize>,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_tmp_dir: String,
+    #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub user_vm_id: Option<String>,
 }
 
@@ -151,6 +159,7 @@ pub struct Benchmark {
 ///
 /// Linuxd deployment mode.
 ///
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 #[derive(Clone, Copy, PartialEq)]
 pub enum LinuxdDeployment {
     /// Linuxd deployed inside an L2 VM.
@@ -164,6 +173,7 @@ pub enum LinuxdDeployment {
 ///
 /// User VM deployment mode.
 ///
+#[cfg(any(feature = "multi-process", feature = "single-process"))]
 #[derive(PartialEq)]
 pub enum UserVmDeployment {
     /// Ensure each user VM gets a different linuxd instance.
