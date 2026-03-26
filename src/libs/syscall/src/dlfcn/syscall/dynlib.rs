@@ -203,20 +203,20 @@ impl DynamicLibrary {
                             }
 
                             let base: VirtualAddress = VirtualAddress::from_raw_value(base);
-                            let capacity: usize = mm::align_up(
-                                phdr.p_memsz as usize,
-                                PAGE_ALIGNMENT,
-                            )
-                            .ok_or_else(|| {
-                                let reason: &str = "align_up overflow";
-                                ::syslog::error!(
-                                    "load(): {reason} (p_memsz={}, vaddr={:#x}, base={:#x})",
-                                    phdr.p_memsz,
-                                    phdr.p_vaddr,
-                                    base.into_raw_value()
-                                );
-                                Error::new(ErrorCode::BadFile, reason)
-                            })?;
+                            let offset: usize = unaligned_base - base.into_raw_value();
+                            let capacity: usize =
+                                mm::align_up(offset + phdr.p_memsz as usize, PAGE_ALIGNMENT)
+                                    .ok_or_else(|| {
+                                        let reason: &str = "align_up overflow";
+                                        ::syslog::error!(
+                                            "load(): {reason} (p_memsz={}, vaddr={:#x}, \
+                                             base={:#x})",
+                                            phdr.p_memsz,
+                                            phdr.p_vaddr,
+                                            base.into_raw_value()
+                                        );
+                                        Error::new(ErrorCode::BadFile, reason)
+                                    })?;
                             let end_raw: usize =
                                 base.into_raw_value().checked_add(capacity).ok_or_else(|| {
                                     let reason: &str = "end_address overflow";
@@ -227,7 +227,6 @@ impl DynamicLibrary {
                                     Error::new(ErrorCode::BadFile, reason)
                                 })?;
                             end_address = VirtualAddress::from_raw_value(end_raw);
-                            let offset: usize = unaligned_base - base.into_raw_value();
                             (base, offset, capacity)
                         };
 
