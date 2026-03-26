@@ -23,7 +23,8 @@ pub const SOCKET_ROOT: &str = "/run/containerd";
 pub fn socket_address(address: &str, namespace: &str, id: &str) -> String {
     let data: String = format!("{}/{}/{}", address, namespace, id);
     let hash = Sha256::digest(data.as_bytes());
-    format!("unix://{}/s/{:x}", SOCKET_ROOT, hash)
+    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    format!("unix://{}/s/{}", SOCKET_ROOT, hex)
 }
 
 /// Strip the `unix://` prefix from a socket address to get the filesystem path.
