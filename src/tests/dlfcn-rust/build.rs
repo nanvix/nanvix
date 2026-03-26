@@ -86,8 +86,13 @@ fn main() {
     let mul_c: PathBuf = Path::new(&manifest_dir).join("libs/mul.c");
     println!("cargo:rerun-if-changed=libs/mul.c");
 
-    let libraries_dir: String = env::var("LIBRARIES_DIR")
-        .unwrap_or_else(|_| panic!("LIBRARIES_DIR not set — required to place libmul.so"));
+    // When rust-analyzer (or plain `cargo check`) runs without the full build
+    // environment, these variables are absent.  Skip the shared-library build
+    // and linker configuration so the IDE can still provide diagnostics.
+    let libraries_dir: String = match env::var("LIBRARIES_DIR") {
+        Ok(v) => v,
+        Err(_) => return,
+    };
     let lib_dir = Path::new(&libraries_dir);
 
     // Ensure the output directory exists (it may not in a fresh CI checkout).
