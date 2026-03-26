@@ -111,6 +111,9 @@ Available build parameters:
 
 # Run unit tests.
 .\z.ps1 build -- run-unit-tests
+
+# Run standalone integration tests on Windows.
+.\z.ps1 test -- MACHINE=microvm
 ```
 
 ## Cleaning
