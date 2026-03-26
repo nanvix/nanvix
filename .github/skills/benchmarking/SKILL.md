@@ -107,3 +107,38 @@ Additional analysis can be done with the automation script:
 ```bash
 python3 scripts/benchmark.py
 ```
+
+## Benchmarking on Windows
+
+On Windows, `nanvix-bench` runs in standalone mode (no HTTP, no linuxd). The standalone cold-start
+benchmark spawns a fresh `nanvixd` process per iteration in interactive mode and measures the time
+from process spawn to the first echo round-trip.
+
+### Building
+
+```powershell
+.\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
+```
+
+### Available Benchmarks
+
+| Benchmark          | Description                                             |
+|--------------------|---------------------------------------------------------|
+| `boot-time`        | Start a user VM (no nanvixd)                            |
+| `cold-start`       | Spawn nanvixd + VM + echo round-trip (standalone mode)  |
+| `warm-start-vmm`   | Raw round-trip latency inside the user VM               |
+
+### Running
+
+```powershell
+# Using z.ps1.
+.\z.ps1 bench -- -benchmark cold-start -iterations 10
+
+# Or directly.
+.\bin\nanvix-bench.exe -benchmark cold-start -iterations 10
+.\bin\nanvix-bench.exe -benchmark boot-time -iterations 100
+.\bin\nanvix-bench.exe -help
+```
+
+> **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`, `concurrent`, L2 variants,
+> and `echo-breakdown`) are Linux-only.

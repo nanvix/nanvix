@@ -118,6 +118,7 @@ Commands
   distclean   Removes everything (full clean).
   setup       Sets up the development environment and installs Git hooks.
   run         Runs nanvixd in standalone mode.
+  bench       Runs nanvix-bench benchmarks.
   help        Prints this help message.
 
 Options
@@ -128,6 +129,7 @@ Options
 
 Build Targets (after --)
   all                     Build everything (guest + host).
+  nanvix-bench            Build nanvix-bench only (native Windows).
   uservm                  Build UserVM only (native Windows).
   mkramfs                 Build mkramfs only (native Windows).
   guest                   Build guest components only (kernel + hello-rust-nostd).
@@ -755,6 +757,60 @@ function Build-NanvixTest {
     }
 }
 
+function Build-NanvixBench {
+    param([bool]$IsRelease, [string]$Machine = "microvm", [string]$LogLevel = "")
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $mode = if ($IsRelease) { "release" } else { "debug" }
+    $buildProfile = if ($IsRelease) { "--release" } else { "" }
+    $features = Get-NativeCargoFeatures -Machine $Machine
+
+    # Resolve LOG_LEVEL: explicit parameter > default based on release mode.
+    # Release benchmarks require LOG_LEVEL=panic (enforced at runtime by nanvix-bench).
+    if (-not $LogLevel) {
+        $LogLevel = if ($IsRelease) { "panic" } else { "trace" }
+    }
+
+    Write-Info "Building nanvix-bench (standalone + $Machine, $mode mode)..."
+
+    if (-not (Test-Path $BinDir)) {
+        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    }
+
+    # Set compile-time environment variables that nanvix-bench checks via option_env!().
+    $oldRelease = $env:RELEASE
+    $oldLogLevel = $env:LOG_LEVEL
+    try {
+        $env:RELEASE = if ($IsRelease) { "yes" } else { "no" }
+        $env:LOG_LEVEL = $LogLevel
+
+        $cmd = "cargo build --no-default-features --features `"standalone,$features`" -p nanvix-bench $buildProfile"
+        Write-Host "  $cmd" -ForegroundColor DarkGray
+        Invoke-Expression $cmd
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "Failed to build nanvix-bench."
+            exit 1
+        }
+    }
+    finally {
+        $env:RELEASE = $oldRelease
+        $env:LOG_LEVEL = $oldLogLevel
+    }
+
+    $src = Join-Path (Join-Path (Join-Path $RootDir "target") $mode) "nanvix-bench.exe"
+    $dst = Join-Path $BinDir "nanvix-bench.exe"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Info "Output: $dst"
+    }
+    else {
+        Write-Err "nanvix-bench binary not found at $src"
+        exit 1
+    }
+}
+
 # ==================================================================================================
 # Clean
 # ==================================================================================================
@@ -769,6 +825,7 @@ function Invoke-Clean {
     cargo clean -p uservm 2>$null
     cargo clean -p nanvixd 2>$null
     cargo clean -p nanvix-test 2>$null
+    cargo clean -p nanvix-bench 2>$null
 
     # Remove all guest binaries in bin/
     if (Test-Path $BinDir) {
@@ -1034,6 +1091,32 @@ function Invoke-Test {
 }
 
 # ==================================================================================================
+# Bench
+# ==================================================================================================
+
+function Invoke-Bench {
+    param([string[]]$BenchArgs = @())
+
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    $benchBin = Join-Path $BinDir "nanvix-bench.exe"
+    if (-not (Test-Path $benchBin)) {
+        Write-Err "nanvix-bench binary not found at $benchBin. Build it first with: .\z.ps1 build -- nanvix-bench"
+        exit 1
+    }
+
+    Write-Info "Running nanvix-bench..."
+    Write-Host "  Args: $($BenchArgs -join ' ')" -ForegroundColor DarkGray
+
+    & $benchBin @BenchArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "nanvix-bench exited with code $LASTEXITCODE."
+        exit $LASTEXITCODE
+    }
+}
+
+# ==================================================================================================
 # Setup
 # ==================================================================================================
 
@@ -1080,7 +1163,7 @@ function Main {
     if ($args.Count -gt 1) { $remaining = $args[1..($args.Count - 1)] }
 
     # Reject unknown commands early to avoid running setup or build steps with invalid parameters.
-    $knownCommands = @("build", "test", "clean", "distclean", "setup", "run", "help")
+    $knownCommands = @("build", "test", "clean", "distclean", "setup", "run", "bench", "help")
     if ($command -notin $knownCommands) {
         Write-Err "Unknown command: $command"
         Show-Help
@@ -1164,6 +1247,10 @@ function Main {
             $machineParam = $makeParams | Where-Object { $_ -match '^MACHINE=' } | Select-Object -Last 1
             $machine = if ($machineParam) { $machineParam -replace '^MACHINE=', '' } else { 'microvm' }
 
+            # Extract LOG_LEVEL parameter for native builds.
+            $logLevelParam = $makeParams | Where-Object { $_ -match '^LOG_LEVEL=' } | Select-Object -Last 1
+            $logLevel = if ($logLevelParam) { $logLevelParam -replace '^LOG_LEVEL=', '' } else { '' }
+
             foreach ($target in $targets) {
                 switch ($target) {
                     "all" {
@@ -1171,6 +1258,7 @@ function Main {
                         Build-UserVm -IsRelease $isRelease -Machine $machine
                         Build-Nanvixd -IsRelease $isRelease -Machine $machine
                         Build-NanvixTest -IsRelease $isRelease -Machine $machine
+                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease -Machine $machine
@@ -1186,6 +1274,9 @@ function Main {
                     }
                     "nanvix-test" {
                         Build-NanvixTest -IsRelease $isRelease -Machine $machine
+                    }
+                    "nanvix-bench" {
+                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
@@ -1366,6 +1457,10 @@ function Main {
 
         "run" {
             Invoke-Run -RunArgs $buildParams
+        }
+
+        "bench" {
+            Invoke-Bench -BenchArgs $buildParams
         }
 
         "setup" {

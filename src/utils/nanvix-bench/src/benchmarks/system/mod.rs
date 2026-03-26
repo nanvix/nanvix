@@ -84,6 +84,14 @@ const NANVIXD_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
 ///
 /// # Description
 ///
+/// Sleep duration (in milliseconds) between shutdown polling attempts while waiting for nanvixd to
+/// exit.
+///
+const NANVIXD_SHUTDOWN_POLL_INTERVAL_MS: u64 = 100;
+
+///
+/// # Description
+///
 /// Timeout (in seconds) for the gateway connection retry loop. Matches the nanvixd-side gateway
 /// probe timeout (`GATEWAY_CONNECT_TIMEOUT`).
 ///
@@ -319,43 +327,81 @@ impl Benchmark {
     /// Kill the different components in order.
     pub(crate) fn cleanup(&mut self) {
         if let Some(nanvixd) = self.nanvixd.as_mut() {
-            debug!("Sending SIGINT to nanvixd");
-            let ret_code: i32 = unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGINT) };
+            #[cfg(unix)]
+            {
+                debug!("Sending SIGINT to nanvixd");
+                let ret_code: i32 =
+                    unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGINT) };
 
-            if ret_code < 0 {
-                error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
+                if ret_code < 0 {
+                    error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
+                }
+
+                // Wait for nanvixd to exit with a bounded timeout to prevent indefinite hangs.
+                let deadline = Instant::now() + Duration::from_secs(NANVIXD_SHUTDOWN_TIMEOUT_SECS);
+                loop {
+                    match nanvixd.try_wait() {
+                        Ok(Some(exit_status)) => {
+                            if !exit_status.success() {
+                                error!(
+                                    "nanvixd returned with non-zero exit status: {:?}",
+                                    exit_status.code()
+                                );
+                            }
+                            break;
+                        },
+                        Ok(None) => {
+                            if Instant::now() >= deadline {
+                                warn!(
+                                    "nanvixd did not exit within {}s after SIGINT, sending SIGKILL",
+                                    NANVIXD_SHUTDOWN_TIMEOUT_SECS
+                                );
+                                let _ = unsafe {
+                                    libc::kill(nanvixd.id() as libc::pid_t, libc::SIGKILL)
+                                };
+                                let _ = nanvixd.wait();
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(
+                                NANVIXD_SHUTDOWN_POLL_INTERVAL_MS,
+                            ));
+                        },
+                        Err(e) => {
+                            error!("error waiting for nanvixd: {e:?}");
+                            break;
+                        },
+                    }
+                }
             }
 
-            // Wait for nanvixd to exit with a bounded timeout to prevent indefinite hangs.
-            let deadline = Instant::now() + Duration::from_secs(NANVIXD_SHUTDOWN_TIMEOUT_SECS);
-            loop {
-                match nanvixd.try_wait() {
-                    Ok(Some(exit_status)) => {
-                        if !exit_status.success() {
-                            error!(
-                                "nanvixd returned with non-zero exit status: {:?}",
-                                exit_status.code()
-                            );
-                        }
-                        break;
-                    },
-                    Ok(None) => {
-                        if Instant::now() >= deadline {
-                            warn!(
-                                "nanvixd did not exit within {}s after SIGINT, sending SIGKILL",
-                                NANVIXD_SHUTDOWN_TIMEOUT_SECS
-                            );
-                            let _ =
-                                unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGKILL) };
-                            let _ = nanvixd.wait();
+            #[cfg(not(unix))]
+            {
+                debug!("Terminating nanvixd process");
+                if let Err(e) = nanvixd.kill() {
+                    error!("error terminating nanvixd: {e}");
+                }
+
+                let deadline = Instant::now() + Duration::from_secs(NANVIXD_SHUTDOWN_TIMEOUT_SECS);
+                loop {
+                    match nanvixd.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {
+                            if Instant::now() >= deadline {
+                                warn!(
+                                    "nanvixd did not exit within {}s after terminate",
+                                    NANVIXD_SHUTDOWN_TIMEOUT_SECS
+                                );
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(
+                                NANVIXD_SHUTDOWN_POLL_INTERVAL_MS,
+                            ));
+                        },
+                        Err(e) => {
+                            error!("error waiting for nanvixd: {e:?}");
                             break;
-                        }
-                        std::thread::sleep(Duration::from_millis(100));
-                    },
-                    Err(e) => {
-                        error!("error waiting for nanvixd: {e:?}");
-                        break;
-                    },
+                        },
+                    }
                 }
             }
 
