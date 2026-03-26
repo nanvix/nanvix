@@ -156,6 +156,20 @@ export NANVIX_NODENAME ?= localhost
 export NANVIX_MACHINE := $(MACHINE)
 
 #===================================================================================================
+# C Toolchain Configuration
+#===================================================================================================
+
+# Tools
+export NANVIX_CC := clang
+
+# C compiler options
+export NANVIX_CFLAGS := --target=i686-unknown-none -m32 -march=pentiumpro -nostdlib -ffreestanding
+
+# Linker options
+export NANVIX_LDFLAGS := --target=i686-unknown-none -m32 -march=pentiumpro -nostdlib -ffreestanding
+export NANVIX_LDFLAGS += -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
+
+#===================================================================================================
 # Rust Toolchain Configuration
 #===================================================================================================
 
