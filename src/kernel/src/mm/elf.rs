@@ -178,9 +178,9 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
-        let virt_addr_range_end: usize = virt_addr_base.checked_add(size).ok_or_else(|| {
+        let virt_addr_range_end: usize = adjusted_vaddr.checked_add(size).ok_or_else(|| {
             let reason: &str = "virtual address overflow in elf segment";
-            error!("{reason} (virt_addr_base={virt_addr_base:#x}, size={size})");
+            error!("{reason} (adjusted_vaddr={adjusted_vaddr:#x}, size={size})");
             Error::new(ErrorCode::BadFile, reason)
         })?;
         let virt_addr_end: usize = ::sys::mm::align_up(virt_addr_range_end, PAGE_ALIGNMENT)
