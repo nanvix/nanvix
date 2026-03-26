@@ -127,9 +127,6 @@ MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 # File format for executables.
 export EXEC_FORMAT := elf
 # Libraries
-export LIBC := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libc.a
-export LIBM := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libm.a
-export LIBCXX := $(TOOLCHAIN_DIR)/i686-nanvix/lib/libstdc++.a
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 
 # Binaries.
@@ -157,81 +154,6 @@ export NANVIX_NODENAME ?= localhost
 
 # Name of the machine on which the system is running.
 export NANVIX_MACHINE := $(MACHINE)
-
-#===================================================================================================
-# C Toolchain Configuration
-#===================================================================================================
-
-# Tools
-export NANVIX_CC := $(TOOLCHAIN_DIR)/bin/i686-nanvix-gcc
-export NANVIX_CXX := $(TOOLCHAIN_DIR)/bin/i686-nanvix-g++
-
-# SCCACHE integration for C/C++ compilation (optional)
-# Wrap every compiler entrypoint exactly once so both host and cross builds
-# benefit from the cache without re-prefixing values that already include it.
-ifneq ($(SCCACHE),)
-
-# This helper ensures every compiler entrypoint picks up sccache exactly once.
-define wrap_with_sccache
-$(strip $(if $(filter $(SCCACHE),$(firstword $1)),$1,$(SCCACHE) $1))
-endef
-
-export CC := $(call wrap_with_sccache,$(CC))
-export CXX := $(call wrap_with_sccache,$(CXX))
-export NANVIX_CC := $(call wrap_with_sccache,$(NANVIX_CC))
-export NANVIX_CXX := $(call wrap_with_sccache,$(NANVIX_CXX))
-undefine wrap_with_sccache
-endif
-
-# C Compiler Options
-export NANVIX_CFLAGS := -std=c17
-export NANVIX_CFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-export NANVIX_CFLAGS += -Wall -Wextra -Werror
-export NANVIX_CFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
-export NANVIX_CFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
-export NANVIX_CFLAGS += -Wvla -Wredundant-decls
-export NANVIX_CFLAGS += -pedantic-errors
-export NANVIX_CFLAGS += -Wstack-usage=4096
-export NANVIX_CFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
-export NANVIX_CFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
-export NANVIX_CFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
-
-# C++ Compiler Options
-export NANVIX_CXXFLAGS := -std=c++17
-export NANVIX_CXXFLAGS += -m32 -march=pentiumpro -Wa,-march=pentiumpro
-export NANVIX_CXXFLAGS += -Wall -Wextra -Werror
-export NANVIX_CXXFLAGS += -Winit-self -Wswitch-default -Wfloat-equal -Wno-pointer-arith
-export NANVIX_CXXFLAGS += -Wundef -Wshadow -Wuninitialized -Wlogical-op
-export NANVIX_CXXFLAGS += -Wvla -Wredundant-decls
-export NANVIX_CXXFLAGS += -pedantic-errors
-export NANVIX_CXXFLAGS += -Wstack-usage=4096
-export NANVIX_CXXFLAGS += -D__NANVIX_SYSNAME__="\"$(NANVIX_SYSNAME)\""
-export NANVIX_CXXFLAGS += -D__NANVIX_NODENAME__="\"$(NANVIX_NODENAME)\""
-export NANVIX_CXXFLAGS += -D__$(subst -,_,$(NANVIX_MACHINE))__
-
-# Linker Options
-export NANVIX_LDFLAGS := -z noexecstack -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
-
-# Optimization Flags
-ifeq ($(RELEASE), yes)
-export NANVIX_CFLAGS += -O3
-export NANVIX_CXXFLAGS += -O3
-export NANVIX_CFLAGS += -D__RELEASE
-export NANVIX_CXXFLAGS += -D__RELEASE
-else
-export NANVIX_CFLAGS += -O3
-export NANVIX_CFLAGS += -g
-export NANVIX_CXXFLAGS += -O3
-export NANVIX_CXXFLAGS += -g
-export NANVIX_CFLAGS += -D__DEBUG
-export NANVIX_CXXFLAGS += -D__DEBUG
-endif
-
-# Standalone mode define for C/C++ tests.
-ifeq ($(DEPLOYMENT_MODE),standalone)
-export NANVIX_CFLAGS += -D__NANVIX_STANDALONE__
-export NANVIX_CXXFLAGS += -D__NANVIX_STANDALONE__
-endif
 
 #===================================================================================================
 # Rust Toolchain Configuration
