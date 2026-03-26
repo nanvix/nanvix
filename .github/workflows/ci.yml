@@ -31,6 +31,12 @@ concurrency:
 env:
   SCCACHE: "/usr/local/bin/sccache"
 
+# Build-type strategy:
+#   pull_request      → debug only   (fast feedback during development)
+#   merge_group       → release only (final validation before landing on dev)
+#   push (dev)        → release only (release archives & publish pipeline)
+#   workflow_dispatch → both          (full coverage for manual runs)
+
 jobs:
   # ==========================================================================================
   # Pre-check
@@ -238,7 +244,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        # PRs run debug only (fast feedback); merge queue and dev pushes run
+        # release only (final validation + release archives); manual dispatch
+        # runs both.
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
         memory-size: [128]
@@ -334,7 +343,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
         deployment-type: [standalone, single-process, multi-process]
     runs-on:
@@ -432,7 +441,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
     permissions:
       contents: read
@@ -578,7 +587,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
     runs-on: windows-latest
     permissions:
@@ -656,7 +665,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
     runs-on: windows-latest
     permissions:
@@ -759,7 +768,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [debug, release]
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
         machine-type: [microvm, hyperlight]
     runs-on:
       group: Test
