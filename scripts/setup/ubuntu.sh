@@ -20,6 +20,7 @@ apt-get install -y        \
     bridge-utils          \
     build-essential       \
     bzip2                 \
+    clang                 \
     clang-format          \
     cmake                 \
     codespell             \

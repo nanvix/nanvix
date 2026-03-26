@@ -26,24 +26,23 @@ use std::{
 // Helper Functions
 //==================================================================================================
 
-/// Compiles `libs/mul.c` into a shared library using the Nanvix cross-compiler.
+/// Compiles `libs/mul.c` into a shared library using the cross-compiler
+/// specified by NANVIX_CC with the cross-compilation flags from NANVIX_CFLAGS.
 ///
-/// - `cc` — absolute path to the cross-compiler (e.g. `i686-nanvix-gcc`).
-/// - `extra_cflags` — additional compiler flags (e.g. `-fPIE` for the PIE variant).
-/// - `extra_ldflags` — additional linker flags.
 /// - `output` — absolute path to the output `.so` file.
 /// - `source` — absolute path to the `mul.c` source file.
-fn build_shared_lib(
-    cc: &str,
-    extra_cflags: &[&str],
-    extra_ldflags: &[&str],
-    output: &Path,
-    source: &Path,
-) {
-    let mut cmd = Command::new(cc);
-    cmd.args(extra_cflags);
+fn build_shared_lib(output: &Path, source: &Path) {
+    let cc = env::var("NANVIX_CC")
+        .unwrap_or_else(|_| panic!("NANVIX_CC not set — required to cross-compile shared libs"));
+    let cflags = env::var("NANVIX_CFLAGS").unwrap_or_else(|_| {
+        panic!("NANVIX_CFLAGS not set — required to cross-compile shared libs")
+    });
+    let mut parts = cc.split_whitespace();
+    let program = parts.next().unwrap_or_else(|| panic!("NANVIX_CC is empty"));
+    let mut cmd = Command::new(program);
+    cmd.args(parts);
+    cmd.args(cflags.split_whitespace());
     cmd.args(["-shared", "-fPIC"]);
-    cmd.args(extra_ldflags);
     cmd.arg(source);
     cmd.arg("-o");
     cmd.arg(output);
@@ -83,17 +82,9 @@ fn main() {
     //==============================================================================================
 
     // The dlfcn tests load these shared libraries at runtime via dlopen().
-    // Previously they were built by the deleted C test Makefiles (dlfcn-c and dlfcn-pie-c).
+    // Uses the cross-compiler from NANVIX_CC with flags from NANVIX_CFLAGS.
     let mul_c: PathBuf = Path::new(&manifest_dir).join("libs/mul.c");
     println!("cargo:rerun-if-changed=libs/mul.c");
-
-    let nanvix_cc: String = env::var("NANVIX_CC")
-        .unwrap_or_else(|_| panic!("NANVIX_CC not set — required to cross-compile libmul.so"));
-    // Strip sccache prefix if present — we need the bare compiler path.
-    let nanvix_cc: &str = nanvix_cc
-        .split_whitespace()
-        .find(|s| s.contains("gcc"))
-        .unwrap_or_else(|| nanvix_cc.split_whitespace().last().unwrap_or(&nanvix_cc));
 
     let libraries_dir: String = env::var("LIBRARIES_DIR")
         .unwrap_or_else(|_| panic!("LIBRARIES_DIR not set — required to place libmul.so"));
@@ -104,10 +95,10 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to create {}: {e}", lib_dir.display()));
 
     // libmul.so — standard shared library (non-PIE).
-    build_shared_lib(nanvix_cc, &[], &[], &lib_dir.join("libmul.so"), &mul_c);
+    build_shared_lib(&lib_dir.join("libmul.so"), &mul_c);
 
     // libmul-pie.so — position-independent shared library.
-    build_shared_lib(nanvix_cc, &[], &[], &lib_dir.join("libmul-pie.so"), &mul_c);
+    build_shared_lib(&lib_dir.join("libmul-pie.so"), &mul_c);
 
     //==============================================================================================
     // Linker Configuration
