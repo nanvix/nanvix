@@ -18,7 +18,8 @@ pub const SOCKET_ROOT: &str = r"\\.\pipe\containerd-containerd";
 pub fn socket_address(address: &str, namespace: &str, id: &str) -> String {
     let data: String = format!("{}\\{}\\{}", address, namespace, id);
     let hash = Sha256::digest(data.as_bytes());
-    format!(r"\\.\pipe\containerd-shim-{:x}-pipe", hash)
+    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    format!(r"\\.\pipe\containerd-shim-{}-pipe", hex)
 }
 
 /// Extract the pipe path from an address string.
