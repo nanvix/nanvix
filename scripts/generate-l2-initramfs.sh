@@ -83,6 +83,11 @@ build_initramfs() {
             --components="${UBUNTU_COMPONENTS}" \
             --include=busybox-static,iputils-arping,libc6,libgcc-s1,libstdc++6,iproute2,jq \
             "${UBUNTU_VERSION}" "${INITRAMFS_DIR}" "${UBUNTU_MIRROR}"
+        # After mmdebstrap and before chown, ensure /sys (and any other pseudo-fs) is
+        # unmounted. mmdebstrap may leave these mounted on teardown failure.
+        for mp in sys proc dev; do
+            sudo umount -lf "${INITRAMFS_DIR}/${mp}" 2>/dev/null || true
+        done
         sudo chown -R "$(id -u):$(id -g)" "${INITRAMFS_DIR}"
 
         print_info "Creating /dev and /proc mount points..."
