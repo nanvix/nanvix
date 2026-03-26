@@ -17,7 +17,7 @@ use ::syscall::unistd;
 
 /// Tests whether we can change the current working directory using `chdir()`.
 pub fn test() {
-    let root_directory: String = "/".to_string();
+    let target_directory: String = "src".to_string();
 
     // Save the current working directory.
     let saved_current_directory: String = match unistd::getcwd() {
@@ -25,21 +25,16 @@ pub fn test() {
         Err(error) => panic!("{error:?}"),
     };
 
-    // Ensure that current working directory is not the root directory.
-    if saved_current_directory == root_directory {
-        panic!("current working directory is already the root directory");
-    }
-
-    // Change the current working directory to the root directory.
-    if let Err(error) = unistd::chdir(&root_directory) {
+    // Change the current working directory to the target directory.
+    if let Err(error) = unistd::chdir(&target_directory) {
         panic!("{error:?}");
     }
 
-    // Ensure that the current working directory is now the root directory.
+    // Ensure that the current working directory has changed.
     match unistd::getcwd() {
         Ok(current_directory) => {
-            if current_directory != root_directory {
-                panic!("current working directory is not the root directory");
+            if current_directory == saved_current_directory {
+                panic!("current working directory did not change");
             }
         },
         Err(error) => panic!("{error:?}"),

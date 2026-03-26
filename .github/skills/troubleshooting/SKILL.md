@@ -51,7 +51,7 @@ There is also a cleanup script for `nanvixd` resources:
 
 ### Toolchain Not Found
 
-**Symptom**: `i686-nanvix-gcc: No such file or directory` or Cargo toolchain errors.
+**Symptom**: Cargo toolchain errors or missing tools.
 
 **Fix**: Ensure the `toolchain/` symlink points to a valid installation:
 

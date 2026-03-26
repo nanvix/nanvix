@@ -110,12 +110,6 @@ Guest integration tests are `#![no_std]` binaries that run inside Nanvix:
 3. Add to `ALL_GUEST_TESTS` in the `Makefile`.
 4. Add to workspace `members` in root `Cargo.toml`.
 
-## Writing C/C++ Tests
-
-C/C++ tests use the Nanvix C toolchain (`i686-nanvix-gcc`/`i686-nanvix-g++`). They link against
-`libposix.a` and the Newlib C library.  Tests follow a standalone Makefile pattern under
-`src/tests/<name>/`.
-
 ## Running All Tests
 
 ```bash

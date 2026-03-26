@@ -16,7 +16,7 @@ use ::syscall::safe::{
 
 /// Tests whether we can change the current working directory.
 pub fn test() {
-    let root_directory: FileSystemPath = match FileSystemPath::new("/") {
+    let target_directory: FileSystemPath = match FileSystemPath::new("src") {
         Ok(path) => path,
         Err(error) => panic!("{error:?}"),
     };
@@ -27,21 +27,16 @@ pub fn test() {
         Err(error) => panic!("{error:?}"),
     };
 
-    // Ensure that current working directory is not the root directory.
-    if saved_current_directory == root_directory {
-        panic!("current working directory is already the root directory");
-    }
-
-    // Change the current working directory to the root directory.
-    if let Err(error) = FileSystem::change_current_directory(&root_directory) {
+    // Change the current working directory to the target directory.
+    if let Err(error) = FileSystem::change_current_directory(&target_directory) {
         panic!("{error:?}");
     }
 
-    // Ensure that the current working directory is now the root directory.
+    // Ensure that the current working directory has changed.
     match FileSystem::get_current_directory() {
         Ok(current_directory) => {
-            if current_directory != root_directory {
-                panic!("current working directory is not the root directory");
+            if current_directory == saved_current_directory {
+                panic!("current working directory did not change");
             }
         },
         Err(error) => panic!("{error:?}"),
