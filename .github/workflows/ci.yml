@@ -1309,9 +1309,9 @@ jobs:
           path: ${{ steps.package.outputs.archive-path }}
           overwrite: true
 
-  # Publish the latest release to GitHub.
-  publish-latest:
-    name: "Publish Latest Release"
+  # Publish a versioned release to GitHub.
+  publish-release:
+    name: "Publish Release"
     needs: [release-archive, windows-release-archive]
     if: |
       github.repository == 'nanvix/nanvix' &&
@@ -1356,7 +1356,7 @@ jobs:
         benchmark-ci-finalize,
         release-archive,
         windows-release-archive,
-        publish-latest,
+        publish-release,
         windows-guest-build,
         windows-format-check,
         windows-lint-check,
