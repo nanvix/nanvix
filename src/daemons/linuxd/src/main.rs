@@ -82,7 +82,7 @@ pub async fn main() -> Result<()> {
             Some(sanitize_tenant_id(id))
         }
     });
-    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir(), tenant_id);
+    ::syslog::init(args.log_to_file(), DEFAULT_LOG_LEVEL, args.log_file_dir(), tenant_id.clone());
 
     // Work-out the socket addresses.
     let control_plane_sockaddr: &str = args.control_plane_sockaddr();
@@ -109,6 +109,7 @@ pub async fn main() -> Result<()> {
 
     let linuxd: LinuxDaemon<()> = match LinuxDaemon::init(
         Arc::new(SyscallTable::default()),
+        tenant_id.as_deref().unwrap_or_default(),
         control_plane_sockaddr,
         args.control_plane_socket_type(),
         user_vm_listener,

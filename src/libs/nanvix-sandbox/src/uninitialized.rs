@@ -11,17 +11,24 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
-use crate::linuxd::LinuxDaemon;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use crate::netns::{
     NetnsHandle,
     NetnsInfo,
 };
 #[cfg(not(feature = "standalone"))]
-use crate::LinuxDaemonArgs;
+use crate::ControlPlaneAcceptor;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use crate::SnapshotDirHandle;
+#[cfg(not(feature = "standalone"))]
+use crate::{
+    config::CONTROL_PLANE_ACCEPT_TIMEOUT,
+    linuxd::{
+        LinuxDaemon,
+        PendingLinuxDaemon,
+    },
+    LinuxDaemonArgs,
+};
 use crate::{
     InitializedSandbox,
     SandboxConfig,
@@ -30,14 +37,15 @@ use ::anyhow::Result;
 use ::log::error;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use ::std::marker::PhantomData;
-use ::std::sync::Arc;
-use ::syscomm::{
-    SocketListener,
-    SocketType,
-};
-use ::tokio::sync::Mutex;
 #[cfg(not(feature = "standalone"))]
-use ::tokio::sync::MutexGuard;
+use ::std::sync::Arc;
+#[cfg(not(feature = "standalone"))]
+use ::syscomm::SocketStream;
+#[cfg(not(feature = "standalone"))]
+use ::tokio::{
+    sync::oneshot::Receiver,
+    time::timeout,
+};
 
 //==================================================================================================
 // Structures
@@ -73,8 +81,9 @@ pub struct UninitializedSandbox<T> {
     /// Optional handle to the per-instance snapshot directory. Only used in L2 deployments.
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
     snapshot_dir_handle: Option<SnapshotDirHandle>,
-    /// Optional control plane listener socket, address, and socket type.
-    control_plane_bind_socket_and_info: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
+    /// Shared control-plane acceptor used to route child connections.
+    #[cfg(not(feature = "standalone"))]
+    control_plane_acceptor: Option<Arc<ControlPlaneAcceptor>>,
     /// Optional sandbox configuration parameters.
     config: Option<SandboxConfig<T>>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
@@ -98,8 +107,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     /// - `guest_binary_path`: Path to the guest binary file to execute.
     /// - `program_args`: Optional command-line arguments for the program.
     /// - `ramfs_filename`: Optional RAM filesystem image filename to expose to the guest.
-    /// - `control_plane_bind_socket_and_info`: Shared control plane socket listener, address, and
-    ///   socket type.
+    /// - `control_plane_acceptor`: Shared control-plane acceptor.
     ///
     /// # Returns
     ///
@@ -109,7 +117,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
         guest_binary_path: &str,
         program_args: Option<String>,
         ramfs_filename: Option<String>,
-        control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
+        #[cfg(not(feature = "standalone"))] control_plane_acceptor: Arc<ControlPlaneAcceptor>,
     ) -> Self {
         UninitializedSandbox {
             guest_binary_path: guest_binary_path.to_string(),
@@ -121,7 +129,8 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             netns_handle: None,
             #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             snapshot_dir_handle: None,
-            control_plane_bind_socket_and_info: Some(control_plane_bind_socket_and_info),
+            #[cfg(not(feature = "standalone"))]
+            control_plane_acceptor: Some(control_plane_acceptor),
             config: None,
             #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             _phantom: PhantomData,
@@ -253,12 +262,12 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             Some(config) => config,
         };
 
-        // Get the control-plane listener socket (must be provided via new()).
-        let control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>> =
-            match self.control_plane_bind_socket_and_info.take() {
-                Some(control_plane_bind_socket_and_info) => control_plane_bind_socket_and_info,
+        #[cfg(not(feature = "standalone"))]
+        let control_plane_acceptor: Arc<ControlPlaneAcceptor> =
+            match self.control_plane_acceptor.take() {
+                Some(control_plane_acceptor) => control_plane_acceptor,
                 None => {
-                    let reason: &str = "control plane listener socket not provided via new()";
+                    let reason: &str = "control plane acceptor not provided via new()";
                     error!("initialize(): {reason}");
                     anyhow::bail!(reason);
                 },
@@ -269,11 +278,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
         let linuxd: Arc<LinuxDaemon> = match self.linuxd.take() {
             // Linux Daemon not yet initialized.
             None => {
-                let mut locked_control_plane_bind_socket_and_info: MutexGuard<
-                    '_,
-                    (SocketListener, String, SocketType),
-                > = control_plane_bind_socket_and_info.lock().await;
-
                 // Build Linux Daemon arguments.
                 let linuxd_args: LinuxDaemonArgs<T> = {
                     // Get toolchain binary directory.
@@ -330,12 +334,15 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     )
                 };
 
-                // Spawn Linux Daemon.
-                match LinuxDaemon::spawn(
+                // Register interest in control-plane stream for the linuxd instance we are about
+                // to spawn.
+                let control_plane_stream_rx: Receiver<SocketStream> = control_plane_acceptor
+                    .register_linuxd(config.tenant_id())
+                    .await?;
+
+                // Spawn linuxd.
+                let pending_linuxd: PendingLinuxDaemon = match LinuxDaemon::spawn(
                     &linuxd_args,
-                    // Pass a mutable reference to the shared listener socket to accept one
-                    // incoming connection from the newly spawned linuxd instance.
-                    &mut locked_control_plane_bind_socket_and_info.0,
                     // Share ownership of netns handle with linux daemon process. The netns is
                     // provisioned upstream, if it is not but we are in L2 mode, spawn will fail.
                     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
@@ -346,13 +353,53 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                 )
                 .await
                 {
-                    Ok(linuxd) => Arc::new(linuxd),
+                    Ok(linuxd) => linuxd,
                     Err(error) => {
+                        control_plane_acceptor
+                            .unregister_linuxd(config.tenant_id())
+                            .await;
                         let reason: String = format!("failed to spawn linuxd (error={error:?})");
                         error!("initialize(): {reason}");
                         anyhow::bail!(reason);
                     },
-                }
+                };
+
+                // Await the handshake message from the newly spawned linuxd via the control-plane
+                // stream.
+                let control_plane_stream: SocketStream =
+                    match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_stream_rx).await {
+                        Ok(Ok(stream)) => stream,
+                        Ok(Err(error)) => {
+                            control_plane_acceptor
+                                .unregister_linuxd(config.tenant_id())
+                                .await;
+                            pending_linuxd.abort().await;
+                            let reason: String = format!(
+                                "control-plane acceptor dropped before delivering linuxd stream \
+                                 (tenant_id={}, error={error:?})",
+                                config.tenant_id()
+                            );
+                            error!("initialize(): {reason}");
+                            anyhow::bail!(reason);
+                        },
+                        Err(error) => {
+                            control_plane_acceptor
+                                .unregister_linuxd(config.tenant_id())
+                                .await;
+                            pending_linuxd.abort().await;
+                            let reason: String = format!(
+                                "timed-out waiting for linuxd control-plane connection \
+                                 (tenant_id={}, error={error:?})",
+                                config.tenant_id()
+                            );
+                            error!("initialize(): {reason}");
+                            anyhow::bail!(reason);
+                        },
+                    };
+
+                // Upgrade the pending linuxd instance to a linuxd one by attaching the newly
+                // received control-plane stream.
+                Arc::new(pending_linuxd.attach_control_plane(control_plane_stream))
             },
             Some(linuxd) => linuxd,
         };
@@ -364,7 +411,8 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             ramfs_filename: self.ramfs_filename,
             #[cfg(not(feature = "standalone"))]
             linuxd,
-            control_plane_bind_socket_and_info,
+            #[cfg(not(feature = "standalone"))]
+            control_plane_acceptor,
             sandbox_config: config,
             // Pass ownership of the network namespace to the initialized sandbox.
             #[cfg(not(any(feature = "single-process", feature = "standalone")))]

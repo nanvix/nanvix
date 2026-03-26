@@ -12,14 +12,12 @@
 //==================================================================================================
 
 use crate::{
-    config::{
-        CLEANUP_TIMEOUT,
-        CONTROL_PLANE_ACCEPT_TIMEOUT,
-    },
+    config::CLEANUP_TIMEOUT,
     UserVmArgs,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
+    ControlPlaneRegistrationMessage,
     NanvixdCommand,
     NanvixdControlMessage,
 };
@@ -41,7 +39,6 @@ use ::std::{
 };
 use ::sys::ipc::IkcFrame;
 use ::syscomm::{
-    SocketListener,
     SocketStream,
     SocketType,
     UnboundSocket,
@@ -90,6 +87,10 @@ pub struct UserVm {
     control_plane_stream: SocketStream,
 }
 
+pub struct PendingUserVm {
+    task: Option<JoinHandle<Result<u8>>>,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -112,8 +113,7 @@ impl UserVm {
     ///
     pub async fn spawn(
         args: &UserVmArgs,
-        control_plane_listener: &mut SocketListener,
-    ) -> Result<Self> {
+    ) -> Result<PendingUserVm> {
         trace!("spawn(): args={args:?}");
 
         // Check if CPU affinity settings were provided.
@@ -189,6 +189,12 @@ impl UserVm {
                         return Err(anyhow::anyhow!("{reason}"));
                     },
                 };
+
+                let registration: ControlPlaneRegistrationMessage =
+                    ControlPlaneRegistrationMessage::for_uservm(user_vm_id);
+                let registration_bytes: Vec<u8> = registration.to_bytes()?;
+                let mut control_plane_stream = control_plane_stream;
+                control_plane_stream.write_all(&registration_bytes).await?;
 
                 // Connect to the system VM socket.
                 let unbound_socket: UnboundSocket =
@@ -321,31 +327,8 @@ impl UserVm {
             })
         });
 
-        // Wait for the User VM task to connect to the control-plane socket.
-        let control_plane_stream: SocketStream =
-            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(error)) => {
-                    uservm_task.abort();
-                    let reason: String =
-                        format!("error connecting control-plane to user VM (error={error:?})");
-                    error!("spawn(): {reason}");
-                    anyhow::bail!("{reason}");
-                },
-                Err(elapsed) => {
-                    uservm_task.abort();
-                    let reason: String = format!(
-                        "timed-out waiting for user VM to connect the control-plane stream \
-                         (elapsed={elapsed:?})"
-                    );
-                    error!("spawn(): {reason}");
-                    anyhow::bail!("{reason}");
-                },
-            };
-
-        Ok(Self {
+        Ok(PendingUserVm {
             task: Some(uservm_task),
-            control_plane_stream,
         })
     }
 
@@ -423,6 +406,47 @@ impl UserVm {
             !task.is_finished()
         } else {
             false
+        }
+    }
+}
+
+impl PendingUserVm {
+    ///
+    /// # Description
+    ///
+    /// Completes User VM startup by attaching the accepted control-plane stream.
+    ///
+    /// # Arguments
+    ///
+    /// - `control_plane_stream`: Accepted control-plane stream for the spawned User VM.
+    ///
+    /// # Returns
+    ///
+    /// Returns the running User VM handle.
+    ///
+    pub fn attach_control_plane(self, control_plane_stream: SocketStream) -> UserVm {
+        UserVm {
+            task: self.task,
+            control_plane_stream,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aborts a pending User VM startup by cancelling its background task.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return a value.
+    ///
+    pub async fn abort(self) {
+        if let Some(task) = self.task {
+            task.abort();
         }
     }
 }
