@@ -1,0 +1,85 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Prune Old Releases"
+
+on:
+  schedule:
+    # Run every Sunday at 04:00 UTC.
+    # Off-peak hour to reduce rate-limit contention.
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  prune:
+    name: "Prune Patch Releases Older Than 90 Days"
+    if: github.repository == 'nanvix/nanvix'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: "Delete expired patch releases"
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const RETENTION_DAYS = 90;
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
+
+            // Semver regex: vMAJOR.MINOR.PATCH
+            const semverRe = /^v(\d+)\.(\d+)\.(\d+)$/;
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner, repo, per_page: 100 }
+            );
+
+            let deleted = 0;
+            for (const rel of releases) {
+              // Skip drafts — handled by publish-release cleanup.
+              if (rel.draft) continue;
+
+              const match = semverRe.exec(rel.tag_name);
+              if (!match) continue;
+
+              const patch = parseInt(match[3], 10);
+              // Preserve minor releases (patch == 0) permanently.
+              if (patch === 0) continue;
+
+              // Use published_at for age/cutoff when available, falling back to created_at.
+              const effectiveDate = rel.published_at
+                ? new Date(rel.published_at)
+                : new Date(rel.created_at);
+              if (effectiveDate >= cutoff) continue;
+
+              const MS_PER_DAY = 24 * 60 * 60 * 1000;
+              const ageDays = Math.floor((Date.now() - effectiveDate) / MS_PER_DAY);
+              core.info(
+                `Deleting ${rel.tag_name} (effective date ${effectiveDate.toISOString()}, age ${ageDays}d).`
+              );
+              try {
+                await github.rest.repos.deleteRelease({
+                  owner, repo, release_id: rel.id,
+                });
+              } catch (error) {
+                if (error.status !== 404 && error.status !== 422) throw error;
+                core.info(`Release ${rel.tag_name} already deleted.`);
+              }
+
+              // Best-effort tag cleanup — log failures without halting.
+              try {
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `tags/${rel.tag_name}`,
+                });
+              } catch (error) {
+                core.warning(`Failed to delete tag ${rel.tag_name}: ${error.message}`);
+              }
+
+              deleted++;
+            }
+
+            core.info(`Pruned ${deleted} release(s) older than ${RETENTION_DAYS} days.`);

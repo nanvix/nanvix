@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Publish Release"
-description: "Publish the latest release to GitHub and trigger downstream dispatches"
+description: "Publish a versioned release to GitHub and trigger downstream dispatches"
 
 inputs:
   github-token:
@@ -33,47 +33,23 @@ runs:
         pattern: release-*
         path: release-artifacts
 
-    - name: "Reset Latest Release"
+    - name: "Clean Up Stale Releases"
       uses: actions/github-script@v8
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const tag = 'latest';
           const owner = context.repo.owner;
           const repo = context.repo.repo;
 
-          async function deleteReleaseByTag() {
-            try {
-              const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
-              core.info(`Deleting release ${data.id} (${tag}).`);
-              await github.rest.repos.deleteRelease({ owner, repo, release_id: data.id });
-            } catch (error) {
-              if (error.status === 404) {
-                core.info('No existing latest release to delete.');
-                return;
-              }
-              throw error;
-            }
-          }
-
-          // Clean up orphaned draft releases left behind by prior runs that
-          // failed after creating a draft but before publishing it.
-          // getReleaseByTag() only finds published releases, so draft orphans
-          // are invisible to the deleteReleaseByTag() cleanup above.
-          // Also cleans up "untagged-*" draft releases created when the GitHub
-          // API fails to associate a tag during createRelease (e.g., due to a
-          // tag deletion/creation race condition).
+          // Clean up orphaned draft releases left behind by prior runs.
+          // All intentional releases are created with draft: false, so any
+          // draft release is stale by definition.
           async function deleteStaleDraftReleases() {
             const releases = await github.paginate(
               github.rest.repos.listReleases,
               { owner, repo, per_page: 100 }
             );
-            const stale = releases.filter(r =>
-              r.draft && (
-                r.tag_name === tag ||
-                r.tag_name.startsWith('untagged-')
-              )
-            );
+            const stale = releases.filter(r => r.draft);
             for (const rel of stale) {
               core.info(`Deleting stale draft release ${rel.id} (tag="${rel.tag_name}", name="${rel.name}").`);
               await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
@@ -83,24 +59,9 @@ runs:
             }
           }
 
-          async function deleteTagRef() {
-            try {
-              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
-              core.info('Deleted refs/tags/latest tag.');
-            } catch (error) {
-              if (error.status === 404 || error.status === 422) {
-                core.info('Tag refs/tags/latest not found; nothing to delete.');
-                return;
-              }
-              throw error;
-            }
-          }
-
-          await deleteReleaseByTag();
           await deleteStaleDraftReleases();
-          await deleteTagRef();
 
-    - name: "Create Latest Release"
+    - name: "Create Versioned Release"
       uses: actions/github-script@v8
       env:
         RELEASE_VERSION: ${{ steps.version.outputs.version }}
@@ -112,93 +73,142 @@ runs:
 
           const owner = context.repo.owner;
           const repo = context.repo.repo;
-          const tag = 'latest';
           const version = process.env.RELEASE_VERSION;
           const commitSha = context.sha;
+          const tag = `v${version}`;
 
-          // Create the tag ref explicitly before creating the release.
-          // This avoids a race condition where createRelease() may fail to
-          // atomically create the tag if it was recently deleted, resulting
-          // in an untagged draft release.
-          core.info(`Creating tag refs/tags/${tag} at ${commitSha}...`);
+          // Determine if this workflow commit is the current dev HEAD.
+          // Only set make_latest and update refs/tags/latest when true, so
+          // delayed or manually re-run jobs for older commits cannot regress
+          // the latest pointer.
+          let isDevHead = false;
           try {
-            await github.rest.git.createRef({
+            const { data: devRef } = await github.rest.git.getRef({
               owner,
               repo,
-              ref: `refs/tags/${tag}`,
-              sha: commitSha,
+              ref: 'heads/dev',
             });
-            core.info(`Created tag refs/tags/${tag}.`);
+            isDevHead = devRef.object.sha === commitSha;
           } catch (error) {
-            if (error.status === 422) {
-              // Tag already exists (possibly re-created by a concurrent run);
-              // update it to point to the correct commit.  Retry with backoff
-              // because eventual consistency after deleteRef() can cause
-              // updateRef() to return 404 transiently.
-              core.warning(`Tag refs/tags/${tag} already exists; updating to ${commitSha}.`);
-              const maxAttempts = 3;
-              for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (error.status === 404) {
+              core.warning('Branch "dev" not found; treating this commit as not dev HEAD.');
+            } else {
+              core.warning(`Failed to resolve dev HEAD: ${error.message}`);
+            }
+          }
+          core.info(`isDevHead=${isDevHead} (commitSha=${commitSha}).`);
+
+          // --- Idempotency: check if this versioned release already exists ---
+
+          let release;
+          let alreadyExists = false;
+          try {
+            const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+            core.info(`Release ${tag} already exists (id=${data.id}); skipping creation.`);
+            release = data;
+            alreadyExists = true;
+          } catch (error) {
+            if (error.status !== 404) throw error;
+          }
+
+          if (alreadyExists) {
+            // If the existing release targets a different commit, skip gracefully.
+            // This happens on every human merge: the merge commit still has the
+            // old version from the previous bot push, so publish-release finds
+            // the release already created by that prior run. The bot's subsequent
+            // create-minor-release push will bump the version and create a new one.
+            if (release.target_commitish !== commitSha) {
+              core.info(
+                `Release ${tag} already exists for commit ${release.target_commitish}; ` +
+                `this workflow is on ${commitSha}. ` +
+                `Skipping — release for this version was already published.`
+              );
+              return;
+            }
+          } else {
+            // --- Create the versioned tag ---
+
+            core.info(`Creating tag refs/tags/${tag} at ${commitSha}...`);
+            try {
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${tag}`,
+                sha: commitSha,
+              });
+              core.info(`Created tag refs/tags/${tag}.`);
+            } catch (error) {
+              if (error.status === 422) {
+                core.info(`Tag ${tag} already exists; verifying existing target commit...`);
+                let existing;
                 try {
-                  await github.rest.git.updateRef({
+                  existing = await github.rest.git.getRef({
                     owner,
                     repo,
                     ref: `tags/${tag}`,
-                    sha: commitSha,
-                    force: true,
                   });
-                  // Successfully updated the tag; exit the retry loop.
-                  break;
-                } catch (updateError) {
-                  if (updateError.status === 404) {
-                    // This can happen due to eventual consistency after a deleteRef().
-                    if (attempt < maxAttempts) {
-                      const delayMs = 1000 * attempt;
-                      core.warning(
-                        `updateRef returned 404 for refs/tags/${tag}; ` +
-                        `retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})...`
-                      );
-                      await new Promise((resolve) => setTimeout(resolve, delayMs));
-                      continue;
-                    }
-                    core.warning(
-                      `updateRef returned 404 for refs/tags/${tag} after ${maxAttempts} attempts; ` +
-                      `falling back to createRef.`
-                    );
-                    await github.rest.git.createRef({
-                      owner,
-                      repo,
-                      ref: `refs/tags/${tag}`,
-                      sha: commitSha,
-                    });
-                    break;
-                  }
-                  // For non-404 errors, rethrow so they're handled by the outer catch.
-                  throw updateError;
+                } catch (fetchError) {
+                  core.setFailed(
+                    `Failed to fetch existing tag ${tag} to verify immutability: ${fetchError.message}`
+                  );
+                  return;
                 }
+                const existingSha = existing.data.object.sha;
+                if (existingSha === commitSha) {
+                  core.info(`Tag ${tag} already exists and points to ${commitSha}; reusing existing tag.`);
+                } else {
+                  core.setFailed(
+                    `Tag ${tag} already exists at ${existingSha}, which differs from desired ${commitSha}. ` +
+                    "Refusing to retag immutable versioned tag. " +
+                    "Please verify the workflow run or manually resolve the tag conflict."
+                  );
+                  return;
+                }
+              } else {
+                throw error;
               }
-            } else {
-              throw error;
+            }
+
+            // --- Create the versioned release ---
+
+            core.info(`Creating release "Nanvix ${version}" at ${commitSha}...`);
+            try {
+              const { data: created } = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: commitSha,
+                name: `Nanvix ${version}`,
+                body: `Automated release for Nanvix ${version}.`,
+                draft: false,
+                prerelease: false,
+                make_latest: isDevHead ? "true" : "false",
+              });
+              release = created;
+              core.info(`Created release ${release.id} (${release.html_url}).`);
+            } catch (error) {
+              if (error.status === 422) {
+                // Concurrent run already created this release — retrieve it.
+                core.info(`Release ${tag} was created concurrently; retrieving it.`);
+                const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+                release = data;
+                if (release.target_commitish !== commitSha) {
+                  core.info(
+                    `Concurrent release ${tag} targets ${release.target_commitish}, ` +
+                    `not ${commitSha}. Skipping.`
+                  );
+                  return;
+                }
+              } else {
+                throw error;
+              }
             }
           }
 
-          // Create a published release, explicitly targeting the workflow commit
-          // to prevent benchmark-persist (which may have advanced the default
-          // branch HEAD) from causing the tag to point to the wrong commit.
-          core.info(`Creating release "Nanvix ${version}" at ${commitSha}...`);
-          const { data: release } = await github.rest.repos.createRelease({
-            owner,
-            repo,
-            tag_name: tag,
-            target_commitish: commitSha,
-            name: `Nanvix ${version}`,
-            body: `Automated release for Nanvix ${version}.`,
-            draft: false,
-            prerelease: false,
-            make_latest: "true",
-          });
-          core.info(`Created release ${release.id} (${release.html_url}).`);
+          // --- Upload release artifacts ---
+          // Runs on both new and existing releases so that re-runs recover
+          // from partial uploads. uploadAssetWithRetry handles already_exists.
 
-          // Delete a release asset by name if it already exists.
           async function deleteExistingAsset(releaseId, name) {
             const { data: assets } = await github.rest.repos.listReleaseAssets({
               owner,
@@ -217,10 +227,6 @@ runs:
             }
           }
 
-          // Upload a single release asset with retries on transient failures.
-          // Handles the case where a previous attempt partially succeeded
-          // (server stored the asset but returned an error) by deleting the
-          // existing asset before retrying.
           async function uploadAssetWithRetry(releaseId, name, data, retries = 3) {
             const contentType = name.endsWith('.zip')
               ? 'application/zip'
@@ -267,7 +273,8 @@ runs:
             await uploadAssetWithRetry(release.id, name, data);
           }
 
-          // Verify the release is published and not draft.
+          // --- Verify the release is published ---
+
           const { data: verify } = await github.rest.repos.getRelease({
             owner,
             repo,
@@ -275,11 +282,6 @@ runs:
           });
 
           if (verify.draft) {
-            // Verify the release is associated with the intended tag before
-            // attempting to publish.  If it has an unexpected tag (e.g.,
-            // "untagged-*"), publishing it would create an incorrectly tagged
-            // release.  Delete the bad release and fail so the next run can
-            // recreate it cleanly.
             if (verify.tag_name !== tag) {
               core.warning(
                 `Release ${release.id} has unexpected tag "${verify.tag_name}" ` +
@@ -293,14 +295,13 @@ runs:
               return;
             }
 
-            // Attempt to recover by explicitly publishing the release.
             core.warning(`Release ${release.id} is unexpectedly a draft; attempting to publish...`);
             const { data: patched } = await github.rest.repos.updateRelease({
               owner,
               repo,
               release_id: release.id,
               draft: false,
-              make_latest: "true",
+              make_latest: isDevHead ? "true" : "false",
             });
             if (patched.draft) {
               core.setFailed(`Release ${release.id} is still a draft after recovery attempt.`);
@@ -309,6 +310,42 @@ runs:
             core.info(`Successfully recovered release ${release.id} from draft to published.`);
           } else {
             core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
+          }
+
+          // --- Update the `latest` git tag to point to this commit ---
+          // Only move `latest` when this workflow commit is the current `dev` HEAD,
+          // to avoid regressing the tag on manual re-runs of older commits.
+
+          if (isDevHead) {
+            core.info(`Updating latest tag to ${commitSha} (dev HEAD)...`);
+            try {
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: 'tags/latest',
+                sha: commitSha,
+                force: true,
+              });
+              core.info('Updated refs/tags/latest.');
+            } catch (error) {
+              if (error.status === 404 || error.status === 422) {
+                await github.rest.git.createRef({
+                  owner,
+                  repo,
+                  ref: 'refs/tags/latest',
+                  sha: commitSha,
+                });
+                core.info('Created refs/tags/latest.');
+              } else {
+                // Non-critical — warn but don't fail the release.
+                core.warning(`Failed to update latest tag: ${error.message}`);
+              }
+            }
+          } else {
+            core.info(
+              `Skipping update of refs/tags/latest because this workflow run (${commitSha}) ` +
+              `is not the current dev HEAD — updating would regress the latest pointer.`
+            );
           }
 
     - name: "Trigger Nanvix Release Dispatch"
