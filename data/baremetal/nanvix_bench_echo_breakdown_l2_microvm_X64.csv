@@ -2430,3 +2430,14 @@ ca46d099c8ee148e6a1dceab0c777c3eec87abff,7,uservm::io_thread::system_vm::write()
 ca46d099c8ee148e6a1dceab0c777c3eec87abff,8,linuxd::worker_thread::handle_write_request(),48620,48631,48646
 ca46d099c8ee148e6a1dceab0c777c3eec87abff,9,nanvix-bench::read_exact(),17028,17158,17161
 ca46d099c8ee148e6a1dceab0c777c3eec87abff,10,Total,369,395,424
+04e6fc234edd3addf227aec3f4a3b105ed688ade,0,nanvix-bench::write_all(),,,
+04e6fc234edd3addf227aec3f4a3b105ed688ade,1,linuxd::worker_thread::handle_read_request(),10262,10279,10297
+04e6fc234edd3addf227aec3f4a3b105ed688ade,2,uservm::io_thread::system_vm::read(),55441,55445,55586
+04e6fc234edd3addf227aec3f4a3b105ed688ade,3,uservm::memory_thread::data_rx::recv(),10,11,11
+04e6fc234edd3addf227aec3f4a3b105ed688ade,4,uservm::lib::vm_input::vmexit(),18,20,23
+04e6fc234edd3addf227aec3f4a3b105ed688ade,5,uservm::lib::vm_input::vm_write_bytes(),0,1,1
+04e6fc234edd3addf227aec3f4a3b105ed688ade,6,uservm::lib::vm_output::send(),56,64,70
+04e6fc234edd3addf227aec3f4a3b105ed688ade,7,uservm::io_thread::system_vm::write(),3,5,11
+04e6fc234edd3addf227aec3f4a3b105ed688ade,8,linuxd::worker_thread::handle_write_request(),10194,10206,10221
+04e6fc234edd3addf227aec3f4a3b105ed688ade,9,nanvix-bench::read_exact(),55454,55459,55599
+04e6fc234edd3addf227aec3f4a3b105ed688ade,10,Total,368,397,416
