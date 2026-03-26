@@ -1243,7 +1243,7 @@ jobs:
   # Package Windows standalone binaries into a release archive (.zip).
   # Windows only supports standalone deployment mode.
   windows-release-archive:
-    name: "Windows Release Archive"
+    name: "Windows Release Archive (${{ matrix.machine-type }})"
     needs:
       [
         windows-integration-test,
@@ -1260,6 +1260,10 @@ jobs:
       needs.benchmark-finalize.result == 'success' &&
       needs.benchmark-ci-finalize.result == 'success'
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        machine-type: [microvm, hyperlight]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1270,16 +1274,15 @@ jobs:
       - name: "Download Windows Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          pattern: windows-build-*-release
+          name: windows-build-${{ matrix.machine-type }}-release
           path: windows-bin
-          merge-multiple: true
 
       - name: "Package Windows Release Archive"
         id: package
         shell: bash
         run: |
           commit_id="${GITHUB_SHA}"
-          archive_name="nanvix-windows-standalone-release-128mb-${commit_id}.zip"
+          archive_name="nanvix-windows-${{ matrix.machine-type }}-standalone-release-128mb-${commit_id}.zip"
 
           # Create the zip archive from the downloaded Windows binaries.
           cd windows-bin
@@ -1293,7 +1296,7 @@ jobs:
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
-          name: release-windows-standalone-128mb
+          name: release-windows-${{ matrix.machine-type }}-standalone-128mb
           path: ${{ steps.package.outputs.archive-path }}
           overwrite: true
 
