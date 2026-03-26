@@ -312,6 +312,10 @@ cleanup_images() {
     local repo_root
     repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "${repo_root}" ] && [ -d "${repo_root}/images" ]; then
+        # Unmount any leftover pseudo-filesystems before deletion.
+        for mp in sys proc dev; do
+            sudo umount -lf "${repo_root}/images/l2-sysvm-rootfs/${mp}" 2>/dev/null || true
+        done
         sudo rm -rf "${repo_root}/images" 2>/dev/null || true
         log_verbose "Removed ${repo_root}/images."
     else
