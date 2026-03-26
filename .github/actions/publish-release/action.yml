@@ -77,26 +77,50 @@ runs:
           const commitSha = context.sha;
           const tag = `v${version}`;
 
-          // Determine if this workflow commit is the current dev HEAD.
-          // Only set make_latest and update refs/tags/latest when true, so
-          // delayed or manually re-run jobs for older commits cannot regress
-          // the latest pointer.
-          let isDevHead = false;
+          // --- Semver helper ---
+          // Parse "MAJOR.MINOR.PATCH" into a comparable array.
+          function parseSemver(v) {
+            const parts = v.replace(/^v/, '').split('.').map(Number);
+            if (parts.length !== 3 || parts.some(isNaN)) return null;
+            return parts;
+          }
+
+          // Return true when `a` >= `b` (both are "M.m.p" strings).
+          function semverGte(a, b) {
+            const pa = parseSemver(a);
+            const pb = parseSemver(b);
+            if (!pa || !pb) return false;
+            for (let i = 0; i < 3; i++) {
+              if (pa[i] > pb[i]) return true;
+              if (pa[i] < pb[i]) return false;
+            }
+            return true; // equal
+          }
+
+          // Determine whether this release should be marked as "latest".
+          // Compare the version being published against the current latest
+          // release's version. This avoids the race where dev HEAD moves
+          // forward during the pipeline, which would cause a commit-SHA
+          // comparison to fail even for legitimate releases.
+          let shouldBeLatest = false;
           try {
-            const { data: devRef } = await github.rest.git.getRef({
-              owner,
-              repo,
-              ref: 'heads/dev',
-            });
-            isDevHead = devRef.object.sha === commitSha;
+            const { data: latest } = await github.rest.repos.getLatestRelease({ owner, repo });
+            const latestVersion = latest.tag_name;
+            shouldBeLatest = semverGte(version, latestVersion);
+            core.info(
+              `Current latest release is ${latestVersion}; ` +
+              `this release is ${tag}; shouldBeLatest=${shouldBeLatest}.`
+            );
           } catch (error) {
             if (error.status === 404) {
-              core.warning('Branch "dev" not found; treating this commit as not dev HEAD.');
+              // No releases exist yet — this one should be latest.
+              shouldBeLatest = true;
+              core.info('No existing latest release found; this release will be latest.');
             } else {
-              core.warning(`Failed to resolve dev HEAD: ${error.message}`);
+              core.warning(`Failed to determine latest release: ${error.message}; defaulting to latest.`);
+              shouldBeLatest = true;
             }
           }
-          core.info(`isDevHead=${isDevHead} (commitSha=${commitSha}).`);
 
           // --- Idempotency: check if this versioned release already exists ---
 
@@ -182,7 +206,7 @@ runs:
                 body: `Automated release for Nanvix ${version}.`,
                 draft: false,
                 prerelease: false,
-                make_latest: isDevHead ? "true" : "false",
+                make_latest: shouldBeLatest ? "true" : "false",
               });
               release = created;
               core.info(`Created release ${release.id} (${release.html_url}).`);
@@ -301,7 +325,7 @@ runs:
               repo,
               release_id: release.id,
               draft: false,
-              make_latest: isDevHead ? "true" : "false",
+              make_latest: shouldBeLatest ? "true" : "false",
             });
             if (patched.draft) {
               core.setFailed(`Release ${release.id} is still a draft after recovery attempt.`);
@@ -313,11 +337,11 @@ runs:
           }
 
           // --- Update the `latest` git tag to point to this commit ---
-          // Only move `latest` when this workflow commit is the current `dev` HEAD,
-          // to avoid regressing the tag on manual re-runs of older commits.
+          // Only move `latest` when the version being published is >= the
+          // current latest, to avoid regressing the tag on re-runs of old commits.
 
-          if (isDevHead) {
-            core.info(`Updating latest tag to ${commitSha} (dev HEAD)...`);
+          if (shouldBeLatest) {
+            core.info(`Updating latest tag to ${commitSha} (version ${version} >= current latest)...`);
             try {
               await github.rest.git.updateRef({
                 owner,
@@ -343,8 +367,8 @@ runs:
             }
           } else {
             core.info(
-              `Skipping update of refs/tags/latest because this workflow run (${commitSha}) ` +
-              `is not the current dev HEAD — updating would regress the latest pointer.`
+              `Skipping update of refs/tags/latest because version ${version} ` +
+              `is older than the current latest release — updating would regress the latest pointer.`
             );
           }
 
