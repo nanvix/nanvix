@@ -12,10 +12,7 @@
 //==================================================================================================
 
 use crate::{
-    config::{
-        CLEANUP_TIMEOUT,
-        CONTROL_PLANE_ACCEPT_TIMEOUT,
-    },
+    config::CLEANUP_TIMEOUT,
     UserVmArgs,
 };
 #[cfg(not(feature = "single-process"))]
@@ -35,14 +32,9 @@ use ::std::{
         Stdio,
     },
 };
-use ::syscomm::{
-    SocketListener,
-    SocketStream,
-    WriteAll,
-};
+use ::syscomm::{SocketStream, WriteAll};
 use ::log::{
     debug,
-    error,
     trace,
     warn,
 };
@@ -74,6 +66,12 @@ pub struct UserVm {
     _netns_handle: Option<NetnsHandle>,
 }
 
+pub struct PendingUserVm {
+    child: Option<Child>,
+    #[cfg(not(feature = "single-process"))]
+    netns_handle: Option<NetnsHandle>,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -97,9 +95,8 @@ impl UserVm {
     ///
     pub async fn spawn(
         args: &UserVmArgs,
-        control_plane_listener: &mut SocketListener,
         #[cfg(not(feature = "single-process"))] netns_handle: Option<NetnsHandle>,
-    ) -> Result<Self> {
+    ) -> Result<PendingUserVm> {
         trace!("spawn(): args={args:?}");
 
         let mut user_vm_args: Vec<String> = vec![
@@ -200,43 +197,10 @@ impl UserVm {
             args.console_file(),
         );
 
-        // After the user VM has started, accept the incoming connection for the control-plane.
-        // Post-condition: once the connection has been accepted, the user VM has been able to
-        // connect to the system VM (if an address is provided).
-        let control_plane_stream: SocketStream =
-            match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_listener.accept()).await {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(e)) => {
-                    // If the user VM has not accepted the control-plane connection, it means that
-                    // something went wrong during start-up. We kill the process ignoring errors,
-                    // and return an error.
-                    let reason: String =
-                        format!("error connecting control-plane to user VM (error={e:?})");
-                    error!("{reason}");
-
-                    Self::send_sigkill_to_child(child);
-
-                    return Err(anyhow::anyhow!("{reason}"));
-                },
-                Err(e) => {
-                    let reason: String = format!(
-                        "timed-out waiting for user VM to connect the control-plane stream \
-                         (error={e:?})"
-                    );
-                    error!("{reason}");
-
-                    Self::send_sigkill_to_child(child);
-
-                    return Err(anyhow::anyhow!("{reason}"));
-                },
-            };
-        debug!("nanvixd received connection from the user VM's control-plane socket");
-
-        Ok(Self {
+        Ok(PendingUserVm {
             child: Some(child),
-            control_plane_stream,
             #[cfg(not(feature = "single-process"))]
-            _netns_handle: netns_handle,
+            netns_handle,
         })
     }
 
@@ -336,6 +300,49 @@ impl UserVm {
             }
         } else {
             false
+        }
+    }
+}
+
+impl PendingUserVm {
+    ///
+    /// # Description
+    ///
+    /// Completes User VM startup by attaching the accepted control-plane stream.
+    ///
+    /// # Arguments
+    ///
+    /// - `control_plane_stream`: Accepted control-plane stream for the spawned User VM.
+    ///
+    /// # Returns
+    ///
+    /// Returns the running User VM handle.
+    ///
+    pub fn attach_control_plane(self, control_plane_stream: SocketStream) -> UserVm {
+        UserVm {
+            child: self.child,
+            control_plane_stream,
+            #[cfg(not(feature = "single-process"))]
+            _netns_handle: self.netns_handle,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aborts a pending User VM startup by forcefully terminating the child process.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// This function does not return a value.
+    ///
+    pub async fn abort(self) {
+        if let Some(child) = self.child {
+            UserVm::send_sigkill_to_child(child);
         }
     }
 }

@@ -11,12 +11,19 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
-use crate::config::GATEWAY_CONNECT_TIMEOUT;
-#[cfg(not(feature = "standalone"))]
-use crate::linuxd::LinuxDaemon;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use crate::netns::NetnsHandle;
+#[cfg(not(feature = "standalone"))]
+use crate::ControlPlaneAcceptor;
+#[cfg(not(feature = "standalone"))]
+use crate::{
+    config::{
+        CONTROL_PLANE_ACCEPT_TIMEOUT,
+        GATEWAY_CONNECT_TIMEOUT,
+    },
+    linuxd::LinuxDaemon,
+    uservm::PendingUserVm,
+};
 use crate::{
     tcp_port::TcpPort,
     uservm::UserVm,
@@ -29,14 +36,16 @@ use ::anyhow::Result;
 use ::log::error;
 #[cfg(not(any(feature = "single-process", feature = "standalone")))]
 use ::std::marker::PhantomData;
-use ::std::sync::Arc;
-use ::syscomm::{
-    SocketListener,
-    SocketType,
-};
-use ::tokio::sync::Mutex;
 #[cfg(not(feature = "standalone"))]
-use ::tokio::sync::MutexGuard;
+use ::std::sync::Arc;
+#[cfg(not(feature = "standalone"))]
+use ::syscomm::SocketStream;
+use ::syscomm::SocketType;
+#[cfg(not(feature = "standalone"))]
+use ::tokio::{
+    sync::oneshot::Receiver,
+    time::timeout,
+};
 
 //==================================================================================================
 // Structures
@@ -68,8 +77,9 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     /// Shared handle to the Linux Daemon instance managing this sandbox.
     #[cfg(not(feature = "standalone"))]
     pub(super) linuxd: Arc<LinuxDaemon>,
-    /// Control plane listener socket, address, and socket type.
-    pub(super) control_plane_bind_socket_and_info: Arc<Mutex<(SocketListener, String, SocketType)>>,
+    /// Shared control-plane acceptor used to route child connections.
+    #[cfg(not(feature = "standalone"))]
+    pub(super) control_plane_acceptor: Arc<ControlPlaneAcceptor>,
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
     /// Handle to the network namespace (only set in L2-mode).
@@ -161,15 +171,15 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
 
         #[cfg(not(feature = "standalone"))]
         let uservm: UserVm = {
-            let mut locked_control_plane_bind_socket_and_info: MutexGuard<
-                '_,
-                (SocketListener, String, SocketType),
-            > = self.control_plane_bind_socket_and_info.lock().await;
-            match UserVm::spawn(
+            // Register interest in the user VM we are about to spawn.
+            let control_plane_stream_rx: Receiver<SocketStream> = self
+                .control_plane_acceptor
+                .register_uservm(uservm_id)
+                .await?;
+
+            // Spawn the user VM.
+            let pending_uservm: PendingUserVm = match UserVm::spawn(
                 &uservm_args,
-                // Pass a mutable reference to the unique control-plane listener socket to accept
-                // one connection from the new user VM.
-                &mut locked_control_plane_bind_socket_and_info.0,
                 // Pass ownership of the netns RAII handle to the user VM.
                 #[cfg(not(feature = "single-process"))]
                 self.netns_handle.take(),
@@ -178,10 +188,47 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             {
                 Ok(uservm) => uservm,
                 Err(error) => {
+                    self.control_plane_acceptor
+                        .unregister_uservm(uservm_id)
+                        .await;
                     error!("start(): failed to spawn uservm (error={error:?})");
                     return Err(error);
                 },
-            }
+            };
+
+            // Await for the user VM to send a handshake message.
+            let control_plane_stream: SocketStream =
+                match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_stream_rx).await {
+                    Ok(Ok(stream)) => stream,
+                    Ok(Err(error)) => {
+                        self.control_plane_acceptor
+                            .unregister_uservm(uservm_id)
+                            .await;
+                        let reason: String = format!(
+                            "control-plane acceptor dropped before delivering uservm stream \
+                             (uservm_id={uservm_id}, error={error:?})"
+                        );
+                        error!("start(): {reason}");
+                        pending_uservm.abort().await;
+                        anyhow::bail!(reason);
+                    },
+                    Err(error) => {
+                        self.control_plane_acceptor
+                            .unregister_uservm(uservm_id)
+                            .await;
+                        let reason: String = format!(
+                            "timed-out waiting for uservm control-plane connection \
+                             (uservm_id={uservm_id}, error={error:?})"
+                        );
+                        error!("start(): {reason}");
+                        pending_uservm.abort().await;
+                        anyhow::bail!(reason);
+                    },
+                };
+
+            // Upgrade the pending user VM to a full user VM by attaching the received
+            // control-plane stream.
+            pending_uservm.attach_control_plane(control_plane_stream)
         };
 
         // Wait for linuxd to signal that the gateway listener is bound and ready for this User VM.
@@ -195,7 +242,8 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             uservm,
             #[cfg(not(feature = "standalone"))]
             _linuxd: self.linuxd,
-            _control_plane_socket_and_info: self.control_plane_bind_socket_and_info,
+            #[cfg(not(feature = "standalone"))]
+            _control_plane_acceptor: self.control_plane_acceptor,
             gateway_socket_info: gateway_socket_info_with_port,
         })
     }
@@ -214,19 +262,21 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         self.linuxd.clone()
     }
 
+    #[cfg(not(feature = "standalone"))]
     ///
     /// # Description
     ///
-    /// Returns a shared handle to the control plane socket information including the listener,
-    /// socket address, and socket type.
+    /// Returns a shared handle to the control-plane acceptor associated with this sandbox.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
     ///
     /// # Returns
     ///
-    /// A shared handle to the control plane listener socket information.
+    /// Returns the shared control-plane acceptor handle.
     ///
-    pub fn control_plane_bind_socket_info(
-        &self,
-    ) -> Arc<Mutex<(SocketListener, String, SocketType)>> {
-        self.control_plane_bind_socket_and_info.clone()
+    pub fn control_plane_acceptor(&self) -> Arc<ControlPlaneAcceptor> {
+        self.control_plane_acceptor.clone()
     }
 }

@@ -46,6 +46,7 @@ use ::std::{
     },
     mem,
 };
+use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
 // Structures
@@ -95,6 +96,32 @@ pub struct LinuxdControlMessage {
     command: LinuxdCommand,
     /// Identifier of the User VM that this message pertains to.
     gateway_id: u32,
+}
+
+///
+/// # Description
+///
+/// Kind of peer registering on the shared control-plane listener.
+///
+#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, Eq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum ControlPlanePeerKind {
+    /// Linux daemon instance.
+    LinuxDaemon,
+    /// User VM instance.
+    UserVm,
+}
+
+///
+/// # Description
+///
+/// Registration message sent immediately after a peer connects to the control-plane listener.
+///
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControlPlaneRegistrationMessage {
+    peer_kind: ControlPlanePeerKind,
+    user_vm_id: u32,
+    tenant_id: String,
 }
 
 //==================================================================================================
@@ -163,7 +190,7 @@ impl NanvixdControlMessage {
     /// On success, this function returns the deserialized command. On failure, it returns an error.
     ///
     pub fn try_from_bytes(buffer: &[u8; Self::WIRE_SIZE]) -> Result<Self, Error> {
-        let command = NanvixdCommand::try_from(buffer[0]).map_err(|_| {
+        let command: NanvixdCommand = NanvixdCommand::try_from(buffer[0]).map_err(|_| {
             let reason: String = format!("invalid command: {}", buffer[0]);
             error!("try_from_bytes(): {reason}");
             Error::new(ErrorKind::InvalidData, reason)
@@ -252,7 +279,7 @@ impl LinuxdControlMessage {
     /// On success, this function returns the deserialized command. On failure, it returns an error.
     ///
     pub fn try_from_bytes(buffer: &[u8; Self::WIRE_SIZE]) -> Result<Self, Error> {
-        let command = LinuxdCommand::try_from(buffer[0]).map_err(|_| {
+        let command: LinuxdCommand = LinuxdCommand::try_from(buffer[0]).map_err(|_| {
             let reason: String = format!("invalid linuxd command: {}", buffer[0]);
             error!("try_from_bytes(): {reason}");
             Error::new(ErrorKind::InvalidData, reason)
@@ -262,5 +289,252 @@ impl LinuxdControlMessage {
             command,
             gateway_id,
         })
+    }
+}
+
+impl ControlPlaneRegistrationMessage {
+    /// Wire header size: 1 byte peer kind + 4 bytes user VM id + 2 bytes tenant-id length.
+    pub const HEADER_SIZE: usize = 1 + mem::size_of::<u32>() + mem::size_of::<u16>();
+
+    /// Byte offset of the peer-kind field within the wire header.
+    pub const PEER_KIND_OFFSET: usize = 0;
+
+    /// Byte offset of the user-VM-id field within the wire header.
+    pub const USER_VM_ID_OFFSET: usize = Self::PEER_KIND_OFFSET + 1;
+
+    /// Byte offset of the tenant-id-length field within the wire header.
+    pub const TENANT_ID_LEN_OFFSET: usize = Self::USER_VM_ID_OFFSET + mem::size_of::<u32>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a registration message for a Linux daemon connection.
+    ///
+    /// # Arguments
+    ///
+    /// - `tenant_id`: Tenant identifier associated with the Linux daemon instance. Must not be
+    ///   empty.
+    ///
+    /// # Returns
+    ///
+    /// Returns the newly created registration message if `tenant_id` is valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::InvalidInput`] if `tenant_id` is empty.
+    ///
+    pub fn for_linuxd(tenant_id: &str) -> Result<Self, Error> {
+        if tenant_id.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "tenant_id cannot be empty for Linux daemon registration",
+            ));
+        }
+
+        Ok(Self {
+            peer_kind: ControlPlanePeerKind::LinuxDaemon,
+            user_vm_id: 0,
+            tenant_id: tenant_id.to_string(),
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a registration message for a User VM connection.
+    ///
+    /// # Arguments
+    ///
+    /// - `user_vm_id`: Identifier of the User VM instance.
+    ///
+    /// # Returns
+    ///
+    /// Returns the newly created registration message.
+    ///
+    pub fn for_uservm(user_vm_id: UserVmIdentifier) -> Self {
+        Self {
+            peer_kind: ControlPlanePeerKind::UserVm,
+            user_vm_id: user_vm_id.into(),
+            tenant_id: String::new(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the peer kind encoded in this message.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// Returns the kind of the peer that emitted this registration.
+    ///
+    pub fn peer_kind(&self) -> ControlPlanePeerKind {
+        self.peer_kind
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the User VM identifier if this is a User VM registration.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// Returns the registered User VM identifier when present.
+    ///
+    pub fn user_vm_id(&self) -> Option<UserVmIdentifier> {
+        if self.peer_kind == ControlPlanePeerKind::UserVm {
+            Some(UserVmIdentifier::new(self.user_vm_id))
+        } else {
+            None
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the tenant identifier if this is a Linux daemon registration.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// Returns the registered tenant identifier when present.
+    ///
+    pub fn tenant_id(&self) -> Option<&str> {
+        if self.peer_kind == ControlPlanePeerKind::LinuxDaemon {
+            Some(&self.tenant_id)
+        } else {
+            None
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the exact serialized size of this message.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// Returns the serialized size in bytes.
+    ///
+    pub fn wire_size(&self) -> usize {
+        Self::HEADER_SIZE + self.tenant_id.len()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Serializes this registration message.
+    ///
+    /// # Arguments
+    ///
+    /// This function takes no arguments.
+    ///
+    /// # Returns
+    ///
+    /// Returns the serialized registration message bytes.
+    ///
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let tenant_id_bytes: &[u8] = self.tenant_id.as_bytes();
+        let tenant_id_len: u16 = tenant_id_bytes.len().try_into().map_err(|_| {
+            let reason: String = format!("tenant identifier too long: {}", tenant_id_bytes.len());
+            error!("to_bytes(): {reason}");
+            Error::new(ErrorKind::InvalidInput, reason)
+        })?;
+        let mut bytes: Vec<u8> = vec![0u8; self.wire_size()];
+        bytes[Self::PEER_KIND_OFFSET] = self.peer_kind.into();
+        bytes[Self::USER_VM_ID_OFFSET..Self::TENANT_ID_LEN_OFFSET]
+            .copy_from_slice(&self.user_vm_id.to_le_bytes());
+        bytes[Self::TENANT_ID_LEN_OFFSET..Self::HEADER_SIZE]
+            .copy_from_slice(&tenant_id_len.to_le_bytes());
+        bytes[Self::HEADER_SIZE..].copy_from_slice(tenant_id_bytes);
+        Ok(bytes)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Deserializes a registration message from its header and tenant-id payload.
+    ///
+    /// # Arguments
+    ///
+    /// - `header`: Fixed-size registration header.
+    /// - `tenant_id_bytes`: Variable-size tenant identifier payload.
+    ///
+    /// # Returns
+    ///
+    /// Returns the decoded registration message.
+    ///
+    pub fn try_from_parts(
+        header: &[u8; Self::HEADER_SIZE],
+        tenant_id_bytes: &[u8],
+    ) -> Result<Self, Error> {
+        let peer_kind: ControlPlanePeerKind =
+            ControlPlanePeerKind::try_from(header[Self::PEER_KIND_OFFSET]).map_err(|_| {
+                let reason: String =
+                    format!("invalid control-plane peer kind: {}", header[Self::PEER_KIND_OFFSET]);
+                error!("try_from_parts(): {reason}");
+                Error::new(ErrorKind::InvalidData, reason)
+            })?;
+        let user_vm_id: u32 = u32::from_le_bytes([
+            header[Self::USER_VM_ID_OFFSET],
+            header[Self::USER_VM_ID_OFFSET + 1],
+            header[Self::USER_VM_ID_OFFSET + 2],
+            header[Self::USER_VM_ID_OFFSET + 3],
+        ]);
+        let tenant_id_len: usize = usize::from(u16::from_le_bytes([
+            header[Self::TENANT_ID_LEN_OFFSET],
+            header[Self::TENANT_ID_LEN_OFFSET + 1],
+        ]));
+        if tenant_id_len != tenant_id_bytes.len() {
+            let reason: String = format!(
+                "tenant identifier length mismatch (header={tenant_id_len}, payload={})",
+                tenant_id_bytes.len()
+            );
+            error!("try_from_parts(): {reason}");
+            return Err(Error::new(ErrorKind::InvalidData, reason));
+        }
+        let tenant_id: String = String::from_utf8(tenant_id_bytes.to_vec()).map_err(|error| {
+            let reason: String = format!("invalid tenant identifier encoding (error={error:?})");
+            error!("try_from_parts(): {reason}");
+            Error::new(ErrorKind::InvalidData, reason)
+        })?;
+
+        match peer_kind {
+            ControlPlanePeerKind::LinuxDaemon if tenant_id.is_empty() => {
+                let reason: &str = "linux daemon registration missing tenant identifier";
+                error!("try_from_parts(): {reason}");
+                Err(Error::new(ErrorKind::InvalidData, reason))
+            },
+            ControlPlanePeerKind::LinuxDaemon => Ok(Self {
+                peer_kind,
+                user_vm_id: 0,
+                tenant_id,
+            }),
+            ControlPlanePeerKind::UserVm if !tenant_id.is_empty() => {
+                let reason: &str = "user VM registration should not include tenant identifier";
+                error!("try_from_parts(): {reason}");
+                Err(Error::new(ErrorKind::InvalidData, reason))
+            },
+            ControlPlanePeerKind::UserVm => Ok(Self {
+                peer_kind,
+                user_vm_id,
+                tenant_id,
+            }),
+        }
     }
 }

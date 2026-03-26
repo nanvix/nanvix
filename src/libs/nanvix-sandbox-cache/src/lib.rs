@@ -39,7 +39,10 @@ use ::log::{
 use ::nanvix_sandbox::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
-    linuxd::LinuxDaemon,
+    linuxd::{
+        LinuxDaemon,
+        PendingLinuxDaemon,
+    },
     netns::{
         NetnsHandle,
         NetnsInfo,
@@ -49,11 +52,13 @@ use ::nanvix_sandbox::{
     },
     syscomm::{
         SocketListener,
+        SocketStream,
         SocketType,
         UnboundSocket,
     },
     tcp_port::TcpPort,
     user_vm_sockaddr_builder,
+    ControlPlaneAcceptor,
     InitializedSandbox,
     LinuxDaemonArgs,
     RunningSandbox,
@@ -61,6 +66,7 @@ use ::nanvix_sandbox::{
     SnapshotDirHandle,
     UninitializedSandbox,
     UserVmIdentifier,
+    CONTROL_PLANE_ACCEPT_TIMEOUT,
 };
 use ::std::{
     collections::HashMap,
@@ -68,10 +74,12 @@ use ::std::{
     path::PathBuf,
     sync::Arc,
 };
-use ::tokio::sync::{
-    Mutex,
-    MutexGuard,
-    RwLock,
+use ::tokio::{
+    sync::{
+        oneshot::Receiver,
+        RwLock,
+    },
+    time::timeout,
 };
 
 //==================================================================================================
@@ -105,8 +113,8 @@ pub struct SandboxCache<T> {
     running_sandboxes: RwLock<HashMap<UserVmIdentifier, RunningSandbox>>,
     /// Registry of all tenant's state indexed by the unique tenant ID.
     tenants: RwLock<HashMap<String, Arc<TenantState>>>,
-    /// Shared control plane listener socket (reused across sandboxes for efficiency).
-    control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>>,
+    /// Shared acceptor that routes control-plane connections to waiting children.
+    control_plane_acceptor: Arc<ControlPlaneAcceptor>,
     /// Network namespace pool for different L2 VMs.
     netns_pool: NetnsPool,
 }
@@ -234,15 +242,17 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 },
             };
 
+        let control_plane_acceptor: Arc<ControlPlaneAcceptor> = ControlPlaneAcceptor::new(
+            control_plane_bind_socket,
+            control_plane_bind_sockaddr,
+            control_plane_bind_socket_type,
+        );
+
         Ok(Arc::new(Self {
             config,
             running_sandboxes: RwLock::new(HashMap::new()),
             tenants: RwLock::new(HashMap::new()),
-            control_plane_bind_socket: Arc::new(Mutex::new((
-                control_plane_bind_socket,
-                control_plane_bind_sockaddr,
-                control_plane_bind_socket_type,
-            ))),
+            control_plane_acceptor,
             netns_pool: NetnsPool::new(
                 NetnsPoolConfig::new(
                     ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
@@ -438,36 +448,62 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             self.config.l2(),
         );
 
-        // Here we acquire a lock on the control-plane bind socket while holding the write lock
-        // on linuxd_instance. There is no risk of deadlocks because the only two other places
-        // where we try and lock this socket are:
-        //
-        // - UninitializedSandbox::initialize() - in the branch where linuxd is not initialized,
-        //   but we never hit this branch in multi-process, as we are spawning linuxd here.
-        //
-        // - InitializedSandbox::start() - when spawning a user VM. Note that a user VM whose
-        //   tenant has not been initialized will never make it to start(), so it is not possible
-        //   for two tasks to be competing on the linuxd_instance write lock and the control-plane
-        //   lock when spawning a user VM for the same tenant.
         let linuxd: Arc<LinuxDaemon> = {
-            let mut listener_and_info: MutexGuard<'_, (SocketListener, String, SocketType)> =
-                self.control_plane_bind_socket.lock().await;
-            match LinuxDaemon::spawn(
-                &linuxd_args,
-                &mut listener_and_info.0,
-                netns_handle,
-                snapshot_dir_handle,
-            )
-            .await
-            {
-                Ok(linuxd) => Arc::new(linuxd),
-                Err(error) => {
-                    let reason: String =
-                        format!("failed to spawn linuxd (tenant_id={tenant_id}, error={error:?})");
-                    error!("get_or_create_linuxd(): {reason}");
-                    anyhow::bail!(reason);
-                },
-            }
+            // Register interest in the new linuxd instance.
+            let control_plane_stream_rx: Receiver<SocketStream> = self
+                .control_plane_acceptor
+                .register_linuxd(tenant_id)
+                .await?;
+
+            // Spawn it.
+            let pending_linuxd: PendingLinuxDaemon =
+                match LinuxDaemon::spawn(&linuxd_args, netns_handle, snapshot_dir_handle).await {
+                    Ok(linuxd) => linuxd,
+                    Err(error) => {
+                        self.control_plane_acceptor
+                            .unregister_linuxd(tenant_id)
+                            .await;
+                        let reason: String = format!(
+                            "failed to spawn linuxd (tenant_id={tenant_id}, error={error:?})"
+                        );
+                        error!("get_or_create_linuxd(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                };
+
+            // Await for the linuxd instance to send a handshake message.
+            let control_plane_stream: SocketStream =
+                match timeout(CONTROL_PLANE_ACCEPT_TIMEOUT, control_plane_stream_rx).await {
+                    Ok(Ok(stream)) => stream,
+                    Ok(Err(error)) => {
+                        self.control_plane_acceptor
+                            .unregister_linuxd(tenant_id)
+                            .await;
+                        pending_linuxd.abort().await;
+                        let reason: String = format!(
+                            "control-plane acceptor dropped before delivering linuxd stream \
+                             (tenant_id={tenant_id}, error={error:?})"
+                        );
+                        error!("get_or_create_linuxd(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                    Err(error) => {
+                        self.control_plane_acceptor
+                            .unregister_linuxd(tenant_id)
+                            .await;
+                        pending_linuxd.abort().await;
+                        let reason: String = format!(
+                            "timed-out waiting for linuxd control-plane connection \
+                             (tenant_id={tenant_id}, error={error:?})"
+                        );
+                        error!("get_or_create_linuxd(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                };
+
+            // Upgrade the pending linuxd instance to a full one by attaching the newly received
+            // control-plane stream.
+            Arc::new(pending_linuxd.attach_control_plane(control_plane_stream))
         };
 
         *linuxd_instance = Some(Arc::clone(&linuxd));
@@ -612,13 +648,11 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             gateway_l2_port = Some(tcp_port);
         }
 
-        let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
-            self.control_plane_bind_socket.clone();
         let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
             tag.program(),
             tag.program_args().cloned(),
             self.config.ramfs_filename().map(|s| s.to_string()),
-            control_plane_bind_socket,
+            self.control_plane_acceptor.clone(),
         )
         .with_netns_handle(netns_handle)
         .with_linuxd(linuxd);
