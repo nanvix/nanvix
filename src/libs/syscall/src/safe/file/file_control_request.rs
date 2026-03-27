@@ -10,7 +10,7 @@ use crate::safe::{
     FileStatusFlags,
     RawFileDescriptor,
 };
-use ::core::ffi::VaListImpl;
+use ::core::ffi::VaList;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -141,10 +141,10 @@ impl TryFrom<(c_int, Option<c_int>)> for FileControlRequest {
     }
 }
 
-impl<'a> TryFrom<(c_int, VaListImpl<'a>)> for FileControlRequest {
+impl<'a> TryFrom<(c_int, VaList<'a>)> for FileControlRequest {
     type Error = Error;
 
-    fn try_from(value: (c_int, VaListImpl<'a>)) -> Result<Self, Self::Error> {
+    fn try_from(value: (c_int, VaList<'a>)) -> Result<Self, Self::Error> {
         let (cmd, mut arg) = value;
         match cmd {
             F_DUPFD => {

@@ -255,6 +255,7 @@ warnings = "deny"
 unexpected_cfgs = { level = "deny", check-cfg = [
         "cfg(verus_keep_ghost)",
         "cfg(verus_keep_ghost_body)",
+        'cfg(target_os, values("nanvix"))',
 ] }
 
 [workspace.lints.clippy]
