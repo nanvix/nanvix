@@ -12,7 +12,7 @@ All libraries live under `src/libs/` and are part of the Cargo workspace.
 
 ### Core Libraries (Guest — `#![no_std]`)
 
-These run inside the Nanvix guest (user-space) and are compiled with `cargo +nanvix-x86`:
+These run inside the Nanvix guest (user-space) and are compiled with `cargo`:
 
 | Library         | Path                      | Purpose            |
 |-----------------|---------------------------|--------------------|
@@ -46,7 +46,7 @@ These run inside the Nanvix guest (user-space) and are compiled with `cargo +nan
 ### Host Libraries (Host — `std` available)
 
 These run on the host system and are compiled with the host Rust build command
-(`HOST_CARGO_BUILD_CMD`, currently `cargo +nanvix-x86`):
+(`HOST_CARGO_BUILD_CMD`, currently `cargo`):
 
 | Library                | Path                             | Purpose      |
 |------------------------|----------------------------------|--------------|
@@ -114,7 +114,7 @@ These run on the host system and are compiled with the host Rust build command
 ./z build --with-cached-options -- run-unit-tests
 ```
 
-Guest libraries use `GUEST_CARGO_BUILD_CMD` (cross-compiled with `cargo +nanvix-x86`). Host
+Guest libraries use `GUEST_CARGO_BUILD_CMD` (cross-compiled with `cargo`). Host
 libraries use `HOST_CARGO_BUILD_CMD`.
 
 ## Windows Compilation
