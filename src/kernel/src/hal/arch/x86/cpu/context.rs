@@ -48,7 +48,7 @@ pub struct ContextInformation {
     ss: u32,
 }
 
-// `Context` must be 72 bytes long. This must match low-level assembly dispatcher code.
+// `ContextInformation` must be 76 bytes long. This must match low-level assembly dispatcher code.
 ::static_assert::assert_eq_size!(ContextInformation, 76);
 
 //==================================================================================================
@@ -56,6 +56,47 @@ pub struct ContextInformation {
 //==================================================================================================
 
 impl ContextInformation {
+    /// Byte offset of the `esp0` field within the structure.
+    pub const CONTEXT_ESP0: u32 = core::mem::offset_of!(Self, esp0) as u32;
+    /// Byte offset of the `cr3` field within the structure.
+    pub const CONTEXT_CR3: u32 = core::mem::offset_of!(Self, cr3) as u32;
+    /// Byte offset of the `gs` field within the structure.
+    pub const CONTEXT_GS: u32 = core::mem::offset_of!(Self, gs) as u32;
+    /// Byte offset of the `fs` field within the structure.
+    pub const CONTEXT_FS: u32 = core::mem::offset_of!(Self, fs) as u32;
+    /// Byte offset of the `es` field within the structure.
+    pub const CONTEXT_ES: u32 = core::mem::offset_of!(Self, es) as u32;
+    /// Byte offset of the `ds` field within the structure.
+    pub const CONTEXT_DS: u32 = core::mem::offset_of!(Self, ds) as u32;
+    /// Byte offset of the `edi` field within the structure.
+    pub const CONTEXT_EDI: u32 = core::mem::offset_of!(Self, edi) as u32;
+    /// Byte offset of the `esi` field within the structure.
+    pub const CONTEXT_ESI: u32 = core::mem::offset_of!(Self, esi) as u32;
+    /// Byte offset of the `ebp` field within the structure.
+    pub const CONTEXT_EBP: u32 = core::mem::offset_of!(Self, ebp) as u32;
+    /// Byte offset of the `edx` field within the structure.
+    pub const CONTEXT_EDX: u32 = core::mem::offset_of!(Self, edx) as u32;
+    /// Byte offset of the `ecx` field within the structure.
+    pub const CONTEXT_ECX: u32 = core::mem::offset_of!(Self, ecx) as u32;
+    /// Byte offset of the `ebx` field within the structure.
+    pub const CONTEXT_EBX: u32 = core::mem::offset_of!(Self, ebx) as u32;
+    /// Byte offset of the `eax` field within the structure.
+    pub const CONTEXT_EAX: u32 = core::mem::offset_of!(Self, eax) as u32;
+    /// Byte offset of the `err` field within the structure.
+    pub const CONTEXT_ERR: u32 = core::mem::offset_of!(Self, err) as u32;
+    /// Byte offset of the `eip` field within the structure.
+    pub const CONTEXT_EIP: u32 = core::mem::offset_of!(Self, eip) as u32;
+    /// Byte offset of the `eflags` field within the structure.
+    pub const CONTEXT_EFLAGS: u32 = core::mem::offset_of!(Self, eflags) as u32;
+    /// Byte offset of the `esp` field within the structure.
+    pub const CONTEXT_ESP: u32 = core::mem::offset_of!(Self, esp) as u32;
+
+    /// Size of the software-saved portion of the context (bytes before `err`).
+    pub const CONTEXT_SW_SIZE: u32 = Self::CONTEXT_ERR;
+
+    /// Size of the hardware-saved portion of the context (bytes from `err` onward).
+    pub const CONTEXT_HW_SIZE: u32 = core::mem::size_of::<Self>() as u32 - Self::CONTEXT_ERR;
+
     pub fn new(cr3: u32, esp: u32, esp0: u32) -> Self {
         Self {
             esp0,
