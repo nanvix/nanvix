@@ -90,6 +90,8 @@ impl Benchmark {
                 snapshot_path: None,
                 #[cfg(feature = "gdb")]
                 gdb_port: None,
+                #[cfg(feature = "profile-time")]
+                perf_timings: ::nanvix::uservm::perf::PerfTimings::new(),
             });
 
             let join_result = user_vm_handle.await;
@@ -175,6 +177,8 @@ impl Benchmark {
                 snapshot_path: Some(kernel_filename.clone()),
                 #[cfg(feature = "gdb")]
                 gdb_port: None,
+                #[cfg(feature = "profile-time")]
+                perf_timings: ::nanvix::uservm::perf::PerfTimings::new(),
             });
 
             let join_result = user_vm_handle.await;

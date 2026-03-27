@@ -1,15 +1,21 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use tokio::sync::mpsc::{
-    Receiver,
-    Sender,
-};
+//==================================================================================================
+// Imports
+//==================================================================================================
 
 use crate::orchestrator::{
     VcpuControlCommand,
     VcpuControlResponse,
 };
+use ::tokio::sync::mpsc::{
+    Receiver,
+    Sender,
+};
+
+#[cfg(feature = "profile-time")]
+use crate::perf::PerfTimings;
 
 //==================================================================================================
 // Modules
@@ -59,6 +65,9 @@ pub struct MicroVmArgs {
     /// Optional GDB server port (standalone mode only, microvm only).
     #[cfg(feature = "gdb")]
     pub gdb_port: Option<u16>,
+    /// Performance timings collector for fine-grained startup breakdown.
+    #[cfg(feature = "profile-time")]
+    pub perf_timings: PerfTimings,
 }
 
 impl std::fmt::Debug for MicroVmArgs {

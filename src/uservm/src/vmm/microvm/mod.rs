@@ -99,6 +99,15 @@ use ::tokio::{
     task,
 };
 
+#[cfg(feature = "profile-time")]
+use crate::perf::PerfTimings;
+#[cfg(feature = "profile-time")]
+use ::std::time::Instant;
+
+//==================================================================================================
+// Re-Exports
+//==================================================================================================
+
 pub use kvm::vmem::VirtualMemory;
 pub use ramfs::RamFs;
 
@@ -246,6 +255,9 @@ pub struct Vmm {
     inner: Arc<Mutex<InteriorMicroVmHandle>>,
     /// Lock-free IKC interrupt notifier (duplicated VM fd).
     ikc_notifier: IkcNotifier,
+    /// Performance timings collector for fine-grained startup breakdown.
+    #[cfg(feature = "profile-time")]
+    perf_timings: PerfTimings,
     /// Optional GDB server TCP port (standalone mode only).
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -325,14 +337,39 @@ impl Vmm {
     pub fn new(args: MicroVmArgs) -> Result<Self> {
         trace!("new(): args={:?}", args);
 
+        #[cfg(feature = "profile-time")]
+        let perf_timings: PerfTimings = args.perf_timings.clone();
+
+        // Phase: KVM partition creation (KVM fd + VM fd + irqchip + timer).
+        #[cfg(feature = "profile-time")]
+        let partition_create_start: Instant = Instant::now();
+
         let mut kvm: Kvm = Kvm::new()?;
         let mut vm: VmFd = kvm.create_vm()?;
 
         let irqchip: IrqChip = IrqChip::new(&mut kvm, &mut vm)?;
         let timer: Timer = Timer::new(&mut kvm, &mut vm)?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_partition_create(partition_create_start.elapsed().as_micros() as u64);
+
+        #[cfg(feature = "profile-time")]
+        let vcpu_create_start: Instant = Instant::now();
+
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&mut kvm, &mut vm, 0)?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
+
+        #[cfg(feature = "profile-time")]
+        let vmem_create_start: Instant = Instant::now();
+
         let mut vmem: VirtualMemory =
             VirtualMemory::new(&mut kvm, &mut vm, ::config::kernel::MEMORY_SIZE)?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_vmem_create(vmem_create_start.elapsed().as_micros() as u64);
+
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             // When restoring from a snapshot, skip kernel/initrd/ramfs loading and vCPU reset.
             // The snapshot restore will overwrite memory and CPU state.
@@ -340,13 +377,32 @@ impl Vmm {
         } else {
             let mut guest = Guest::default();
 
+            // Phase: Kernel loading.
+            #[cfg(feature = "profile-time")]
+            let kernel_load_start: Instant = Instant::now();
+
             guest.load_kernel(&mut vmem, &args.kernel_filename)?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
+
+            // Phase: Initrd loading.
+            #[cfg(feature = "profile-time")]
+            let initrd_load_start: Instant = Instant::now();
+
             args.initrd_filename
                 .as_ref()
                 .map(|initrd_filename| {
                     guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
                 })
                 .transpose()?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
+
+            // Phase: RamFS loading.
+            #[cfg(feature = "profile-time")]
+            let ramfs_load_start: Instant = Instant::now();
 
             let ramfs_region: Option<(usize, usize)> =
                 if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
@@ -374,6 +430,13 @@ impl Vmm {
                 };
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_ramfs_load(ramfs_load_start.elapsed().as_micros() as u64);
+
+            // Phase: vCPU reset and pvclock setup.
+            #[cfg(feature = "profile-time")]
+            let vcpu_reset_start: Instant = Instant::now();
 
             guest.reset(&mut vmem, &mut vcpu)?;
 
@@ -404,6 +467,9 @@ impl Vmm {
             vmem.write_bytes(boot_time_offset, &boot_time_ns.to_le_bytes())?;
             trace!("pvclock: boot_time_ns={boot_time_ns}, page_gpa={pvclock_gpa:#010x}");
 
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
+
             Arc::new(Mutex::new(guest))
         };
 
@@ -433,6 +499,8 @@ impl Vmm {
                 skip_next_snapshot: false,
             })),
             ikc_notifier,
+            #[cfg(feature = "profile-time")]
+            perf_timings,
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
         })
@@ -505,7 +573,13 @@ impl Vmm {
             return Ok(exit_status);
         }
 
-        loop {
+        // Accumulate guest execution time (inside KVM_RUN).
+        #[cfg(feature = "profile-time")]
+        let mut guest_time_acc_us: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let loop_start: Instant = Instant::now();
+
+        let result = loop {
             // Check shutdown flag before entering KVM_RUN, and blocking indefinitely.
             if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
                 let exit_status: u16 = 0;
@@ -519,7 +593,17 @@ impl Vmm {
                 if !locked_vcpu.is_online() {
                     break Ok(locked_vcpu.exit_status());
                 }
-                locked_vcpu.run()
+                #[cfg(feature = "profile-time")]
+                let run_start: Instant = Instant::now();
+
+                let ctx = locked_vcpu.run();
+
+                #[cfg(feature = "profile-time")]
+                {
+                    guest_time_acc_us += run_start.elapsed().as_micros() as u64;
+                }
+
+                ctx
             };
 
             // Parse exit reason.
@@ -580,7 +664,18 @@ impl Vmm {
                     break Ok(exit_status);
                 },
             }
+        };
+
+        // Record guest vs exit-handling time breakdown.
+        #[cfg(feature = "profile-time")]
+        {
+            let loop_total_us: u64 = loop_start.elapsed().as_micros() as u64;
+            self.perf_timings.set_guest_exec(guest_time_acc_us);
+            self.perf_timings
+                .set_exit_handling(loop_total_us.saturating_sub(guest_time_acc_us));
         }
+
+        result
     }
 
     ///
