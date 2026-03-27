@@ -51,6 +51,8 @@ standalone = [
     "nanvix-terminal/standalone",
 ]
 gdb = ["nanvix-http?/gdb", "nanvix-sandbox/gdb", "nanvix-terminal/gdb"]
+# Enables fine-grained time profiling.
+profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
 hyperlight = [
     "config/hyperlight",
     "nanvix-http?/hyperlight",

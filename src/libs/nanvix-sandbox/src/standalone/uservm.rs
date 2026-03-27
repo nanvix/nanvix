@@ -141,6 +141,8 @@ impl UserVm {
                         snapshot_path: None,
                         #[cfg(feature = "gdb")]
                         gdb_port: None,
+                        #[cfg(feature = "profile-time")]
+                        perf_timings: ::uservm::perf::PerfTimings::new(),
                     });
 
                 // Drain the VM's stdout channel. In standalone mode there is no system VM to

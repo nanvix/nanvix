@@ -32,6 +32,8 @@ multi-process = ["nanvix/multi-process"]
 l2 = ["multi-process"]
 standalone = ["nanvix/standalone", "nanvixd/standalone"]
 gdb = ["microvm", "nanvix/gdb"]
+# Enables fine-grained time profiling.
+profile-time = ["nanvixd/profile-time", "nanvix/profile-time"]
 hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 whp = ["nanvix/whp"]
