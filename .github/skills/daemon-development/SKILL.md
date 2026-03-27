@@ -52,7 +52,7 @@ events/messages.
 
 ```bash
 # Build all daemons as part of the full build.
-./z build --with-cached-options -- all
+./z build -- all
 
 # Guest daemons: GUEST_CARGO_BUILD_CMD.
 # Host daemons (linuxd): HOST_CARGO_BUILD_CMD.

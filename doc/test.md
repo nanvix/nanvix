@@ -28,7 +28,7 @@ This document guides you through testing Nanvix.
 build parameters.
 
 ```bash
-./z build --with-cached-options -- run-unit-tests
+./z build -- run-unit-tests
 ```
 
 ## Running System Integration Tests (MicroVM and Hyperlight Only)
@@ -40,7 +40,7 @@ the Nanvix Daemon.
 The system integration tests can be run directly using:
 
 ```bash
-./z build --with-cached-options -- run-nanvix-tests
+./z build -- run-nanvix-tests
 ```
 
 The appropriate test configuration is automatically selected based on the
@@ -70,9 +70,9 @@ The `nanvix-test.elf` utility supports two execution modes:
 > ℹ️ This target sequentially invokes each underlying test suite.
 
 ```bash
-./z build --with-cached-options -- test
+./z build -- test
 ```
 
 On `microvm` and `hyperlight` machines,
-`./z build --with-cached-options -- test` runs both unit tests and system
+`./z build -- test` runs both unit tests and system
 integration tests. On other machines, only unit tests are executed.

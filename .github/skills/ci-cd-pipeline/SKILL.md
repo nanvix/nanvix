@@ -56,19 +56,19 @@ steps for `microvm` and `hyperlight`.
 
 ```bash
 # Spell check.
-./z build --with-cached-options -- spellcheck
+./z build -- spellcheck
 
 # Format check.
-./z build --with-cached-options -- format-check
+./z build -- format-check
 
 # Lint check.
-./z build --with-cached-options -- lint-check
+./z build -- lint-check
 
 # Formal verification.
-./z build --with-cached-options -- verify
+./z build -- verify
 
 # Unit tests.
-./z build --with-cached-options -- run-unit-tests
+./z build -- run-unit-tests
 ```
 
 ## GitHub Actions Workflows

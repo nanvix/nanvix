@@ -11,7 +11,7 @@ covers all build-system operations exposed through the `z` utility.
 ## Prerequisites
 
 - Development environment set up per `doc/setup.md`.
-- Either a local cross-compilation toolchain (`toolchain/`) or Docker installed.
+- A local cross-compilation toolchain (`toolchain/`).
 - **Windows 11:** Docker Desktop (Linux containers), Windows Hypervisor Platform enabled,
   Developer Mode enabled, and Rust toolchain installed. See `doc/setup.md` for details.
 
@@ -31,12 +31,6 @@ Before building on Windows, ensure:
 ### Preferred Build Commands (using `z` utility)
 
 ```bash
-# Build everything with previously cached build options.
-./z build --with-cached-options -- all
-
-# Build everything with Docker.
-./z build --with-docker -- all
-
 # Build everything with the local toolchain.
 ./z build -- all
 ```
@@ -45,11 +39,11 @@ Before building on Windows, ensure:
 
 ```bash
 # Kernel only.
-./z build --with-cached-options -- kernel
+./z build -- kernel
 # Nanvixd only.
-./z build --with-cached-options -- all-nanvixd
+./z build -- all-nanvixd
 # UserVM only.
-./z build --with-cached-options -- all-uservm
+./z build -- all-uservm
 ```
 
 ### Build Parameters
@@ -130,27 +124,27 @@ Any unrecognized target is forwarded to `make` via Docker, just like on Linux:
 
 ```bash
 # Check formatting issues.
-./z build --with-cached-options -- format-check
+./z build -- format-check
 # Auto-fix formatting issues.
-./z build --with-cached-options -- format
+./z build -- format
 ```
 
 ### Linting
 
 ```bash
 # Check linting issues.
-./z build --with-cached-options -- lint-check
+./z build -- lint-check
 # Auto-fix linting issues.
-./z build --with-cached-options -- lint
+./z build -- lint
 ```
 
 ### Spell Checking
 
 ```bash
 # Check spelling errors.
-./z build --with-cached-options -- spellcheck
+./z build -- spellcheck
 # Fix spelling errors.
-./z build --with-cached-options -- spellcheck-fix
+./z build -- spellcheck-fix
 ```
 
 ## Formal Verification
@@ -159,10 +153,10 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 
 ```bash
 # Verify all annotated crates.
-./z build --with-cached-options -- verify
+./z build -- verify
 
 # Verify a single crate.
-./z build --with-cached-options -- verify-bitmap
+./z build -- verify-bitmap
 ```
 
 - The `ensure-verus` prerequisite downloads the correct Verus release automatically.
@@ -222,9 +216,7 @@ Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
 ## Troubleshooting Build Issues
 
 - If builds fail with toolchain errors, verify `toolchain/` symlink points to a valid toolchain.
-- If Docker builds fail, ensure Docker is running and the image is available.
 - Use `./z help` for usage information.
-- Cached build options are stored in `.z.cache` — delete this file to reset.
 - **Windows:** Use `.\z.ps1 help` for Windows-specific usage information.
 - **Windows:** If Docker builds fail with symlink errors, `z.ps1` automatically restores Git
   symlinks as file copies. Ensure Docker Desktop is running with Linux containers enabled.
