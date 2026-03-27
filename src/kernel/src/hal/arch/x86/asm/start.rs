@@ -6,16 +6,9 @@
 //==================================================================================================
 
 use super::constants;
-use core::arch::global_asm;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-const PAGE_SIZE: u32 = 4096;
-
-/// Hardware-saved execution context size (in bytes).
-const CONTEXT_HW_SIZE: u32 = 24;
+use crate::hal::arch::x86::cpu::ContextInformation;
+use ::arch::mem::PAGE_SIZE;
+use ::core::arch::global_asm;
 
 //==================================================================================================
 // Bootstrap Section — BSP Entry Point
@@ -86,7 +79,7 @@ global_asm!(
     "    jmp 1b",
 
     PAGE_SIZE = const PAGE_SIZE,
-    CONTEXT_HW_SIZE = const CONTEXT_HW_SIZE,
+    CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
     KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,
     options(att_syntax),
 );
