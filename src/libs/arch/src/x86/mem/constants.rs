@@ -14,6 +14,13 @@ use sys::mm::Alignment;
 ///
 /// # Description
 ///
+/// Number of bytes in a word.
+///
+pub const WORD_SIZE: usize = ::core::mem::size_of::<u32>();
+
+///
+/// # Description
+///
 /// Log2 PAGE_SIZE
 ///
 pub const PAGE_SHIFT: usize = 12;
