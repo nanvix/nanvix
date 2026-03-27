@@ -374,6 +374,8 @@ async fn run_managed(
         snapshot_path: None,
         #[cfg(feature = "gdb")]
         gdb_port: None,
+        #[cfg(feature = "profile-time")]
+        perf_timings: crate::perf::PerfTimings::new(),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

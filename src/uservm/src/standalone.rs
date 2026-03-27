@@ -55,6 +55,9 @@ use ::tokio::{
     task::JoinHandle,
 };
 
+#[cfg(feature = "profile-time")]
+use crate::perf::PerfTimings;
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -105,6 +108,9 @@ pub struct StandaloneVmHandle {
     _io_cmd_tx: mpsc::Sender<IoControlCommand>,
     /// Kept alive so the orchestrator can send control responses without a closed-channel error.
     _io_resp_rx: mpsc::Receiver<IoControlResponse>,
+    /// Performance timings collector for fine-grained startup breakdown.
+    #[cfg(feature = "profile-time")]
+    perf_timings: PerfTimings,
 }
 
 //==================================================================================================
@@ -163,6 +169,9 @@ impl StandaloneVmHandle {
         let counters: MessageCounters = MessageCounters::new();
         let io_counters: MessageCounters = counters.clone();
 
+        #[cfg(feature = "profile-time")]
+        let perf_timings: PerfTimings = PerfTimings::new();
+
         let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
             initrd_filename,
             initrd_args,
@@ -177,6 +186,8 @@ impl StandaloneVmHandle {
             snapshot_path,
             #[cfg(feature = "gdb")]
             gdb_port,
+            #[cfg(feature = "profile-time")]
+            perf_timings: perf_timings.clone(),
         });
 
         // Spawn the I/O handler task that processes guest IKC messages and bridges them to the
@@ -197,6 +208,8 @@ impl StandaloneVmHandle {
             io_handle,
             _io_cmd_tx: io_cmd_tx,
             _io_resp_rx: io_resp_rx,
+            #[cfg(feature = "profile-time")]
+            perf_timings,
         };
 
         let io: StandaloneVmIo = StandaloneVmIo {
@@ -229,6 +242,10 @@ impl StandaloneVmHandle {
         if let Err(error) = self.io_handle.await {
             warn!("standalone: I/O handler task failed (error={error:?})");
         }
+
+        // Emit performance timings to host stderr so the benchmark can parse them.
+        #[cfg(feature = "profile-time")]
+        self.perf_timings.emit_to_stderr();
 
         vm_exit_status
     }

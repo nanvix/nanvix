@@ -32,6 +32,7 @@ log = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["std"], optional = true }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true }
@@ -55,6 +56,8 @@ gdb = ["microvm", "dep:gdbstub", "dep:gdbstub_arch"]
 hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
 whp = ["config/whp"]
+# Enables fine-grained time profiling.
+profile-time = ["dep:serde_json"]
 timestamp-messages = ["profiler/timestamp-messages"]
 
 [lints]

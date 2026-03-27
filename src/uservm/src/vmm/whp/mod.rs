@@ -38,6 +38,7 @@ use crate::{
         MicroVmArgs,
         emulator::Emulator,
         guest::Guest,
+        vcpu::VirtualProcessorExitContext,
         whp::vcpu::{
             VirtualProcessor,
             VirtualProcessorExitReasonRef,
@@ -60,6 +61,7 @@ use ::std::{
             Ordering,
         },
     },
+    time::Instant,
 };
 use ::sys::error::ErrorCode;
 use ::tokio::{
@@ -75,7 +77,8 @@ use ::tokio::{
     task,
 };
 
-pub use vmem::VirtualMemory;
+#[cfg(feature = "profile-time")]
+use crate::perf::PerfTimings;
 
 //==================================================================================================
 // Re-exports
@@ -85,6 +88,7 @@ pub use crate::vmm::whp::vcpu::exit::{
     PmioAccess,
     PmioWidth,
 };
+pub use vmem::VirtualMemory;
 
 //==================================================================================================
 // Constants
@@ -119,7 +123,7 @@ struct PitCh2State {
     /// Speaker gate enabled (bit 0 of port 0x61).
     gate_enabled: bool,
     /// Host timestamp when the countdown started.
-    start_time: Option<std::time::Instant>,
+    start_time: Option<Instant>,
 }
 
 impl PitCh2State {
@@ -159,7 +163,7 @@ impl PitCh2State {
             self.reload = (self.reload & 0x00FF) | ((byte as u16) << 8);
             self.expect_hi = false;
             if self.gate_enabled {
-                self.start_time = Some(std::time::Instant::now());
+                self.start_time = Some(Instant::now());
             }
         }
     }
@@ -168,7 +172,7 @@ impl PitCh2State {
     fn handle_speaker_write(&mut self, byte: u8) {
         self.gate_enabled = (byte & 0x01) != 0;
         if self.gate_enabled && self.active && self.reload > 0 && self.start_time.is_none() {
-            self.start_time = Some(std::time::Instant::now());
+            self.start_time = Some(Instant::now());
         }
     }
 
@@ -298,6 +302,9 @@ pub struct Vmm {
     shutdown_flag: Arc<AtomicBool>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
+    /// Performance timings collector for fine-grained startup breakdown.
+    #[cfg(feature = "profile-time")]
+    perf_timings: PerfTimings,
 }
 
 ///
@@ -351,23 +358,66 @@ impl Vmm {
     pub fn new(args: MicroVmArgs) -> Result<Self> {
         trace!("new(): args={:?}", args);
 
+        #[cfg(feature = "profile-time")]
+        let perf_timings: PerfTimings = args.perf_timings.clone();
+
+        // Phase: WHP partition creation.
+        #[cfg(feature = "profile-time")]
+        let partition_create_start: Instant = Instant::now();
+
         let partition: partition::WhpPartition = partition::WhpPartition::new()?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_partition_create(partition_create_start.elapsed().as_micros() as u64);
+
+        #[cfg(feature = "profile-time")]
+        let vmem_create_start: Instant = Instant::now();
+
         let mut vmem: VirtualMemory =
             VirtualMemory::new(&partition, ::config::kernel::MEMORY_SIZE)?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_vmem_create(vmem_create_start.elapsed().as_micros() as u64);
+
+        #[cfg(feature = "profile-time")]
+        let vcpu_create_start: Instant = Instant::now();
+
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&partition, 0)?;
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
 
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             Arc::new(Mutex::new(Guest::default()))
         } else {
             let mut guest: Guest = Guest::default();
 
+            // Phase: Kernel loading.
+            #[cfg(feature = "profile-time")]
+            let kernel_load_start: Instant = Instant::now();
+
             guest.load_kernel(&mut vmem, &args.kernel_filename)?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
+
+            // Phase: Initrd loading.
+            #[cfg(feature = "profile-time")]
+            let initrd_load_start: Instant = Instant::now();
+
             args.initrd_filename
                 .as_ref()
                 .map(|initrd_filename| {
                     guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
                 })
                 .transpose()?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
+
+            // Phase: RamFS loading.
+            #[cfg(feature = "profile-time")]
+            let ramfs_load_start: Instant = Instant::now();
 
             let ramfs_region: Option<(usize, usize)> =
                 if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
@@ -395,12 +445,22 @@ impl Vmm {
 
             ramfs::RamFs::write_registers(&mut vmem, ramfs_region)?;
 
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_ramfs_load(ramfs_load_start.elapsed().as_micros() as u64);
+
+            // Phase: vCPU reset and pvclock setup.
+            #[cfg(feature = "profile-time")]
+            let vcpu_reset_start: Instant = Instant::now();
+
             guest.reset(&mut vmem, &mut vcpu)?;
 
             // Populate the pvclock page so the kernel uses TSC-based time instead
             // of PIT tick counting. This must run AFTER load_kernel() because the
             // ELF loader zero-fills the page at DEFAULT_PVCLOCK_PAGE.
             Self::setup_pvclock(&mut vmem)?;
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
             Arc::new(Mutex::new(guest))
         };
@@ -431,6 +491,8 @@ impl Vmm {
                 control_rx: args.control_rx,
                 control_tx: args.control_tx,
             })),
+            #[cfg(feature = "profile-time")]
+            perf_timings,
         })
     }
 
@@ -469,12 +531,12 @@ impl Vmm {
         // Reset shutdown flag from any previous runs.
         self.shutdown_flag.store(false, Ordering::SeqCst);
 
-        let loop_start = std::time::Instant::now();
+        let loop_start: Instant = Instant::now();
 
         // Throttle pvclock updates to once per millisecond instead of every
         // VMM loop iteration. This avoids unnecessary mutex acquisition and
         // memory writes on fast-path exits (HLT, Interrupted, legacy PMIO).
-        let mut last_pvclock_update = std::time::Instant::now();
+        let mut last_pvclock_update: Instant = Instant::now();
         const PVCLOCK_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1);
 
         // Pvclock: VMM-driven system_time updates.
@@ -503,6 +565,10 @@ impl Vmm {
         // to detect when the countdown expires.
         let mut pit_ch2: PitCh2State = PitCh2State::new();
 
+        // Accumulate guest execution time (inside WHvRunVirtualProcessor).
+        #[cfg(feature = "profile-time")]
+        let mut guest_time_acc_us: u64 = 0;
+
         let result = loop {
             // Check shutdown flag.
             if self.shutdown_flag.load(Ordering::SeqCst) {
@@ -522,7 +588,7 @@ impl Vmm {
                     &mut pvclock_version,
                     loop_start.elapsed().as_nanos() as u64,
                 );
-                last_pvclock_update = std::time::Instant::now();
+                last_pvclock_update = Instant::now();
             }
 
             // Consume pending IKC notification.  to prevent re-delivery on the next loop iteration.
@@ -539,7 +605,16 @@ impl Vmm {
                     );
                     break Ok(locked_vcpu.exit_status());
                 }
-                locked_vcpu.run()
+                #[cfg(feature = "profile-time")]
+                let run_start: Instant = Instant::now();
+
+                let ctx: VirtualProcessorExitContext = locked_vcpu.run();
+
+                #[cfg(feature = "profile-time")]
+                {
+                    guest_time_acc_us += run_start.elapsed().as_micros() as u64;
+                }
+                ctx
             };
 
             // Parse exit reason.
@@ -686,6 +761,16 @@ impl Vmm {
         };
 
         self.timer.lock().unwrap().stop();
+
+        // Record guest vs exit-handling time breakdown.
+        #[cfg(feature = "profile-time")]
+        {
+            let loop_total_us: u64 = loop_start.elapsed().as_micros() as u64;
+            self.perf_timings.set_guest_exec(guest_time_acc_us);
+            self.perf_timings
+                .set_exit_handling(loop_total_us.saturating_sub(guest_time_acc_us));
+        }
+
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
         result
     }

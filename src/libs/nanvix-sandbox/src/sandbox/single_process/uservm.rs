@@ -276,6 +276,8 @@ impl UserVm {
                         snapshot_path: None,
                         #[cfg(feature = "gdb")]
                         gdb_port: None,
+                        #[cfg(feature = "profile-time")]
+                        perf_timings: ::uservm::perf::PerfTimings::new(),
                     });
 
                 // Wait for VMM thread to finish.

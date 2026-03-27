@@ -46,6 +46,7 @@ OPT_NAME_SEPARATOR="--"
 OPT_NAME_WITH_DOCKER="--with-docker"
 OPT_NAME_WITH_MINIMAL_DOCKER="--with-minimal-docker"
 OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
+OPT_NAME_PROFILE="--profile"
 OPT_NAME_TOOLCHAIN_DIR="--toolchain-dir"
 
 # Name of the Docker image with the Nanvix toolchain.
@@ -71,6 +72,7 @@ LAST_BUILD_WITH_MINIMAL_DOCKER=false  # Was the last build done with the minimal
 # Current options.
 BUILD_WITH_DOCKER=false                         # Build with Docker?
 BUILD_WITH_MINIMAL_DOCKER=false                 # Use minimal Docker image?
+BUILD_WITH_PROFILE=false                        # Enable profiling (implies RELEASE=yes)?
 WITH_CACHED_OPTIONS=false                       # Use cached options (if any)?
 TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 
@@ -108,6 +110,7 @@ Options
   ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the local toolchain.
   ${OPT_NAME_WITH_MINIMAL_DOCKER}   Build Nanvix using the minimal Docker image (implies ${OPT_NAME_WITH_DOCKER}).
   ${OPT_NAME_WITH_CACHED_OPTIONS}   Use cached options from the last build.
+  ${OPT_NAME_PROFILE}               Enable profiling (implies RELEASE=yes, passes PROFILER=yes to make).
   ${OPT_NAME_TOOLCHAIN_DIR} <path>  Specify the toolchain directory for setup (default: ${DEFAULT_LOCAL_TOOLCHAIN_DIR}).
 EOF
     if ! make help; then
@@ -544,6 +547,10 @@ main() {
                 WITH_CACHED_OPTIONS=true
                 shift
                 ;;
+            "${OPT_NAME_PROFILE}")
+                BUILD_WITH_PROFILE=true
+                shift
+                ;;
             "${OPT_NAME_TOOLCHAIN_DIR}")
                 if [[ $# -lt 2 ]] || [[ "$2" == "--"* ]]; then
                     print_error "Missing path for ${OPT_NAME_TOOLCHAIN_DIR}"
@@ -600,10 +607,26 @@ main() {
         fi
     fi
 
+    # Profiling implies release mode.
+    if ${BUILD_WITH_PROFILE}; then
+        # Override any existing RELEASE= parameter to ensure release mode.
+        local filtered_params=()
+        for param in "${user_build_parameters[@]}"; do
+            if [[ "${param}" != RELEASE=* ]]; then
+                filtered_params+=("${param}")
+            fi
+        done
+        user_build_parameters=("${filtered_params[@]}" "RELEASE=yes")
+    fi
+
     # Only add TOOLCHAIN_DIR for local builds, not Docker builds.
     local build_parameters=()
     if ! ${BUILD_WITH_DOCKER}; then
         build_parameters+=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
+    fi
+    # Pass PROFILER=yes to make when profiling is enabled.
+    if ${BUILD_WITH_PROFILE}; then
+        build_parameters+=("PROFILER=yes")
     fi
     if [[ ${#user_build_parameters[@]} -gt 0 ]]; then
         build_parameters+=("${user_build_parameters[@]}")
