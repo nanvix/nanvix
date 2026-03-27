@@ -16,13 +16,13 @@ integration tests, and the combined test suite exposed through the `z` utility.
 ## Unit Tests
 
 ```bash
-./z build --with-cached-options -- run-unit-tests
+./z build -- run-unit-tests
 ```
 
 ## System Integration Tests (microvm and hyperlight only)
 
 ```bash
-./z build --with-cached-options -- run-nanvix-tests
+./z build -- run-nanvix-tests
 ```
 
 Test configurations are auto-selected based on deployment mode:
@@ -34,7 +34,7 @@ Test configurations are auto-selected based on deployment mode:
 ## All Tests
 
 ```bash
-./z build --with-cached-options -- test
+./z build -- test
 ```
 
 ## Windows

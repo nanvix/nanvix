@@ -52,7 +52,7 @@ feature flags:
 ## Building the Kernel
 
 ```bash
-./z build --with-cached-options -- kernel
+./z build -- kernel
 ```
 
 The kernel uses a custom Cargo target

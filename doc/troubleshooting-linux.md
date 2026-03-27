@@ -137,22 +137,6 @@ done
 echo "Cleanup complete."
 ```
 
-## Cross-Platform Issues
-
-### Cached Build Options Stale (`./z`)
-
-**Description:** Build behaves unexpectedly or uses wrong parameters due to stale cached options.
-
-**Fix:** Delete the `.z.cache` file used by the `./z` wrapper script and rebuild:
-
-```bash
-rm -f .z.cache
-./z build -- all
-```
-
-This applies to the Linux/macOS `./z` wrapper script. The Windows `z.ps1` workflow does not use
-`.z.cache`.
-
 ## CI/CD Failures
 
 ### Stale Resources Causing Test Failures

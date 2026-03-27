@@ -18,7 +18,7 @@ Refer to `doc/gdb.md` for the user-facing documentation.
 ## Build
 
 ```bash
-./z build --with-cached-options -- all DEPLOYMENT_MODE=standalone
+./z build -- all DEPLOYMENT_MODE=standalone
 ```
 
 ## Launch

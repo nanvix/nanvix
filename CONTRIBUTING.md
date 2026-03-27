@@ -20,8 +20,9 @@ See [doc/setup.md](doc/setup.md) for full environment setup. The quickest path:
 
 ```bash
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
-./z setup --with-minimal-docker
-./z build --with-minimal-docker -- all
+./z setup --toolchain-dir $HOME/toolchain
+ln -T -s $HOME/toolchain toolchain
+./z build -- all
 ```
 
 On Windows, run `./z.ps1 setup --with-minimal-docker` to pull the Docker image and install the
@@ -125,11 +126,11 @@ and use `set -euo pipefail` where appropriate.
 Run these before submitting a pull request:
 
 ```bash
-./z build --with-cached-options -- format-check    # Formatting.
-./z build --with-cached-options -- lint-check      # Linting.
-./z build --with-cached-options -- spellcheck      # Spelling.
-./z build --with-cached-options -- verify          # Formal verification (Verus).
-./z build --with-cached-options -- test            # Unit + system tests.
+./z build -- format-check    # Formatting.
+./z build -- lint-check      # Linting.
+./z build -- spellcheck      # Spelling.
+./z build -- verify          # Formal verification (Verus).
+./z build -- test            # Unit + system tests.
 ```
 
 Or run the full CI pipeline locally:

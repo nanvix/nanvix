@@ -108,10 +108,10 @@ These run on the host system and are compiled with the host Rust build command
 
 ```bash
 # Build all guest libraries.
-./z build --with-cached-options -- all
+./z build -- all
 
 # Run unit tests for host libraries.
-./z build --with-cached-options -- run-unit-tests
+./z build -- run-unit-tests
 ```
 
 Guest libraries use `GUEST_CARGO_BUILD_CMD` (cross-compiled with `cargo`). Host

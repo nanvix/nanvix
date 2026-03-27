@@ -11,8 +11,6 @@ script for a simplified build process or do it manually.
 
 - [Building Nanvix with `z`](#building-nanvix-with-z)
   - [Getting Started with `z`](#getting-started-with-z)
-  - [Using `z` to Build Nanvix with Docker](#using-z-to-build-nanvix-with-docker)
-  - [Using `z` to Build Nanvix with a Local Toolchain](#using-z-to-build-nanvix-with-a-local-toolchain)
 - [Building Individual Components](#building-individual-components)
 - [Build Parameters](#build-parameters)
 - [Code Quality Checks](#code-quality-checks)
@@ -24,7 +22,7 @@ script for a simplified build process or do it manually.
 ## Building Nanvix with `z`
 
 `z` is a utility for building Nanvix. It provides you with a simplified interface for building
-Nanvix either using Docker or your local toolchain.
+Nanvix using your local toolchain.
 
 ### Getting Started with `z`
 
@@ -34,17 +32,7 @@ For more information on how to use the `z` utility, you can run:
 ./z help
 ```
 
-### Using `z` to Build Nanvix with Docker
-
-To build Nanvix using the latest Docker image and default build parameters, run:
-
-```bash
-./z build --with-docker -- all
-```
-
-### Using `z` to Build Nanvix with a Local Toolchain
-
-To build Nanvix using your local toolchain and default build parameters, run:
+To build Nanvix with default build parameters, run:
 
 ```bash
 ./z build -- all
@@ -142,10 +130,10 @@ To run formal verification:
 
 ```bash
 # Verify all annotated crates.
-./z build --with-cached-options -- verify
+./z build -- verify
 
 # Verify a single crate (e.g., bitmap).
-./z build --with-cached-options -- verify-bitmap
+./z build -- verify-bitmap
 ```
 
 Verus is installed to `$(TOOLCHAIN_DIR)/verus` by default. When `VERUS_EXECUTABLE_DIR` points
@@ -157,5 +145,5 @@ executable (and required companion binaries), not just the Verus source tree.
 ```bash
 # Use a custom Verus installation (pre-built or source-built).
 # VERUS_EXECUTABLE_DIR must be the directory that contains the verus binary.
-./z build --with-cached-options -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
+./z build -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
 ```
