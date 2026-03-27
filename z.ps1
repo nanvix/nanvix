@@ -78,7 +78,8 @@ function Remove-Junction {
     $item = Get-Item $Path -Force -ErrorAction SilentlyContinue
     if ($null -ne $item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
         cmd /c "rmdir `"$Path`"" 2>$null
-    } else {
+    }
+    else {
         Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
@@ -566,7 +567,7 @@ function Build-Guest {
     foreach ($dir in @($BinDir, $LibDir)) {
         if (-not (Test-Path $dir)) { continue }
         Get-ChildItem -Path (Join-Path $dir '*') -File -Include "*.elf", "*.wasm", "*.a", "*.so", "*.img" -Recurse -ErrorAction SilentlyContinue |
-            ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+        ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
     }
 
     # Remove the sysroot directory matching the current build profile so that
@@ -684,7 +685,7 @@ function New-StandaloneRootfsImage {
 }
 
 function Build-Nanvixd {
-    param([bool]$IsRelease, [string]$Machine = "microvm")
+    param([bool]$IsRelease, [string]$Machine = "microvm", [bool]$IsProfile = $false)
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
@@ -692,6 +693,7 @@ function Build-Nanvixd {
     $mode = if ($IsRelease) { "release" } else { "debug" }
     $buildProfile = if ($IsRelease) { "--release" } else { "" }
     $features = Get-NativeCargoFeatures -Machine $Machine
+    if ($IsProfile) { $features = "$features,profile-time" }
 
     Write-Info "Building nanvixd (standalone + $Machine, $mode mode)..."
 
@@ -758,7 +760,7 @@ function Build-NanvixTest {
 }
 
 function Build-NanvixBench {
-    param([bool]$IsRelease, [string]$Machine = "microvm", [string]$LogLevel = "")
+    param([bool]$IsRelease, [string]$Machine = "microvm", [string]$LogLevel = "", [bool]$IsProfile = $false)
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
@@ -766,6 +768,7 @@ function Build-NanvixBench {
     $mode = if ($IsRelease) { "release" } else { "debug" }
     $buildProfile = if ($IsRelease) { "--release" } else { "" }
     $features = Get-NativeCargoFeatures -Machine $Machine
+    if ($IsProfile) { $features = "$features,profile-time" }
 
     # Resolve LOG_LEVEL: explicit parameter > default based on release mode.
     # Release benchmarks require LOG_LEVEL=panic (enforced at runtime by nanvix-bench).
@@ -1172,6 +1175,7 @@ function Main {
 
     # Parse options and positional arguments.
     $isRelease = $false
+    $isProfile = $false
     $useMinimalDocker = $true
     $useCachedOptions = $false
     $dockerModeOptionSet = $false
@@ -1184,6 +1188,7 @@ function Main {
         if (-not $pastSeparator -and $arg.StartsWith("--")) {
             switch ($arg) {
                 "--release" { $isRelease = $true }
+                "--profile" { $isProfile = $true; $isRelease = $true }
                 "--with-docker" { $useMinimalDocker = $false; $dockerModeOptionSet = $true }
                 "--with-minimal-docker" { $useMinimalDocker = $true; $dockerModeOptionSet = $true }
                 "--with-cached-options" { $useCachedOptions = $true }
@@ -1256,9 +1261,9 @@ function Main {
                     "all" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease -Machine $machine
-                        Build-Nanvixd -IsRelease $isRelease -Machine $machine
+                        Build-Nanvixd -IsRelease $isRelease -Machine $machine -IsProfile $isProfile
                         Build-NanvixTest -IsRelease $isRelease -Machine $machine
-                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel
+                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel -IsProfile $isProfile
                     }
                     "uservm" {
                         Build-UserVm -IsRelease $isRelease -Machine $machine
@@ -1270,13 +1275,13 @@ function Main {
                         New-StandaloneRootfsImage -IsRelease $isRelease
                     }
                     "nanvixd" {
-                        Build-Nanvixd -IsRelease $isRelease -Machine $machine
+                        Build-Nanvixd -IsRelease $isRelease -Machine $machine -IsProfile $isProfile
                     }
                     "nanvix-test" {
                         Build-NanvixTest -IsRelease $isRelease -Machine $machine
                     }
                     "nanvix-bench" {
-                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel
+                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel -IsProfile $isProfile
                     }
                     "guest" {
                         Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams

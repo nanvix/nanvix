@@ -54,6 +54,8 @@ pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
 pub mod pal;
+#[cfg(feature = "profile-time")]
+pub mod perf;
 pub mod standalone;
 pub mod vmm;
 
@@ -70,6 +72,8 @@ mod handles;
 
 #[cfg(feature = "hyperlight")]
 use crate::handles::UserVmHandles;
+#[cfg(feature = "profile-time")]
+use crate::perf::PerfTimings;
 use crate::{
     counters::MessageCounters,
     memory_thread::{
@@ -103,6 +107,8 @@ use ::log::{
     error,
     trace,
 };
+#[cfg(feature = "profile-time")]
+use ::std::time::Instant;
 use ::std::{
     fs::File,
     io::Write,
@@ -192,6 +198,9 @@ pub struct UserVmArgs {
     /// Optional GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub gdb_port: Option<u16>,
+    /// Performance timings collector for fine-grained startup breakdown.
+    #[cfg(feature = "profile-time")]
+    pub perf_timings: PerfTimings,
 }
 
 //==================================================================================================
@@ -226,6 +235,17 @@ impl UserVm {
     ///
     async fn run(args: UserVmArgs) -> Result<u16> {
         trace!("spawn()");
+
+        #[cfg(feature = "profile-time")]
+        let perf_timings: PerfTimings = args.perf_timings.clone();
+
+        #[cfg(feature = "profile-time")]
+        let run_start: Instant = Instant::now();
+
+        // Phase: Channel setup.
+        #[cfg(feature = "profile-time")]
+        let channel_setup_start: Instant = Instant::now();
+
         let (memory_thread_data_tx, vcpu_thread_stdin_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
             mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (memory_control_tx, memory_thread_control_rx): (
@@ -299,6 +319,9 @@ impl UserVm {
         let vmm_bulk_stdin_fn: Box<crate::vmm::BulkStdinFn> =
             build_bulk_input_fn(pending_bulk_data.clone());
 
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_channel_setup(channel_setup_start.elapsed().as_micros() as u64);
+
         let microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
@@ -321,6 +344,8 @@ impl UserVm {
             ikc_pending: ikc_pending.clone(),
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
+            #[cfg(feature = "profile-time")]
+            perf_timings: perf_timings.clone(),
         })?;
 
         // If a snapshot path is provided, restore VM state from the snapshot.
@@ -337,6 +362,10 @@ impl UserVm {
             handles.set_guest_handle(guest.clone()).await;
             handles.set_vmem_handle(vmem.clone()).await;
         }
+
+        // Phase: Thread spawning.
+        #[cfg(feature = "profile-time")]
+        let thread_spawn_start: Instant = Instant::now();
 
         // Create a thread that reads from vm_rx and writes to vm_rx2.
         let memory_thread: MemoryThread = MemoryThread::new(
@@ -390,6 +419,9 @@ impl UserVm {
 
         let orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
 
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_thread_spawn(thread_spawn_start.elapsed().as_micros() as u64);
+
         let exit_code: Result<u16> = match vmm_thread.await {
             Ok(exit_code) => exit_code,
             Err(error) => {
@@ -408,6 +440,9 @@ impl UserVm {
             error!("spawn(): error joining memory thread (error={error:?})");
             // Don't bail, in order to cleanup the other the other tasks properly.
         }
+
+        #[cfg(feature = "profile-time")]
+        perf_timings.set_total(run_start.elapsed().as_micros() as u64);
 
         exit_code
     }
