@@ -91,7 +91,7 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 # sccache server crashes inside Docker BuildKit containers (see #1395).
 # The `override` directive ensures this takes effect even when SCCACHE is
 # passed on the command line (e.g., from Dockerfile.build).
-NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix help clean distclean
+NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
 
 ifeq ($(MAKECMDGOALS),)
 # Default target ('all') produces artifacts — enable sccache.
@@ -213,11 +213,11 @@ endif
 #===================================================================================================
 
 # Cargo commands for guest target.
-export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 build $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) $(CARGO_PROFILE)
-export GUEST_CARGO_CLEAN_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 clean $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
-export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 check $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) --message-format=json
-export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
-export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
+export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) build $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) $(CARGO_PROFILE)
+export GUEST_CARGO_CLEAN_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clean $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
+export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) check $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) --message-format=json
+export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
+export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) fmt
 
 # Note: place cargo-native options (--no-default-features, --message-format, etc.) before
 # unstable flags (-Z ...) and --target, so that cargo-verus can reuse the same argument order.
@@ -226,26 +226,26 @@ export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) +nanvix-x86
 # Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
 # build-std configuration and a non-standard target triple that can produce incorrect or stale
 # artifacts when cached by sccache, including .S assembly files compiled during build-std.
-export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 build --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CLEAN_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 check --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CLIPPY_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
+export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CLEAN_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CLIPPY_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clippy --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) fmt
 
 # Cargo commands for wasm target.
-export WASM_CARGO_BUILD_CMD := $(CARGO) +nanvix-x86 build $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_CLEAN_CMD := $(CARGO) +nanvix-x86 clean --target wasm32-wasip1
-export WASM_CARGO_CHECK_CMD := $(CARGO) +nanvix-x86 check --target wasm32-wasip1 --message-format=json --no-default-features
-export WASM_CARGO_CLIPPY_CMD := $(CARGO) +nanvix-x86 clippy --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_FMT_CMD := $(CARGO) +nanvix-x86 fmt
+export WASM_CARGO_BUILD_CMD := $(CARGO) build $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
+export WASM_CARGO_CLEAN_CMD := $(CARGO) clean --target wasm32-wasip1
+export WASM_CARGO_CHECK_CMD := $(CARGO) check --target wasm32-wasip1 --message-format=json --no-default-features
+export WASM_CARGO_CLIPPY_CMD := $(CARGO) clippy --target wasm32-wasip1 --no-default-features
+export WASM_CARGO_FMT_CMD := $(CARGO) fmt
 
 # Cargo commands for host target.
-export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 build $(CARGO_PROFILE) --no-default-features
-export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 clean
-export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 check --message-format=json --no-default-features
-export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 clippy --no-default-features
-export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 test --no-default-features
-export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) +nanvix-x86 fmt
+export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) build $(CARGO_PROFILE) --no-default-features
+export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clean
+export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) check --message-format=json --no-default-features
+export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clippy --no-default-features
+export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) test --no-default-features
+export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) fmt
 
 # Utility Commands
 export RM_CMD := rm -f
@@ -273,7 +273,7 @@ VERUS_CRATES := bitmap
 # Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
 # but needs to accept -Z flags passed by -Z build-std.
 export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) PATH="$(VERUS_EXECUTABLE_DIR):$$PATH" \
-	$(CARGO) +$(RUST_CHANNEL) verus verify --no-default-features
+	$(CARGO) verus verify --no-default-features
 
 #===================================================================================================
 # Top-Level Targets
@@ -356,34 +356,14 @@ ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 all-nanvix: all-nanvix-bench
 endif
 
-# Rust toolchain channel (parsed from rust-toolchain file).
-RUST_CHANNEL := $(shell grep 'channel' $(ROOT_DIR)/rust-toolchain | sed 's/.*"\(.*\)"/\1/')
-
-# Path to the nanvix-x86 custom toolchain directory.
-NANVIX_X86_TOOLCHAIN_BIN := $(HOME)/.rustup/toolchains/nanvix-x86/bin
-
-# Path to the fallback toolchain's cargo binary (from rust-toolchain channel).
-FALLBACK_CARGO := $(HOME)/.rustup/toolchains/$(RUST_CHANNEL)-x86_64-unknown-linux-gnu/bin/cargo
-
 # Performs local initialization.
-init: init-repo init-nanvix-x86-cargo
+init: init-repo
 
 init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
 	$(MKDIR_CMD) $(LIBRARIES_DIR)
 	$(MKDIR_CMD) $(LOGS_DIR)
 	@if [ -d .git ]; then git config --local core.hooksPath .githooks; fi
-
-# Workaround: ensure nanvix-x86 toolchain has a cargo binary.
-# Older toolchain builds did not include cargo in stage2/bin/, causing `cargo +nanvix-x86`
-# to fall back to the system default cargo which may be an incompatible version.
-# This copies cargo from the nightly toolchain specified in rust-toolchain as a fallback.
-init-nanvix-x86-cargo:
-	@if [ ! -f $(NANVIX_X86_TOOLCHAIN_BIN)/cargo ] && [ -f $(FALLBACK_CARGO) ]; then \
-		echo "[WARN] cargo not found in nanvix-x86 toolchain, copying from $(RUST_CHANNEL)..."; \
-		cp -f $(FALLBACK_CARGO) $(NANVIX_X86_TOOLCHAIN_BIN)/cargo; \
-		echo "[INFO] cargo copied to nanvix-x86 toolchain."; \
-	fi
 
 # Cleans build.
 clean: \
