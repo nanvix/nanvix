@@ -33,3 +33,8 @@ pub struct Tss {
 }
 // `Tss` must be 104 bytes long. This must match the hardware specification.
 ::static_assert::assert_eq_size!(Tss, 104);
+
+impl Tss {
+    /// Byte offset of the `esp0` field within the structure.
+    pub const TSS_ESP0: u32 = core::mem::offset_of!(Self, esp0) as u32;
+}
