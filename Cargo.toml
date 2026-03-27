@@ -204,7 +204,7 @@ toml = { version = "1.1.0", default-features = false, features = [
 ttrpc = { version = "0.9.0", features = ["async"] }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
-uuid = { version = "1.22.0", default-features = false }
+uuid = { version = "1.23.0", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vstd = { version = "=0.0.0-2026-03-22-0106", default-features = false }
