@@ -20,7 +20,7 @@ Build Nanvix in standalone mode. The `standalone` feature automatically enables 
 feature in `nanvixd` and `nanvix-bench`:
 
 ```bash
-./z build --with-cached-options -- all DEPLOYMENT_MODE=standalone
+./z build -- all DEPLOYMENT_MODE=standalone
 ```
 
 You also need a GDB client with x86_64 target support (`gdb-multiarch` or `x86_64-elf-gdb`).
