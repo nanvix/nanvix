@@ -89,9 +89,19 @@ fn main() {
     // When rust-analyzer (or plain `cargo check`) runs without the full build
     // environment, these variables are absent.  Skip the shared-library build
     // and linker configuration so the IDE can still provide diagnostics.
+    println!("cargo:rerun-if-env-changed=LIBRARIES_DIR");
+    println!("cargo:rerun-if-env-changed=NANVIX_CC");
+    println!("cargo:rerun-if-env-changed=NANVIX_CFLAGS");
     let libraries_dir: String = match env::var("LIBRARIES_DIR") {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => {
+            println!(
+                "cargo:warning=Skipping dlfcn shared library build and linker configuration: \
+                 LIBRARIES_DIR is not set; set LIBRARIES_DIR (and NANVIX_CC/NANVIX_CFLAGS) to \
+                 enable dlopen() tests."
+            );
+            return;
+        },
     };
     let lib_dir = Path::new(&libraries_dir);
 

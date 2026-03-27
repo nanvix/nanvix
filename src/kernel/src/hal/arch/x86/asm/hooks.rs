@@ -5,64 +5,41 @@
 // x86 Exception, Interrupt, Kernel-Call Hooks and Low-Level Routines
 //==================================================================================================
 
-use core::arch::global_asm;
+use crate::hal::arch::x86::{
+    cpu::ExceptionInformation,
+    ContextInformation,
+};
+use ::arch::{
+    cpu::tss::Tss,
+    mem::WORD_SIZE,
+};
+use ::core::arch::global_asm;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-const WORD_SIZE: u32 = 4;
-
-/// VMM control I/O port.
-const VMM_PORT: u32 = 0x604;
-
-/// VMM shutdown command (upper 16 bits of the outl value).
-const VMM_SHUTDOWN_CMD: u32 = 0x2000;
-
-/// Exit status used by the stack overflow guard.
-/// Must match `ExitStatus::STACK_OVERFLOW_EXCEPTION` in `src/libs/sys/src/exit_status.rs`.
-const STACK_OVERFLOW_EXIT_STATUS: u32 = 200;
-
-/// Software-saved execution context size (in bytes).
-const CONTEXT_SW_SIZE: u32 = 52;
-
-// Offsets to the TSS structure.
-const TSS_ESP0: u32 = 4;
-
-// Offsets to the Context Structure.
-const CONTEXT_ESP0: u32 = 0;
-const CONTEXT_CR3: u32 = 4;
-const CONTEXT_GS: u32 = 8;
-const CONTEXT_FS: u32 = 12;
-const CONTEXT_ES: u32 = 16;
-const CONTEXT_DS: u32 = 20;
-const CONTEXT_EDI: u32 = 24;
-const CONTEXT_ESI: u32 = 28;
-const CONTEXT_EBP: u32 = 32;
-const CONTEXT_EDX: u32 = 36;
-const CONTEXT_ECX: u32 = 40;
-const CONTEXT_EBX: u32 = 44;
-const CONTEXT_EAX: u32 = 48;
-const CONTEXT_ERR: u32 = 52;
-const CONTEXT_EIP: u32 = 56;
-const CONTEXT_EFLAGS: u32 = 64;
-const CONTEXT_ESP: u32 = 68;
-
-/// Exception information size (in bytes).
-const EXCEPTION_SIZE: u32 = 16;
-
-// Offsets to the Exception Information Structure.
-const EXCEPTION_NR: u32 = 0;
-const EXCEPTION_ERR: u32 = 4;
-const EXCEPTION_DATA: u32 = 8;
-const EXCEPTION_CODE: u32 = 12;
-
 /// Offset to exception structure.
-const EXCEPTION_SKIP: i32 =
-    -(CONTEXT_SW_SIZE as i32) - EXCEPTION_SIZE as i32 + EXCEPTION_ERR as i32;
+const EXCEPTION_SKIP: i32 = -(ContextInformation::CONTEXT_SW_SIZE as i32)
+    - ExceptionInformation::EXCEPTION_SIZE as i32
+    + ExceptionInformation::EXCEPTION_ERR as i32;
 
-/// Compound shutdown value: (VMM_SHUTDOWN_CMD << 16) | STACK_OVERFLOW_EXIT_STATUS.
-const SHUTDOWN_VALUE: u32 = (VMM_SHUTDOWN_CMD << 16) | STACK_OVERFLOW_EXIT_STATUS;
+/// Whether the microvm feature is enabled (1) or not (0). Used by the assembly `.if` directive
+/// to conditionally compile the stack-overflow guard macro body.
+const MICROVM: u32 = if cfg!(feature = "microvm") { 1 } else { 0 };
+
+/// VMM ACPI power-management I/O port (microvm only; dummy value when disabled).
+#[cfg(feature = "microvm")]
+const VMM_PORT: u32 = ::config::microvm::DEFAULT_VMM_PORT as u32;
+#[cfg(not(feature = "microvm"))]
+const VMM_PORT: u32 = 0;
+
+/// Compound shutdown value: (SHUTDOWN_CMD << 16) | exit_status (microvm only; dummy when disabled).
+#[cfg(feature = "microvm")]
+const SHUTDOWN_VALUE: u32 = ((::config::microvm::DEFAULT_VMM_SHUTDOWN_CMD as u32) << 16)
+    | ::sys::ExitStatus::STACK_OVERFLOW_EXCEPTION.as_u32();
+#[cfg(not(feature = "microvm"))]
+const SHUTDOWN_VALUE: u32 = 0;
 
 //==================================================================================================
 // Assembly: Macros, Exception/Interrupt/Kcall Hooks, Context Switch, Leave Kernel, Physical Memory
@@ -203,9 +180,14 @@ global_asm!(
     // Dynamic stack overflow guard. Compares ESP against the global
     // variable EXCP_STACK_GUARD. A value of 0 disables the check.
     //
+    // On microvm, a stack overflow triggers a clean VMM shutdown via
+    // the ACPI power-management port. On hyperlight, the macro is a
+    // no-op because that mechanism is not available.
+    //
     // Clobbers: EDX, EAX (only on the overflow path which never returns).
     //
     ".macro excp_stack_guard_check",
+    ".if {MICROVM}",
     "    cmpl $0, EXCP_STACK_GUARD",
     "    je 1f",
     "    cmpl EXCP_STACK_GUARD, %esp",
@@ -218,6 +200,7 @@ global_asm!(
     "2:  hlt",
     "    jmp 2b",
     "1:",
+    ".endif",
     ".endm",
 
     // -----------------------------------------------------------------
@@ -613,31 +596,32 @@ global_asm!(
     // Const Operands
     // =================================================================
     WORD_SIZE = const WORD_SIZE,
-    CONTEXT_SW_SIZE = const CONTEXT_SW_SIZE,
-    CONTEXT_ESP0 = const CONTEXT_ESP0,
-    CONTEXT_CR3 = const CONTEXT_CR3,
-    CONTEXT_GS = const CONTEXT_GS,
-    CONTEXT_FS = const CONTEXT_FS,
-    CONTEXT_ES = const CONTEXT_ES,
-    CONTEXT_DS = const CONTEXT_DS,
-    CONTEXT_EDI = const CONTEXT_EDI,
-    CONTEXT_ESI = const CONTEXT_ESI,
-    CONTEXT_EBP = const CONTEXT_EBP,
-    CONTEXT_EDX = const CONTEXT_EDX,
-    CONTEXT_ECX = const CONTEXT_ECX,
-    CONTEXT_EBX = const CONTEXT_EBX,
-    CONTEXT_EAX = const CONTEXT_EAX,
-    CONTEXT_ERR = const CONTEXT_ERR,
-    CONTEXT_EIP = const CONTEXT_EIP,
-    CONTEXT_EFLAGS = const CONTEXT_EFLAGS,
-    CONTEXT_ESP = const CONTEXT_ESP,
-    EXCEPTION_SIZE = const EXCEPTION_SIZE,
-    EXCEPTION_NR = const EXCEPTION_NR,
-    EXCEPTION_ERR = const EXCEPTION_ERR,
-    EXCEPTION_DATA = const EXCEPTION_DATA,
-    EXCEPTION_CODE = const EXCEPTION_CODE,
+    CONTEXT_SW_SIZE = const ContextInformation::CONTEXT_SW_SIZE,
+    CONTEXT_ESP0 = const ContextInformation::CONTEXT_ESP0,
+    CONTEXT_CR3 = const ContextInformation::CONTEXT_CR3,
+    CONTEXT_GS = const ContextInformation::CONTEXT_GS,
+    CONTEXT_FS = const ContextInformation::CONTEXT_FS,
+    CONTEXT_ES = const ContextInformation::CONTEXT_ES,
+    CONTEXT_DS = const ContextInformation::CONTEXT_DS,
+    CONTEXT_EDI = const ContextInformation::CONTEXT_EDI,
+    CONTEXT_ESI = const ContextInformation::CONTEXT_ESI,
+    CONTEXT_EBP = const ContextInformation::CONTEXT_EBP,
+    CONTEXT_EDX = const ContextInformation::CONTEXT_EDX,
+    CONTEXT_ECX = const ContextInformation::CONTEXT_ECX,
+    CONTEXT_EBX = const ContextInformation::CONTEXT_EBX,
+    CONTEXT_EAX = const ContextInformation::CONTEXT_EAX,
+    CONTEXT_ERR = const ContextInformation::CONTEXT_ERR,
+    CONTEXT_EIP = const ContextInformation::CONTEXT_EIP,
+    CONTEXT_EFLAGS = const ContextInformation::CONTEXT_EFLAGS,
+    CONTEXT_ESP = const ContextInformation::CONTEXT_ESP,
+    EXCEPTION_SIZE = const ExceptionInformation::EXCEPTION_SIZE,
+    EXCEPTION_NR = const ExceptionInformation::EXCEPTION_NR,
+    EXCEPTION_ERR = const ExceptionInformation::EXCEPTION_ERR,
+    EXCEPTION_DATA = const ExceptionInformation::EXCEPTION_DATA,
+    EXCEPTION_CODE = const ExceptionInformation::EXCEPTION_CODE,
     EXCEPTION_SKIP = const EXCEPTION_SKIP,
-    TSS_ESP0 = const TSS_ESP0,
+    TSS_ESP0 = const Tss::TSS_ESP0,
+    MICROVM = const MICROVM,
     SHUTDOWN_VALUE = const SHUTDOWN_VALUE,
     VMM_PORT = const VMM_PORT,
     options(att_syntax),
