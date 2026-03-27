@@ -37,6 +37,18 @@ pub struct ExceptionInformation {
 //==================================================================================================
 
 impl ExceptionInformation {
+    /// Byte offset of the exception number field within the structure.
+    pub const EXCEPTION_NR: u32 = core::mem::offset_of!(Self, num) as u32;
+    /// Byte offset of the error code field within the structure.
+    pub const EXCEPTION_ERR: u32 = core::mem::offset_of!(Self, code) as u32;
+    /// Byte offset of the faulting address field within the structure.
+    pub const EXCEPTION_DATA: u32 = core::mem::offset_of!(Self, addr) as u32;
+    /// Byte offset of the faulting instruction field within the structure.
+    pub const EXCEPTION_CODE: u32 = core::mem::offset_of!(Self, instruction) as u32;
+
+    /// Total size of the exception information structure (in bytes).
+    pub const EXCEPTION_SIZE: u32 = core::mem::size_of::<Self>() as u32;
+
     pub fn num(&self) -> u32 {
         self.num
     }
