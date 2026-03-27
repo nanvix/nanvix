@@ -62,27 +62,14 @@ ls -la toolchain/
 ln -s $HOME/toolchain toolchain
 ```
 
-### Cached Build Options Stale
-
-**Symptom**: Build behaves unexpectedly or uses wrong parameters.
-
-**Fix**: Delete the cache file and rebuild:
-
-```bash
-rm -f .z.cache
-./z build -- all
-```
-
 ### Full Reset (Last Resort)
 
-**Symptom**: Build or test issues persist after normal cleanup and cache reset.
+**Symptom**: Build or test issues persist after normal cleanup.
 
 **Fix**: Perform a full cleanup, then rebuild:
 
 ```bash
 ./z distclean
-# If building with Docker:
-./z distclean --with-docker
 
 ./z build -- all
 ```
@@ -96,16 +83,6 @@ rm -f .z.cache
 ```bash
 ./z build -- all SCCACHE=
 ```
-
-### Docker Build Failures
-
-**Symptom**: Docker-based builds fail with permission or image errors.
-
-**Fix**:
-
-1. Check Docker is running: `docker info`.
-2. Verify image availability: `docker images | grep nanvix`.
-3. Rebuild with: `./z build --with-docker -- all`.
 
 ## Runtime Failures
 
@@ -183,7 +160,7 @@ RUST_LOG=debug ./bin/uservm.elf \
 
 ```bash
 # Rust check with JSON output for IDE integration.
-./z build --with-cached-options -- check
+./z build -- check
 ```
 
 ### Log Files

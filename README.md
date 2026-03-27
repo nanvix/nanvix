@@ -11,18 +11,19 @@ Nanvix is a microkernel-based research operating system.
 
 ### Linux
 
-Requires Ubuntu 24.04 with sudo privileges, [Docker](doc/setup-linux.md#5-setup-docker-optional), and
+Requires Ubuntu 24.04 with sudo privileges and
 [KVM](doc/setup-linux.md#4-setup-kvm) enabled.
 
 ```bash
 # Clone this source code.
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
 
-# Setup a minimal development environment.
-./z setup --with-minimal-docker
+# Setup the development environment.
+./z setup --toolchain-dir $HOME/toolchain
+ln -T -s $HOME/toolchain toolchain
 
 # Build Nanvix.
-./z build --with-minimal-docker -- all
+./z build -- all
 
 # Run an example application.
 ./bin/nanvixd.elf -console-file /dev/stdout -- ./bin/hello-rust-nostd.elf

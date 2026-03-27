@@ -8,16 +8,12 @@ This guide will help you set up your development environment to build and run Na
 - [2. Clone This Repository](#2-clone-this-repository)
 - [3. Install Dependencies for Development Tools](#3-install-dependencies-for-development-tools)
 - [4. Setup KVM](#4-setup-kvm)
-- [5. Setup Docker (Optional)](#5-setup-docker-optional)
-- [6. Setup SCCACHE (Optional)](#6-setup-sccache-optional)
-- [7. Set Up GDB Debugging (Optional)](#7-set-up-gdb-debugging-optional)
-- [8. Setting Up Development Tools for the First Time](#8-setting-up-development-tools-for-the-first-time)
-  - [Option 1: Build Development Tools Locally (Preferred Method)](#option-1-build-development-tools-locally-preferred-method)
-  - [Option 2: Use a Pre-Built Docker Image](#option-2-use-a-pre-built-docker-image)
-  - [Option 3: Build a Docker Image](#option-3-build-a-docker-image)
-- [9. Updating Your Development Tools](#9-updating-your-development-tools)
-- [10. Verus (Formal Verification)](#10-verus-formal-verification)
-- [11. Setup Your IDE (Optional)](#11-setup-your-ide-optional)
+- [5. Setup SCCACHE (Optional)](#5-setup-sccache-optional)
+- [6. Set Up GDB Debugging (Optional)](#6-set-up-gdb-debugging-optional)
+- [7. Setting Up Development Tools for the First Time](#7-setting-up-development-tools-for-the-first-time)
+- [8. Updating Your Development Tools](#8-updating-your-development-tools)
+- [9. Verus (Formal Verification)](#9-verus-formal-verification)
+- [10. Setup Your IDE (Optional)](#10-setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
 ---
@@ -59,21 +55,7 @@ newgrp kvm
 groups
 ```
 
-## 5. Setup Docker (Optional)
-
-```bash
-# Install Docker.
-curl -fsSL https://get.docker.com | sh
-
-# Add user to Docker group.
-sudo usermod -aG docker $USER
-
-# Re-login and check if groups changed.
-newgrp docker
-groups
-```
-
-## 6. Setup SCCACHE (Optional)
+## 5. Setup SCCACHE (Optional)
 
 Install `sccache` to enable caching of compilation artifacts, which can significantly speed up
 builds.
@@ -100,7 +82,7 @@ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-## 7. Set Up GDB Debugging (Optional)
+## 6. Set Up GDB Debugging (Optional)
 
 The repository includes a `.gdbinit` file that automatically configures GDB for debugging. By
 default, GDB refuses to auto-load `.gdbinit` files from arbitrary directories. To allow it for
@@ -117,21 +99,11 @@ For full debugging instructions with GDB, see [doc/gdb.md](gdb.md).
 
 ---
 
-## 8. Setting Up Development Tools for the First Time
+## 7. Setting Up Development Tools for the First Time
 
 > ⚠️ **Note:** This process may take some time to complete.
 
-Choose one of the following methods to set up the development tools for Nanvix.
-
-> **Tip:** If you plan to actively contribute to Nanvix, building the tools locally (Option 1) is
-> recommended. It provides the fastest edit-build-test cycle and full access to debugging and
-> profiling tools.
-
-### Option 1: Build Development Tools Locally (Preferred Method)
-
-To build the tools directly on your system, follow these steps.
-
-#### Step 1: Install the Rust Toolchain
+### Step 1: Install the Rust Toolchain
 
 ```bash
 # Install Rust.
@@ -141,7 +113,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 exec $SHELL
 ```
 
-#### Step 2: Build Cross Compiler Toolchain
+### Step 2: Build Cross Compiler Toolchain
 
 ```bash
 # Ensure you are in the project's root directory.
@@ -152,35 +124,17 @@ ln -T -s $HOME/toolchain toolchain           # Create symbolic link for toolchai
 > **Note:** The toolchain directory must be located outside the repository root.
 > Use `./z setup --toolchain-dir <path>` to specify a valid location.
 
-### Option 2: Use a Pre-Built Docker Image
-
-This is the easiest and fastest way to get started:
-
-```bash
-# Ensure you are in the project's root directory.
-./z setup --with-docker
-```
-
-### Option 3: Build a Docker Image
-
-To build a Docker image with the required tools:
-
-```bash
-# Ensure you are in the project's root directory.
-./scripts/setup/docker.sh
-```
-
-## 9. Updating Your Development Tools
+## 8. Updating Your Development Tools
 
 When a new major release of Nanvix is available, you must update your development tools to ensure
 compatibility. Follow these steps to update your environment:
 
 1. **Update system dependencies**: [Re-install dependencies for development tools](#3-install-dependencies-for-development-tools).
-2. **Rebuild development tools**: [Re-build the development tools](#option-1-build-development-tools-locally-preferred-method).
+2. **Rebuild development tools**: [Re-build the development tools](#7-setting-up-development-tools-for-the-first-time).
 
 > **Note:** This update process is only required for major releases, not for minor updates or patches.
 
-## 10. Verus (Formal Verification)
+## 9. Verus (Formal Verification)
 
 Verus is installed automatically when you run `make verify`. The expected version is pinned in
 `build/verus-version` and installed to `toolchain/verus`. No manual setup is required.
@@ -207,7 +161,7 @@ make verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
 
 ---
 
-## 11. Setup Your IDE (Optional)
+## 10. Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.
 

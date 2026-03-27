@@ -16,7 +16,7 @@ Unit tests are `#[cfg(test)]` modules within library crates. They run on the hos
 `cargo test`.
 
 ```bash
-./z build --with-cached-options -- run-unit-tests
+./z build -- run-unit-tests
 ```
 
 Libraries with unit tests are listed in
@@ -54,7 +54,7 @@ System tests run the full Nanvix stack (`nanvixd` + kernel + guest) and are avai
 `microvm` and `hyperlight` machines.
 
 ```bash
-./z build --with-cached-options -- run-nanvix-tests
+./z build -- run-nanvix-tests
 ```
 
 Test configurations:
@@ -114,7 +114,7 @@ Guest integration tests are `#![no_std]` binaries that run inside Nanvix:
 
 ```bash
 # Unit tests + system tests (if applicable).
-./z build --with-cached-options -- test
+./z build -- test
 # Full CI pipeline (includes all test types).
 ./scripts/pipeline.sh
 ```

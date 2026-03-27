@@ -43,20 +43,11 @@ CMD_NAME_HELP="help"
 
 # Option names.
 OPT_NAME_SEPARATOR="--"
-OPT_NAME_WITH_DOCKER="--with-docker"
-OPT_NAME_WITH_MINIMAL_DOCKER="--with-minimal-docker"
-OPT_NAME_WITH_CACHED_OPTIONS="--with-cached-options"
 OPT_NAME_PROFILE="--profile"
 OPT_NAME_TOOLCHAIN_DIR="--toolchain-dir"
 
-# Name of the Docker image with the Nanvix toolchain.
-DOCKER_IMAGE_BASE_NAME="nanvix/toolchain"
-
-# Cache file to store the last build command and options.
-Z_CACHE_FILE=".z.cache"
-
 # Default toolchain directory for setup.
-DEFAULT_LOCAL_TOOLCHAIN_DIR="${PWD}/toolchain"
+DEFAULT_LOCAL_TOOLCHAIN_DIR="${HOME:-${PWD}}/toolchain"
 
 # Location of ubuntu setup script.
 UBUNTU_SETUP_SCRIPT="${REPO_ROOT_DIR}/scripts/setup/ubuntu.sh"
@@ -65,15 +56,7 @@ UBUNTU_SETUP_SCRIPT="${REPO_ROOT_DIR}/scripts/setup/ubuntu.sh"
 # Global Variables
 #==================================================================================================
 
-# Options from cache.
-LAST_BUILD_WITH_DOCKER=false          # Was the last build done with Docker?
-LAST_BUILD_WITH_MINIMAL_DOCKER=false  # Was the last build done with the minimal Docker image?
-
-# Current options.
-BUILD_WITH_DOCKER=false                         # Build with Docker?
-BUILD_WITH_MINIMAL_DOCKER=false                 # Use minimal Docker image?
 BUILD_WITH_PROFILE=false                        # Enable profiling (implies RELEASE=yes)?
-WITH_CACHED_OPTIONS=false                       # Use cached options (if any)?
 TOOLCHAIN_DIR="${DEFAULT_LOCAL_TOOLCHAIN_DIR}"  # Toolchain directory for setup.
 
 #==================================================================================================
@@ -93,10 +76,10 @@ Utility for building Nanvix.
 
 Usage:
   ./z COMMAND [OPTIONS] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
-  ./z ${CMD_NAME_BUILD} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_WITH_CACHED_OPTIONS}] [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
-  ./z ${CMD_NAME_CLEAN} [${OPT_NAME_WITH_DOCKER}]
-  ./z ${CMD_NAME_DISTCLEAN} [${OPT_NAME_WITH_DOCKER}]
-  ./z ${CMD_NAME_SETUP} [${OPT_NAME_WITH_DOCKER}] [${OPT_NAME_TOOLCHAIN_DIR} <path>]
+  ./z ${CMD_NAME_BUILD} [${OPT_NAME_SEPARATOR} BUILD_TARGET BUILD_PARAMETERS]
+  ./z ${CMD_NAME_CLEAN}
+  ./z ${CMD_NAME_DISTCLEAN}
+  ./z ${CMD_NAME_SETUP} [${OPT_NAME_TOOLCHAIN_DIR} <path>]
   ./z ${CMD_NAME_HELP}
 
 Commands
@@ -107,210 +90,12 @@ Commands
   help      Prints the help information.
 
 Options
-  ${OPT_NAME_WITH_DOCKER}           Build Nanvix using Docker instead of the local toolchain.
-  ${OPT_NAME_WITH_MINIMAL_DOCKER}   Build Nanvix using the minimal Docker image (implies ${OPT_NAME_WITH_DOCKER}).
-  ${OPT_NAME_WITH_CACHED_OPTIONS}   Use cached options from the last build.
   ${OPT_NAME_PROFILE}               Enable profiling (implies RELEASE=yes, passes PROFILER=yes to make).
   ${OPT_NAME_TOOLCHAIN_DIR} <path>  Specify the toolchain directory for setup (default: ${DEFAULT_LOCAL_TOOLCHAIN_DIR}).
 EOF
     if ! make help; then
         print_error "Failed to get help on build targets and parameters."
         exit 1
-    fi
-}
-
-#
-# Description
-#
-#   Checks if Docker is installed and aborts if it is not.
-#
-# Usage Example
-#   check_docker_installed
-#
-check_docker_installed() {
-    if ! command -v docker >/dev/null 2>&1; then
-        print_error "Docker is not installed. Please install Docker to build with Docker."
-        exit 1
-    fi
-}
-
-#
-# Description
-#
-#   Checks if the Docker image is available locally and aborts if it is not.
-#
-# Arguments
-#   $1 - The name of the Docker image to check.
-#
-# Usage Example
-#   check_docker_image_available "nanvix/toolchain:v1.0.x"
-#
-check_docker_image_available() {
-    local image_name="$1"
-    if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
-        print_error "Docker image '${image_name}' not found. Please pull it first."
-        exit 1
-    fi
-}
-
-#
-# Description
-#
-#   Returns the name of the Docker image to use for building Nanvix.
-#
-# Arguments
-#  $1 - The version of the Docker image to use.
-#  $2 - (Optional, default: false) Set to true to use the minimal Docker image.
-#
-# Usage Example
-#   get_docker_image_name "v1.0.0"
-#
-get_docker_image_name() {
-    # Build image tag version by replacing patch with "x".
-    local image_tag_version
-    local use_minimal=${2:-false}
-    image_tag_version="${1%.*}.x"
-
-    local suffix=""
-    if ${use_minimal}; then
-        suffix="-minimal"
-    fi
-
-    echo "${DOCKER_IMAGE_BASE_NAME}:v${image_tag_version}${suffix}"
-}
-
-#
-# Description
-#   Builds Nanvix using Docker with BuildKit cache mounts.
-#   Uses 'docker build' with --mount=type=cache for efficient caching.
-#
-# Arguments
-#   $* - The build parameters to pass to make.
-#
-# Return
-#   0 on success, non-zero on failure.
-#
-# Usage Example
-#   run_docker_build "all"
-#
-run_docker_build() {
-    local build_parameters="${*}"
-
-    # Check if Docker is installed.
-    check_docker_installed
-
-    local current_version
-    current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
-
-    # Get the Docker image name.
-    local image_name
-    image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
-
-    # Check if the Docker image is available.
-    check_docker_image_available "${image_name}"
-
-    # Path to the build Dockerfile.
-    local dockerfile_path="${REPO_ROOT_DIR}/scripts/setup/Dockerfile.build"
-
-    # Check if the Dockerfile exists.
-    if [[ ! -f "${dockerfile_path}" ]]; then
-        print_error "Build Dockerfile not found: ${dockerfile_path}"
-        return 1
-    fi
-
-    # Extract RELEASE value from build parameters to determine sysroot suffix.
-    local sysroot_suffix="debug"
-    if [[ "${build_parameters}" =~ RELEASE=yes ]]; then
-        sysroot_suffix="release"
-    fi
-
-    # Get the absolute workspace path. This is passed to Docker so that Python
-    # and other binaries with embedded absolute paths can find their libraries
-    # at runtime without requiring symlinks on the host filesystem.
-    local workspace_path
-    workspace_path="$(pwd -P)"
-
-    # Run the build with BuildKit using the external Dockerfile.
-    # Forward GitHub Actions sccache cache backend variables when available.
-    # SCCACHE_GHA_ENABLED, SCCACHE_GHA_CACHE_TO, and SCCACHE_GHA_CACHE_FROM
-    # are passed as build args.
-    # ACTIONS_RESULTS_URL and ACTIONS_RUNTIME_TOKEN are injected as Docker secrets
-    # so that their per-run values do not bust the BuildKit layer cache.
-    local gha_sccache_args=()
-    if [[ -n "${SCCACHE_GHA_ENABLED:-}" ]]; then
-        gha_sccache_args+=(--build-arg "SCCACHE_GHA_ENABLED=${SCCACHE_GHA_ENABLED}")
-    fi
-    if [[ -n "${SCCACHE_GHA_CACHE_TO:-}" ]]; then
-        gha_sccache_args+=(--build-arg "SCCACHE_GHA_CACHE_TO=${SCCACHE_GHA_CACHE_TO}")
-    fi
-    if [[ -n "${SCCACHE_GHA_CACHE_FROM:-}" ]]; then
-        gha_sccache_args+=(--build-arg "SCCACHE_GHA_CACHE_FROM=${SCCACHE_GHA_CACHE_FROM}")
-    fi
-    if [[ -n "${ACTIONS_RESULTS_URL:-}" ]]; then
-        gha_sccache_args+=(--secret "id=actions_results_url,env=ACTIONS_RESULTS_URL")
-    fi
-    if [[ -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
-        gha_sccache_args+=(--secret "id=actions_runtime_token,env=ACTIONS_RUNTIME_TOKEN")
-    fi
-
-    DOCKER_BUILDKIT=1 docker build \
-        --build-arg BASE_IMAGE="${image_name}" \
-        --build-arg BUILD_PARAMS="${build_parameters}" \
-        --build-arg SYSROOT_SUFFIX="${sysroot_suffix}" \
-        --build-arg WORKSPACE_PATH="${workspace_path}" \
-        ${gha_sccache_args[@]+"${gha_sccache_args[@]}"} \
-        --output type=local,dest=. \
-        --progress=plain \
-        -f "${dockerfile_path}" \
-        .
-}
-
-#
-# Description
-#   Writes the last build command and options to the cache file.
-#   Each argument is written on a separate line.
-#
-# Arguments
-#   $@ - The full command line arguments.
-#
-# Usage Example
-#   write_cache "build" "--with-docker" "--" "all"
-#
-write_cache() {
-    printf '%s\n' "${@}" > "${Z_CACHE_FILE}"
-}
-
-#
-# Description
-#   Reads the last build command and options from the cache file.
-#   Sets the following global variables based on whether the cache contains the Docker option:
-#   - LAST_BUILD_WITH_DOCKER: true if the last build was done with Docker, false otherwise.
-#
-# Usage Example
-#   read_cache
-#
-read_cache() {
-    LAST_BUILD_WITH_DOCKER=false
-    LAST_BUILD_WITH_MINIMAL_DOCKER=false
-
-    if [[ -f "${Z_CACHE_FILE}" ]]; then
-        local cache_lines
-        mapfile -t cache_lines < "${Z_CACHE_FILE}"
-        # Check if the cache file is empty.
-        if [[ ${#cache_lines[@]} -eq 0 ]]; then
-            return
-        fi
-        # Process the cache lines to determine the last build options.
-        for arg in "${cache_lines[@]}"; do
-            if [[ "$arg" == "${OPT_NAME_WITH_MINIMAL_DOCKER}" ]]; then
-                LAST_BUILD_WITH_DOCKER=true
-                LAST_BUILD_WITH_MINIMAL_DOCKER=true
-            elif [[ "$arg" == "${OPT_NAME_WITH_DOCKER}" ]]; then
-                LAST_BUILD_WITH_DOCKER=true
-            elif [[ "$arg" == "${OPT_NAME_SEPARATOR}" ]]; then
-                break
-            fi
-        done
     fi
 }
 
@@ -375,7 +160,7 @@ check_filesystem_support() {
         *)
             print_warning "Unsupported file system '${fs_type}' detected for toolchain directory '${target_dir}'"
             print_warning "Only ext3/ext4/overlay are supported because extended attributes (xattr) are required for setcap commands."
-            print_warning "Consider moving the toolchain directory to a partition formatted with ext3, ext4, or using Docker."
+            print_warning "Consider moving the toolchain directory to a partition formatted with ext3, ext4, or overlay."
             return 4
             ;;
     esac
@@ -384,22 +169,12 @@ check_filesystem_support() {
 #
 # Description
 #
-#   Checks whether the currently selected toolchain (Docker image or local installation)
-#   matches the Nanvix version required by the workspace. The Nanvix version is read
-#   from the root `Cargo.toml` (via `get_cargo_toml_version`). The expected toolchain
-#   version string format is:
-#     - Docker image tag:   vMAJOR.MINOR.x (e.g., v1.2.x)
-#     - Local version file: nanvix-toolchain-vMAJOR.MINOR.x (single line in TOOLCHAIN_DIR/version)
+#   Checks whether the local toolchain matches the Nanvix version required by the workspace.
+#   The Nanvix version is read from the root `Cargo.toml` (via `get_cargo_toml_version`).
+#   The expected toolchain version string format is:
+#     nanvix-toolchain-vMAJOR.MINOR.x (single line in TOOLCHAIN_DIR/version)
 #
-#   Behavior:
-#     - When building with Docker (`BUILD_WITH_DOCKER=true`):
-#         * Verifies Docker is installed.
-#         * Verifies the expected image (derived from current Nanvix version) is present locally.
-#         * Validates the derived tag matches the MAJOR.MINOR.x pattern expected.
-#     - When building with the local toolchain:
-#         * Ensures the version file exists, is outside the repository, and is readable.
-#         * Compares its contents to the expected version string.
-#
+#   Ensures the version file exists, is readable, and its contents match the expected version.
 #   On mismatch or missing artifacts, an error is printed and the function returns non-zero.
 #   On success, returns zero.
 #
@@ -418,78 +193,41 @@ check_toolchain() {
     local expected_tag
     expected_tag="${current_version%.*}.x"
 
-    local expected_image_tag="${expected_tag}"
-    if ${BUILD_WITH_MINIMAL_DOCKER}; then
-        expected_image_tag="${expected_image_tag}-minimal"
+    local version_file
+    version_file="${TOOLCHAIN_DIR}/version"
+    local expected_version_string
+    expected_version_string="nanvix-toolchain-v${expected_tag}"
+
+    # Check if version file exists (follows symbolic links).
+    if [[ ! -e "${version_file}" ]]; then
+        print_error "Toolchain version file '${version_file}' not found. Run './z setup' to build the local toolchain."
+        return 1
     fi
 
-    if ${BUILD_WITH_DOCKER}; then
-        # Docker-based toolchain validation.
-        check_docker_installed
-
-        local image_name
-        image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
-
-        # Check image availability.
-        if ! docker image inspect "${image_name}" >/dev/null 2>&1; then
-            local setup_cmd="./z setup --with-docker"
-            if ${BUILD_WITH_MINIMAL_DOCKER}; then
-                setup_cmd="./z setup --with-minimal-docker"
-            fi
-            print_error "Required Docker toolchain image '${image_name}' not found. Run '${setup_cmd}' to fetch it."
-            return 1
-        fi
-
-        # Expected image tag extracted from the computed image name.
-        local image_tag
-        image_tag="${image_name##*:v}"
-
-        # Sanity check on tag consistency (defensive; should always match expected_image_tag).
-        if [[ "${image_tag}" != "${expected_image_tag}" ]]; then
-            print_error "Docker toolchain version mismatch (found tag '${image_tag}', expected '${expected_image_tag}'). Run './z setup --with-docker' or './z setup --with-minimal-docker' to update the toolchain image."
-            return 1
-        fi
-
-        print_info "Docker toolchain version '${image_tag}' matches expected '${expected_image_tag}'."
-    else
-        # Local toolchain validation.
-        local version_file
-        version_file="${TOOLCHAIN_DIR}/version"
-        local expected_version_string
-        expected_version_string="nanvix-toolchain-v${expected_tag}"
-
-        # Check if version file exists (follows symbolic links).
-        if [[ ! -e "${version_file}" ]]; then
-            print_error "Toolchain version file '${version_file}' not found. Run './z setup' to build the local toolchain."
-            return 1
-        fi
-
-        # Check if version file is readable (follows symbolic links).
-        if [[ ! -r "${version_file}" ]]; then
-            print_error "Toolchain version file '${version_file}' is not readable."
-            return 1
-        fi
-
-        local found_version
-        if ! read -r found_version < "${version_file}"; then
-            print_error "Failed to read toolchain version file '${version_file}'."
-            return 1
-        fi
-        found_version="$(echo "${found_version}" | tr -d '[:space:]')"
-
-        if [[ -z "${found_version}" ]]; then
-            print_error "Toolchain version file '${version_file}' is empty. Run './z setup' to (re)install the toolchain."
-            return 1
-        fi
-
-        if [[ "${found_version}" != "${expected_version_string}" ]]; then
-            print_error "Local toolchain version mismatch (found '${found_version}', expected '${expected_version_string}'). Run './z setup' to update the toolchain."
-            return 1
-        fi
-
-        print_info "Local toolchain version '${found_version}' matches expected '${expected_version_string}'."
+    # Check if version file is readable (follows symbolic links).
+    if [[ ! -r "${version_file}" ]]; then
+        print_error "Toolchain version file '${version_file}' is not readable."
+        return 1
     fi
 
+    local found_version
+    if ! read -r found_version < "${version_file}"; then
+        print_error "Failed to read toolchain version file '${version_file}'."
+        return 1
+    fi
+    found_version="$(echo "${found_version}" | tr -d '[:space:]')"
+
+    if [[ -z "${found_version}" ]]; then
+        print_error "Toolchain version file '${version_file}' is empty. Run './z setup' to (re)install the toolchain."
+        return 1
+    fi
+
+    if [[ "${found_version}" != "${expected_version_string}" ]]; then
+        print_error "Local toolchain version mismatch (found '${found_version}', expected '${expected_version_string}'). Run './z setup' to update the toolchain."
+        return 1
+    fi
+
+    print_info "Local toolchain version '${found_version}' matches expected '${expected_version_string}'."
     return 0
 }
 
@@ -522,31 +260,9 @@ main() {
     command="$1"
     shift
 
-    # Read last build info from cache
-    read_cache
-
-    local docker_option_set=false
-    local minimal_option_set=false
-
     # Parse command options.
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            "${OPT_NAME_WITH_DOCKER}")
-                BUILD_WITH_DOCKER=true
-                docker_option_set=true
-                shift
-                ;;
-            "${OPT_NAME_WITH_MINIMAL_DOCKER}")
-                BUILD_WITH_DOCKER=true
-                BUILD_WITH_MINIMAL_DOCKER=true
-                docker_option_set=true
-                minimal_option_set=true
-                shift
-                ;;
-            "${OPT_NAME_WITH_CACHED_OPTIONS}")
-                WITH_CACHED_OPTIONS=true
-                shift
-                ;;
             "${OPT_NAME_PROFILE}")
                 BUILD_WITH_PROFILE=true
                 shift
@@ -584,8 +300,14 @@ main() {
         fi
     done
 
-    # Disallow TOOLCHAIN_DIR inside the repository only for non-Docker builds.
-    if [[ "${BUILD_WITH_DOCKER:-false}" != "true" ]]; then
+    # Build parameters always include TOOLCHAIN_DIR.
+    local build_parameters=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
+    if [[ ${#user_build_parameters[@]} -gt 0 ]]; then
+        build_parameters+=("${user_build_parameters[@]}")
+    fi
+
+    # Disallow TOOLCHAIN_DIR inside the repository for commands that require a toolchain.
+    if [[ "${command}" == "${CMD_NAME_BUILD}" || "${command}" == "${CMD_NAME_SETUP}" ]]; then
         local resolved_toolchain resolved_repo
         resolved_toolchain="$(resolve_path "$TOOLCHAIN_DIR")"
         resolved_repo="$(cd "${REPO_ROOT_DIR}" && pwd -P)"
@@ -593,17 +315,6 @@ main() {
             print_error "Absolute path to the toolchain directory must not be inside the repository (${REPO_ROOT_DIR})."
             print_info "Hint: Specify the toolchain by passing '--toolchain-dir'"
             exit 1
-        fi
-    fi
-
-    # If using cache, restore variables from cache when not overridden by command line options.
-    if ${WITH_CACHED_OPTIONS}; then
-        print_info "Using cached build options."
-        if ! ${minimal_option_set} && ${LAST_BUILD_WITH_MINIMAL_DOCKER}; then
-            BUILD_WITH_MINIMAL_DOCKER=true
-            BUILD_WITH_DOCKER=true
-        elif ! ${docker_option_set} && ${LAST_BUILD_WITH_DOCKER}; then
-            BUILD_WITH_DOCKER=true
         fi
     fi
 
@@ -619,37 +330,15 @@ main() {
         user_build_parameters=("${filtered_params[@]}" "RELEASE=yes")
     fi
 
-    # Only add TOOLCHAIN_DIR for local builds, not Docker builds.
-    local build_parameters=()
-    if ! ${BUILD_WITH_DOCKER}; then
-        build_parameters+=("TOOLCHAIN_DIR=${TOOLCHAIN_DIR}")
-    fi
     # Pass PROFILER=yes to make when profiling is enabled.
     if ${BUILD_WITH_PROFILE}; then
         build_parameters+=("PROFILER=yes")
-    fi
-    if [[ ${#user_build_parameters[@]} -gt 0 ]]; then
-        build_parameters+=("${user_build_parameters[@]}")
     fi
 
     case "${command}" in
         "${CMD_NAME_BUILD}")
             print_info "Command: ${command}"
-            print_info "Build with Docker: ${BUILD_WITH_DOCKER}"
             print_info "Build Parameters: ${build_parameters[*]}"
-
-            # Check if we are switching build modes.
-            # Note: When switching TO Docker, we don't need to clean because Docker builds
-            # use isolated cache mounts. We only need to clean local artifacts when switching
-            # FROM Docker to local toolchain.
-            if ! ${BUILD_WITH_DOCKER} && ${LAST_BUILD_WITH_DOCKER}; then
-                print_warning "Switching to local toolchain build, forcing cleanup."
-                # Force a cleanup.
-                if ! make distclean ; then
-                    print_error "Cleanup failed with local toolchain."
-                    exit 1
-                fi
-            fi
 
             # Validate toolchain compatibility before building.
             if ! check_toolchain; then
@@ -658,84 +347,29 @@ main() {
             fi
 
             # Build Nanvix.
-            if ${BUILD_WITH_DOCKER}; then
-                print_info "Building with Docker (using BuildKit cache)..."
-                if ! run_docker_build "${build_parameters[@]}"; then
-                    print_error "Build failed with Docker."
-                    exit 1
-                fi
-                # Create sysroot symlink after Docker build.
-                # Docker COPY cannot preserve symlinks across the export boundary,
-                # so we create the symlink here to point to the correct sysroot.
-                local sysroot_suffix="debug"
-                if [[ "${build_parameters[*]}" =~ RELEASE=yes ]]; then
-                    sysroot_suffix="release"
-                fi
-                ln -sfn "sysroot-${sysroot_suffix}" sysroot
-            else
-                print_info "Building with local toolchain..."
-                if ! make "${build_parameters[@]}"; then
-                    print_error "Build failed."
-                    exit 1
-                fi
+            if ! make "${build_parameters[@]}"; then
+                print_error "Build failed."
+                exit 1
             fi
-
-            # Save current build command and options to cache.
-            cache_args=("${command}")
-            if ${BUILD_WITH_MINIMAL_DOCKER}; then
-                cache_args+=("${OPT_NAME_WITH_MINIMAL_DOCKER}")
-            elif ${BUILD_WITH_DOCKER}; then
-                cache_args+=("${OPT_NAME_WITH_DOCKER}")
-            fi
-            cache_args+=("${OPT_NAME_SEPARATOR}" "${build_parameters[@]}")
-            write_cache "${cache_args[@]}"
 
             print_success "Build complete."
             ;;
 
         "${CMD_NAME_CLEAN}")
-            if ${BUILD_WITH_DOCKER}; then
-                print_info "Running quick cleanup with Docker..."
-                if ! run_docker_build clean; then
-                    print_error "Quick clean failed with Docker."
-                    exit 1
-                fi
-            else
-                print_info "Running quick cleanup with local toolchain..."
-                if ! make clean; then
-                    print_error "Quick clean failed."
-                    exit 1
-                fi
-            fi
-
-            # Remove cache file (same behavior as legacy 'cleanup').
-            if [[ -f "${Z_CACHE_FILE}" ]]; then
-                rm -f "${Z_CACHE_FILE}"
-                print_success "Cache file removed."
+            print_info "Running quick cleanup..."
+            if ! make clean; then
+                print_error "Quick clean failed."
+                exit 1
             fi
 
             print_success "Quick clean complete."
             ;;
 
         "${CMD_NAME_DISTCLEAN}")
-            if ${BUILD_WITH_DOCKER}; then
-                print_info "Running full cleanup with Docker..."
-                if ! run_docker_build distclean; then
-                    print_error "Full cleanup failed with Docker."
-                    exit 1
-                fi
-            else
-                print_info "Running full cleanup with local toolchain..."
-                if ! make distclean; then
-                    print_error "Full cleanup failed."
-                    exit 1
-                fi
-            fi
-
-            # Remove cache file.
-            if [[ -f "${Z_CACHE_FILE}" ]]; then
-                rm -f "${Z_CACHE_FILE}"
-                print_success "Cache file removed."
+            print_info "Running full cleanup..."
+            if ! make distclean; then
+                print_error "Full cleanup failed."
+                exit 1
             fi
 
             print_success "Full cleanup complete."
@@ -754,73 +388,48 @@ main() {
                 fi
             fi
 
-            # If Docker is requested, download the Docker image.
-            if ${BUILD_WITH_DOCKER}; then
-                print_info "Docker setup requested, downloading Docker image..."
+            print_info "Toolchain directory: ${TOOLCHAIN_DIR}"
 
-                # Check if Docker is installed.
-                check_docker_installed
-
-                # Get the Docker image name using the same logic as run_docker_build.
-                local current_version
-                current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
-
-                # Get the Docker image name.
-                local image_name
-                image_name=$(get_docker_image_name "${current_version}" "${BUILD_WITH_MINIMAL_DOCKER}")
-
-                # Pull the Docker image.
-                print_info "Pulling Docker image: ${image_name}"
-                if ! docker pull "${image_name}"; then
-                    print_error "Failed to pull Docker image '${image_name}'."
+            # Ensure the toolchain directory exists; create it if it does not.
+            if [[ ! -d "${TOOLCHAIN_DIR}" ]]; then
+                print_info "Toolchain directory '${TOOLCHAIN_DIR}' does not exist. Creating it..."
+                if ! mkdir -p "${TOOLCHAIN_DIR}"; then
+                    print_error "Failed to create toolchain directory '${TOOLCHAIN_DIR}'. Please check your permissions or specify another directory."
                     exit 1
                 fi
+            fi
 
-                print_success "Docker image '${image_name}' downloaded successfully."
-            else
-                print_info "Toolchain directory: ${TOOLCHAIN_DIR}"
+            # Check if user has write permissions to the toolchain directory.
+            if [[ ! -w "${TOOLCHAIN_DIR}" ]]; then
+                print_error "No write permissions to: ${TOOLCHAIN_DIR}. Run with appropriate permissions or specify another directory."
+                exit 1
+            fi
 
-                # Ensure the toolchain directory exists; create it if it does not.
-                if [[ ! -d "${TOOLCHAIN_DIR}" ]]; then
-                    print_info "Toolchain directory '${TOOLCHAIN_DIR}' does not exist. Creating it..."
-                    if ! mkdir -p "${TOOLCHAIN_DIR}"; then
-                        print_error "Failed to create toolchain directory '${TOOLCHAIN_DIR}'. Please check your permissions or specify another directory."
-                        exit 1
-                    fi
-                fi
+            # Check if the toolchain directory is on a supported file system.
+            check_filesystem_support "${TOOLCHAIN_DIR}" || {
+                print_error "Toolchain directory '${TOOLCHAIN_DIR}' is not on a supported file system (ext3/ext4/overlay)."
+                exit 1
+            }
 
-                # Check if user has write permissions to the toolchain directory.
-                if [[ ! -w "${TOOLCHAIN_DIR}" ]]; then
-                    print_error "No write permissions to: ${TOOLCHAIN_DIR}. Run with appropriate permissions or specify another directory."
-                    exit 1
-                fi
+            # Warn if toolchain directory is not empty.
+            if [ "$(ls -A "${TOOLCHAIN_DIR}" 2>/dev/null)" ]; then
+                print_warning "Toolchain directory is not empty: ${TOOLCHAIN_DIR}. Existing files may be overwritten."
+            fi
 
-                # Check if the toolchain directory is on a supported file system.
-                check_filesystem_support "${TOOLCHAIN_DIR}" || {
-                    print_error "Toolchain directory '${TOOLCHAIN_DIR}' is not on a supported file system (ext3/ext4)."
-                    exit 1
-                }
+            # Path to the main setup script
+            local setup_script="${REPO_ROOT_DIR}/scripts/setup/toolchain.sh"
 
-                # Warn if toolchain directory is not empty.
-                if [ "$(ls -A "${TOOLCHAIN_DIR}" 2>/dev/null)" ]; then
-                    print_warning "Toolchain directory is not empty: ${TOOLCHAIN_DIR}. Existing files may be overwritten."
-                fi
+            # Check if setup script exists
+            if [[ ! -f "${setup_script}" ]]; then
+                print_error "Setup script not found: ${setup_script}"
+                exit 1
+            fi
 
-                # Path to the main setup script
-                local setup_script="${REPO_ROOT_DIR}/scripts/setup/toolchain.sh"
-
-                # Check if setup script exists
-                if [[ ! -f "${setup_script}" ]]; then
-                    print_error "Setup script not found: ${setup_script}"
-                    exit 1
-                fi
-
-                # Run the setup script
-                print_info "Running setup script: ${setup_script}"
-                if ! "${setup_script}" "${TOOLCHAIN_DIR}"; then
-                    print_error "Setup failed."
-                    exit 1
-                fi
+            # Run the setup script
+            print_info "Running setup script: ${setup_script}"
+            if ! "${setup_script}" "${TOOLCHAIN_DIR}"; then
+                print_error "Setup failed."
+                exit 1
             fi
 
             print_success "Setup complete."
