@@ -214,6 +214,9 @@ impl Slab {
         if ptr < self.data_addr || addr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
+        if !addr.is_multiple_of(self.block_size) {
+            return Err(Error::new(ErrorCode::BadAddress, "pointer unaligned"));
+        }
 
         // Compute the block index.
         let index: usize = unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
