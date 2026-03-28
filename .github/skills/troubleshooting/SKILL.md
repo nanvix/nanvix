@@ -182,24 +182,6 @@ Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
 # Restart the machine.
 ```
 
-### Docker Build Fails on Windows
-
-**Symptom**: Docker build fails with symlink or file-access errors, or the Docker output exporter
-fails because a previous build left a `.venv` directory with Linux symlinks (`lib64 -> lib`) that
-Windows cannot handle.
-
-**Fix**:
-
-1. Ensure Docker Desktop is running with Linux containers enabled: `docker info`.
-2. Remove stale `.venv` directory (cmd handles broken reparse points more reliably):
-   ```powershell
-   cmd /c "rmdir /s /q .venv"
-   ```
-3. Delete build cache and retry:
-    `Remove-Item .z.cache -ErrorAction SilentlyContinue; .\z.ps1 build -- all`.
-
-> **Note:** The `z.ps1` script removes `.venv` automatically before each Docker build.
-
 ### Symlink Errors on Windows Clone
 
 **Symptom**: Build or tool errors because Git checked out symlinks as text files.
@@ -221,15 +203,4 @@ git status
 
 git config core.symlinks true
 git checkout -- .
-```
-
-### Cached Build Options Stale (Windows)
-
-**Symptom**: Build uses wrong parameters on Windows.
-
-**Fix**: Delete the cache file and rebuild:
-
-```powershell
-Remove-Item .z.cache -ErrorAction SilentlyContinue
-.\z.ps1 build -- all
 ```
