@@ -50,7 +50,7 @@ pub fn chdir(path: &str) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_chdir(path).map_err(|e| {
             let code: ErrorCode = e.into();
-            ::syslog::error!("chdir(): VFS chdir failed (path={path:?}, error={e})");
+            ::syslog::warn!("chdir(): VFS chdir failed (path={path:?}, error={e})");
             Error::new(code, "vfs chdir failed")
         })
     }

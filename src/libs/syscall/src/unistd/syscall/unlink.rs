@@ -46,7 +46,7 @@ pub fn unlink(path: &str) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_unlink(path).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("unlink(): VFS unlink failed (path={path:?}, error={e})");
+            ::syslog::warn!("unlink(): VFS unlink failed (path={path:?}, error={e})");
             Error::new(code, "vfs unlink failed")
         })
     }

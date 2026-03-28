@@ -49,7 +49,7 @@ pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("fdatasync(): VFS fdatasync failed (fd={fd}, error={e})");
+                ::syslog::warn!("fdatasync(): VFS fdatasync failed (fd={fd}, error={e})");
                 Error::new(code, "vfs fdatasync failed")
             });
         }

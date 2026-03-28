@@ -38,7 +38,7 @@ pub fn rename(oldpath: &str, newpath: &str) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_rename(oldpath, newpath).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("rename(): VFS rename failed (oldpath={oldpath:?}, error={e})");
+            ::syslog::warn!("rename(): VFS rename failed (oldpath={oldpath:?}, error={e})");
             Error::new(code, "vfs rename failed")
         })
     }

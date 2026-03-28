@@ -51,7 +51,7 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fallocate(fd, offset, len).map_err(|e| {
                 let code: ::sys::error::ErrorCode = e.into();
-                ::syslog::error!("posix_fallocate(): VFS fallocate failed (fd={fd:?}, error={e})");
+                ::syslog::warn!("posix_fallocate(): VFS fallocate failed (fd={fd:?}, error={e})");
                 Error::new(code, "vfs fallocate failed")
             });
         }

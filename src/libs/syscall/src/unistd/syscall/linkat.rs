@@ -69,7 +69,7 @@ pub fn linkat(
     {
         ::nvx::vfs::fd::vfs_linkat(olddirfd, oldpath, newdirfd, newpath, flags).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("linkat(): VFS linkat failed (oldpath={oldpath:?}, error={e})");
+            ::syslog::warn!("linkat(): VFS linkat failed (oldpath={oldpath:?}, error={e})");
             Error::new(code, "vfs linkat failed")
         })
     }

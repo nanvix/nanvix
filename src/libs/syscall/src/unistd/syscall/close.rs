@@ -36,7 +36,7 @@ pub fn close(fd: i32) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_close(fd).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("close(): VFS close failed (fd={fd}, error={e})");
+                ::syslog::warn!("close(): VFS close failed (fd={fd}, error={e})");
                 Error::new(code, "vfs close failed")
             });
         }
