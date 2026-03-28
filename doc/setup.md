@@ -7,5 +7,5 @@ guide that matches your host operating system:
   are built natively. Uses KVM as the virtualization backend.
 
 - **[Windows Setup](setup-windows.md)** — Full development workflow on Windows 11. Host components
-  are built natively; guest components are cross-compiled inside Docker. Uses the Windows Hypervisor
-  Platform (WHP) as the virtualization backend.
+  are built natively; guest components are cross-compiled using a local toolchain. Uses the Windows
+  Hypervisor Platform (WHP) as the virtualization backend.

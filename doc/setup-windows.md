@@ -8,10 +8,8 @@ This guide will help you set up your development environment to build and run Na
 - [2. Enable Developer Mode](#2-enable-developer-mode)
 - [3. Clone This Repository](#3-clone-this-repository)
 - [4. Enable Windows Hypervisor Platform](#4-enable-windows-hypervisor-platform)
-- [5. Install Docker Desktop](#5-install-docker-desktop)
-- [6. Install the Rust Toolchain](#6-install-the-rust-toolchain)
-- [7. Pull the Docker Toolchain Image](#7-pull-the-docker-toolchain-image)
-- [8. Setup Your IDE (Optional)](#8-setup-your-ide-optional)
+- [5. Run Setup](#5-run-setup)
+- [6. Setup Your IDE (Optional)](#6-setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
 ---
@@ -69,58 +67,38 @@ Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
 
 Restart your machine after enabling the feature.
 
-## 5. Install Docker Desktop
-
-Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) and ensure
-it is configured to use **Linux containers** (the default).
-
-Verify Docker is working:
-
-```powershell
-docker info
-```
-
-## 6. Install the Rust Toolchain
-
-Install Rust via [rustup](https://rustup.rs):
-
-```powershell
-# Download and run the rustup installer.
-winget install Rustlang.Rustup
-```
-
-After installation, restart your terminal and verify:
-
-```powershell
-rustc --version
-cargo --version
-```
-
-## 7. Pull the Docker Toolchain Image
+## 5. Run Setup
 
 ```powershell
 .\z.ps1 setup
 ```
 
-This pulls the pre-built minimal Docker toolchain image required for cross-compiling guest
-components. To use the full (non-minimal) image instead:
+This command validates prerequisites and configures the development environment:
 
-```powershell
-.\z.ps1 setup --with-docker
-```
+1. Verifies you are running Windows 11.
+2. Verifies Developer Mode is enabled.
+3. Verifies the Windows Hypervisor Platform is active.
+4. Installs GNU Make via winget (if not already installed).
+5. Installs LLVM/Clang via winget (if not already installed).
+6. Installs the Rust toolchain via winget (if not already installed).
+7. Configures the repository Git hooks from `.githooks`.
+
+> **Note:** If winget is not available, install the prerequisites manually before running setup:
+>
+> - GNU Make: `winget install ezwinports.make`
+> - LLVM/Clang: `winget install LLVM.LLVM`
+> - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
 
 ---
 
-## 8. Setup Your IDE (Optional)
+## 6. Setup Your IDE (Optional)
 
 Choose one of the following options to set up your IDE for Nanvix development.
 
 ### Visual Studio Code
 
-Use the host-specific settings template below. The Windows template invokes `./z.bat` and also
-routes Rust Analyzer build-script discovery through the Windows Docker workflow. Without the
-Windows override, Rust Analyzer falls back to native `cargo` for build-script metadata and guest
-crates such as `kernel` fail because cross-compilation tools are not available on the host `PATH`.
+Use the host-specific settings template below. The Windows template invokes `./z.bat` and routes
+Rust Analyzer build-script discovery through the Windows build workflow.
 
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force

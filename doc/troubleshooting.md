@@ -7,5 +7,5 @@ environment:
 - **[Linux Troubleshooting](troubleshooting-linux.md)** — Resource leak cleanup, stale build
   cache, CI/CD failures, and TIME_WAIT socket issues on Linux.
 
-- **[Windows Troubleshooting](troubleshooting-windows.md)** — WHP enablement, Docker symlink
-  errors, stale `.venv` cleanup, and build artifact cleanup on Windows 11.
+- **[Windows Troubleshooting](troubleshooting-windows.md)** — WHP enablement, symlink errors,
+  and build artifact cleanup on Windows 11.
