@@ -4,6 +4,10 @@
 name: "Nanvix CI/CD"
 
 on:
+  schedule:
+    # Nightly release: build, test, and publish a release every day at midnight UTC.
+    - cron: "0 0 * * *"
+
   workflow_dispatch:
 
   pull_request:
@@ -31,7 +35,8 @@ concurrency:
 # Build-type strategy:
 #   pull_request      → debug only   (fast feedback during development)
 #   merge_group       → release only (final validation before landing on dev)
-#   push (dev)        → release only (release archives & publish pipeline)
+#   push (dev)        → release only (CI pipeline only, no release publish)
+#   schedule          → release only (nightly release archives & publish pipeline)
 #   workflow_dispatch → both          (full coverage for manual runs)
 
 jobs:
@@ -42,8 +47,9 @@ jobs:
   precheck:
     # The merge queue already ensures the branch is up-to-date, so skip this
     # check for merge_group events to avoid false negatives from the merge
-    # commit detection in the reusable workflow.
-    if: github.event_name != 'merge_group'
+    # commit detection in the reusable workflow. Scheduled runs have no PR
+    # context, so skip them as well.
+    if: github.event_name != 'merge_group' && github.event_name != 'schedule'
     uses: nanvix/nanvix/.github/workflows/branch-up-to-date.yml@dev
     secrets: inherit
 
@@ -68,7 +74,7 @@ jobs:
     # - Non-draft PRs.
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -125,7 +131,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -173,7 +179,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -264,7 +270,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -453,7 +459,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -496,7 +502,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -708,7 +714,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -814,7 +820,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -996,7 +1002,7 @@ jobs:
 
     if: |
       github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
             github.event.head_commit == null ||
@@ -1182,6 +1188,7 @@ jobs:
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
@@ -1236,6 +1243,7 @@ jobs:
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
       needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
@@ -1288,6 +1296,7 @@ jobs:
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.release-archive.result == 'success' &&
       needs.windows-release-archive.result == 'success'
     runs-on:
