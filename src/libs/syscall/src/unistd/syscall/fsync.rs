@@ -47,7 +47,7 @@ pub fn fsync(fd: c_int) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fsync(fd).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("fsync(): VFS fsync failed (fd={fd}, error={e})");
+                ::syslog::warn!("fsync(): VFS fsync failed (fd={fd}, error={e})");
                 Error::new(code, "vfs fsync failed")
             });
         }

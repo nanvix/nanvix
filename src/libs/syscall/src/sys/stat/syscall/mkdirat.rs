@@ -58,7 +58,7 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
     {
         ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
             let code: ErrorCode = e.into();
-            ::syslog::error!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("mkdirat(): VFS mkdir failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs mkdir failed")
         })
     }

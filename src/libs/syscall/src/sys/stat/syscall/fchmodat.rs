@@ -54,7 +54,7 @@ pub fn fchmodat(dirfd: c_int, path: &str, mode: mode_t, flag: c_int) -> Result<(
     {
         ::nvx::vfs::fd::vfs_fchmodat(dirfd, path, mode, flag).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("fchmodat(): VFS fchmodat failed (path={path:?}, error={e})");
+            ::syslog::warn!("fchmodat(): VFS fchmodat failed (path={path:?}, error={e})");
             ::sys::error::Error::new(code, "vfs fchmodat failed")
         })
     }
