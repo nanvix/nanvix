@@ -40,7 +40,7 @@ pub fn stat(pathname: &str, statbuf: &mut sys_stat::stat) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_stat(pathname, statbuf).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("stat(): VFS stat failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("stat(): VFS stat failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs stat failed")
         })
     }

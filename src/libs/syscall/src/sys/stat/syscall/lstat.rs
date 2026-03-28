@@ -45,7 +45,7 @@ pub fn lstat(pathname: &str, buf: &mut sys_stat::stat) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_stat(pathname, buf).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("lstat(): VFS lstat failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("lstat(): VFS lstat failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs lstat failed")
         })
     }

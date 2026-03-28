@@ -50,7 +50,7 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> R
     {
         ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("fstatat(): VFS stat failed (path={path:?}, error={e})");
+            ::syslog::warn!("fstatat(): VFS stat failed (path={path:?}, error={e})");
             ::sys::error::Error::new(code, "vfs stat failed")
         })
     }

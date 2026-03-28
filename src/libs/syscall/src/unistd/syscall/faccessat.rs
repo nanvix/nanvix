@@ -59,7 +59,7 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
     {
         ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
             let code: ErrorCode = e.into();
-            ::syslog::error!("faccessat(): VFS access failed (path={path:?}, error={e})");
+            ::syslog::warn!("faccessat(): VFS access failed (path={path:?}, error={e})");
             Error::new(code, "vfs access failed")
         })
     }

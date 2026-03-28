@@ -44,7 +44,7 @@ pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
             Ok(()) => 0,
             Err(e) => {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
+                ::syslog::warn!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
                 *__errno_location() = code.get();
                 -1
             },

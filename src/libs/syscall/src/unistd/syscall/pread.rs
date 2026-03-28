@@ -66,7 +66,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_pread(fd, buffer, offset).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("pread(): VFS pread failed (fd={fd}, error={e})");
+                ::syslog::warn!("pread(): VFS pread failed (fd={fd}, error={e})");
                 Error::new(code, "vfs pread failed")
             });
         }

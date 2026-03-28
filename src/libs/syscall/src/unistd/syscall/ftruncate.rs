@@ -53,7 +53,7 @@ pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_ftruncate(fd, length).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("ftruncate(): VFS ftruncate failed (fd={fd}, error={e})");
+                ::syslog::warn!("ftruncate(): VFS ftruncate failed (fd={fd}, error={e})");
                 Error::new(code, "vfs ftruncate failed")
             });
         }

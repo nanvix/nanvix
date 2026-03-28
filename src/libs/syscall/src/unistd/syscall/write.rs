@@ -136,7 +136,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             let n: c_size_t = ::nvx::vfs::fd::vfs_write(fd, buffer).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("write(): VFS write failed (fd={fd}, error={e})");
+                ::syslog::warn!("write(): VFS write failed (fd={fd}, error={e})");
                 Error::new(code, "vfs write failed")
             })?;
             return Ok(n);

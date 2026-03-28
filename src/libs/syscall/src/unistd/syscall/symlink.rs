@@ -51,7 +51,7 @@ pub fn symlink(target: &str, linkpath: &str) -> Result<(), Error> {
     // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        ::syslog::error!("symlink(): symlinks not supported on VFS (linkpath={linkpath:?})");
+        ::syslog::warn!("symlink(): symlinks not supported on VFS (linkpath={linkpath:?})");
         Err(Error::new(ErrorCode::OperationNotSupported, "symbolic links not supported on VFS"))
     }
 

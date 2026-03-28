@@ -40,7 +40,7 @@ endif
 
 # Log Level
 ifeq ($(RELEASE),yes)
-export LOG_LEVEL ?= warn
+export LOG_LEVEL ?= error
 else
 export LOG_LEVEL ?= trace
 endif
