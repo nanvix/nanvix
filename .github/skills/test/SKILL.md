@@ -39,7 +39,7 @@ Test configurations are auto-selected based on deployment mode:
 
 ## Windows
 
-On Windows, unit tests can be run via Docker through `z.ps1`:
+On Windows, unit tests can be run natively through `z.ps1`:
 
 ```powershell
 .\z.ps1 build -- run-unit-tests

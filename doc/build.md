@@ -11,5 +11,5 @@ environment:
   built natively or via Docker. Uses `./z` as the build utility.
 
 - **[Windows Build](build-windows.md)** — Full build workflow on Windows 11. Host components are
-  built natively; guest components are cross-compiled inside Docker. Uses `z.ps1` as the build
-  utility.
+  built natively; guest components are cross-compiled using a local toolchain. Uses `z.ps1` as the
+  build utility.

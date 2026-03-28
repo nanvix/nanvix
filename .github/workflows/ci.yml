@@ -442,73 +442,6 @@ jobs:
   # Windows CI (GitHub-Hosted Runners)
   # ==========================================================================================
 
-  # Guest components (kernel, hello-rust-nostd) are cross-compiled on a Linux
-  # runner using the default Rust nightly toolchain. GitHub-hosted Windows
-  # runners do not support the required Rust nightly targets, so this job runs
-  # on ubuntu-24.04 and uploads the resulting ELF binaries for downstream
-  # Windows jobs.
-  windows-guest-build:
-    name: "Windows Guest Build (${{ matrix.machine-type }}, ${{ matrix.build-type }})"
-    needs: [precheck]
-    timeout-minutes: 60
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || github.event_name == 'workflow_dispatch' && '["debug","release"]' || '["release"]') }}
-        machine-type: [microvm, hyperlight]
-    permissions:
-      contents: read
-
-    if: |
-      github.repository == 'nanvix/nanvix' && (
-        github.event_name == 'merge_group' || (
-          needs.precheck.outputs.up_to_date == 'true' && (
-            github.event_name != 'push' ||
-            github.event.head_commit == null ||
-            !startsWith(github.event.head_commit.message, 'Merge ')
-          ) && (
-            github.event_name != 'pull_request' ||
-            !github.event.pull_request.draft
-          )
-        )
-      )
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: "Setup"
-        uses: ./.github/actions/native-setup
-
-      - name: "Build Guest Components"
-        shell: bash
-        env:
-          LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
-        run: |
-          WHP_ARG=""
-          if [ "${{ matrix.machine-type }}" = "microvm" ]; then
-            WHP_ARG="WHP=yes"
-          fi
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- \
-            all-guest-staticlibs all-kernel all-guest-binaries \
-            MACHINE=${{ matrix.machine-type }} \
-            DEPLOYMENT_MODE=standalone \
-            TARGET=x86 \
-            ${WHP_ARG} \
-            LOG_LEVEL=${LOG_LEVEL} \
-            ${RELEASE_FLAG}
-
-      - name: "Upload Guest Artifacts"
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-guest-build-${{ matrix.machine-type }}-${{ matrix.build-type }}
-          retention-days: 1
-          path: |
-            bin/*.elf
-            bin/*.img
-            lib/*.so
-
   # Format check is machine-type independent, so it runs once.
   windows-format-check:
     name: "Windows Format Check"
@@ -591,12 +524,11 @@ jobs:
         run: |
           .\z.ps1 build -- lint-check MACHINE=${{ matrix.machine-type }}
 
-  # Build host binaries (nanvixd, UserVM, nanvix-test) natively on Windows and
-  # run unit tests. Guest artifacts from the Linux job are downloaded and
-  # bundled with the standalone rootfs for the integration test stage.
+  # Build all components (guest + host) natively on Windows using the local
+  # cross-compilation toolchain (GNU Make + rust-lld + clang) and run unit tests.
   windows-ci-build:
     name: "Windows Build (${{ matrix.machine-type }}, ${{ matrix.build-type }})"
-    needs: [windows-format-check, windows-lint-check, windows-guest-build]
+    needs: [windows-format-check, windows-lint-check]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -620,40 +552,25 @@ jobs:
           rustup show
           rustup component add --toolchain $toolchain clippy rustfmt
 
-      - name: "Download Guest Artifacts"
-        uses: actions/download-artifact@v8
-        with:
-          name: windows-guest-build-${{ matrix.machine-type }}-${{ matrix.build-type }}
-          path: .
+      - name: "Setup Prerequisites"
+        shell: pwsh
+        run: |
+          $osVersion = [System.Environment]::OSVersion.Version
+          if ($osVersion.Build -ge 22000) {
+            Write-Host "Detected Windows build $($osVersion.Build) (Windows 11 or later). Running z.ps1 setup..."
+            .\z.ps1 setup
+          }
+          else {
+            Write-Host "Detected Windows build $($osVersion.Build) (< 22000). Skipping z.ps1 setup on CI runner."
+          }
 
-      - name: "Build UserVM"
+      - name: "Build & Unit Test"
         shell: pwsh
         env:
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
         run: |
-          .\z.ps1 build -- uservm $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL
-
-      - name: "Build Nanvixd"
-        shell: pwsh
-        env:
-          LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
-        run: |
-          .\z.ps1 build -- nanvixd $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL
-
-      - name: "Build Nanvix Test Runner"
-        shell: pwsh
-        env:
-          LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
-          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
-        run: |
-          .\z.ps1 build -- nanvix-test $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL
-
-      - name: "Unit Tests"
-        shell: pwsh
-        run: |
-          .\z.ps1 build -- run-unit-tests MACHINE=$env:MACHINE_TYPE
+          .\z.ps1 build -- all run-unit-tests $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
@@ -1412,7 +1329,6 @@ jobs:
         release-archive,
         windows-release-archive,
         publish-release,
-        windows-guest-build,
         windows-format-check,
         windows-lint-check,
         windows-ci-build,

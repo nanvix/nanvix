@@ -8,7 +8,7 @@
 .DESCRIPTION
     Windows counterpart of the './z' bash script. Mirrors the same CLI interface.
     Builds the UserVM natively on Windows with the microvm or hyperlight backend,
-    and builds guest components (kernel, hello-rust-nostd) via Docker.
+    and builds guest components using a local cross-compilation toolchain.
 
 .EXAMPLE
     .\z.ps1 help
@@ -37,39 +37,6 @@ $CargoLock = Join-Path $RootDir "Cargo.lock"
 $VenvDir = Join-Path $RootDir ".venv"
 $SysImage = Join-Path $RootDir "nanvix.img"
 $SysrootLink = Join-Path $RootDir "sysroot"
-$ZCacheFile = Join-Path $RootDir ".z.cache"
-Set-Variable -Scope Script -Name DockerfileRelativePath -Value "scripts/setup/Dockerfile.build" -Option Constant
-
-# ==================================================================================================
-# Build Option Cache
-# ==================================================================================================
-
-function Write-ZCache {
-    param([string[]]$Options)
-    [System.IO.File]::WriteAllLines($ZCacheFile, $Options)
-}
-
-function Read-ZCache {
-    if (-not (Test-Path $ZCacheFile)) {
-        Write-Warn "No cached options found. Run a build first."
-        return @()
-    }
-    $lines = @(Get-Content -Path $ZCacheFile -Encoding UTF8 | Where-Object { $_.Trim() -ne "" })
-    if ($lines.Count -eq 0) {
-        Write-Warn "Cache file is empty."
-        return @()
-    }
-    # Extract only docker mode flags (stop at -- separator), matching Linux read_cache.
-    $result = @()
-    foreach ($line in $lines) {
-        if ($line -eq "--") { break }
-        switch ($line) {
-            "--with-docker" { $result += $line }
-            "--with-minimal-docker" { $result += $line }
-        }
-    }
-    return $result
-}
 
 # Remove a directory junction (or plain directory) without following into the target.
 function Remove-Junction {
@@ -123,10 +90,7 @@ Commands
   help        Prints this help message.
 
 Options
-  --release               Build in release mode.
-  --with-docker           Use the full Docker toolchain image.
-  --with-minimal-docker   Use the minimal Docker toolchain image (default).
-  --with-cached-options   Replay Docker build mode from the last successful build.
+  --release                Build in release mode.
 
 Build Targets (after --)
   all                     Build everything (guest + host).
@@ -137,16 +101,16 @@ Build Targets (after --)
   format-check            Check code formatting (native for host crates).
   lint-check              Check for linting issues (native for uservm).
   run-unit-tests          Run unit tests (native for uservm).
-  format                  Fix code formatting (via Docker).
-  lint                    Fix linting issues (via Docker).
-  spellcheck              Check spelling (via Docker).
-  spellcheck-fix          Fix spelling errors (via Docker).
-  check                   Run cargo check on host crates (native, no Docker).
-  check-uservm            Run cargo check on uservm only (native, no Docker).
-  run-nanvix-tests        Run system integration tests (via Docker).
-  test                    Run all tests (via Docker).
-  verify                  Run Verus formal verification (via Docker).
-  <any-make-target>       Any other target is forwarded to make via Docker.
+  format                  Fix code formatting.
+  lint                    Fix linting issues.
+  spellcheck              Check spelling.
+  spellcheck-fix          Fix spelling errors.
+  check                   Run cargo check on host crates (native).
+  check-uservm            Run cargo check on uservm only (native).
+  run-nanvix-tests        Run system integration tests.
+  test                    Run all tests.
+  verify                  Run Verus formal verification.
+  <any-make-target>       Any other target is forwarded to make.
 
 Run Options (after --)
   -program <path>         Path to guest binary (default: bin/hello-rust-nostd.elf).
@@ -163,137 +127,11 @@ Test Parameters (after --)
   LOG_LEVEL=<level>       Set RUST_LOG for test execution.
 
 Prerequisites
-  - Docker Desktop for Windows (with Linux containers enabled).
+  - GNU Make on PATH (for cross-compiling guest components).
   - Windows Hypervisor Platform enabled (for running the UserVM).
   - Rust toolchain on Windows (via rustup).
 
 "@
-}
-
-# ==================================================================================================
-# Symlink Helpers
-# ==================================================================================================
-
-# On Windows with core.symlinks=false, Git checks out symlinks as missing files (or small text files
-# containing the target path). This function detects such entries and materializes them as copies of
-# the target so that the Docker build context includes the correct file content.
-function Restore-GitSymlinks {
-    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
-    $ErrorActionPreference = 'Continue'
-
-    Write-Info "Restoring Git symlinks as file copies (Windows workaround)..."
-    $restored = 0
-    # List all git symlinks (mode 120000).
-    $symlinkLines = git ls-files -s 2>$null | Where-Object { $_ -match '^120000' }
-    foreach ($line in $symlinkLines) {
-        # Format: "120000 <hash> <stage>\t<path>"
-        $parts = $line -split '\t', 2
-        if ($parts.Count -lt 2) { continue }
-        $filePath = $parts[1].Trim()
-        if (-not $filePath) { continue }
-
-        # Extract the blob hash from the metadata portion.
-        $metaParts = $parts[0] -split '\s+'
-        if ($metaParts.Count -lt 2) { continue }
-        $blobHash = $metaParts[1]
-
-        $absPath = Join-Path $RootDir $filePath
-
-        # If Git already checked out a native symlink, leave it alone. Docker can
-        # consume the real symlink directly and overwriting it races with tools
-        # like rust-analyzer that may have the path open.
-        if (Test-Path $absPath) {
-            $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
-            if ($null -ne $item -and (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
-                continue
-            }
-        }
-
-        # Read the raw symlink target from the blob object.
-        # For mode 120000, the blob content is the relative target path.
-        # NOTE: Do NOT use 'git show HEAD:<path>' - it follows symlinks
-        # and returns the resolved file content instead of the target path.
-        $target = (git cat-file blob $blobHash 2>$null)
-        if (-not $target) { continue }
-        # cat-file may return an array of lines; join them first.
-        if ($target -is [array]) { $target = $target -join "`n" }
-        $target = $target.Trim()
-
-        # Sanity check: symlink targets are short relative paths (e.g.
-        # "../../shared/build.rs"). If the blob content looks like source
-        # code (multi-line or very long), the entry is not a real symlink
-        # or has already been resolved - skip it.
-        if ($target.Contains("`n") -or $target.Length -gt 500) {
-            continue
-        }
-
-        # Resolve the target relative to the symlink's directory.
-        $fileDir = Split-Path $absPath -Parent
-        $targetAbsPath = Join-Path $fileDir $target
-        $targetAbsPath = [System.IO.Path]::GetFullPath($targetAbsPath)
-
-        if (-not (Test-Path $targetAbsPath)) {
-            Write-Warn "Symlink target not found: $filePath -> $target"
-            continue
-        }
-
-        # Create parent directory if needed.
-        $parentDir = Split-Path $absPath -Parent
-        if (-not (Test-Path $parentDir)) {
-            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-        }
-
-        # Copy the target content as the symlink file.
-        if (Test-Path $targetAbsPath -PathType Container) {
-            # Target is a directory; copy as directory.
-            if (Test-Path $absPath) { Remove-Item $absPath -Recurse -Force }
-            Copy-Item -Path $targetAbsPath -Destination $absPath -Recurse -Force
-        }
-        else {
-            Copy-Item -Path $targetAbsPath -Destination $absPath -Force
-        }
-        $restored++
-    }
-    if ($restored -gt 0) {
-        Write-Info "Restored $restored symlink(s) as file copies."
-    }
-    else {
-        Write-Info "No symlinks needed restoring."
-    }
-}
-
-# Removes the materialized symlink copies and restores the original Git symlink
-# text files so they don't pollute the working tree.
-function Remove-RestoredSymlinks {
-    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
-    $ErrorActionPreference = 'Continue'
-
-    $symlinkPaths = @()
-    $symlinkLines = git ls-files -s 2>$null | Where-Object { $_ -match '^120000' }
-    foreach ($line in $symlinkLines) {
-        $parts = $line -split '\t', 2
-        if ($parts.Count -lt 2) { continue }
-        $filePath = $parts[1].Trim()
-        if (-not $filePath) { continue }
-        $absPath = Join-Path $RootDir $filePath
-        if (Test-Path $absPath) {
-            $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
-            if ($null -eq $item) {
-                Write-Warn "Cannot read attributes for '$filePath'; skipping removal."
-            }
-            elseif (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
-                Remove-Item $absPath -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-        $symlinkPaths += $filePath
-    }
-
-    # Restore the original symlink text files from Git so the working tree stays clean.
-    if ($symlinkPaths.Count -gt 0) {
-        foreach ($sp in $symlinkPaths) {
-            git checkout -- $sp 2>$null
-        }
-    }
 }
 
 # ==================================================================================================
@@ -328,148 +166,223 @@ function Install-GitHooks {
 }
 
 # ==================================================================================================
-# Docker
+# Symlink Helpers
 # ==================================================================================================
 
-function Assert-DockerAvailable {
-    $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
-    if (-not $dockerAvailable) {
-        Write-Err "Docker is not available. Install Docker Desktop for Windows."
+# On Windows without Developer Mode, Git cannot create native symlinks and
+# checks them out as small text files containing the target path. This function
+# detects such entries and copies the target content in-place so that Rust and
+# Make can find the real files.
+function Restore-GitSymlinks {
+    $ErrorActionPreference = 'Continue'
+
+    $restored = 0
+    $symlinkLines = git ls-files -s 2>$null | Where-Object { $_ -match '^120000' }
+    foreach ($line in $symlinkLines) {
+        $parts = $line -split '\t', 2
+        if ($parts.Count -lt 2) { continue }
+        $filePath = $parts[1].Trim()
+        if (-not $filePath) { continue }
+
+        $absPath = Join-Path $RootDir $filePath
+
+        # Skip if the entry is already a real symlink or directory junction.
+        if (Test-Path $absPath) {
+            $item = Get-Item $absPath -Force -ErrorAction SilentlyContinue
+            if ($null -ne $item -and (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+                continue
+            }
+        }
+
+        # Read the first line; if it looks like a short relative path, it is a
+        # broken symlink text stub.
+        $content = Get-Content $absPath -Raw -ErrorAction SilentlyContinue
+        if (-not $content) { continue }
+        $target = $content.Trim()
+        if ($target.Contains("`n") -or $target.Length -gt 500) { continue }
+
+        # Resolve the target relative to the symlink's parent directory.
+        $fileDir = Split-Path $absPath -Parent
+        $targetAbs = [System.IO.Path]::GetFullPath((Join-Path $fileDir $target))
+        if (-not (Test-Path $targetAbs)) { continue }
+
+        # Replace the text stub with a copy of the target.
+        if (Test-Path $targetAbs -PathType Container) {
+            if (Test-Path $absPath) { Remove-Item $absPath -Recurse -Force }
+            Copy-Item -Path $targetAbs -Destination $absPath -Recurse -Force
+        }
+        else {
+            Copy-Item -Path $targetAbs -Destination $absPath -Force
+        }
+        $restored++
+    }
+    if ($restored -gt 0) {
+        Write-Info "Restored $restored symlink(s) as file copies (Developer Mode not enabled)."
+    }
+}
+
+# ==================================================================================================
+# Make
+# ==================================================================================================
+
+# Creates an ld.exe shim from rust-lld so that the kernel and guest linker
+# ("linker": "ld" in target specs) works on Windows. rust-lld auto-detects
+# GNU ld flavor when its executable name is 'ld' or 'ld.lld'.
+function Ensure-LdShim {
+    $shimDir = Join-Path $RootDir ".z.shims"
+    $shimExe = Join-Path $shimDir "ld.exe"
+
+    # Check whether an existing ld.exe on PATH supports ELF linking.
+    # Some Windows environments (e.g., CI runners) ship an ld.exe that
+    # only supports PE formats (i386pep, i386pe). We need one that
+    # supports ELF cross-linking for guest binaries. rust-lld (LLD)
+    # supports both ELF and PE, so we check for "LLD" in the version
+    # string to detect a capable linker.
+    $existingLd = Get-Command ld.exe -ErrorAction SilentlyContinue
+    if ($existingLd) {
+        $ldVersion = & $existingLd.Source -V 2>&1 | Out-String
+        if ($ldVersion -match 'LLD') {
+            # Existing ld is LLD-based (supports ELF) — no shim needed.
+            return
+        }
+        # Existing ld does not support ELF; fall through to create the shim
+        # and prepend it to PATH so it takes precedence.
+    }
+
+    # Only recreate if missing.
+    if (Test-Path $shimExe) {
+        if ($env:Path -notlike "*$shimDir*") {
+            $env:Path = "$shimDir;$env:Path"
+        }
+        return
+    }
+
+    # Locate rust-lld inside the active Rust toolchain.
+    $rustcPath = Get-Command rustc -ErrorAction SilentlyContinue
+    if (-not $rustcPath) {
+        Write-Err "rustc not found. Install the Rust toolchain."
         exit 1
     }
-}
-
-function Assert-DockerImageAvailable {
-    param([string]$ImageName)
-    # Temporarily suppress errors from native commands so that Docker stderr
-    # does not trigger a terminating error under $ErrorActionPreference = "Stop".
-    $ErrorActionPreference = 'SilentlyContinue'
-    docker image inspect $ImageName >$null 2>&1
-    $exitCode = $LASTEXITCODE
-    $ErrorActionPreference = 'Stop'
-    if ($exitCode -ne 0) {
-        Write-Err "Docker image '$ImageName' not found locally. Run '.\z setup' to pull it."
+    $sysroot = (& rustc --print sysroot 2>$null)
+    if (-not $sysroot -or -not (Test-Path $sysroot)) {
+        Write-Err "Could not determine Rust sysroot."
         exit 1
     }
+    # Derive the active host triple from rustc -vV instead of hardcoding MSVC.
+    $rustcVersionInfo = (& rustc -vV 2>$null)
+    if (-not $rustcVersionInfo) {
+        Write-Err "Could not query rustc version info to determine host triple."
+        exit 1
+    }
+    $hostTriple = $null
+    foreach ($line in ($rustcVersionInfo -split "`n")) {
+        if ($line -like "host:*") {
+            $hostTriple = $line.Split(":", 2)[1].Trim()
+            break
+        }
+    }
+    if (-not $hostTriple) {
+        Write-Err "Could not determine Rust host triple from 'rustc -vV' output."
+        exit 1
+    }
+
+    $lldPath = Join-Path $sysroot ("lib\rustlib\{0}\bin\rust-lld.exe" -f $hostTriple)
+    if (-not (Test-Path $lldPath)) {
+        Write-Err "rust-lld not found at $lldPath. Cannot cross-link guest ELF binaries."
+        exit 1
+    }
+
+    # Copy rust-lld.exe as ld.exe and ld.lld.exe. rust-lld detects GNU linker
+    # flavor from its executable name (ld, ld.lld), so no wrapper is needed.
+    # ld.exe is needed by cargo (target spec "linker": "ld").
+    # ld.lld.exe is needed by clang -fuse-ld=lld for C cross-compilation.
+    if (-not (Test-Path $shimDir)) {
+        New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
+    }
+    Copy-Item -Path $lldPath -Destination $shimExe -Force
+    $shimLld = Join-Path $shimDir "ld.lld.exe"
+    if (-not (Test-Path $shimLld)) {
+        Copy-Item -Path $lldPath -Destination $shimLld -Force
+    }
+
+    if ($env:Path -notlike "*$shimDir*") {
+        $env:Path = "$shimDir;$env:Path"
+    }
 }
 
-function Get-DockerImageName {
-    param([bool]$UseMinimal = $true)
-    $cargoToml = Join-Path $RootDir "Cargo.toml"
-    $versionLine = Select-String -Path $cargoToml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
-    if ($versionLine -and $versionLine.Matches[0].Groups[1].Value) {
-        $v = $versionLine.Matches[0].Groups[1].Value -split '\.'
-        $imageTag = "v$($v[0]).$($v[1]).x"
-    }
-    else {
-        $imageTag = "latest"
-        Write-Warn "Could not parse version from Cargo.toml, using '$imageTag'."
-    }
-    $suffix = if ($UseMinimal) { "-minimal" } else { "" }
-    return "nanvix/toolchain:$imageTag$suffix"
-}
-
-function Get-SccacheArgs {
-    $result = @()
-    if ($env:SCCACHE_GHA_ENABLED) {
-        $result += "--build-arg"
-        $result += "SCCACHE_GHA_ENABLED=$env:SCCACHE_GHA_ENABLED"
-    }
-    if ($env:SCCACHE_GHA_CACHE_TO) {
-        $result += "--build-arg"
-        $result += "SCCACHE_GHA_CACHE_TO=$env:SCCACHE_GHA_CACHE_TO"
-    }
-    if ($env:SCCACHE_GHA_CACHE_FROM) {
-        $result += "--build-arg"
-        $result += "SCCACHE_GHA_CACHE_FROM=$env:SCCACHE_GHA_CACHE_FROM"
-    }
-    if ($env:ACTIONS_RESULTS_URL) {
-        $result += "--secret"
-        $result += "id=actions_results_url,env=ACTIONS_RESULTS_URL"
-    }
-    if ($env:ACTIONS_RUNTIME_TOKEN) {
-        $result += "--secret"
-        $result += "id=actions_runtime_token,env=ACTIONS_RUNTIME_TOKEN"
-    }
-    return $result
-}
-
-function Invoke-DockerBuild {
-    param([string]$BuildParams, [bool]$IsRelease = $false, [bool]$UseMinimal = $true)
+function Invoke-Make {
+    param([string[]]$MakeParams = @())
 
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
-    Assert-DockerAvailable
-
-    $imageName = Get-DockerImageName -UseMinimal $UseMinimal
-
-    # Validate that the Docker image exists locally before attempting the build.
-    Assert-DockerImageAvailable -ImageName $imageName
-
-    # Restore Git symlinks as file copies so the Docker build context is complete.
-    Restore-GitSymlinks
-
-    Write-Host "  Image: $imageName" -ForegroundColor DarkGray
-
-    $sysrootSuffix = if ($IsRelease) { "release" } else { "debug" }
-
-    $dockerfilePath = Join-Path $RootDir $DockerfileRelativePath
-    if (-not (Test-Path $dockerfilePath)) {
-        Remove-RestoredSymlinks
-        Write-Err "Build Dockerfile not found at $dockerfilePath"
+    $makeCmd = Get-Command make -ErrorAction SilentlyContinue
+    if (-not $makeCmd) {
+        # Auto-discover make from common winget install locations.
+        $wingetMake = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\*make*\bin\make.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($wingetMake) {
+            $env:Path = "$($wingetMake.DirectoryName);$env:Path"
+            $makeCmd = Get-Command make -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not $makeCmd) {
+        Write-Err "GNU Make is not available. Install it (winget install ezwinports.make) and restart your terminal."
         exit 1
     }
 
-    $env:DOCKER_BUILDKIT = "1"
-    Write-Host "  docker build (params: $BuildParams)" -ForegroundColor DarkGray
-
-    $ghaSccacheArgs = Get-SccacheArgs
-
-    # Remove the local .venv directory if it exists. Docker builds may create a
-    # .venv inside the container with a lib64 -> lib symlink (standard Linux Python
-    # venv). If a previous Docker export left a broken reparse point at .venv\lib64
-    # on Windows, the output exporter fails with "The file cannot be accessed by
-    # the system." Removing it beforehand prevents this.
-    if (Test-Path $VenvDir) {
-        # Use cmd to remove in case of broken reparse points that PowerShell can't handle.
-        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
-        if (Test-Path $VenvDir) {
-            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+    # Auto-discover clang from the default LLVM install location.
+    if (-not (Get-Command clang -ErrorAction SilentlyContinue)) {
+        $llvmBin = "C:\Program Files\LLVM\bin"
+        if (Test-Path "$llvmBin\clang.exe") {
+            $env:Path = "$llvmBin;$env:Path"
         }
     }
 
-    # Use the repository directory directly as the Docker build context.
-    # The .dockerignore file handles exclusions (mirroring the old robocopy filter).
-    # Restore-GitSymlinks (called above) already materialized symlinks in-place,
-    # so the context is complete. Symlinks are restored after the build via the
-    # finally block below.
-    $dockerArgs = @(
-        "build",
-        "--build-arg", "BASE_IMAGE=$imageName",
-        "--build-arg", "BUILD_PARAMS=$BuildParams",
-        "--build-arg", "SYSROOT_SUFFIX=$sysrootSuffix",
-        "--build-arg", "WORKSPACE_PATH=/mnt",
-        "--output", "type=local,dest=.",
-        "--progress=plain",
-        "-f", $dockerfilePath
-    )
-    if ($ghaSccacheArgs.Count -gt 0) {
-        $dockerArgs += $ghaSccacheArgs
-    }
-    $dockerArgs += $RootDir
-
-    $buildExitCode = 1
-    try {
-        & docker @dockerArgs
-        $buildExitCode = $LASTEXITCODE
-    }
-    finally {
-        Remove-RestoredSymlinks
+    # The Makefile uses $(HOME)/.cargo/bin/cargo. On Windows, HOME is not set
+    # by default so the path resolves to /.cargo/bin/cargo. Set it from
+    # USERPROFILE with forward slashes so that MSYS sh does not interpret
+    # backslashes as escape characters.
+    if (-not $env:HOME) {
+        $env:HOME = $env:USERPROFILE -replace '\\', '/'
     }
 
-    if ($buildExitCode -ne 0) {
-        Write-Err "Docker build failed (params: $BuildParams)."
+    # GNU Make needs a POSIX shell (sh) for recipe lines that use Unix syntax
+    # (rm, cp, mkdir -p, env-var prefixes). Git for Windows ships sh.exe and
+    # the required coreutils in its usr/bin directory. Add it to PATH so that
+    # make auto-detects sh.exe as its shell.
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd) {
+        $gitUsrBin = Join-Path (Split-Path (Split-Path $gitCmd.Source)) "usr\bin"
+        if ((Test-Path $gitUsrBin) -and ($env:Path -notlike "*$gitUsrBin*")) {
+            $env:Path = "$gitUsrBin;$env:Path"
+        }
+    }
+
+    # Ensure Python Scripts directory (codespell, etc.) is on PATH for make.
+    # Get-Command may return the WindowsApps stub; ask Python for its real
+    # scripts directory instead.
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCmd) {
+        $pythonScripts = & python -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>$null
+        if ($pythonScripts -and (Test-Path $pythonScripts) -and ($env:Path -notlike "*$pythonScripts*")) {
+            $env:Path = "$pythonScripts;$env:Path"
+        }
+    }
+
+    # Guest target specs use "linker": "ld" (GNU ld for ELF linking). On
+    # Windows there is no system ld, but the Rust toolchain ships rust-lld
+    # which is compatible with GNU ld. Create an ld.exe shim.
+    Ensure-LdShim
+
+    # If symlinks are checked out as text stubs (Developer Mode not enabled),
+    # restore them as file copies so that cargo and make find real content.
+    Restore-GitSymlinks
+
+    Write-Host "  make $($MakeParams -join ' ')" -ForegroundColor DarkGray
+
+    & make @MakeParams
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "make failed (params: $($MakeParams -join ' '))."
         exit 1
     }
 }
@@ -488,6 +401,11 @@ function Add-GuestMachineDefaults {
 
     if ($machine -eq 'microvm' -and -not ($resolvedParams | Where-Object { $_ -match '^WHP=' })) {
         $resolvedParams += "WHP=yes"
+    }
+
+    # Windows only supports standalone deployment mode.
+    if (-not ($resolvedParams | Where-Object { $_ -match '^DEPLOYMENT_MODE=' })) {
+        $resolvedParams += "DEPLOYMENT_MODE=standalone"
     }
 
     return , $resolvedParams
@@ -549,21 +467,15 @@ function Build-UserVm {
 }
 
 function Build-Guest {
-    param([bool]$IsRelease, [bool]$UseMinimal = $true, [string[]]$ExtraMakeParams = @())
+    param([bool]$IsRelease, [string[]]$ExtraMakeParams = @())
 
     # Prevent cleanup errors from aborting the build (consistent with other functions).
     $ErrorActionPreference = 'Continue'
 
-    Write-Info "Building guest components (Docker)..."
+    Write-Info "Building guest components..."
 
-    # Remove guest artifacts from previous Docker exports. Docker's
-    # --output type=local is additive: it writes new files but never deletes
-    # files that no longer exist in the output. Without this cleanup, stale
-    # guest binaries (e.g., a removed .elf) persist across builds.
-    # This cleanup is safe here because Build-Guest always does a full guest
-    # rebuild (all-guest-staticlibs all-kernel all-guest-binaries). It must
-    # NOT be placed in Invoke-DockerBuild, which is also called for partial
-    # targets (e.g., kernel, format-check) that would not regenerate all files.
+    # Remove guest artifacts from previous builds. This cleanup ensures stale
+    # guest binaries (e.g., a removed .elf) do not persist across builds.
     foreach ($dir in @($BinDir, $LibDir)) {
         if (-not (Test-Path $dir)) { continue }
         Get-ChildItem -Path (Join-Path $dir '*') -File -Include "*.elf", "*.wasm", "*.a", "*.so", "*.img" -Recurse -ErrorAction SilentlyContinue |
@@ -571,7 +483,7 @@ function Build-Guest {
     }
 
     # Remove the sysroot directory matching the current build profile so that
-    # stale sysroot artifacts do not survive across Docker exports.
+    # stale sysroot artifacts do not survive across builds.
     $sysrootSuffix = if ($IsRelease) { "release" } else { "debug" }
     $sysrootDir = Join-Path $RootDir "sysroot-$sysrootSuffix"
     if (Test-Path $sysrootDir) {
@@ -587,9 +499,9 @@ function Build-Guest {
         $buildParams += $ExtraMakeParams
     }
     $buildParams = Add-GuestMachineDefaults -MakeParams $buildParams
-    Invoke-DockerBuild -BuildParams ($buildParams -join ' ') -IsRelease $IsRelease -UseMinimal $UseMinimal
+    Invoke-Make -MakeParams $buildParams
 
-    # Create sysroot junction after Docker build (parity with Linux ln -sfn).
+    # Create sysroot junction after build (parity with Linux ln -sfn).
     $sysrootTarget = Join-Path $RootDir "sysroot-$sysrootSuffix"
     if (Test-Path $sysrootTarget) {
         Remove-Junction -Path $SysrootLink
@@ -885,13 +797,12 @@ function Invoke-DistClean {
     # Remove bin/.
     if (Test-Path $BinDir) { Remove-Item $BinDir -Recurse -Force }
 
-    # Remove .venv/. Use cmd rmdir first because Docker builds on Windows can
-    # leave broken reparse points (e.g., lib64 -> lib) that PowerShell's
-    # Remove-Item cannot handle.
+    # Remove .venv/.
     if (Test-Path $VenvDir) {
-        cmd /c "rmdir /s /q `"$VenvDir`"" 2>$null
+        Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $VenvDir) {
-            Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+            # Fallback for broken reparse points from older Docker-based workflows.
+            & cmd /c "rmdir /s /q `"$VenvDir`"" *> $null
         }
     }
 
@@ -903,18 +814,9 @@ function Invoke-DistClean {
 
     # Sysroot junction and images/ already removed by Invoke-Clean above.
 
-    # Remove build option cache.
-    if (Test-Path $ZCacheFile) { Remove-Item $ZCacheFile -Force }
-
-    # Clean up Docker build cache for Nanvix.
-    $dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
-    if ($dockerAvailable) {
-        Write-Info "Pruning Docker build cache..."
-        docker builder prune --force
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warn "Docker build cache prune failed with exit code $LASTEXITCODE."
-        }
-    }
+    # Remove linker shim directory.
+    $shimDir = Join-Path $RootDir ".z.shims"
+    if (Test-Path $shimDir) { Remove-Item $shimDir -Recurse -Force }
 
     Write-Success "Full cleanup complete."
 }
@@ -1123,27 +1025,196 @@ function Invoke-Bench {
 # Setup
 # ==================================================================================================
 
-function Invoke-Setup {
-    param([bool]$UseMinimal = $true)
+function Assert-WindowsVersion {
+    $build = [System.Environment]::OSVersion.Version.Build
+    if ($build -lt 22000) {
+        Write-Warn "Windows 11 (build 22000+) is recommended. Current build: $build."
+        Write-Warn "Some features (e.g., WHP-backed UserVM workflows) may not be available on this host."
+        return
+    }
+    Write-Success "Windows 11 detected (build $build)."
+}
 
+function Assert-DeveloperMode {
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+    $val = Get-ItemProperty -Path $regPath -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue
+    if (-not $val -or $val.AllowDevelopmentWithoutDevLicense -ne 1) {
+        Write-Warn "Developer Mode is not enabled. Symlinks will be restored as file copies."
+        Write-Warn "  Enable it in Settings > Privacy & Security > For developers."
+        return
+    }
+    Write-Success "Developer Mode is enabled."
+}
+
+function Assert-HypervisorEnabled {
+    $cs = Get-CimInstance Win32_ComputerSystem
+    if (-not $cs.HypervisorPresent) {
+        Write-Warn "No hypervisor detected. The UserVM will not run without WHP."
+        Write-Warn "  Enable it in an elevated PowerShell prompt and restart:"
+        Write-Warn "  Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All"
+        return
+    }
+    Write-Success "Hypervisor is active."
+}
+
+function Install-GnuMake {
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    if (Get-Command make -ErrorAction SilentlyContinue) {
+        Write-Success "GNU Make is already installed."
+        return
+    }
+
+    # Check winget package directory (portable zip — not on PATH by default).
+    $wingetMake = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\*make*\bin\make.exe" `
+        -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wingetMake) {
+        $env:Path = "$($wingetMake.DirectoryName);$env:Path"
+        Write-Success "GNU Make found at $($wingetMake.FullName)."
+        return
+    }
+
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        Write-Err "winget is not available. Install GNU Make manually: https://sourceforge.net/projects/ezwinports/files/"
+        exit 1
+    }
+
+    Write-Info "Installing GNU Make via winget..."
+    winget install ezwinports.make --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to install GNU Make. Install it manually: winget install ezwinports.make"
+        exit 1
+    }
+
+    # Refresh discovery after installation.
+    $wingetMake = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\*make*\bin\make.exe" `
+        -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wingetMake) {
+        $env:Path = "$($wingetMake.DirectoryName);$env:Path"
+    }
+
+    if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+        Write-Warn "GNU Make installed but not on PATH. Restart your terminal and re-run setup."
+        exit 1
+    }
+    Write-Success "GNU Make installed."
+}
+
+function Install-Llvm {
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    if (Get-Command clang -ErrorAction SilentlyContinue) {
+        Write-Success "LLVM/Clang is already installed."
+        return
+    }
+
+    # Check default LLVM install location.
+    $llvmBin = "C:\Program Files\LLVM\bin"
+    if (Test-Path "$llvmBin\clang.exe") {
+        $env:Path = "$llvmBin;$env:Path"
+        Write-Success "LLVM/Clang found at $llvmBin."
+        return
+    }
+
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        Write-Err "winget is not available. Install LLVM manually: https://releases.llvm.org/"
+        exit 1
+    }
+
+    Write-Info "Installing LLVM/Clang via winget..."
+    winget install LLVM.LLVM --accept-source-agreements --accept-package-agreements --silent
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to install LLVM. Install it manually: winget install LLVM.LLVM"
+        exit 1
+    }
+
+    # Refresh PATH after installation.
+    if ((Test-Path $llvmBin) -and ($env:Path -notlike "*$llvmBin*")) {
+        $env:Path = "$llvmBin;$env:Path"
+    }
+
+    if (-not (Get-Command clang -ErrorAction SilentlyContinue)) {
+        Write-Warn "LLVM installed but not on PATH. Restart your terminal and re-run setup."
+        exit 1
+    }
+    Write-Success "LLVM/Clang installed."
+}
+
+function Install-RustToolchain {
+    # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
+    $ErrorActionPreference = 'Continue'
+
+    if (Get-Command rustc -ErrorAction SilentlyContinue) {
+        Write-Success "Rust toolchain is already installed."
+        return
+    }
+
+    # Check if cargo bin exists but is not on PATH.
+    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+    if (Test-Path (Join-Path $cargoBin "rustc.exe")) {
+        if ($env:Path -notlike "*$cargoBin*") {
+            $env:Path = "$cargoBin;$env:Path"
+        }
+        Write-Success "Rust toolchain is already installed."
+        return
+    }
+
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        Write-Err "winget is not available. Install Rust manually: https://rustup.rs"
+        exit 1
+    }
+
+    Write-Info "Installing Rust toolchain via winget..."
+    winget install Rustlang.Rustup --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to install Rust. Install it manually: https://rustup.rs"
+        exit 1
+    }
+
+    # Add cargo bin to PATH for the current session.
+    if ((Test-Path $cargoBin) -and ($env:Path -notlike "*$cargoBin*")) {
+        $env:Path = "$cargoBin;$env:Path"
+    }
+
+    if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) {
+        Write-Warn "Rust installed but not on PATH. Restart your terminal and re-run setup."
+        exit 1
+    }
+    Write-Success "Rust toolchain installed."
+}
+
+function Invoke-Setup {
     # Prevent native command stderr from triggering $ErrorActionPreference = "Stop".
     $ErrorActionPreference = 'Continue'
 
     Write-Info "Setting up Nanvix development environment..."
 
-    Assert-DockerAvailable
+    # Step 1: Verify Windows version.
+    Assert-WindowsVersion
 
-    $imageName = Get-DockerImageName -UseMinimal $UseMinimal
-    Write-Info "Pulling Docker image: $imageName"
-    docker pull $imageName
+    # Step 2: Verify Developer Mode.
+    Assert-DeveloperMode
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to pull Docker image '$imageName'."
-        exit 1
-    }
+    # Step 3: Verify Windows Hypervisor Platform.
+    Assert-HypervisorEnabled
 
-    Write-Success "Docker image '$imageName' downloaded successfully."
+    # Step 4: Install GNU Make if missing.
+    Install-GnuMake
+
+    # Step 5: Install LLVM/Clang if missing.
+    Install-Llvm
+
+    # Step 6: Install Rust toolchain if missing.
+    Install-RustToolchain
+
+    # Step 7: Configure Git hooks.
     Install-GitHooks
+
     Write-Success "Setup complete."
 }
 
@@ -1176,22 +1247,17 @@ function Main {
     # Parse options and positional arguments.
     $isRelease = $false
     $isProfile = $false
-    $useMinimalDocker = $true
-    $useCachedOptions = $false
-    $dockerModeOptionSet = $false
     $buildParams = @()
 
     $pastSeparator = $false
 
-    foreach ($arg in $remaining) {
+    for ($i = 0; $i -lt $remaining.Count; $i++) {
+        $arg = $remaining[$i]
         if ($arg -eq "--") { $pastSeparator = $true; continue }
         if (-not $pastSeparator -and $arg.StartsWith("--")) {
             switch ($arg) {
                 "--release" { $isRelease = $true }
                 "--profile" { $isProfile = $true; $isRelease = $true }
-                "--with-docker" { $useMinimalDocker = $false; $dockerModeOptionSet = $true }
-                "--with-minimal-docker" { $useMinimalDocker = $true; $dockerModeOptionSet = $true }
-                "--with-cached-options" { $useCachedOptions = $true }
                 default {
                     Write-Err "Unknown option: $arg"
                     exit 1
@@ -1201,18 +1267,6 @@ function Main {
         else {
             if ($arg -ne '') {
                 $buildParams += $arg
-            }
-        }
-    }
-
-    # Apply cached options only when no docker mode flag was explicitly set on
-    # the command line. This matches Linux z behavior: explicit flags always win.
-    if ($useCachedOptions -and -not $dockerModeOptionSet) {
-        $cached = Read-ZCache
-        foreach ($opt in $cached) {
-            switch ($opt) {
-                "--with-docker" { $useMinimalDocker = $false }
-                "--with-minimal-docker" { $useMinimalDocker = $true }
             }
         }
     }
@@ -1232,7 +1286,6 @@ function Main {
 
             Write-Info "Command:  build"
             Write-Info "Release:  $isRelease"
-            Write-Info "Minimal:  $useMinimalDocker"
             Write-Info "Targets:  $($buildParams -join ' ')"
             Write-Host ""
 
@@ -1259,7 +1312,7 @@ function Main {
             foreach ($target in $targets) {
                 switch ($target) {
                     "all" {
-                        Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
+                        Build-Guest -IsRelease $isRelease -ExtraMakeParams $makeParams
                         Build-UserVm -IsRelease $isRelease -Machine $machine
                         Build-Nanvixd -IsRelease $isRelease -Machine $machine -IsProfile $isProfile
                         Build-NanvixTest -IsRelease $isRelease -Machine $machine
@@ -1284,10 +1337,10 @@ function Main {
                         Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel -IsProfile $isProfile
                     }
                     "guest" {
-                        Build-Guest -IsRelease $isRelease -UseMinimal $useMinimalDocker -ExtraMakeParams $makeParams
+                        Build-Guest -IsRelease $isRelease -ExtraMakeParams $makeParams
                     }
                     "format-check" {
-                        # Native format check for host crates (no Docker required).
+                        # Format check for host crates.
                         Write-Info "Checking code formatting (native)..."
                         $ErrorActionPreference = 'Continue'
                         cargo fmt -p uservm -p nanvixd -p mkramfs --check
@@ -1315,7 +1368,7 @@ function Main {
                         Write-Success "Lint check passed."
                     }
                     "run-unit-tests" {
-                        # Native unit tests for host crates (no Docker required).
+                        # Unit tests for host crates.
                         $features = Get-NativeCargoFeatures -Machine $machine
                         Write-Info "Running unit tests (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
@@ -1327,7 +1380,7 @@ function Main {
                         Write-Success "Unit tests passed."
                     }
                     "check-uservm" {
-                        # Native cargo check for uservm only (no Docker required).
+                        # Cargo check for uservm only.
                         $features = Get-NativeCargoFeatures -Machine $machine
                         Write-Info "Checking uservm (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
@@ -1357,10 +1410,8 @@ function Main {
                         Write-Success "Check passed (uservm)."
                     }
                     "check" {
-                        # Native cargo check for host crates (no Docker required).
-                        # This avoids the infinite rebuild loop caused by Docker's
-                        # symlink manipulation and file output when used with
-                        # rust-analyzer. Pass MESSAGE_FORMAT=json for RA integration.
+                        # Cargo check for host crates.
+                        # Pass MESSAGE_FORMAT=json for Rust Analyzer integration.
                         $features = Get-NativeCargoFeatures -Machine $machine
                         Write-Info "Checking host crates (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
@@ -1406,50 +1457,50 @@ function Main {
                         Write-Success "Check passed."
                     }
                     "spellcheck" {
-                        # Spellcheck requires pyspelling which is only available inside
-                        # Docker. When Docker is not available or not running, skip gracefully.
+                        $spellParams = Add-GuestMachineDefaults `
+                            -MakeParams (@("spellcheck") + $makeParams)
+                        Write-Info "Running spellcheck..."
+                        Invoke-Make -MakeParams $spellParams
+                    }
+                    "test" {
+                        # Build everything and run unit tests (Windows standalone).
+                        Build-Guest -IsRelease $isRelease -ExtraMakeParams $makeParams
+                        Build-UserVm -IsRelease $isRelease -Machine $machine
+                        Build-Nanvixd -IsRelease $isRelease -Machine $machine -IsProfile $isProfile
+                        Build-NanvixTest -IsRelease $isRelease -Machine $machine
+                        Build-NanvixBench -IsRelease $isRelease -Machine $machine -LogLevel $logLevel -IsProfile $isProfile
+
+                        # Run unit tests for host crates that compile on Windows.
+                        $features = Get-NativeCargoFeatures -Machine $machine
+                        Write-Info "Running unit tests (native, $machine backend)..."
                         $ErrorActionPreference = 'Continue'
-                        $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
-                        $dockerRunning = $false
-                        if ($dockerCmd) {
-                            docker info >$null 2>&1
-                            $dockerRunning = ($LASTEXITCODE -eq 0)
+                        cargo test --no-default-features --features "$features" -p uservm
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Err "Unit tests failed for uservm."
+                            exit 1
                         }
-                        if (-not $dockerRunning) {
-                            Write-Warn "Skipping spellcheck (Docker not available or not running). Run with Docker to enable."
-                        }
-                        else {
-                            $dockerParams = Add-GuestMachineDefaults `
-                                -MakeParams (@("spellcheck") + $makeParams)
-                            Write-Info "Running spellcheck via Docker..."
-                            Invoke-DockerBuild -BuildParams ($dockerParams -join ' ') -IsRelease $isRelease -UseMinimal $useMinimalDocker
-                        }
+                        Write-Success "Unit tests passed."
+
+                        # Run guest rlib unit tests via make.
+                        $guestTestParams = Add-GuestMachineDefaults -MakeParams (@("test-guest-rlibs") + $makeParams)
+                        Write-Info "Running guest rlib tests..."
+                        Invoke-Make -MakeParams $guestTestParams
+                    }
+                    "run-nanvix-tests" {
+                        # Run integration tests using the Windows-specific config.
+                        Invoke-Test -IsRelease $isRelease -TestArgs $makeParams
                     }
                     default {
-                        # Forward any other target to Docker make (mirrors bash z behavior).
-                        $dockerParams = Add-GuestMachineDefaults -MakeParams (@($target) + $makeParams)
-                        Write-Info "Forwarding '$target' to Docker..."
-                        Invoke-DockerBuild -BuildParams ($dockerParams -join ' ') -IsRelease $isRelease -UseMinimal $useMinimalDocker
+                        # Forward any other target to make (mirrors bash z behavior).
+                        $fwdParams = Add-GuestMachineDefaults -MakeParams (@($target) + $makeParams)
+                        Write-Info "Forwarding '$target' to make..."
+                        Invoke-Make -MakeParams $fwdParams
                     }
                 }
             }
 
             Write-Host ""
             Write-Success "Build complete."
-
-            # Cache build options for --with-cached-options.
-            # Write the full command line (matching Linux write_cache behavior).
-            $cacheOpts = @("build")
-            if ($isRelease) { $cacheOpts += "--release" }
-            if ($useMinimalDocker) { $cacheOpts += "--with-minimal-docker" } else { $cacheOpts += "--with-docker" }
-            $cacheOpts += "--"
-            $cacheOpts += $buildParams
-            try {
-                Write-ZCache -Options $cacheOpts
-            }
-            catch {
-                Write-Warn "Failed to write .z.cache: $($_.Exception.Message)"
-            }
         }
 
         "clean" {
@@ -1469,7 +1520,7 @@ function Main {
         }
 
         "setup" {
-            Invoke-Setup -UseMinimal $useMinimalDocker
+            Invoke-Setup
         }
 
         "test" {

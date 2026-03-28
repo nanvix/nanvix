@@ -31,7 +31,7 @@ ln -T -s $HOME/toolchain toolchain
 
 ### Windows
 
-Requires Windows 11 with [Docker Desktop](doc/setup-windows.md#5-install-docker-desktop) (Linux containers), [Windows
+Requires Windows 11 with [GNU Make](doc/setup-windows.md#5-run-setup) on PATH, [Windows
 Hypervisor Platform](doc/setup-windows.md#4-enable-windows-hypervisor-platform) enabled, [Developer
 Mode](doc/setup-windows.md#2-enable-developer-mode) turned on, and a Rust toolchain installed via
 [rustup](https://rustup.rs).
@@ -40,7 +40,7 @@ Mode](doc/setup-windows.md#2-enable-developer-mode) turned on, and a Rust toolch
 # Clone this source code (symlinks require Developer Mode).
 git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
 
-# Setup the development environment (pulls Docker image).
+# Setup the development environment.
 .\z.ps1 setup
 
 # Build Nanvix.
