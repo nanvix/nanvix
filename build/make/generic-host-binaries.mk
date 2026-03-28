@@ -14,7 +14,7 @@ host_cargo_features = $(if $1,--features "$1")
 define HOST_BINARY_RULES
 all-host-binaries-$(1): init
 	$(HOST_CARGO_BUILD_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1)
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1) $(BINARIES_DIR)/$(1).elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$(1)$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/$(1).$(HOST_BIN_EXT)
 
 check-host-binaries-$(1):
 	$(HOST_CARGO_CHECK_CMD) $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1)
@@ -27,7 +27,7 @@ format-check-host-binaries-$(1):
 
 clean-host-binaries-$(1):
 	$(HOST_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
+	$(RM_CMD) $(BINARIES_DIR)/$(1).$(HOST_BIN_EXT)
 
 rust-lint-host-binaries-$(1):
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(call host_cargo_features,$(call host_binary_features,$(1))) -p $(1) --fix --allow-dirty --allow-no-vcs
@@ -55,7 +55,7 @@ all-host-binaries: init
 ifneq ($(_HOST_BINS_PLAIN_PKGS),)
 	$(HOST_CARGO_BUILD_CMD) $(_HOST_BINS_PLAIN_PKGS)
 	@for pkg in $(_HOST_BINS_PLAIN); do \
-		$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$$pkg $(BINARIES_DIR)/$$pkg.elf; \
+		$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/$$pkg$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/$$pkg.$(HOST_BIN_EXT); \
 	done
 endif
 

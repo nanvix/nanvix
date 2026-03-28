@@ -12,7 +12,7 @@ USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)"
 
 all-uservm: init
 	$(HOST_CARGO_BUILD_CMD) $(USERVM_CARGO_FEATURES) -p uservm
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm $(BINARIES_DIR)/uservm.elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 
 check-uservm:
 	$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
@@ -25,7 +25,7 @@ format-check-uservm:
 
 clean-uservm:
 	$(HOST_CARGO_CLEAN_CMD) -p uservm
-	$(RM_CMD) $(BINARIES_DIR)/uservm.elf
+	$(RM_CMD) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 
 rust-lint-uservm:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty --allow-no-vcs

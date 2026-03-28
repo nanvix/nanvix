@@ -59,6 +59,23 @@ export IMAGE ?= nanvix.img
 export WHP ?= no
 
 #===================================================================================================
+# OS Detection
+#===================================================================================================
+
+# Detect the host operating system for cross-platform support.
+ifeq ($(OS),Windows_NT)
+  IS_WINDOWS := yes
+  # Extension for host binaries in bin/ (.exe on Windows, .elf on Linux).
+  export HOST_BIN_EXT := exe
+  # Suffix that Cargo adds to host executables (empty on Linux, .exe on Windows).
+  export CARGO_EXE_SUFFIX := .exe
+else
+  IS_WINDOWS :=
+  export HOST_BIN_EXT := elf
+  export CARGO_EXE_SUFFIX :=
+endif
+
+#===================================================================================================
 # Make Configuration
 #===================================================================================================
 
@@ -132,18 +149,18 @@ MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 # Artifacts
 #===================================================================================================
 
-# File format for executables.
+# File format for guest executables (always ELF regardless of host OS).
 export EXEC_FORMAT := elf
 # Libraries
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
 
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
-LINUXD := $(BINARIES_DIR)/linuxd.$(EXEC_FORMAT)
-MKIMAGE := $(BINARIES_DIR)/mkimage.elf
-MKRAMFS := $(BINARIES_DIR)/mkramfs.elf
-NANVIXD := $(BINARIES_DIR)/nanvixd.$(EXEC_FORMAT)
-USERVM := $(BINARIES_DIR)/uservm.$(EXEC_FORMAT)
+LINUXD := $(BINARIES_DIR)/linuxd.$(HOST_BIN_EXT)
+MKIMAGE := $(BINARIES_DIR)/mkimage.$(HOST_BIN_EXT)
+MKRAMFS := $(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT)
+NANVIXD := $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+USERVM := $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 
 #===================================================================================================
 # Nanvix Variables
@@ -259,9 +276,15 @@ export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) fmt
 export RM_CMD := rm -f
 export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
+ifeq ($(IS_WINDOWS),yes)
+export CP_CMD := cp -f
+export SUDO_CMD :=
+export SETCAP_CMD :=
+else
 export CP_CMD := cp -f --preserve
 export SUDO_CMD := sudo
 export SETCAP_CMD := setcap
+endif
 
 #===================================================================================================
 # Verus Formal Verification
@@ -301,6 +324,14 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
+# Host rlibs excluded on Windows:
+#  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
+#  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
+#  - nanvix-registry: test code uses std::fs::symlink (Unix-only).
+ifeq ($(IS_WINDOWS),yes)
+WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm nanvix-registry
+ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
+endif
 ALL_HOST_UTILS := echo-client mkimage mkramfs strace
 # linuxd is only needed for multi-process and L2 deployments (Linux-only).
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
@@ -317,7 +348,8 @@ ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 .PHONY: update-sysroot-link
 update-sysroot-link:
 	@if [ -d "$(SYSROOT_DIR)" ]; then \
-		ln -sfn "$(SYSROOT_DIR)" "$(SYSROOT_LINK)"; \
+		ln -sfn "$(SYSROOT_DIR)" "$(SYSROOT_LINK)" 2>/dev/null || \
+			echo "Note: Could not create sysroot symlink (run setup to enable Developer Mode on Windows)."; \
 		echo "Linked sysroot -> $(notdir $(SYSROOT_DIR))"; \
 	else \
 		echo "Warning: Sysroot directory '$(SYSROOT_DIR)' not found; skipping symlink update."; \
@@ -393,7 +425,10 @@ clean: \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-nanvix-shim
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+clean: clean-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -402,11 +437,15 @@ endif
 
 distclean: clean
 	$(FORCE_RM_CMD) Cargo.lock
+ifeq ($(IS_WINDOWS),yes)
+	$(FORCE_RM_CMD) "$(OBJECTS_DIR)"
+else
 	if mountpoint -q "$(OBJECTS_DIR)" 2>/dev/null; then \
 		find "$(OBJECTS_DIR)" -mindepth 1 -delete || { echo "Error: failed to clean $(OBJECTS_DIR) with find" >&2; exit 1; }; \
 	else \
 		$(FORCE_RM_CMD) "$(OBJECTS_DIR)"; \
 	fi
+endif
 	$(FORCE_RM_CMD) $(LIBRARIES_DIR)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)
 	$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY)
@@ -528,17 +567,29 @@ $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 
 # Fixes code linting issues.
+ifeq ($(IS_WINDOWS),yes)
+lint: rust-lint
+else
 lint: \
 	rust-lint \
 	shell-lint
+endif
 
 # Checks for linting issues in the code.
+ifeq ($(IS_WINDOWS),yes)
+lint-check: rust-lint-check
+else
 lint-check: \
 	rust-lint-check \
-	python-lint \
 	shell-lint-check
+# Python linting requires a venv, which is not set up on Windows.
+lint-check: python-lint
+endif
 
 # Runs clippy.
+# On Windows, only host crates are linted (kernel and guest crates require a
+# cross-compilation toolchain that is not available natively on Windows).
+ifneq ($(IS_WINDOWS),yes)
 rust-lint-check: \
 	rust-lint-check-kernel \
 	rust-lint-check-guest-binaries \
@@ -546,9 +597,13 @@ rust-lint-check: \
 	rust-lint-check-guest-staticlibs \
 	rust-lint-check-wasmd \
 	rust-lint-check-wasm-binaries
+endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test rust-lint-check-nanvix-shim
+rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+rust-lint-check: rust-lint-check-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -556,6 +611,7 @@ rust-lint-check: rust-lint-check-nanvix-bench
 endif
 
 # Fixes code linting issues.
+ifneq ($(IS_WINDOWS),yes)
 rust-lint: \
 	rust-lint-kernel \
 	rust-lint-guest-binaries \
@@ -563,9 +619,13 @@ rust-lint: \
 	rust-lint-guest-staticlibs \
 	rust-lint-wasmd \
 	rust-lint-wasm-binaries
+endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test rust-lint-nanvix-shim
+rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+rust-lint: rust-lint-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -595,14 +655,22 @@ spellcheck:
 # Fixes code formatting issues.
 format: \
 	clang-format \
-	python-format \
 	rust-format \
+
+# Python formatting requires a venv with black/isort, which is not set up on Windows.
+ifneq ($(IS_WINDOWS),yes)
+format: python-format
+endif
 
 # Checks for code formatting issues.
 format-check: \
 	clang-format-check \
-	python-format-check \
 	rust-format-check \
+
+# Python formatting requires a venv with black/isort, which is not set up on Windows.
+ifneq ($(IS_WINDOWS),yes)
+format-check: python-format-check
+endif
 
 # Formats Rust code.
 rust-format: \
@@ -614,7 +682,10 @@ rust-format: \
 	format-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test format-nanvix-shim
+rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+rust-format: format-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -631,7 +702,10 @@ rust-format-check: \
 	format-check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test format-check-nanvix-shim
+rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+rust-format-check: format-check-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -690,7 +764,10 @@ check: \
 	check-wasm-binaries
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test check-nanvix-shim
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+ifneq ($(IS_WINDOWS),yes)
+check: check-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -737,14 +814,27 @@ endif
 run-unit-tests: all-nanvix test-guest-rlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+# On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
+ifeq ($(IS_WINDOWS),yes)
+run-unit-tests: test-uservm
+else
 run-unit-tests: test-host-rlibs
 # The containerd shim tests are not needed in standalone mode.
 ifneq ($(DEPLOYMENT_MODE),standalone)
 run-unit-tests: test-nanvix-shim
 endif
 endif
+endif
 
 # Determine the test configuration file based on deployment mode.
+ifeq ($(IS_WINDOWS),yes)
+ifeq ($(DEPLOYMENT_MODE),standalone)
+NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
+else
+$(warning Windows host only supports 'standalone' DEPLOYMENT_MODE for tests. Using standalone Windows test configuration.)
+NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
+endif
+else
 ifeq ($(DEPLOYMENT_MODE),standalone)
 NANVIX_TEST_CONFIG := test/test-standalone.toml
 else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
@@ -754,8 +844,9 @@ NANVIX_TEST_CONFIG := test/test-l2.toml
 else
 NANVIX_TEST_CONFIG := test/test-multi_process.toml
 endif
+endif
 
-NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.elf
+NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
 
 .PHONY: run-nanvix-tests
 run-nanvix-tests: all-nanvix
