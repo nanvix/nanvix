@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //! This file implements the logic to load `.toml` files in the `build/` directory so that they can
-//! be re-used as constants in rust source, and also in shell scripts.
+//! be reused as constants in rust source, and also in shell scripts.
 
 //==================================================================================================
 // Imports
