@@ -64,7 +64,7 @@ pub fn renameat(
     {
         ::nvx::vfs::fd::vfs_renameat(olddirfd, oldpath, newdirfd, newpath).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})");
+            ::syslog::warn!("renameat(): VFS renameat failed (oldpath={oldpath:?}, error={e})");
             Error::new(code, "vfs renameat failed")
         })
     }

@@ -39,7 +39,7 @@ pub fn mkdir(pathname: &str, mode: mode_t) -> Result<(), Error> {
     {
         ::nvx::vfs::fd::vfs_mkdir(pathname).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("mkdir(): VFS mkdir failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("mkdir(): VFS mkdir failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs mkdir failed")
         })
     }

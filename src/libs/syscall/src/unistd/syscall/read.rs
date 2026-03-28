@@ -166,7 +166,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             let n: c_size_t = ::nvx::vfs::fd::vfs_read(fd, buffer).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("read(): VFS read failed (fd={fd}, error={e})");
+                ::syslog::warn!("read(): VFS read failed (fd={fd}, error={e})");
                 Error::new(code, "vfs read failed")
             })?;
             return Ok(n);

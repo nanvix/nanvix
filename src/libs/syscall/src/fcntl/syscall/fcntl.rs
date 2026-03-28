@@ -40,7 +40,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fcntl(fd, cmd).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("fcntl(): VFS fcntl failed (fd={fd}, cmd={cmd}, error={e})");
+                ::syslog::warn!("fcntl(): VFS fcntl failed (fd={fd}, cmd={cmd}, error={e})");
                 Error::new(code, "vfs fcntl failed")
             });
         }

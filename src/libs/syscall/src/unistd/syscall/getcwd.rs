@@ -41,7 +41,7 @@ pub fn getcwd() -> Result<String, Error> {
     {
         ::nvx::vfs::fd::vfs_getcwd().map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("getcwd(): VFS getcwd failed (error={e})");
+            ::syslog::warn!("getcwd(): VFS getcwd failed (error={e})");
             Error::new(code, "vfs getcwd failed")
         })
     }

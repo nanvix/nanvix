@@ -37,7 +37,7 @@ pub fn link(oldpath: &str, newpath: &str) -> Result<(), Error> {
     // In standalone mode, forward operation to virtual file system (VFS).
     #[cfg(feature = "standalone")]
     {
-        ::syslog::error!("link(): hard links not supported on VFS (oldpath={oldpath:?})");
+        ::syslog::warn!("link(): hard links not supported on VFS (oldpath={oldpath:?})");
         Err(Error::new(ErrorCode::OperationNotSupported, "hard links not supported on VFS"))
     }
 

@@ -46,7 +46,7 @@ pub fn fchdir(fd: c_int) -> Result<(), Error> {
         if ::nvx::vfs::fd::is_vfs_fd(fd) {
             return ::nvx::vfs::fd::vfs_fchdir(fd).map_err(|e| {
                 let code: ErrorCode = e.into();
-                ::syslog::error!("fchdir(): VFS fchdir failed (fd={fd}, error={e})");
+                ::syslog::warn!("fchdir(): VFS fchdir failed (fd={fd}, error={e})");
                 Error::new(code, "vfs fchdir failed")
             });
         }

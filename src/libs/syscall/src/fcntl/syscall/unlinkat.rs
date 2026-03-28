@@ -53,7 +53,7 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
     {
         ::nvx::vfs::fd::vfs_unlinkat(dirfd, pathname, flags).map_err(|e| {
             let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!("unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})");
+            ::syslog::warn!("unlinkat(): VFS unlinkat failed (pathname={pathname:?}, error={e})");
             Error::new(code, "vfs unlinkat failed")
         })
     }
