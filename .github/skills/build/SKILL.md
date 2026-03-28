@@ -146,18 +146,19 @@ Any unrecognized target is forwarded to `make`, just like on Linux:
 
 ## Formal Verification
 
-Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version` and auto-installed to `$(TOOLCHAIN_DIR)/verus` on the first run.
+Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version`. Verification requires `VERUS_EXECUTABLE_DIR` to be set; when unset, `make verify` is a no-op.
 
 ```bash
-# Verify all annotated crates.
-./z build -- verify
+# Install verus and run verification.
+./scripts/setup/verus.sh ~/toolchain/verus
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Verify a single crate.
-./z build -- verify-bitmap
+./z build -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 
-- The `ensure-verus` prerequisite downloads the correct Verus release automatically.
-- Override the install location with `VERUS_EXECUTABLE_DIR=/path/to/verus`.
+- Set `VERUS_EXECUTABLE_DIR` to the directory containing the `verus` binary.
+- Use `scripts/setup/verus.sh <dir>` to download the pinned release.
 - The `vstd` crate version in `Cargo.toml` is exact-pinned (`=`) to match the Verus binary.
 
 ## Cleaning

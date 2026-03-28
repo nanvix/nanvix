@@ -33,7 +33,6 @@ runs:
     shell: bash
     run: |
       ./z build \
-        --toolchain-dir "$HOME/toolchain" \
         -- \
         all \
         "MACHINE=${{ inputs.machine-type }}" \

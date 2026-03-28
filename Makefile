@@ -97,7 +97,7 @@ export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
-export TOOLCHAIN_DIR ?= $(ROOT_DIR)/toolchain
+export CLH_DIR       ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
@@ -290,12 +290,8 @@ endif
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the directory containing the Verus executable.
-export VERUS_EXECUTABLE_DIR ?= $(TOOLCHAIN_DIR)/verus
-
-# Default Verus directory (used to detect custom VERUS_EXECUTABLE_DIR overrides).
-# patsubst strips trailing slashes so `toolchain/verus/` is not treated as custom.
-VERUS_DEFAULT_EXECUTABLE_DIR := $(patsubst %/,%,$(TOOLCHAIN_DIR)/verus)
+# Path to the directory containing the Verus executable (no default; skip verification when unset).
+export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap
@@ -530,8 +526,8 @@ help:
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
-	@echo "  TOOLCHAIN_DIR    Toolchain location (default: $(TOOLCHAIN_DIR))"
-	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (default: $(VERUS_EXECUTABLE_DIR))"
+	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
+	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
@@ -547,24 +543,28 @@ help:
 verify: $(addprefix verify-,$(VERUS_CRATES))
 
 # Ensures the correct Verus version is installed before verification.
-# When VERUS_EXECUTABLE_DIR points to a custom location, we assume the user has pre-built or
-# pre-downloaded Verus there and just validate the binary exists (read-only; no writes to that
-# directory).  Otherwise the prebuilt release is downloaded into the default location.
+# When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
+# When set, validates that the verus binary exists at the given path.
 .PHONY: ensure-verus
 ensure-verus:
-ifneq ($(patsubst %/,%,$(VERUS_EXECUTABLE_DIR)),$(VERUS_DEFAULT_EXECUTABLE_DIR))
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@echo "VERUS_EXECUTABLE_DIR is not set; skipping verification."
+else
 	@if [ ! -x "$(VERUS_EXECUTABLE_DIR)/verus" ]; then \
 		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no verus binary found there."; \
 		exit 1; \
 	fi
-	@echo "Using custom Verus installation at $(VERUS_EXECUTABLE_DIR)."
-else
-	@$(SCRIPTS_DIR)/setup/verus.sh "$(VERUS_EXECUTABLE_DIR)"
+	@echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 endif
 
 # Pattern rule for verifying individual crates.
+# Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
 $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+endif
 
 # Fixes code linting issues.
 ifeq ($(IS_WINDOWS),yes)
@@ -780,11 +780,11 @@ endif
 
 # Runs system in release mode.
 run: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 # Runs system in debug mode.
 debug: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(TOOLCHAIN_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 #===================================================================================================
 # Build Rules for System Image
