@@ -75,7 +75,7 @@ Pass build parameters after `--`:
 .\z.ps1 build -- all LOG_LEVEL=debug
 
 # Combine multiple parameters.
-.\z.ps1 build -- all RELEASE=yes DEPLOYMENT_MODE=standalone LOG_LEVEL=warn
+.\z.ps1 build -- all RELEASE=yes DEPLOYMENT_MODE=standalone LOG_LEVEL=error
 ```
 
 Available build parameters:
@@ -83,7 +83,7 @@ Available build parameters:
 | Parameter         | Default      | Values                                             |
 |-------------------|--------------|----------------------------------------------------|
 | `DEPLOYMENT_MODE` | `standalone` | `standalone`                                       |
-| `LOG_LEVEL`       | `warn`       | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
 | `MACHINE`         | `microvm`    | `microvm`, `hyperlight`                            |
 | `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`             |
 | `RELEASE`         | `no`         | `yes`, `no`                                        |
