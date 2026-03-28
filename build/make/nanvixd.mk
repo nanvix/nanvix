@@ -21,7 +21,7 @@ endif
 
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd $(BINARIES_DIR)/nanvixd.elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
 	# Build the standalone rootfs image from a seed directory using mkramfs.
 ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
@@ -33,12 +33,14 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@if [ -f $(LIBRARIES_DIR)/libmul-pie.so ]; then \
 		cp -f $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
 	fi
-	$(BINARIES_DIR)/mkramfs.elf -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
-	# network namespaces. This is only the case in L2 deployments.
+	# network namespaces. This is only the case in L2 deployments (Linux only).
+ifneq ($(IS_WINDOWS),yes)
 ifeq ($(DEPLOYMENT_MODE),l2)
-	$(SUDO_CMD) $(SETCAP_CMD) cap_sys_admin,cap_net_admin+ep $(BINARIES_DIR)/nanvixd.elf
+	$(SUDO_CMD) $(SETCAP_CMD) cap_sys_admin,cap_net_admin+ep $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+endif
 endif
 
 check-nanvixd:
@@ -52,7 +54,7 @@ format-check-nanvixd:
 
 clean-nanvixd:
 	$(HOST_CARGO_CLEAN_CMD) -p nanvixd
-	$(RM_CMD) $(BINARIES_DIR)/nanvixd.elf
+	$(RM_CMD) $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
 
 rust-lint-nanvixd:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIXD_CARGO_FEATURES) -p nanvixd --fix --allow-dirty --allow-no-vcs
