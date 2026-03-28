@@ -48,8 +48,8 @@ pub struct Slab {
     index: Bitmap,
     /// Base address of data blocks.
     data_addr: *mut u8,
-    /// Number of data blocks in the slab.
-    num_data_blocks: usize,
+    /// End of data blocks.
+    end_addr: usize,
     /// Size of blocks in the slab.
     block_size: usize,
 }
@@ -87,7 +87,7 @@ impl Slab {
         block_size: usize,
     ) -> Result<Slab, Error> {
         // Check if length is invalid valid.
-        if len == 0 || len >= i32::MAX as usize {
+        if len == 0 || len >= i32::MAX as usize || len > isize::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
         }
 
@@ -163,10 +163,11 @@ impl Slab {
             index.set(i)?;
         }
 
+        let end_addr = (addr as usize) + total_num_blocks * block_size;
         Ok(Slab {
-            num_data_blocks,
             block_size,
             data_addr,
+            end_addr,
             index,
         })
     }
@@ -208,18 +209,14 @@ impl Slab {
     /// - It dereferences the pointer `ptr`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
+        let addr = ptr as usize;
         // Return an error if the pointer is before the data blocks.
-        if ptr < self.data_addr {
+        if ptr < self.data_addr || addr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
 
         // Compute the block index.
         let index: usize = unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
-
-        // Return an error if the pointer is after the data blocks.
-        if index >= self.num_data_blocks {
-            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
-        }
 
         // Return an error if the block is already free.
         if !self.index.test(index)? {
