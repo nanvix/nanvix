@@ -696,14 +696,6 @@ def setup_windows_make_env(plat: PlatformInfo) -> None:
     if repo_venv_scripts.is_dir():
         _append_path(str(repo_venv_scripts))
 
-    # Ensure clang is findable.
-    if not shutil.which("clang"):
-        llvm_bin = Path(r"C:\Program Files\LLVM\bin")
-        if llvm_bin.exists():
-            _append_path(str(llvm_bin))
-        if not shutil.which("clang"):
-            print_warning("clang not found. Guest cross-compilation may fail.")
-
 
 def invoke_make(
     plat: PlatformInfo,
@@ -1134,19 +1126,6 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
                     "GNU Make still not found after installation. Add it to PATH manually."
                 )
     print_success("GNU Make: OK")
-
-    # LLVM (clang).
-    if not shutil.which("clang"):
-        llvm_bin = Path(r"C:\Program Files\LLVM\bin")
-        if llvm_bin.exists():
-            _prepend_path(str(llvm_bin))
-        if not shutil.which("clang"):
-            _winget_install("LLVM.LLVM", "LLVM")
-            if not shutil.which("clang"):
-                die(
-                    "LLVM/clang still not found after installation. Add it to PATH manually."
-                )
-    print_success("LLVM/clang: OK")
 
     # Rust toolchain.
     if not shutil.which("rustc"):

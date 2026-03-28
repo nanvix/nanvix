@@ -13,69 +13,119 @@
 
 use std::{
     env,
-    fs::File,
+    fs::{
+        self,
+        File,
+    },
     io::Read,
     path::{
         Path,
         PathBuf,
     },
-    process::Command,
 };
 
 //==================================================================================================
-// Helper Functions
+// Pre-built Shared Libraries
 //==================================================================================================
-
-/// Compiles `libs/mul.c` into a shared library using the cross-compiler
-/// specified by NANVIX_CC with the cross-compilation flags from NANVIX_CFLAGS.
-///
-/// The build is split into compile + link steps so that the linker can be
-/// invoked directly (via `ld` on PATH), avoiding clang's linker-driver
-/// which tries to call `gcc` for bare-metal targets and fails on Windows.
-///
-/// - `output` — absolute path to the output `.so` file.
-/// - `source` — absolute path to the `mul.c` source file.
-fn build_shared_lib(output: &Path, source: &Path) {
-    let cc = env::var("NANVIX_CC")
-        .unwrap_or_else(|_| panic!("NANVIX_CC not set — required to cross-compile shared libs"));
-    let cflags = env::var("NANVIX_CFLAGS").unwrap_or_else(|_| {
-        panic!("NANVIX_CFLAGS not set — required to cross-compile shared libs")
-    });
-
-    // Step 1: Compile to object file.
-    let obj = output.with_extension("o");
-    let mut parts = cc.split_whitespace();
-    let program = parts.next().unwrap_or_else(|| panic!("NANVIX_CC is empty"));
-    let mut cmd = Command::new(program);
-    cmd.args(parts);
-    // Filter out linker-only flags (e.g. -fuse-ld=lld) that are invalid for -c.
-    cmd.args(
-        cflags
-            .split_whitespace()
-            .filter(|f| !f.starts_with("-fuse-ld")),
-    );
-    cmd.args(["-fPIC", "-c"]);
-    cmd.arg(source);
-    cmd.arg("-o");
-    cmd.arg(&obj);
-    let status = cmd
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run {cc}: {e}"));
-    assert!(status.success(), "failed to compile {}", source.display());
-
-    // Step 2: Link the object file into a shared library using ld directly.
-    // Use -z notext to allow text relocations (R_386_PC32 from inline asm
-    // call instructions) which lld rejects by default but GNU ld allows.
-    let mut link = Command::new("ld");
-    link.args(["-shared", "-melf_i386", "-z", "notext"]);
-    link.arg(&obj);
-    link.arg("-o");
-    link.arg(output);
-    let status = link
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run ld: {e}"));
-    assert!(status.success(), "failed to link {}", output.display());
-}
+//
+// The dlfcn tests load `libmul.so` and `libmul-pie.so` at runtime via `dlopen()`.
+// These are pre-built i386 ELF shared objects checked into `libs/`.  No C compiler
+// is required at build time — the build script simply copies them to LIBRARIES_DIR.
+//
+// If the test shared libraries ever need to be regenerated, follow these steps on a
+// Linux host with `clang` and GNU `ld` installed:
+//
+// ## Source (libs/mul.c — removed from tree, preserved here for reference):
+//
+// ```c
+// /*
+//  * Copyright(c) The Maintainers of Nanvix.
+//  * Licensed under the MIT License.
+//  */
+//
+// // R_386_GLOB_DAT
+// const char *VERSION = "0.0.1";
+//
+// int add(int a, int b)
+// {
+//     return (a + b);
+// }
+//
+// // R_386_32
+// int fast_mul(int a, int b)
+// {
+//     int result = 0;
+//     __asm__ __volatile__("movl %1, %%ecx;"
+//                          "movl $0, %0;"
+//                          "test %%ecx, %%ecx;"
+//                          "jz 1f;"
+//                          "0:;"
+//                          "pushl %2;"
+//                          "pushl %0;"
+//                          "call add;" // R_386_PC32
+//                          "addl $8, %%esp;"
+//                          "movl %%eax, %0;"
+//                          "loop 0b;"
+//                          "1:;"
+//                          : "=r"(result)
+//                          : "r"(b), "r"(a)
+//                          : "ecx", "eax", "cc");
+//     return result;
+// }
+//
+// int slow_mul(int a, int b)
+// {
+//     int result = 0;
+//
+//     for (int i = 0; i < b; i++) {
+//         // R_386_JUMP_SLOT
+//         result = add(result, a);
+//     }
+//
+//     return (result);
+// }
+//
+// static int (*mul)(int, int) = &fast_mul;
+//
+// int multiply(int a, int b)
+// {
+//     return (mul(a, b));
+// }
+//
+// const char *get_version(void)
+// {
+//     return (VERSION);
+// }
+// ```
+//
+// ## Build commands:
+//
+// ```sh
+// # Compile to object file (i686 bare-metal, position-independent).
+// clang --target=i686-unknown-none -m32 -march=pentiumpro \
+//       -nostdlib -ffreestanding -fPIC -c mul.c -o mul.o
+//
+// # Link into a shared library (allow text relocations for R_386_PC32
+// # from the inline-asm `call add` instruction).
+// ld -shared -melf_i386 -z notext mul.o -o libmul.so
+//
+// # The same object produces the PIE variant.
+// cp libmul.so libmul-pie.so
+// ```
+//
+// ## Expected relocation types (manually verify with `readelf -r libmul.so`):
+//
+// These relocations are expected to be present in the prebuilt `libmul*.so`
+// artifacts. At the moment, this build script does not enforce them
+// automatically; if you regenerate the shared libraries, please confirm that
+// the following relocation kinds are still present:
+//
+// - R_386_RELATIVE  — position-independent base relocations
+// - R_386_PC32      — PC-relative call (`call add` from inline asm)
+// - R_386_GLOB_DAT  — global data symbol (`VERSION`, function pointer `mul`)
+// - R_386_32        — direct symbol address
+// - R_386_JUMP_SLOT — PLT slot for function calls (`add` from `slow_mul`)
+//
 
 //==================================================================================================
 // Main Function
@@ -103,27 +153,24 @@ fn main() {
     }
 
     //==============================================================================================
-    // Build Shared Libraries (libmul.so and libmul-pie.so)
+    // Install Pre-built Shared Libraries (libmul.so and libmul-pie.so)
     //==============================================================================================
 
-    // The dlfcn tests load these shared libraries at runtime via dlopen().
-    // Uses the cross-compiler from NANVIX_CC with flags from NANVIX_CFLAGS.
-    let mul_c: PathBuf = Path::new(&manifest_dir).join("libs/mul.c");
-    println!("cargo:rerun-if-changed=libs/mul.c");
+    // Pre-built i386 ELF shared objects are checked into libs/.
+    // Rebuild them only if the pre-built binaries change.
+    println!("cargo:rerun-if-changed=libs/libmul.so");
+    println!("cargo:rerun-if-changed=libs/libmul-pie.so");
 
     // When rust-analyzer (or plain `cargo check`) runs without the full build
-    // environment, these variables are absent.  Skip the shared-library build
+    // environment, LIBRARIES_DIR is absent.  Skip the shared-library copy
     // and linker configuration so the IDE can still provide diagnostics.
     println!("cargo:rerun-if-env-changed=LIBRARIES_DIR");
-    println!("cargo:rerun-if-env-changed=NANVIX_CC");
-    println!("cargo:rerun-if-env-changed=NANVIX_CFLAGS");
     let libraries_dir: String = match env::var("LIBRARIES_DIR") {
         Ok(v) => v,
         Err(_) => {
             println!(
-                "cargo:warning=Skipping dlfcn shared library build and linker configuration: \
-                 LIBRARIES_DIR is not set; set LIBRARIES_DIR (and NANVIX_CC/NANVIX_CFLAGS) to \
-                 enable dlopen() tests."
+                "cargo:warning=Skipping dlfcn shared library install and linker configuration: \
+                 LIBRARIES_DIR is not set."
             );
             return;
         },
@@ -131,14 +178,19 @@ fn main() {
     let lib_dir = Path::new(&libraries_dir);
 
     // Ensure the output directory exists (it may not in a fresh CI checkout).
-    std::fs::create_dir_all(lib_dir)
+    fs::create_dir_all(lib_dir)
         .unwrap_or_else(|e| panic!("failed to create {}: {e}", lib_dir.display()));
 
-    // libmul.so — standard shared library (non-PIE).
-    build_shared_lib(&lib_dir.join("libmul.so"), &mul_c);
+    let src_dir = Path::new(&manifest_dir).join("libs");
 
-    // libmul-pie.so — position-independent shared library.
-    build_shared_lib(&lib_dir.join("libmul-pie.so"), &mul_c);
+    // Copy pre-built shared libraries to LIBRARIES_DIR.
+    for name in &["libmul.so", "libmul-pie.so"] {
+        let src = src_dir.join(name);
+        let dst = lib_dir.join(name);
+        fs::copy(&src, &dst).unwrap_or_else(|e| {
+            panic!("failed to copy {} to {}: {e}", src.display(), dst.display())
+        });
+    }
 
     //==============================================================================================
     // Linker Configuration

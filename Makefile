@@ -181,20 +181,6 @@ export NANVIX_NODENAME ?= localhost
 export NANVIX_MACHINE := $(MACHINE)
 
 #===================================================================================================
-# C Toolchain Configuration
-#===================================================================================================
-
-# Tools
-export NANVIX_CC := clang
-
-# C compiler options
-export NANVIX_CFLAGS := --target=i686-unknown-none -m32 -march=pentiumpro -nostdlib -ffreestanding
-
-# Linker options
-export NANVIX_LDFLAGS := --target=i686-unknown-none -m32 -march=pentiumpro -nostdlib -ffreestanding
-export NANVIX_LDFLAGS += -T $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
-
-#===================================================================================================
 # Rust Toolchain Configuration
 #===================================================================================================
 
@@ -635,7 +621,7 @@ endif
 # Source file lists - use git ls-files if in a git repo, fall back to find.
 # This is needed because Docker builds exclude the .git directory.
 PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/__pycache__/*" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
-C_CPP_FILES := $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp" 2>/dev/null || find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
+
 SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
 
 # Fixes spelling errors in source code and documentation.
@@ -654,8 +640,7 @@ spellcheck:
 
 # Fixes code formatting issues.
 format: \
-	clang-format \
-	rust-format \
+	rust-format
 
 # Python formatting requires a venv with black/isort, which is not set up on Windows.
 ifneq ($(IS_WINDOWS),yes)
@@ -664,8 +649,7 @@ endif
 
 # Checks for code formatting issues.
 format-check: \
-	clang-format-check \
-	rust-format-check \
+	rust-format-check
 
 # Python formatting requires a venv with black/isort, which is not set up on Windows.
 ifneq ($(IS_WINDOWS),yes)
@@ -746,14 +730,6 @@ shell-lint-check:
 # Fixes code linting issues in shell scripts.
 shell-lint:
 	@scripts/shell-lint-fix.sh
-
-# Check C/C++ formatting style.
-clang-format-check:
-	@clang-format --dry-run --Werror $(C_CPP_FILES)
-
-# Format C/C++ files.
-clang-format:
-	@clang-format -i $(C_CPP_FILES)
 
 check: \
 	check-kernel \

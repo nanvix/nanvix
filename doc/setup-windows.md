@@ -79,14 +79,12 @@ This command validates prerequisites and configures the development environment:
 2. Verifies Developer Mode is enabled.
 3. Verifies the Windows Hypervisor Platform is active.
 4. Installs GNU Make via winget (if not already installed).
-5. Installs LLVM/Clang via winget (if not already installed).
-6. Installs the Rust toolchain via winget (if not already installed).
-7. Configures the repository Git hooks from `.githooks`.
+5. Installs the Rust toolchain via winget (if not already installed).
+6. Configures the repository Git hooks from `.githooks`.
 
 > **Note:** If winget is not available, install the prerequisites manually before running setup:
 >
 > - GNU Make: `winget install ezwinports.make`
-> - LLVM/Clang: `winget install LLVM.LLVM`
 > - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
 
 ---

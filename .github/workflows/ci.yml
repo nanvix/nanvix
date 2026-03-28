@@ -532,7 +532,7 @@ jobs:
           .\z.ps1 build -- lint-check MACHINE=${{ matrix.machine-type }}
 
   # Build all components (guest + host) natively on Windows using the local
-  # cross-compilation toolchain (GNU Make + rust-lld + clang) and run unit tests.
+  # cross-compilation toolchain (GNU Make + rust-lld) and run unit tests.
   windows-ci-build:
     name: "Windows Build (${{ matrix.machine-type }}, ${{ matrix.build-type }})"
     needs: [windows-format-check, windows-lint-check]
