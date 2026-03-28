@@ -48,23 +48,18 @@ runs:
         python3 -m venv .venv
         .venv/bin/pip install --quiet -r requirements.txt
 
-    - name: "Create Toolchain Directory"
+    - name: "Create Cloud-Hypervisor Directory"
       shell: bash
       run: |
-        TOOLCHAIN_DIR="${RUNNER_TEMP}/toolchain"
-        mkdir -p "${TOOLCHAIN_DIR}/bin"
-        mkdir -p "${TOOLCHAIN_DIR}/verus"
-        # Create version file matching the format expected by the z script.
-        version=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-        expected_tag="${version%.*}.x"
-        echo "nanvix-toolchain-v${expected_tag}" > "${TOOLCHAIN_DIR}/version"
-        echo "[INFO] Created toolchain directory at ${TOOLCHAIN_DIR}"
+        CLH_DIR="${HOME}/toolchain"
+        mkdir -p "${CLH_DIR}/bin"
+        echo "[INFO] Created cloud-hypervisor directory at ${CLH_DIR}"
 
     - name: "Build Cloud-Hypervisor"
       if: inputs.install-cloud-hypervisor == 'true'
       shell: bash
       run: |
-        TOOLCHAIN_DIR="${RUNNER_TEMP}/toolchain"
+        CLH_DIR="${HOME}/toolchain"
         # Build only cloud-hypervisor (skip Linux kernel build).
         CLOUD_HYPERVISOR_COMMIT="4681d5eba0e63fb010bf4ca962eb3c9f163d3288"
         CLOUD_HYPERVISOR_REPO="https://github.com/nanvix/cloud-hypervisor"
@@ -74,10 +69,10 @@ runs:
         pushd "${SRC_DIR}"
         git checkout "${CLOUD_HYPERVISOR_COMMIT}"
         cargo build --release
-        cp ./target/release/cloud-hypervisor "${TOOLCHAIN_DIR}/bin/cloud-hypervisor"
-        cp ./target/release/ch-remote "${TOOLCHAIN_DIR}/bin/ch-remote"
+        cp ./target/release/cloud-hypervisor "${CLH_DIR}/bin/cloud-hypervisor"
+        cp ./target/release/ch-remote "${CLH_DIR}/bin/ch-remote"
         # Set CAP_NET_ADMIN for TAP device creation without sudo.
-        sudo setcap cap_net_admin+ep "${TOOLCHAIN_DIR}/bin/cloud-hypervisor" || true
+        sudo setcap cap_net_admin+ep "${CLH_DIR}/bin/cloud-hypervisor" || true
         popd
         rm -rf "${SRC_DIR}"
-        echo "[INFO] Cloud-hypervisor installed to ${TOOLCHAIN_DIR}/bin/"
+        echo "[INFO] Cloud-hypervisor installed to ${CLH_DIR}/bin/"

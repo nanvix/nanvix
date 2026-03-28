@@ -97,12 +97,12 @@ jobs:
       - name: "Check Code Format"
         shell: bash
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- format-check
+          ./z build -- format-check
 
       - name: "Spellcheck"
         shell: bash
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- spellcheck
+          ./z build -- spellcheck
 
   # ==========================================================================================
   # Stage 1 (parallel): Config-Dependent Source Checks (GitHub-Hosted Runners)
@@ -154,7 +154,7 @@ jobs:
       - name: "Lint"
         shell: bash
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- lint-check \
+          ./z build -- lint-check \
             "MACHINE=${{ matrix.machine-type }}" \
             TARGET=x86 \
             LOG_LEVEL=trace \
@@ -222,12 +222,13 @@ jobs:
       - name: "Install Verus"
         shell: bash
         run: |
-          ./scripts/setup/verus.sh "${RUNNER_TEMP}/toolchain/verus"
+          ./scripts/setup/verus.sh "${HOME}/toolchain/verus"
 
       - name: "Verify"
         shell: bash
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- verify \
+          ./z build -- verify \
+            "VERUS_EXECUTABLE_DIR=${HOME}/toolchain/verus" \
             "MACHINE=${{ matrix.machine-type }}" \
             TARGET=x86 \
             LOG_LEVEL=trace \
@@ -321,7 +322,7 @@ jobs:
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
           BUILD_TARGETS: ${{ matrix.build-type == 'release' && 'all run-unit-tests release' || 'all run-unit-tests' }}
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- ${BUILD_TARGETS} \
+          ./z build -- ${BUILD_TARGETS} \
             "MACHINE=${MACHINE_TYPE}" \
             TARGET=x86 \
             "LOG_LEVEL=${LOG_LEVEL}" \
@@ -1032,7 +1033,7 @@ jobs:
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- all \
+          ./z build -- all \
             "MACHINE=${MACHINE_TYPE}" \
             TARGET=x86 \
             LOG_LEVEL=panic \
@@ -1056,7 +1057,7 @@ jobs:
               --benchmark "${bench}" \
               --machine-type "${MACHINE_TYPE}" \
               --iterations "${ITERATIONS}" \
-              --toolchain-bin-dir "${RUNNER_TEMP}/toolchain/bin" \
+              --toolchain-bin-dir "${HOME}/toolchain/bin" \
               --output-dir "$(pwd)" \
               --commit "${{ github.sha }}"
           done
@@ -1067,7 +1068,7 @@ jobs:
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
         run: |
-          ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- all \
+          ./z build -- all \
             "MACHINE=${MACHINE_TYPE}" \
             TARGET=x86 \
             LOG_LEVEL=panic \
@@ -1090,7 +1091,7 @@ jobs:
               --benchmark "${bench}" \
               --machine-type "${MACHINE_TYPE}" \
               --iterations "${ITERATIONS}" \
-              --toolchain-bin-dir "${RUNNER_TEMP}/toolchain/bin" \
+              --toolchain-bin-dir "${HOME}/toolchain/bin" \
               --output-dir "$(pwd)" \
               --commit "${{ github.sha }}"
           done

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -63,7 +62,7 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "TIMESTAMP_MSG",
         "WHP",
         "IMAGE",
-        "TOOLCHAIN_DIR",
+        "CLH_DIR",
         "HOST_CPU",
         "WASM_BINARY",
         "WASM_BINARY_ARGS",
@@ -324,13 +323,11 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
                     f"Invalid MESSAGE_FORMAT={val}. Valid: {', '.join(VALID_MESSAGE_FORMATS)}"
                 )
             config.message_format = val
-        case "TOOLCHAIN_DIR":
-            config.toolchain_dir = val
         case "SYSROOT_DIR":
             config.sysroot_dir = val
         case "VERBOSE":
             config.verbose = val.lower() == "yes"
-        case "SCCACHE" | "MAKE_NO_PRINT" | "VERUS_EXECUTABLE_DIR":
+        case "SCCACHE" | "MAKE_NO_PRINT" | "VERUS_EXECUTABLE_DIR" | "CLH_DIR":
             pass  # Passed through to Make verbatim; no z.py-side effect.
 
 
@@ -443,65 +440,6 @@ def validate_git_context() -> Path:
         die(f"Must run from repo root ({repo_root}), not {cwd}.")
 
     return repo_root
-
-
-def _get_cargo_toml_version(repo_root: Path) -> str:
-    """Extract workspace version from Cargo.toml."""
-    cargo_toml = repo_root / "Cargo.toml"
-    if not cargo_toml.exists():
-        die("Cargo.toml not found at repo root.")
-    content = cargo_toml.read_text(encoding="utf-8")
-    # Search within [workspace.package] to avoid matching dependency versions.
-    section_match = re.search(
-        r"^\[workspace\.package\]\s*\n(.*?)(?=^\[|\Z)",
-        content,
-        re.MULTILINE | re.DOTALL,
-    )
-    if not section_match:
-        die("Could not find [workspace.package] section in Cargo.toml.")
-    section = section_match.group(1)
-    match = re.search(r'^version\s*=\s*"([^"]+)"', section, re.MULTILINE)
-    if not match:
-        die("Could not extract version from [workspace.package] in Cargo.toml.")
-    return match.group(1)
-
-
-def check_toolchain_version(toolchain_dir: str, repo_root: Path) -> None:
-    """Validate toolchain version matches Cargo.toml (Linux only)."""
-    version = _get_cargo_toml_version(repo_root)
-    parts = version.split(".")
-    if len(parts) < 2:
-        die(f"Invalid version in Cargo.toml: {version}")
-    expected_tag = f"{parts[0]}.{parts[1]}.x"
-    expected_version_string = f"nanvix-toolchain-v{expected_tag}"
-
-    version_file = Path(toolchain_dir) / "version"
-    if not version_file.exists():
-        die(
-            f"Toolchain version file not found: {version_file}\n"
-            f"Run './z setup --toolchain-dir {toolchain_dir}' to install the toolchain."
-        )
-    if not os.access(str(version_file), os.R_OK):
-        die(f"Toolchain version file is not readable: {version_file}")
-
-    found_version = version_file.read_text(encoding="utf-8").strip()
-    if not found_version:
-        die(
-            f"Toolchain version file is empty: {version_file}\n"
-            f"Run './z setup' to (re)install the toolchain."
-        )
-
-    if found_version != expected_version_string:
-        die(
-            f"Toolchain version mismatch.\n"
-            f"  Expected: {expected_version_string}\n"
-            f"  Found:    {found_version}\n"
-            f"Run './z setup' to update the toolchain."
-        )
-
-    print_info(
-        f"Toolchain version '{found_version}' matches expected '{expected_version_string}'."
-    )
 
 
 def check_filesystem_support(directory: str) -> bool:
@@ -779,7 +717,7 @@ def invoke_make(
 
     Args:
         plat: Platform information.
-        injected_vars: VAR=VALUE strings z.py injects (e.g., TOOLCHAIN_DIR, RELEASE).
+        injected_vars: VAR=VALUE strings z.py injects (e.g., RELEASE).
         raw_args: Raw user arguments from after -- (targets and KEY=VALUE pairs).
         targets: Explicit Make targets to append.
         verbose: Print the full command line.
@@ -826,10 +764,6 @@ def _assemble_build_make_args(
     injected: list[str] = []
     user_args = list(config.make_args)
 
-    # On Linux, always inject TOOLCHAIN_DIR.
-    if plat.is_linux:
-        injected.append(f"TOOLCHAIN_DIR={config.toolchain_dir}")
-
     # --profile: force RELEASE=yes, add PROFILER=yes, strip user-provided RELEASE=.
     if config.profile:
         user_args = [a for a in user_args if not a.startswith("RELEASE=")]
@@ -858,11 +792,6 @@ def _assemble_build_make_args(
 
 def cmd_build(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the build subcommand."""
-    # Linux pre-build validation.
-    if plat.is_linux:
-        validate_toolchain_dir_location(config.toolchain_dir, plat.repo_root)
-        check_toolchain_version(config.toolchain_dir, plat.repo_root)
-
     # Windows pre-build steps.
     if plat.is_windows:
         ensure_ld_shim(plat.repo_root)
@@ -1054,7 +983,7 @@ Commands:
 Options:
   --profile             Enable profiling (implies --release, passes PROFILER=yes).
   --release             Build in release mode.
-  --toolchain-dir DIR   Toolchain directory (Linux only, default: ~/toolchain).
+  --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
 
 Build Parameters (after --):
   MACHINE=microvm|hyperlight     Target machine (default: microvm).
