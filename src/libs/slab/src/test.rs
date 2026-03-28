@@ -110,3 +110,47 @@ fn test_allocate_out_of_bounds() {
     assert!(dealloc_result.is_err());
     assert_eq!(dealloc_result.unwrap_err().code, ErrorCode::BadAddress);
 }
+
+#[test]
+fn test_deallocate_unaligned_pointer() {
+    let block_size: usize = 16;
+    let len: usize = 1024;
+    // Ensure memory is aligned to block_size.
+    let layout = std::alloc::Layout::from_size_align(len, block_size).unwrap();
+    let memory = unsafe { std::alloc::alloc_zeroed(layout) };
+    assert!(!memory.is_null());
+
+    let mut slab = unsafe { Slab::from_raw_parts(memory, len, block_size) }.unwrap();
+
+    // Allocate a valid block, then try to deallocate at an offset of 1 byte
+    // (not a block boundary).
+    let block = slab.allocate().unwrap();
+    let unaligned_ptr = unsafe { block.add(1) };
+    let result = unsafe { slab.deallocate(unaligned_ptr) };
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code, ErrorCode::BadAddress);
+
+    // The original block should still be deallocatable.
+    let result = unsafe { slab.deallocate(block) };
+    assert!(result.is_ok());
+
+    unsafe { std::alloc::dealloc(memory, layout) };
+}
+
+#[test]
+fn test_deallocate_at_end_addr() {
+    let block_size: usize = 16;
+    let len: usize = 256;
+    let layout = std::alloc::Layout::from_size_align(len, block_size).unwrap();
+    let memory = unsafe { std::alloc::alloc_zeroed(layout) };
+    assert!(!memory.is_null());
+
+    let mut slab = unsafe { Slab::from_raw_parts(memory, len, block_size) }.unwrap();
+
+    // A pointer at the very end of the memory region (at or past end_addr)
+    // should be rejected even if it's block-aligned.
+    let end_ptr = unsafe { memory.add(len) } as *const u8;
+    let result = unsafe { slab.deallocate(end_ptr) };
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code, ErrorCode::BadAddress);
+}
