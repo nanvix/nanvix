@@ -33,8 +33,8 @@ Nanvix supports two host platforms:
 - **Linux** — Full development workflow: build, run, test, benchmark, and debug.
   Uses KVM for the microvm backend.
 - **Windows 11** — Host-side development with the Windows Hypervisor Platform (WHP)
-  backend. Guest components (kernel, user binaries) are cross-compiled inside Docker;
-  the UserVM is built natively. Only standalone interactive mode is available
+  backend. Guest components (kernel, user binaries) are cross-compiled using a local
+  toolchain; the UserVM is built natively. Only standalone interactive mode is available
   (no HTTP mode or L2 deployments). Use `z.ps1` instead of `./z`.
 
 When modifying or generating code, keep platform differences in mind:
@@ -44,8 +44,8 @@ When modifying or generating code, keep platform differences in mind:
   GDB debugging, network namespaces.
 - Windows-supported features: standalone interactive mode, benchmarking
   (`boot-time`, `cold-start`, `warm-start-vmm`).
-- Windows-only concerns: WHP enablement, Developer Mode for symlinks, Docker
-  Desktop with Linux containers, `.venv` cleanup before Docker builds.
+- Windows-only concerns: WHP enablement, Developer Mode for symlinks, GNU Make
+  on PATH.
 
 ## Repository-wide Engineering Rules
 

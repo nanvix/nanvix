@@ -5,18 +5,16 @@
 // 2. Copy this file into the '.vscode' folder as 'settings.json'.
 // 3. For fast host-only Rust checks (uservm, nanvixd, nanvix-test, mkramfs), run:
 //      z.ps1 build -- check
-//    This matches the Rust Analyzer configuration below and runs natively without Docker.
-// 4. To check guest/kernel crates inside Docker, use the dedicated targets, for example:
+//    This matches the Rust Analyzer configuration below and runs natively.
+// 4. To check guest/kernel crates, use the dedicated targets, for example:
 //      z.ps1 build -- check-kernel
 //      z.ps1 build -- check-guest-binaries
 //
 // Notes:
 // - Rust Analyzer routes check-on-save and build-script discovery through './z.bat build -- check'.
 //   The 'check' target is intentionally host-only and runs natively on crates such as uservm,
-//   nanvixd, nanvix-test, and mkramfs without Docker, avoiding the infinite rebuild loop that
-//   occurred when 'check' was forwarded to Docker (symlink mutations + file output triggered
-//   rust-analyzer to re-check endlessly).
-//   Guest and kernel crates are checked via Docker-only targets like 'check-kernel' and
+//   nanvixd, nanvix-test, and mkramfs.
+//   Guest and kernel crates are checked via cross-compilation targets like 'check-kernel' and
 //   'check-guest-binaries'; invoke them manually with 'z.ps1 build -- <target>' when needed.
 // - 'C_Cpp.default.compilerPath' is intentionally omitted here because the guest cross-toolchain is not
 //   installed natively on Windows by default.

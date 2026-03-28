@@ -119,12 +119,13 @@ libraries use `HOST_CARGO_BUILD_CMD`.
 
 ## Windows Compilation
 
-On a Windows development host, guest libraries are cross-compiled inside Docker, so they work
-identically to Linux. Host libraries that use `std` may need conditional compilation
+On a Windows development host, guest libraries are cross-compiled using a local toolchain, so
+they work identically to Linux. Host libraries that use `std` may need conditional compilation
 (`#[cfg(target_os = "...")]`) for platform-specific code paths (e.g., KVM, libc).
 
-> **Note:** There is no Windows CI job yet. Platform-independent crates should be manually
-> verified on Windows when making changes that may affect cross-platform compatibility.
+> **Note:** Windows CI jobs run as part of the main CI pipeline. Platform-independent crates
+> should still be manually verified on a Windows host when making changes that may affect
+> cross-platform compatibility or Windows-specific behavior.
 
 ## Coding Rules (Library-Specific)
 

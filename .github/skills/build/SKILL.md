@@ -12,7 +12,7 @@ covers all build-system operations exposed through the `z` utility.
 
 - Development environment set up per `doc/setup.md`.
 - A local cross-compilation toolchain (`toolchain/`).
-- **Windows 11:** Docker Desktop (Linux containers), Windows Hypervisor Platform enabled,
+- **Windows 11:** GNU Make on PATH, Windows Hypervisor Platform enabled,
   Developer Mode enabled, and Rust toolchain installed. See `doc/setup.md` for details.
 
 ## Windows Setup Summary
@@ -21,10 +21,10 @@ Before building on Windows, ensure:
 
 1. **Windows Hypervisor Platform** is enabled (`Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All`, then reboot).
 2. **Developer Mode** is on (Settings > Privacy & Security > For developers).
-3. **Docker Desktop** is installed and configured for Linux containers.
+3. **GNU Make** is on PATH (`winget install ezwinports.make`).
 4. **Rust toolchain** is installed via `winget install Rustlang.Rustup`.
 5. Repository was cloned with `git clone -c core.symlinks=true`.
-6. Docker toolchain image is pulled: `./z.ps1 setup`.
+6. Git hooks are installed: `./z.ps1 setup`.
 
 ## Building
 
@@ -84,11 +84,11 @@ Example with custom parameters:
 ### Building on Windows (using `z.ps1`)
 
 On Windows 11, the `z.ps1` PowerShell script provides the same CLI interface. Guest components are
-cross-compiled inside Docker; host binaries (`nanvixd`, `uservm`) are built natively with the
+cross-compiled using a local toolchain; host binaries (`nanvixd`, `uservm`) are built natively with the
 microvm backend (WHP on Windows).
 
 ```powershell
-# Build everything (guest via Docker + host binaries natively).
+# Build everything (guest via make + host binaries natively).
 .\z.ps1 build -- all
 
 # Build only the UserVM (native Windows build).
@@ -100,17 +100,14 @@ microvm backend (WHP on Windows).
 # Build only nanvix-bench (native Windows build).
 .\z.ps1 build -- nanvix-bench
 
-# Build only guest components (kernel + hello-rust-nostd, via Docker).
+# Build only guest components (kernel + hello-rust-nostd).
 .\z.ps1 build -- guest
 
 # Release build.
 .\z.ps1 build -- all RELEASE=yes
-
-# Use the full (non-minimal) Docker image.
-.\z.ps1 build --with-docker -- all
 ```
 
-Any unrecognized target is forwarded to `make` via Docker, just like on Linux:
+Any unrecognized target is forwarded to `make`, just like on Linux:
 
 ```powershell
 .\z.ps1 build -- kernel
@@ -193,7 +190,7 @@ machine and deployment configurations.
 
 Use the host-specific settings template. The Linux template invokes `./z`, while the Windows
 template routes Rust Analyzer through `./z.bat build -- check`, which runs native `cargo check`
-on host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`) without Docker.
+on host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`).
 
 **Linux:**
 
@@ -210,15 +207,13 @@ Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
 ```
 
 > **Note:** The `check` target in `z.ps1` only checks host crates natively. Guest and kernel
-> crates require the Docker-based cross-toolchain and are not checked by Rust Analyzer. Run
-> `.\z.ps1 build -- check-kernel check-guest-binaries` via Docker for a full cross-target check.
+> crates require the cross-compilation toolchain. Run
+> `.\z.ps1 build -- check-kernel check-guest-binaries` for a full cross-target check.
 
 ## Troubleshooting Build Issues
 
 - If builds fail with toolchain errors, verify `toolchain/` symlink points to a valid toolchain.
 - Use `./z help` for usage information.
 - **Windows:** Use `.\z.ps1 help` for Windows-specific usage information.
-- **Windows:** If Docker builds fail with symlink errors, `z.ps1` automatically restores Git
-  symlinks as file copies. Ensure Docker Desktop is running with Linux containers enabled.
 - **Windows:** If the UserVM build fails, verify that the Windows Hypervisor Platform feature is
   enabled (`Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform`).
