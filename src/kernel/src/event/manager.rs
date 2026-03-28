@@ -562,7 +562,7 @@ impl EventManagerInner {
     unsafe fn wakeup_interrupt(&mut self, interrupts: usize) -> Result<(), Error> {
         // Check if an spurious interrupt was received.
         if self.interrupt_capable {
-            let reason: &str = "interrupt manager is not capable of handlin ginterrupts";
+            let reason: &str = "interrupt manager is not capable of handling ginterrupts";
             error!("reason={:?}", reason);
             return Err(Error::new(ErrorCode::OperationNotSupported, reason));
         }
@@ -923,7 +923,7 @@ impl EventManager {
             Event::Interrupt(interrupt_event) => {
                 // Check if the interrupt manager is capable of handling interrupts.
                 if !em.try_borrow_mut()?.interrupt_capable {
-                    let reason: &str = "interrupt manager is not capable of handlin ginterrupts";
+                    let reason: &str = "interrupt manager is not capable of handling ginterrupts";
                     error!("{:?} (reason={:?})", reason, req);
                     return Err(Error::new(ErrorCode::OperationNotSupported, reason));
                 }

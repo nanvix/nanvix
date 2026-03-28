@@ -6,7 +6,7 @@ your development environment, please refer to the [Windows setup](setup-windows.
 
 This document guides you through building Nanvix on Windows. On Windows, the `z.ps1` PowerShell
 script provides the same interface as the Linux `z` utility. Host-side components are built natively,
-while guest components are cross-compiled inside Docker.
+while guest components are cross-compiled using a local toolchain.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ while guest components are cross-compiled inside Docker.
 ## Building Nanvix with `z.ps1`
 
 `z.ps1` is a utility for building Nanvix on Windows. It provides you with a simplified interface
-for building Nanvix either using Docker or your local toolchain.
+for building Nanvix using your local toolchain.
 
 ### Getting Started with `z.ps1`
 
@@ -93,7 +93,7 @@ Available build parameters:
 ## Code Quality Checks
 
 ```powershell
-# Run cargo check on host crates (native, no Docker).
+# Run cargo check on host crates.
 .\z.ps1 build -- check
 
 # Check formatting.

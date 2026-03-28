@@ -93,16 +93,24 @@ export OBJECTS_DIR   := $(ROOT_DIR)/target
 # passed on the command line (e.g., from Dockerfile.build).
 NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
 
+# On Windows (MSYS/Git-for-Windows sh), `which` returns POSIX paths (e.g.
+# /c/Users/...) that native Windows tools cannot resolve.  Pipe through
+# `cygpath -w` when available to convert them to Windows paths.
+WHICH_SCCACHE = $(shell p=$$(which sccache 2>/dev/null) && \
+	if command -v cygpath >/dev/null 2>&1 && [ -n "$$p" ]; then \
+		cygpath -w "$$p"; \
+	else echo "$$p"; fi)
+
 ifeq ($(MAKECMDGOALS),)
 # Default target ('all') produces artifacts — enable sccache.
-export SCCACHE ?= $(shell which sccache 2>/dev/null)
+export SCCACHE ?= $(WHICH_SCCACHE)
 else ifeq ($(filter-out $(NO_SCCACHE_GOALS),$(MAKECMDGOALS)),)
 # All command-line goals are check-only — disable sccache.
 override SCCACHE :=
 export SCCACHE
 else
 # At least one goal produces artifacts — enable sccache.
-export SCCACHE ?= $(shell which sccache 2>/dev/null)
+export SCCACHE ?= $(WHICH_SCCACHE)
 endif
 
 #===================================================================================================
@@ -111,7 +119,7 @@ endif
 
 RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
-RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version'))
+RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1))
 
 # Extract memory_size (bytes) from kernel config and convert to megabytes.
 MEMORY_SIZE_BYTES = $(strip $(shell sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' $(BUILD_DIR)/kernel_config.toml | head -n1))
@@ -294,7 +302,12 @@ ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
 ALL_HOST_UTILS := echo-client mkimage mkramfs strace
+# linuxd is only needed for multi-process and L2 deployments (Linux-only).
+ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 ALL_HOST_DAEMONS := linuxd
+else
+ALL_HOST_DAEMONS :=
+endif
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 
 #===================================================================================================
@@ -349,7 +362,11 @@ all-nanvix: \
 	all-snapshot
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-nanvix-shim
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test
+# The containerd shim is not needed in standalone mode.
+ifneq ($(DEPLOYMENT_MODE),standalone)
+all-nanvix: all-nanvix-shim
+endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
@@ -560,15 +577,20 @@ endif
 PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/__pycache__/*" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
 C_CPP_FILES := $(shell git ls-files -- "*.c" "*.cpp" "*.h" "*.hpp" 2>/dev/null || find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
 SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
-ALL_SOURCE_FILES := $(shell git ls-files 2>/dev/null || find . -type f -not -path "*/target/*" -not -path "*/toolchain/*" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -path "*/.cargo/*")
 
 # Fixes spelling errors in source code and documentation.
+# Codespell reads .codespellrc for skip patterns and options.
+# Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
+# command-line length limit.
 spellcheck-fix:
-	codespell --write-changes $(ALL_SOURCE_FILES)
+	codespell --write-changes .
 
 # Checks for spelling errors in source code and documentation.
+# Codespell reads .codespellrc for skip patterns and options.
+# Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
+# command-line length limit.
 spellcheck:
-	codespell $(ALL_SOURCE_FILES)
+	codespell .
 
 # Fixes code formatting issues.
 format: \
@@ -715,7 +737,11 @@ endif
 run-unit-tests: all-nanvix test-guest-rlibs
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-run-unit-tests: test-host-rlibs test-nanvix-shim
+run-unit-tests: test-host-rlibs
+# The containerd shim tests are not needed in standalone mode.
+ifneq ($(DEPLOYMENT_MODE),standalone)
+run-unit-tests: test-nanvix-shim
+endif
 endif
 
 # Determine the test configuration file based on deployment mode.
