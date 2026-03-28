@@ -16,7 +16,7 @@ NANVIX_BENCH_CARGO_FEATURES := $(if $(NANVIX_BENCH_FEATURES),--features "$(NANVI
 
 all-nanvix-bench: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
-	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-bench $(BINARIES_DIR)/nanvix-bench.elf
+	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvix-bench$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvix-bench.$(HOST_BIN_EXT)
 
 check-nanvix-bench:
 	$(HOST_CARGO_CHECK_CMD) $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench
@@ -29,7 +29,7 @@ format-check-nanvix-bench:
 
 clean-nanvix-bench:
 	$(HOST_CARGO_CLEAN_CMD) -p nanvix-bench
-	$(RM_CMD) $(BINARIES_DIR)/nanvix-bench.elf
+	$(RM_CMD) $(BINARIES_DIR)/nanvix-bench.$(HOST_BIN_EXT)
 
 rust-lint-nanvix-bench:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIX_BENCH_CARGO_FEATURES) -p nanvix-bench --fix --allow-dirty --allow-no-vcs

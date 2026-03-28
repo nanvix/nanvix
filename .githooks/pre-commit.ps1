@@ -1,10 +1,14 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-$ErrorActionPreference = "Stop"
+# Use Continue so that stderr output from native commands (e.g., rustfmt
+# warnings, Make $(warning ...)) is not treated as a terminating error.
+$ErrorActionPreference = "Continue"
 
 $MachineTypes = @("microvm", "hyperlight")
-$DeploymentTypes = @("standalone", "single-process", "multi-process")
+# Windows only supports standalone deployment (single-process and multi-process
+# require Linux-only daemons and APIs that cannot compile on Windows).
+$DeploymentTypes = @("standalone")
 
 function Write-Info {
     param([string]$Msg)
