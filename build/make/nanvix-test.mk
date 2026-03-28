@@ -7,6 +7,7 @@ NANVIX_TEST_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-
 NANVIX_TEST_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
 NANVIX_TEST_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIX_TEST_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
+NANVIX_TEST_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_TEST_FEATURES := $(strip $(NANVIX_TEST_FEATURES))
 NANVIX_TEST_CARGO_FEATURES := $(if $(NANVIX_TEST_FEATURES),--features "$(NANVIX_TEST_FEATURES)")
 

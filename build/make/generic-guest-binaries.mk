@@ -93,6 +93,12 @@ endif
 	@for pkg in $(ALL_GUEST_BINARIES); do \
 		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
 	done
+# Copy side-artifact images produced by guest build scripts (e.g., vfs-test.img).
+# The build script may be cached, so the copy it performs at build time is
+# unreliable after a bin/ clean. Re-copy from the build output directory.
+	@for img in $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-test-*/out/test.img; do \
+		if [ -f "$$img" ]; then $(CP_CMD) "$$img" $(BINARIES_DIR)/vfs-test.img; break; fi; \
+	done
 
 check-guest-binaries:
 ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
