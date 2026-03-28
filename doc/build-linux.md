@@ -69,7 +69,7 @@ Pass build parameters after `--`:
 ./z build -- all LOG_LEVEL=debug
 
 # Combine multiple parameters.
-./z build -- all RELEASE=yes DEPLOYMENT_MODE=multi-process LOG_LEVEL=warn
+./z build -- all RELEASE=yes DEPLOYMENT_MODE=multi-process LOG_LEVEL=error
 ```
 
 Available build parameters:
@@ -77,7 +77,7 @@ Available build parameters:
 | Parameter         | Default         | Values                                                             |
 |-------------------|-----------------|--------------------------------------------------------------------|
 | `DEPLOYMENT_MODE` | `multi-process` | `standalone`, `single-process`, `multi-process`, `l2`              |
-| `LOG_LEVEL`       | `warn`          | `trace`, `debug`, `info`, `warn`, `error`, `panic`                 |
+| `LOG_LEVEL`       | `error`         | `trace`, `debug`, `info`, `warn`, `error`, `panic`                 |
 | `MACHINE`         | `microvm`       | `hyperlight`, `microvm`, `qemu-pc`, `qemu-isapc`, `qemu-baremetal` |
 | `PROFILER`        | `no`            | `yes`, `no`                                                        |
 | `RELEASE`         | `no`            | `yes`, `no`                                                        |

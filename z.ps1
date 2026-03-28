@@ -119,7 +119,7 @@ Build Parameters (after --)
   RELEASE=yes             Enable release mode.
   MACHINE=microvm         Target machine: microvm (default) or hyperlight.
   WHP=yes                 Enable WHP-specific guest kernel code for microvm builds.
-  LOG_LEVEL=<level>       Log level (default: trace for debug, warn for release).
+  LOG_LEVEL=<level>       Log level (default: trace for debug, error for release).
 
 Test Parameters (after --)
   RELEASE=yes             Build nanvix-test in release mode if auto-build is needed.

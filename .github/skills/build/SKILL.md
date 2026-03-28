@@ -55,7 +55,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 | `MACHINE`        | `microvm`, `hyperlight`  | `microvm`       |
 | `TARGET`         | `x86`                    | `x86`           |
 | `RELEASE`        | `yes`, `no`              | `no`            |
-| `LOG_LEVEL`      | `trace`, `debug`,        | `warn`          |
+| `LOG_LEVEL`      | `trace`, `debug`,        | `error`         |
 |                  | `info`, `warn`,          |                 |
 |                  | `error`, `panic`         |                 |
 | `PROFILER`       | `yes`, `no`              | `no`            |
