@@ -693,6 +693,164 @@ jobs:
             **/*.out
             **/*.err
 
+  # Run micro-benchmarks on a Windows GitHub-hosted runner using WHP so that
+  # Windows-specific performance data is collected alongside the Linux results.
+  # Only standalone-mode benchmarks are supported (boot-time, cold-start,
+  # warm-start-vmm). GitHub-hosted Windows runners have variable WHP performance,
+  # so continue-on-error prevents flaky failures from blocking the pipeline.
+  windows-benchmark-ci:
+    name: "Windows Benchmark CI (${{ matrix.machine-type }})"
+    needs: [precheck]
+    timeout-minutes: 120
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine-type: microvm
+            standard-benchmarks: "boot-time cold-start warm-start-vmm"
+            standard-iterations: "100"
+          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
+          # round-trip-latency failure is investigated.
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    if: |
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            !github.event.pull_request.draft
+          )
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Install Rust Toolchain"
+        shell: pwsh
+        run: |
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
+          rustup show
+          rustup component add --toolchain $toolchain clippy rustfmt
+
+      - name: "Setup Prerequisites"
+        shell: pwsh
+        run: |
+          $osVersion = [System.Environment]::OSVersion.Version
+          if ($osVersion.Build -ge 22000) {
+            Write-Host "Detected Windows build $($osVersion.Build) (Windows 11 or later). Running z.ps1 setup..."
+            .\z.ps1 setup
+          }
+          else {
+            Write-Host "Detected Windows build $($osVersion.Build) (< 22000). Skipping z.ps1 setup on CI runner."
+          }
+
+      - name: "Build"
+        shell: pwsh
+        env:
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+        run: |
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic
+
+      - name: "Exclude bin/ from Windows Defender"
+        shell: pwsh
+        run: |
+          $binDir = Join-Path $env:GITHUB_WORKSPACE "bin"
+          Add-MpPreference -ExclusionPath $binDir
+          Write-Host "Added Defender exclusion for $binDir"
+
+      - name: "Check Windows Hypervisor Platform"
+        id: whp-check
+        shell: pwsh
+        run: |
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
+          if ($feature.State -ne 'Enabled') {
+            Write-Host "::warning::Windows Hypervisor Platform is not enabled — skipping benchmarks."
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          Write-Host "HypervisorPlatform feature is enabled."
+
+          # Probe whether WHP can actually boot a guest by running hello-rust-nostd
+          # with a short timeout. GitHub-hosted runners may report the feature as
+          # enabled without functional nested virtualization.
+          Write-Host "Probing WHP with hello-rust-nostd (30s timeout)..."
+          $proc = Start-Process -FilePath ".\bin\nanvixd.exe" `
+            -ArgumentList "-- .\bin\hello-rust-nostd.elf" `
+            -PassThru -NoNewWindow -RedirectStandardOutput "whp-probe-stdout.txt" `
+            -RedirectStandardError "whp-probe-stderr.txt"
+
+          $proc | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+          if (-not $proc.HasExited) {
+            $proc | Stop-Process -Force
+            Write-Host "::warning::WHP probe timed out — hypervisor is not functional on this runner. Skipping benchmarks."
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          if ($proc.ExitCode -ne 0) {
+            Write-Host "::warning::WHP probe failed with exit code $($proc.ExitCode) — skipping benchmarks."
+            Get-Content "whp-probe-stderr.txt" -ErrorAction SilentlyContinue | Write-Host
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          Write-Host "WHP probe succeeded — hypervisor is functional."
+          echo "whp_available=true" >> $env:GITHUB_OUTPUT
+
+      - name: "Run Micro-Benchmarks"
+        if: steps.whp-check.outputs.whp_available == 'true'
+        shell: pwsh
+        env:
+          BENCHMARKS: ${{ matrix.standard-benchmarks }}
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+          ITERATIONS: ${{ matrix.standard-iterations }}
+        run: |
+          foreach ($bench in $env:BENCHMARKS -split ' ') {
+            Write-Host "[INFO] Running benchmark '${bench}'..."
+            python scripts/benchmark.py `
+              run `
+              --benchmark $bench `
+              --machine-type $env:MACHINE_TYPE `
+              --iterations $env:ITERATIONS `
+              --output-dir "." `
+              --commit "${{ github.sha }}"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Benchmark '${bench}' failed with exit code $LASTEXITCODE"
+              exit $LASTEXITCODE
+            }
+          }
+
+      - name: "Upload Benchmark Results"
+        if: always() && !cancelled() && steps.whp-check.outputs.whp_available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-ci-windows-results-${{ matrix.machine-type }}
+          overwrite: true
+          retention-days: 1
+          path: nanvix_bench_*.csv
+
+      - name: "Upload logs in case of benchmark failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-ci-windows-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+            bench_*.txt
+
   # ==========================================================================================
   # Stage 3: L2 and Benchmark (Self-Hosted Runners)
   # ==========================================================================================
@@ -1178,6 +1336,80 @@ jobs:
             **/*.out
             **/*.err
 
+  # Aggregate Windows CI benchmark results, post a PR comment, and persist
+  # the updated baselines on dev. Results are stored in data/windows-github/ to keep
+  # them isolated from the Linux baselines.
+  windows-benchmark-ci-finalize:
+    name: "Windows Benchmark CI Finalize"
+    needs: [windows-benchmark-ci]
+    # NOTE: windows-benchmark-ci uses continue-on-error, so its result may be
+    # 'failure' even when it ran successfully enough to produce artifacts. Run
+    # the finalize job whenever the benchmark job actually ran (not skipped).
+    if: ${{ !cancelled() && needs.windows-benchmark-ci.result != 'skipped' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+      - name: "Download Benchmark Results"
+        id: download-results
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: benchmark-ci-windows-results-*
+          path: .
+          merge-multiple: true
+
+      - name: "Check for benchmark results"
+        id: check-results
+        shell: bash
+        run: |
+          if compgen -G "nanvix_bench_*.csv" > /dev/null 2>&1; then
+            echo "has_results=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No Windows benchmark CSV files found — skipping report and persist."
+            echo "has_results=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Report Benchmark Results"
+        if: steps.check-results.outputs.has_results == 'true'
+        uses: ./.github/actions/benchmark-report
+        with:
+          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          machine-types: "microvm"
+          archs: "X64"
+          dev-dir: "data/windows-github"
+          runner-label: "windows-github-hosted"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Persist results on dev"
+        if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
+        uses: ./.github/actions/benchmark-persist
+        with:
+          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          machine-types: "microvm"
+          archs: "X64"
+          target-dir: "data/windows-github"
+
+      - name: "Upload logs in case of finalize failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-ci-windows-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+
   # ==========================================================================================
   # Stage 4: Post Actions (Conditional)
   # ==========================================================================================
@@ -1335,6 +1567,8 @@ jobs:
         benchmark-finalize,
         benchmark-ci,
         benchmark-ci-finalize,
+        windows-benchmark-ci,
+        windows-benchmark-ci-finalize,
         release-archive,
         windows-release-archive,
         publish-release,
