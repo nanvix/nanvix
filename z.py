@@ -508,70 +508,6 @@ def validate_toolchain_dir_location(toolchain_dir: str, repo_root: Path) -> None
 # ==================================================================================================
 
 
-def _find_rust_sysroot() -> Path:
-    """Find the active Rust sysroot."""
-    try:
-        result = subprocess.run(
-            ["rustc", "--print", "sysroot"], capture_output=True, text=True, check=True
-        )
-        return Path(result.stdout.strip())
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        die("Rust toolchain not found. Run 'z.ps1 setup' to install it.")
-
-
-def _get_rust_host_triple() -> str:
-    """Get the Rust host target triple."""
-    try:
-        result = subprocess.run(
-            ["rustc", "-vV"], capture_output=True, text=True, check=True
-        )
-        for line in result.stdout.splitlines():
-            if line.startswith("host:"):
-                return line.split(":", 1)[1].strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    die("Could not determine Rust host triple from 'rustc -vV'.")
-
-
-def ensure_ld_shim(repo_root: Path) -> None:
-    """Create ld.exe shim from rust-lld for ELF cross-compilation (Windows only)."""
-    shims_dir = repo_root / ".z.shims"
-    ld_exe = shims_dir / "ld.exe"
-
-    # Check if existing ld.exe on PATH is already LLD-based.
-    existing_ld = shutil.which("ld.exe")
-    if existing_ld:
-        try:
-            result = subprocess.run(
-                [existing_ld, "--version"], capture_output=True, text=True, timeout=5
-            )
-            if "LLD" in result.stdout:
-                return
-        except Exception:
-            pass
-
-    # Find rust-lld in the sysroot.
-    sysroot = _find_rust_sysroot()
-    host_triple = _get_rust_host_triple()
-    rust_lld = sysroot / "lib" / "rustlib" / host_triple / "bin" / "rust-lld.exe"
-
-    if not rust_lld.exists():
-        die(f"rust-lld.exe not found at: {rust_lld}")
-
-    # Create shim directory and copy.
-    shims_dir.mkdir(exist_ok=True)
-    needs_copy = (
-        not ld_exe.exists() or ld_exe.stat().st_mtime < rust_lld.stat().st_mtime
-    )
-    if needs_copy:
-        shutil.copy2(str(rust_lld), str(ld_exe))
-        shutil.copy2(str(rust_lld), str(shims_dir / "ld.lld.exe"))
-        print_info(f"Created ld.exe shim from {rust_lld}")
-
-    # Prepend to PATH.
-    _prepend_path(str(shims_dir))
-
-
 def restore_git_symlinks(repo_root: Path) -> None:
     """Restore git symlinks that appear as text stubs on Windows."""
     try:
@@ -786,7 +722,6 @@ def cmd_build(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the build subcommand."""
     # Windows pre-build steps.
     if plat.is_windows:
-        ensure_ld_shim(plat.repo_root)
         restore_git_symlinks(plat.repo_root)
 
     injected, user_args = _assemble_build_make_args(plat, config)
@@ -832,11 +767,6 @@ def cmd_distclean(plat: PlatformInfo, config: BuildConfig) -> int:
 
     # Windows-specific extra cleanup.
     if plat.is_windows:
-        shims_dir = plat.repo_root / ".z.shims"
-        if shims_dir.exists():
-            shutil.rmtree(str(shims_dir), ignore_errors=True)
-            print_info("Removed .z.shims/")
-
         venv_dir = plat.repo_root / ".venv"
         if venv_dir.exists():
             try:
@@ -865,7 +795,6 @@ def cmd_distclean(plat: PlatformInfo, config: BuildConfig) -> int:
 def cmd_test(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the test subcommand."""
     if plat.is_windows:
-        ensure_ld_shim(plat.repo_root)
         restore_git_symlinks(plat.repo_root)
 
     injected, user_args = _assemble_build_make_args(plat, config)
