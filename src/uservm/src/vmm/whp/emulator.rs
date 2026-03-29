@@ -214,6 +214,9 @@ impl Emulator {
                     ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD => {
                         return Ok(Some(::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD));
                     },
+                    ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD => {
+                        return Ok(Some(::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD));
+                    },
                     cmd => anyhow::bail!("unknown virtual machine command (cmd={cmd:#06x})"),
                 },
                 // Write to an I/O port that is not emulated.

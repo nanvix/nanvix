@@ -293,16 +293,7 @@ async fn main() -> Result<()> {
             }
         },
         BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,
-        BenchmarkFlavour::SnapshotRestore => {
-            #[cfg(windows)]
-            {
-                anyhow::bail!("snapshot-restore is not supported on Windows/WHP");
-            }
-            #[cfg(not(windows))]
-            {
-                benchmark.run_snapshot_restore().await
-            }
-        },
+        BenchmarkFlavour::SnapshotRestore => benchmark.run_snapshot_restore().await,
     };
     match result {
         Ok(()) => {},
