@@ -137,6 +137,15 @@ macro_rules! log_info {
 //   `#![forbid(clippy::expect_used)]` lint configuration.
 ///
 pub fn main() -> Result<ExitCode> {
+    // Standalone mode uses a single-thread runtime to avoid the overhead of
+    // spawning worker threads at startup.  Other deployment modes keep the
+    // multi-thread runtime for higher throughput.
+    #[cfg(feature = "standalone")]
+    let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+    #[cfg(not(feature = "standalone"))]
     let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -180,6 +189,9 @@ async fn async_main() -> Result<ExitCode> {
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
+    // Standalone mode does not use the temporary directory, so skip creating it
+    // to avoid unnecessary filesystem overhead on the cold-start path.
+    #[cfg(not(feature = "standalone"))]
     #[allow(unused_variables)]
     let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
 
@@ -461,6 +473,7 @@ fn print_startup_info(args: &Args) {
 /// On success, returns a `TemporaryDirectory` instance that manages the lifecycle of the created
 /// directory. On failure, returns an error describing what went wrong during directory creation.
 ///
+#[cfg_attr(feature = "standalone", allow(dead_code))]
 async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
     // Get current timestamp in microseconds.
     let timestamp_micros: u128 = SystemTime::now()
