@@ -15,9 +15,9 @@ use ::core::arch::global_asm;
 //==================================================================================================
 
 // _do_start2 (entered from 16-bit trampoline, already in protected mode).
+// Part 1: Protected-mode entry — load data segments and save boot info registers.
 global_asm!(
     r#".section .bootstrap,"ax",@progbits"#,
-
     ".align 4",
     ".globl _do_start2",
     "_do_start2:",
@@ -27,17 +27,32 @@ global_asm!(
     "    mov %dx, %fs",
     "    mov %dx, %gs",
     "    mov %dx, %ss",
-
     // EAX and EBX registers store boot information.
-
-    // Fill BSS section with zeros.
     "    movl %eax, %edx",
+    options(att_syntax),
+);
+
+// Part 2: Fill BSS section with zeros.
+//
+// On WHP the host has already zeroed guest memory (VirtualAlloc + ELF loader write_bytes), so every
+// BSS page is guaranteed to contain zeros before the vCPU starts.  Skipping the guest-side `rep
+// stosb` avoids touching every BSS page from inside the VM, which would otherwise trigger expensive
+// EPT-violation faults (~70 µs each on WHP) for pages the kernel never actually reads during boot.
+#[cfg(not(feature = "whp"))]
+global_asm!(
+    r#".section .bootstrap,"ax",@progbits"#,
     "    movl $__BSS_START, %edi",
     "    movl $__BSS_END, %ecx",
     "    subl %edi, %ecx",
     "    xorl %eax, %eax",
     "    cld",
     "    rep stosb",
+    options(att_syntax),
+);
+
+// Part 3: Stack guard, stack setup, and jump to kmain.
+global_asm!(
+    r#".section .bootstrap,"ax",@progbits"#,
 
     // Fill the boot stack guard page with a watermark pattern.
     "    movl $kstack_guard, %edi",
