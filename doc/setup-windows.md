@@ -84,6 +84,7 @@ This command validates prerequisites and configures the development environment:
 
 > **Note:** If winget is not available, install the prerequisites manually before running setup:
 >
+> - Python 3.10+: `winget install Python.Python.3.12` (see [python.org](https://www.python.org))
 > - GNU Make: `winget install ezwinports.make`
 > - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
 
