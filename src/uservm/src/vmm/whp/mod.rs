@@ -51,9 +51,18 @@ use ::log::{
     trace,
     warn,
 };
+use ::serde::{
+    Deserialize,
+    Serialize,
+};
 use ::std::{
+    ffi::OsStr,
+    fs::File,
     io::Write,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
     sync::{
         Arc,
         atomic::{
@@ -271,6 +280,21 @@ impl IkcNotifier {
 }
 
 //==================================================================================================
+// Snapshot
+//==================================================================================================
+
+/// Serializable WHP snapshot holding guest metadata and vCPU register state.
+///
+/// Memory is saved separately via [`vmem::VirtualMemory::save_snapshot`].
+#[derive(Serialize, Deserialize)]
+struct WhpSnapshot {
+    /// Guest metadata (kernel/initrd locations, credits, entry point).
+    guest_state: guest::GuestState,
+    /// Full vCPU register and LAPIC state.
+    vcpu_state: vcpu::VcpuState,
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -322,6 +346,10 @@ struct InteriorWhpHandle {
     control_rx: Receiver<VcpuControlCommand>,
     /// Channel to send control responses to the VMM.
     control_tx: Sender<VcpuControlResponse>,
+    /// Kernel filename used for snapshot path derivation.
+    kernel_filename: String,
+    /// When true, the next guest-initiated snapshot request is silently skipped.
+    skip_next_snapshot: bool,
 }
 
 //==================================================================================================
@@ -490,6 +518,8 @@ impl Vmm {
                 emulator,
                 control_rx: args.control_rx,
                 control_tx: args.control_tx,
+                kernel_filename: args.kernel_filename,
+                skip_next_snapshot: false,
             })),
             #[cfg(feature = "profile-time")]
             perf_timings,
@@ -709,7 +739,12 @@ impl Vmm {
                         },
                     };
                     if let Some(exit_status) = exit_status {
-                        if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                        if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
+                            if let Err(e) = Handle::current().block_on(self.handle_snapshot()) {
+                                error!("VMM exit: snapshot error (error={e:?})");
+                                break Err(e);
+                            }
+                        } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
                                 "VMM exit: PMIO shutdown (exit_status={exit_status}, elapsed={:?})",
                                 loop_start.elapsed()
@@ -808,23 +843,97 @@ impl Vmm {
         self.ikc_notifier.clone()
     }
 
-    ///
-    /// # Description
-    ///
-    /// Stub for snapshot creation (not supported on WHP backend).
-    ///
-    pub async fn create_snapshot(&self, _filepath: String) -> Result<()> {
-        warn!("create_snapshot(): snapshots are not supported on WHP backend");
-        Ok(())
+    /// Derives the snapshot file paths from the kernel filename.
+    fn make_snapshot_paths(filepath: &str) -> (PathBuf, PathBuf) {
+        let snapshots_dir: &Path = Path::new("snapshots");
+        let stem: &OsStr = Path::new(filepath)
+            .file_stem()
+            .unwrap_or(OsStr::new("default"));
+        let vmem_filepath: PathBuf = snapshots_dir.join(stem).with_extension("vmem");
+        let whp_filepath: PathBuf = snapshots_dir.join(stem).with_extension("whp.cbor");
+        (vmem_filepath, whp_filepath)
     }
 
-    ///
-    /// # Description
-    ///
-    /// Stub for snapshot loading (not supported on WHP backend).
-    ///
-    pub async fn load_snapshot(&self, _filepath: String) -> Result<()> {
-        warn!("load_snapshot(): snapshots are not supported on WHP backend");
+    /// Saves the virtual memory and WHP state to snapshot files.
+    pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
+
+        // Ensure snapshots directory exists.
+        if let Some(parent) = vmem_filepath.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Save guest memory (sparse format: only non-zero pages).
+        if let Err(e) = self.vmem.lock().await.save_snapshot_sparse(&vmem_filepath) {
+            let reason: String = format!("failed creating virtual memory snapshot (error={e:?})");
+            error!("create_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Save vCPU and guest state.
+        let whp_snapshot = WhpSnapshot {
+            guest_state: self.guest.lock().await.save_state()?,
+            vcpu_state: self.vcpu.lock().await.save_state()?,
+        };
+
+        let mut file: File = File::create(&whp_filepath)?;
+        match ::serde_cbor::to_vec(&whp_snapshot) {
+            Ok(buffer) => {
+                file.write_all(&buffer)?;
+                trace!("create_snapshot(): wrote {} bytes to WHP snapshot file", buffer.len());
+                Ok(())
+            },
+            Err(e) => {
+                let reason: String = format!("failed serializing WHP snapshot (error={e:?})");
+                error!("create_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        }
+    }
+
+    /// Loads the virtual memory and WHP state from snapshot files.
+    pub async fn load_snapshot(&self, filepath: String) -> Result<()> {
+        let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
+
+        // Load guest memory (sparse format).
+        if let Err(e) = self.vmem.lock().await.load_snapshot_sparse(&vmem_filepath) {
+            let reason: String = format!("failed loading virtual memory snapshot (error={e:?})");
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Load vCPU and guest state.
+        let mut file: File = match File::open(&whp_filepath) {
+            Ok(f) => f,
+            Err(e) => {
+                let reason: String = format!("failed opening WHP snapshot file (error={e:?})");
+                error!("load_snapshot(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        let whp_snapshot: WhpSnapshot =
+            match ::serde_cbor::from_reader::<WhpSnapshot, &mut File>(&mut file) {
+                Ok(snapshot) => snapshot,
+                Err(e) => {
+                    let reason: String = format!("failed decoding WHP snapshot file (error={e:?})");
+                    error!("load_snapshot(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+
+        // Restore guest state.
+        self.guest
+            .lock()
+            .await
+            .restore_state(&whp_snapshot.guest_state)?;
+
+        // Restore vCPU state (registers + LAPIC).
+        self.vcpu
+            .lock()
+            .await
+            .load_state(&whp_snapshot.vcpu_state)?;
+
         Ok(())
     }
 
@@ -866,6 +975,58 @@ impl Vmm {
             .await?)
     }
 
+    /// Handles a guest-initiated snapshot request from the VMM run loop.
+    ///
+    /// WHP advances RIP before delivering port-I/O exits, so the saved
+    /// state already points past the `out` instruction. Unlike KVM, no
+    /// `skip_next_snapshot` guard is needed to prevent re-triggering.
+    async fn handle_snapshot(&self) -> Result<()> {
+        let kernel_filename: String = {
+            let mut locked_inner: MutexGuard<'_, InteriorWhpHandle> = self.inner.lock().await;
+            if locked_inner.skip_next_snapshot {
+                trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
+                locked_inner.skip_next_snapshot = false;
+                return Ok(());
+            }
+            locked_inner.kernel_filename.clone()
+        };
+        match self.create_snapshot(kernel_filename).await {
+            Ok(()) => {
+                trace!("handle_snapshot(): snapshot created successfully");
+                Ok(())
+            },
+            Err(error) => {
+                error!("handle_snapshot(): failed to create snapshot: {error:?}");
+                Err(error)
+            },
+        }
+    }
+
+    /// Creates a snapshot and sends the result to the orchestrator.
+    async fn handle_create_snapshot(&self, filepath: String) -> Result<()> {
+        match self.create_snapshot(filepath).await {
+            Ok(()) => {
+                self.inner
+                    .lock()
+                    .await
+                    .control_tx
+                    .send(VcpuControlResponse::SnapshotCreated)
+                    .await?;
+                Ok(())
+            },
+            Err(error) => {
+                self.inner
+                    .lock()
+                    .await
+                    .control_tx
+                    .send(VcpuControlResponse::SnapshotCreationFailed)
+                    .await?;
+                error!("handle_create_snapshot(): failed to create snapshot: {error:?}");
+                Err(error)
+            },
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -881,9 +1042,8 @@ impl Vmm {
 
         match self.inner.lock().await.control_rx.recv().await {
             Some(VcpuControlCommand::Resume) => Ok(()),
-            Some(VcpuControlCommand::CreateSnapshot(_filepath)) => {
-                // Snapshots are not supported on Windows WHP backend.
-                warn!("handle_pause(): snapshot creation not supported on WHP backend");
+            Some(VcpuControlCommand::CreateSnapshot(filepath)) => {
+                self.handle_create_snapshot(filepath).await?;
                 Ok(())
             },
             None => {

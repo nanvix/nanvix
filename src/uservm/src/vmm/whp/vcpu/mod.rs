@@ -27,6 +27,10 @@ use ::log::{
     trace,
     warn,
 };
+use ::serde::{
+    Deserialize,
+    Serialize,
+};
 use ::std::mem;
 use windows::Win32::System::Hypervisor::{
     WHV_PARTITION_HANDLE,
@@ -68,9 +72,88 @@ const WHV_X64_REGISTER_PENDING_INTERRUPTION: WHV_REGISTER_NAME = WHV_REGISTER_NA
 /// TSC register.
 const WHV_X64_REGISTER_TSC: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x00000011);
 
+/// Complete list of vCPU registers saved in a WHP snapshot.
+const SNAPSHOT_REGISTER_NAMES: [WHV_REGISTER_NAME; 52] = [
+    // General purpose registers.
+    WHV_REGISTER_NAME(0x00), // RAX
+    WHV_REGISTER_NAME(0x01), // RCX
+    WHV_REGISTER_NAME(0x02), // RDX
+    WHV_REGISTER_NAME(0x03), // RBX
+    WHV_REGISTER_NAME(0x04), // RSP
+    WHV_REGISTER_NAME(0x05), // RBP
+    WHV_REGISTER_NAME(0x06), // RSI
+    WHV_REGISTER_NAME(0x07), // RDI
+    WHV_REGISTER_NAME(0x08), // R8
+    WHV_REGISTER_NAME(0x09), // R9
+    WHV_REGISTER_NAME(0x0A), // R10
+    WHV_REGISTER_NAME(0x0B), // R11
+    WHV_REGISTER_NAME(0x0C), // R12
+    WHV_REGISTER_NAME(0x0D), // R13
+    WHV_REGISTER_NAME(0x0E), // R14
+    WHV_REGISTER_NAME(0x0F), // R15
+    // Instruction pointer and flags.
+    WHV_REGISTER_NAME(0x10), // RIP
+    WHV_REGISTER_NAME(0x11), // RFLAGS
+    // Segment registers.
+    WHV_REGISTER_NAME(0x12), // ES
+    WHV_REGISTER_NAME(0x13), // CS
+    WHV_REGISTER_NAME(0x14), // SS
+    WHV_REGISTER_NAME(0x15), // DS
+    WHV_REGISTER_NAME(0x16), // FS
+    WHV_REGISTER_NAME(0x17), // GS
+    WHV_REGISTER_NAME(0x18), // LDTR
+    WHV_REGISTER_NAME(0x19), // TR
+    // Table registers.
+    WHV_REGISTER_NAME(0x1A), // IDTR
+    WHV_REGISTER_NAME(0x1B), // GDTR
+    // Control registers.
+    WHV_REGISTER_NAME(0x1C), // CR0
+    WHV_REGISTER_NAME(0x1D), // CR2
+    WHV_REGISTER_NAME(0x1E), // CR3
+    WHV_REGISTER_NAME(0x1F), // CR4
+    WHV_REGISTER_NAME(0x20), // CR8
+    // Debug registers.
+    WHV_REGISTER_NAME(0x21), // DR0
+    WHV_REGISTER_NAME(0x22), // DR1
+    WHV_REGISTER_NAME(0x23), // DR2
+    WHV_REGISTER_NAME(0x24), // DR3
+    WHV_REGISTER_NAME(0x25), // DR6
+    WHV_REGISTER_NAME(0x26), // DR7
+    // Extended control register.
+    WHV_REGISTER_NAME(0x27), // XCR0
+    // Virtual / MSR registers.
+    WHV_REGISTER_NAME(0x2000), // TSC
+    WHV_REGISTER_NAME(0x2001), // EFER
+    WHV_REGISTER_NAME(0x2002), // KernelGsBase
+    WHV_REGISTER_NAME(0x2003), // ApicBase
+    WHV_REGISTER_NAME(0x2004), // PAT
+    WHV_REGISTER_NAME(0x2005), // SysenterCs
+    WHV_REGISTER_NAME(0x2006), // SysenterEip
+    WHV_REGISTER_NAME(0x2007), // SysenterEsp
+    WHV_REGISTER_NAME(0x2008), // Star
+    WHV_REGISTER_NAME(0x2009), // Lstar
+    WHV_REGISTER_NAME(0x200A), // Cstar
+    WHV_REGISTER_NAME(0x200B), // Sfmask
+];
+
+// Compile-time assertion: WHV_REGISTER_VALUE must be exactly 16 bytes for safe raw serialization.
+const _: () = assert!(mem::size_of::<WHV_REGISTER_VALUE>() == 16);
+
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+/// Serializable vCPU state for WHP snapshot/restore.
+///
+/// Register values are stored as raw 16-byte arrays matching the binary layout of
+/// `WHV_REGISTER_VALUE`. The order corresponds to [`SNAPSHOT_REGISTER_NAMES`].
+#[derive(Serialize, Deserialize)]
+pub struct VcpuState {
+    /// Raw register values (each entry is a 16-byte `WHV_REGISTER_VALUE`).
+    register_values: Vec<[u8; 16]>,
+    /// LAPIC interrupt controller state (raw bytes).
+    lapic_state: Vec<u8>,
+}
 
 ///
 /// # Description
@@ -286,6 +369,78 @@ impl VirtualProcessor {
             )
             .map_err(|e| anyhow::anyhow!("failed to set LAPIC state (error={e:?})"))?;
         }
+        Ok(())
+    }
+
+    /// Saves the complete vCPU state for snapshot serialization.
+    pub fn save_state(&self) -> Result<VcpuState> {
+        let count: usize = SNAPSHOT_REGISTER_NAMES.len();
+        let mut values: Vec<WHV_REGISTER_VALUE> = vec![unsafe { mem::zeroed() }; count];
+
+        unsafe {
+            whp_get_registers(self.partition, self.index, &SNAPSHOT_REGISTER_NAMES, &mut values)
+                .map_err(|e| anyhow::anyhow!("save_state: failed to get registers ({e:?})"))?;
+        }
+
+        let register_values: Vec<[u8; 16]> = values
+            .iter()
+            .map(|v| {
+                let mut bytes = [0u8; 16];
+                // SAFETY: WHV_REGISTER_VALUE is a 16-byte C union; raw copy is valid.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        (v as *const WHV_REGISTER_VALUE).cast::<u8>(),
+                        bytes.as_mut_ptr(),
+                        16,
+                    );
+                }
+                bytes
+            })
+            .collect();
+
+        let lapic_state: Vec<u8> = self.get_lapic_state()?;
+
+        Ok(VcpuState {
+            register_values,
+            lapic_state,
+        })
+    }
+
+    /// Restores the complete vCPU state from a snapshot.
+    pub fn load_state(&mut self, state: &VcpuState) -> Result<()> {
+        if state.register_values.len() != SNAPSHOT_REGISTER_NAMES.len() {
+            anyhow::bail!(
+                "load_state: register count mismatch (expected={}, got={})",
+                SNAPSHOT_REGISTER_NAMES.len(),
+                state.register_values.len()
+            );
+        }
+
+        let values: Vec<WHV_REGISTER_VALUE> = state
+            .register_values
+            .iter()
+            .map(|bytes| {
+                let mut v: WHV_REGISTER_VALUE = unsafe { mem::zeroed() };
+                // SAFETY: WHV_REGISTER_VALUE is a 16-byte C union; raw copy is valid.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        bytes.as_ptr(),
+                        (&mut v as *mut WHV_REGISTER_VALUE).cast::<u8>(),
+                        16,
+                    );
+                }
+                v
+            })
+            .collect();
+
+        unsafe {
+            whp_set_registers(self.partition, self.index, &SNAPSHOT_REGISTER_NAMES, &values)
+                .map_err(|e| anyhow::anyhow!("load_state: failed to set registers ({e:?})"))?;
+        }
+
+        self.set_lapic_state(&state.lapic_state)?;
+        self.online = true;
+
         Ok(())
     }
 

@@ -22,6 +22,10 @@ use ::log::{
     error,
     trace,
 };
+use ::serde::{
+    Deserialize,
+    Serialize,
+};
 use ::std::{
     mem,
     ptr,
@@ -33,6 +37,19 @@ const PAGE_SIZE: usize = 4096;
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+/// Serializable guest state for WHP snapshot/restore.
+#[derive(Serialize, Deserialize)]
+pub struct GuestState {
+    /// Kernel location and size.
+    kernel: Option<(usize, usize)>,
+    /// Initial RAM disk location and size.
+    initrd: Option<(usize, usize)>,
+    /// IKC credits counter.
+    credits: u32,
+    /// Kernel entry point address.
+    entry: usize,
+}
 
 #[derive(Debug, Default)]
 pub struct Guest {
@@ -351,5 +368,24 @@ impl Guest {
             config::microvm::DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED as u64,
             &::config::microvm::RUNNING.to_le_bytes(),
         )
+    }
+
+    /// Saves the guest state for snapshot serialization.
+    pub fn save_state(&self) -> Result<GuestState> {
+        Ok(GuestState {
+            kernel: self.kernel,
+            initrd: self.initrd,
+            credits: self.credits,
+            entry: self.entry,
+        })
+    }
+
+    /// Restores the guest state from a snapshot.
+    pub fn restore_state(&mut self, state: &GuestState) -> Result<()> {
+        self.kernel = state.kernel;
+        self.initrd = state.initrd;
+        self.credits = state.credits;
+        self.entry = state.entry;
+        Ok(())
     }
 }
