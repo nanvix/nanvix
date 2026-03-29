@@ -552,13 +552,15 @@ impl Vmm {
         // interpolates between updates using LAPIC timer tick counts
         // (1 kHz) for ~1 ms accuracy with zero VM exits per time read.
         //
-        // A low-frequency host timer (100Hz) calls
-        // WHvCancelRunVirtualProcessor to force VM exits so the VMM
-        // loop can update system_time on the pvclock page. Without these
-        // periodic exits, pvclock would freeze during CPU-bound guest
-        // execution (no I/O = no VM exits), causing condvar/sleep
-        // timeouts to malfunction.
-        self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
+        // Defer the pvclock timer until after the kernel finishes
+        // booting (first application-level I/O exit).  Starting the
+        // timer earlier causes WHvCancelRunVirtualProcessor to
+        // interrupt the very first WHvRunVirtualProcessor call, which
+        // carries a heavy one-time partition-setup cost inside WHP.
+        // Deferring avoids those unnecessary cancel-induced VM exits
+        // during boot while still providing pvclock updates once the
+        // guest application is running.
+        let mut timer_started: bool = false;
 
         // PIT channel 2 state for LAPIC timer calibration. The guest
         // programs PIT ch2 in one-shot mode and polls port 0x61 bit 5
@@ -685,6 +687,14 @@ impl Vmm {
                     }
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
+
+                    // Start the pvclock timer on the first application-
+                    // level I/O, which signals that the kernel has
+                    // finished booting and guest apps are running.
+                    if !timer_started {
+                        self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
+                        timer_started = true;
+                    }
 
                     let exit_status: Option<u16> = match self
                         .inner
