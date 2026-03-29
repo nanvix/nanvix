@@ -36,18 +36,6 @@ Libraries with unit tests are listed in
 | `test-kernel` | `src/tests/test-kernel/`  | Kernel tests       |
 | `linux-app`   | `src/tests/linux-app/`    | Linux app tests    |
 
-### Integration Tests (Guest — C/C++)
-
-| Test         | Path                     | Purpose            |
-|--------------|--------------------------|--------------------|
-| `file-c`     | `src/tests/file-c/`      | File tests         |
-| `memory-c`   | `src/tests/memory-c/`    | Memory tests       |
-| `network-c`  | `src/tests/network-c/`   | Network tests      |
-| `thread-c`   | `src/tests/thread-c/`    | Thread tests       |
-| `misc-c`     | `src/tests/misc-c/`      | Misc tests         |
-| `dlfcn-c`    | `src/tests/dlfcn-c/`     | Dlfcn tests        |
-| `c-bindings` | `src/tests/c-bindings/`  | C bindings tests   |
-
 ### System Integration Tests
 
 System tests run the full Nanvix stack (`nanvixd` + kernel + guest) and are available only on
