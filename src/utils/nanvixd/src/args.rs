@@ -81,6 +81,8 @@ pub struct Args {
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Optional snapshot path: when set, restore VM from snapshot instead of cold-booting.
+    snapshot_path: Option<String>,
 }
 
 //==================================================================================================
@@ -126,6 +128,8 @@ impl Args {
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
+    /// Command-line option for snapshot restore path (standalone mode only).
+    pub const OPT_SNAPSHOT: &'static str = "-snapshot";
 
     ///
     /// # Description
@@ -174,6 +178,7 @@ impl Args {
         let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
+        let mut snapshot_path: Option<String> = None;
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -280,6 +285,15 @@ impl Args {
                         anyhow::anyhow!("invalid GDB port (arg={}, error={e:?})", args[i])
                     })?);
                 },
+                // Set snapshot restore path (standalone mode only).
+                Self::OPT_SNAPSHOT => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_SNAPSHOT));
+                    }
+                    snapshot_path = Some(args[i].clone());
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -379,6 +393,7 @@ impl Args {
             tmp_directory,
             #[cfg(feature = "gdb")]
             gdb_port,
+            snapshot_path,
         })
     }
 
@@ -533,6 +548,11 @@ Options:
     ///
     pub fn ramfs_filename(&self) -> Option<&str> {
         self.ramfs_filename.as_deref()
+    }
+
+    /// Returns the optional snapshot path for VM restore.
+    pub fn snapshot_path(&self) -> Option<&str> {
+        self.snapshot_path.as_deref()
     }
 
     ///

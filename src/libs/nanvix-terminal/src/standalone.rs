@@ -47,7 +47,7 @@ const IO_BUFFER_SIZE: usize = 4096;
 const STDIN_CHANNEL_CAPACITY: usize = 4096;
 
 /// Maximum time to wait for the input task to shut down gracefully before aborting it.
-const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(1);
+const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_millis(10);
 
 //==================================================================================================
 // Structures
@@ -68,6 +68,8 @@ pub struct TerminalConfig {
     ramfs_filename: Option<String>,
     /// Optional file path for capturing guest stderr output.
     console_file: Option<String>,
+    /// Optional snapshot path for restoring VM state instead of cold-booting.
+    snapshot_path: Option<String>,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -90,12 +92,14 @@ impl TerminalConfig {
         kernel_binary_path: String,
         ramfs_filename: Option<String>,
         console_file: Option<String>,
+        snapshot_path: Option<String>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> Self {
         Self {
             kernel_binary_path,
             ramfs_filename,
             console_file,
+            snapshot_path,
             #[cfg(feature = "gdb")]
             gdb_port,
         }
@@ -171,7 +175,7 @@ impl Terminal {
             initrd_args,
             self.config.ramfs_filename.clone(),
             self.config.console_file.clone(),
-            None,
+            self.config.snapshot_path.clone(),
             #[cfg(feature = "gdb")]
             self.config.gdb_port,
         );

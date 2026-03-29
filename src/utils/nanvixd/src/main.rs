@@ -273,6 +273,7 @@ async fn async_main() -> Result<ExitCode> {
             kernel_binary_path.clone(),
             args.ramfs_filename().map(|s| s.to_string()),
             args.console_file().clone(),
+            args.snapshot_path().map(|s| s.to_string()),
             #[cfg(feature = "gdb")]
             args.gdb_port(),
         ));
