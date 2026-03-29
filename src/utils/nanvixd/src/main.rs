@@ -137,6 +137,15 @@ macro_rules! log_info {
 //   `#![forbid(clippy::expect_used)]` lint configuration.
 ///
 pub fn main() -> Result<ExitCode> {
+    // Standalone mode uses a single-thread runtime to avoid the overhead of
+    // spawning worker threads at startup.  Other deployment modes keep the
+    // multi-thread runtime for higher throughput.
+    #[cfg(feature = "standalone")]
+    let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+    #[cfg(not(feature = "standalone"))]
     let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
