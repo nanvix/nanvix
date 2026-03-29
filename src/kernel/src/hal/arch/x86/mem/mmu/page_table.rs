@@ -309,6 +309,37 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Bulk-fills page table entries for contiguous identity-mapped physical memory.
+    ///
+    /// Each entry maps physical frame `base_frame + i` with the given raw PTE flags. This bypasses
+    /// per-entry validation and PTE struct construction for maximum performance during boot-time
+    /// identity mapping.
+    ///
+    /// # Parameters
+    ///
+    /// - `start_index`: First entry index to fill (0–1023).
+    /// - `count`: Number of consecutive entries to fill.
+    /// - `base_frame`: Frame number of the first page (physical address >> PAGE_SHIFT).
+    /// - `pte_flags`: Raw PTE flag bits (e.g., Present | ReadWrite | WriteThrough | CacheDisable).
+    ///
+    pub fn fill_identity(
+        &mut self,
+        start_index: usize,
+        count: usize,
+        base_frame: u32,
+        pte_flags: u32,
+    ) {
+        let mut raw_pte: u32 = (base_frame << ::arch::mem::FRAME_SHIFT as u32) | pte_flags;
+        for entry in &mut self.entries[start_index..start_index + count] {
+            *entry = raw_pte;
+            raw_pte += ::arch::mem::PAGE_SIZE as u32;
+        }
+        self.nmapped += count;
+    }
+
     fn clean(&mut self) {
         for pte in self.entries.iter_mut() {
             *pte = 0;

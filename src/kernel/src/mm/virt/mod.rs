@@ -332,34 +332,55 @@ pub fn init(
                     (PageTableAddress::new(page_table_addr), page_table)
                 };
 
-            // FIXME: do not be so open about permissions and caching.
-            page_table.map(
-                PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
-                paddr,
-                true,
-                true,
-                false,
-                AccessPermission::RDWR,
-            )?;
-            root_pagetables.push_back((page_table_addr, page_table));
-            if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
-                break;
-            }
-            raw_vaddr += mem::PAGE_SIZE;
-            paddr = match region.typ() {
-                MemoryRegionType::Mmio => {
+            if region.typ() != MemoryRegionType::Mmio {
+                // Bulk identity fill: map all pages in this page table at once.
+                let pgtab_base: usize = ::sys::mm::align_down(raw_vaddr, PGTAB_ALIGNMENT);
+                let start_index: usize = (raw_vaddr - pgtab_base) / mem::PAGE_SIZE;
+                let pgtab_remaining: usize = PAGE_TABLE_LENGTH - start_index;
+                let region_remaining: usize = (end + 1 - raw_vaddr) / mem::PAGE_SIZE;
+                let memory_remaining: usize =
+                    config::kernel::MEMORY_SIZE.saturating_sub(raw_vaddr) / mem::PAGE_SIZE;
+                let count: usize = pgtab_remaining.min(region_remaining).min(memory_remaining);
+
+                if count > 0 {
+                    // Present | ReadWrite | WriteThrough | CacheDisable.
+                    const IDENTITY_PTE_FLAGS: u32 = 0x1B;
+                    let base_frame: u32 = (raw_vaddr >> mem::PAGE_SHIFT) as u32;
+                    page_table.fill_identity(start_index, count, base_frame, IDENTITY_PTE_FLAGS);
+                }
+
+                root_pagetables.push_back((page_table_addr, page_table));
+                raw_vaddr += count * mem::PAGE_SIZE;
+                if raw_vaddr >= config::kernel::MEMORY_SIZE {
+                    break;
+                }
+                paddr = FrameAddress::new(PageAligned::from_address(
+                    PhysicalAddress::from_raw_value(raw_vaddr)?,
+                )?);
+            } else {
+                // MMIO: per-page mapping with address translation.
+                // FIXME: do not be so open about permissions and caching.
+                page_table.map(
+                    PageAddress::new(PageAligned::from_raw_value(raw_vaddr)?),
+                    paddr,
+                    true,
+                    true,
+                    false,
+                    AccessPermission::RDWR,
+                )?;
+                root_pagetables.push_back((page_table_addr, page_table));
+                if raw_vaddr == (config::kernel::MEMORY_SIZE - mem::PAGE_SIZE) {
+                    break;
+                }
+                raw_vaddr += mem::PAGE_SIZE;
+                paddr = {
                     let mmio_addr: VirtualAddress = VirtualAddress::new(raw_vaddr);
                     let phys_addr: PhysicalAddress =
-                    // FIXME: ensure safety here.
-                    unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
-                    let page_aligned_phys_addr: PageAligned<PhysicalAddress> =
-                        PageAligned::from_address(phys_addr)?;
-                    FrameAddress::new(page_aligned_phys_addr)
-                },
-                _ => FrameAddress::new(PageAligned::from_address(
-                    PhysicalAddress::from_raw_value(raw_vaddr)?,
-                )?),
-            };
+                        // FIXME: ensure safety here.
+                        unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
+                    FrameAddress::new(PageAligned::from_address(phys_addr)?)
+                };
+            }
         }
     }
 
