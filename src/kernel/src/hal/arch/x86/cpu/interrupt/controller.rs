@@ -144,10 +144,7 @@ impl InterruptController {
             // handled by the WHP LAPIC emulator (not guest RAM).
             #[cfg(all(feature = "microvm", feature = "whp"))]
             {
-                use ::arch::cpu::{
-                    pit,
-                    xapic,
-                };
+                use ::arch::cpu::xapic;
                 let lapic_base: usize = ::config::microvm::DEFAULT_LAPIC_BASE;
                 let lapic: xapic::Xapic = xapic::Xapic::new(lapic_base as *mut u32);
                 // SAFETY: The LAPIC MMIO page is identity-mapped during
@@ -159,24 +156,23 @@ impl InterruptController {
                 }
                 info!("lapic svr enabled for whp interrupt delivery");
 
-                // PIT-based LAPIC timer calibration.
+                // RDTSC-based LAPIC timer calibration.
                 //
-                // We use PIT channel 2 in one-shot mode to measure how
-                // many LAPIC timer ticks elapse in a known duration.
-                // PIT I/O (ports 0x40-0x43, 0x61) causes PMIO VM exits,
-                // which returns control to the VMM loop and allows
-                // pvclock to advance during calibration. At runtime,
-                // PIC EOI is skipped; pvclock is updated via guest-
-                // driven refresh and a 100 Hz host timer fallback.
-                const CALIBRATION_MS: u32 = 1;
-                let pit_reload: u16 = ((pit::PIT_MAX_FREQUENCY as u64 * CALIBRATION_MS as u64
-                    / 1000)
-                    & 0xFFFF) as u16;
+                // On WHP, every I/O port access (PIT polling) causes a
+                // VM exit. During the very first WHvRunVirtualProcessor
+                // call these exits are extremely expensive because WHP
+                // lazily initialises internal partition state. Replacing
+                // PIT-based calibration with an RDTSC spin loop
+                // eliminates ~100 VM exits and saves significant time.
+                //
+                // The TSC frequency is obtained from CPUID leaf 0x16
+                // (processor frequency information, EAX = base freq in
+                // MHz). If the leaf is unavailable a 2 GHz default is
+                // used; the correction step (target / actual) cancels
+                // most of the error.
 
-                // SAFETY: All I/O port accesses below target the PIT and
-                // speaker gate, which are emulated by the VMM. The LAPIC
-                // registers are accessed through the identity-mapped MMIO
-                // page handled by the WHP LAPIC emulator.
+                // SAFETY: LAPIC registers go through the WHP emulator.
+                // CPUID and RDTSC do not cause VM exits.
                 unsafe {
                     // 1. Mask the LAPIC timer during calibration.
                     lapic.write(
@@ -187,45 +183,35 @@ impl InterruptController {
                     // 2. Set LAPIC timer divide-by-128.
                     lapic.write(xapic::XAPIC_TDCR, 0x0A);
 
-                    // 3. Program PIT channel 2 in one-shot mode.
-                    // Enable speaker gate for channel 2 and clear output bit.
-                    let speaker: u8 = (::arch::io::in8(0x61) & 0xFC) | 0x01;
-                    ::arch::io::out8(0x61, speaker);
-                    // Channel 2, lobyte/hibyte, mode 0 (one-shot), binary.
-                    ::arch::io::out8(
-                        pit::PIT_CTRL,
-                        pit::PIT_SEL2 | pit::PIT_ACC_LOHI | pit::PIT_MODE_TCOUNT | pit::PIT_BINARY,
-                    );
-                    ::arch::io::out8(pit::PIT_DATA + 2, (pit_reload & 0xFF) as u8);
-                    ::arch::io::out8(pit::PIT_DATA + 2, (pit_reload >> 8) as u8);
+                    // 3. Obtain TSC frequency from CPUID leaf 0x16.
+                    let cpuid16 = core::arch::x86::__cpuid(0x16);
+                    let tsc_freq_mhz: u64 = if cpuid16.eax > 0 {
+                        cpuid16.eax as u64
+                    } else {
+                        2_000 // 2 GHz fallback.
+                    };
+                    let tsc_ticks_per_ms: u64 = tsc_freq_mhz * 1_000;
 
                     // 4. Start the LAPIC timer counting from max value.
                     lapic.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
 
-                    // 5. Wait for PIT channel 2 output (bit 5 of port 0x61),
-                    //    but avoid an unbounded busy-wait in case OUT2 never
-                    //    transitions due to misconfigured PIT emulation.
-                    const PIT_CALIBRATION_MAX_ITERS: u32 = 10_000_000;
-                    let mut pit_iters: u32 = 0;
-                    while (::arch::io::in8(0x61) & 0x20) == 0 {
+                    // 5. Spin for ~1 ms using RDTSC (zero VM exits).
+                    let tsc_start: u64 = ::arch::cpu::rdtsc();
+                    while (::arch::cpu::rdtsc() - tsc_start) < tsc_ticks_per_ms {
                         core::hint::spin_loop();
-                        pit_iters = pit_iters.wrapping_add(1);
-                        if pit_iters >= PIT_CALIBRATION_MAX_ITERS {
-                            warn!(
-                                "PIT calibration timeout: OUT2 did not assert after {} iterations",
-                                PIT_CALIBRATION_MAX_ITERS
-                            );
-                            break;
-                        }
                     }
 
-                    // 6. Read remaining LAPIC timer count.
+                    // 6. Read remaining LAPIC count and actual TSC delta
+                    //    to correct for TSC frequency inaccuracy.
                     let current_count: u32 = lapic.read(xapic::XAPIC_TCCR);
-                    let elapsed_ticks: u32 = 0xFFFF_FFFF - current_count;
-                    let mut ticks_per_ms: u32 = elapsed_ticks / CALIBRATION_MS;
+                    let elapsed_ticks: u32 = 0xFFFF_FFFF_u32.wrapping_sub(current_count);
+                    let tsc_elapsed: u64 = ::arch::cpu::rdtsc() - tsc_start;
+
+                    // ticks_per_ms = elapsed × (target / actual) so the
+                    // result is independent of TSC frequency errors.
+                    let mut ticks_per_ms: u32 =
+                        ((elapsed_ticks as u64 * tsc_ticks_per_ms) / tsc_elapsed) as u32;
                     if ticks_per_ms == 0 {
-                        // Calibration underflow: use minimal non-zero fallback
-                        // to avoid programming LAPIC TICR with 0.
                         warn!(
                             "lapic timer calibration underflow: elapsed_ticks={elapsed_ticks}, \
                              using fallback ticks_per_ms=1"
@@ -234,12 +220,13 @@ impl InterruptController {
                     }
 
                     info!(
-                        "lapic timer calibration: elapsed_ticks={}, ticks_per_ms={}",
-                        elapsed_ticks, ticks_per_ms
+                        "lapic timer calibration (rdtsc): elapsed_ticks={}, ticks_per_ms={}, \
+                         tsc_freq_mhz={}",
+                        elapsed_ticks, ticks_per_ms, tsc_freq_mhz
                     );
 
                     // 7. Program LAPIC timer in periodic mode with vector
-                    //    0x20, initial count = ticks_per_ms (1kHz).
+                    //    0x20, initial count = ticks_per_ms (1 kHz).
                     lapic.write(
                         xapic::XAPIC_TIMER,
                         xapic::XapicTimer::new(0x20, false, false, 1).to_u32(),
