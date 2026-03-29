@@ -168,7 +168,7 @@ impl InterruptController {
                 // pvclock to advance during calibration. At runtime,
                 // PIC EOI is skipped; pvclock is updated via guest-
                 // driven refresh and a 100 Hz host timer fallback.
-                const CALIBRATION_MS: u32 = 10;
+                const CALIBRATION_MS: u32 = 1;
                 let pit_reload: u16 = ((pit::PIT_MAX_FREQUENCY as u64 * CALIBRATION_MS as u64
                     / 1000)
                     & 0xFFFF) as u16;
