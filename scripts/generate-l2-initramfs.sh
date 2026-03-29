@@ -55,6 +55,8 @@ GUEST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_tap_ip
 HOST_TAP_IP_ADDRESS=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "host_tap_ip_address")
 CONTROL_PLANE_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "control_plane_port")
 USER_VM_PORT=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "user_vm_port")
+GUEST_EPHEMERAL_PORT_RANGE_BEGIN=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_ephemeral_port_range_begin")
+GUEST_EPHEMERAL_PORT_RANGE_END=$(get_value_from_toml "${LINUXD_CONFIG_TOML}" "guest_ephemeral_port_range_end")
 
 CONTROL_PLANE_SOCKADDR="${HOST_TAP_IP_ADDRESS}:${CONTROL_PLANE_PORT}"
 USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${USER_VM_PORT}"
@@ -103,6 +105,11 @@ cat >/tmp/init <<EOF
 echo "[init] Nanvix L2 System VM init wrapper started!"
 
 # Set-up any resources that linuxd needs when running in the L2-VM.
+mount -t proc proc /proc
+
+# Keep guest ephemeral source ports away from the dedicated gateway listener range.
+echo "${GUEST_EPHEMERAL_PORT_RANGE_BEGIN} ${GUEST_EPHEMERAL_PORT_RANGE_END}" > /proc/sys/net/ipv4/ip_local_port_range
+echo "[init] Configured guest ephemeral port range to ${GUEST_EPHEMERAL_PORT_RANGE_BEGIN}-${GUEST_EPHEMERAL_PORT_RANGE_END}"
 
 # We must bind to the same IP, as it is the only one available in the guest.
 echo "[init] Nanvix L2 System VM passed init gate. Starting linuxd..."
