@@ -65,7 +65,7 @@ USER_VM_SOCKADDR="${GUEST_TAP_IP_ADDRESS}:${USER_VM_PORT}"
 # Build initramfs
 #===================================================================================================
 
-UBUNTU_VERSION="jammy"
+UBUNTU_VERSION="noble"
 UBUNTU_COMPONENTS="main,restricted,universe,multiverse"
 # Robust mirror detection, and fallback to a safe default.
 UBUNTU_MIRROR="$(
