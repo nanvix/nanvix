@@ -15,8 +15,11 @@
 use crate::{
     hal::mem::{
         AccessPermission,
+        ExecutePermission,
         PageAligned,
+        ReadPermission,
         VirtualAddress,
+        WritePermission,
     },
     mm::{
         VirtMemoryManager,
@@ -56,6 +59,57 @@ use ::sys::{
     },
 };
 
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+// Maximum number of PT_LOAD segments tracked for overlap detection. A small fixed-size
+// array is used instead of a heap-allocated map because real-world ELF binaries rarely
+// have more than a handful of LOAD segments, making linear scans faster and avoiding
+// kernel heap allocation overhead. Do not increase this value without revisiting the
+// overlap detection algorithm: it performs an O(segments) scan per page, which is only
+// efficient for small segment counts.
+const MAX_LOAD_SEGMENTS: usize = 16;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Computes the union of two access permissions, allowing any access granted by either operand.
+///
+/// # Parameters
+///
+/// - `a`: First access permission.
+/// - `b`: Second access permission.
+///
+/// # Returns
+///
+/// An [`AccessPermission`] that grants read, write, or execute access whenever at least one of
+/// the two operands grants it.
+///
+fn merge_access(a: AccessPermission, b: AccessPermission) -> AccessPermission {
+    AccessPermission::new(
+        if a.is_readable() || b.is_readable() {
+            ReadPermission::Allow
+        } else {
+            ReadPermission::Deny
+        },
+        if a.is_writable() || b.is_writable() {
+            WritePermission::Allow
+        } else {
+            WritePermission::Deny
+        },
+        if a.is_executable() || b.is_executable() {
+            ExecutePermission::Allow
+        } else {
+            ExecutePermission::Deny
+        },
+    )
+}
+
 ///
 /// # Description
 ///
@@ -82,6 +136,15 @@ fn do_elf32_load(
     trace!("dry_run={}", dry_run);
 
     let mut last_address: usize = 0;
+
+    // Page-aligned ranges and original permissions of already-processed LOAD segments.  This is
+    // used to detect overlapping pages (e.g., a RELRO segment sharing a page with the preceding
+    // text segment) and widen permissions instead of double-allocating.  Entries are never mutated
+    // after insertion so that the union is always computed from per-segment originals, preventing
+    // permission bleed across non-overlapping pages.
+    let mut loaded_ranges: [(usize, usize, AccessPermission); MAX_LOAD_SEGMENTS] =
+        [(0, 0, AccessPermission::RDONLY); MAX_LOAD_SEGMENTS];
+    let mut loaded_count: usize = 0;
 
     // Check if the ELF header is valid.
     if let Err(reason) = elf.validate() {
@@ -219,9 +282,27 @@ fn do_elf32_load(
 
             // Check if we should perform the allocation.
             if !dry_run {
-                // Allocate page.
-                // TODO: selectively clear pages to improve performance.
-                mm.alloc_upage(vmem, vaddr, access, true)?;
+                let page_addr: usize = vaddr.into_raw_value();
+
+                // Scan prior segment ranges to detect overlap and compute the merged
+                // permission from all segments that cover this page.
+                let mut already_mapped: bool = false;
+                let mut merged: AccessPermission = access;
+                for &(start, end, prev_access) in loaded_ranges.iter().take(loaded_count) {
+                    if page_addr >= start && page_addr < end {
+                        merged = merge_access(merged, prev_access);
+                        already_mapped = true;
+                    }
+                }
+
+                if already_mapped {
+                    // Page already mapped by a prior segment — apply merged permissions
+                    // to accommodate all segments sharing this page.
+                    mm.ctrl_upage(vmem, vaddr, merged)?;
+                } else {
+                    // TODO (#1854): selectively clear pages to improve performance.
+                    mm.alloc_upage(vmem, vaddr, access, true)?;
+                }
             }
 
             // Update last address.
@@ -245,6 +326,16 @@ fn do_elf32_load(
                     )?;
                 }
             }
+        }
+
+        // Record this segment's page-aligned range so subsequent segments can detect overlap.
+        // If the array is full, skip recording — overlap detection degrades gracefully by
+        // not merging permissions for segments beyond the limit.
+        if loaded_count < MAX_LOAD_SEGMENTS {
+            loaded_ranges[loaded_count] = (virt_addr_base, virt_addr_end, access);
+            loaded_count += 1;
+        } else {
+            warn!("too many load segments, overlap detection may be inaccurate");
         }
     }
 
