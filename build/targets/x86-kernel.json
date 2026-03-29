@@ -13,10 +13,10 @@
 		"unix"
 	],
 	"arch": "x86",
-	"linker-flavor": "ld",
-	"linker": "ld",
+	"linker-flavor": "gnu-lld",
+	"linker": "rust-lld",
 	"pre-link-args": {
-		"ld": [
+		"gnu-lld": [
 			"-nostdlib",
 			"--entry=_do_start",
 			"-melf_i386"
