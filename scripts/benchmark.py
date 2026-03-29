@@ -11,6 +11,7 @@ import io
 import itertools
 import os
 import pathlib
+import platform
 import re
 import signal
 import subprocess
@@ -22,8 +23,9 @@ from typing import Optional
 
 HYPERLIGHT_MACHINE_TYPE = "hyperlight"
 MICROVM_MACHINE_TYPE = "microvm"
+IS_WINDOWS = platform.system() == "Windows"
 NA = "NA"
-NANVIX_BENCH_ELF = "nanvix-bench.elf"
+NANVIX_BENCH_BINARY = "nanvix-bench.exe" if IS_WINDOWS else "nanvix-bench.elf"
 PERCENTILES = ["p50", "p95", "p99"]
 ROUND_TRIP_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
 X86_64_ARCH = "X64"
@@ -688,17 +690,26 @@ def ci_summary(args):
         fh.write(bench_summary)
 
 
-def _kill_process_group(pid: int) -> None:
-    """Send SIGKILL to the process group led by *pid*.
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """Forcefully terminate a process and all its descendants.
 
-    Because we launch benchmarks with ``start_new_session=True``, the child
-    becomes its own process-group leader (PGID == PID).  Killing the group
-    ensures that all grandchildren are reaped, not just the direct child.
+    On Unix, benchmarks run in their own session (``start_new_session=True``),
+    so killing the process group (PGID == PID) reaps all grandchildren.
+
+    On Windows, ``taskkill /F /T`` is used to terminate the entire process
+    tree rooted at the child PID.
     """
     try:
-        os.killpg(pid, signal.SIGKILL)
+        if IS_WINDOWS:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
     except OSError:
-        pass  # Process group may already be gone.
+        pass  # Process (group) may already be gone.
 
 
 def _run_with_timeout(
@@ -708,11 +719,14 @@ def _run_with_timeout(
     capture_output: bool = False,
     check: bool = False,
 ) -> subprocess.CompletedProcess:
-    """Run *cmd* in a new session, killing the entire process group on timeout."""
-    kwargs = {
+    """Run *cmd* in a new session, killing the entire process tree on timeout."""
+    kwargs: dict = {
         "shell": True,
-        "start_new_session": True,
     }
+    if IS_WINDOWS:
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
     if capture_output:
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.PIPE
@@ -721,7 +735,7 @@ def _run_with_timeout(
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        _kill_process_group(proc.pid)
+        _kill_process_tree(proc)
         stdout, stderr = proc.communicate()
         raise subprocess.TimeoutExpired(
             proc.args, timeout, output=stdout, stderr=stderr
@@ -745,6 +759,11 @@ def run_benchmark(args):
         f"[BENCHMARK] Configuration: iterations={args.iterations}, "
         f"hwloc={args.hwloc}"
     )
+    # Normalize paths so that Unix-style "./" prefixes are converted to
+    # platform-native form (cmd.exe does not understand "./").
+    args.bin_dir = os.path.normpath(args.bin_dir)
+    args.toolchain_bin_dir = os.path.normpath(args.toolchain_bin_dir)
+
     print(
         f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
         f"toolchain_bin_dir={args.toolchain_bin_dir}"
@@ -770,7 +789,8 @@ def run_benchmark(args):
 
     # Before running L2 benchmarks, wait for TCP connections from previous runs to clear.
     # This is critical when L2 benchmarks run after non-L2 benchmarks in sequence.
-    if args.benchmark.endswith(L2_SUFFIX):
+    # These cleanup steps use Linux-specific tools (ss, ip netns) and are skipped on Windows.
+    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
         print(
             "[BENCHMARK] This is an L2 benchmark, checking for lingering TCP connections..."
         )
@@ -782,8 +802,9 @@ def run_benchmark(args):
     # Clean up any stale network namespaces before running all benchmarks.
     # This prevents resource conflicts from previous runs, especially when running
     # non-L2 benchmarks after L2 benchmarks in a sequence.
-    print("[BENCHMARK] Cleaning up stale network namespaces...")
-    cleanup_stale_netns()
+    if not IS_WINDOWS:
+        print("[BENCHMARK] Cleaning up stale network namespaces...")
+        cleanup_stale_netns()
 
     # The concurrent benchmark takes slightly different command-line arguments than the other
     # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
@@ -792,7 +813,7 @@ def run_benchmark(args):
     print(f"[BENCHMARK] Is concurrent benchmark: {is_concurrent_bench}")
 
     nanvix_bench_cmd = [
-        os.path.join(args.bin_dir, NANVIX_BENCH_ELF),
+        os.path.join(args.bin_dir, NANVIX_BENCH_BINARY),
         f"-benchmark {args.benchmark}",
         f"-hwloc {args.hwloc}" if (not is_concurrent_bench and args.hwloc) else "",
         (
@@ -848,8 +869,8 @@ def run_benchmark(args):
             print("[BENCHMARK] STDERR:")
             print(result.stderr.decode("utf-8"))
 
-            # Additional diagnostics for L2 benchmarks.
-            if args.benchmark.endswith(L2_SUFFIX):
+            # Additional diagnostics for L2 benchmarks (Linux-only tools).
+            if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
                 print("[BENCHMARK] Running post-failure network diagnostics...")
                 diag_result = subprocess.run(
                     ["ss", "-tan", "state", "time-wait", "sport", "9999"],
@@ -902,7 +923,7 @@ def run_benchmark(args):
     # After L2 benchmarks, wait for TCP connections in TIME_WAIT to clear.
     # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
     # which can cause connection issues for subsequent benchmarks.
-    if args.benchmark.endswith(L2_SUFFIX):
+    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
         print("[BENCHMARK] Post-benchmark: checking for lingering TCP connections...")
         cleanup_success = wait_for_tcp_cleanup()
         result_str = "success" if cleanup_success else "timeout/failure"
@@ -1092,7 +1113,7 @@ if __name__ == "__main__":
     )
     run_parser.add_argument(
         "--bin-dir",
-        help="Directory where to find nanvix-bench.elf",
+        help="Directory where to find the nanvix-bench binary",
         default="./bin",
     )
     run_parser.add_argument(
