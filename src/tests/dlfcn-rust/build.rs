@@ -216,6 +216,16 @@ fn main() {
     println!("cargo::rustc-link-arg=-z");
     println!("cargo::rustc-link-arg=notext");
 
+    // Disable RELRO.  LLD's default RELRO layout creates a separate LOAD
+    // segment for .dynamic right after .text.  That segment starts mid-page
+    // (sharing the last page of .text) with RW permissions, while .text
+    // maps the same page R+X.  The Nanvix kernel maps pages per-segment and
+    // cannot remap a page with conflicting permissions — this causes a crash.
+    // With -z norelro, LLD places .dynamic inside the regular data segment,
+    // matching the layout GNU ld produces.
+    println!("cargo::rustc-link-arg=-z");
+    println!("cargo::rustc-link-arg=norelro");
+
     // Use legacy SysV hash style to avoid .gnu.hash / .hash section type
     // mismatch when lld merges sections specified by the linker script.
     println!("cargo::rustc-link-arg=--hash-style=sysv");
