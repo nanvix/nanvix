@@ -130,20 +130,23 @@ To run formal verification:
 
 ```bash
 # Verify all annotated crates.
-./z build -- verify
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Verify a single crate (e.g., bitmap).
-./z build -- verify-bitmap
+./z build -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 
-Verus is installed to `$(TOOLCHAIN_DIR)/verus` by default. When `VERUS_EXECUTABLE_DIR` points
-to a custom location, the build assumes pre-built or locally compiled Verus binaries are already
-present there and skips the automatic download (the directory is used read-only; nothing is
-written to it). `VERUS_EXECUTABLE_DIR` must point to the directory that contains the `verus`
-executable (and required companion binaries), not just the Verus source tree.
+> **Note:** `VERUS_EXECUTABLE_DIR` must be set; when unset, verification is a silent no-op.
+
+Verification requires `VERUS_EXECUTABLE_DIR` to point to the directory that contains the
+`verus` executable (and required companion binaries). When the variable is unset, `make verify`
+is a no-op. The `scripts/setup/verus.sh` helper can download the pinned release:
 
 ```bash
-# Use a custom Verus installation (pre-built or source-built).
-# VERUS_EXECUTABLE_DIR must be the directory that contains the verus binary.
+# Install verus to a local directory and run verification.
+./scripts/setup/verus.sh ~/toolchain/verus
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+
+# Or use a source-built installation.
 ./z build -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
 ```
