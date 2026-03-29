@@ -34,7 +34,6 @@ runs:
     shell: bash
     run: |
       ./z build \
-        --toolchain-dir "$HOME/toolchain" \
         -- \
         run-unit-tests \
         "MACHINE=${{ inputs.machine-type }}" \
@@ -48,7 +47,6 @@ runs:
     shell: bash
     run: |
       ./z build \
-        --toolchain-dir "$HOME/toolchain" \
         -- \
         run-nanvix-tests \
         "MACHINE=${{ inputs.machine-type }}" \

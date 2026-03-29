@@ -136,8 +136,15 @@ compatibility. Follow these steps to update your environment:
 
 ## 9. Verus (Formal Verification)
 
-Verus is installed automatically when you run `make verify`. The expected version is pinned in
-`build/verus-version` and installed to `toolchain/verus`. No manual setup is required.
+Verification requires `VERUS_EXECUTABLE_DIR` to point to the directory containing the `verus`
+binary. When unset, `make verify` is a no-op. The expected version is pinned in
+`build/verus-version`; use `scripts/setup/verus.sh` to download it:
+
+```bash
+# Download the pinned release and run verification.
+./scripts/setup/verus.sh ~/toolchain/verus
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+```
 
 ### Using a Custom Verus Installation
 
@@ -150,14 +157,14 @@ git clone https://github.com/verus-lang/verus.git ~/verus-src
 cd ~/verus-src/source
 # Follow the Verus build instructions to produce binaries.
 
-# 2. Point VERUS_EXECUTABLE_DIR at the directory containing the verus binary.
-make verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
+# 2. From the Nanvix repo root, run verification pointing at the verus binary directory.
+cd /path/to/nanvix
+./z build -- verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
 ```
 
-> **Note:** When `VERUS_EXECUTABLE_DIR` is overridden, the automatic download is skipped and
-> the build validates that a `verus` binary exists at the given path (the directory is used
-> read-only; nothing is written to it). You are responsible for ensuring the Verus version is
-> compatible with the `vstd` crate version pinned in `Cargo.toml`.
+> **Note:** The build validates that a `verus` binary exists at the given path (the directory
+> is used read-only; nothing is written to it). You are responsible for ensuring the Verus
+> version is compatible with the `vstd` crate version pinned in `Cargo.toml`.
 
 ---
 

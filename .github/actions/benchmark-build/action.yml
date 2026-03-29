@@ -24,7 +24,6 @@ runs:
       TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
     run: |
       ./z build \
-        --toolchain-dir "$HOME/toolchain" \
         -- \
         all \
         "MACHINE=${MACHINE_TYPE}" \

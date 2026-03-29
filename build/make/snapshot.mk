@@ -6,7 +6,7 @@ all-snapshot: all-host-binaries
 # Snapshots are only generated for microvm/hyperlight machines in L2 deployment mode.
 ifneq (,$(and $(filter l2,$(DEPLOYMENT_MODE)),$(filter $(MACHINE),microvm hyperlight)))
 	bash $(SCRIPTS_DIR)/generate-l2-initramfs.sh
-	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh $(TOOLCHAIN_DIR)
+	bash $(SCRIPTS_DIR)/generate-l2-snapshot.sh $(CLH_DIR)
 endif
 
 clean-snapshot:
