@@ -70,9 +70,14 @@ jobs:
 
     # Only run the CI for:
     # - Merge queue validation runs.
+    # - Nightly scheduled runs.
     # - Non-merge pushes to 'dev'.
     # - Non-draft PRs.
+    # NOTE: !cancelled() overrides the implicit success() status check so that
+    # the job is not transitively skipped when precheck is skipped
+    # (schedule / merge_group events). See actions/runner#2205.
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -129,7 +134,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -177,7 +184,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -269,7 +278,10 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # !failure() ensures the build does not start when checks/lint/verify fail.
     if: |
+      !cancelled() && !failure() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -458,7 +470,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -501,7 +515,9 @@ jobs:
       matrix:
         machine-type: [microvm, hyperlight]
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -716,7 +732,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -871,7 +889,10 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # !failure() ensures L2 does not start when checks fail.
     if: |
+      !cancelled() && !failure() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -977,7 +998,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
@@ -1159,7 +1182,9 @@ jobs:
     permissions:
       contents: read
 
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
+      !cancelled() &&
       github.repository == 'nanvix/nanvix' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
