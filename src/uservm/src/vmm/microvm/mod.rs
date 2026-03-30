@@ -616,7 +616,9 @@ impl Vmm {
                         .emulator_mut()
                         .handle_pmio_access(access)?;
                     if let Some(exit_status) = exit_status {
-                        if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
+                        if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
+                            // Kernel finished booting; no-op on KVM backend.
+                        } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
                             Handle::current().block_on(self.handle_snapshot())?;
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
