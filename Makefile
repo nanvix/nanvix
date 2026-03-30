@@ -624,13 +624,19 @@ PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py
 
 SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
 
+# Directories and patterns to skip during spell checking.  Duplicated on the
+# command line with -S because codespell 2.2.x ignores the "skip" key when
+# reading a config file via --config. Keep this list in sync with the "skip"
+# entry in .codespellrc to avoid drift between the Makefile and config file.
+CODESPELL_SKIP := .git,.venv,bin,lib,logs,build,target,toolchain,sysroot-debug,sysroot-release,*.pdf,*.png,*.jpg,*.jpeg,*.ico,*.svg,*.woff,*.woff2,*.eot,*.ttf
+
 # Fixes spelling errors in source code and documentation.
 # Pass --config explicitly so that .codespellrc is always honoured,
 # even on codespell versions that do not auto-discover it (e.g. 2.2.x).
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
 spellcheck-fix:
-	codespell --config .codespellrc --write-changes .
+	codespell --config .codespellrc -S "$(CODESPELL_SKIP)" --write-changes .
 
 # Checks for spelling errors in source code and documentation.
 # Pass --config explicitly so that .codespellrc is always honoured,
@@ -638,7 +644,7 @@ spellcheck-fix:
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
 spellcheck:
-	codespell --config .codespellrc .
+	codespell --config .codespellrc -S "$(CODESPELL_SKIP)" .
 
 # Fixes code formatting issues.
 format: \
