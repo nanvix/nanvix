@@ -58,7 +58,7 @@ There is also a cleanup script for `nanvixd` resources:
 ```bash
 ls -la toolchain/
 # If missing, rebuild:
-./z setup --toolchain-dir $HOME/toolchain
+./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
 ln -s $HOME/toolchain toolchain
 ```
 
