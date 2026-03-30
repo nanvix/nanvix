@@ -91,7 +91,7 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "null pointer"));
         }
 
-        // Check if length is invalid valid.
+        // Check if length is invalid.
         if len == 0 || len >= i32::MAX as usize || len > isize::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
         }
@@ -211,7 +211,7 @@ impl Slab {
     ///
     /// This function is unsafe for the following reasons:
     ///
-    /// - It dereferences the pointer `ptr`.
+    /// - It uses `offset_from_unsigned`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
         // Return an error if the pointer is before or after the data blocks.
