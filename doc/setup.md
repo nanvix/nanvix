@@ -9,3 +9,6 @@ guide that matches your host operating system:
 - **[Windows Setup](setup-windows.md)** — Full development workflow on Windows 11. Host components
   are built natively; guest components are cross-compiled using a local toolchain. Uses the Windows
   Hypervisor Platform (WHP) as the virtualization backend.
+
+- **[Windows Server Setup](setup-windows-server.md)** — Full development workflow on Windows
+  Server 2022/2025 Datacenter. Same build workflow as Windows 11.
