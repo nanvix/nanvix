@@ -214,10 +214,12 @@ impl Slab {
     /// - It dereferences the pointer `ptr`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
-        // Return an error if the pointer is before the data blocks.
+        // Return an error if the pointer is before or after the data blocks.
         if ptr < self.data_addr as *const u8 || ptr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
+
+        // Return an error if the pointer isn't at a block boundary.
         if !(ptr as usize).is_multiple_of(self.block_size) {
             return Err(Error::new(ErrorCode::BadAddress, "pointer unaligned"));
         }
