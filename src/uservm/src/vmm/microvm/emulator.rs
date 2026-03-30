@@ -198,6 +198,9 @@ impl Emulator {
                         ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD => {
                             return Ok(Some(::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD));
                         },
+                        ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD => {
+                            return Ok(Some(::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD));
+                        },
                         cmd => anyhow::bail!("unknown virtual machine command (cmd={cmd:#06x})"),
                     }
                 },
