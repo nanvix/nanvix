@@ -625,18 +625,20 @@ PYTHON_FILES := $(shell git ls-files -- "*.py" 2>/dev/null || find . -name "*.py
 SHELL_FILES := $(shell git ls-files -- "*.sh" 2>/dev/null || find . -name "*.sh" -not -path "*/toolchain/*" -not -path "*/target/*" -not -path "*/.cargo/*")
 
 # Fixes spelling errors in source code and documentation.
-# Codespell reads .codespellrc for skip patterns and options.
+# Pass --config explicitly so that .codespellrc is always honoured,
+# even on codespell versions that do not auto-discover it (e.g. 2.2.x).
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
 spellcheck-fix:
-	codespell --write-changes .
+	codespell --config .codespellrc --write-changes .
 
 # Checks for spelling errors in source code and documentation.
-# Codespell reads .codespellrc for skip patterns and options.
+# Pass --config explicitly so that .codespellrc is always honoured,
+# even on codespell versions that do not auto-discover it (e.g. 2.2.x).
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
 spellcheck:
-	codespell .
+	codespell --config .codespellrc .
 
 # Fixes code formatting issues.
 format: \
