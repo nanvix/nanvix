@@ -16,8 +16,6 @@
 //   nanvixd, nanvix-test, and mkramfs.
 //   Guest and kernel crates are checked via cross-compilation targets like 'check-kernel' and
 //   'check-guest-binaries'; invoke them manually with 'z.ps1 build -- <target>' when needed.
-// - 'C_Cpp.default.compilerPath' is intentionally omitted here because the guest cross-toolchain is not
-//   installed natively on Windows by default.
 {
     //==============================================================================================
     // Editor Settings
@@ -42,10 +40,7 @@
     "files.exclude": {
         "**/__pycache__/**": true,
         "target/**": true,
-        "**/*.d": true,
-        "**/*.elf": true,
-        "**/*.o": true,
-        "**/*.out": true
+        "**/*.elf": true
     },
     //==============================================================================================
     // Rust Analyzer Settings
@@ -74,16 +69,5 @@
     ],
     "rust-analyzer.cargo.features": [
         "standalone"
-    ],
-    //==============================================================================================
-    // Assembly Settings
-    //==============================================================================================
-    "[asm-intel-x86-generic]": {
-        "vim.textwidth": 80,
-        "editor.rulers": [
-            80
-        ],
-        "editor.tabSize": 4,
-        "editor.insertSpaces": true
-    }
+    ]
 }
