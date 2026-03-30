@@ -10,6 +10,18 @@ use crate::hal::arch::x86::cpu::ContextInformation;
 use ::arch::mem::PAGE_SIZE;
 use ::core::arch::global_asm;
 
+/// Whether to clear the BSS section during bootstrap (0 = skip, 1 = clear).
+///
+/// On microvm backends (KVM and WHP) the host has already zeroed guest memory before the
+/// vCPU starts: `mmap(MAP_ANONYMOUS)` on Linux and `VirtualAlloc(MEM_COMMIT)` on Windows
+/// both return zero-filled pages, and the ELF loader explicitly zeroes every BSS region
+/// via `write_bytes()`. Skipping the guest-side `rep stosb` avoids touching every BSS
+/// page from inside the VM, which would otherwise trigger expensive page/EPT-violation
+/// faults for pages the kernel never actually reads during boot. In all other
+/// configurations we must zero .bss here to ensure deterministic initialization of
+/// static data.
+const CLEAR_BSS: u32 = if cfg!(feature = "microvm") { 0 } else { 1 };
+
 //==================================================================================================
 // Bootstrap Section — BSP Entry Point
 //==================================================================================================
@@ -28,16 +40,22 @@ global_asm!(
     "    mov %dx, %gs",
     "    mov %dx, %ss",
 
+    // System V i386 ABI requires DF=0; set it once for all subsequent code.
+    "    cld",
+
     // EAX and EBX registers store boot information.
 
     // Fill BSS section with zeros.
     "    movl %eax, %edx",
+
+    // Fill BSS section with zeros (skipped on microvm backends; see CLEAR_BSS).
+    ".if {CLEAR_BSS}",
     "    movl $__BSS_START, %edi",
     "    movl $__BSS_END, %ecx",
     "    subl %edi, %ecx",
     "    xorl %eax, %eax",
-    "    cld",
     "    rep stosb",
+    ".endif",
 
     // Fill the boot stack guard page with a watermark pattern.
     "    movl $kstack_guard, %edi",
@@ -78,6 +96,7 @@ global_asm!(
     "1:  hlt",
     "    jmp 1b",
 
+    CLEAR_BSS = const CLEAR_BSS,
     PAGE_SIZE = const PAGE_SIZE,
     CONTEXT_HW_SIZE = const ContextInformation::CONTEXT_HW_SIZE,
     KSTACK_GUARD_PATTERN = const constants::KSTACK_GUARD_PATTERN,
