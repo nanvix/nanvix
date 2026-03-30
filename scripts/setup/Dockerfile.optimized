@@ -22,12 +22,14 @@ USER $USER
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install runtime and build dependencies via shared setup script (keeps parity with full image).
-COPY --from=source /opt/nanvix/src/nanvix/scripts/setup/ubuntu.sh /tmp/ubuntu.sh
+# Install runtime and build dependencies via shared setup scripts (keeps parity with full image).
+COPY --from=source /opt/nanvix/src/nanvix/scripts/setup/ubuntu-core.sh /tmp/ubuntu-core.sh
+COPY --from=source /opt/nanvix/src/nanvix/scripts/setup/ubuntu-sdk.sh /tmp/ubuntu-sdk.sh
 
 RUN apt-get update && \
-    chmod +x /tmp/ubuntu.sh && \
-    /bin/bash /tmp/ubuntu.sh && \
+    chmod +x /tmp/ubuntu-core.sh /tmp/ubuntu-sdk.sh && \
+    /bin/bash /tmp/ubuntu-core.sh && \
+    /bin/bash /tmp/ubuntu-sdk.sh && \
     # Remove bulky docs/icons/themes that are unnecessary in the runtime image.
     apt-get purge -y --auto-remove man-db doc-base ubuntu-mono adwaita-icon-theme humanity-icon-theme hicolor-icon-theme fonts-dejavu-core fonts-dejavu-mono && \
     apt-get clean && \

@@ -20,7 +20,7 @@ See [doc/setup.md](doc/setup.md) for full environment setup. The quickest path:
 
 ```bash
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
-./z setup --toolchain-dir $HOME/toolchain
+./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
 ln -T -s $HOME/toolchain toolchain
 ./z build -- all
 ```
