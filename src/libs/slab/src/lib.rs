@@ -49,7 +49,7 @@ pub struct Slab {
     /// Base address of data blocks.
     data_addr: *mut u8,
     /// End of data blocks.
-    end_addr: usize,
+    end_addr: *const u8,
     /// Size of blocks in the slab.
     block_size: usize,
 }
@@ -163,7 +163,7 @@ impl Slab {
             index.set(i)?;
         }
 
-        let end_addr = (addr as usize) + total_num_blocks * block_size;
+        let end_addr = addr.add(total_num_blocks * block_size);
         Ok(Slab {
             block_size,
             data_addr,
@@ -209,12 +209,11 @@ impl Slab {
     /// - It dereferences the pointer `ptr`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
-        let addr = ptr as usize;
         // Return an error if the pointer is before the data blocks.
-        if ptr < self.data_addr || addr >= self.end_addr {
+        if ptr < self.data_addr || ptr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
-        if !addr.is_multiple_of(self.block_size) {
+        if !(ptr as usize).is_multiple_of(self.block_size) {
             return Err(Error::new(ErrorCode::BadAddress, "pointer unaligned"));
         }
 
