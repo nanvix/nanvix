@@ -105,7 +105,7 @@ cat >/tmp/init <<EOF
 echo "[init] Nanvix L2 System VM init wrapper started!"
 
 # Set-up any resources that linuxd needs when running in the L2-VM.
-if ! mount -t proc proc /proc; then
+if ! mount -t proc -o nodev,nosuid,noexec proc /proc; then
   echo "[init][error] Failed to mount /proc; aborting init."
   exit 1
 fi
