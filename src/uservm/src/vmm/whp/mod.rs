@@ -103,6 +103,13 @@ pub const KILL_SIGNAL: i32 = 0;
 /// IDT vector for IRQ 9 (IKC): PIC2 base (0x28) + (IRQ 9 - 8) = 0x29.
 const IKC_VECTOR: u32 = 0x29;
 
+/// Pvclock host timer period in microseconds (10 ms = 100 Hz). This timer
+/// forces periodic VM exits via `WHvCancelRunVirtualProcessor` so the VMM loop
+/// can update the pvclock `system_time` field. 100 Hz is high enough that the
+/// guest sees sub-10 ms clock drift between LAPIC tick interpolations, yet low
+/// enough to keep the VM-exit overhead negligible.
+const PVCLOCK_TIMER_PERIOD_US: u64 = 10_000;
+
 /// PIT oscillator frequency in Hz (1.193181 MHz).
 const PIT_FREQ_HZ: u64 = 1_193_181;
 
@@ -707,7 +714,7 @@ impl Vmm {
                             if !timer_started {
                                 match self.timer.lock() {
                                     Ok(mut locked_timer) => {
-                                        locked_timer.start(10_000); // 10ms = 100Hz
+                                        locked_timer.start(PVCLOCK_TIMER_PERIOD_US);
                                         trace!("pvclock timer started");
                                         timer_started = true;
                                     },
