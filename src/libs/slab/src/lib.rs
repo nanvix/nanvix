@@ -215,7 +215,7 @@ impl Slab {
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
         // Return an error if the pointer is before the data blocks.
-        if ptr < self.data_addr || ptr >= self.end_addr {
+        if ptr < self.data_addr as *const u8 || ptr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
         if !(ptr as usize).is_multiple_of(self.block_size) {
