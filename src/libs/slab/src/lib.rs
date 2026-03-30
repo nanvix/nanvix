@@ -170,10 +170,10 @@ impl Slab {
 
         let end_addr = addr.add(total_num_blocks * block_size);
         Ok(Slab {
-            block_size,
+            index,
             data_addr,
             end_addr,
-            index,
+            block_size,
         })
     }
 
