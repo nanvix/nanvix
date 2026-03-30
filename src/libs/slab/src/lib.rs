@@ -86,6 +86,11 @@ impl Slab {
         len: usize,
         block_size: usize,
     ) -> Result<Slab, Error> {
+        // Make sure the address isn't null, e.g., from a failed allocation.
+        if addr.is_null() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "null pointer"));
+        }
+
         // Check if length is invalid valid.
         if len == 0 || len >= i32::MAX as usize || len > isize::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
