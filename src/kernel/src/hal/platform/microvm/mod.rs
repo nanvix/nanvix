@@ -241,6 +241,23 @@ pub fn snapshot() {
 ///
 /// # Description
 ///
+/// Signals the VMM that the kernel has finished booting and user-space
+/// applications are about to start. The VMM uses this to enable
+/// host-side services (e.g., pvclock timer) that should not run during
+/// the boot phase.
+///
+pub fn signal_boot_complete() {
+    // SAFETY: The port I/O write targets the VMM control port with a well-known
+    // boot-complete command value.
+    unsafe {
+        let cmd: u16 = ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD;
+        ::arch::io::out32(::config::microvm::DEFAULT_VMM_PORT, (cmd as u32) << 16);
+    }
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
