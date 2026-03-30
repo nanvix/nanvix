@@ -702,12 +702,24 @@ impl Vmm {
                     };
                     if let Some(exit_status) = exit_status {
                         if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
-                            // The kernel signals that boot is complete and
-                            // user-space is about to start. Start the
-                            // pvclock host timer now.
+                            // The kernel signals that boot is complete and user-space is about to
+                            // start. Start the pvclock host timer now.
                             if !timer_started {
-                                self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
-                                timer_started = true;
+                                match self.timer.lock() {
+                                    Ok(mut locked_timer) => {
+                                        locked_timer.start(10_000); // 10ms = 100Hz
+                                        trace!("pvclock timer started");
+                                        timer_started = true;
+                                    },
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to acquire timer lock to start pvclock: {e:?}"
+                                        );
+                                        break Err(anyhow::anyhow!(
+                                            "Failed to acquire timer lock to start pvclock: {e:?}"
+                                        ));
+                                    },
+                                }
                             }
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
