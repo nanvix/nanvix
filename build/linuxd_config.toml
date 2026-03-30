@@ -17,10 +17,15 @@ snapshot_name = "l2-sysvm-snapshot"
 control_plane_port = 9000
 user_vm_port = 9001
 
+# Ephemeral TCP source port range to configure inside the guest kernel of the L2 VM.
+# This range must not overlap with the gateway listener port range below, otherwise the guest
+# kernel may auto-select a source port that collides with a gateway listener.
+guest_ephemeral_port_range_begin = 32768
+guest_ephemeral_port_range_end = 49151
+
 # Each user VM instance gets a different gateway port, so we define the allowed port range
-# here. Note that this range limits the total number of concurrent user VMs we can have
-# at any point in time. We pick large values that are unlikely to overlap with other
-# services, and with the ephemeral port range used in Linux, readable with:
-# cat /proc/sys/net/ipv4/ip_local_port_range
+# here. Note that this range limits the total number of concurrent user VMs we can have at any
+# point in time. This range must not overlap with the guest kernel's ephemeral source port range
+# above, otherwise outbound guest connections may claim ports reserved for gateway listeners.
 gateway_port_range_begin = 49152
 gateway_port_range_end = 65535
