@@ -105,10 +105,16 @@ cat >/tmp/init <<EOF
 echo "[init] Nanvix L2 System VM init wrapper started!"
 
 # Set-up any resources that linuxd needs when running in the L2-VM.
-mount -t proc proc /proc
+if ! mount -t proc proc /proc; then
+  echo "[init][error] Failed to mount /proc; aborting init."
+  exit 1
+fi
 
 # Keep guest ephemeral source ports away from the dedicated gateway listener range.
-echo "${GUEST_EPHEMERAL_PORT_RANGE_BEGIN} ${GUEST_EPHEMERAL_PORT_RANGE_END}" > /proc/sys/net/ipv4/ip_local_port_range
+if ! echo "${GUEST_EPHEMERAL_PORT_RANGE_BEGIN} ${GUEST_EPHEMERAL_PORT_RANGE_END}" > /proc/sys/net/ipv4/ip_local_port_range; then
+  echo "[init][error] Failed to configure guest ephemeral port range to ${GUEST_EPHEMERAL_PORT_RANGE_BEGIN}-${GUEST_EPHEMERAL_PORT_RANGE_END}; aborting init."
+  exit 1
+fi
 echo "[init] Configured guest ephemeral port range to ${GUEST_EPHEMERAL_PORT_RANGE_BEGIN}-${GUEST_EPHEMERAL_PORT_RANGE_END}"
 
 # We must bind to the same IP, as it is the only one available in the guest.
