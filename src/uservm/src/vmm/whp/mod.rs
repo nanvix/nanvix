@@ -552,13 +552,15 @@ impl Vmm {
         // interpolates between updates using LAPIC timer tick counts
         // (1 kHz) for ~1 ms accuracy with zero VM exits per time read.
         //
-        // A low-frequency host timer (100Hz) calls
-        // WHvCancelRunVirtualProcessor to force VM exits so the VMM
-        // loop can update system_time on the pvclock page. Without these
-        // periodic exits, pvclock would freeze during CPU-bound guest
-        // execution (no I/O = no VM exits), causing condvar/sleep
-        // timeouts to malfunction.
-        self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
+        // Defer the pvclock timer until the kernel explicitly signals
+        // boot completion via DEFAULT_VMM_BOOT_COMPLETE_CMD on the VMM
+        // port. Starting the timer earlier causes
+        // WHvCancelRunVirtualProcessor to interrupt the very first
+        // WHvRunVirtualProcessor call, which carries a heavy one-time
+        // partition-setup cost inside WHP. Deferring avoids those
+        // unnecessary cancel-induced VM exits during boot while still
+        // providing pvclock updates once user-space is running.
+        let mut timer_started: bool = false;
 
         // PIT channel 2 state for LAPIC timer calibration. The guest
         // programs PIT ch2 in one-shot mode and polls port 0x61 bit 5
@@ -699,7 +701,15 @@ impl Vmm {
                         },
                     };
                     if let Some(exit_status) = exit_status {
-                        if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+                        if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
+                            // The kernel signals that boot is complete and
+                            // user-space is about to start. Start the
+                            // pvclock host timer now.
+                            if !timer_started {
+                                self.timer.lock().unwrap().start(10_000); // 10ms = 100Hz
+                                timer_started = true;
+                            }
+                        } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
                                 "VMM exit: PMIO shutdown (exit_status={exit_status}, elapsed={:?})",
                                 loop_start.elapsed()

@@ -358,6 +358,14 @@ pub(in crate::hal::platform) fn do_shutdown(status: usize) -> ! {
 ///
 /// # Description
 ///
+/// Signals the VMM that the kernel has finished booting and user-space
+/// applications are about to start. No-op on the Hyperlight platform.
+///
+pub fn signal_boot_complete() {}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters

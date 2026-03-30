@@ -230,6 +230,9 @@ pub mod microvm {
     /// Default VMM snapshot command. Triggers a guest-initiated VM snapshot.
     pub const DEFAULT_VMM_SNAPSHOT_CMD: u16 = 0x4000;
 
+    /// Default VMM boot-complete command. Sent by the kernel after boot finishes.
+    pub const DEFAULT_VMM_BOOT_COMPLETE_CMD: u16 = 0x5000;
+
     /// Default base address for MicroVM control registers.
     pub const DEFAULT_MICROVM_CTRL_BASE: usize = 0x00000000;
 
