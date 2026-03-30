@@ -10,7 +10,8 @@ echo "Using NANVIX_DIR=${NANVIX_DIR}"
 
 echo "=== Step 1: Install system dependencies ==="
 cd "${NANVIX_DIR}"
-sudo -E ./scripts/setup/ubuntu.sh
+sudo -E ./scripts/setup/ubuntu-core.sh
+sudo -E ./scripts/setup/ubuntu-sdk.sh
 
 echo "=== Step 2: Install sccache ==="
 SCCACHE_VERSION="v0.10.0"
@@ -26,7 +27,7 @@ export RUSTC_WRAPPER=sccache
 
 echo "=== Step 3: Build cross-compiler toolchain ==="
 cd "${NANVIX_DIR}"
-./z setup --toolchain-dir $HOME/toolchain
+./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
 ln -T -sf $HOME/toolchain toolchain
 
 echo "=== Step 4: Build Nanvix ==="

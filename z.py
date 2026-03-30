@@ -233,6 +233,10 @@ class BuildConfig:
     timestamp_msg: bool = False
     whp: bool = False
 
+    nanvix_sdk: bool = False
+    l2_deployment: bool = False
+    _user_set_toolchain_dir: bool = False
+
     toolchain_dir: str = ""
     sysroot_dir: str = ""
     host_cpu: str = ""
@@ -367,11 +371,16 @@ def parse_cli(argv: Sequence[str]) -> tuple[str, BuildConfig]:
             config.profiler = True
         elif arg == "--release":
             config.release = True
+        elif arg == "--nanvix-sdk":
+            config.nanvix_sdk = True
+        elif arg == "--l2-deployment":
+            config.l2_deployment = True
         elif arg == "--toolchain-dir":
             i += 1
             if i >= len(argv_list):
                 die("--toolchain-dir requires a path argument.")
             config.toolchain_dir = argv_list[i]
+            config._user_set_toolchain_dir = True
         elif arg.startswith("--"):
             die(f"Unknown option: {arg}")
         else:
@@ -904,6 +913,8 @@ Commands:
 Options:
   --profile             Enable profiling (implies --release, passes PROFILER=yes).
   --release             Build in release mode.
+  --nanvix-sdk          Build the Nanvix cross-compilation toolchain (setup only, Linux).
+  --l2-deployment       Build Cloud Hypervisor for L2 deployment (setup only, Linux).
   --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
 
 Build Parameters (after --):
@@ -927,7 +938,10 @@ Examples:
   z.ps1 build -- guest                    Cross-compile guest only.
   ./z test                                Run all tests.
   ./z clean                               Clean build artifacts.
-  ./z setup --toolchain-dir ~/toolchain   Install dev prerequisites.
+  ./z setup                                Install core dev prerequisites.
+  ./z setup --nanvix-sdk                   Also build the cross-compilation toolchain.
+  ./z setup --l2-deployment                Also build Cloud Hypervisor for L2.
+  ./z setup --nanvix-sdk --l2-deployment   Full setup including SDK and L2 support.
 """
 
 
@@ -977,48 +991,95 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     """Set up the development environment on Linux."""
     print_info("Setting up Nanvix development environment...")
 
-    # Install system dependencies.
-    ubuntu_script = plat.repo_root / "scripts" / "setup" / "ubuntu.sh"
-    if ubuntu_script.exists():
-        print_info("Installing development dependencies (requires sudo)...")
-        rc = subprocess.run(["sudo", str(ubuntu_script)]).returncode
-        if rc != 0:
-            die("Failed to install development dependencies.")
-    else:
-        print_warning(f"Setup script not found: {ubuntu_script}")
-
-    # Validate toolchain directory.
-    print_info(f"Toolchain directory: {config.toolchain_dir}")
-    validate_toolchain_dir_location(config.toolchain_dir, plat.repo_root)
-
-    tc_dir = Path(config.toolchain_dir)
-    if not tc_dir.exists():
-        print_info(f"Creating toolchain directory: {tc_dir}")
-        tc_dir.mkdir(parents=True, exist_ok=True)
-
-    if not os.access(str(tc_dir), os.W_OK):
-        die(f"No write permissions to: {tc_dir}")
-
-    if not check_filesystem_support(str(tc_dir)):
-        die(
-            f"Toolchain directory '{tc_dir}' is not on a supported file system"
-            " (ext3/ext4/overlay)."
-        )
-
-    if any(tc_dir.iterdir()):
+    # Warn if --toolchain-dir is provided without an opt-in flag.
+    if (
+        config._user_set_toolchain_dir
+        and not config.nanvix_sdk
+        and not config.l2_deployment
+    ):
         print_warning(
-            f"Toolchain directory is not empty: {tc_dir}. Existing files may be overwritten."
+            "--toolchain-dir has no effect without --nanvix-sdk or --l2-deployment."
         )
 
-    # Run toolchain setup.
-    toolchain_script = plat.repo_root / "scripts" / "setup" / "toolchain.sh"
-    if not toolchain_script.exists():
-        die(f"Toolchain setup script not found: {toolchain_script}")
+    # Always install core system dependencies.
+    core_script = plat.repo_root / "scripts" / "setup" / "ubuntu-core.sh"
+    if core_script.exists():
+        print_info("Installing core development dependencies (requires sudo)...")
+        rc = subprocess.run(["sudo", str(core_script)]).returncode
+        if rc != 0:
+            die("Failed to install core development dependencies.")
+    else:
+        print_warning(f"Setup script not found: {core_script}")
 
-    print_info(f"Running setup script: {toolchain_script}")
-    rc = subprocess.run([str(toolchain_script), str(tc_dir)]).returncode
-    if rc != 0:
-        die("Toolchain setup failed.")
+    # Install SDK-specific packages when building the cross-compilation toolchain.
+    if config.nanvix_sdk:
+        sdk_script = plat.repo_root / "scripts" / "setup" / "ubuntu-sdk.sh"
+        if sdk_script.exists():
+            print_info("Installing SDK development dependencies (requires sudo)...")
+            rc = subprocess.run(["sudo", str(sdk_script)]).returncode
+            if rc != 0:
+                die("Failed to install SDK development dependencies.")
+        else:
+            print_warning(f"Setup script not found: {sdk_script}")
+
+    # Install L2 deployment build dependencies (kernel build needs bison, flex, etc.).
+    if config.l2_deployment:
+        l2_script = plat.repo_root / "scripts" / "setup" / "ubuntu-l2.sh"
+        if l2_script.exists():
+            print_info("Installing L2 deployment dependencies (requires sudo)...")
+            rc = subprocess.run(["sudo", str(l2_script)]).returncode
+            if rc != 0:
+                die("Failed to install L2 deployment dependencies.")
+        else:
+            print_warning(f"Setup script not found: {l2_script}")
+
+    # Validate and prepare toolchain directory when needed.
+    if config.nanvix_sdk or config.l2_deployment:
+        print_info(f"Toolchain directory: {config.toolchain_dir}")
+        validate_toolchain_dir_location(config.toolchain_dir, plat.repo_root)
+
+        tc_dir = Path(config.toolchain_dir)
+        if not tc_dir.exists():
+            print_info(f"Creating toolchain directory: {tc_dir}")
+            tc_dir.mkdir(parents=True, exist_ok=True)
+
+        if not os.access(str(tc_dir), os.W_OK):
+            die(f"No write permissions to: {tc_dir}")
+
+        if not check_filesystem_support(str(tc_dir)):
+            die(
+                f"Toolchain directory '{tc_dir}' is not on a supported file system"
+                " (ext3/ext4/overlay)."
+            )
+
+        if any(tc_dir.iterdir()):
+            print_warning(
+                f"Toolchain directory is not empty: {tc_dir}. Existing files may be overwritten."
+            )
+
+    # Build the cross-compilation toolchain.
+    if config.nanvix_sdk:
+        toolchain_script = plat.repo_root / "scripts" / "setup" / "toolchain.sh"
+        if not toolchain_script.exists():
+            die(f"Toolchain setup script not found: {toolchain_script}")
+
+        print_info(f"Running toolchain setup: {toolchain_script}")
+        rc = subprocess.run(
+            [str(toolchain_script), str(config.toolchain_dir)]
+        ).returncode
+        if rc != 0:
+            die("Toolchain setup failed.")
+
+    # Build Cloud Hypervisor for L2 deployment.
+    if config.l2_deployment:
+        clh_script = plat.repo_root / "scripts" / "setup" / "cloud-hypervisor.sh"
+        if not clh_script.exists():
+            die(f"Cloud Hypervisor setup script not found: {clh_script}")
+
+        print_info(f"Running Cloud Hypervisor setup: {clh_script}")
+        rc = subprocess.run([str(clh_script), str(config.toolchain_dir)]).returncode
+        if rc != 0:
+            die("Cloud Hypervisor setup failed.")
 
     _install_git_hooks(plat.repo_root)
     print_success("Setup complete.")

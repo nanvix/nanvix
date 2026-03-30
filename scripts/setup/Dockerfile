@@ -37,7 +37,8 @@ RUN git clone https://github.com/nanvix/nanvix /opt/nanvix/src/nanvix && \
 
 # Install dependencies for development tools.
 RUN cd /opt/nanvix/src/nanvix && \
-    ./scripts/setup/ubuntu.sh
+    ./scripts/setup/ubuntu-core.sh && \
+    ./scripts/setup/ubuntu-sdk.sh
 
 # Install Rust.
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -55,4 +56,4 @@ RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_
 
 # Build toolchain.
 RUN cd /opt/nanvix/src/nanvix && \
-    ./z setup --toolchain-dir /opt/nanvix
+    ./z setup --nanvix-sdk --l2-deployment --toolchain-dir /opt/nanvix
