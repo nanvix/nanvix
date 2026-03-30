@@ -33,44 +33,14 @@ runs:
     - name: "Install System Dependencies"
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
-          codespell \
-          pkg-config \
-          python3-venv \
-          shellcheck
+        if [ "${{ inputs.install-cloud-hypervisor }}" = "true" ]; then
+          ./z setup --l2-deployment
+        else
+          ./z setup
+        fi
 
     - name: "Setup Python Environment"
       shell: bash
       run: |
         python3 -m venv .venv
         .venv/bin/pip install --quiet -r requirements.txt
-
-    - name: "Create Cloud-Hypervisor Directory"
-      shell: bash
-      run: |
-        CLH_DIR="${HOME}/toolchain"
-        mkdir -p "${CLH_DIR}/bin"
-        echo "[INFO] Created cloud-hypervisor directory at ${CLH_DIR}"
-
-    - name: "Build Cloud-Hypervisor"
-      if: inputs.install-cloud-hypervisor == 'true'
-      shell: bash
-      run: |
-        CLH_DIR="${HOME}/toolchain"
-        # Build only cloud-hypervisor (skip Linux kernel build).
-        CLOUD_HYPERVISOR_COMMIT="4681d5eba0e63fb010bf4ca962eb3c9f163d3288"
-        CLOUD_HYPERVISOR_REPO="https://github.com/nanvix/cloud-hypervisor"
-        SRC_DIR="${RUNNER_TEMP}/cloud-hypervisor-src"
-
-        git clone "${CLOUD_HYPERVISOR_REPO}" "${SRC_DIR}"
-        pushd "${SRC_DIR}"
-        git checkout "${CLOUD_HYPERVISOR_COMMIT}"
-        cargo build --release
-        cp ./target/release/cloud-hypervisor "${CLH_DIR}/bin/cloud-hypervisor"
-        cp ./target/release/ch-remote "${CLH_DIR}/bin/ch-remote"
-        # Set CAP_NET_ADMIN for TAP device creation without sudo.
-        sudo setcap cap_net_admin+ep "${CLH_DIR}/bin/cloud-hypervisor" || true
-        popd
-        rm -rf "${SRC_DIR}"
-        echo "[INFO] Cloud-hypervisor installed to ${CLH_DIR}/bin/"

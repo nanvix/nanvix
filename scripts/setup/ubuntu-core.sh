@@ -12,11 +12,10 @@ apt-get update
 # Install build-essential by default.
 apt-get install -y build-essential --no-install-recommends
 
-# Install additional packages.
+# Install core development packages needed to build, run, and test Nanvix.
 # Keep the following list of packages sorted alphabetically.
 apt-get install -y        \
     bc                    \
-    bison                 \
     bridge-utils          \
     build-essential       \
     bzip2                 \
@@ -26,10 +25,7 @@ apt-get install -y        \
     curl                  \
     dosfstools            \
     doxygen               \
-    flex                  \
-    g++-multilib          \
     gawk                  \
-    gcc-multilib          \
     gdb-multiarch         \
     git                   \
     graphviz              \
@@ -37,15 +33,6 @@ apt-get install -y        \
     iproute2              \
     jq                    \
     kpartx                \
-    libelf-dev            \
-    libglib2.0-dev        \
-    libgmp-dev            \
-    libgmp3-dev           \
-    libmpc-dev            \
-    libmpfr-dev           \
-    libncurses5-dev       \
-    libpixman-1-dev       \
-    libsdl2-dev           \
     libvirt-clients       \
     libvirt-daemon-system \
     mmdebstrap            \
@@ -55,7 +42,6 @@ apt-get install -y        \
     pkg-config            \
     python3-venv          \
     shellcheck            \
-    texinfo               \
     unzip                 \
     wget                  \
     xorriso

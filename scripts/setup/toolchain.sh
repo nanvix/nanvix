@@ -263,15 +263,6 @@ rm -rf "${CONTRIB_DIR}/cpython" || {
     print_warning "Failed to remove Python source directory '${CONTRIB_DIR}/cpython'."
 }
 
-# Clone, build and cleanup Cloud Hypervisor.
-"${SCRIPTS_DIR}/cloud-hypervisor.sh" "${PREFIX}" || {
-    print_error "Failed to build Cloud Hypervisor."
-    exit 1
-}
-rm -rf "${CONTRIB_DIR}/cloud-hypervisor*" || {
-    print_warning "Failed to remove Cloud Hypervisor source directory '${CONTRIB_DIR}/cloud-hypervisor'."
-}
-
 # Create version file as the final step.
 current_version=$(get_cargo_toml_version "$CARGO_TOML_FILE_PATH")
 major=$(echo "$current_version" | cut -d. -f1)

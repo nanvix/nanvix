@@ -36,8 +36,8 @@ cd nanvix                                       # Navigate to the Nanvix source 
 
 ```bash
 # Ensure you are in the project's root directory.
-cat ./scripts/setup/ubuntu.sh      # Review the installation script.
-sudo -E ./scripts/setup/ubuntu.sh  # Run the script to install dependencies.
+cat ./scripts/setup/ubuntu-core.sh      # Review the installation script.
+sudo -E ./scripts/setup/ubuntu-core.sh  # Run the script to install core dependencies.
 ```
 
 ## 4. Setup KVM
@@ -117,12 +117,18 @@ exec $SHELL
 
 ```bash
 # Ensure you are in the project's root directory.
-./z setup --toolchain-dir $HOME/toolchain    # Build the cross compiler toolchain and place it in $HOME/toolchain.
-ln -T -s $HOME/toolchain toolchain           # Create symbolic link for toolchain for convenience.
+./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain    # Build the cross compiler toolchain and place it in $HOME/toolchain.
+ln -T -s $HOME/toolchain toolchain                        # Create symbolic link for toolchain for convenience.
 ```
 
 > **Note:** The toolchain directory must be located outside the repository root.
-> Use `./z setup --toolchain-dir <path>` to specify a valid location.
+> Use `./z setup --nanvix-sdk --toolchain-dir <path>` to specify a valid location.
+>
+> To also build Cloud Hypervisor for L2 deployment, add `--l2-deployment`:
+>
+> ```bash
+> ./z setup --nanvix-sdk --l2-deployment --toolchain-dir $HOME/toolchain
+> ```
 
 ## 8. Updating Your Development Tools
 
