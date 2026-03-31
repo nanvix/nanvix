@@ -30,7 +30,7 @@ use crate::{
 ///
 /// A type that represents flags of a page table entry.
 ///
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct PageTableEntryFlags {
     /// Present flag.
     present: PresentFlag,
@@ -134,6 +134,23 @@ impl PageTableEntryFlags {
         value |= self.dirty.into_raw_value();
 
         value
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the present flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the present flag is set, `false` otherwise.
+    ///
+    #[inline(always)]
+    pub fn is_present(&self) -> bool {
+        match self.present {
+            PresentFlag::Present => true,
+            PresentFlag::NotPresent => false,
+        }
     }
 }
 
