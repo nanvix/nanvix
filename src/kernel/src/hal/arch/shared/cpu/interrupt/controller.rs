@@ -147,6 +147,168 @@ impl InterruptController {
                 });
             }
 
+            // On microvm/WHP the partition enables LAPIC emulation in
+            // xAPIC mode. Enable the LAPIC software-enable bit and
+            // configure the LAPIC periodic timer so timer interrupts
+            // fire entirely inside the WHP LAPIC emulator — zero VM
+            // exits for timer delivery. The LAPIC page at 0xFEE00000
+            // is identity-mapped via the microvm platform init and
+            // handled by the WHP LAPIC emulator (not guest RAM).
+            #[cfg(all(feature = "microvm", feature = "whp"))]
+            {
+                use ::arch::cpu::xapic;
+                let lapic_base: usize = ::config::microvm::DEFAULT_LAPIC_BASE;
+                let lapic: xapic::Xapic = xapic::Xapic::new(lapic_base as *mut u32);
+                // SAFETY: The LAPIC MMIO page is identity-mapped during
+                // microvm platform init. Writes go through the WHP LAPIC
+                // emulator.
+                unsafe {
+                    lapic.write(xapic::XAPIC_SVR, 0x1FF);
+                    lapic.write(xapic::XAPIC_TPR, 0);
+                }
+                info!("lapic svr enabled for whp interrupt delivery");
+
+                // LAPIC timer calibration.
+                //
+                // When CPUID leaf 0x16 is available, an RDTSC-based spin
+                // loop is used. This eliminates ~100 PIT-polling VM exits
+                // that are extremely expensive during the first
+                // WHvRunVirtualProcessor call (WHP lazily initialises
+                // internal partition state).
+                //
+                // When leaf 0x16 is not available, we fall back to
+                // PIT-based calibration with a reduced 1 ms window.
+
+                // SAFETY: LAPIC registers go through the WHP emulator.
+                // CPUID and RDTSC do not cause VM exits.
+                unsafe {
+                    // 1. Mask the LAPIC timer during calibration.
+                    lapic.write(
+                        xapic::XAPIC_TIMER,
+                        xapic::XapicTimer::new(0x20, false, true, 0).to_u32(),
+                    );
+
+                    // 2. Set LAPIC timer divide-by-128.
+                    lapic.write(xapic::XAPIC_TDCR, 0x0A);
+
+                    // 3. Check CPUID leaf 0x16 for TSC frequency.
+                    let base_freq: u32 = ::arch::cpu::cpuid::get_base_frequency_mhz();
+
+                    let mut ticks_per_ms: u32 = if base_freq > 0 {
+                        // RDTSC-based calibration (zero VM exits).
+                        let tsc_freq_mhz: u64 = base_freq as u64;
+                        let tsc_ticks_per_ms: u64 = tsc_freq_mhz * 1_000;
+
+                        // 4a. Start the LAPIC timer counting from max value.
+                        lapic.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+
+                        // 5a. Spin for ~1 ms using RDTSC (zero VM exits).
+                        //     A max-iteration guard prevents a hang if TSC
+                        //     does not advance (virtualisation quirk).
+                        const RDTSC_MAX_ITERS: u64 = 1_000_000_000;
+                        let tsc_start: u64 = ::arch::cpu::rdtsc();
+                        let mut iters: u64 = 0;
+                        while (::arch::cpu::rdtsc() - tsc_start) < tsc_ticks_per_ms {
+                            core::hint::spin_loop();
+                            iters += 1;
+                            if iters >= RDTSC_MAX_ITERS {
+                                warn!(
+                                    "rdtsc calibration timeout after {} iterations",
+                                    RDTSC_MAX_ITERS
+                                );
+                                break;
+                            }
+                        }
+
+                        // 6a. Read remaining LAPIC count and actual TSC
+                        //     delta to correct for overshoot.
+                        let current_count: u32 = lapic.read(xapic::XAPIC_TCCR);
+                        let elapsed_ticks: u32 = 0xFFFF_FFFF_u32.wrapping_sub(current_count);
+                        let tsc_elapsed: u64 = ::arch::cpu::rdtsc() - tsc_start;
+
+                        // ticks_per_ms = elapsed × (target / actual) so the
+                        // result is independent of TSC frequency errors.
+                        let tpm: u32 =
+                            ((elapsed_ticks as u64 * tsc_ticks_per_ms) / tsc_elapsed) as u32;
+
+                        info!(
+                            "lapic timer calibration (rdtsc): elapsed_ticks={}, ticks_per_ms={}, \
+                             tsc_freq_mhz={}",
+                            elapsed_ticks, tpm, tsc_freq_mhz
+                        );
+                        tpm
+                    } else {
+                        // PIT-based fallback (reduced 1 ms window).
+                        use ::arch::cpu::pit;
+                        const CALIBRATION_MS: u32 = 1;
+                        let pit_reload: u16 =
+                            ((pit::PIT_MAX_FREQUENCY as u64 * CALIBRATION_MS as u64 / 1000)
+                                & 0xFFFF) as u16;
+
+                        warn!("cpuid leaf 0x16 unavailable, using pit-based calibration fallback");
+
+                        // 4b. Program PIT channel 2 in one-shot mode.
+                        let speaker: u8 = (::arch::io::in8(0x61) & 0xFC) | 0x01;
+                        ::arch::io::out8(0x61, speaker);
+                        ::arch::io::out8(
+                            pit::PIT_CTRL,
+                            pit::PIT_SEL2
+                                | pit::PIT_ACC_LOHI
+                                | pit::PIT_MODE_TCOUNT
+                                | pit::PIT_BINARY,
+                        );
+                        ::arch::io::out8(pit::PIT_DATA + 2, (pit_reload & 0xFF) as u8);
+                        ::arch::io::out8(pit::PIT_DATA + 2, (pit_reload >> 8) as u8);
+
+                        // Start the LAPIC timer counting from max value.
+                        lapic.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+
+                        // 5b. Wait for PIT channel 2 output (bit 5 of
+                        //     port 0x61) with a bounded busy-wait.
+                        const PIT_CALIBRATION_MAX_ITERS: u32 = 10_000_000;
+                        let mut pit_iters: u32 = 0;
+                        while (::arch::io::in8(0x61) & 0x20) == 0 {
+                            core::hint::spin_loop();
+                            pit_iters = pit_iters.wrapping_add(1);
+                            if pit_iters >= PIT_CALIBRATION_MAX_ITERS {
+                                warn!(
+                                    "pit calibration timeout after {} iterations",
+                                    PIT_CALIBRATION_MAX_ITERS
+                                );
+                                break;
+                            }
+                        }
+
+                        // 6b. Read remaining LAPIC timer count.
+                        let current_count: u32 = lapic.read(xapic::XAPIC_TCCR);
+                        let elapsed_ticks: u32 = 0xFFFF_FFFF_u32.wrapping_sub(current_count);
+                        let tpm: u32 = elapsed_ticks / CALIBRATION_MS;
+
+                        info!(
+                            "lapic timer calibration (pit fallback): elapsed_ticks={}, \
+                             ticks_per_ms={}",
+                            elapsed_ticks, tpm
+                        );
+                        tpm
+                    };
+
+                    if ticks_per_ms == 0 {
+                        warn!("lapic timer calibration underflow: using fallback ticks_per_ms=1");
+                        ticks_per_ms = 1;
+                    }
+
+                    // 7. Program LAPIC timer in periodic mode with vector
+                    //    0x20, initial count = ticks_per_ms (1 kHz).
+                    lapic.write(
+                        xapic::XAPIC_TIMER,
+                        xapic::XapicTimer::new(0x20, false, false, 1).to_u32(),
+                    );
+                    lapic.write(xapic::XAPIC_TICR, ticks_per_ms);
+
+                    info!("lapic periodic timer started (vector=0x20, period=1ms)");
+                }
+            }
+
             info!("using legacy pic");
             return Ok(Self {
                 intmap,
