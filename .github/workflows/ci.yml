@@ -5,7 +5,8 @@ name: "Nanvix CI/CD"
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    # Publish release artifacts for the latest version every 2 hours.
+    - cron: "0 */2 * * *"
 
   workflow_dispatch:
 
@@ -1645,29 +1646,19 @@ jobs:
 
           Please investigate the failed jobs linked above and resolve the issue."
 
-  # Create a minor release tag on merge commits to dev.
+  # Bump the patch version on every merge to dev.
   # This job runs independently of the CI pipeline because the pipeline skips
   # merge commits while this job specifically targets them.
+  # Artifact publishing is handled separately by the schedule-triggered jobs.
   create-minor-release:
     name: "Create Minor Release"
-    # Publish a release on push-to-dev merges and on nightly schedule runs.
+    # Only run on push-to-dev merge commits.
     # Guard against infinite loops by excluding github-actions[bot] commits.
-    # Checks:
-    # 1. Event is a push or schedule (not a PR or workflow_dispatch)
-    # 2. Actor is not github-actions[bot] (prevents workflow-triggered runs)
-    # 3. For push events: commit author/committer is not github-actions[bot]
-    #    For schedule events: head_commit is not available, so skip that check
     if: >-
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      github.event_name == 'push' &&
       github.actor != 'github-actions[bot]' &&
-      (
-        (
-          github.event_name == 'push' &&
-          github.event.head_commit.author.username != 'github-actions[bot]' &&
-          github.event.head_commit.committer.username != 'github-actions[bot]'
-        ) ||
-        github.event_name == 'schedule'
-      )
+      github.event.head_commit.author.username != 'github-actions[bot]' &&
+      github.event.head_commit.committer.username != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
