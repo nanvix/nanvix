@@ -758,13 +758,53 @@ pub fn has_pbe() -> bool {
 /// The processor base frequency in MHz, or 0 if not supported.
 ///
 pub fn get_base_frequency_mhz() -> u32 {
+    // Check the maximum supported basic CPUID leaf.
     let (max_basic_leaf, _, _, _): (u32, u32, u32, u32) = cpuid(0);
 
     if max_basic_leaf < CPUID_FREQUENCY {
+        // Leaf 0x16 is not supported.
         return 0;
     }
 
-    let (eax, _, _, _): (u32, u32, u32, u32) = cpuid_subleaf(CPUID_FREQUENCY, 0);
+    // Issue CPUID with EAX = CPUID_FREQUENCY and ECX = 0 explicitly, so the
+    // subleaf selector is well-defined and does not depend on caller state.
+    let mut eax: u32 = CPUID_FREQUENCY;
+    let ebx: u32;
+    let mut ecx: u32 = 0;
+    let edx: u32;
+
+    unsafe {
+        #[cfg(target_pointer_width = "32")]
+        ::core::arch::asm!(
+            "mov {ebx_backup}, ebx",
+            "cpuid",
+            "mov {ebx_out}, ebx",
+            "mov ebx, {ebx_backup}",
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
+            inout("eax") eax,
+            inout("ecx") ecx,
+            out("edx") edx,
+            options(nomem, preserves_flags, nostack)
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        ::core::arch::asm!(
+            "mov {ebx_backup}, rbx",
+            "cpuid",
+            "mov {ebx_out:e}, ebx",
+            "mov rbx, {ebx_backup}",
+            ebx_backup = out(reg) _,
+            ebx_out = out(reg) ebx,
+            inout("eax") eax,
+            inout("ecx") ecx,
+            out("edx") edx,
+            options(nomem, preserves_flags, nostack)
+        );
+    }
+
+    // Suppress unused-variable warnings for registers we must clobber.
+    let _ = (ebx, ecx, edx);
 
     // EAX contains the processor base frequency in MHz.
     eax
