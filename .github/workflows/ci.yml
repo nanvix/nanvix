@@ -380,6 +380,7 @@ jobs:
         deployment-type: [standalone, single-process, multi-process]
     runs-on:
       group: Test
+      labels: [self-hosted, Linux]
     permissions:
       contents: read
 
@@ -886,6 +887,7 @@ jobs:
         machine-type: [microvm, hyperlight]
     runs-on:
       group: Test
+      labels: [self-hosted, Linux]
     permissions:
       contents: read
 
@@ -995,6 +997,7 @@ jobs:
           # round-trip-latency failure is investigated.
     runs-on:
       group: Benchmark
+      labels: [self-hosted, Linux]
     permissions:
       contents: read
 
@@ -1559,6 +1562,7 @@ jobs:
       needs.windows-release-archive.result == 'success'
     runs-on:
       group: Test
+      labels: [self-hosted, Linux]
     permissions:
       contents: write
 
