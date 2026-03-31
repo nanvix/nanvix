@@ -66,6 +66,10 @@ pub use controller::{
     InterruptHandler,
 };
 pub use number::InterruptNumber;
+pub use xapic::{
+    Xapic,
+    XapicTimer,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -171,11 +175,16 @@ fn build_interrupt_map(madt: &MadtInfo) -> InterruptMap {
 }
 
 /// Initializes the interrupt controller.
+///
+/// If the platform registered a LAPIC MMIO region (via [`LAPIC_MMIO_TAG`]) and no MADT xAPIC
+/// consumed it, this function creates an [`XapicTimer`] (calibrated via PIT channel 2) and
+/// returns it alongside the interrupt controller. The controller receives an EOI handle extracted
+/// from the timer.
 pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
-) -> Result<InterruptController, Error> {
+) -> Result<(InterruptController, Option<XapicTimer>), Error> {
     info!("initializing interrupt controller...");
     match madt {
         // MADT is present.
@@ -270,22 +279,90 @@ pub fn init(
             };
 
             let intmap: InterruptMap = build_interrupt_map(madt);
-            InterruptController::new(pic, xapic, ioapic, intmap)
+
+            let (eoi_xapic, xapic_timer) = if xapic.is_some() {
+                // MADT xAPIC path already consumed the LAPIC MMIO region; skip timer probe.
+                (None, None)
+            } else {
+                // Try to create an xAPIC timer from a platform-registered LAPIC MMIO region.
+                // This succeeds only when the MADT xAPIC path did not consume the region
+                // (e.g., no xAPIC in MADT but platform registered the region for timer use).
+                try_init_xapic_timer(ioports, ioaddresses)?
+            };
+
+            let controller = InterruptController::new(pic, xapic, ioapic, intmap, eoi_xapic)?;
+            Ok((controller, xapic_timer))
         },
 
         // MADT is not present.
         None => {
             info!("madt not present, falling back to 8259 pic");
+
             match UninitPic::new(ioports, idt::INT_OFF) {
                 Ok(pic) => {
                     let intmap: InterruptMap = InterruptMap::new();
-                    Ok(InterruptController::new(Some(pic), None, None, intmap)?)
+                    // Try to create an xAPIC timer from a platform-registered LAPIC MMIO region.
+                    let (eoi_xapic, xapic_timer) = try_init_xapic_timer(ioports, ioaddresses)?;
+                    let controller =
+                        InterruptController::new(Some(pic), None, None, intmap, eoi_xapic)?;
+                    Ok((controller, xapic_timer))
                 },
                 Err(e) => {
                     warn!("failed to initialize 8259 pic (error={:?})", e);
-                    Ok(InterruptController::new(None, None, None, InterruptMap::new())?)
+                    let controller =
+                        InterruptController::new(None, None, None, InterruptMap::new(), None)?;
+                    Ok((controller, None))
                 },
             }
         },
+    }
+}
+
+/// Tries to allocate a LAPIC MMIO region for xAPIC timer use. If the platform registered
+/// [`LAPIC_MMIO_TAG`], this creates an [`UninitXapicTimer`], calibrates it via PIT, and returns
+/// the initialized [`XapicTimer`] along with an EOI handle for the interrupt controller.
+///
+/// Returns `(None, None)` if the LAPIC MMIO region is not available or the current configuration
+/// does not support PIT-based LAPIC calibration.
+fn try_init_xapic_timer(
+    _ioports: &mut IoPortAllocator,
+    ioaddresses: &mut IoMemoryAllocator,
+) -> Result<(Option<Xapic>, Option<XapicTimer>), Error> {
+    // For the WHP + PIT + microvm configuration, we attempt to allocate the LAPIC MMIO
+    // region and initialize an xAPIC timer. In other configurations, we avoid touching
+    // the allocator so we don't emit spurious error logs when LAPIC_MMIO_TAG is absent.
+    #[cfg(all(feature = "pit", feature = "microvm", feature = "whp"))]
+    {
+        use self::xapic::UninitXapicTimer;
+
+        let lapic_region: IoMemoryRegion = match ioaddresses.allocate(LAPIC_MMIO_TAG) {
+            Ok(region) => region,
+            Err(_) => return Ok((None, None)),
+        };
+
+        info!("lapic mmio region available for xapic timer");
+
+        let uninit_timer: UninitXapicTimer = UninitXapicTimer::new(lapic_region);
+
+        // Calibrate the LAPIC timer using PIT channel 2 and program it in periodic mode.
+        use crate::hal::platform::pit::Pit;
+
+        const LAPIC_CALIBRATION_MS: u32 = 10;
+
+        let mut pit: Pit = Pit::new(_ioports, ::config::kernel::TIMER_FREQ)?;
+        let xapic_timer: XapicTimer = uninit_timer.init(&mut pit, LAPIC_CALIBRATION_MS);
+
+        // SAFETY: Single-core system; the Xapic handle shares the same LAPIC MMIO page.
+        let eoi_xapic: Xapic = unsafe { xapic_timer.create_eoi_handle() };
+        Ok((Some(eoi_xapic), Some(xapic_timer)))
+    }
+
+    #[cfg(not(all(feature = "pit", feature = "microvm", feature = "whp")))]
+    {
+        // In configurations without PIT-based LAPIC calibration support, we cannot
+        // initialize the xAPIC timer. Avoid probing the LAPIC MMIO region so we don't
+        // trigger allocator error logging on platforms that don't register LAPIC_MMIO_TAG.
+        let _ = ioaddresses;
+        Ok((None, None))
     }
 }

@@ -56,7 +56,7 @@ use ::sys::error::{
 #[cfg(feature = "whp")]
 use crate::hal::platform::region_tags::LAPIC_MMIO_TAG;
 
-#[cfg(feature = "pit")]
+#[cfg(all(feature = "pit", not(feature = "whp")))]
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
@@ -65,7 +65,7 @@ use crate::hal::platform::pit::Pit;
 
 pub struct Platform {
     pub arch: Arch,
-    #[cfg(feature = "pit")]
+    #[cfg(all(feature = "pit", not(feature = "whp")))]
     pub _pit: Pit,
 }
 
@@ -462,7 +462,7 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(feature = "pit")]
+#[cfg(all(feature = "pit", not(feature = "whp")))]
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
 
@@ -470,6 +470,16 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     ioports.register_read_write(::arch::cpu::pit::PIT_DATA)?;
 
     Pit::new(ioports, ::config::kernel::TIMER_FREQ)
+}
+
+/// Registers PIT calibration ports (channel 2 + speaker gate) so the interrupt controller can
+/// allocate them during LAPIC timer calibration.
+#[cfg(all(feature = "pit", feature = "whp"))]
+fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
+    ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_DATA_CH2)?;
+    ioports.register_read_write(::arch::cpu::pit::PIT_SPEAKER_GATE)?;
+    Ok(())
 }
 
 pub fn init(
@@ -529,9 +539,16 @@ pub fn init(
     log_control_registers();
     register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
 
+    // On WHP, register PIT calibration ports before arch init so the interrupt
+    // controller can allocate them during LAPIC timer calibration.
+    #[cfg(all(feature = "pit", feature = "whp"))]
+    register_pit_ports(ioports)?;
+
+    let arch = x86::init(ioports, ioaddresses, madt)?;
+
     Ok(Platform {
-        arch: x86::init(ioports, ioaddresses, madt)?,
-        #[cfg(feature = "pit")]
+        arch,
+        #[cfg(all(feature = "pit", not(feature = "whp")))]
         _pit: register_pit(ioports)?,
     })
 }
