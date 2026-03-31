@@ -302,13 +302,13 @@ impl InterruptController {
                     // they do not skew the pvclock refresh cadence.
                     if intnum == InterruptNumber::Timer {
                         let tick: u32 = EOI_COUNTER.fetch_add(1, Ordering::Relaxed);
-                        if tick % PIC_EOI_DIVISOR == 0 {
+                        if tick.is_multiple_of(PIC_EOI_DIVISOR) {
                             pic.ack(intnum as u32);
                         }
                     } else {
                         pic.ack(intnum as u32);
                     }
-                    return Ok(());
+                    Ok(())
                 }
                 #[cfg(not(all(feature = "microvm", feature = "whp")))]
                 {

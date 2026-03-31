@@ -573,9 +573,6 @@ lint-check: python-lint
 endif
 
 # Runs clippy.
-# On Windows, only host crates are linted (kernel and guest crates require a
-# cross-compilation toolchain that is not available natively on Windows).
-ifneq ($(IS_WINDOWS),yes)
 rust-lint-check: \
 	rust-lint-check-kernel \
 	rust-lint-check-guest-binaries \
@@ -583,7 +580,6 @@ rust-lint-check: \
 	rust-lint-check-guest-staticlibs \
 	rust-lint-check-wasmd \
 	rust-lint-check-wasm-binaries
-endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
@@ -597,7 +593,6 @@ rust-lint-check: rust-lint-check-nanvix-bench
 endif
 
 # Fixes code linting issues.
-ifneq ($(IS_WINDOWS),yes)
 rust-lint: \
 	rust-lint-kernel \
 	rust-lint-guest-binaries \
@@ -605,7 +600,6 @@ rust-lint: \
 	rust-lint-guest-staticlibs \
 	rust-lint-wasmd \
 	rust-lint-wasm-binaries
-endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
 rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
