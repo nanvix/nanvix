@@ -49,7 +49,7 @@ pub struct Slab {
     /// Base address of data blocks.
     data_addr: *mut u8,
     /// End of data blocks.
-    end_addr: usize,
+    end_addr: *const u8,
     /// Size of blocks in the slab.
     block_size: usize,
 }
@@ -86,7 +86,12 @@ impl Slab {
         len: usize,
         block_size: usize,
     ) -> Result<Slab, Error> {
-        // Check if length is invalid valid.
+        // Make sure the address isn't null, e.g., from a failed allocation.
+        if addr.is_null() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "null pointer"));
+        }
+
+        // Check if length is invalid.
         if len == 0 || len >= i32::MAX as usize || len > isize::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
         }
@@ -163,12 +168,12 @@ impl Slab {
             index.set(i)?;
         }
 
-        let end_addr = (addr as usize) + total_num_blocks * block_size;
+        let end_addr = addr.add(total_num_blocks * block_size);
         Ok(Slab {
-            block_size,
+            index,
             data_addr,
             end_addr,
-            index,
+            block_size,
         })
     }
 
@@ -206,15 +211,16 @@ impl Slab {
     ///
     /// This function is unsafe for the following reasons:
     ///
-    /// - It dereferences the pointer `ptr`.
+    /// - It uses `offset_from_unsigned`.
     ///
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
-        let addr = ptr as usize;
-        // Return an error if the pointer is before the data blocks.
-        if ptr < self.data_addr || addr >= self.end_addr {
+        // Return an error if the pointer is before or after the data blocks.
+        if ptr < self.data_addr as *const u8 || ptr >= self.end_addr {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
-        if !addr.is_multiple_of(self.block_size) {
+
+        // Return an error if the pointer isn't at a block boundary.
+        if !(ptr as usize).is_multiple_of(self.block_size) {
             return Err(Error::new(ErrorCode::BadAddress, "pointer unaligned"));
         }
 
