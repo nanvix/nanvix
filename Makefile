@@ -185,8 +185,10 @@ export NANVIX_MACHINE := $(MACHINE)
 #===================================================================================================
 
 # Tools
-export CARGO := $(HOME)/.cargo/bin/cargo
-export RUSTC := $(HOME)/.cargo/bin/rustc
+CARGO_HOME ?= $(HOME)/.cargo
+CARGO_HOME := $(subst \,/,$(CARGO_HOME))
+export CARGO := $(CARGO_HOME)/bin/cargo
+export RUSTC := $(CARGO_HOME)/bin/rustc
 
 # SCCACHE integration for Rust compilation (optional)
 ifneq ($(SCCACHE),)
