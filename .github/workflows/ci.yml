@@ -403,7 +403,11 @@ jobs:
         shell: bash
         run: |
           # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.
+          # self-hosted runners that share the same filesystem.  Symlink the
+          # toolchain bin/ directory so that the Makefile can still resolve
+          # $CARGO_HOME/bin/cargo.
+          mkdir -p "$RUNNER_TEMP/.cargo"
+          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
           echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
       - name: "Pre-Cleanup Dangling Resources"
@@ -915,7 +919,11 @@ jobs:
         shell: bash
         run: |
           # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.
+          # self-hosted runners that share the same filesystem.  Symlink the
+          # toolchain bin/ directory so that the Makefile can still resolve
+          # $CARGO_HOME/bin/cargo.
+          mkdir -p "$RUNNER_TEMP/.cargo"
+          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
           echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
       - name: "Pre-Cleanup Dangling Resources"
@@ -1024,7 +1032,11 @@ jobs:
         shell: bash
         run: |
           # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.
+          # self-hosted runners that share the same filesystem.  Symlink the
+          # toolchain bin/ directory so that the Makefile can still resolve
+          # $CARGO_HOME/bin/cargo.
+          mkdir -p "$RUNNER_TEMP/.cargo"
+          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
           echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
       - name: "Pre-Cleanup Dangling Resources"
@@ -1094,6 +1106,172 @@ jobs:
             **/*.err
             bench_*.txt
 
+  # Build from source and run micro-benchmarks on self-hosted Windows baremetal
+  # runners. Only standalone-mode benchmarks are supported (boot-time, cold-start,
+  # warm-start-vmm). The self-hosted runner is a dedicated machine with a
+  # known-functional WHP hypervisor, so the WHP probe and Defender exclusion
+  # steps used by windows-benchmark-ci are omitted.
+  windows-benchmark:
+    name: "Windows Benchmark (${{ matrix.machine-type }})"
+    needs: [precheck]
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine-type: microvm
+            standard-benchmarks: "boot-time cold-start warm-start-vmm"
+            standard-iterations: "100"
+          # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
+          # round-trip-latency failure is investigated.
+    runs-on:
+      group: Benchmark
+      labels: [self-hosted, Windows]
+    permissions:
+      contents: read
+
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    # Fork PRs are excluded to prevent untrusted code from running on
+    # self-hosted runners.
+    if: |
+      !cancelled() &&
+      github.repository == 'nanvix/nanvix' && (
+        github.event_name == 'merge_group' || github.event_name == 'schedule' || (
+          needs.precheck.outputs.up_to_date == 'true' && (
+            github.event_name != 'push' ||
+            github.event.head_commit == null ||
+            !startsWith(github.event.head_commit.message, 'Merge ')
+          ) && (
+            github.event_name != 'pull_request' ||
+            (
+              !github.event.pull_request.draft &&
+              github.event.pull_request.head.repo.full_name == github.repository
+            )
+          )
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Restore Directory Symlinks as Junctions"
+        shell: pwsh
+        run: |
+          # Git checks out symlinks as plain text files on Windows when the
+          # service account lacks SeCreateSymbolicLinkPrivilege. Directory
+          # symlinks end up as small text stubs containing the target path.
+          # Convert them to NTFS junctions, which need no special privileges.
+          git ls-files -s | ForEach-Object {
+            if ($_ -match '^120000\s+\S+\s+\S+\t(.+)$') {
+              $relPath = $Matches[1]
+              $fullPath = Join-Path $PWD $relPath
+              if ((Test-Path $fullPath) -and -not (Test-Path $fullPath -PathType Container)) {
+                $target = (Get-Content $fullPath -Raw).Trim()
+                $parentDir = Split-Path $fullPath
+                $resolved = [System.IO.Path]::GetFullPath((Join-Path $parentDir $target))
+                if (Test-Path $resolved -PathType Container) {
+                  Remove-Item $fullPath -Force
+                  cmd /c mklink /J "$fullPath" "$resolved" | Out-Null
+                  Write-Host "Junction: $relPath -> $target"
+                }
+              }
+            }
+          }
+
+      - name: "Refresh PATH from Registry"
+        shell: pwsh
+        run: |
+          # Self-hosted runner services may have a stale PATH from when the
+          # service was started. Re-read the current Machine and User PATH
+          # from the registry so that tools installed after the service
+          # started (e.g., rustup) are found.
+          $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $userPath    = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:PATH    = "$machinePath;$userPath"
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+      - name: "Set Rust Environment"
+        shell: pwsh
+        run: |
+          # The runner service runs as NetworkService, but Rust was installed
+          # under the Administrator account. Set CARGO_HOME so the Makefile
+          # can resolve $CARGO_HOME/bin/cargo. RUSTUP_HOME is intentionally
+          # left unset to avoid cross-account directory ownership issues;
+          # rustup is found via PATH instead. This is a dedicated baremetal
+          # runner with a pre-installed toolchain.
+          echo "CARGO_HOME=C:\Users\Administrator\.cargo" >> $env:GITHUB_ENV
+
+      - name: "Verify Rust Toolchain"
+        shell: pwsh
+        run: |
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          Write-Host "Expected toolchain: $toolchain"
+          rustup show
+          cargo --version
+
+      - name: "Setup Prerequisites"
+        shell: pwsh
+        run: |
+          $osVersion = [System.Environment]::OSVersion.Version
+          if ($osVersion.Build -ge 22000) {
+            Write-Host "Detected Windows build $($osVersion.Build) (Windows 11 or later). Running z.ps1 setup..."
+            .\z.ps1 setup
+          }
+          else {
+            Write-Host "Detected Windows build $($osVersion.Build) (< 22000). Skipping z.ps1 setup on CI runner."
+          }
+
+      - name: "Build"
+        shell: pwsh
+        env:
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+        run: |
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic
+
+      - name: "Run Micro-Benchmarks"
+        shell: pwsh
+        env:
+          BENCHMARKS: ${{ matrix.standard-benchmarks }}
+          MACHINE_TYPE: ${{ matrix.machine-type }}
+          ITERATIONS: ${{ matrix.standard-iterations }}
+        run: |
+          foreach ($bench in $env:BENCHMARKS -split ' ') {
+            Write-Host "[INFO] Running benchmark '${bench}'..."
+            python scripts/benchmark.py `
+              run `
+              --benchmark $bench `
+              --machine-type $env:MACHINE_TYPE `
+              --iterations $env:ITERATIONS `
+              --output-dir "." `
+              --commit "${{ github.sha }}"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Benchmark '${bench}' failed with exit code $LASTEXITCODE"
+              exit $LASTEXITCODE
+            }
+          }
+
+      - name: "Upload Benchmark Results"
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-windows-baremetal-results-${{ matrix.machine-type }}
+          overwrite: true
+          retention-days: 1
+          path: nanvix_bench_*.csv
+
+      - name: "Upload logs in case of benchmark failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-windows-baremetal-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.machine-type }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+            bench_*.txt
+
   # Aggregate benchmark results from all machine types, post a PR comment,
   # and persist the updated baselines on dev.
   # NOTE: all matrix legs must succeed; partial results are intentionally
@@ -1150,6 +1328,72 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-benchmark-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+
+  # Aggregate Windows baremetal benchmark results from all machine types,
+  # post a PR comment, and persist the updated baselines on dev.
+  # Results are stored in data/windows-baremetal/ to keep them isolated
+  # from the Linux and GitHub-hosted baselines.
+  windows-benchmark-finalize:
+    name: "Windows Benchmark Finalize"
+    needs: [windows-benchmark]
+    # NOTE: needs.windows-benchmark.result is the aggregate result across all
+    # matrix legs. It is 'success' only when every leg succeeds.
+    if: ${{ !cancelled() && needs.windows-benchmark.result == 'success' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v6
+        if: github.ref_name != 'dev'
+
+      - uses: actions/checkout@v6
+        if: github.ref_name == 'dev'
+        with:
+          # Use the deploy SSH key so that benchmark-persist can push results
+          # to the dev branch.
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+
+      - name: "Download Benchmark Results"
+        uses: actions/download-artifact@v8
+        with:
+          pattern: benchmark-windows-baremetal-results-*
+          path: .
+          merge-multiple: true
+
+      - name: "Report Benchmark Results"
+        uses: ./.github/actions/benchmark-report
+        with:
+          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          machine-types: "microvm"
+          archs: "X64"
+          dev-dir: "data/windows-baremetal"
+          runner-label: "windows-baremetal"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Persist results on dev"
+        if: github.ref_name == 'dev'
+        uses: ./.github/actions/benchmark-persist
+        with:
+          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          machine-types: "microvm"
+          archs: "X64"
+          target-dir: "data/windows-baremetal"
+
+      - name: "Upload logs in case of finalize failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-benchmark-windows-baremetal-finalize-logs-${{ github.event.pull_request.number || github.run_number }}
           overwrite: "true"
           path: |
             logs/
@@ -1445,7 +1689,7 @@ jobs:
   # Create release archives for all applicable configurations.
   release-archive:
     name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize]
+    needs: [ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize, windows-benchmark-finalize]
     if: |
       github.repository == 'nanvix/nanvix' &&
       github.ref == 'refs/heads/dev' &&
@@ -1453,7 +1697,8 @@ jobs:
       needs.ci-test.result == 'success' &&
       needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
-      needs.benchmark-ci-finalize.result == 'success'
+      needs.benchmark-ci-finalize.result == 'success' &&
+      needs.windows-benchmark-finalize.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1500,6 +1745,7 @@ jobs:
         ci-l2,
         benchmark-finalize,
         benchmark-ci-finalize,
+        windows-benchmark-finalize,
       ]
     if: |
       github.repository == 'nanvix/nanvix' &&
@@ -1508,7 +1754,8 @@ jobs:
       needs.ci-test.result == 'success' &&
       needs.ci-l2.result == 'success' &&
       needs.benchmark-finalize.result == 'success' &&
-      needs.benchmark-ci-finalize.result == 'success'
+      needs.benchmark-ci-finalize.result == 'success' &&
+      needs.windows-benchmark-finalize.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1573,7 +1820,11 @@ jobs:
         shell: bash
         run: |
           # Isolate Cargo home per job to prevent concurrent git-cache races on
-          # self-hosted runners that share the same filesystem.
+          # self-hosted runners that share the same filesystem.  Symlink the
+          # toolchain bin/ directory so that the Makefile can still resolve
+          # $CARGO_HOME/bin/cargo.
+          mkdir -p "$RUNNER_TEMP/.cargo"
+          ln -sfn "$HOME/.cargo/bin" "$RUNNER_TEMP/.cargo/bin"
           echo "CARGO_HOME=$RUNNER_TEMP/.cargo" >> "$GITHUB_ENV"
 
       - name: "Publish Release"
@@ -1596,6 +1847,8 @@ jobs:
         benchmark-finalize,
         benchmark-ci,
         benchmark-ci-finalize,
+        windows-benchmark,
+        windows-benchmark-finalize,
         windows-benchmark-ci,
         windows-benchmark-ci-finalize,
         release-archive,
