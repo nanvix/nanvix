@@ -5,7 +5,6 @@ name: "Nanvix CI/CD"
 
 on:
   schedule:
-    # Nightly release: build, test, and publish a release every day at midnight UTC.
     - cron: "0 0 * * *"
 
   workflow_dispatch:
@@ -1656,12 +1655,19 @@ jobs:
     # Checks:
     # 1. Event is a push or schedule (not a PR or workflow_dispatch)
     # 2. Actor is not github-actions[bot] (prevents workflow-triggered runs)
-    # 3. Commit author is not github-actions[bot] (prevents runs on bot commits)
+    # 3. For push events: commit author/committer is not github-actions[bot]
+    #    For schedule events: head_commit is not available, so skip that check
     if: >-
       (github.event_name == 'push' || github.event_name == 'schedule') &&
       github.actor != 'github-actions[bot]' &&
-      github.event.head_commit.author.username != 'github-actions[bot]' &&
-      github.event.head_commit.committer.username != 'github-actions[bot]'
+      (
+        (
+          github.event_name == 'push' &&
+          github.event.head_commit.author.username != 'github-actions[bot]' &&
+          github.event.head_commit.committer.username != 'github-actions[bot]'
+        ) ||
+        github.event_name == 'schedule'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
