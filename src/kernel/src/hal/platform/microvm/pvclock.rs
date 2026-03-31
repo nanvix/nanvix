@@ -149,7 +149,7 @@ pub fn monotonic_time_ns() -> Option<u64> {
         let base_ticks: u32 = SNAP_TICKS.load(Ordering::Relaxed);
         let delta_ticks: u32 = (crate::pm::clock::ticks() as u32).wrapping_sub(base_ticks);
         const NS_PER_TICK: u64 = 1_000_000;
-        return Some(base_ns.wrapping_add(delta_ticks as u64 * NS_PER_TICK));
+        Some(base_ns.wrapping_add(delta_ticks as u64 * NS_PER_TICK))
     }
 
     // KVM/QEMU path: use TSC-based computation with the seqlock protocol.
