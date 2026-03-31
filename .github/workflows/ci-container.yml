@@ -1,0 +1,87 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# =============================================================================
+# Build and push the Nanvix CI container image.
+#
+# The image is rebuilt whenever the Dockerfile, system-dependency scripts,
+# Rust toolchain pin, or Python requirements change.  It is also rebuilt on
+# a weekly schedule to pick up security updates from the base image.
+#
+# Bootstrap: Before the first merge to dev that adds `container:` to ci.yml,
+# run this workflow manually via workflow_dispatch to publish the initial image.
+# =============================================================================
+
+name: "CI Container Image"
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "docker/ci/Dockerfile"
+      - "scripts/setup/ubuntu-core.sh"
+      - "scripts/setup/ubuntu-l2.sh"
+      - "rust-toolchain"
+      - "requirements.txt"
+      - ".github/workflows/ci-container.yml"
+
+  pull_request:
+    branches: [dev]
+    paths:
+      - "docker/ci/Dockerfile"
+      - "scripts/setup/ubuntu-core.sh"
+      - "scripts/setup/ubuntu-l2.sh"
+      - "rust-toolchain"
+      - "requirements.txt"
+      - ".github/workflows/ci-container.yml"
+
+  schedule:
+    # Rebuild weekly (Sunday 04:00 UTC) to pick up base-image security patches.
+    - cron: "0 4 * * 0"
+
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: nanvix/ci
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: "Build CI Image"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "Log in to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "Extract metadata"
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=ubuntu-24.04
+            type=sha,prefix=ubuntu-24.04-
+
+      - name: "Build and push"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ci/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
