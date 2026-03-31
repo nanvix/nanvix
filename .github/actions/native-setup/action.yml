@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Native Setup"
-description: "Set up native build environment on GitHub-hosted runners (no Docker)"
+description: "Set up native build environment for CI jobs (container-aware)"
 
 inputs:
   components:
@@ -17,20 +17,46 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: "Detect CI Container"
+      id: detect-container
+      shell: bash
+      run: |
+        if [ -f /etc/nanvix-ci-container ]; then
+          echo "in-container=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "in-container=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # When running outside the CI container, free disk space and install system
+    # dependencies from scratch.  Inside the container these are already present.
     - name: "Free Disk Space"
+      if: steps.detect-container.outputs.in-container != 'true'
       uses: ./.github/actions/free-disk-space
 
     - name: "Install Rust Toolchain"
       shell: bash
+      env:
+        IN_CONTAINER: ${{ steps.detect-container.outputs.in-container }}
       run: |
-        # The rust-toolchain file auto-configures the channel via rustup.
-        rustup show
-        # Install additional components if requested.
-        for component in ${{ inputs.components }}; do
-          rustup component add "${component}"
-        done
+        if [ "${IN_CONTAINER}" = "true" ]; then
+          # Container already has the toolchain; just ensure extra components.
+          for component in ${{ inputs.components }}; do
+            if ! rustup component add "${component}" 2>/dev/null; then
+              echo "error: failed to add Rust component '${component}' in CI container image." >&2
+              echo "       Ensure the component is preinstalled in the image or remove it from 'inputs.components'." >&2
+              exit 1
+            fi
+          done
+        else
+          # Bare runner — rust-toolchain file drives the install.
+          rustup show
+          for component in ${{ inputs.components }}; do
+            rustup component add "${component}"
+          done
+        fi
 
     - name: "Install System Dependencies"
+      if: steps.detect-container.outputs.in-container != 'true'
       shell: bash
       run: |
         if [ "${{ inputs.install-cloud-hypervisor }}" = "true" ]; then
@@ -41,6 +67,16 @@ runs:
 
     - name: "Setup Python Environment"
       shell: bash
+      env:
+        IN_CONTAINER: ${{ steps.detect-container.outputs.in-container }}
       run: |
-        python3 -m venv .venv
-        .venv/bin/pip install --quiet -r requirements.txt
+        if [ "${IN_CONTAINER}" = "true" ]; then
+          # Container venv is at /opt/nanvix-venv; create a local symlink so
+          # scripts that activate .venv keep working.
+          if [ ! -d .venv ]; then
+            ln -s /opt/nanvix-venv .venv
+          fi
+        else
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r requirements.txt
+        fi
