@@ -309,6 +309,105 @@ impl<T: DerefMut<Target = [u32]>> PageTable<T> {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Bulk-fills page table entries for contiguous identity-mapped physical memory.
+    ///
+    /// Each entry maps physical frame `base_frame + i` with the given PTE flags.
+    ///
+    /// # Parameters
+    ///
+    /// - `start_index`: First entry index to fill (0–1023).
+    /// - `count`: Number of consecutive entries to fill.
+    /// - `base_address`: Page-aligned physical address of the first frame.
+    /// - `pte_flags`: Strongly typed PTE flags.
+    /// - `skip_pte_verification`: If `true`, skip the check that all target entries are not
+    ///   present.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the number of frames mapped is returned and the page table entries are
+    /// filled. Upon failure, a tuple containing the number of frames that were successfully
+    /// mapped before the error and the error itself is returned.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument` if `start_index + count` overflows or exceeds the table length.
+    /// - `InvalidArgument` if the present bit is not set in `pte_flags`.
+    /// - `InvalidArgument` if a frame number exceeds the valid range.
+    /// - `ResourceBusy` if any target entry is already present (unless `skip_pte_verification` is
+    ///   `true`).
+    ///
+    /// # Notes
+    ///
+    /// - Entries written before a mid-fill error are not rolled back.
+    ///
+    pub fn fill(
+        &mut self,
+        start_index: usize,
+        count: usize,
+        base_address: FrameAddress,
+        pte_flags: PageTableEntryFlags,
+        skip_pte_verification: bool,
+    ) -> Result<usize, (usize, Error)> {
+        // Bounds check.
+        let end: usize = start_index.checked_add(count).ok_or_else(|| {
+            let reason: &str = "index overflow";
+            error!("fill(): {}", reason);
+            (0, Error::new(ErrorCode::InvalidArgument, reason))
+        })?;
+        if end > self.entries.len() {
+            let reason: &str = "index out of bounds";
+            error!(
+                "fill(): {} (start_index={}, count={}, entries_len={})",
+                reason,
+                start_index,
+                count,
+                self.entries.len()
+            );
+            return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
+        }
+
+        // Validate that the present bit is set.
+        if !pte_flags.is_present() {
+            let reason: &str = "present bit not set in pte_flags";
+            error!("fill(): {}", reason);
+            return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
+        }
+
+        // Verify that all target entries are not present.
+        if !skip_pte_verification {
+            for entry in &self.entries[start_index..end] {
+                if PresentFlag::is_set(*entry) {
+                    let reason: &str = "page table entry is busy";
+                    error!("fill(): {}", reason);
+                    return Err((0, Error::new(ErrorCode::ResourceBusy, reason)));
+                }
+            }
+        }
+
+        // Build and write each page table entry.
+        let base_frame: FrameNumber = base_address.into_frame_number();
+        for i in 0..count {
+            let raw_frame: usize = base_frame.into_raw_value().checked_add(i).ok_or_else(|| {
+                let reason: &str = "frame number overflow";
+                error!("fill(): {}", reason);
+                (i, Error::new(ErrorCode::InvalidArgument, reason))
+            })?;
+            let frame: FrameNumber = FrameNumber::from_raw_value(raw_frame).ok_or_else(|| {
+                let reason: &str = "frame number out of range";
+                error!("fill(): {}", reason);
+                (i, Error::new(ErrorCode::InvalidArgument, reason))
+            })?;
+            let pte: PageTableEntry = PageTableEntry::new(pte_flags, frame);
+            self.entries[start_index + i] = pte.into_raw_value();
+            self.nmapped += 1;
+        }
+
+        Ok(count)
+    }
+
     fn clean(&mut self) {
         for pte in self.entries.iter_mut() {
             *pte = 0;
