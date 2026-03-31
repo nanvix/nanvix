@@ -1651,14 +1651,14 @@ jobs:
   # merge commits while this job specifically targets them.
   create-minor-release:
     name: "Create Minor Release"
-    # Only run on merge commits to dev branch that were not made by github-actions[bot].
-    # This prevents infinite loops when the workflow commits back to dev.
+    # Publish a release on push-to-dev merges and on nightly schedule runs.
+    # Guard against infinite loops by excluding github-actions[bot] commits.
     # Checks:
-    # 1. Event is a push (not a PR or workflow_dispatch)
+    # 1. Event is a push or schedule (not a PR or workflow_dispatch)
     # 2. Actor is not github-actions[bot] (prevents workflow-triggered runs)
     # 3. Commit author is not github-actions[bot] (prevents runs on bot commits)
     if: >-
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
       github.actor != 'github-actions[bot]' &&
       github.event.head_commit.author.username != 'github-actions[bot]' &&
       github.event.head_commit.committer.username != 'github-actions[bot]'
