@@ -592,6 +592,21 @@ jobs:
             Write-Host "Detected Windows build $($osVersion.Build) (< 22000). Skipping z.ps1 setup on CI runner."
           }
 
+      - name: "Isolate Cargo Home"
+        shell: pwsh
+        run: |
+          # Isolate Cargo home per job to prevent git-cache corruption on
+          # Windows runners that may share the same filesystem across runs.
+          # Symlink the toolchain bin/ directory so that the Makefile can
+          # still resolve $env:CARGO_HOME/bin/cargo.
+          $isolatedCargo = Join-Path $env:RUNNER_TEMP ".cargo"
+          New-Item -ItemType Directory -Force -Path $isolatedCargo | Out-Null
+          $cargoBin = Join-Path $isolatedCargo "bin"
+          if (Test-Path $cargoBin) { Remove-Item $cargoBin -Force -Recurse }
+          New-Item -ItemType SymbolicLink -Path $cargoBin -Target (Join-Path $env:USERPROFILE ".cargo\bin") | Out-Null
+          echo "CARGO_HOME=$isolatedCargo" >> $env:GITHUB_ENV
+          Write-Host "Isolated CARGO_HOME to $isolatedCargo"
+
       - name: "Build & Unit Test"
         shell: pwsh
         env:
@@ -775,6 +790,21 @@ jobs:
           else {
             Write-Host "Detected Windows build $($osVersion.Build) (< 22000). Skipping z.ps1 setup on CI runner."
           }
+
+      - name: "Isolate Cargo Home"
+        shell: pwsh
+        run: |
+          # Isolate Cargo home per job to prevent git-cache corruption on
+          # Windows runners that may share the same filesystem across runs.
+          # Symlink the toolchain bin/ directory so that the Makefile can
+          # still resolve $env:CARGO_HOME/bin/cargo.
+          $isolatedCargo = Join-Path $env:RUNNER_TEMP ".cargo"
+          New-Item -ItemType Directory -Force -Path $isolatedCargo | Out-Null
+          $cargoBin = Join-Path $isolatedCargo "bin"
+          if (Test-Path $cargoBin) { Remove-Item $cargoBin -Force -Recurse }
+          New-Item -ItemType SymbolicLink -Path $cargoBin -Target (Join-Path $env:USERPROFILE ".cargo\bin") | Out-Null
+          echo "CARGO_HOME=$isolatedCargo" >> $env:GITHUB_ENV
+          Write-Host "Isolated CARGO_HOME to $isolatedCargo"
 
       - name: "Build"
         shell: pwsh
