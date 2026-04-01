@@ -11,8 +11,11 @@ This guide will help you set up your development environment to build and run Na
 - [5. Setup SCCACHE (Optional)](#5-setup-sccache-optional)
 - [6. Set Up GDB Debugging (Optional)](#6-set-up-gdb-debugging-optional)
 - [7. Setting Up Development Tools for the First Time](#7-setting-up-development-tools-for-the-first-time)
+  - [Step 1: Install the Rust Toolchain](#step-1-install-the-rust-toolchain)
+  - [Step 2: Set Up Development Tools](#step-2-set-up-development-tools)
 - [8. Updating Your Development Tools](#8-updating-your-development-tools)
 - [9. Verus (Formal Verification)](#9-verus-formal-verification)
+  - [Using a Custom Verus Installation](#using-a-custom-verus-installation)
 - [10. Setup Your IDE (Optional)](#10-setup-your-ide-optional)
   - [Visual Studio Code](#visual-studio-code)
 
@@ -113,22 +116,32 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 exec $SHELL
 ```
 
-### Step 2: Build Cross Compiler Toolchain
+### Step 2: Set Up Development Tools
 
 ```bash
 # Ensure you are in the project's root directory.
-./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain    # Build the cross compiler toolchain and place it in $HOME/toolchain.
-ln -T -s $HOME/toolchain toolchain                        # Create symbolic link for toolchain for convenience.
+./z setup
 ```
 
-> **Note:** The toolchain directory must be located outside the repository root.
-> Use `./z setup --nanvix-sdk --toolchain-dir <path>` to specify a valid location.
->
-> To also build Cloud Hypervisor for L2 deployment, add `--l2-deployment`:
+> [!NOTE]
+> **Expert Mode** — The command above downloads a pre-built toolchain, which is
+> sufficient for most development workflows. If you need to build the
+> cross-compilation toolchain from source or set up L2 deployment, use the
+> optional flags below:
 >
 > ```bash
-> ./z setup --nanvix-sdk --l2-deployment --toolchain-dir $HOME/toolchain
+> # Build the cross-compiler toolchain from source and place it in $HOME/toolchain.
+> ./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
+> ln -T -s $HOME/toolchain toolchain  # Create a convenience symlink in the repo root.
 > ```
+>
+> - `--nanvix-sdk` — Build the cross-compilation toolchain from source (most
+>   users can rely on the pre-built toolchain instead).
+> - `--toolchain-dir <path>` — Directory for the toolchain (must be outside the
+>   repository root).
+> - `--l2-deployment` — Also build Cloud Hypervisor for L2 benchmarking
+>   scenarios.
+>
 
 ## 8. Updating Your Development Tools
 
