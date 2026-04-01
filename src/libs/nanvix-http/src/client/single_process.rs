@@ -184,6 +184,10 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
         // Clone all necessary values before moving them into the future
         let sandbox_cache = self.sandbox_cache.clone();
         let future = async move {
+            if Self::is_ready_request(&request) {
+                return Ok(Self::ready_response());
+            }
+
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
                 .headers()

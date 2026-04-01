@@ -369,6 +369,10 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         let state: Arc<StandaloneState> = self.state.clone();
         let future = async move {
+            if Self::is_ready_request(&request) {
+                return Ok(Self::ready_response());
+            }
+
             // Get the request headers before consuming the body.
             let message_type: MessageType = match request
                 .headers()

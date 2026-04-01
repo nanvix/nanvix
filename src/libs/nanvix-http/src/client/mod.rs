@@ -32,6 +32,7 @@ use crate::message::{
 use ::http_body_util::Full;
 use ::hyper::{
     body::Bytes,
+    Request,
     Response,
     StatusCode,
 };
@@ -58,6 +59,38 @@ pub use self::standalone::{
 //==================================================================================================
 
 impl<T: Send + Sync + Default + 'static> HttpClient<T> {
+    ///
+    /// # Description
+    ///
+    /// Returns whether an incoming request is a readiness probe.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Incoming HTTP request.
+    ///
+    /// # Returns
+    ///
+    /// `true` for `GET /ready`, `false` otherwise.
+    ///
+    fn is_ready_request<B>(request: &Request<B>) -> bool {
+        request.method() == ::hyper::Method::GET && request.uri().path() == "/ready"
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds a successful readiness response.
+    ///
+    /// # Returns
+    ///
+    /// An empty `204 No Content` response.
+    ///
+    fn ready_response() -> Response<Full<Bytes>> {
+        let mut response: Response<Full<Bytes>> = Response::new(Full::new(Bytes::new()));
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        response
+    }
+
     ///
     /// # Description
     ///
