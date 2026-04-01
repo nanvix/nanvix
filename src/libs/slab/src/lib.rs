@@ -6,6 +6,9 @@
 //==================================================================================================
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+// we need `proc_macro_hygiene`.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 
 //==================================================================================================
 // Modules
@@ -24,6 +27,14 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
+// Include proofs.
+#[cfg(verus_keep_ghost)]
+include!("lib.proof.rs");
 
 //==================================================================================================
 // Structures
@@ -42,6 +53,7 @@ use ::sys::error::{
 /// +-------------------+--------------------------------------+
 /// ```
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug)]
 pub struct Slab {
     /// An index that keeps track of free blocks.
@@ -58,6 +70,7 @@ pub struct Slab {
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl Slab {
     ///
     /// # Description
@@ -81,6 +94,19 @@ impl Slab {
     /// This function is unsafe for the following reasons:
     /// - It assumes that the memory region starting at `addr` with `len` bytes is valid.
     ///
+    #[verus_spec(result =>
+         ensures
+             match result {
+                 Ok(slab) => {
+                     &&& slab.inv()
+                     &&& slab@.block_size == block_size
+                     &&& slab@.start_addr >= addr as usize
+                     &&& slab@.end_addr <= addr as usize + len
+                     &&& slab@.allocated_addrs == Set::<usize>::empty()
+                 },
+                 Err(e) => e.code == ErrorCode::InvalidArgument,
+             },
+    )]
     pub unsafe fn from_raw_parts(
         addr: *mut u8,
         len: usize,
@@ -102,10 +128,12 @@ impl Slab {
         }
 
         // Check if the block size is valid.
-        const U8_BITS: usize = u8::BITS as usize;
+        // TODO: Make this `const U8_BITS` instead of `let u8_bits` once issue
+        // https://github.com/verus-lang/verus/issues/2023 is fixed.
+        let u8_bits: usize = u8::BITS as usize;
         if block_size == 0
             || block_size >= i32::MAX as usize
-            || block_size > (usize::MAX - 1) / U8_BITS
+            || block_size > (usize::MAX - 1) / u8_bits
             || block_size > len
         {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
@@ -129,7 +157,7 @@ impl Slab {
         // `num_index_blocks` blocks contain. The right-hand side of this inequality
         // is the number of blocks that aren't index blocks. So, a bitmap occupying
         // `num_index_blocks` blocks can address all the blocks outside of that bitmap.
-        let divisor: usize = block_size * U8_BITS + 1;
+        let divisor: usize = block_size * u8_bits + 1;
         let num_index_blocks: usize = (total_num_blocks / divisor)
             + if total_num_blocks.is_multiple_of(divisor) {
                 0
@@ -140,18 +168,29 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
 
+        proof! { Slab::lemma_can_compute_data_addr(addr, total_num_blocks, num_index_blocks, block_size, len); }
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
-        let index_len: usize = (num_data_blocks / U8_BITS)
-            + if num_data_blocks.is_multiple_of(U8_BITS) {
+        let index_len: usize = (num_data_blocks / u8_bits)
+            + if num_data_blocks.is_multiple_of(u8_bits) {
                 0
             } else {
                 1
             };
 
         // Instantiate index.
+        proof! {
+            Slab::lemma_can_create_raw_array(addr, total_num_blocks, num_index_blocks,
+                                             num_data_blocks, block_size, len, index_len);
+        }
         let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
+
+        proof! {
+            assert forall|i| 0 <= i < index_len implies storage@[i] == 0 by {
+                raw_array::axiom_u8_zero_is_0(storage@[i]);
+            }
+        }
         let mut index: Bitmap = Bitmap::from_raw_array(storage)?;
 
         // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
@@ -164,11 +203,24 @@ impl Slab {
         // them "in use" and thereby prevent them from being
         // allocated. Note that there are at most 7 such bits we need
         // to set.
-        for i in num_data_blocks..(index_len * U8_BITS) {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                index.inv(),
+                index@.num_bits == index_len * u8_bits,
+                index@.set_bits == Set::new(|j: int| num_data_blocks <= j < i),
+        ))]
+        for i in num_data_blocks..(index_len * u8_bits) {
             index.set(i)?;
         }
 
         let end_addr = addr.add(total_num_blocks * block_size);
+        proof! {
+            Slab::lemma_from_raw_parts_establishes_inv(
+                block_size, data_addr, end_addr, &index,
+                addr, len, total_num_blocks, num_index_blocks,
+                num_data_blocks, index_len, u8_bits,
+            );
+        }
         Ok(Slab {
             index,
             data_addr,
@@ -187,10 +239,36 @@ impl Slab {
     /// Upon success, a pointer to the allocated block is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(ptr) => {
+                    let addr = ptr as usize;
+                    &&& old(self)@.free_addrs.contains(addr)
+                    &&& addr % self@.block_size == 0
+                    &&& self@ == SlabView {
+                        allocated_addrs: old(self)@.allocated_addrs.insert(addr),
+                        free_addrs: old(self)@.free_addrs.remove(addr),
+                        ..old(self)@
+                    }
+                },
+                Err(_) => {
+                    &&& old(self)@.free_addrs == Set::<usize>::empty()
+                    &&& self@ == old(self)@
+                },
+            },
+    )]
     pub fn allocate(&mut self) -> Result<*mut u8, Error> {
         let block: usize = self.index.alloc()?;
-        // Safety: the start and resulting addresses are valid.
+
+        proof! { self.lemma_allocate_add_is_safe(block); }
         let block_addr: *mut u8 = unsafe { self.data_addr.add(block * self.block_size) };
+
+        proof! { self.lemma_allocate_ok(old(self), block, block_addr as usize); }
+
         Ok(block_addr)
     }
 
@@ -213,6 +291,26 @@ impl Slab {
     ///
     /// - It uses `offset_from_unsigned`.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.allocated_addrs.contains(ptr as usize)
+                    &&& self@ == (SlabView {
+                        allocated_addrs: old(self)@.allocated_addrs.remove(ptr as usize),
+                        free_addrs: old(self)@.free_addrs.insert(ptr as usize),
+                        ..old(self)@
+                    })
+                },
+                Err(_) => {
+                    &&& !old(self)@.allocated_addrs.contains(ptr as usize)
+                    &&& self@ == old(self)@
+                },
+            },
+    )]
     pub unsafe fn deallocate(&mut self, ptr: *const u8) -> Result<(), Error> {
         // Return an error if the pointer is before or after the data blocks.
         if ptr < self.data_addr as *const u8 || ptr >= self.end_addr {
@@ -224,8 +322,12 @@ impl Slab {
             return Err(Error::new(ErrorCode::BadAddress, "pointer unaligned"));
         }
 
+        proof! { self.lemma_deallocate_offset_bound(ptr); }
+
         // Compute the block index.
         let index: usize = unsafe { ptr.offset_from_unsigned(self.data_addr) } / self.block_size;
+
+        proof! { self.lemma_deallocate_index_ok(ptr, index); }
 
         // Return an error if the block is already free.
         if !self.index.test(index)? {
@@ -234,6 +336,8 @@ impl Slab {
 
         // Free the block.
         self.index.clear(index)?;
+
+        proof! { self.lemma_deallocate_ok(old(self), index, ptr); }
 
         Ok(())
     }

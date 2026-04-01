@@ -282,7 +282,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap
+VERUS_CRATES := bitmap slab
 
 # Verus verification command.
 # Uses RUSTC_BOOTSTRAP=1 because the Verus rustc wrapper identifies as a stable compiler
