@@ -366,6 +366,18 @@ pub fn signal_boot_complete() {}
 ///
 /// # Description
 ///
+/// Returns the TSC base frequency in MHz. On hyperlight the VMM does not
+/// provide this value, so `0` is returned (callers should use a fallback
+/// calibration path).
+///
+#[allow(dead_code)]
+pub fn tsc_base_frequency_mhz() -> u32 {
+    0
+}
+
+///
+/// # Description
+///
 /// Parses boot information.
 ///
 /// # Parameters
