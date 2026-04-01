@@ -9,8 +9,8 @@ use crate::hal::{
     io::IoMemoryRegion,
     mem::Address,
 };
-use ::arch::cpu::xapic;
-use ::sys::error::{
+use arch::cpu::xapic;
+use sys::error::{
     Error,
     ErrorCode,
 };
@@ -19,7 +19,7 @@ use ::sys::error::{
 #[path = ""]
 mod smp_feature_imports {
     pub use crate::mm::kredzone;
-    pub use ::sys::mm::VirtualAddress;
+    pub use sys::mm::VirtualAddress;
 }
 
 #[cfg(feature = "smp")]
@@ -59,10 +59,8 @@ impl UninitXapic {
     pub fn init(&mut self) -> Result<Xapic, Error> {
         info!("initializing xapic (id={}, base={:?})", self.id, self.base);
 
-        let mut xapic: Xapic = Xapic {
-            id: self.id,
-            ptr: xapic::Xapic::new(self.base.base().into_raw_value() as *mut u32),
-        };
+        let mut xapic: Xapic =
+            Xapic::new(self.id, xapic::Xapic::new(self.base.base().into_raw_value() as *mut u32));
 
         // Check ID matches the one in the APIC.
         let apic_id: xapic::XapicId = xapic::XapicId::from_u32(xapic.read(xapic::XAPIC_ID));
@@ -217,6 +215,11 @@ pub struct Xapic {
 }
 
 impl Xapic {
+    /// Creates a new xAPIC handle.
+    fn new(id: u8, ptr: xapic::Xapic) -> Self {
+        Self { id, ptr }
+    }
+
     ///
     /// # Description
     ///
@@ -368,5 +371,208 @@ impl Xapic {
         let reason: &str = "maximum number of retries exceeded";
         error!("{reason}");
         Err(Error::new(ErrorCode::TimerExpired, reason))
+    }
+}
+
+//==================================================================================================
+// Uninitialized xAPIC Timer
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An uninitialized xAPIC timer. Holds an allocated LAPIC MMIO region and can be initialized
+/// into an [`XapicTimer`] via PIT-based calibration, following the same Uninit pattern used
+/// by [`UninitPic`] and [`UninitXapic`].
+///
+#[allow(dead_code)]
+pub struct UninitXapicTimer {
+    /// LAPIC MMIO region handle.
+    region: IoMemoryRegion,
+    /// Low-level LAPIC MMIO handle.
+    ptr: xapic::Xapic,
+}
+
+#[allow(dead_code)]
+impl UninitXapicTimer {
+    ///
+    /// # Description
+    ///
+    /// Creates a new uninitialized xAPIC timer from an allocated MMIO region.
+    ///
+    /// # Parameters
+    ///
+    /// - `region`: Allocated LAPIC MMIO region (must be identity-mapped).
+    ///
+    pub fn new(region: IoMemoryRegion) -> Self {
+        let base: usize = region.base().into_raw_value();
+        Self {
+            region,
+            ptr: xapic::Xapic::new(base as *mut u32),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Performs a safe write on the target xAPIC.
+    ///
+    /// # Parameters
+    ///
+    /// - `reg`: Register.
+    /// - `value`: Value.
+    ///
+    fn write(&mut self, reg: u32, value: u32) {
+        unsafe { self.ptr.write(reg, value) };
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Performs a safe read on the target xAPIC.
+    ///
+    /// # Parameters
+    ///
+    /// - `reg`: Register.
+    ///
+    /// # Return Values
+    ///
+    /// The value read.
+    ///
+    fn read(&mut self, reg: u32) -> u32 {
+        unsafe { self.ptr.read(reg) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Calibrates the LAPIC timer using a PIT-provided delay and programs it in periodic mode.
+    /// Consumes this uninitialized handle and returns an initialized [`XapicTimer`].
+    ///
+    /// # Parameters
+    ///
+    /// - `pit`: PIT handle with one-shot delay capability.
+    /// - `calibration_ms`: Duration of the measurement window in milliseconds.
+    ///
+    /// # Returns
+    ///
+    /// An initialized [`XapicTimer`] with the LAPIC periodic timer running.
+    ///
+    /// # Safety
+    ///
+    /// The LAPIC MMIO page must be identity-mapped and accessible.
+    ///
+    #[cfg(all(feature = "pit", feature = "microvm", feature = "whp"))]
+    pub fn init(
+        mut self,
+        pit: &mut crate::hal::platform::pit::Pit,
+        calibration_ms: u32,
+    ) -> XapicTimer {
+        // Validate calibration_ms before touching PIT/LAPIC hardware. A zero value
+        // would arm the PIT with reload 0 (interpreted as max interval by the PIT)
+        // and cause a division by zero when computing ticks_per_ms.
+        debug_assert!(
+            calibration_ms != 0,
+            "lapic timer calibration called with calibration_ms == 0"
+        );
+        let calibration_ms: u32 = if calibration_ms == 0 {
+            warn!("lapic timer calibration called with calibration_ms=0, clamping to 1ms");
+            1
+        } else {
+            calibration_ms
+        };
+
+        info!("calibrating lapic timer via pit channel 2 ({}ms window)", calibration_ms);
+
+        // Timer vector = IDT hardware interrupt base + Timer IRQ 0.
+        let timer_vector: u32 = crate::hal::arch::x86::cpu::idt::INT_OFF as u32;
+
+        // Mask the LAPIC timer during calibration.
+        self.write(
+            xapic::XAPIC_TIMER,
+            xapic::XapicTimer::new(timer_vector, false, true, 0).to_u32(),
+        );
+
+        // Set LAPIC timer divide-by-128.
+        self.write(xapic::XAPIC_TDCR, 0x0A);
+
+        // Arm the PIT one-shot — countdown starts on return.
+        pit.arm_oneshot(calibration_ms);
+
+        // Start the LAPIC timer counting down from max value.
+        self.write(xapic::XAPIC_TICR, 0xFFFF_FFFF);
+
+        // Wait for PIT delay to elapse.
+        pit.wait_oneshot();
+
+        // Read remaining LAPIC timer count and compute ticks per millisecond.
+        let current_count: u32 = self.read(xapic::XAPIC_TCCR);
+        let elapsed_ticks: u32 = 0xFFFF_FFFF - current_count;
+        let mut ticks_per_ms: u32 = elapsed_ticks / calibration_ms;
+        if ticks_per_ms == 0 {
+            warn!(
+                "lapic timer calibration underflow: elapsed_ticks={elapsed_ticks}, using fallback \
+                 ticks_per_ms=1"
+            );
+            ticks_per_ms = 1;
+        }
+
+        info!(
+            "lapic timer calibration: elapsed_ticks={}, ticks_per_ms={}",
+            elapsed_ticks, ticks_per_ms
+        );
+
+        // Enable LAPIC via spurious interrupt vector register.
+        self.write(xapic::XAPIC_SVR, 0x1FF);
+        self.write(xapic::XAPIC_TPR, 0);
+        info!("lapic svr enabled for interrupt delivery");
+
+        // Program LAPIC timer in periodic mode.
+        self.write(
+            xapic::XAPIC_TIMER,
+            xapic::XapicTimer::new(timer_vector, false, false, 1).to_u32(),
+        );
+        self.write(xapic::XAPIC_TICR, ticks_per_ms);
+
+        info!("lapic periodic timer started (vector={:#x}, period=1ms)", timer_vector);
+
+        XapicTimer {
+            region: self.region,
+        }
+    }
+}
+
+//==================================================================================================
+// xAPIC Timer
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An initialized xAPIC periodic timer. Owns the LAPIC MMIO region and keeps the timer running.
+/// The interrupt controller handles EOI via a separate [`Xapic`] handle obtained from
+/// [`Self::create_eoi_handle()`].
+///
+#[allow(dead_code)]
+pub struct XapicTimer {
+    /// LAPIC MMIO region handle (kept alive to prevent reallocation).
+    region: IoMemoryRegion,
+}
+
+#[allow(dead_code)]
+impl XapicTimer {
+    ///
+    /// # Description
+    ///
+    /// Creates an [`Xapic`] handle that shares this timer's LAPIC MMIO page. The returned handle
+    /// is intended for EOI writes only and is passed to the interrupt controller.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the returned `Xapic` handle is only used on a single core and
+    /// does not outlive this `XapicTimer`.
+    ///
+    pub unsafe fn create_eoi_handle(&self) -> Xapic {
+        Xapic::new(0, xapic::Xapic::new(self.region.base().into_raw_value() as *mut u32))
     }
 }

@@ -15,7 +15,10 @@ pub mod mem;
 
 use crate::hal::{
     arch::x86::{
-        cpu::tss::TssRef,
+        cpu::{
+            tss::TssRef,
+            XapicTimer,
+        },
         mem::gdt::GdtPtr,
     },
     io::{
@@ -59,6 +62,8 @@ pub struct Arch {
     pub _tss: Option<TssRef>,
     /// Interrupt controller.
     pub controller: Option<InterruptController>,
+    /// xAPIC timer (platform-owned, used only in PIC + xAPIC timer mode).
+    pub _xapic_timer: Option<XapicTimer>,
 }
 
 //==================================================================================================
@@ -110,13 +115,14 @@ pub fn init(
 ) -> Result<Arch, Error> {
     info!("initializing architecture-specific components...");
 
-    // Initialize interrupt controller.
-    let (gdtr, tss, controller) = cpu::init(ioports, ioaddresses, madt)?;
+    // Initialize CPU subsystem (GDT, IDT, interrupt controller, xAPIC timer).
+    let (gdtr, tss, controller, xapic_timer) = cpu::init(ioports, ioaddresses, madt)?;
 
     Ok(Arch {
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller,
+        _xapic_timer: xapic_timer,
     })
 }
 
@@ -128,5 +134,6 @@ pub fn initialize_application_core(kstack: *const u8) -> Result<Arch, Error> {
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller: None,
+        _xapic_timer: None,
     })
 }
