@@ -48,6 +48,70 @@ impl Slab {
                 ==> self.index@.is_bit_set(i)
     }
 
+    proof fn lemma_wrapping_add_consequences(
+        addr: *mut u8,
+        len: usize
+    )
+        ensures
+            if ((addr as usize) + (len * size_of::<u8>())) % (usize::MAX + 1) < (addr as usize) {
+                (addr as usize) + len > usize::MAX
+            }
+            else {
+                (addr as usize) + len <= usize::MAX
+            },
+    {
+        assert(
+            if ((addr as usize) + (len * size_of::<u8>())) % (usize::MAX + 1) < (addr as usize) {
+                (addr as usize) + len > usize::MAX
+            }
+            else {
+                (addr as usize) + len <= usize::MAX
+            }
+        ) by (nonlinear_arith)
+            requires
+                size_of::<u8>() == 1,
+        ;
+    }
+
+    proof fn lemma_no_room_for_index(
+        len: usize,
+        block_size: usize,
+        total_num_blocks: usize,
+        num_index_blocks: usize,
+        divisor: usize,
+    )
+        requires
+            len <= isize::MAX,
+            block_size > 0,
+            total_num_blocks == len / block_size,
+            divisor == block_size * (u8::BITS as usize) + 1,
+            num_index_blocks == (total_num_blocks / divisor)
+                + if total_num_blocks % divisor == 0 {
+                      0int
+                  } else {
+                      1int
+                  },
+            num_index_blocks >= total_num_blocks,
+        ensures
+            len < block_size * 2,
+    {
+        assert(len < block_size * 2) by (nonlinear_arith)
+            requires
+                len <= isize::MAX,
+                block_size > 0,
+                total_num_blocks == len / block_size,
+                u8::BITS == 8,
+                divisor == block_size * u8::BITS + 1,
+                num_index_blocks == (total_num_blocks / divisor)
+                    + if total_num_blocks % divisor == 0 {
+                          0int
+                      } else {
+                          1int
+                      },
+                num_index_blocks >= total_num_blocks,
+        ;
+    }
+
     proof fn lemma_can_compute_data_addr(
         addr: *mut u8,
         total_num_blocks: usize,
