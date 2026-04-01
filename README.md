@@ -19,8 +19,7 @@ Requires Ubuntu 24.04 with sudo privileges and
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
 
 # Setup the development environment.
-./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
-ln -T -s $HOME/toolchain toolchain
+./z setup
 
 # Build Nanvix.
 ./z build -- all
