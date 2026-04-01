@@ -1231,6 +1231,23 @@ jobs:
           # runner with a pre-installed toolchain.
           echo "CARGO_HOME=C:\Users\Administrator\.cargo" >> $env:GITHUB_ENV
 
+      - name: "Isolate Cargo Home"
+        shell: pwsh
+        run: |
+          # Isolate Cargo home per job to prevent git-cache corruption on
+          # Windows runners that may share the same filesystem across runs.
+          # Use an NTFS junction for the toolchain bin/ directory so that
+          # the Makefile can still resolve $env:CARGO_HOME/bin/cargo
+          # without requiring symlink privileges.
+          $cargoTarget = Join-Path $env:CARGO_HOME "bin"
+          $isolatedCargo = Join-Path $env:RUNNER_TEMP ".cargo"
+          New-Item -ItemType Directory -Force -Path $isolatedCargo | Out-Null
+          $cargoBin = Join-Path $isolatedCargo "bin"
+          if (Test-Path $cargoBin) { Remove-Item $cargoBin -Force -Recurse }
+          cmd /c "mklink /J `"$cargoBin`" `"$cargoTarget`"" | Out-Null
+          echo "CARGO_HOME=$isolatedCargo" >> $env:GITHUB_ENV
+          Write-Host "Isolated CARGO_HOME to $isolatedCargo"
+
       - name: "Verify Rust Toolchain"
         shell: pwsh
         run: |
