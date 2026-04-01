@@ -104,7 +104,21 @@ impl Slab {
                      &&& slab@.end_addr <= addr as usize + len
                      &&& slab@.allocated_addrs == Set::<usize>::empty()
                  },
-                 Err(e) => e.code == ErrorCode::InvalidArgument,
+                 Err(e) => {
+                     &&& e.code == ErrorCode::InvalidArgument
+                     &&& {
+                         ||| addr as usize == 0
+                         ||| len == 0
+                         ||| len >= i32::MAX
+                         ||| len > isize::MAX
+                         ||| addr as usize + len > usize::MAX
+                         ||| block_size == 0
+                         ||| block_size >= i32::MAX
+                         ||| block_size > (usize::MAX - 1) / (u8::BITS as int)
+                         ||| len < block_size * 2
+                         ||| addr as usize % block_size != 0
+                     }
+                 }
              },
     )]
     pub unsafe fn from_raw_parts(
@@ -123,6 +137,7 @@ impl Slab {
         }
 
         // Check if the memory region wraps around.
+        proof! { Self::lemma_wrapping_add_consequences(addr, len); }
         if addr.wrapping_add(len) < addr {
             return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
         }
@@ -165,10 +180,17 @@ impl Slab {
                 1
             };
         if num_index_blocks >= total_num_blocks {
+            proof! {
+                Self::lemma_no_room_for_index(len, block_size, total_num_blocks,
+                                              num_index_blocks, divisor);
+            }
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
 
-        proof! { Slab::lemma_can_compute_data_addr(addr, total_num_blocks, num_index_blocks, block_size, len); }
+        proof! {
+            Slab::lemma_can_compute_data_addr(addr, total_num_blocks, num_index_blocks,
+                                              block_size, len);
+        }
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
