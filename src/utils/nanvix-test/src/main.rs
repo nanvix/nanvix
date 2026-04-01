@@ -94,6 +94,7 @@ use ::std::{
         },
     },
 };
+#[cfg(unix)]
 use ::tokio::signal::unix::{
     SignalKind,
     signal,
@@ -104,13 +105,18 @@ use ::tokio_util::sync::CancellationToken;
 // Constants
 //==================================================================================================
 
-// Base return code for test interrupts; actual exit code will be 128 + signal number.
+/// Base return code for test interrupts; actual exit code will be 128 + signal number.
 const BASE_RETURN_CODE: i32 = 128;
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "error";
 /// Default tenant identifier used when creating test sandboxes.
 #[cfg(unix)]
 pub(crate) const DEFAULT_TENANT_ID: &str = "nanvix-test";
+/// Signal number for a Windows Ctrl+C event. Windows has no `SIGINT`/`SIGTERM`
+/// distinction, so we map Ctrl+C to the POSIX `SIGINT` value (2) to keep the `128 + signum`
+/// exit-code convention.
+#[cfg(not(unix))]
+const WINDOWS_CTRL_C_SIGNUM: i32 = 2;
 
 //==================================================================================================
 // Standalone Functions
@@ -142,48 +148,78 @@ fn main() -> Result<()> {
     let cancellation_token: CancellationToken = CancellationToken::new();
     let force_exit_token: CancellationToken = CancellationToken::new();
 
-    // Spawn a background task that listens for SIGINT and SIGTERM.
+    // Spawn a background task that listens for interrupt signals.
     // First signal: cancel the token so in-flight work drains gracefully.
-    // Second signal: cancel the force-exit token so that main() can shut down the runtime
-    let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
-    let sig_token: CancellationToken = cancellation_token.clone();
-    let sig_force_token: CancellationToken = force_exit_token.clone();
-    runtime.spawn(async move {
-        let mut sigint = match signal(SignalKind::interrupt()) {
-            Ok(stream) => stream,
-            Err(error) => {
-                error!("signal_listener(): failed to register SIGINT handler (error={error})");
-                return;
-            },
-        };
-        let mut sigterm = match signal(SignalKind::terminate()) {
-            Ok(stream) => stream,
-            Err(error) => {
-                error!("signal_listener(): failed to register SIGTERM handler (error={error})");
-                return;
-            },
-        };
+    // Second signal: cancel the force-exit token so that main() can shut down the runtime.
+    #[cfg(unix)]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            let mut sigint = match signal(SignalKind::interrupt()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGINT handler (error={error})");
+                    return;
+                },
+            };
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGTERM handler (error={error})");
+                    return;
+                },
+            };
 
-        // Wait for the first signal.
-        let (signum, signame): (i32, &str) = tokio::select! {
-            _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
-            _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
-        };
-        info!("signal_listener(): received {signame}, requesting graceful shutdown...");
-        sig_flag.store(signum, Ordering::SeqCst);
-        sig_token.cancel();
+            // Wait for the first signal.
+            let (signum, signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            info!("signal_listener(): received {signame}, requesting graceful shutdown...");
+            sig_flag.store(signum, Ordering::SeqCst);
+            sig_token.cancel();
 
-        // Wait for a second signal. Record it and cancel the force-exit token.
-        let (second_signum, second_signame): (i32, &str) = tokio::select! {
-            _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
-            _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
-        };
-        error!(
-            "signal_listener(): received second signal {second_signame}, forcing immediate exit"
-        );
-        sig_flag.store(second_signum, Ordering::SeqCst);
-        sig_force_token.cancel();
-    });
+            // Wait for a second signal. Record it and cancel the force-exit token.
+            let (second_signum, second_signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            error!(
+                "signal_listener(): received second signal {second_signame}, forcing immediate \
+                 exit"
+            );
+            sig_flag.store(second_signum, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            // First Ctrl+C: request graceful shutdown.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register Ctrl+C handler");
+                return;
+            }
+            info!("signal_listener(): received Ctrl+C, requesting graceful shutdown...");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_token.cancel();
+
+            // Second Ctrl+C: force immediate exit.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register second Ctrl+C handler");
+                return;
+            }
+            error!("signal_listener(): received second Ctrl+C, forcing immediate exit");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
 
     // Run the main test loop. Abort early if a second signal forces exit.
     let result: Result<()> = runtime.block_on(async {
