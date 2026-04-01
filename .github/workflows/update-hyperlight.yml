@@ -35,7 +35,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/update-hyperlight.sh | tee -a "$GITHUB_OUTPUT"
+          bash scripts/update-hyperlight.sh > /tmp/hl-output.txt
+          cat /tmp/hl-output.txt
+          cat /tmp/hl-output.txt >> "$GITHUB_OUTPUT"
 
       - name: "Create Pull Request"
         if: steps.update.outputs.UPDATED == 'true'
