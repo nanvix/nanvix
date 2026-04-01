@@ -182,7 +182,7 @@ resolve_latest_commit() {
         | awk '
             /^\[workspace\.package\]/ { in_section=1; next }
             /^\[/ && in_section { in_section=0 }
-            in_section && $1 ~ /^version[[:space:]]*=/ {
+            in_section && /^version[[:space:]]*=/ {
                 if (match($0, /"[^"]*"/)) {
                     v = substr($0, RSTART + 1, RLENGTH - 2);
                     print v;
