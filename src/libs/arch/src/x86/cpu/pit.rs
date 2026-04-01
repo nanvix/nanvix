@@ -20,7 +20,14 @@ pub const PIT_MAX_FREQUENCY: u32 = 1193181;
 
 // Registers
 pub const PIT_CTRL: u16 = 0x43; // Control
-pub const PIT_DATA: u16 = 0x40; // Data
+pub const PIT_DATA: u16 = 0x40; // Data (channel 0)
+pub const PIT_DATA_CH2: u16 = 0x42; // Data (channel 2)
+
+// Speaker Gate (port 0x61) bits used for PIT channel 2 calibration.
+pub const PIT_SPEAKER_GATE: u16 = 0x61; // Speaker gate I/O port
+pub const PIT_SPEAKER_GATE_CH2_ENABLE: u8 = 0x01; // Enable channel 2 gate
+pub const PIT_SPEAKER_GATE_CH2_CLEAR: u8 = 0xFC; // Mask to clear gate and speaker bits
+pub const PIT_SPEAKER_GATE_OUT2: u8 = 0x20; // Channel 2 output status (bit 5)
 
 // Select Channels
 pub const PIT_SEL0: u8 = 0x00; // Channel 0
