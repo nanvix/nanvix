@@ -20,12 +20,13 @@ See [doc/setup.md](doc/setup.md) for full environment setup. The quickest path:
 
 ```bash
 git clone https://github.com/nanvix/nanvix.git && cd nanvix
-./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
-ln -T -s $HOME/toolchain toolchain
+./z setup
 ./z build -- all
 ```
 
 On Windows, run `.\z.ps1 setup` to install the repository Git hooks from `.githooks`.
+
+> See [doc/setup-linux.md](doc/setup-linux.md) if you plan making contributions to L2 deployment.
 
 Further reading: [Building](doc/build.md) | [Running](doc/run.md) | [Testing](doc/test.md) |
 [Benchmarking](doc/benchmark.md) | [Troubleshooting](doc/troubleshooting.md)
