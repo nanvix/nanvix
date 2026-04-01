@@ -12,6 +12,8 @@
 //==================================================================================================
 
 pub const CPUID_FEATURES: u32 = 1;
+/// CPUID Leaf for Processor Frequency Information.
+pub const CPUID_FREQUENCY: u32 = 0x16;
 
 //==================================================================================================
 //  Structures
@@ -113,21 +115,22 @@ pub enum EdxFeature {
 ///
 /// # Description
 ///
-/// Executes the CPUID instruction.
+/// Executes the CPUID instruction with an explicit subleaf (ECX).
 ///
 /// # Parameters
 ///
-/// - `eax`: The value to set in the EAX register.
+/// - `eax`: The leaf to query (input EAX).
+/// - `ecx`: The subleaf selector (input ECX).
 ///
 /// # Return Values
 ///
 /// A tuple containing the values of the EAX, EBX, ECX, and EDX registers is returned.
 ///
-fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
+fn cpuid_subleaf(eax: u32, ecx: u32) -> (u32, u32, u32, u32) {
     let mut eax: u32 = eax;
-    let mut ebx: u32;
-    let mut ecx: u32;
-    let mut edx: u32;
+    let ebx: u32;
+    let mut ecx: u32 = ecx;
+    let edx: u32;
 
     unsafe {
         #[cfg(target_pointer_width = "32")]
@@ -138,8 +141,8 @@ fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
             "mov ebx, {ebx_backup}", // Restore ebx
             ebx_backup = out(reg) _,
             ebx_out = out(reg) ebx,
-            inout("eax") eax => eax,
-            out("ecx") ecx,
+            inout("eax") eax,
+            inout("ecx") ecx,
             out("edx") edx,
             options(nomem, preserves_flags, nostack)
         );
@@ -152,14 +155,31 @@ fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
             "mov rbx, {ebx_backup}", // Restore rbx
             ebx_backup = out(reg) _,
             ebx_out = out(reg) ebx,
-            inout("eax") eax => eax,
-            out("ecx") ecx,
+            inout("eax") eax,
+            inout("ecx") ecx,
             out("edx") edx,
             options(nomem, preserves_flags, nostack)
         );
     }
 
     (eax, ebx, ecx, edx)
+}
+
+///
+/// # Description
+///
+/// Executes the CPUID instruction with subleaf 0.
+///
+/// # Parameters
+///
+/// - `eax`: The leaf to query (input EAX).
+///
+/// # Return Values
+///
+/// A tuple containing the values of the EAX, EBX, ECX, and EDX registers is returned.
+///
+fn cpuid(eax: u32) -> (u32, u32, u32, u32) {
+    cpuid_subleaf(eax, 0)
 }
 
 ///
@@ -726,4 +746,26 @@ pub fn has_pbe() -> bool {
     let (_, _, _, edx): (u32, u32, u32, u32) = cpuid(CPUID_FEATURES);
 
     (edx & EdxFeature::Pbe as u32) != 0
+}
+
+///
+/// # Description
+///
+/// Gets the processor base frequency from CPUID leaf 0x16.
+///
+/// # Return Values
+///
+/// The processor base frequency in MHz, or 0 if not supported.
+///
+pub fn get_base_frequency_mhz() -> u32 {
+    let (max_basic_leaf, _, _, _): (u32, u32, u32, u32) = cpuid(0);
+
+    if max_basic_leaf < CPUID_FREQUENCY {
+        return 0;
+    }
+
+    let (eax, _, _, _): (u32, u32, u32, u32) = cpuid_subleaf(CPUID_FREQUENCY, 0);
+
+    // EAX contains the processor base frequency in MHz.
+    eax
 }
