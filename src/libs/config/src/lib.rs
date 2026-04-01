@@ -251,6 +251,11 @@ pub mod microvm {
     /// Default base address for RAMFS size register (32-bit wide read-only register)
     pub const DEFAULT_MICROVM_CTRL_RAMFS_SIZE: usize = 0x00000010;
 
+    /// Default base address for TSC base frequency register (32-bit wide read-only register).
+    /// The VMM writes the host TSC base frequency (in MHz) here before boot so the kernel
+    /// can use RDTSC-based LAPIC timer calibration without requiring CPUID leaf 0x16.
+    pub const DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ: usize = 0x00000014;
+
     /// Magic value that identifies the running state in the pause-requested register.
     pub const RUNNING: u32 = 0x00000000;
 

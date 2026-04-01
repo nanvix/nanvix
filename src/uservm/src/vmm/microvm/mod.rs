@@ -431,6 +431,15 @@ impl Vmm {
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
+            // Write host TSC base frequency so the guest can use RDTSC-based LAPIC
+            // timer calibration without requiring CPUID leaf 0x16.
+            let tsc_freq_mhz: u32 = ::arch::cpu::cpuid::get_base_frequency_mhz();
+            vmem.write_bytes(
+                ::config::microvm::DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ as u64,
+                &tsc_freq_mhz.to_le_bytes(),
+            )?;
+            trace!("ctrl: tsc_freq_mhz={tsc_freq_mhz}");
+
             #[cfg(feature = "profile-time")]
             perf_timings.set_ramfs_load(ramfs_load_start.elapsed().as_micros() as u64);
 
