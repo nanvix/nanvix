@@ -1934,7 +1934,6 @@ jobs:
             --title "CI/CD pipeline failure on dev (Run #${{ github.run_number }})" \
             --label "devops:ci" \
             --assignee "ppenna" \
-            --type "Bug" \
             --body "## CI/CD Release Pipeline Failure
 
           The CI/CD pipeline failed on a push to \`dev\`.
