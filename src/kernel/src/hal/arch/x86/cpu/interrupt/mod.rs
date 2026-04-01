@@ -348,7 +348,7 @@ fn try_init_xapic_timer(
         // PIT channel 2 fallback otherwise) and program it in periodic mode.
         use crate::hal::platform::pit::Pit;
 
-        const LAPIC_CALIBRATION_MS: u32 = 10;
+        const LAPIC_CALIBRATION_MS: u32 = 1;
 
         let mut pit: Pit = Pit::new(_ioports, ::config::kernel::TIMER_FREQ)?;
         let xapic_timer: XapicTimer = uninit_timer.init(&mut pit, LAPIC_CALIBRATION_MS);
