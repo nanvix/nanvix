@@ -741,8 +741,9 @@ jobs:
   # Run micro-benchmarks on a Windows GitHub-hosted runner using WHP so that
   # Windows-specific performance data is collected alongside the Linux results.
   # Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # warm-start-vmm). GitHub-hosted Windows runners have variable WHP performance,
-  # so continue-on-error prevents flaky failures from blocking the pipeline.
+  # snapshot-restore, warm-start-vmm). GitHub-hosted Windows runners have
+  # variable WHP performance, so continue-on-error prevents flaky failures
+  # from blocking the pipeline.
   windows-benchmark-ci:
     name: "Windows Benchmark CI (${{ matrix.machine-type }})"
     needs: [precheck]
@@ -753,7 +754,7 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start snapshot-restore warm-start-vmm"
             standard-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
@@ -1171,9 +1172,9 @@ jobs:
 
   # Build from source and run micro-benchmarks on self-hosted Windows baremetal
   # runners. Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # warm-start-vmm). The self-hosted runner is a dedicated machine with a
-  # known-functional WHP hypervisor, so the WHP probe and Defender exclusion
-  # steps used by windows-benchmark-ci are omitted.
+  # snapshot-restore, warm-start-vmm). The self-hosted runner is a dedicated
+  # machine with a known-functional WHP hypervisor, so the WHP probe and Defender
+  # exclusion steps used by windows-benchmark-ci are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
     needs: [precheck]
@@ -1183,7 +1184,7 @@ jobs:
       matrix:
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start snapshot-restore warm-start-vmm"
             standard-iterations: "100"
           # NOTE (#1759, #1762): Hyperlight benchmarks are disabled until the
           # round-trip-latency failure is investigated.
@@ -1453,7 +1454,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-baremetal"
@@ -1464,7 +1465,7 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-baremetal"
@@ -1734,7 +1735,7 @@ jobs:
         if: steps.check-results.outputs.has_results == 'true'
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-github"
@@ -1745,7 +1746,7 @@ jobs:
         if: github.ref_name == 'dev' && steps.check-results.outputs.has_results == 'true'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,warm-start-vmm"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-github"
@@ -1769,7 +1770,14 @@ jobs:
   # Create release archives for all applicable configurations.
   release-archive:
     name: "Release Archive (${{ matrix.machine-type }}, ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ci-test, ci-l2, benchmark-finalize, benchmark-ci-finalize, windows-benchmark-finalize]
+    needs:
+      [
+        ci-test,
+        ci-l2,
+        benchmark-finalize,
+        benchmark-ci-finalize,
+        windows-benchmark-finalize,
+      ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: |
       !cancelled() &&
