@@ -113,10 +113,10 @@ impl Kheap {
 
         // Check if size is not a multiple of heap size.
         if !size.is_multiple_of(MIN_HEAP_SIZE) {
-            error!("size is not a multiple of page size");
+            error!("size is not a multiple of minimum heap size");
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
-                "size is not a multiple of page size",
+                "size is not a multiple of minimum heap size",
             ));
         }
 
